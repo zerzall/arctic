@@ -1,6 +1,6 @@
 # Arctic PDF Editor
 
-A desktop PDF editor for Windows. Open a PDF, mark it up, rearrange its pages,
+A desktop PDF editor for Windows and macOS. Open a PDF, mark it up, rearrange its pages,
 fill in its forms, and save a real PDF back out — no cloud service, no uploads,
 no page limits.
 
@@ -88,12 +88,27 @@ stick without installing anything.
 > "Windows protected your PC" notice the first time. Choose **More info →
 > Run anyway**, or build it yourself from source with the steps below.
 
+## Install on macOS
+
+Download `Arctic PDF Editor-1.0.0-arm64.dmg` (Apple Silicon) or
+`-x64.dmg` (Intel Macs) from the
+[releases page](https://github.com/zerzall/arctic/releases), open it, and drag
+the app to Applications.
+
+> **The app is not signed with an Apple Developer ID**, so the first launch is
+> blocked: macOS says it "cannot be opened because the developer cannot be
+> verified". Right-click the app and choose **Open**, then **Open** again in the
+> dialog — after that it launches normally. If macOS still refuses, run
+> `xattr -dr com.apple.quarantine "/Applications/Arctic PDF Editor.app"`.
+>
+> This is stricter than the Windows SmartScreen prompt, and clearing it properly
+> requires a paid Apple Developer account.
+
 ## Build it yourself
 
 Requirements: [Node.js](https://nodejs.org/) 22 or newer (electron 43 and
-pdfjs-dist 6 both require it). Building the Windows
-installer must happen on Windows (electron-builder needs Windows tooling for the
-NSIS target).
+pdfjs-dist 6 both require it). Each installer has to be built on its own
+platform: the Windows NSIS target needs Windows, and a `.dmg` needs macOS.
 
 ```bash
 git clone https://github.com/zerzall/arctic.git
@@ -101,14 +116,15 @@ cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
 npm test             # 92 tests over the geometry, text, pictures and PDF writing
-npm run dist:win     # -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
+npm run dist:win     # on Windows -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
+npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg (+ x64, + zips)
 ```
 
 `npm run icon` regenerates `build/icon.ico` (needs Python 3; the icon is drawn
 by `scripts/make-icon.py` rather than committed as an opaque binary).
 
-Pushing to this repository also builds the installer on a Windows runner — see
-[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml).
+Pushing to this repository builds both, on a Windows runner and a macOS runner — see
+[`.github/workflows/build.yml`](.github/workflows/build.yml).
 Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
 
 ## Keyboard shortcuts
@@ -200,6 +216,10 @@ bytes spelling `Tj`.
 - **Moving a picture rewrites where it is drawn, not what it is.** The image
   data is untouched, so quality is unaffected; but a picture the page draws more
   than once is moved at each place it appears only if you move it there.
+- **The macOS build is untested.** The editor is built and driven under test on
+  Linux and packaged by CI on both platforms, but nobody has run the `.dmg` on a
+  Mac. The document logic is platform-blind; menus, window behaviour and file
+  associations are where a problem would show up.
 - **Only horizontal text is recognised.** Rotated or vertical runs, and text
   that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters

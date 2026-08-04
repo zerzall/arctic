@@ -1,4 +1,4 @@
-name: Build Windows installer
+name: Build installers
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  build:
+  build-windows:
     needs: test
     runs-on: windows-latest
     # Needed by the release step below; the default token is read-only on
@@ -62,3 +62,42 @@ jobs:
           files: |
             dist/*.exe
             dist/latest.yml
+
+  build-mac:
+    needs: test
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Produces a .dmg and a .zip for both Apple Silicon and Intel.
+      - name: Build app
+        run: npm run dist:mac
+        env:
+          # No Apple Developer ID is configured, so the app is unsigned: it runs
+          # after the user allows it in System Settings, but macOS will complain
+          # on first launch. Signing here would fail the build, not fix that.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: arctic-pdf-editor-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*.dmg

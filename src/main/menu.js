@@ -10,6 +10,7 @@ const { Menu, app, shell } = require('electron');
  * @returns {Menu}
  */
 function buildMenu(send) {
+  const isMac = process.platform === 'darwin';
   const cmd = (label, command, accelerator, extra = {}) => ({
     label,
     accelerator,
@@ -17,7 +18,29 @@ function buildMenu(send) {
     ...extra,
   });
 
+  // macOS expects the application's own menu first, and puts Quit, Preferences
+  // and About there rather than under File.
+  const appMenu = isMac
+    ? [
+        {
+          label: 'Arctic PDF Editor',
+          submenu: [
+            cmd('About Arctic PDF Editor', 'help:about'),
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        },
+      ]
+    : [];
+
   const template = [
+    ...appMenu,
     {
       label: '&File',
       submenu: [
@@ -35,15 +58,14 @@ function buildMenu(send) {
         { type: 'separator' },
         cmd('Export Page as PNG...', 'file:export-png'),
         cmd('Print...', 'file:print', 'CmdOrCtrl+P'),
-        { type: 'separator' },
-        { role: 'quit', label: 'Exit' },
+        ...(isMac ? [] : [{ type: 'separator' }, { role: 'quit', label: 'Exit' }]),
       ],
     },
     {
       label: '&Edit',
       submenu: [
         cmd('Undo', 'edit:undo', 'CmdOrCtrl+Z'),
-        cmd('Redo', 'edit:redo', 'CmdOrCtrl+Y'),
+        cmd('Redo', 'edit:redo', isMac ? 'Cmd+Shift+Z' : 'CmdOrCtrl+Y'),
         { type: 'separator' },
         // Stock roles so cut/copy/paste keep working inside text fields.
         { role: 'cut' },
@@ -115,6 +137,14 @@ function buildMenu(send) {
         { role: 'toggleDevTools', accelerator: 'F12' },
       ],
     },
+    ...(isMac
+      ? [
+          {
+            label: 'Window',
+            submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }],
+          },
+        ]
+      : []),
     {
       label: '&Help',
       submenu: [

@@ -15,7 +15,8 @@
     "test": "node --test",
     "icon": "python3 scripts/make-icon.py",
     "dist:win": "npm run vendor && electron-builder --win --x64 --publish never",
-    "pack": "npm run vendor && electron-builder --dir"
+    "pack": "npm run vendor && electron-builder --dir",
+    "dist:mac": "npm run vendor && electron-builder --mac --publish never"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -58,16 +59,33 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
-      "fileAssociations": [
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
         {
-          "ext": "pdf",
-          "name": "PDF Document",
-          "description": "Portable Document Format",
-          "icon": "build/icon.ico",
-          "role": "Editor"
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
-      ]
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -82,6 +100,15 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "description": "Portable Document Format",
+        "icon": "build/icon.ico",
+        "role": "Editor"
+      }
+    ]
   }
 }

@@ -13,6 +13,8 @@ import struct
 import zlib
 
 SIZES = [16, 24, 32, 48, 64, 128, 256]
+# macOS wants a much larger source; electron-builder turns this into an .icns.
+MAC_SIZE = 1024
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build")
 
 BG_TOP = (0x2C, 0x6F, 0xE0)
@@ -53,7 +55,7 @@ def rounded_rect(x0, y0, x1, y1, r):
     return inside
 
 
-def draw(size):
+def draw(size, samples=3):
     """Return RGBA bytes for one square icon."""
     s = size / 256.0
     px = [[(0, 0, 0, 0) for _ in range(size)] for _ in range(size)]
@@ -63,14 +65,14 @@ def draw(size):
 
     for y in range(size):
         for x in range(size):
-            a = coverage(x, y, tile)
+            a = coverage(x, y, tile, samples)
             if a <= 0:
                 continue
             base = lerp(BG_TOP, BG_BOTTOM, y / max(1, size - 1))
             colour = base
             alpha = a
 
-            pa = coverage(x, y, page)
+            pa = coverage(x, y, page, samples)
             if pa > 0:
                 colour = blend(colour, PAPER, pa)
 
@@ -85,7 +87,7 @@ def draw(size):
         band = rounded_rect(line_x0, y0, width, y1, 4 * s)
         for y in range(size):
             for x in range(size):
-                c = coverage(x, y, band)
+                c = coverage(x, y, band, samples)
                 if c <= 0:
                     continue
                 r, g, b, a = px[y][x]
@@ -111,8 +113,8 @@ def draw(size):
 
     for y in range(size):
         for x in range(size):
-            c = coverage(x, y, pen_body)
-            tip = coverage(x, y, pen_tip)
+            c = coverage(x, y, pen_body, samples)
+            tip = coverage(x, y, pen_tip, samples)
             if c <= 0 and tip <= 0:
                 continue
             r, g, b, a = px[y][x]
@@ -127,7 +129,7 @@ def draw(size):
     inner = rounded_rect(72 * s + 1.5 * s, 48 * s + 1.5 * s, 190 * s - 1.5 * s, 208 * s - 1.5 * s, 10 * s)
     for y in range(size):
         for x in range(size):
-            c = coverage(x, y, edge) - coverage(x, y, inner)
+            c = coverage(x, y, edge, samples) - coverage(x, y, inner, samples)
             if c <= 0.02:
                 continue
             r, g, b, a = px[y][x]
@@ -187,14 +189,16 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     images = []
     for size in SIZES:
-        data = png(size, draw(size))
-        images.append((size, data))
-        if size == 256:
-            with open(os.path.join(OUT_DIR, "icon.png"), "wb") as fh:
-                fh.write(data)
+        images.append((size, png(size, draw(size))))
     with open(os.path.join(OUT_DIR, "icon.ico"), "wb") as fh:
         fh.write(ico(images))
+
+    # One sample per pixel is plenty at 1024, and keeps this under a minute.
+    with open(os.path.join(OUT_DIR, "icon.png"), "wb") as fh:
+        fh.write(png(MAC_SIZE, draw(MAC_SIZE, samples=2)))
+
     print(f"wrote {OUT_DIR}/icon.ico ({', '.join(str(s) for s in SIZES)})")
+    print(f"wrote {OUT_DIR}/icon.png ({MAC_SIZE}x{MAC_SIZE}, for macOS)")
 
 
 if __name__ == "__main__":
