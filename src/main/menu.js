@@ -70,6 +70,8 @@ function buildMenu(send) {
         cmd('Duplicate', 'page:duplicate'),
         cmd('Insert Blank Page', 'page:insert-blank'),
         cmd('Delete Page', 'page:delete'),
+        { type: 'separator' },
+        cmd('Flatten Page to Image...', 'page:rasterize'),
       ],
     },
     {
@@ -78,6 +80,7 @@ function buildMenu(send) {
         // Single-letter shortcuts live in the renderer (see app.js) so they do
         // not fire while the user is typing into a text box or the find bar.
         cmd('Select  (V)', 'tool:select'),
+        cmd('Edit Existing Text  (X)', 'tool:edittext'),
         cmd('Text Box  (T)', 'tool:text'),
         cmd('Freehand Draw  (D)', 'tool:draw'),
         cmd('Highlight  (H)', 'tool:highlight'),

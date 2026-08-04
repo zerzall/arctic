@@ -129,7 +129,8 @@ async function drawAnnotation(page, spec, annot, ctx) {
 
     case 'rect':
     case 'whiteout':
-    case 'blackout': {
+    case 'blackout':
+    case 'cover': {
       const anchor = boxAnchor(spec, annot);
       const opts = {
         x: anchor.x,

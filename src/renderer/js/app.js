@@ -25,6 +25,8 @@ import {
   setZoom,
   select,
   selectPages,
+  pushHistory,
+  afterStructuralChange,
   markDirty,
   undo,
   redo,
@@ -393,6 +395,75 @@ async function insertSignature() {
   toast('Click on the page to place your signature', 'info');
 }
 
+/* ------------------------------- rasterise -------------------------------- */
+
+/**
+ * Replace the selected pages with a picture of themselves.
+ *
+ * This is the one operation that genuinely destroys the text layer, so it is
+ * how you make a black-out box or a text replacement permanent: afterwards
+ * there is nothing underneath to extract. The cost is that the page stops being
+ * searchable or selectable, which the confirmation spells out.
+ */
+async function rasterizePages() {
+  if (!state.doc) return;
+  const slots = selectedSlots();
+  if (!slots.length) return;
+
+  const choice = await window.api.messageBox({
+    type: 'warning',
+    buttons: ['Flatten to image', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `Flatten ${slots.length} page(s) to an image?`,
+    detail:
+      'Everything on the page becomes a picture at 200 dpi. Any text hidden ' +
+      'under a black-out box or a replaced line is removed from the file for ' +
+      'good - and so is all selectable, searchable text on those pages.',
+  });
+  if (choice !== 0) return;
+
+  setBusy(true, 'Flattening...');
+  try {
+    const replacements = [];
+    for (const slot of slots) {
+      setBusy(true, `Flattening page ${slot + 1}...`);
+      // eslint-disable-next-line no-await-in-loop
+      const img = await viewer.renderPageImage(slot, 200 / 72);
+      if (!img) continue;
+      const bin = atob(img.dataUrl.split(',')[1]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      const imgId = registerImage(bytes.buffer, 'image/png');
+      replacements.push({ slot, imgId, w: img.width, h: img.height });
+    }
+
+    pushHistory();
+    for (const rep of replacements) {
+      const spec = state.doc.pages[rep.slot];
+      // A blank page of the *viewed* size, with the picture filling it, so any
+      // rotation is already baked in.
+      spec.src = null;
+      spec.index = -1;
+      spec.rotate = 0;
+      spec.baseW = rep.w;
+      spec.baseH = rep.h;
+      spec.cropX = 0;
+      spec.cropY = 0;
+      spec.annots = [
+        { id: uid(), type: 'image', imgId: rep.imgId, x: 0, y: 0, w: rep.w, h: rep.h, opacity: 1 },
+      ];
+    }
+    await viewer.ensureAllBitmaps();
+    afterStructuralChange();
+    toast(`Flattened ${replacements.length} page(s) to images`, 'ok');
+  } catch (err) {
+    await window.api.errorBox('Could not flatten', err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
 /* --------------------------------- print --------------------------------- */
 
 async function printDocument() {
@@ -444,6 +515,8 @@ async function exportPagePng() {
 
 let findResults = [];
 let findIndex = -1;
+/** The "this covers rather than deletes" notice is shown once per session. */
+let sawTextEditNotice = false;
 
 async function runFind() {
   const query = $('find-input').value;
@@ -590,9 +663,11 @@ const commands = {
   'help:about': showAbout,
 };
 
-for (const tool of ['select', 'text', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
+for (const tool of ['select', 'text', 'edittext', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
   commands[`tool:${tool}`] = () => setTool(tool);
 }
+
+commands['page:rasterize'] = rasterizePages;
 
 function duplicateAnnot() {
   const { page: slot, id } = state.selection;
@@ -765,6 +840,7 @@ function debounce(fn, ms) {
 const TOOL_KEYS = {
   v: 'select',
   t: 'text',
+  x: 'edittext',
   d: 'draw',
   h: 'highlight',
   r: 'rect',
@@ -897,7 +973,24 @@ function wireModel() {
     syncToolbar();
     syncStylePanel();
     document.body.dataset.tool = tool;
+    if (tool === 'edittext') {
+      viewer.primeVisibleRuns();
+      if (!sawTextEditNotice) {
+        sawTextEditNotice = true;
+        toast(
+          'Click any highlighted line to retype it. The replacement is drawn ' +
+            'over the original, which stays in the file unless you flatten the page.',
+          'info',
+          7000
+        );
+      }
+    }
+    viewer.refreshAll();
   });
+
+  on('edittext-miss', () =>
+    toast('No editable text there - only recognised lines are highlighted.', 'info', 2200)
+  );
 
   on('dirty', () => {
     window.api.setDirty(state.dirty);

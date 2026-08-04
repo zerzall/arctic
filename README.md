@@ -11,6 +11,20 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 
 ## What it does
 
+**Edit the text that is already there**
+
+- Pick the **Edit Text** tool and every line the editor can recognise is
+  outlined. Click one and it becomes an editable box, pre-filled with the
+  original wording and pre-selected so typing replaces it
+- The replacement keeps the original's position, size and style: it is placed on
+  the very same baseline, in whichever built-in font is closest to the embedded
+  one (bold and italic included), in the ink colour sampled from the page itself
+- The original glyphs are covered with a patch in the sampled paper colour, so
+  it works on coloured and scanned pages, not just white ones
+- Press <kbd>Delete</kbd> on a replaced line to put the original back
+- Read [Known limitations](#known-limitations) before using this on anything
+  confidential: covering is not deleting
+
 **Annotate**
 
 - Text boxes with the built-in PDF fonts (Helvetica/Arial, Times, Courier),
@@ -26,6 +40,8 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 
 - Reorder by dragging thumbnails, move up/down, duplicate, delete
 - Rotate one page or a whole selection
+- Flatten a page to an image, which permanently destroys the text layer —
+  the way to make a black-out box or a text replacement irreversible
 - Insert blank pages, or insert pages from another PDF
 - Merge several PDFs, extract a selection to a new file, or split one file per page
 
@@ -59,7 +75,8 @@ stick without installing anything.
 
 ## Build it yourself
 
-Requirements: [Node.js](https://nodejs.org/) 20 or newer. Building the Windows
+Requirements: [Node.js](https://nodejs.org/) 22 or newer (electron 43 and
+pdfjs-dist 6 both require it). Building the Windows
 installer must happen on Windows (electron-builder needs Windows tooling for the
 NSIS target).
 
@@ -68,7 +85,7 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 27 tests over the geometry and PDF-writing code
+npm test             # 46 tests over the geometry, text handling and PDF writing
 npm run dist:win     # -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
 ```
 
@@ -91,7 +108,7 @@ Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
 | `Ctrl+[` / `Ctrl+]` | Rotate the selected pages |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / 100% |
 | `Ctrl`+scroll | Zoom |
-| `V T D H R E L A` | Select, Text, Pen, Highlight, Rect, Ellipse, Line, Arrow |
+| `V X T D H R E L A` | Select, Edit Text, Text box, Pen, Highlight, Rect, Ellipse, Line, Arrow |
 | `Delete` | Delete the selected object, or the selected pages |
 | Arrow keys | Nudge the selection (`Shift` for 10pt steps) |
 | `F4` / `F8` | Toggle the thumbnail and properties panels |
@@ -104,6 +121,7 @@ src/main/       Electron main process: window, menus, dialogs, file IO, printing
   preload.js      the only bridge the renderer gets (contextIsolation is on)
 src/renderer/
   js/geometry.js  view space <-> PDF user space, for every page rotation
+  js/textedit.js  recognising the page's own text, and replacing a line of it
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
   js/overlay.js   the same shapes drawn on a canvas
@@ -132,12 +150,22 @@ copied pages cannot carry an AcroForm with them.
 
 ## Known limitations
 
-- **Black-out boxes are not redaction.** They cover content visually; the text
-  underneath is still in the file and can be extracted. Do not use them to hide
-  sensitive information.
-- **Existing text on a page cannot be re-typed.** You can cover it and put a new
-  text box on top, which is what most PDFs allow in practice, but there is no
-  reflowing of the original text.
+- **Editing text covers the original rather than deleting it.** A replaced line
+  is a patch plus new text drawn on top. It looks right, prints right, and the
+  new wording is real selectable text — but the words you replaced are still in
+  the file's text layer and can be extracted by other software. The same is true
+  of black-out boxes, which are **not** redaction.
+
+  To make either permanent, use **Page → Flatten Page to Image**. That turns the
+  page into a 200 dpi picture with no text layer at all, so nothing is left
+  underneath. The trade-off is that the page stops being searchable and
+  selectable, which is why it is a deliberate, confirmed action rather than
+  something that happens on save.
+- **Editing works line by line, and does not reflow paragraphs.** A replacement
+  keeps the shape of the line it stands in for and grows sideways as you type;
+  it will not push the following lines down or re-wrap a paragraph.
+- **Only horizontal text is recognised.** Rotated or vertical runs, and text
+  that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters
   outside that range (CJK, for example) are replaced with `?` and the app warns
   you when it happens.

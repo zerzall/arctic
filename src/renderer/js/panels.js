@@ -46,6 +46,7 @@ function relevance(type) {
       return { color: false, fill: false, width: false, opacity: true, text: false };
     case 'whiteout':
     case 'blackout':
+    case 'cover':
       return { color: false, fill: true, width: false, opacity: true, text: false };
     default:
       return { color: true, fill: true, width: true, opacity: true, text: false };
@@ -150,7 +151,9 @@ export function syncStylePanel() {
   const rel = relevance(type);
 
   $('style-scope').textContent = annot
-    ? `Selected ${labelFor(annot.type)}`
+    ? annot.replaced
+      ? 'Replaced line - Delete restores the original'
+      : `Selected ${labelFor(annot.type)}`
     : state.tool === 'select'
       ? 'Nothing selected - showing defaults'
       : `Defaults for the ${labelFor(state.tool)} tool`;
@@ -213,6 +216,8 @@ function labelFor(type) {
       image: 'image',
       whiteout: 'white-out box',
       blackout: 'black-out box',
+      cover: 'patch over original text',
+      edittext: 'edit-existing-text',
     }[type] || type
   );
 }

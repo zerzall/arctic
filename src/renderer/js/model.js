@@ -312,6 +312,17 @@ export function addAnnot(pageIndex, annot) {
   return withId;
 }
 
+/** Add several annotations as a single undoable step. */
+export function addAnnots(pageIndex, annots) {
+  const p = page(pageIndex);
+  if (!p) return [];
+  pushHistory();
+  const created = annots.map((a) => ({ id: uid(), ...a }));
+  p.annots.push(...created);
+  afterAnnotChange(pageIndex);
+  return created;
+}
+
 export function updateAnnot(pageIndex, id, patch, { history = true } = {}) {
   const a = findAnnot(pageIndex, id);
   if (!a) return;
@@ -326,7 +337,11 @@ export function removeAnnot(pageIndex, id) {
   const idx = p.annots.findIndex((a) => a.id === id);
   if (idx < 0) return;
   pushHistory();
-  p.annots.splice(idx, 1);
+  // Replaced text is a patch plus a text box; deleting either would otherwise
+  // leave the other behind, which reads as a bug whichever half survives.
+  const pairId = p.annots[idx].pairId;
+  if (pairId) p.annots = p.annots.filter((a) => a.pairId !== pairId);
+  else p.annots.splice(idx, 1);
   if (state.selection && state.selection.id === id) state.selection = null;
   afterAnnotChange(pageIndex);
   emit('selection');

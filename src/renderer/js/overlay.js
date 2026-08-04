@@ -61,6 +61,7 @@ export function drawAnnot(ctx, annot, opts = {}) {
     case 'rect':
     case 'whiteout':
     case 'blackout':
+    case 'cover':
       if (annot.fill) {
         ctx.fillStyle = annot.fill;
         ctx.fillRect(annot.x, annot.y, annot.w, annot.h);

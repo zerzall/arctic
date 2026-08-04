@@ -8,11 +8,13 @@ import {
   page as pageAt,
   findAnnot,
   addAnnot,
+  addAnnots,
   updateAnnot,
   select,
   setCurrentPage,
   pushHistory,
   afterAnnotChange,
+  uid,
   emit,
 } from './model.js';
 import { viewSize, annotBounds, moveAnnot, resizeAnnot } from './geometry.js';
@@ -26,6 +28,13 @@ import {
 } from './overlay.js';
 import { fontFor, cssFontStack } from './fonts.js';
 import { measuredHeight, TEXT_PADDING, LINE_HEIGHT_RATIO } from './textlayout.js';
+import {
+  groupRuns,
+  mapToStandardFont,
+  buildReplacement,
+  pickColors,
+  runAt,
+} from './textedit.js';
 
 /** 1pt at 100% zoom, matching the 96dpi convention other PDF viewers use. */
 export const PT_TO_PX = 96 / 72;
@@ -86,6 +95,169 @@ export function clearBitmaps() {
   bitmaps.clear();
 }
 
+/* --------------------------- existing page text ------------------------- */
+
+/**
+ * Recognised text runs per page, keyed so a rotation change re-reads them.
+ * @type {Map<string, Array<object>>}
+ */
+const runCache = new Map();
+let hoverRun = null;
+let hoverSlot = -1;
+
+function runKey(slot, spec) {
+  return `${slot}:${spec.src}:${spec.index}:${spec.rotate}`;
+}
+
+/**
+ * Read the page's own text and stitch it into editable lines. Positions come
+ * back in view space, matching everything else the editor works in.
+ */
+export async function runsForPage(slot) {
+  const spec = pageAt(slot);
+  if (!spec || !spec.src) return [];
+  const key = runKey(slot, spec);
+  if (runCache.has(key)) return runCache.get(key);
+
+  const source = sourceFor(spec);
+  if (!source) return [];
+
+  const pdfPage = await source.pdfjs.getPage(spec.index + 1);
+  const viewport = pdfPage.getViewport({ scale: 1, rotation: spec.rotate });
+  const content = await pdfPage.getTextContent();
+  const { Util } = await import('../vendor/pdf.min.mjs');
+
+  const items = [];
+  for (const item of content.items) {
+    if (typeof item.str !== 'string' || !item.str) continue;
+    const tx = Util.transform(viewport.transform, item.transform);
+    const size = Math.hypot(tx[2], tx[3]) || Math.hypot(tx[0], tx[1]) || 10;
+    const style = content.styles && content.styles[item.fontName];
+    items.push({
+      str: item.str,
+      x: tx[4],
+      y: tx[5],
+      width: item.width || 0,
+      size,
+      angle: Math.atan2(tx[1], tx[0]),
+      fontKey: item.fontName,
+      ascent: style && style.ascent > 0 ? style.ascent : undefined,
+      fontFamily: style ? style.fontFamily : undefined,
+    });
+  }
+
+  const runs = groupRuns(items);
+
+  // Resolve each run's real font name once, so the replacement can be given the
+  // closest built-in font instead of defaulting to Helvetica for everything.
+  for (const run of runs) {
+    let rawName = '';
+    try {
+      const font = pdfPage.commonObjs.get(run.fontKey);
+      rawName = (font && (font.name || font.fallbackName)) || '';
+    } catch {
+      // commonObjs only has the font once it has been rendered; the generic
+      // family from the text layer is a good enough fallback.
+    }
+    const family = (items.find((i) => i.fontKey === run.fontKey) || {}).fontFamily;
+    run.style = mapToStandardFont(rawName, family);
+  }
+
+  runCache.set(key, runs);
+  return runs;
+}
+
+export function clearRunCache() {
+  runCache.clear();
+  hoverRun = null;
+  hoverSlot = -1;
+}
+
+/** Warm the cache for a page and repaint, so outlines appear as you scroll. */
+async function primeRuns(slot) {
+  try {
+    await runsForPage(slot);
+    drawOverlay(slot);
+  } catch {
+    /* a page whose text cannot be read simply offers nothing to edit */
+  }
+}
+
+export function primeVisibleRuns() {
+  for (const slot of visibleSlots()) primeRuns(slot);
+}
+
+/**
+ * Sample the page canvas to find what colour the glyphs are and what colour the
+ * paper behind them is. Returns null when the page has not been rasterised yet.
+ */
+function sampleColors(slot, run) {
+  const view = views[slot];
+  if (!view || !view.canvas.width) return null;
+  const spec = pageAt(slot);
+  const { w: pw } = viewSize(spec);
+  const scale = view.canvas.width / pw; // device pixels per point
+  const ctx = view.canvas.getContext('2d', { willReadFrequently: true });
+
+  const pad = Math.max(2, run.size * 0.35 * scale);
+  const x = Math.max(0, Math.floor(run.x * scale));
+  const y = Math.max(0, Math.floor(run.y * scale));
+  const w = Math.max(1, Math.ceil(run.w * scale));
+  const h = Math.max(1, Math.ceil(run.h * scale));
+
+  const ox = Math.max(0, Math.floor(x - pad));
+  const oy = Math.max(0, Math.floor(y - pad));
+  const ow = Math.min(view.canvas.width - ox, Math.ceil(w + pad * 2));
+  const oh = Math.min(view.canvas.height - oy, Math.ceil(h + pad * 2));
+  if (ow <= 0 || oh <= 0) return null;
+
+  try {
+    const inside = ctx.getImageData(x, y, Math.min(w, view.canvas.width - x), Math.min(h, view.canvas.height - y));
+    const outer = ctx.getImageData(ox, oy, ow, oh);
+    // Blank the middle of the outer sample so only the surrounding ring counts.
+    const ring = ringOf(outer, x - ox, y - oy, w, h);
+    return pickColors(inside, ring);
+  } catch {
+    return null;
+  }
+}
+
+/** Copy of `image` with the given rectangle removed (alpha zeroed). */
+function ringOf(image, rx, ry, rw, rh) {
+  const copy = new ImageData(
+    new Uint8ClampedArray(image.data),
+    image.width,
+    image.height
+  );
+  for (let yy = Math.max(0, ry); yy < Math.min(image.height, ry + rh); yy += 1) {
+    for (let xx = Math.max(0, rx); xx < Math.min(image.width, rx + rw); xx += 1) {
+      copy.data[(yy * image.width + xx) * 4 + 3] = 0;
+    }
+  }
+  return copy;
+}
+
+/**
+ * Replace one recognised run with an editable copy of itself and open it for
+ * typing. The original glyphs are covered by a patch in the sampled paper
+ * colour; they are not removed from the file.
+ */
+export async function editRun(slot, run) {
+  const colors = sampleColors(slot, run) || { background: '#ffffff', text: '#111111' };
+  const { cover, text } = buildReplacement(
+    run,
+    run.style || { font: 'Helvetica', bold: false, italic: false },
+    colors,
+    uid('pair')
+  );
+  const created = addAnnots(slot, [cover, text]);
+  const textAnnot = created[1];
+  if (!textAnnot) return;
+  select(slot, textAnnot.id);
+  openEditor(slot, textAnnot.id, false, { selectAll: true });
+  emit('text-replaced');
+}
+
 /* ------------------------------- layout -------------------------------- */
 
 export function mount(el) {
@@ -98,6 +270,7 @@ export function mount(el) {
 export function rebuild() {
   if (!container) return;
   closeEditor(false);
+  clearRunCache();
   if (observer) observer.disconnect();
   container.innerHTML = '';
   views = [];
@@ -265,6 +438,9 @@ async function renderPage(slot) {
   }
 
   drawOverlay(slot);
+  // Colour sampling reads this canvas, so runs are only worth collecting once
+  // the page behind them exists.
+  if (state.tool === 'edittext') primeRuns(slot);
 }
 
 /** Redraw just the annotation layer of one page. */
@@ -295,6 +471,25 @@ export function drawOverlay(slot) {
 
   if (drag && drag.slot === slot && drag.preview) {
     drawAnnot(ctx, drag.preview, { bitmaps });
+  }
+
+  // With the text tool active, show what the editor can actually recognise -
+  // guessing where a click will land is the worst part of editors like this.
+  if (state.tool === 'edittext') {
+    const runs = runCache.get(runKey(slot, spec));
+    if (runs) {
+      const px = 1 / s;
+      ctx.save();
+      for (const run of runs) {
+        const isHover = hoverSlot === slot && hoverRun === run;
+        ctx.fillStyle = isHover ? 'rgba(76,141,255,0.22)' : 'rgba(76,141,255,0.08)';
+        ctx.fillRect(run.x, run.y, run.w, run.h);
+        ctx.strokeStyle = isHover ? '#4c8dff' : 'rgba(76,141,255,0.45)';
+        ctx.lineWidth = (isHover ? 1.5 : 1) * px;
+        ctx.strokeRect(run.x, run.y, run.w, run.h);
+      }
+      ctx.restore();
+    }
   }
 
   const hits = searchState.byPage.get(slot);
@@ -376,6 +571,7 @@ function onScroll() {
       }
     });
     setCurrentPage(best);
+    if (state.tool === 'edittext') primeVisibleRuns();
   });
 }
 
@@ -463,6 +659,23 @@ function handleAt(annot, x, y) {
 function onPointerHover(event, slot) {
   if (drag) return; // the window-level listener drives an active drag
   const view = views[slot];
+
+  if (state.tool === 'edittext') {
+    const { x, y } = pointFromEvent(event, slot);
+    const spec = pageAt(slot);
+    const runs = (spec && runCache.get(runKey(slot, spec))) || [];
+    const hit = runAt(runs, x, y);
+    if (hit !== hoverRun || slot !== hoverSlot) {
+      const previous = hoverSlot;
+      hoverRun = hit;
+      hoverSlot = slot;
+      if (previous >= 0 && previous !== slot) drawOverlay(previous);
+      drawOverlay(slot);
+    }
+    view.overlay.style.cursor = hit ? 'text' : 'default';
+    return;
+  }
+
   if (state.tool !== 'select') {
     view.overlay.style.cursor = state.tool === 'draw' ? 'crosshair' : 'crosshair';
     return;
@@ -487,6 +700,18 @@ function onPointerDown(event, slot) {
   commitEditor();
 
   const tool = state.tool;
+
+  if (tool === 'edittext') {
+    const spec = pageAt(slot);
+    const runs = (spec && runCache.get(runKey(slot, spec))) || [];
+    const hit = runAt(runs, x, y);
+    if (hit) {
+      editRun(slot, hit);
+    } else {
+      emit('edittext-miss');
+    }
+    return;
+  }
 
   if (tool === 'select') {
     const selected =
@@ -748,7 +973,7 @@ async function placePendingImage(slot, x, y) {
 
 /* ----------------------------- text editing ---------------------------- */
 
-export function openEditor(slot, id, isNew) {
+export function openEditor(slot, id, isNew, opts = {}) {
   const annot = findAnnot(slot, id);
   const view = views[slot];
   if (!annot || !view || annot.type !== 'text') return;
@@ -795,7 +1020,10 @@ export function openEditor(slot, id, isNew) {
   drawOverlay(slot);
   requestAnimationFrame(() => {
     ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
+    // Replacing existing text: select it all, so typing overwrites the line the
+    // way it would in any other editor.
+    if (opts.selectAll) ta.select();
+    else ta.setSelectionRange(ta.value.length, ta.value.length);
   });
 }
 

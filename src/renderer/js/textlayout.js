@@ -125,7 +125,9 @@ export function wrapLines(text, font, size, maxWidth) {
 export function layoutTextAnnot(annot, font) {
   const size = annot.fontSize || 12;
   const lineHeight = size * LINE_HEIGHT_RATIO;
-  const maxWidth = (annot.w || 0) - TEXT_PADDING * 2;
+  // Replaced text keeps the shape of the line it stands in for, so it grows
+  // sideways rather than reflowing into a paragraph.
+  const maxWidth = annot.nowrap ? 0 : (annot.w || 0) - TEXT_PADDING * 2;
   const { text } = sanitizeForStandardFont(annot.text || '');
   const lines = wrapLines(text, font, size, maxWidth);
   const baselines = lines.map(

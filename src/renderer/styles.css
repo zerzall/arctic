@@ -376,6 +376,9 @@ body[data-tool="blackout"] .page-overlay,
 body[data-tool="image"] .page-overlay {
   cursor: crosshair;
 }
+body[data-tool="edittext"] .page-overlay {
+  cursor: default;
+}
 
 #empty-state {
   position: absolute;
