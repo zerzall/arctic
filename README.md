@@ -40,6 +40,21 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 - Pictures inside a form XObject are not offered, and neither is anything the
   page draws that is not an image
 
+**Read scanned pages (OCR)**
+
+- **Tools → Recognise Text** runs OCR on the current page, the selected pages,
+  or the whole document — the answer for anything that came out of a scanner or
+  a copier, which arrives as a picture with no text in it at all
+- The recognised words are written into the saved file as an *invisible text
+  layer*: the page looks exactly the same, but it is searchable, selectable and
+  copyable in every PDF reader, not just this one
+- Words are positioned and scaled to the picture of them underneath, so
+  selecting text highlights the right span
+- Find and the Edit Text tool can use the recognised text straight away, without
+  saving and reopening first
+- Everything runs on your machine. The engine and the English language data are
+  bundled, so OCR works with no network and nothing leaves the computer
+
 **Annotate**
 
 - Text boxes with the built-in PDF fonts (Helvetica/Arial, Times, Courier),
@@ -115,7 +130,7 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 101 tests over the geometry, text, pictures, assets and PDF writing
+npm test             # 113 tests over the geometry, text, OCR, pictures and PDF writing
 npm run dist:win     # on Windows -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
 npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg (+ x64, + zips)
 ```
@@ -156,6 +171,8 @@ src/renderer/
   js/contentstream.js a content-stream parser: deleting text, moving pictures
   js/pagestream.js  reading and rewriting a page's raw drawing instructions
   js/pdfjsopts.js the side assets pdf.js needs: cmaps, fonts, wasm image codecs
+  js/ocr.js       Tesseract, vendored so recognition works offline
+  js/ocrdata.js   shaping OCR results, kept free of the browser-only engine
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
   js/overlay.js   the same shapes drawn on a canvas
@@ -221,9 +238,13 @@ bytes spelling `Tj`.
   Linux and packaged by CI on both platforms, but nobody has run the `.dmg` on a
   Mac. The document logic is platform-blind; menus, window behaviour and file
   associations are where a problem would show up.
-- **Scanned pages have no text to recognise.** They render and can be
-  annotated, but Edit Text has nothing to offer without OCR, which this does not
-  do.
+- **OCR is English only, and it is guesswork.** The bundled language data is
+  English; other languages need their own data file. Recognition on a clean
+  300 dpi scan is good but never perfect, so check anything that matters before
+  relying on a search.
+- **Editing recognised text covers rather than deletes.** On a scan the words
+  are pixels, not operators, so a replacement is drawn over a patch of sampled
+  paper — the same fallback described above.
 - **Only horizontal text is recognised.** Rotated or vertical runs, and text
   that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters

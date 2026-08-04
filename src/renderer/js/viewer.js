@@ -36,6 +36,7 @@ import {
   runAt,
 } from './textedit.js';
 import { planRemoval, findImages } from './originals.js';
+import { wordsAsItems } from './ocrdata.js';
 import { rectFromPdf } from './geometry.js';
 
 /** 1pt at 100% zoom, matching the 96dpi convention other PDF viewers use. */
@@ -152,11 +153,26 @@ export async function runsForPage(slot) {
   });
 
   itemCache.set(key, content.items);
+
+  // A scan has no text of its own. Once it has been through OCR, those words
+  // join the list, so the text tools work the same way on a scanned page as on
+  // a born-digital one.
+  if (spec.ocr && spec.ocr.words && spec.ocr.words.length) {
+    items.push(...wordsAsItems(spec.ocr.words));
+  }
+
   const runs = groupRuns(items);
+  for (const run of runs) {
+    if (run.fontKey === 'ocr') run.fromOcr = true;
+  }
 
   // Resolve each run's real font name once, so the replacement can be given the
   // closest built-in font instead of defaulting to Helvetica for everything.
   for (const run of runs) {
+    if (run.fromOcr) {
+      run.style = mapToStandardFont('', 'sans-serif');
+      continue;
+    }
     let rawName = '';
     try {
       const font = pdfPage.commonObjs.get(run.fontKey);

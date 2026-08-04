@@ -16,6 +16,15 @@ import {
   PDFDropdown,
   PDFOptionList,
   PDFRadioGroup,
+  TextRenderingMode,
+  pushGraphicsState,
+  popGraphicsState,
+  beginText,
+  endText,
+  showText,
+  setFontAndSize,
+  setTextRenderingMode,
+  setTextMatrix,
 } from '../vendor/pdf-lib.esm.min.js';
 import {
   normRotation,
@@ -398,6 +407,78 @@ function removeOriginalText(doc, page, annots) {
 }
 
 /**
+ * Write recognised words onto a page as invisible text.
+ *
+ * This is what turns a scan into a searchable document: the glyphs are drawn in
+ * text rendering mode 3, so nothing appears on the page, but every reader can
+ * find, select and copy the words - and they line up with the picture of the
+ * text underneath, because each word is scaled to the box it was recognised in.
+ *
+ * @returns {{written:number, dropped:number}}
+ */
+async function writeOcrLayer(doc, page, spec, fonts) {
+  const words = (spec.ocr && spec.ocr.words) || [];
+  if (!words.length) return { written: 0, dropped: 0 };
+
+  const font = await fonts.get('Helvetica', false, false);
+  page.setFont(font);
+  const fontKey = page.fontKey;
+  if (!fontKey) return { written: 0, dropped: words.length };
+
+  const angle = pdfAngle(spec);
+  const radians = (angle * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
+  let written = 0;
+  let dropped = 0;
+
+  for (const word of words) {
+    const { text, dropped: lost } = sanitizeForStandardFont(word.text);
+    // A word the built-in font cannot spell would go in as "??", which is worse
+    // than leaving it out: the page would then match a search for something it
+    // does not say.
+    if (!text.trim() || lost >= [...word.text].length) {
+      dropped += 1;
+      continue;
+    }
+
+    // Size the glyphs so the invisible word covers the same width as the
+    // picture of it; otherwise selecting text on screen highlights the wrong
+    // span. Height is a poor guide on its own - capitals and descenders vary.
+    const probe = 100;
+    let natural;
+    try {
+      natural = font.widthOfTextAtSize(text, probe);
+    } catch {
+      dropped += 1;
+      continue;
+    }
+    if (!(natural > 0)) {
+      dropped += 1;
+      continue;
+    }
+    const size = Math.max(1, (word.w / natural) * probe);
+
+    // The baseline sits a little above the bottom of the recognised box.
+    const baseline = word.y + word.h * 0.82;
+    const p = toPdfPoint(spec, word.x, baseline);
+
+    ops.push(
+      setFontAndSize(fontKey, size),
+      setTextMatrix(cos, sin, -sin, cos, p.x, p.y),
+      showText(font.encodeText(text))
+    );
+    written += 1;
+  }
+
+  ops.push(endText(), popGraphicsState());
+  if (written) page.pushOperators(...ops);
+  return { written, dropped };
+}
+
+/**
  * Move the page's own pictures to wherever they were dragged.
  *
  * The editor works in view space, so the box the user dragged has to be turned
@@ -607,6 +688,16 @@ export async function buildPdf(model) {
       warnings.push(
         `The original text on page ${i + 1} could not be removed (${warning}), ` +
           'so it is covered instead and stays in the file.'
+      );
+    }
+
+    // Recognised text goes down before the annotations, so a highlight drawn
+    // over it still sits on top.
+    // eslint-disable-next-line no-await-in-loop
+    const ocr = await writeOcrLayer(doc, page, spec, ctx.fonts);
+    if (ocr.dropped) {
+      warnings.push(
+        `${ocr.dropped} recognised word(s) on page ${i + 1} could not be written into the text layer.`
       );
     }
 

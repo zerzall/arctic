@@ -50,6 +50,7 @@ import { initPanels, syncStylePanel, syncPagePanel, syncMetaPanel, syncFormPanel
 import { toast, initModals, openModal, closeModal, signaturePad, setBusy, isModalOpen } from './ui.js';
 import { buildPdf, extractPages } from './export.js';
 import { initFonts } from './fonts.js';
+import * as ocr from './ocr.js';
 import { viewSize } from './geometry.js';
 import { WORKER_URL, documentOptions } from './pdfjsopts.js';
 
@@ -387,6 +388,77 @@ async function insertSignature() {
   toast('Click on the page to place your signature', 'info');
 }
 
+/* ---------------------------------- OCR ----------------------------------- */
+
+/** Rendering resolution for recognition. Below ~200 dpi accuracy falls away. */
+const OCR_DPI = 300;
+
+/**
+ * Recognise the text on some pages and keep the result with them.
+ *
+ * The words are held in view space on the page they came from, so they survive
+ * page moves and rotation, feed the editor's own Find and Edit Text tools right
+ * away, and are written into the file as invisible text when it is saved.
+ */
+async function runOcr(slots) {
+  if (!state.doc || !slots.length) return;
+
+  setBusy(true, 'Starting the recogniser...');
+  let totalWords = 0;
+  try {
+    for (let n = 0; n < slots.length; n += 1) {
+      const slot = slots[n];
+      const label = slots.length > 1 ? `page ${slot + 1} (${n + 1} of ${slots.length})` : `page ${slot + 1}`;
+      setBusy(true, `Rendering ${label}...`);
+
+      // eslint-disable-next-line no-await-in-loop
+      const img = await viewer.renderPageImage(slot, OCR_DPI / 72);
+      if (!img) continue;
+
+      // eslint-disable-next-line no-await-in-loop
+      const result = await ocr.recognizePage(img.dataUrl, OCR_DPI / 72, (fraction, status) => {
+        const pct = Math.round((fraction || 0) * 100);
+        setBusy(true, `Reading ${label}: ${status || 'working'} ${pct}%`);
+      });
+
+      const spec = pageAt(slot);
+      if (!spec) continue;
+      if (n === 0) pushHistory();
+      spec.ocr = { words: result.words, lines: result.lines, dpi: OCR_DPI };
+      totalWords += result.words.length;
+      viewer.clearRunCache();
+      search.clearCache();
+      markDirty();
+      emit('annots', slot);
+    }
+
+    if (totalWords) {
+      toast(
+        `Recognised ${totalWords} word(s). The text is searchable now, and is ` +
+          'written into the file when you save.',
+        'ok',
+        6000
+      );
+    } else {
+      toast('No text was recognised on those pages.', 'warn', 5000);
+    }
+  } catch (err) {
+    await window.api.errorBox('Could not run OCR', err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/** True when a page has no text of its own - the case OCR exists for. */
+async function pageLooksScanned(slot) {
+  try {
+    const runs = await viewer.runsForPage(slot);
+    return runs.filter((r) => !r.fromOcr).length === 0;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------- rasterise -------------------------------- */
 
 /**
@@ -622,6 +694,10 @@ const commands = {
     }
     deletePages(selectedSlots());
   },
+
+  'ocr:page': () => runOcr([state.currentPage]),
+  'ocr:selected': () => runOcr(selectedSlots()),
+  'ocr:document': () => runOcr(pages().map((_p, i) => i)),
 
   'tool:image': insertImage,
   'tool:signature': insertSignature,
