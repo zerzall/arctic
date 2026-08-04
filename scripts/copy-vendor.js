@@ -20,11 +20,16 @@ const FILES = [
   ['pdf-lib/dist/pdf-lib.esm.min.js', 'pdf-lib.esm.min.js'],
 ];
 
-// Directories pdf.js needs at runtime for CJK documents and for PDFs that rely
-// on the 14 standard fonts without embedding them.
+// Directories pdf.js needs at runtime:
+//   cmaps          - CJK documents
+//   standard_fonts - PDFs relying on the 14 standard fonts without embedding
+//   wasm           - image codecs. Scanned documents are usually CCITT fax or
+//                    JBIG2, and pdf.js decodes both in WebAssembly; without
+//                    these files every scan renders as a blank page.
 const DIRS = [
   ['pdfjs-dist/cmaps', 'cmaps'],
   ['pdfjs-dist/standard_fonts', 'standard_fonts'],
+  ['pdfjs-dist/wasm', 'wasm'],
 ];
 
 function resolveDep(rel) {

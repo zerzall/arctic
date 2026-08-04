@@ -115,7 +115,7 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 92 tests over the geometry, text, pictures and PDF writing
+npm test             # 101 tests over the geometry, text, pictures, assets and PDF writing
 npm run dist:win     # on Windows -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
 npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg (+ x64, + zips)
 ```
@@ -155,6 +155,7 @@ src/renderer/
   js/textedit.js  recognising the page's own text, and replacing a line of it
   js/contentstream.js a content-stream parser: deleting text, moving pictures
   js/pagestream.js  reading and rewriting a page's raw drawing instructions
+  js/pdfjsopts.js the side assets pdf.js needs: cmaps, fonts, wasm image codecs
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
   js/overlay.js   the same shapes drawn on a canvas
@@ -220,6 +221,9 @@ bytes spelling `Tj`.
   Linux and packaged by CI on both platforms, but nobody has run the `.dmg` on a
   Mac. The document logic is platform-blind; menus, window behaviour and file
   associations are where a problem would show up.
+- **Scanned pages have no text to recognise.** They render and can be
+  annotated, but Edit Text has nothing to offer without OCR, which this does not
+  do.
 - **Only horizontal text is recognised.** Rotated or vertical runs, and text
   that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters

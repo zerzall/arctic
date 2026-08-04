@@ -51,25 +51,17 @@ import { toast, initModals, openModal, closeModal, signaturePad, setBusy, isModa
 import { buildPdf, extractPages } from './export.js';
 import { initFonts } from './fonts.js';
 import { viewSize } from './geometry.js';
+import { WORKER_URL, documentOptions } from './pdfjsopts.js';
 
 const $ = (id) => document.getElementById(id);
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
-const CMAP_URL = new URL('../vendor/cmaps/', import.meta.url).href;
-const STANDARD_FONT_URL = new URL('../vendor/standard_fonts/', import.meta.url).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
 
 /* ------------------------------ document IO ----------------------------- */
 
 /** pdf.js takes ownership of the buffer it is handed, so it always gets a copy. */
 function loadingTask(bytes, password) {
-  return pdfjsLib.getDocument({
-    data: new Uint8Array(bytes).slice(),
-    cMapUrl: CMAP_URL,
-    cMapPacked: true,
-    standardFontDataUrl: STANDARD_FONT_URL,
-    password,
-    isEvalSupported: false,
-  });
+  return pdfjsLib.getDocument(documentOptions(new Uint8Array(bytes).slice(), password));
 }
 
 async function openPdfjs(bytes) {

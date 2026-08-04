@@ -61,6 +61,10 @@ const MIME = {
   '.bcmap': 'application/octet-stream',
   '.pfb': 'application/octet-stream',
   '.ttf': 'font/ttf',
+  // pdf.js decodes scanner formats (CCITT fax, JBIG2) and JPEG 2000 in
+  // WebAssembly, and the streaming instantiation path refuses anything not
+  // served as application/wasm.
+  '.wasm': 'application/wasm',
 };
 
 function registerAppProtocol() {
