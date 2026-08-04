@@ -60,6 +60,46 @@ export function toPdfPoint(page, x, y) {
 }
 
 /**
+ * PDF user space -> view space. The inverse of `toPdfPoint`, used to show where
+ * something already in the file (a picture, say) sits on screen.
+ */
+export function fromPdfPoint(page, px, py) {
+  const r = normRotation(page.rotate);
+  const x0 = px - (page.cropX || 0);
+  const y0 = py - (page.cropY || 0);
+  const pw = page.baseW;
+  const ph = page.baseH;
+  switch (r) {
+    case 90:
+      return { x: y0, y: x0 };
+    case 180:
+      return { x: pw - x0, y: y0 };
+    case 270:
+      return { x: ph - y0, y: pw - x0 };
+    default:
+      return { x: x0, y: ph - y0 };
+  }
+}
+
+/** A rectangle in PDF user space, as an axis-aligned box in view space. */
+export function rectFromPdf(page, rect) {
+  const corners = [
+    fromPdfPoint(page, rect.x, rect.y),
+    fromPdfPoint(page, rect.x + rect.w, rect.y),
+    fromPdfPoint(page, rect.x + rect.w, rect.y + rect.h),
+    fromPdfPoint(page, rect.x, rect.y + rect.h),
+  ];
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/**
  * Counter-clockwise angle, in degrees, that content drawn in PDF space needs so
  * it comes out horizontal on a rotated page. Conveniently equal to the rotation.
  */

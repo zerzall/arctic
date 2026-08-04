@@ -29,6 +29,7 @@ let isDirty = false;
 /** Set while we are deliberately tearing the window down after confirmation. */
 let forceQuit = false;
 
+// Windows-only; a no-op elsewhere, but it is what groups the taskbar entry.
 app.setAppUserModelId('com.arctic.pdfeditor');
 
 protocol.registerSchemesAsPrivileged([
@@ -60,6 +61,10 @@ const MIME = {
   '.bcmap': 'application/octet-stream',
   '.pfb': 'application/octet-stream',
   '.ttf': 'font/ttf',
+  // pdf.js decodes scanner formats (CCITT fax, JBIG2) and JPEG 2000 in
+  // WebAssembly, and the streaming instantiation path refuses anything not
+  // served as application/wasm.
+  '.wasm': 'application/wasm',
 };
 
 function registerAppProtocol() {
@@ -227,7 +232,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
-    app.quit();
+    // On macOS an application keeps running with no windows open, and comes
+    // back via the dock; everywhere else closing the window means quitting.
+    if (process.platform !== 'darwin') app.quit();
   });
 }
 

@@ -38,7 +38,9 @@
 
       <div class="tb-group" id="tools">
         <button class="tb-btn tool" data-tool="select" title="Select and move objects (V)">&#10530; Select</button>
-        <button class="tb-btn tool" data-tool="text" title="Add a text box (T)">T Text</button>
+        <button class="tb-btn tool" data-tool="edittext" title="Edit the text already on the page (X)">&#9998;T Edit Text</button>
+        <button class="tb-btn tool" data-tool="editimage" title="Move or resize a picture already in the PDF (I)">&#10021; Move Pic</button>
+        <button class="tb-btn tool" data-tool="text" title="Add a new text box (T)">T Text</button>
         <button class="tb-btn tool" data-tool="draw" title="Freehand pen (D)">&#9998; Pen</button>
         <button class="tb-btn tool" data-tool="highlight" title="Highlight (H)">&#9646; Highlight</button>
         <button class="tb-btn tool" data-tool="rect" title="Rectangle (R)">&#9633; Rect</button>
@@ -47,6 +49,7 @@
         <button class="tb-btn tool" data-tool="arrow" title="Arrow (A)">&#8599; Arrow</button>
         <button class="tb-btn" data-command="tool:image" data-needs-doc title="Insert an image">&#128444; Image</button>
         <button class="tb-btn" data-command="tool:signature" data-needs-doc title="Draw a signature">&#9997; Sign</button>
+        <button class="tb-btn" data-command="ocr:page" data-needs-doc title="Recognise the text on a scanned page (OCR)">&#128269;T OCR</button>
         <button class="tb-btn tool" data-tool="whiteout" title="Cover content with a white box">&#9744; White-out</button>
         <button class="tb-btn tool" data-tool="blackout" title="Cover content with a black box">&#9632; Black-out</button>
       </div>
@@ -183,6 +186,13 @@
               <button data-command="page:rotate-left" data-needs-doc>Rotate left</button>
               <button data-command="page:rotate-right" data-needs-doc>Rotate right</button>
               <button data-command="file:export-png" data-needs-doc>Export PNG</button>
+              <button
+                data-command="page:rasterize"
+                data-needs-doc
+                title="Turn the page into a picture, permanently removing text hidden under boxes or replacements"
+              >
+                Flatten to image
+              </button>
             </div>
           </div>
         </div>

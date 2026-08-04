@@ -8,11 +8,13 @@ import {
   page as pageAt,
   findAnnot,
   addAnnot,
+  addAnnots,
   updateAnnot,
   select,
   setCurrentPage,
   pushHistory,
   afterAnnotChange,
+  uid,
   emit,
 } from './model.js';
 import { viewSize, annotBounds, moveAnnot, resizeAnnot } from './geometry.js';
@@ -26,6 +28,16 @@ import {
 } from './overlay.js';
 import { fontFor, cssFontStack } from './fonts.js';
 import { measuredHeight, TEXT_PADDING, LINE_HEIGHT_RATIO } from './textlayout.js';
+import {
+  groupRuns,
+  mapToStandardFont,
+  buildReplacement,
+  pickColors,
+  runAt,
+} from './textedit.js';
+import { planRemoval, findImages } from './originals.js';
+import { wordsAsItems } from './ocrdata.js';
+import { rectFromPdf } from './geometry.js';
 
 /** 1pt at 100% zoom, matching the 96dpi convention other PDF viewers use. */
 export const PT_TO_PX = 96 / 72;
@@ -86,6 +98,290 @@ export function clearBitmaps() {
   bitmaps.clear();
 }
 
+/* --------------------------- existing page text ------------------------- */
+
+/**
+ * Recognised text runs per page, keyed so a rotation change re-reads them.
+ * @type {Map<string, Array<object>>}
+ */
+const runCache = new Map();
+/** The reader's raw text items per page, needed to plan a real deletion. */
+const itemCache = new Map();
+let hoverRun = null;
+let hoverSlot = -1;
+
+function runKey(slot, spec) {
+  return `${slot}:${spec.src}:${spec.index}:${spec.rotate}`;
+}
+
+/**
+ * Read the page's own text and stitch it into editable lines. Positions come
+ * back in view space, matching everything else the editor works in.
+ */
+export async function runsForPage(slot) {
+  const spec = pageAt(slot);
+  if (!spec || !spec.src) return [];
+  const key = runKey(slot, spec);
+  if (runCache.has(key)) return runCache.get(key);
+
+  const source = sourceFor(spec);
+  if (!source) return [];
+
+  const pdfPage = await source.pdfjs.getPage(spec.index + 1);
+  const viewport = pdfPage.getViewport({ scale: 1, rotation: spec.rotate });
+  const content = await pdfPage.getTextContent();
+  const { Util } = await import('../vendor/pdf.min.mjs');
+
+  const items = [];
+  content.items.forEach((item, srcIndex) => {
+    if (typeof item.str !== 'string' || !item.str) return;
+    const tx = Util.transform(viewport.transform, item.transform);
+    const size = Math.hypot(tx[2], tx[3]) || Math.hypot(tx[0], tx[1]) || 10;
+    const style = content.styles && content.styles[item.fontName];
+    items.push({
+      str: item.str,
+      srcIndex,
+      x: tx[4],
+      y: tx[5],
+      width: item.width || 0,
+      size,
+      angle: Math.atan2(tx[1], tx[0]),
+      fontKey: item.fontName,
+      ascent: style && style.ascent > 0 ? style.ascent : undefined,
+      fontFamily: style ? style.fontFamily : undefined,
+    });
+  });
+
+  itemCache.set(key, content.items);
+
+  // A scan has no text of its own. Once it has been through OCR, those words
+  // join the list, so the text tools work the same way on a scanned page as on
+  // a born-digital one.
+  if (spec.ocr && spec.ocr.words && spec.ocr.words.length) {
+    items.push(...wordsAsItems(spec.ocr.words));
+  }
+
+  const runs = groupRuns(items);
+  for (const run of runs) {
+    if (run.fontKey === 'ocr') run.fromOcr = true;
+  }
+
+  // Resolve each run's real font name once, so the replacement can be given the
+  // closest built-in font instead of defaulting to Helvetica for everything.
+  for (const run of runs) {
+    if (run.fromOcr) {
+      run.style = mapToStandardFont('', 'sans-serif');
+      continue;
+    }
+    let rawName = '';
+    try {
+      const font = pdfPage.commonObjs.get(run.fontKey);
+      rawName = (font && (font.name || font.fallbackName)) || '';
+    } catch {
+      // commonObjs only has the font once it has been rendered; the generic
+      // family from the text layer is a good enough fallback.
+    }
+    const family = (items.find((i) => i.fontKey === run.fontKey) || {}).fontFamily;
+    run.style = mapToStandardFont(rawName, family);
+  }
+
+  runCache.set(key, runs);
+  return runs;
+}
+
+export function clearRunCache() {
+  runCache.clear();
+  itemCache.clear();
+  imageCache.clear();
+  hoverRun = null;
+  hoverSlot = -1;
+  hoverImage = null;
+}
+
+/* ------------------------- pictures already on a page -------------------- */
+
+/** Image placements per page, in view space. */
+const imageCache = new Map();
+let hoverImage = null;
+
+/**
+ * Where the page's own pictures are, in the space the editor works in.
+ * @returns {Promise<Array<{ordinal:number, rect:object, axisAligned:boolean}>>}
+ */
+export async function imagesForPage(slot) {
+  const spec = pageAt(slot);
+  if (!spec || !spec.src) return [];
+  const key = runKey(slot, spec);
+  if (imageCache.has(key)) return imageCache.get(key);
+
+  const source = sourceFor(spec);
+  if (!source) return [];
+
+  const found = await findImages(spec.src, source.bytes, spec.index);
+  const placements = found.placements.map((p) => ({
+    ordinal: p.ordinal,
+    name: p.name,
+    axisAligned: p.axisAligned,
+    fingerprint: found.fingerprint,
+    rect: rectFromPdf(spec, p.bounds),
+  }));
+  imageCache.set(key, placements);
+  return placements;
+}
+
+async function primeImages(slot) {
+  try {
+    await imagesForPage(slot);
+    drawOverlay(slot);
+  } catch {
+    /* a page whose pictures cannot be located simply offers none to move */
+  }
+}
+
+export function primeVisibleImages() {
+  for (const slot of visibleSlots()) primeImages(slot);
+}
+
+function imageAt(placements, x, y) {
+  // Smallest first, so a picture inside another can still be picked.
+  const hits = placements.filter(
+    (p) => x >= p.rect.x && x <= p.rect.x + p.rect.w && y >= p.rect.y && y <= p.rect.y + p.rect.h
+  );
+  hits.sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h);
+  return hits[0] || null;
+}
+
+/**
+ * Turn a picture into something the editor can move: an annotation holding the
+ * placement it stands for. Once it exists, the ordinary selection machinery
+ * drags and resizes it, and the writer turns its box back into a transform.
+ */
+function beginImageEdit(slot, placement) {
+  const spec = pageAt(slot);
+  const existing = (spec.annots || []).find(
+    (a) => a.type === 'imgedit' && a.ordinal === placement.ordinal
+  );
+  if (existing) return existing;
+
+  return addAnnot(slot, {
+    type: 'imgedit',
+    ordinal: placement.ordinal,
+    name: placement.name,
+    fingerprint: placement.fingerprint,
+    axisAligned: placement.axisAligned,
+    // Where it started, so the writer can work out how far it moved.
+    origin: { ...placement.rect },
+    x: placement.rect.x,
+    y: placement.rect.y,
+    w: placement.rect.w,
+    h: placement.rect.h,
+    opacity: 1,
+  });
+}
+
+/** Warm the cache for a page and repaint, so outlines appear as you scroll. */
+async function primeRuns(slot) {
+  try {
+    await runsForPage(slot);
+    drawOverlay(slot);
+  } catch {
+    /* a page whose text cannot be read simply offers nothing to edit */
+  }
+}
+
+export function primeVisibleRuns() {
+  for (const slot of visibleSlots()) primeRuns(slot);
+}
+
+/**
+ * Sample the page canvas to find what colour the glyphs are and what colour the
+ * paper behind them is. Returns null when the page has not been rasterised yet.
+ */
+function sampleColors(slot, run) {
+  const view = views[slot];
+  if (!view || !view.canvas.width) return null;
+  const spec = pageAt(slot);
+  const { w: pw } = viewSize(spec);
+  const scale = view.canvas.width / pw; // device pixels per point
+  const ctx = view.canvas.getContext('2d', { willReadFrequently: true });
+
+  const pad = Math.max(2, run.size * 0.35 * scale);
+  const x = Math.max(0, Math.floor(run.x * scale));
+  const y = Math.max(0, Math.floor(run.y * scale));
+  const w = Math.max(1, Math.ceil(run.w * scale));
+  const h = Math.max(1, Math.ceil(run.h * scale));
+
+  const ox = Math.max(0, Math.floor(x - pad));
+  const oy = Math.max(0, Math.floor(y - pad));
+  const ow = Math.min(view.canvas.width - ox, Math.ceil(w + pad * 2));
+  const oh = Math.min(view.canvas.height - oy, Math.ceil(h + pad * 2));
+  if (ow <= 0 || oh <= 0) return null;
+
+  try {
+    const inside = ctx.getImageData(x, y, Math.min(w, view.canvas.width - x), Math.min(h, view.canvas.height - y));
+    const outer = ctx.getImageData(ox, oy, ow, oh);
+    // Blank the middle of the outer sample so only the surrounding ring counts.
+    const ring = ringOf(outer, x - ox, y - oy, w, h);
+    return pickColors(inside, ring);
+  } catch {
+    return null;
+  }
+}
+
+/** Copy of `image` with the given rectangle removed (alpha zeroed). */
+function ringOf(image, rx, ry, rw, rh) {
+  const copy = new ImageData(
+    new Uint8ClampedArray(image.data),
+    image.width,
+    image.height
+  );
+  for (let yy = Math.max(0, ry); yy < Math.min(image.height, ry + rh); yy += 1) {
+    for (let xx = Math.max(0, rx); xx < Math.min(image.width, rx + rw); xx += 1) {
+      copy.data[(yy * image.width + xx) * 4 + 3] = 0;
+    }
+  }
+  return copy;
+}
+
+/**
+ * Replace one recognised run with an editable copy of itself and open it for
+ * typing. The original glyphs are covered by a patch in the sampled paper
+ * colour; they are not removed from the file.
+ */
+export async function editRun(slot, run) {
+  const spec = pageAt(slot);
+  const colors = sampleColors(slot, run) || { background: '#ffffff', text: '#111111' };
+  const { cover, text } = buildReplacement(
+    run,
+    run.style || { font: 'Helvetica', bold: false, italic: false },
+    colors,
+    uid('pair')
+  );
+
+  // Try to arrange for the original words to be deleted from the file rather
+  // than merely hidden. The patch is added either way: the page on screen is
+  // rendered from the unmodified source, so without it the old text would show
+  // through underneath while editing.
+  let removal = { ok: false, reason: 'this page is not from a source document' };
+  if (spec && spec.src) {
+    const source = state.doc.sources[spec.src];
+    const items = itemCache.get(runKey(slot, spec));
+    if (source && items) {
+      removal = await planRemoval(spec.src, source.bytes, spec.index, items, run.itemIndices);
+    }
+  }
+  if (removal.ok) {
+    text.removeOriginal = { ordinals: removal.ordinals, fingerprint: removal.fingerprint };
+  }
+
+  const created = addAnnots(slot, [cover, text]);
+  const textAnnot = created[1];
+  if (!textAnnot) return;
+  select(slot, textAnnot.id);
+  openEditor(slot, textAnnot.id, false, { selectAll: true });
+  emit('text-replaced', { removed: removal.ok, reason: removal.reason });
+}
+
 /* ------------------------------- layout -------------------------------- */
 
 export function mount(el) {
@@ -98,6 +394,7 @@ export function mount(el) {
 export function rebuild() {
   if (!container) return;
   closeEditor(false);
+  clearRunCache();
   if (observer) observer.disconnect();
   container.innerHTML = '';
   views = [];
@@ -265,6 +562,9 @@ async function renderPage(slot) {
   }
 
   drawOverlay(slot);
+  // Colour sampling reads this canvas, so runs are only worth collecting once
+  // the page behind them exists.
+  if (state.tool === 'edittext') primeRuns(slot);
 }
 
 /** Redraw just the annotation layer of one page. */
@@ -288,13 +588,60 @@ export function drawOverlay(slot) {
   ctx.clearRect(0, 0, view.overlay.width, view.overlay.height);
   ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
 
+  // The page underneath still shows every picture where the file puts it, so a
+  // moved one has to be patched out of its old position and redrawn here.
+  const moved = spec.annots.filter((a) => a.type === 'imgedit' && hasMoved(a));
+  for (const annot of moved) coverOriginalImage(ctx, slot, annot);
+
   for (const annot of spec.annots) {
     if (editor && editor.dataset.annotId === annot.id) continue; // being typed into
-    drawAnnot(ctx, annot, { bitmaps });
+    drawAnnot(ctx, annot, { bitmaps, pageCanvas: view.canvas, pageScale: canvasScale(view, spec) });
   }
 
   if (drag && drag.slot === slot && drag.preview) {
     drawAnnot(ctx, drag.preview, { bitmaps });
+  }
+
+  // With the picture tool active, outline what can be moved.
+  if (state.tool === 'editimage') {
+    const placements = imageCache.get(runKey(slot, spec));
+    if (placements) {
+      const px = 1 / s;
+      const lifted = new Set(
+        spec.annots.filter((a) => a.type === 'imgedit').map((a) => a.ordinal)
+      );
+      ctx.save();
+      for (const placement of placements) {
+        if (lifted.has(placement.ordinal)) continue;
+        const isHover = hoverSlot === slot && hoverImage === placement;
+        ctx.fillStyle = isHover ? 'rgba(46,204,113,0.18)' : 'rgba(46,204,113,0.07)';
+        ctx.fillRect(placement.rect.x, placement.rect.y, placement.rect.w, placement.rect.h);
+        ctx.strokeStyle = isHover ? '#2ecc71' : 'rgba(46,204,113,0.5)';
+        ctx.lineWidth = (isHover ? 1.5 : 1) * px;
+        ctx.setLineDash([5 * px, 3 * px]);
+        ctx.strokeRect(placement.rect.x, placement.rect.y, placement.rect.w, placement.rect.h);
+      }
+      ctx.restore();
+    }
+  }
+
+  // With the text tool active, show what the editor can actually recognise -
+  // guessing where a click will land is the worst part of editors like this.
+  if (state.tool === 'edittext') {
+    const runs = runCache.get(runKey(slot, spec));
+    if (runs) {
+      const px = 1 / s;
+      ctx.save();
+      for (const run of runs) {
+        const isHover = hoverSlot === slot && hoverRun === run;
+        ctx.fillStyle = isHover ? 'rgba(76,141,255,0.22)' : 'rgba(76,141,255,0.08)';
+        ctx.fillRect(run.x, run.y, run.w, run.h);
+        ctx.strokeStyle = isHover ? '#4c8dff' : 'rgba(76,141,255,0.45)';
+        ctx.lineWidth = (isHover ? 1.5 : 1) * px;
+        ctx.strokeRect(run.x, run.y, run.w, run.h);
+      }
+      ctx.restore();
+    }
   }
 
   const hits = searchState.byPage.get(slot);
@@ -318,6 +665,49 @@ export function drawOverlay(slot) {
       drawSelection(ctx, annot, s);
     }
   }
+}
+
+/** Device pixels per point on a page's rendered canvas. */
+function canvasScale(view, spec) {
+  if (!view.canvas.width) return 0;
+  const { w } = viewSize(spec);
+  return view.canvas.width / w;
+}
+
+/** Has a picture been dragged away from where the file draws it? */
+export function hasMoved(annot) {
+  const o = annot.origin;
+  if (!o) return false;
+  return (
+    Math.abs(annot.x - o.x) > 0.01 ||
+    Math.abs(annot.y - o.y) > 0.01 ||
+    Math.abs(annot.w - o.w) > 0.01 ||
+    Math.abs(annot.h - o.h) > 0.01
+  );
+}
+
+/**
+ * Paint over where a picture used to be, using the colour of the paper around
+ * it. Only a preview: the saved file simply draws the picture in its new place,
+ * with nothing left behind to hide.
+ */
+function coverOriginalImage(ctx, slot, annot) {
+  const o = annot.origin;
+  if (!o) return;
+  const colors = sampleColors(slot, {
+    x: o.x,
+    y: o.y,
+    w: o.w,
+    h: o.h,
+    size: Math.max(6, Math.min(o.w, o.h) * 0.1),
+  });
+  // A little beyond the edges: a picture's outermost pixels are anti-aliased
+  // into the paper, and without the bleed they survive as a ghost outline.
+  const bleed = 1;
+  ctx.save();
+  ctx.fillStyle = (colors && colors.background) || '#ffffff';
+  ctx.fillRect(o.x - bleed, o.y - bleed, o.w + bleed * 2, o.h + bleed * 2);
+  ctx.restore();
 }
 
 export function refreshPage(slot) {
@@ -352,7 +742,27 @@ export async function renderPageImage(slot, targetScale = 2) {
   }
 
   ctx.setTransform(targetScale, 0, 0, targetScale, 0, 0);
-  for (const annot of spec.annots) drawAnnot(ctx, annot, { bitmaps });
+
+  // Same dance as the thumbnails: copy the page before patching a moved
+  // picture out of it, because the copy is where the picture comes from.
+  const moved = spec.annots.filter((a) => a.type === 'imgedit' && hasMoved(a));
+  let pageCopy = null;
+  if (moved.length) {
+    pageCopy = document.createElement('canvas');
+    pageCopy.width = canvas.width;
+    pageCopy.height = canvas.height;
+    pageCopy.getContext('2d').drawImage(canvas, 0, 0);
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    for (const a of moved) {
+      ctx.fillRect(a.origin.x - 1, a.origin.y - 1, a.origin.w + 2, a.origin.h + 2);
+    }
+    ctx.restore();
+  }
+
+  for (const annot of spec.annots) {
+    drawAnnot(ctx, annot, { bitmaps, pageCanvas: pageCopy, pageScale: targetScale });
+  }
 
   return { dataUrl: canvas.toDataURL('image/png'), width: w, height: h };
 }
@@ -376,6 +786,7 @@ function onScroll() {
       }
     });
     setCurrentPage(best);
+    if (state.tool === 'edittext') primeVisibleRuns();
   });
 }
 
@@ -463,6 +874,40 @@ function handleAt(annot, x, y) {
 function onPointerHover(event, slot) {
   if (drag) return; // the window-level listener drives an active drag
   const view = views[slot];
+
+  if (state.tool === 'editimage') {
+    const { x, y } = pointFromEvent(event, slot);
+    const spec = pageAt(slot);
+    const placements = (spec && imageCache.get(runKey(slot, spec))) || [];
+    const lifted = topmostAt(slot, x, y);
+    const hit = lifted && lifted.type === 'imgedit' ? lifted : imageAt(placements, x, y);
+    if (hit !== hoverImage || slot !== hoverSlot) {
+      const previous = hoverSlot;
+      hoverImage = hit;
+      hoverSlot = slot;
+      if (previous >= 0 && previous !== slot) drawOverlay(previous);
+      drawOverlay(slot);
+    }
+    view.overlay.style.cursor = hit ? 'move' : 'default';
+    return;
+  }
+
+  if (state.tool === 'edittext') {
+    const { x, y } = pointFromEvent(event, slot);
+    const spec = pageAt(slot);
+    const runs = (spec && runCache.get(runKey(slot, spec))) || [];
+    const hit = runAt(runs, x, y);
+    if (hit !== hoverRun || slot !== hoverSlot) {
+      const previous = hoverSlot;
+      hoverRun = hit;
+      hoverSlot = slot;
+      if (previous >= 0 && previous !== slot) drawOverlay(previous);
+      drawOverlay(slot);
+    }
+    view.overlay.style.cursor = hit ? 'text' : 'default';
+    return;
+  }
+
   if (state.tool !== 'select') {
     view.overlay.style.cursor = state.tool === 'draw' ? 'crosshair' : 'crosshair';
     return;
@@ -487,6 +932,59 @@ function onPointerDown(event, slot) {
   commitEditor();
 
   const tool = state.tool;
+
+  if (tool === 'edittext') {
+    const spec = pageAt(slot);
+    const runs = (spec && runCache.get(runKey(slot, spec))) || [];
+    const hit = runAt(runs, x, y);
+    if (hit) {
+      editRun(slot, hit);
+    } else {
+      emit('edittext-miss');
+    }
+    return;
+  }
+
+  if (tool === 'editimage') {
+    const spec = pageAt(slot);
+    const placements = (spec && imageCache.get(runKey(slot, spec))) || [];
+    const existing = topmostAt(slot, x, y);
+
+    // Already lifted out for editing: fall through to the normal move/resize.
+    if (existing && existing.type === 'imgedit') {
+      const handle = handleAt(existing, x, y);
+      select(slot, existing.id);
+      pushHistory();
+      drag = handle
+        ? {
+            kind: 'resize',
+            slot,
+            id: existing.id,
+            handle: handle.id,
+            start: { x, y },
+            origin: structuredClone(existing),
+            bounds: annotBounds(existing),
+            moved: false,
+          }
+        : { kind: 'move', slot, id: existing.id, start: { x, y }, last: { x, y }, moved: false };
+      drawOverlay(slot);
+      return;
+    }
+
+    const hit = imageAt(placements, x, y);
+    if (!hit) {
+      emit('editimage-miss');
+      return;
+    }
+    const annot = beginImageEdit(slot, hit);
+    if (!annot) return;
+    select(slot, annot.id);
+    // Press and drag in one gesture, the way moving anything else works.
+    pushHistory();
+    drag = { kind: 'move', slot, id: annot.id, start: { x, y }, last: { x, y }, moved: false };
+    drawOverlay(slot);
+    return;
+  }
 
   if (tool === 'select') {
     const selected =
@@ -748,7 +1246,7 @@ async function placePendingImage(slot, x, y) {
 
 /* ----------------------------- text editing ---------------------------- */
 
-export function openEditor(slot, id, isNew) {
+export function openEditor(slot, id, isNew, opts = {}) {
   const annot = findAnnot(slot, id);
   const view = views[slot];
   if (!annot || !view || annot.type !== 'text') return;
@@ -795,7 +1293,10 @@ export function openEditor(slot, id, isNew) {
   drawOverlay(slot);
   requestAnimationFrame(() => {
     ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
+    // Replacing existing text: select it all, so typing overwrites the line the
+    // way it would in any other editor.
+    if (opts.selectAll) ta.select();
+    else ta.setSelectionRange(ta.value.length, ta.value.length);
   });
 }
 

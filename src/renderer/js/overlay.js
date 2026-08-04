@@ -61,6 +61,7 @@ export function drawAnnot(ctx, annot, opts = {}) {
     case 'rect':
     case 'whiteout':
     case 'blackout':
+    case 'cover':
       if (annot.fill) {
         ctx.fillStyle = annot.fill;
         ctx.fillRect(annot.x, annot.y, annot.w, annot.h);
@@ -126,6 +127,23 @@ export function drawAnnot(ctx, annot, opts = {}) {
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i += 1) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.stroke();
+      break;
+    }
+
+    case 'imgedit': {
+      // A picture that belongs to the page, shown where it has been dragged to.
+      // The pixels are lifted straight off the rendered page, so the preview
+      // stays sharp at whatever zoom the page was last drawn at.
+      const source = opts.pageCanvas;
+      const scale = opts.pageScale;
+      const o = annot.origin;
+      if (!source || !scale || !o) break;
+      const sx = Math.max(0, Math.round(o.x * scale));
+      const sy = Math.max(0, Math.round(o.y * scale));
+      const sw = Math.min(source.width - sx, Math.round(o.w * scale));
+      const sh = Math.min(source.height - sy, Math.round(o.h * scale));
+      if (sw <= 0 || sh <= 0) break;
+      ctx.drawImage(source, sx, sy, sw, sh, annot.x, annot.y, annot.w, annot.h);
       break;
     }
 

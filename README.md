@@ -1,6 +1,6 @@
 # Arctic PDF Editor
 
-A desktop PDF editor for Windows. Open a PDF, mark it up, rearrange its pages,
+A desktop PDF editor for Windows and macOS. Open a PDF, mark it up, rearrange its pages,
 fill in its forms, and save a real PDF back out — no cloud service, no uploads,
 no page limits.
 
@@ -10,6 +10,50 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 ![The editor with a document open](build/screenshot.png)
 
 ## What it does
+
+**Edit the text that is already there**
+
+- Pick the **Edit Text** tool and every line the editor can recognise is
+  outlined. Click one and it becomes an editable box, pre-filled with the
+  original wording and pre-selected so typing replaces it
+- The replacement keeps the original's position, size and style: it is placed on
+  the very same baseline, in whichever built-in font is closest to the embedded
+  one (bold and italic included), in the ink colour sampled from the page itself
+- **The original words are removed from the file**, not just hidden: the
+  operators that drew them are taken out of the page's content stream, so
+  nothing is left for another program to extract
+- When that cannot be done safely — the text is inside a form XObject, uses a
+  font whose operands are glyph indices, or sits on a line where deleting it
+  would shift text that stays — the editor says so and covers the original
+  instead, rather than risking a damaged page
+- Press <kbd>Delete</kbd> on a replaced line to put the original back
+
+**Move the pictures that are already there**
+
+- The **Move Pic** tool outlines every picture the page draws; drag one to move
+  it, or use its handles to resize it
+- The move is written into the page itself — the placement matrix is rewritten,
+  so the picture is genuinely somewhere else in the file rather than covered and
+  redrawn, and it keeps its original resolution
+- A rotated or skewed picture can be moved but not resized, because scaling it
+  along the screen axes would shear it
+- Pictures inside a form XObject are not offered, and neither is anything the
+  page draws that is not an image
+
+**Read scanned pages (OCR)**
+
+- **Tools → Recognise Text** runs OCR on the current page, the selected pages,
+  or the whole document — the answer for anything that came out of a scanner or
+  a copier, which arrives as a picture with no text in it at all
+- The recognised words are written into the saved file as an *invisible text
+  layer*: the page looks exactly the same, but it is searchable, selectable and
+  copyable in every PDF reader, not just this one
+- Words are positioned and scaled to the picture of them underneath, so
+  selecting text highlights the right span
+- Find and the Edit Text tool can use the recognised text straight away, without
+  saving and reopening first
+- Everything runs on your machine. The engine and the English language data are
+  bundled, so OCR works with no network and nothing leaves the computer
 
 **Annotate**
 
@@ -26,6 +70,8 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 
 - Reorder by dragging thumbnails, move up/down, duplicate, delete
 - Rotate one page or a whole selection
+- Flatten a page to an image, which permanently destroys the text layer —
+  the way to make a black-out box or a text replacement irreversible
 - Insert blank pages, or insert pages from another PDF
 - Merge several PDFs, extract a selection to a new file, or split one file per page
 
@@ -57,26 +103,43 @@ stick without installing anything.
 > "Windows protected your PC" notice the first time. Choose **More info →
 > Run anyway**, or build it yourself from source with the steps below.
 
+## Install on macOS
+
+Download `Arctic PDF Editor-1.0.0-arm64.dmg` (Apple Silicon) or
+`-x64.dmg` (Intel Macs) from the
+[releases page](https://github.com/zerzall/arctic/releases), open it, and drag
+the app to Applications.
+
+> **The app is not signed with an Apple Developer ID**, so the first launch is
+> blocked: macOS says it "cannot be opened because the developer cannot be
+> verified". Right-click the app and choose **Open**, then **Open** again in the
+> dialog — after that it launches normally. If macOS still refuses, run
+> `xattr -dr com.apple.quarantine "/Applications/Arctic PDF Editor.app"`.
+>
+> This is stricter than the Windows SmartScreen prompt, and clearing it properly
+> requires a paid Apple Developer account.
+
 ## Build it yourself
 
-Requirements: [Node.js](https://nodejs.org/) 20 or newer. Building the Windows
-installer must happen on Windows (electron-builder needs Windows tooling for the
-NSIS target).
+Requirements: [Node.js](https://nodejs.org/) 22 or newer (electron 43 and
+pdfjs-dist 6 both require it). Each installer has to be built on its own
+platform: the Windows NSIS target needs Windows, and a `.dmg` needs macOS.
 
 ```bash
 git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 27 tests over the geometry and PDF-writing code
-npm run dist:win     # -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
+npm test             # 113 tests over the geometry, text, OCR, pictures and PDF writing
+npm run dist:win     # on Windows -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
+npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg (+ x64, + zips)
 ```
 
 `npm run icon` regenerates `build/icon.ico` (needs Python 3; the icon is drawn
 by `scripts/make-icon.py` rather than committed as an opaque binary).
 
-Pushing to this repository also builds the installer on a Windows runner — see
-[`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml).
+Pushing to this repository builds both, on a Windows runner and a macOS runner — see
+[`.github/workflows/build.yml`](.github/workflows/build.yml).
 Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
 
 ## Keyboard shortcuts
@@ -91,7 +154,7 @@ Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
 | `Ctrl+[` / `Ctrl+]` | Rotate the selected pages |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / 100% |
 | `Ctrl`+scroll | Zoom |
-| `V T D H R E L A` | Select, Text, Pen, Highlight, Rect, Ellipse, Line, Arrow |
+| `V X I T D H R E L A` | Select, Edit Text, Move Pic, Text box, Pen, Highlight, Rect, Ellipse, Line, Arrow |
 | `Delete` | Delete the selected object, or the selected pages |
 | Arrow keys | Nudge the selection (`Shift` for 10pt steps) |
 | `F4` / `F8` | Toggle the thumbnail and properties panels |
@@ -104,6 +167,12 @@ src/main/       Electron main process: window, menus, dialogs, file IO, printing
   preload.js      the only bridge the renderer gets (contextIsolation is on)
 src/renderer/
   js/geometry.js  view space <-> PDF user space, for every page rotation
+  js/textedit.js  recognising the page's own text, and replacing a line of it
+  js/contentstream.js a content-stream parser: deleting text, moving pictures
+  js/pagestream.js  reading and rewriting a page's raw drawing instructions
+  js/pdfjsopts.js the side assets pdf.js needs: cmaps, fonts, wasm image codecs
+  js/ocr.js       Tesseract, vendored so recognition works offline
+  js/ocrdata.js   shaping OCR results, kept free of the browser-only engine
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
   js/overlay.js   the same shapes drawn on a canvas
@@ -114,7 +183,7 @@ src/renderer/
   js/search.js    text extraction and match highlighting
 ```
 
-Two design decisions are worth calling out:
+Three design decisions are worth calling out:
 
 **Annotations are stored in view space.** Coordinates are kept exactly as the
 user sees them — top-left origin, in points, on the *rotated* page — and are
@@ -130,14 +199,54 @@ pages were reordered, inserted or deleted, the document is rebuilt from copied
 pages instead, and form fields are flattened first (with a warning) because
 copied pages cannot carry an AcroForm with them.
 
+**Deleting text is planned in the editor and carried out by the writer.**
+Removing a word means taking operators out of a content stream, and knowing
+*which* operators requires matching what a reader sees against what the stream
+draws — which needs pdf.js, available only in the editor. So the editor does the
+matching at the moment of the edit and reduces it to a list of operation
+ordinals plus a fingerprint of the stream; at save time the writer re-parses the
+stream, checks the fingerprint still matches, re-checks that deleting is safe,
+and only then cuts the bytes. If any check fails the patch drawn over the
+original is kept instead and the save reports it. `contentstream.js` is the
+parser this rests on, and it is tested against escaped parentheses, nested
+parentheses, octal escapes, `TJ` arrays and inline-image binary that contains
+bytes spelling `Tj`.
+
 ## Known limitations
 
-- **Black-out boxes are not redaction.** They cover content visually; the text
-  underneath is still in the file and can be extracted. Do not use them to hide
-  sensitive information.
-- **Existing text on a page cannot be re-typed.** You can cover it and put a new
-  text box on top, which is what most PDFs allow in practice, but there is no
-  reflowing of the original text.
+- **Text editing removes the original, but not on every page.** Usually the
+  words you replace are deleted from the page's content stream and are gone. On
+  pages where that cannot be done safely the editor falls back to covering them,
+  and *tells you at the time* — those words remain extractable. The checks that
+  trigger the fallback are deliberately strict, because the alternative to
+  refusing is corrupting a page.
+- **Black-out boxes are not redaction.** Unlike a text replacement, a black-out
+  box only covers what is underneath; the content stays in the file.
+
+  To make a black-out box permanent — or to be certain about a page that fell
+  back to covering — use **Page → Flatten Page to Image**. That turns the page
+  into a 200 dpi picture with no text layer at all. The trade-off is that the
+  page stops being searchable and selectable, which is why it is a deliberate,
+  confirmed action rather than something that happens on save.
+- **Editing works line by line, and does not reflow paragraphs.** A replacement
+  keeps the shape of the line it stands in for and grows sideways as you type;
+  it will not push the following lines down or re-wrap a paragraph.
+- **Moving a picture rewrites where it is drawn, not what it is.** The image
+  data is untouched, so quality is unaffected; but a picture the page draws more
+  than once is moved at each place it appears only if you move it there.
+- **The macOS build is untested.** The editor is built and driven under test on
+  Linux and packaged by CI on both platforms, but nobody has run the `.dmg` on a
+  Mac. The document logic is platform-blind; menus, window behaviour and file
+  associations are where a problem would show up.
+- **OCR is English only, and it is guesswork.** The bundled language data is
+  English; other languages need their own data file. Recognition on a clean
+  300 dpi scan is good but never perfect, so check anything that matters before
+  relying on a search.
+- **Editing recognised text covers rather than deletes.** On a scan the words
+  are pixels, not operators, so a replacement is drawn over a patch of sampled
+  paper — the same fallback described above.
+- **Only horizontal text is recognised.** Rotated or vertical runs, and text
+  that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters
   outside that range (CJK, for example) are replaced with `?` and the app warns
   you when it happens.
