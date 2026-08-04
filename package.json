@@ -78,7 +78,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "identity": null,
       "hardenedRuntime": false,

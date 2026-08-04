@@ -13,8 +13,9 @@ import struct
 import zlib
 
 SIZES = [16, 24, 32, 48, 64, 128, 256]
-# macOS wants a much larger source; electron-builder turns this into an .icns.
+# macOS wants a much larger source, and its own container format.
 MAC_SIZE = 1024
+ICNS_SIZES = [16, 32, 64, 128, 256, 512, 1024]
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build")
 
 BG_TOP = (0x2C, 0x6F, 0xE0)
@@ -185,20 +186,53 @@ def ico(images):
     return header + bytes(entries) + bytes(body)
 
 
+def icns(by_size):
+    """Pack PNG entries into an .icns.
+
+    macOS has accepted PNG-compressed entries since 10.7, so this needs no
+    image tooling either. Each OSType names both a size and a scale: ic11 is
+    "16pt at 2x", which is the same 32 pixels as icp5 but a different entry, and
+    a missing one shows up as a blurry icon somewhere in the system.
+    """
+    types = [
+        (b"icp4", 16),
+        (b"icp5", 32),
+        (b"ic11", 32),    # 16pt @2x
+        (b"ic12", 64),    # 32pt @2x
+        (b"ic07", 128),
+        (b"ic13", 256),   # 128pt @2x
+        (b"ic08", 256),
+        (b"ic14", 512),   # 256pt @2x
+        (b"ic09", 512),
+        (b"ic10", 1024),  # 512pt @2x
+    ]
+    body = bytearray()
+    for ostype, size in types:
+        data = by_size[size]
+        body += ostype + struct.pack(">I", len(data) + 8) + data
+    return b"icns" + struct.pack(">I", len(body) + 8) + bytes(body)
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    images = []
-    for size in SIZES:
-        images.append((size, png(size, draw(size))))
-    with open(os.path.join(OUT_DIR, "icon.ico"), "wb") as fh:
-        fh.write(ico(images))
+    # Render each size once; several .icns entries share the same pixels.
+    wanted = sorted(set(SIZES) | set(ICNS_SIZES))
+    rendered = {}
+    for size in wanted:
+        # Fewer samples at large sizes: the pixels are tiny and this is pure
+        # Python, so full supersampling at 1024 would take minutes.
+        rendered[size] = png(size, draw(size, samples=2 if size >= 512 else 3))
 
-    # One sample per pixel is plenty at 1024, and keeps this under a minute.
+    with open(os.path.join(OUT_DIR, "icon.ico"), "wb") as fh:
+        fh.write(ico([(size, rendered[size]) for size in SIZES]))
+    with open(os.path.join(OUT_DIR, "icon.icns"), "wb") as fh:
+        fh.write(icns(rendered))
     with open(os.path.join(OUT_DIR, "icon.png"), "wb") as fh:
-        fh.write(png(MAC_SIZE, draw(MAC_SIZE, samples=2)))
+        fh.write(rendered[MAC_SIZE])
 
     print(f"wrote {OUT_DIR}/icon.ico ({', '.join(str(s) for s in SIZES)})")
-    print(f"wrote {OUT_DIR}/icon.png ({MAC_SIZE}x{MAC_SIZE}, for macOS)")
+    print(f"wrote {OUT_DIR}/icon.icns ({', '.join(str(s) for s in ICNS_SIZES)})")
+    print(f"wrote {OUT_DIR}/icon.png ({MAC_SIZE}x{MAC_SIZE})")
 
 
 if __name__ == "__main__":
