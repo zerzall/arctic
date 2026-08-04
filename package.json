@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "A desktop PDF editor for Windows: annotate, add text, reorder and rotate pages, merge, split, fill forms and export.",
   "main": "src/main/main.js",
+  "author": "Arctic PDF Editor contributors",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -13,7 +14,7 @@
     "dev": "electron . --dev",
     "test": "node --test",
     "icon": "python3 scripts/make-icon.py",
-    "dist:win": "npm run vendor && electron-builder --win --x64",
+    "dist:win": "npm run vendor && electron-builder --win --x64 --publish never",
     "pack": "npm run vendor && electron-builder --dir"
   },
   "engines": {
