@@ -517,6 +517,7 @@ let findResults = [];
 let findIndex = -1;
 /** The "this covers rather than deletes" notice is shown once per session. */
 let sawTextEditNotice = false;
+let sawImageEditNotice = false;
 
 async function runFind() {
   const query = $('find-input').value;
@@ -663,7 +664,7 @@ const commands = {
   'help:about': showAbout,
 };
 
-for (const tool of ['select', 'text', 'edittext', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
+for (const tool of ['select', 'text', 'edittext', 'editimage', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
   commands[`tool:${tool}`] = () => setTool(tool);
 }
 
@@ -841,6 +842,7 @@ const TOOL_KEYS = {
   v: 'select',
   t: 'text',
   x: 'edittext',
+  i: 'editimage',
   d: 'draw',
   h: 'highlight',
   r: 'rect',
@@ -980,8 +982,23 @@ function wireModel() {
         toast('Click any highlighted line to retype it.', 'info', 4000);
       }
     }
+    if (tool === 'editimage') {
+      viewer.primeVisibleImages();
+      if (!sawImageEditNotice) {
+        sawImageEditNotice = true;
+        toast(
+          'Drag any outlined picture to move it, or use its handles to resize it.',
+          'info',
+          5000
+        );
+      }
+    }
     viewer.refreshAll();
   });
+
+  on('editimage-miss', () =>
+    toast('No movable picture there - only outlined ones can be moved.', 'info', 2200)
+  );
 
   // Whether the original wording will actually leave the file is the one thing
   // worth reporting per edit, because it is the difference between editing and

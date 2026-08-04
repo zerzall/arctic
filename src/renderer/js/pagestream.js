@@ -8,6 +8,7 @@
  */
 import {
   PDFArray,
+  PDFDict,
   PDFName,
   PDFRawStream,
   decodePDFRawStream,
@@ -78,6 +79,43 @@ export function readPageContent(doc, page) {
  * it keeps this operation free of any dependency on how the original was
  * encoded, and PDF writers are free to re-compress later.
  */
+/**
+ * The names a page's content stream uses for image XObjects.
+ *
+ * `Do` draws both images and form XObjects, and only the former can be moved as
+ * a picture - a form is a nested content stream, which is a different problem.
+ *
+ * @returns {Set<string>}
+ */
+export function imageXObjectNames(doc, page) {
+  const names = new Set();
+  let resources;
+  try {
+    resources = page.node.Resources();
+  } catch {
+    return names;
+  }
+  if (!resources) return names;
+
+  const xobjects = resources.lookup(PDFName.of('XObject'));
+  if (!xobjects || typeof xobjects.entries !== 'function') return names;
+
+  for (const [key, value] of xobjects.entries()) {
+    try {
+      const target = doc.context.lookup(value);
+      const dict = target instanceof PDFDict ? target : target && target.dict;
+      if (!dict) continue;
+      const subtype = dict.lookup(PDFName.of('Subtype'));
+      if (subtype && subtype.asString && subtype.asString() === '/Image') {
+        names.add(key.asString().replace(/^\//, ''));
+      }
+    } catch {
+      /* an entry we cannot resolve is simply not offered for moving */
+    }
+  }
+  return names;
+}
+
 export function writePageContent(doc, page, bytes) {
   const stream = doc.context.stream(bytes);
   const ref = doc.context.register(stream);

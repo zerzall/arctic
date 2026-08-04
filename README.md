@@ -28,6 +28,18 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
   instead, rather than risking a damaged page
 - Press <kbd>Delete</kbd> on a replaced line to put the original back
 
+**Move the pictures that are already there**
+
+- The **Move Pic** tool outlines every picture the page draws; drag one to move
+  it, or use its handles to resize it
+- The move is written into the page itself — the placement matrix is rewritten,
+  so the picture is genuinely somewhere else in the file rather than covered and
+  redrawn, and it keeps its original resolution
+- A rotated or skewed picture can be moved but not resized, because scaling it
+  along the screen axes would shear it
+- Pictures inside a form XObject are not offered, and neither is anything the
+  page draws that is not an image
+
 **Annotate**
 
 - Text boxes with the built-in PDF fonts (Helvetica/Arial, Times, Courier),
@@ -88,7 +100,7 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 70 tests over the geometry, text handling and PDF writing
+npm test             # 92 tests over the geometry, text, pictures and PDF writing
 npm run dist:win     # -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
 ```
 
@@ -111,7 +123,7 @@ Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
 | `Ctrl+[` / `Ctrl+]` | Rotate the selected pages |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / 100% |
 | `Ctrl`+scroll | Zoom |
-| `V X T D H R E L A` | Select, Edit Text, Text box, Pen, Highlight, Rect, Ellipse, Line, Arrow |
+| `V X I T D H R E L A` | Select, Edit Text, Move Pic, Text box, Pen, Highlight, Rect, Ellipse, Line, Arrow |
 | `Delete` | Delete the selected object, or the selected pages |
 | Arrow keys | Nudge the selection (`Shift` for 10pt steps) |
 | `F4` / `F8` | Toggle the thumbnail and properties panels |
@@ -125,7 +137,7 @@ src/main/       Electron main process: window, menus, dialogs, file IO, printing
 src/renderer/
   js/geometry.js  view space <-> PDF user space, for every page rotation
   js/textedit.js  recognising the page's own text, and replacing a line of it
-  js/contentstream.js a content-stream parser, for deleting text from a page
+  js/contentstream.js a content-stream parser: deleting text, moving pictures
   js/pagestream.js  reading and rewriting a page's raw drawing instructions
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
@@ -185,6 +197,9 @@ bytes spelling `Tj`.
 - **Editing works line by line, and does not reflow paragraphs.** A replacement
   keeps the shape of the line it stands in for and grows sideways as you type;
   it will not push the following lines down or re-wrap a paragraph.
+- **Moving a picture rewrites where it is drawn, not what it is.** The image
+  data is untouched, so quality is unaffected; but a picture the page draws more
+  than once is moved at each place it appears only if you move it there.
 - **Only horizontal text is recognised.** Rotated or vertical runs, and text
   that is really an image (a scan without OCR), are not offered for editing.
 - **Text uses the 14 built-in PDF fonts**, which are WinAnsi-encoded. Characters

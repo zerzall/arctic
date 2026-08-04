@@ -81,6 +81,7 @@ function buildMenu(send) {
         // not fire while the user is typing into a text box or the find bar.
         cmd('Select  (V)', 'tool:select'),
         cmd('Edit Existing Text  (X)', 'tool:edittext'),
+        cmd('Move Pictures  (I)', 'tool:editimage'),
         cmd('Text Box  (T)', 'tool:text'),
         cmd('Freehand Draw  (D)', 'tool:draw'),
         cmd('Highlight  (H)', 'tool:highlight'),

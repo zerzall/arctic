@@ -130,6 +130,23 @@ export function drawAnnot(ctx, annot, opts = {}) {
       break;
     }
 
+    case 'imgedit': {
+      // A picture that belongs to the page, shown where it has been dragged to.
+      // The pixels are lifted straight off the rendered page, so the preview
+      // stays sharp at whatever zoom the page was last drawn at.
+      const source = opts.pageCanvas;
+      const scale = opts.pageScale;
+      const o = annot.origin;
+      if (!source || !scale || !o) break;
+      const sx = Math.max(0, Math.round(o.x * scale));
+      const sy = Math.max(0, Math.round(o.y * scale));
+      const sw = Math.min(source.width - sx, Math.round(o.w * scale));
+      const sh = Math.min(source.height - sy, Math.round(o.h * scale));
+      if (sw <= 0 || sh <= 0) break;
+      ctx.drawImage(source, sx, sy, sw, sh, annot.x, annot.y, annot.w, annot.h);
+      break;
+    }
+
     case 'image': {
       const img = opts.bitmaps && opts.bitmaps.get(annot.imgId);
       if (img) ctx.drawImage(img, annot.x, annot.y, annot.w, annot.h);

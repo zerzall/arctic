@@ -217,6 +217,7 @@ function labelFor(type) {
       whiteout: 'white-out box',
       blackout: 'black-out box',
       cover: 'patch over original text',
+      imgedit: "picture from the page",
       edittext: 'edit-existing-text',
     }[type] || type
   );

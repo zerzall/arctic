@@ -327,6 +327,208 @@ export function normalizeForMatch(text) {
     .trim();
 }
 
+/* ------------------------------------------------------------------ *
+ * Images                                                              *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Affine matrices, in PDF's own convention: points are row vectors and
+ * `a b c d e f cm` concatenates as CTM' = M x CTM.
+ */
+export const IDENTITY = [1, 0, 0, 1, 0, 0];
+
+export function matMul(m, n) {
+  return [
+    m[0] * n[0] + m[1] * n[2],
+    m[0] * n[1] + m[1] * n[3],
+    m[2] * n[0] + m[3] * n[2],
+    m[2] * n[1] + m[3] * n[3],
+    m[4] * n[0] + m[5] * n[2] + n[4],
+    m[4] * n[1] + m[5] * n[3] + n[5],
+  ];
+}
+
+export function matApply(m, x, y) {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+}
+
+export function matInvert(m) {
+  const det = m[0] * m[3] - m[1] * m[2];
+  if (!det || !Number.isFinite(det)) return null;
+  const a = m[3] / det;
+  const b = -m[1] / det;
+  const c = -m[2] / det;
+  const d = m[0] / det;
+  return [a, b, c, d, -(m[4] * a + m[5] * c), -(m[4] * b + m[5] * d)];
+}
+
+/** True when a placement is rotated or skewed rather than merely scaled. */
+export function isAxisAligned(m) {
+  const scale = Math.max(Math.abs(m[0]), Math.abs(m[3]), 1e-6);
+  return Math.abs(m[1]) < scale * 1e-6 && Math.abs(m[2]) < scale * 1e-6;
+}
+
+/**
+ * Every image drawn by a page's own content stream, with the matrix that places
+ * it. An image XObject is always drawn into the unit square, so that matrix is
+ * the whole story: where it sits, how big it is, and any rotation.
+ *
+ * @param {Array} ops                    operations from `operations()`
+ * @param {(name:string)=>boolean} isImage  which XObject names are images
+ */
+export function imagePlacements(ops, isImage) {
+  const out = [];
+  const stack = [];
+  let ctm = IDENTITY;
+
+  ops.forEach((op, index) => {
+    switch (op.operator) {
+      case 'q':
+        stack.push(ctm);
+        break;
+      case 'Q':
+        ctm = stack.length ? stack.pop() : IDENTITY;
+        break;
+      case 'cm': {
+        const n = op.operands.slice(-6).map((o) => (o.type === 'number' ? o.value : NaN));
+        if (n.length === 6 && n.every(Number.isFinite)) ctm = matMul(n, ctm);
+        break;
+      }
+      case 'Do': {
+        const operand = op.operands[op.operands.length - 1];
+        if (!operand || operand.type !== 'name') break;
+        if (!isImage(operand.value)) break;
+        out.push({
+          opIndex: index,
+          ordinal: out.length,
+          name: operand.value,
+          matrix: ctm,
+          start: op.start,
+          end: op.end,
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+  return out;
+}
+
+/** The corners of a placement, in PDF user space. */
+export function placementCorners(matrix) {
+  return [
+    matApply(matrix, 0, 0),
+    matApply(matrix, 1, 0),
+    matApply(matrix, 1, 1),
+    matApply(matrix, 0, 1),
+  ];
+}
+
+/** Axis-aligned bounds of a placement, in PDF user space. */
+export function placementBounds(matrix) {
+  const xs = placementCorners(matrix).map((p) => p.x);
+  const ys = placementCorners(matrix).map((p) => p.y);
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/** Identifies the set of placements a plan was made against. */
+export function imageFingerprint(placements) {
+  return placements
+    .map((p) => `${p.name}@${p.matrix.map((v) => Math.round(v * 100) / 100).join(',')}`)
+    .join('|');
+}
+
+/**
+ * Rewrite image placements so each one lands where the user dragged it.
+ *
+ * A `Do` is replaced by `q <N> cm <name> Do Q`, which is self-contained: the
+ * save/restore pair means the extra transform cannot leak into whatever the
+ * page draws next. Since the wrapped matrix applies *before* the placement,
+ * getting a movement of `t` in page space needs N = M x T x M-inverse.
+ *
+ * @param {Uint8Array} streamBytes
+ * @param {Array<{ordinal:number, transform:number[]}>} edits  transform in page space
+ * @param {(name:string)=>boolean} isImage
+ * @param {string} expectedFingerprint
+ */
+export function applyImageTransforms(streamBytes, edits, isImage, expectedFingerprint) {
+  const ops = operations(tokenize(streamBytes));
+  const placements = imagePlacements(ops, isImage);
+
+  if (expectedFingerprint && imageFingerprint(placements) !== expectedFingerprint) {
+    return { ok: false, reason: 'the page changed since the move was planned' };
+  }
+
+  const replacements = [];
+  for (const edit of edits) {
+    const placement = placements[edit.ordinal];
+    if (!placement) return { ok: false, reason: 'the picture is no longer where it was' };
+
+    const inverse = matInvert(placement.matrix);
+    if (!inverse) return { ok: false, reason: 'the picture has a matrix that cannot be inverted' };
+
+    const n = matMul(matMul(placement.matrix, edit.transform), inverse);
+    const numbers = n.map((v) => formatNumber(v)).join(' ');
+    replacements.push({
+      start: placement.start,
+      end: placement.end,
+      text: `q ${numbers} cm /${placement.name} Do Q`,
+    });
+  }
+
+  return { ok: true, bytes: replaceRanges(streamBytes, replacements) };
+}
+
+/**
+ * Format a matrix component for a content stream.
+ *
+ * Two traps here: PDF has no exponent notation, so `String(1e-7)` would emit
+ * something no reader accepts; and the wrapped matrix divides by the picture's
+ * size, so rounding too early shifts it visibly. Ten decimal places is well
+ * inside both limits.
+ */
+function formatNumber(value) {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) < 1e-10) return '0';
+  const fixed = value.toFixed(10).replace(/0+$/, '').replace(/\.$/, '');
+  return fixed === '-0' ? '0' : fixed;
+}
+
+/**
+ * Replace byte ranges with new text.
+ * @param {Uint8Array} bytes
+ * @param {Array<{start:number, end:number, text:string}>} edits
+ */
+export function replaceRanges(bytes, edits) {
+  const sorted = [...edits].sort((a, b) => a.start - b.start);
+  const parts = [];
+  let at = 0;
+  for (const edit of sorted) {
+    if (edit.start < at) continue;
+    parts.push(bytes.subarray(at, edit.start));
+    parts.push(Uint8Array.from([...`\n${edit.text}\n`].map((c) => c.charCodeAt(0))));
+    at = edit.end;
+  }
+  parts.push(bytes.subarray(at));
+
+  let total = 0;
+  for (const part of parts) total += part.length;
+  const out = new Uint8Array(total);
+  let cursor = 0;
+  for (const part of parts) {
+    out.set(part, cursor);
+    cursor += part.length;
+  }
+  return out;
+}
+
 /** Cheap stable hash, used to check a stream is the one we planned against. */
 export function fingerprint(showOps) {
   let h = 0x811c9dc5;

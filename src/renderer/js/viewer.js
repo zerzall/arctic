@@ -35,7 +35,8 @@ import {
   pickColors,
   runAt,
 } from './textedit.js';
-import { planRemoval } from './originals.js';
+import { planRemoval, findImages } from './originals.js';
+import { rectFromPdf } from './geometry.js';
 
 /** 1pt at 100% zoom, matching the 96dpi convention other PDF viewers use. */
 export const PT_TO_PX = 96 / 72;
@@ -175,8 +176,91 @@ export async function runsForPage(slot) {
 export function clearRunCache() {
   runCache.clear();
   itemCache.clear();
+  imageCache.clear();
   hoverRun = null;
   hoverSlot = -1;
+  hoverImage = null;
+}
+
+/* ------------------------- pictures already on a page -------------------- */
+
+/** Image placements per page, in view space. */
+const imageCache = new Map();
+let hoverImage = null;
+
+/**
+ * Where the page's own pictures are, in the space the editor works in.
+ * @returns {Promise<Array<{ordinal:number, rect:object, axisAligned:boolean}>>}
+ */
+export async function imagesForPage(slot) {
+  const spec = pageAt(slot);
+  if (!spec || !spec.src) return [];
+  const key = runKey(slot, spec);
+  if (imageCache.has(key)) return imageCache.get(key);
+
+  const source = sourceFor(spec);
+  if (!source) return [];
+
+  const found = await findImages(spec.src, source.bytes, spec.index);
+  const placements = found.placements.map((p) => ({
+    ordinal: p.ordinal,
+    name: p.name,
+    axisAligned: p.axisAligned,
+    fingerprint: found.fingerprint,
+    rect: rectFromPdf(spec, p.bounds),
+  }));
+  imageCache.set(key, placements);
+  return placements;
+}
+
+async function primeImages(slot) {
+  try {
+    await imagesForPage(slot);
+    drawOverlay(slot);
+  } catch {
+    /* a page whose pictures cannot be located simply offers none to move */
+  }
+}
+
+export function primeVisibleImages() {
+  for (const slot of visibleSlots()) primeImages(slot);
+}
+
+function imageAt(placements, x, y) {
+  // Smallest first, so a picture inside another can still be picked.
+  const hits = placements.filter(
+    (p) => x >= p.rect.x && x <= p.rect.x + p.rect.w && y >= p.rect.y && y <= p.rect.y + p.rect.h
+  );
+  hits.sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h);
+  return hits[0] || null;
+}
+
+/**
+ * Turn a picture into something the editor can move: an annotation holding the
+ * placement it stands for. Once it exists, the ordinary selection machinery
+ * drags and resizes it, and the writer turns its box back into a transform.
+ */
+function beginImageEdit(slot, placement) {
+  const spec = pageAt(slot);
+  const existing = (spec.annots || []).find(
+    (a) => a.type === 'imgedit' && a.ordinal === placement.ordinal
+  );
+  if (existing) return existing;
+
+  return addAnnot(slot, {
+    type: 'imgedit',
+    ordinal: placement.ordinal,
+    name: placement.name,
+    fingerprint: placement.fingerprint,
+    axisAligned: placement.axisAligned,
+    // Where it started, so the writer can work out how far it moved.
+    origin: { ...placement.rect },
+    x: placement.rect.x,
+    y: placement.rect.y,
+    w: placement.rect.w,
+    h: placement.rect.h,
+    opacity: 1,
+  });
 }
 
 /** Warm the cache for a page and repaint, so outlines appear as you scroll. */
@@ -488,13 +572,41 @@ export function drawOverlay(slot) {
   ctx.clearRect(0, 0, view.overlay.width, view.overlay.height);
   ctx.setTransform(s * dpr, 0, 0, s * dpr, 0, 0);
 
+  // The page underneath still shows every picture where the file puts it, so a
+  // moved one has to be patched out of its old position and redrawn here.
+  const moved = spec.annots.filter((a) => a.type === 'imgedit' && hasMoved(a));
+  for (const annot of moved) coverOriginalImage(ctx, slot, annot);
+
   for (const annot of spec.annots) {
     if (editor && editor.dataset.annotId === annot.id) continue; // being typed into
-    drawAnnot(ctx, annot, { bitmaps });
+    drawAnnot(ctx, annot, { bitmaps, pageCanvas: view.canvas, pageScale: canvasScale(view, spec) });
   }
 
   if (drag && drag.slot === slot && drag.preview) {
     drawAnnot(ctx, drag.preview, { bitmaps });
+  }
+
+  // With the picture tool active, outline what can be moved.
+  if (state.tool === 'editimage') {
+    const placements = imageCache.get(runKey(slot, spec));
+    if (placements) {
+      const px = 1 / s;
+      const lifted = new Set(
+        spec.annots.filter((a) => a.type === 'imgedit').map((a) => a.ordinal)
+      );
+      ctx.save();
+      for (const placement of placements) {
+        if (lifted.has(placement.ordinal)) continue;
+        const isHover = hoverSlot === slot && hoverImage === placement;
+        ctx.fillStyle = isHover ? 'rgba(46,204,113,0.18)' : 'rgba(46,204,113,0.07)';
+        ctx.fillRect(placement.rect.x, placement.rect.y, placement.rect.w, placement.rect.h);
+        ctx.strokeStyle = isHover ? '#2ecc71' : 'rgba(46,204,113,0.5)';
+        ctx.lineWidth = (isHover ? 1.5 : 1) * px;
+        ctx.setLineDash([5 * px, 3 * px]);
+        ctx.strokeRect(placement.rect.x, placement.rect.y, placement.rect.w, placement.rect.h);
+      }
+      ctx.restore();
+    }
   }
 
   // With the text tool active, show what the editor can actually recognise -
@@ -539,6 +651,49 @@ export function drawOverlay(slot) {
   }
 }
 
+/** Device pixels per point on a page's rendered canvas. */
+function canvasScale(view, spec) {
+  if (!view.canvas.width) return 0;
+  const { w } = viewSize(spec);
+  return view.canvas.width / w;
+}
+
+/** Has a picture been dragged away from where the file draws it? */
+export function hasMoved(annot) {
+  const o = annot.origin;
+  if (!o) return false;
+  return (
+    Math.abs(annot.x - o.x) > 0.01 ||
+    Math.abs(annot.y - o.y) > 0.01 ||
+    Math.abs(annot.w - o.w) > 0.01 ||
+    Math.abs(annot.h - o.h) > 0.01
+  );
+}
+
+/**
+ * Paint over where a picture used to be, using the colour of the paper around
+ * it. Only a preview: the saved file simply draws the picture in its new place,
+ * with nothing left behind to hide.
+ */
+function coverOriginalImage(ctx, slot, annot) {
+  const o = annot.origin;
+  if (!o) return;
+  const colors = sampleColors(slot, {
+    x: o.x,
+    y: o.y,
+    w: o.w,
+    h: o.h,
+    size: Math.max(6, Math.min(o.w, o.h) * 0.1),
+  });
+  // A little beyond the edges: a picture's outermost pixels are anti-aliased
+  // into the paper, and without the bleed they survive as a ghost outline.
+  const bleed = 1;
+  ctx.save();
+  ctx.fillStyle = (colors && colors.background) || '#ffffff';
+  ctx.fillRect(o.x - bleed, o.y - bleed, o.w + bleed * 2, o.h + bleed * 2);
+  ctx.restore();
+}
+
 export function refreshPage(slot) {
   drawOverlay(slot);
 }
@@ -571,7 +726,27 @@ export async function renderPageImage(slot, targetScale = 2) {
   }
 
   ctx.setTransform(targetScale, 0, 0, targetScale, 0, 0);
-  for (const annot of spec.annots) drawAnnot(ctx, annot, { bitmaps });
+
+  // Same dance as the thumbnails: copy the page before patching a moved
+  // picture out of it, because the copy is where the picture comes from.
+  const moved = spec.annots.filter((a) => a.type === 'imgedit' && hasMoved(a));
+  let pageCopy = null;
+  if (moved.length) {
+    pageCopy = document.createElement('canvas');
+    pageCopy.width = canvas.width;
+    pageCopy.height = canvas.height;
+    pageCopy.getContext('2d').drawImage(canvas, 0, 0);
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    for (const a of moved) {
+      ctx.fillRect(a.origin.x - 1, a.origin.y - 1, a.origin.w + 2, a.origin.h + 2);
+    }
+    ctx.restore();
+  }
+
+  for (const annot of spec.annots) {
+    drawAnnot(ctx, annot, { bitmaps, pageCanvas: pageCopy, pageScale: targetScale });
+  }
 
   return { dataUrl: canvas.toDataURL('image/png'), width: w, height: h };
 }
@@ -684,6 +859,23 @@ function onPointerHover(event, slot) {
   if (drag) return; // the window-level listener drives an active drag
   const view = views[slot];
 
+  if (state.tool === 'editimage') {
+    const { x, y } = pointFromEvent(event, slot);
+    const spec = pageAt(slot);
+    const placements = (spec && imageCache.get(runKey(slot, spec))) || [];
+    const lifted = topmostAt(slot, x, y);
+    const hit = lifted && lifted.type === 'imgedit' ? lifted : imageAt(placements, x, y);
+    if (hit !== hoverImage || slot !== hoverSlot) {
+      const previous = hoverSlot;
+      hoverImage = hit;
+      hoverSlot = slot;
+      if (previous >= 0 && previous !== slot) drawOverlay(previous);
+      drawOverlay(slot);
+    }
+    view.overlay.style.cursor = hit ? 'move' : 'default';
+    return;
+  }
+
   if (state.tool === 'edittext') {
     const { x, y } = pointFromEvent(event, slot);
     const spec = pageAt(slot);
@@ -734,6 +926,47 @@ function onPointerDown(event, slot) {
     } else {
       emit('edittext-miss');
     }
+    return;
+  }
+
+  if (tool === 'editimage') {
+    const spec = pageAt(slot);
+    const placements = (spec && imageCache.get(runKey(slot, spec))) || [];
+    const existing = topmostAt(slot, x, y);
+
+    // Already lifted out for editing: fall through to the normal move/resize.
+    if (existing && existing.type === 'imgedit') {
+      const handle = handleAt(existing, x, y);
+      select(slot, existing.id);
+      pushHistory();
+      drag = handle
+        ? {
+            kind: 'resize',
+            slot,
+            id: existing.id,
+            handle: handle.id,
+            start: { x, y },
+            origin: structuredClone(existing),
+            bounds: annotBounds(existing),
+            moved: false,
+          }
+        : { kind: 'move', slot, id: existing.id, start: { x, y }, last: { x, y }, moved: false };
+      drawOverlay(slot);
+      return;
+    }
+
+    const hit = imageAt(placements, x, y);
+    if (!hit) {
+      emit('editimage-miss');
+      return;
+    }
+    const annot = beginImageEdit(slot, hit);
+    if (!annot) return;
+    select(slot, annot.id);
+    // Press and drag in one gesture, the way moving anything else works.
+    pushHistory();
+    drag = { kind: 'move', slot, id: annot.id, start: { x, y }, last: { x, y }, moved: false };
+    drawOverlay(slot);
     return;
   }
 

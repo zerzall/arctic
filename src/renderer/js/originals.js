@@ -8,8 +8,16 @@
  * without a text reader.
  */
 import { PDFDocument } from '../vendor/pdf-lib.esm.min.js';
-import { readPageContent } from './pagestream.js';
-import { planDeletion } from './contentstream.js';
+import { readPageContent, imageXObjectNames } from './pagestream.js';
+import {
+  planDeletion,
+  tokenize,
+  operations,
+  imagePlacements,
+  placementBounds,
+  imageFingerprint,
+  isAxisAligned,
+} from './contentstream.js';
 
 /** One pdf-lib document per source, loaded lazily and only for reading. */
 const docCache = new Map();
@@ -57,4 +65,42 @@ export async function planRemoval(srcKey, srcBytes, pageIndex, items, itemIndice
   if (!content) return { ok: false, reason: "the page's drawing instructions could not be read" };
 
   return planDeletion(content, items, itemIndices);
+}
+
+/**
+ * Every picture the page draws, with where it sits in PDF user space.
+ *
+ * @returns {Promise<{placements:Array, fingerprint:string}>}
+ */
+export async function findImages(srcKey, srcBytes, pageIndex) {
+  const empty = { placements: [], fingerprint: '' };
+  const doc = await sourceDoc(srcKey, srcBytes);
+  if (!doc) return empty;
+
+  let page;
+  try {
+    page = doc.getPage(pageIndex);
+  } catch {
+    return empty;
+  }
+
+  const content = readPageContent(doc, page);
+  if (!content) return empty;
+
+  const names = imageXObjectNames(doc, page);
+  if (!names.size) return empty;
+
+  const placements = imagePlacements(operations(tokenize(content)), (n) => names.has(n));
+  return {
+    fingerprint: imageFingerprint(placements),
+    placements: placements.map((p) => ({
+      ordinal: p.ordinal,
+      name: p.name,
+      matrix: p.matrix,
+      bounds: placementBounds(p.matrix),
+      // A rotated or skewed picture can be moved, but scaling it along the
+      // screen axes would shear it, so the editor only offers moving.
+      axisAligned: isAxisAligned(p.matrix),
+    })),
+  };
 }
