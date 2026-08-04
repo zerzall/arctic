@@ -977,15 +977,23 @@ function wireModel() {
       viewer.primeVisibleRuns();
       if (!sawTextEditNotice) {
         sawTextEditNotice = true;
-        toast(
-          'Click any highlighted line to retype it. The replacement is drawn ' +
-            'over the original, which stays in the file unless you flatten the page.',
-          'info',
-          7000
-        );
+        toast('Click any highlighted line to retype it.', 'info', 4000);
       }
     }
     viewer.refreshAll();
+  });
+
+  // Whether the original wording will actually leave the file is the one thing
+  // worth reporting per edit, because it is the difference between editing and
+  // merely covering.
+  on('text-replaced', ({ removed, reason }) => {
+    if (removed) return;
+    toast(
+      `This line can only be covered, not removed: ${reason}. ` +
+        'Flatten the page to an image if the original must not remain in the file.',
+      'warn',
+      7000
+    );
   });
 
   on('edittext-miss', () =>

@@ -129,6 +129,9 @@ function finalizeRun(run) {
     size: run.size,
     fontKey: run.fontKey,
     itemCount: run.items.length,
+    // Which of the reader's text items this line is made of. Deleting the
+    // original from the file works from these.
+    itemIndices: run.items.map((it) => it.srcIndex).filter((i) => i !== undefined),
   };
 }
 

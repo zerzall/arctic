@@ -35,6 +35,7 @@ import {
   pickColors,
   runAt,
 } from './textedit.js';
+import { planRemoval } from './originals.js';
 
 /** 1pt at 100% zoom, matching the 96dpi convention other PDF viewers use. */
 export const PT_TO_PX = 96 / 72;
@@ -102,6 +103,8 @@ export function clearBitmaps() {
  * @type {Map<string, Array<object>>}
  */
 const runCache = new Map();
+/** The reader's raw text items per page, needed to plan a real deletion. */
+const itemCache = new Map();
 let hoverRun = null;
 let hoverSlot = -1;
 
@@ -128,13 +131,14 @@ export async function runsForPage(slot) {
   const { Util } = await import('../vendor/pdf.min.mjs');
 
   const items = [];
-  for (const item of content.items) {
-    if (typeof item.str !== 'string' || !item.str) continue;
+  content.items.forEach((item, srcIndex) => {
+    if (typeof item.str !== 'string' || !item.str) return;
     const tx = Util.transform(viewport.transform, item.transform);
     const size = Math.hypot(tx[2], tx[3]) || Math.hypot(tx[0], tx[1]) || 10;
     const style = content.styles && content.styles[item.fontName];
     items.push({
       str: item.str,
+      srcIndex,
       x: tx[4],
       y: tx[5],
       width: item.width || 0,
@@ -144,8 +148,9 @@ export async function runsForPage(slot) {
       ascent: style && style.ascent > 0 ? style.ascent : undefined,
       fontFamily: style ? style.fontFamily : undefined,
     });
-  }
+  });
 
+  itemCache.set(key, content.items);
   const runs = groupRuns(items);
 
   // Resolve each run's real font name once, so the replacement can be given the
@@ -169,6 +174,7 @@ export async function runsForPage(slot) {
 
 export function clearRunCache() {
   runCache.clear();
+  itemCache.clear();
   hoverRun = null;
   hoverSlot = -1;
 }
@@ -243,6 +249,7 @@ function ringOf(image, rx, ry, rw, rh) {
  * colour; they are not removed from the file.
  */
 export async function editRun(slot, run) {
+  const spec = pageAt(slot);
   const colors = sampleColors(slot, run) || { background: '#ffffff', text: '#111111' };
   const { cover, text } = buildReplacement(
     run,
@@ -250,12 +257,29 @@ export async function editRun(slot, run) {
     colors,
     uid('pair')
   );
+
+  // Try to arrange for the original words to be deleted from the file rather
+  // than merely hidden. The patch is added either way: the page on screen is
+  // rendered from the unmodified source, so without it the old text would show
+  // through underneath while editing.
+  let removal = { ok: false, reason: 'this page is not from a source document' };
+  if (spec && spec.src) {
+    const source = state.doc.sources[spec.src];
+    const items = itemCache.get(runKey(slot, spec));
+    if (source && items) {
+      removal = await planRemoval(spec.src, source.bytes, spec.index, items, run.itemIndices);
+    }
+  }
+  if (removal.ok) {
+    text.removeOriginal = { ordinals: removal.ordinals, fingerprint: removal.fingerprint };
+  }
+
   const created = addAnnots(slot, [cover, text]);
   const textAnnot = created[1];
   if (!textAnnot) return;
   select(slot, textAnnot.id);
   openEditor(slot, textAnnot.id, false, { selectAll: true });
-  emit('text-replaced');
+  emit('text-replaced', { removed: removal.ok, reason: removal.reason });
 }
 
 /* ------------------------------- layout -------------------------------- */

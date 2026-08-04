@@ -19,11 +19,14 @@ and [pdf-lib](https://pdf-lib.js.org/) for writing.
 - The replacement keeps the original's position, size and style: it is placed on
   the very same baseline, in whichever built-in font is closest to the embedded
   one (bold and italic included), in the ink colour sampled from the page itself
-- The original glyphs are covered with a patch in the sampled paper colour, so
-  it works on coloured and scanned pages, not just white ones
+- **The original words are removed from the file**, not just hidden: the
+  operators that drew them are taken out of the page's content stream, so
+  nothing is left for another program to extract
+- When that cannot be done safely — the text is inside a form XObject, uses a
+  font whose operands are glyph indices, or sits on a line where deleting it
+  would shift text that stays — the editor says so and covers the original
+  instead, rather than risking a damaged page
 - Press <kbd>Delete</kbd> on a replaced line to put the original back
-- Read [Known limitations](#known-limitations) before using this on anything
-  confidential: covering is not deleting
 
 **Annotate**
 
@@ -85,7 +88,7 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 46 tests over the geometry, text handling and PDF writing
+npm test             # 70 tests over the geometry, text handling and PDF writing
 npm run dist:win     # -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
 ```
 
@@ -122,6 +125,8 @@ src/main/       Electron main process: window, menus, dialogs, file IO, printing
 src/renderer/
   js/geometry.js  view space <-> PDF user space, for every page rotation
   js/textedit.js  recognising the page's own text, and replacing a line of it
+  js/contentstream.js a content-stream parser, for deleting text from a page
+  js/pagestream.js  reading and rewriting a page's raw drawing instructions
   js/textlayout.js line breaking, shared by the screen and the file
   js/export.js    the PDF writer (pdf-lib) - no DOM, so Node can test it
   js/overlay.js   the same shapes drawn on a canvas
@@ -132,7 +137,7 @@ src/renderer/
   js/search.js    text extraction and match highlighting
 ```
 
-Two design decisions are worth calling out:
+Three design decisions are worth calling out:
 
 **Annotations are stored in view space.** Coordinates are kept exactly as the
 user sees them — top-left origin, in points, on the *rotated* page — and are
@@ -148,19 +153,35 @@ pages were reordered, inserted or deleted, the document is rebuilt from copied
 pages instead, and form fields are flattened first (with a warning) because
 copied pages cannot carry an AcroForm with them.
 
+**Deleting text is planned in the editor and carried out by the writer.**
+Removing a word means taking operators out of a content stream, and knowing
+*which* operators requires matching what a reader sees against what the stream
+draws — which needs pdf.js, available only in the editor. So the editor does the
+matching at the moment of the edit and reduces it to a list of operation
+ordinals plus a fingerprint of the stream; at save time the writer re-parses the
+stream, checks the fingerprint still matches, re-checks that deleting is safe,
+and only then cuts the bytes. If any check fails the patch drawn over the
+original is kept instead and the save reports it. `contentstream.js` is the
+parser this rests on, and it is tested against escaped parentheses, nested
+parentheses, octal escapes, `TJ` arrays and inline-image binary that contains
+bytes spelling `Tj`.
+
 ## Known limitations
 
-- **Editing text covers the original rather than deleting it.** A replaced line
-  is a patch plus new text drawn on top. It looks right, prints right, and the
-  new wording is real selectable text — but the words you replaced are still in
-  the file's text layer and can be extracted by other software. The same is true
-  of black-out boxes, which are **not** redaction.
+- **Text editing removes the original, but not on every page.** Usually the
+  words you replace are deleted from the page's content stream and are gone. On
+  pages where that cannot be done safely the editor falls back to covering them,
+  and *tells you at the time* — those words remain extractable. The checks that
+  trigger the fallback are deliberately strict, because the alternative to
+  refusing is corrupting a page.
+- **Black-out boxes are not redaction.** Unlike a text replacement, a black-out
+  box only covers what is underneath; the content stays in the file.
 
-  To make either permanent, use **Page → Flatten Page to Image**. That turns the
-  page into a 200 dpi picture with no text layer at all, so nothing is left
-  underneath. The trade-off is that the page stops being searchable and
-  selectable, which is why it is a deliberate, confirmed action rather than
-  something that happens on save.
+  To make a black-out box permanent — or to be certain about a page that fell
+  back to covering — use **Page → Flatten Page to Image**. That turns the page
+  into a 200 dpi picture with no text layer at all. The trade-off is that the
+  page stops being searchable and selectable, which is why it is a deliberate,
+  confirmed action rather than something that happens on save.
 - **Editing works line by line, and does not reflow paragraphs.** A replacement
   keeps the shape of the line it stands in for and grows sideways as you type;
   it will not push the following lines down or re-wrap a paragraph.

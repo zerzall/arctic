@@ -25,6 +25,8 @@ import {
   hexToRgb01,
 } from './geometry.js';
 import { layoutTextAnnot, alignedX, sanitizeForStandardFont } from './textlayout.js';
+import { readPageContent, writePageContent } from './pagestream.js';
+import { applyDeletion } from './contentstream.js';
 
 const FONT_TABLE = {
   Helvetica: {
@@ -360,6 +362,42 @@ function applyMetadata(doc, meta) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Removing the document's own text                                    *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Delete the original wording behind every replaced line on a page.
+ *
+ * All of a page's removals go through one call: each deletion shifts the byte
+ * offsets of everything after it, so the ordinals from a second pass would be
+ * meaningless. When it works, the words are gone from the file; when it does
+ * not, the patch that was drawn over them stays and the caller is told why.
+ *
+ * @returns {{removed:Set<string>, warning?:string}} pairIds whose original went
+ */
+function removeOriginalText(doc, page, annots) {
+  const removed = new Set();
+  const plans = annots.filter((a) => a.removeOriginal && a.removeOriginal.ordinals);
+  if (!plans.length) return { removed };
+
+  const content = readPageContent(doc, page);
+  if (!content) {
+    return { removed, warning: "a page's drawing instructions could not be read" };
+  }
+
+  const ordinals = [];
+  for (const annot of plans) ordinals.push(...annot.removeOriginal.ordinals);
+  const expected = plans[0].removeOriginal.fingerprint;
+
+  const result = applyDeletion(content, ordinals, expected);
+  if (!result.ok) return { removed, warning: result.reason };
+
+  writePageContent(doc, page, result.bytes);
+  for (const annot of plans) if (annot.pairId) removed.add(annot.pairId);
+  return { removed };
+}
+
+/* ------------------------------------------------------------------ *
  * Model helpers                                                       *
  * ------------------------------------------------------------------ */
 
@@ -493,8 +531,20 @@ export async function buildPdf(model) {
 
     page.setRotation(degrees(normRotation(spec.rotate)));
 
+    // Take the replaced wording out of the page before drawing anything on it.
+    const { removed, warning } = removeOriginalText(doc, page, spec.annots || []);
+    if (warning) {
+      warnings.push(
+        `The original text on page ${i + 1} could not be removed (${warning}), ` +
+          'so it is covered instead and stays in the file.'
+      );
+    }
+
     for (const annot of spec.annots || []) {
       if (annot.hidden) continue;
+      // The patch exists to hide text that is now gone; drawing it would only
+      // risk covering something else that was underneath.
+      if (annot.type === 'cover' && annot.pairId && removed.has(annot.pairId)) continue;
       if (annot.type === 'text') {
         droppedChars += sanitizeForStandardFont(annot.text || '').dropped;
       }
