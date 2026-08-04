@@ -1,0 +1,83 @@
+{
+  "name": "arctic-pdf-editor",
+  "productName": "Arctic PDF Editor",
+  "version": "1.0.0",
+  "description": "A desktop PDF editor for Windows: annotate, add text, reorder and rotate pages, merge, split, fill forms and export.",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "vendor": "node scripts/copy-vendor.js",
+    "postinstall": "node scripts/copy-vendor.js",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "icon": "python3 scripts/make-icon.py",
+    "dist:win": "npm run vendor && electron-builder --win --x64",
+    "pack": "npm run vendor && electron-builder --dir"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.2.108"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.arctic.pdfeditor",
+    "productName": "Arctic PDF Editor",
+    "copyright": "Copyright (c) 2026 Arctic",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "!src/renderer/vendor/**/*.map",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "fileAssociations": [
+        {
+          "ext": "pdf",
+          "name": "PDF Document",
+          "description": "Portable Document Format",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Arctic PDF Editor",
+      "uninstallDisplayName": "Arctic PDF Editor ${version}",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  }
+}

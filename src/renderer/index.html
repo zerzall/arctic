@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:; worker-src 'self' blob:;"
+    />
+    <title>Arctic PDF Editor</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-tool="select">
+    <!-- ------------------------------ toolbar ------------------------------ -->
+    <header id="toolbar">
+      <div class="tb-group">
+        <button class="tb-btn" data-command="file:open" title="Open a PDF (Ctrl+O)">
+          <span class="ico">&#128193;</span>Open
+        </button>
+        <button class="tb-btn" data-command="file:save" data-needs-doc title="Save (Ctrl+S)">
+          <span class="ico">&#128190;</span>Save
+        </button>
+        <button class="tb-btn" data-command="file:save-as" data-needs-doc title="Save as (Ctrl+Shift+S)">
+          Save As
+        </button>
+        <button class="tb-btn" data-command="file:print" data-needs-doc title="Print (Ctrl+P)">
+          <span class="ico">&#128424;</span>Print
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <div class="tb-group">
+        <button class="tb-btn icon" id="btn-undo" data-command="edit:undo" title="Undo (Ctrl+Z)">&#8630;</button>
+        <button class="tb-btn icon" id="btn-redo" data-command="edit:redo" title="Redo (Ctrl+Y)">&#8631;</button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <div class="tb-group" id="tools">
+        <button class="tb-btn tool" data-tool="select" title="Select and move objects (V)">&#10530; Select</button>
+        <button class="tb-btn tool" data-tool="text" title="Add a text box (T)">T Text</button>
+        <button class="tb-btn tool" data-tool="draw" title="Freehand pen (D)">&#9998; Pen</button>
+        <button class="tb-btn tool" data-tool="highlight" title="Highlight (H)">&#9646; Highlight</button>
+        <button class="tb-btn tool" data-tool="rect" title="Rectangle (R)">&#9633; Rect</button>
+        <button class="tb-btn tool" data-tool="ellipse" title="Ellipse (E)">&#9711; Ellipse</button>
+        <button class="tb-btn tool" data-tool="line" title="Line (L)">&#8725; Line</button>
+        <button class="tb-btn tool" data-tool="arrow" title="Arrow (A)">&#8599; Arrow</button>
+        <button class="tb-btn" data-command="tool:image" data-needs-doc title="Insert an image">&#128444; Image</button>
+        <button class="tb-btn" data-command="tool:signature" data-needs-doc title="Draw a signature">&#9997; Sign</button>
+        <button class="tb-btn tool" data-tool="whiteout" title="Cover content with a white box">&#9744; White-out</button>
+        <button class="tb-btn tool" data-tool="blackout" title="Cover content with a black box">&#9632; Black-out</button>
+      </div>
+
+      <div class="tb-spacer"></div>
+
+      <div class="tb-group">
+        <button class="tb-btn icon" data-command="page:rotate-left" data-needs-doc title="Rotate selected pages left">&#8634;</button>
+        <button class="tb-btn icon" data-command="page:rotate-right" data-needs-doc title="Rotate selected pages right">&#8635;</button>
+        <button class="tb-btn icon" data-command="page:delete" data-needs-doc title="Delete selected pages">&#128465;</button>
+        <button class="tb-btn icon" data-command="edit:find" data-needs-doc title="Find text (Ctrl+F)">&#128269;</button>
+      </div>
+    </header>
+
+    <!-- ------------------------------- find -------------------------------- -->
+    <div id="find-bar">
+      <input id="find-input" type="search" placeholder="Find in document" spellcheck="false" />
+      <span id="find-count" class="muted"></span>
+      <label class="chk"><input type="checkbox" id="find-case" /> Aa</label>
+      <label class="chk"><input type="checkbox" id="find-word" /> Word</label>
+      <button class="tb-btn icon" id="find-prev" title="Previous (Shift+F3)">&#8593;</button>
+      <button class="tb-btn icon" id="find-next" title="Next (F3)">&#8595;</button>
+      <button class="tb-btn icon" id="find-close" title="Close">&#10005;</button>
+    </div>
+
+    <!-- ------------------------------- body -------------------------------- -->
+    <main id="workspace">
+      <aside id="thumb-panel">
+        <div class="panel-head">
+          <span>Pages</span>
+          <div class="panel-head-actions">
+            <button class="mini" data-command="page:move-up" data-needs-doc title="Move up">&#9650;</button>
+            <button class="mini" data-command="page:move-down" data-needs-doc title="Move down">&#9660;</button>
+            <button class="mini" data-command="page:duplicate" data-needs-doc title="Duplicate">&#10697;</button>
+            <button class="mini" data-command="page:insert-blank" data-needs-doc title="Insert blank page">+</button>
+          </div>
+        </div>
+        <div id="thumb-rail"></div>
+        <div class="panel-foot">
+          <button class="wide" data-command="file:insert-pdf" data-needs-doc>Insert pages from PDF...</button>
+          <button class="wide" data-command="file:extract" data-needs-doc>Extract selected pages...</button>
+        </div>
+      </aside>
+
+      <section id="viewport">
+        <div id="page-area" class="empty"></div>
+
+        <div id="empty-state">
+          <div class="empty-card">
+            <h1>Arctic PDF Editor</h1>
+            <p>Open a PDF to annotate it, rearrange its pages, fill in forms and save a new copy.</p>
+            <button class="primary" data-command="file:open">Open a PDF</button>
+            <p class="muted small">...or drop a file anywhere on this window.</p>
+          </div>
+        </div>
+      </section>
+
+      <aside id="props-panel">
+        <div class="panel-section" id="section-style">
+          <h3>Style</h3>
+          <div class="panel-body">
+            <p class="scope muted" id="style-scope"></p>
+
+            <div class="row" id="row-color">
+              <label for="style-color">Colour</label>
+              <input type="color" id="style-color" value="#e03131" />
+            </div>
+
+            <div class="row" id="row-fill">
+              <label for="style-fill">Fill</label>
+              <span class="inline">
+                <input type="checkbox" id="style-fill-on" />
+                <input type="color" id="style-fill" value="#ffffff" />
+              </span>
+            </div>
+
+            <div class="row" id="row-width">
+              <label for="style-width">Line</label>
+              <span class="inline">
+                <input type="range" id="style-width" min="0" max="12" step="0.5" value="2" />
+                <output id="style-width-out">2pt</output>
+              </span>
+            </div>
+
+            <div class="row" id="row-opacity">
+              <label for="style-opacity">Opacity</label>
+              <span class="inline">
+                <input type="range" id="style-opacity" min="5" max="100" step="5" value="100" />
+                <output id="style-opacity-out">100%</output>
+              </span>
+            </div>
+
+            <div id="row-text">
+              <div class="row">
+                <label for="style-font">Font</label>
+                <select id="style-font">
+                  <option value="Helvetica">Helvetica / Arial</option>
+                  <option value="Times">Times</option>
+                  <option value="Courier">Courier</option>
+                </select>
+              </div>
+              <div class="row">
+                <label for="style-size">Size</label>
+                <span class="inline">
+                  <input type="number" id="style-size" min="4" max="144" step="1" value="12" />
+                  <button class="mini" id="style-bold" title="Bold"><b>B</b></button>
+                  <button class="mini" id="style-italic" title="Italic"><i>I</i></button>
+                </span>
+              </div>
+              <div class="row">
+                <label for="style-align">Align</label>
+                <select id="style-align">
+                  <option value="left">Left</option>
+                  <option value="center">Centre</option>
+                  <option value="right">Right</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row-actions" id="annot-actions">
+              <button id="annot-edit-text">Edit text</button>
+              <button id="annot-front" title="Bring to front">Front</button>
+              <button id="annot-back" title="Send to back">Back</button>
+              <button id="annot-delete" class="danger">Delete</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section" id="section-page">
+          <h3>Page</h3>
+          <div class="panel-body">
+            <div id="page-info" class="info-grid"></div>
+            <div class="row-actions">
+              <button data-command="page:rotate-left" data-needs-doc>Rotate left</button>
+              <button data-command="page:rotate-right" data-needs-doc>Rotate right</button>
+              <button data-command="file:export-png" data-needs-doc>Export PNG</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section" id="section-doc">
+          <h3>Document</h3>
+          <div class="panel-body">
+            <div class="row stacked">
+              <label for="meta-title">Title</label>
+              <input type="text" id="meta-title" />
+            </div>
+            <div class="row stacked">
+              <label for="meta-author">Author</label>
+              <input type="text" id="meta-author" />
+            </div>
+            <div class="row stacked">
+              <label for="meta-subject">Subject</label>
+              <input type="text" id="meta-subject" />
+            </div>
+            <div class="row stacked">
+              <label for="meta-keywords">Keywords</label>
+              <input type="text" id="meta-keywords" placeholder="comma, separated" />
+            </div>
+            <p class="muted small" id="meta-extra"></p>
+            <div class="row-actions">
+              <button data-command="file:merge" data-needs-doc>Merge PDFs...</button>
+              <button data-command="file:split" data-needs-doc>Split pages...</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section" id="section-form">
+          <h3>Form fields</h3>
+          <div class="panel-body">
+            <p class="muted small" id="form-empty">This document has no interactive form fields.</p>
+            <div id="form-fields"></div>
+            <label class="chk block">
+              <input type="checkbox" id="form-flatten" />
+              Flatten fields on save (make values permanent)
+            </label>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ------------------------------ status ------------------------------- -->
+    <footer id="statusbar">
+      <div class="status-left">
+        <span id="doc-name">No document open</span>
+        <span id="doc-path" class="muted small"></span>
+      </div>
+
+      <div class="status-centre">
+        <button class="mini" id="page-prev" title="Previous page">&#8592;</button>
+        <input id="page-input" type="number" min="1" />
+        <span id="page-total" class="muted"></span>
+        <button class="mini" id="page-next" title="Next page">&#8594;</button>
+      </div>
+
+      <div class="status-right">
+        <button class="mini" data-command="view:zoom-out" title="Zoom out">&#8722;</button>
+        <span id="zoom-value">100%</span>
+        <button class="mini" data-command="view:zoom-in" title="Zoom in">+</button>
+        <select id="zoom-select">
+          <option value="fit-width">Fit width</option>
+          <option value="fit-page">Fit page</option>
+          <option value="0.5">50%</option>
+          <option value="0.75">75%</option>
+          <option value="1">100%</option>
+          <option value="1.5">150%</option>
+          <option value="2">200%</option>
+          <option value="4">400%</option>
+        </select>
+        <button class="mini" data-command="view:toggle-thumbs" title="Toggle page thumbnails (F4)">&#9776;</button>
+        <button class="mini" data-command="view:toggle-props" title="Toggle properties panel (F8)">&#9707;</button>
+      </div>
+    </footer>
+
+    <!-- ------------------------------ overlays ----------------------------- -->
+    <div id="toasts"></div>
+
+    <div id="busy">
+      <div class="busy-box"><div class="spinner"></div><span class="busy-label">Working...</span></div>
+    </div>
+
+    <div id="modal-backdrop"></div>
+
+    <div class="modal" id="modal-signature">
+      <h2>Draw your signature</h2>
+      <canvas id="sig-canvas"></canvas>
+      <div class="modal-row">
+        <label>Ink <input type="color" id="sig-color" value="#101a3a" /></label>
+        <label>Width <input type="range" id="sig-width" min="1" max="8" step="0.5" value="2.5" /></label>
+        <button id="sig-clear">Clear</button>
+      </div>
+      <div class="modal-actions">
+        <button id="sig-cancel">Cancel</button>
+        <button id="sig-insert" class="primary">Insert</button>
+      </div>
+    </div>
+
+    <div class="modal" id="modal-password">
+      <h2>Password required</h2>
+      <form id="pw-form">
+        <p class="muted small">This PDF is encrypted. Enter its open password to view it.</p>
+        <input type="password" id="pw-input" autocomplete="off" />
+        <p class="error small" id="pw-error">That password was not accepted. Try again.</p>
+        <div class="modal-actions">
+          <button type="button" id="pw-cancel">Cancel</button>
+          <button type="submit" class="primary">Unlock</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="modal" id="modal-shortcuts">
+      <h2>Keyboard shortcuts</h2>
+      <div class="shortcut-grid">
+        <div><kbd>Ctrl</kbd>+<kbd>O</kbd></div><div>Open</div>
+        <div><kbd>Ctrl</kbd>+<kbd>S</kbd></div><div>Save</div>
+        <div><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></div><div>Save as</div>
+        <div><kbd>Ctrl</kbd>+<kbd>P</kbd></div><div>Print</div>
+        <div><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find, <kbd>F3</kbd> next</div>
+        <div><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></div><div>Undo / redo</div>
+        <div><kbd>Ctrl</kbd>+<kbd>D</kbd></div><div>Duplicate selection</div>
+        <div><kbd>Ctrl</kbd>+<kbd>[</kbd> / <kbd>]</kbd></div><div>Rotate pages</div>
+        <div><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></div><div>Zoom in / out / 100%</div>
+        <div><kbd>Ctrl</kbd>+scroll</div><div>Zoom</div>
+        <div><kbd>V</kbd> <kbd>T</kbd> <kbd>D</kbd> <kbd>H</kbd> <kbd>R</kbd> <kbd>E</kbd> <kbd>L</kbd> <kbd>A</kbd></div>
+        <div>Select, Text, Pen, Highlight, Rect, Ellipse, Line, Arrow</div>
+        <div><kbd>Delete</kbd></div><div>Delete selected object or pages</div>
+        <div>Arrow keys</div><div>Nudge selection (<kbd>Shift</kbd> = 10pt)</div>
+        <div><kbd>F4</kbd> / <kbd>F8</kbd></div><div>Toggle side panels</div>
+      </div>
+      <div class="modal-actions"><button class="primary" data-close-modal>Close</button></div>
+    </div>
+
+    <div class="modal" id="modal-about">
+      <h2>About</h2>
+      <div id="about-body"></div>
+      <div class="modal-actions"><button class="primary" data-close-modal>Close</button></div>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
