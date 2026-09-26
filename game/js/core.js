@@ -29,8 +29,29 @@
     MAX_SPEED: 50,
     FIXED_DT: 1 / 120,
     FOG_FAR: 640,
+    CAMERA_NEAR: 0.3,
     CAMERA_FAR: 1600,
-    SKY_RADIUS: 1100
+    SKY_RADIUS: 1100,
+    // --- physics & hit shapes (game.js applies them; director/obstacles build to them) ---
+    ROLL_T: 0.62, // seconds a roll lasts; a jump cancels it
+    COYOTE: 0.1, // seconds after leaving an edge where a jump still works
+    JUMP_BUFFER: 0.18, // a jump pressed this long before landing fires on landing
+    ROLL_BUFFER: 0.15,
+    BODY_H: 1.85, // standing body height
+    BODY_ROLL_H: 0.95, // body height while rolling
+    HALF_D: 0.3, // half the body's depth along z
+    HALF_W: 1.0, // |px - obstacle.x| below this counts as the same lane
+    HURDLE_TOP: 1.05, HURDLE_CLEAR: 0.85, // feet must be >= HURDLE_CLEAR to pass a hurdle
+    BAR_BOTTOM: 1.42, BAR_TOP: 3.4, // overhead sign: roll under; too tall to jump over at any frame rate
+    BLOCK_TOP: 3.2, // tall barrier: change lane (super-jump can clear it)
+    TRAIN_KILL_Y: 2.8, // a train kills if the feet are below this; landing on a roof needs feet >= 2.8 while falling
+    ONCOMING_VZ: 13, // oncoming trains move toward +z at this speed
+    CAR_L: 4.5, // train lengths are multiples of this (minimum 2 units)
+    // --- world layout ---
+    TUNNEL_HALF: 60, // a tunnel spans +/- this around every world boundary (k >= 1)
+    TERRAIN_FLAT: 18, // terrain is exactly flat (y = 0) for |x| < this; hills rise beyond
+    FAR_CLEAR: 40, // far layers (mountains, hills, big landmarks): |x| - radius >= this
+    GLOW_BOOST_POST: 1.8 // RR.mats.glow.color is set to this (x white) when post-processing is on, so glow parts bloom
   });
 
   // ------------------------------------------------------------------ maths
@@ -50,6 +71,10 @@
     const next = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
     return { next, range: (a, b) => a + next() * (b - a), pick: (arr) => arr[(next() * arr.length) | 0], chance: (p) => next() < p };
   };
+  RR.speedAt = (dist) => C.BASE_SPEED + (C.MAX_SPEED - C.BASE_SPEED) * (1 - Math.exp(-Math.max(0, dist) / 2800)); // m/s at a distance
+  // Tunnel between worlds: k-th boundary (k >= 1) at z = -k*WORLD_LEN, tunnel spans z in [-k*L - TUNNEL_HALF, -k*L + TUNNEL_HALF].
+  RR.nearestBoundaryK = (z) => Math.max(1, Math.round(-z / C.WORLD_LEN));
+  RR.inTunnel = (z, pad) => { const k = RR.nearestBoundaryK(z); return Math.abs(z + k * C.WORLD_LEN) <= C.TUNNEL_HALF + (pad || 0); };
   RR.worldIndexAt = (z) => Math.floor(Math.max(0, -z) / C.WORLD_LEN) % RR.WORLDS.length; // z is world z (player runs toward -z)
   RR.worldStartZ = (k) => -k * C.WORLD_LEN; // k = absolute world count (0, 1, 2, ...), not the cycled index
 
@@ -74,8 +99,16 @@
     missions: null, // owned by the mission system in game.js
     missionLevel: 1,
     history: [], // last runs: { score, dist, coins, world }
-    settings: { quality: 'auto', sound: true, music: true },
-    tutorialDone: false
+    settings: { quality: 'auto', sound: true, music: true, reducedMotion: 'auto', touchButtons: false, swipe: 'normal' },
+    tutorialDone: false,
+    upgrades: { magnet: 0, sneakers: 0, double: 0, jetpack: 0 }, // 0..5
+    tokens: 0, // revive tokens
+    headStarts: 0,
+    board: 'classic', // selected hoverboard design
+    ownedBoards: ['classic'],
+    stats: {}, // lifetime stats, owned by game.js (runs, dist, jumps, ...)
+    hintsSeen: {},
+    daily: { day: '', best: 0 }
   });
   function deepMerge(base, over) {
     if (!over || typeof over !== 'object') return base;
@@ -88,7 +121,15 @@
   RR.store = {
     data: DEFAULT_SAVE(),
     load() {
-      try { const raw = localStorage.getItem(SAVE_KEY); if (raw) this.data = deepMerge(DEFAULT_SAVE(), JSON.parse(raw)); } catch (e) { this.data = DEFAULT_SAVE(); }
+      try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (raw) this.data = deepMerge(DEFAULT_SAVE(), JSON.parse(raw));
+        else { // first visit of v2: carry over v1's best score and sound choice
+          this.data = DEFAULT_SAVE();
+          const b = parseInt(localStorage.getItem('rr-best') || '0', 10); if (b > 0) this.data.best = b;
+          const snd = localStorage.getItem('rr-sound'); if (snd !== null) this.data.settings.sound = snd === '1';
+        }
+      } catch (e) { this.data = DEFAULT_SAVE(); }
       return this.data;
     },
     save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* storage unavailable: progress lives for this visit only */ } },
@@ -341,4 +382,5 @@
   // Registry so game.js can find modules and call lifecycle hooks in a fixed order.
   RR.modules = [];
   RR.register = (name, mod) => { RR[name] = mod; RR.modules.push({ name, mod }); return mod; };
+  RR.MODULE_ORDER = ['sky', 'track', 'worlds', 'director', 'obstacles', 'player', 'fx', 'audio', 'ui'];
 })();
