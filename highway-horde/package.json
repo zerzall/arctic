@@ -1,0 +1,23 @@
+{
+  "name": "highway-horde",
+  "version": "1.0.0",
+  "description": "Co-op top-down zombie shooter for 1-6 players in the browser.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server/relay-server.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "e2e": "node scripts/e2e.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "peer": "^1.0.2",
+    "playwright": "1.56.1"
+  }
+}
