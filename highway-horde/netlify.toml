@@ -1,0 +1,18 @@
+# Static hosting on Netlify. If you connect the repository in the Netlify UI, set the
+# base directory to "highway-horde"; there is no build step.
+[build]
+  publish = "public"
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Game code changes with every deploy; make browsers revalidate instead of caching stale
+# modules that no longer match each other (host and clients must run the same version).
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
