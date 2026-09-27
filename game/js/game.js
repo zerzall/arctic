@@ -391,6 +391,7 @@
     callAll('init', ctx);
     applySkin(sd.skin); applyBoard(sd.board);
     resize();
+    prewarm();
     toTitle(true);
     safe('compile', () => renderer.compile(scene, camera));
     bindInput();
@@ -401,6 +402,22 @@
     window.addEventListener('blur', () => pause());
     window.addEventListener('pagehide', persist);
     rafId = requestAnimationFrame(loop);
+  }
+
+  // Compile every world's shaders behind the loading screen so the first visit to a world never hitches:
+  // build each world (and a tunnel) around the camera, compile what is visible, then return to the title.
+  function prewarm() {
+    const spots = [-400, -1000, -1400, -2400, -3400, -4400];
+    for (const z of spots) {
+      safe('prewarm', () => {
+        resetModules(z);
+        camera.position.set(0, 5.3, z + 9); camera.lookAt(0, 1, z - 8); camera.updateMatrixWorld();
+        frame.pz = z; frame.px = 0; frame.py = 0; frame.world = RR.worldIndexAt(z); frame.inTunnel = RR.inTunnel(z); frame.camera = camera; frame.dt = 1 / 60; frame.state = 'run';
+        RR.MODULE_ORDER.forEach((n) => { const m = RR[n]; if (m && n !== 'ui' && n !== 'audio' && n !== 'director' && n !== 'player' && typeof m.update === 'function') safe(n + '.prewarm', () => m.update(1 / 60, frame)); });
+        renderer.compile(scene, camera);
+      });
+    }
+    frame.state = 'title';
   }
 
   // The director is consumed by obstacles.js; we observe its chunks for the tutorial and the autopilot.

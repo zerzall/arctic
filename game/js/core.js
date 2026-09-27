@@ -47,6 +47,7 @@
     TRAIN_KILL_Y: 2.8, // a train kills if the feet are below this; landing on a roof needs feet >= 2.8 while falling
     ONCOMING_VZ: 13, // oncoming trains move toward +z at this speed
     CAR_L: 4.5, // train lengths are multiples of this (minimum 2 units)
+    BALLAST_Y: 0.05, SLEEPER_Y: 0.14, RAIL_Y: 0.28, RAIL_GAUGE_HALF: 0.6, // visual track surface (physics uses y = 0)
     // --- world layout ---
     TUNNEL_HALF: 60, // a tunnel spans +/- this around every world boundary (k >= 1)
     TERRAIN_FLAT: 18, // terrain is exactly flat (y = 0) for |x| < this; hills rise beyond
@@ -320,10 +321,12 @@
   class InstancedPool {
     constructor(geo, mat, capacity, parent, opts) {
       this.mesh = new THREE.InstancedMesh(geo, mat, capacity);
-      if (opts && opts.colors) { // per-instance tint, multiplied with vertex colours; must exist before the first render
-        this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3).fill(1), 3);
-        this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-      }
+      // Always give instances a colour (white = untinted). In r128 the renderer does not re-check
+      // `instancingColor` when picking a cached program, so InstancedMeshes that share a material must
+      // agree on whether instanceColor exists, or rendering crashes.
+      this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3).fill(1), 3);
+      this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      this.live = 0; // number of live instances (callers may hide the mesh when 0)
       if (opts && opts.castShadow) this.mesh.castShadow = true;
       this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.mesh.frustumCulled = false;
@@ -339,7 +342,7 @@
       let id = this.free.length ? this.free.pop() : this.used < this.capacity ? this.used++ : -1;
       if (id < 0) return -1; // full: caller should skip this instance
       this.set(id, x, y, z, ry, s, rx, rz);
-      this.alive[id] = 1;
+      this.alive[id] = 1; this.live++;
       this.mesh.count = Math.max(this.mesh.count, id + 1);
       return id;
     }
@@ -358,14 +361,15 @@
     }
     remove(id) {
       if (id < 0 || !this.alive[id]) return;
-      this.alive[id] = 0;
+      this.alive[id] = 0; this.live--;
       this.mesh.setMatrixAt(id, this.zero);
       this.mesh.instanceMatrix.needsUpdate = true;
+      if (this.mesh.instanceColor) { this.mesh.setColorAt(id, _c.setRGB(1, 1, 1)); this.mesh.instanceColor.needsUpdate = true; }
       this.free.push(id);
     }
     clear() {
       for (let i = 0; i < this.used; i++) { this.alive[i] = 0; this.mesh.setMatrixAt(i, this.zero); }
-      this.free.length = 0; this.used = 0; this.mesh.count = 0;
+      this.free.length = 0; this.used = 0; this.mesh.count = 0; this.live = 0;
       this.mesh.instanceMatrix.needsUpdate = true;
     }
   }
