@@ -6,6 +6,13 @@
 //
 // stop() releases everything it created (listeners, rAF, renderer) so the next match
 // starts from a clean slate.
+//
+// Views (SPEC §7.5): 'fps' (default) runs the three.js first-person renderer; the UI owns
+// yaw/pitch (mouse under pointer lock, touch look pad, gamepad right stick), rotates the
+// move vector into world space and sends the yaw as the aim angle. 'topdown' (the classic
+// view, and the fallback without WebGL) aims at the cursor through screenToWorld as before.
+// The two renderers need different canvas contexts, so a canvas that already carries the
+// other kind is swapped for a fresh clone.
 
 import { DIFFICULTIES } from '../shared/constants.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
@@ -16,11 +23,81 @@ import { createGameChat } from './chat.js';
 import { fillStatsTable, statRows } from './scoreboard.js';
 import { padNavigate } from './padnav.js';
 import { flashToast } from './menus.js';
+import { applyLook, moveToWorld, aimAssist, sensitivityOf, wrapAngle } from './look.js';
 
 const END_DELAY = 2.6;
+/**
+ * The debug hook between games. Module-level on purpose: closures created inside
+ * startMatch() share its context, so `() => null` made there kept the finished match
+ * (renderer, scene, HUD) reachable from window.__HH until the next game started.
+ */
+const NULL_DEBUG = Object.freeze({
+  renderer: null, hud: null, input: null, getView: () => null, getLocal: () => null,
+  view: null, look: () => {}, getLook: () => null,
+});
 /** After a touch button opens the shop/pause menu, clicks this soon are the same tap (s). */
 const GHOST_CLICK_WINDOW = 0.6;
 const MAX_LOGGED_ERRORS = 5;
+/** A pause edge this soon after the lock loss opened the menu is the same Esc press (s). */
+const LOCK_ESC_WINDOW = 0.5;
+
+/** Whether the first-person renderer can run here (asked once per page: it makes a context). */
+function webglOk(ctx) {
+  if (ctx.webgl === undefined || ctx.webgl === null) {
+    try {
+      ctx.webgl = typeof ctx.deps.isWebGLAvailable === 'function' ? !!ctx.deps.isWebGLAvailable() : false;
+    } catch {
+      ctx.webgl = false;
+    }
+  }
+  return ctx.webgl;
+}
+
+/**
+ * The game canvas, ready for a context of `kind` ('2d' | 'webgl'). A canvas keeps the first
+ * context type it was asked for, so switching views between games (or recovering from a
+ * failed WebGL start) swaps in a fresh clone. The WebGL canvas itself is reused from game to
+ * game: the browser caps live WebGL contexts, and three.js happily adopts the old one.
+ */
+function gameCanvas(kind, fresh = false) {
+  let c = $('#game-canvas');
+  if (fresh || (c.dataset.ctx && c.dataset.ctx !== kind)) {
+    if (c.dataset.ctx === 'webgl') {
+      // Hand the GPU context back now rather than whenever the old element is collected.
+      try {
+        const gl = c.getContext('webgl2');
+        const lose = gl && gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      } catch {
+        // best-effort
+      }
+    }
+    const n = c.cloneNode(false);
+    c.replaceWith(n);
+    c = n;
+  }
+  c.dataset.ctx = kind;
+  return c;
+}
+
+/** First-person renderer when the view setting asks for it and it can run, else top-down. */
+function createViewRenderer(ctx, map) {
+  const { deps, prefs } = ctx;
+  const quality = prefs.settings.quality;
+  if (prefs.settings.view !== 'topdown' && typeof deps.createRenderer3D === 'function' && webglOk(ctx)) {
+    const canvas = gameCanvas('webgl');
+    try {
+      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality }) };
+    } catch (err) {
+      console.warn('[game] the first-person view failed to start, using the classic view', err);
+      ctx.webgl = false;
+      const c2 = gameCanvas('2d', true);
+      return { fps: false, canvas: c2, renderer: deps.createRenderer(c2, { map, quality }), fellBack: true };
+    }
+  }
+  const canvas = gameCanvas('2d');
+  return { fps: false, canvas, renderer: deps.createRenderer(canvas, { map, quality }), fellBack: prefs.settings.view !== 'topdown' };
+}
 
 /**
  * @param {object} ctx app context (deps, prefs, audio, history, modals, dialogs, settingsDialog,
@@ -32,7 +109,6 @@ export function startMatch(ctx, session) {
   const { deps, prefs, audio } = ctx;
   const scope = createScope();
   const screen = $('#screen-game');
-  const canvas = $('#game-canvas');
   const hudEl = $('#hud');
   const pauseEl = $('#pause');
   const endEl = $('#endscreen');
@@ -53,11 +129,38 @@ export function startMatch(ctx, session) {
     flashToast(ok ? 'Invite link copied' : 'Couldn\'t copy — share the room code instead', ok ? 'good' : 'bad');
   }
 
-  const renderer = deps.createRenderer(canvas, { map, quality: prefs.settings.quality });
-  const input = createInput(canvas, { touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch });
-  const hud = createHud(hudEl, { map, renderClassPortrait: deps.renderClassPortrait, audio, invite });
+  const made = createViewRenderer(ctx, map);
+  const { renderer, canvas, fps } = made;
+  screen.classList.toggle('view-fps', fps);
+  const input = createInput(canvas, {
+    touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch, view: fps ? 'fps' : 'topdown',
+    onLockChange: (locked) => onLockChange(locked),
+  });
+  const hud = createHud(hudEl, {
+    map, renderClassPortrait: deps.renderClassPortrait, audio, invite,
+    view: fps ? 'fps' : 'topdown', minimapRotate: prefs.settings.minimapRotate,
+  });
   hud.setRoster(session.roster, session.localId);
   audio.setMap(map);
+  if (made.fellBack && prefs.settings.view === 'fps') {
+    // Said once per page: the setting stays 'fps' for a browser that can do it next time.
+    if (!ctx.toldNoWebgl) hud.toast('3D view unavailable here — playing in the classic top-down view', 'minor', 5);
+    ctx.toldNoWebgl = true;
+  }
+
+  // First person: the UI owns the camera angles (SPEC §7.5). Initialised from the local
+  // player's snapshot angle the first time we see it.
+  const look = { yaw: 0, pitch: 0 };
+  let lookReady = false;
+  const moveW = { x: 0, y: 0 };
+  let pauseByLockAt = -1;
+  let wasEnabled = false;
+  // "Click to play" card while the mouse isn't captured (desktop first person only).
+  const lockHint = h('div.lock-hint', { hidden: true }, [
+    h('div.lock-hint-title', { text: 'Click to play' }),
+    h('div.lock-hint-sub', { text: 'Mouse to look · Esc releases the mouse' }),
+  ]);
+  if (fps) screen.appendChild(lockHint);
 
   let pauseOpen = false;
   let endShown = false;
@@ -69,11 +172,15 @@ export function startMatch(ctx, session) {
   let lastView = null;
   let prevPhase = '';
   let errors = 0;
-  let fps = 60;
+  let fpsRate = 60;
+  let frameCount = 0;
   let fpsAcc = 0;
   let fpsN = 0;
   let lastLocal = null;
-  const renderSettings = { screenShake: true, showNames: true, lighting: true };
+  // fov is read by the first-person renderer, ignored by the top-down one. `crosshair` tells
+  // it whether a menu covers the view (not in SPEC §7.5 yet: an overlay may ignore it).
+  const renderSettings = { screenShake: true, showNames: true, lighting: true, fov: 80, crosshair: true };
+  const renderLook = { yaw: 0, pitch: 0 };
 
   const shop = createShop($('#shop-root'), { session, audio, map, onClose: () => refreshEnabled() });
   const chat = createGameChat(hudEl, {
@@ -89,6 +196,8 @@ export function startMatch(ctx, session) {
     renderSettings.screenShake = s.screenShake;
     renderSettings.showNames = s.showNames;
     renderSettings.lighting = s.lighting;
+    renderSettings.fov = Number.isFinite(s.fov) ? s.fov : 80;
+    hud.setMinimapRotate(s.minimapRotate);
     try {
       renderer.setQuality(s.quality);
     } catch (err) {
@@ -105,6 +214,34 @@ export function startMatch(ctx, session) {
     const on = !overlayOpen();
     input.setEnabled(on);
     screen.classList.toggle('ui-open', !on);
+    if (fps && on !== wasEnabled) {
+      // A menu needs the cursor: release the mouse while one is open. Closing it takes the
+      // mouse back when the browser still counts the closing key/click as a user gesture;
+      // otherwise the "Click to play" card asks for a click.
+      if (!on) input.exitLock();
+      else if (!input.locked && input.mode === 'kbm' && hasUserActivation()) input.requestLock();
+    }
+    wasEnabled = on;
+  }
+
+  function hasUserActivation() {
+    const ua = navigator.userActivation;
+    return ua ? ua.isActive : false;
+  }
+
+  /** Pointer lock gained or lost. Losing it mid-game (Esc, alt-tab) opens the pause menu. */
+  function onLockChange(locked) {
+    if (stopped || !fps) return;
+    if (!locked && !overlayOpen() && !endShown) {
+      openPause();
+      pauseByLockAt = performance.now();
+    }
+  }
+
+  function updateLockHint(me) {
+    if (!fps) return;
+    const show = !stopped && input.mode === 'kbm' && input.lockSupported && !input.locked && !overlayOpen() && !!me;
+    setShown(lockHint, show);
   }
 
   // ---- pause ---------------------------------------------------------------------------------
@@ -112,6 +249,8 @@ export function startMatch(ctx, session) {
   $('#pause-note').textContent = solo
     ? 'The game keeps running — the horde doesn\'t wait. Your survivor stands still while this menu is open.'
     : 'The game keeps running in multiplayer — your survivor stands still while this menu is open.';
+  // First person: resuming captures the mouse again (the click is the gesture it needs).
+  $('#pause-resume').textContent = fps ? 'Click to Resume' : 'Resume';
 
   function openPause() {
     if (pauseOpen || endShown) return;
@@ -134,7 +273,10 @@ export function startMatch(ctx, session) {
     refreshEnabled();
   }
 
-  scope.on($('#pause-resume'), 'click', () => closePause());
+  scope.on($('#pause-resume'), 'click', () => {
+    closePause();
+    if (fps && !input.locked && !overlayOpen() && input.mode !== 'touch') input.requestLock();
+  });
   scope.on($('#pause-settings'), 'click', () => ctx.settingsDialog.open(() => refreshEnabled()));
   scope.on($('#pause-howto'), 'click', () => ctx.howTo.open(() => refreshEnabled()));
   setShown($('#pause-invite'), !!invite);
@@ -159,7 +301,9 @@ export function startMatch(ctx, session) {
     ctx.dialogs.confirm('Leave the game?', text, 'Leave', () => ctx.onLeave());
   });
   scope.on(pauseEl, 'mousedown', (e) => {
-    if (e.target === pauseEl) closePause();
+    if (e.target !== pauseEl) return;
+    closePause();
+    if (fps && !input.locked && !overlayOpen()) input.requestLock();
   });
 
   // ---- end screen --------------------------------------------------------------------------------
@@ -229,6 +373,10 @@ export function startMatch(ctx, session) {
   }, true);
 
   function handleUi(inp, view, me) {
+    // The Esc that released the pointer lock already opened the menu: don't close it again.
+    if (inp.pause && pauseOpen && pauseByLockAt >= 0 && performance.now() - pauseByLockAt < LOCK_ESC_WINDOW * 1000) {
+      inp.pause = false;
+    }
     if (inp.pause) {
       if (shop.isOpen) shop.close();
       else if (chat.isOpen) chat.close();
@@ -292,17 +440,58 @@ export function startMatch(ctx, session) {
     return map.objective || { x: map.width / 2, y: map.height / 2 };
   }
 
+  /**
+   * First person: turn the camera by this frame's look input, pull it gently toward a
+   * target for gamepad/touch aim assist, rotate the move vector into world space
+   * (mutating `inp`) and return the yaw as the aim angle.
+   */
+  function firstPersonAim(inp, local, me, dt) {
+    const s = prefs.settings;
+    if (!lookReady) {
+      // The first time we see ourselves: face where the sim says we face.
+      const a = local && Number.isFinite(local.angle) ? local.angle : me && Number.isFinite(me.angle) ? me.angle : NaN;
+      if (!Number.isFinite(a)) {
+        // No facing yet: a view-relative move can't be turned into a world one.
+        inp.moveX = inp.moveY = 0;
+        return NaN;
+      }
+      look.yaw = wrapAngle(a);
+      look.pitch = 0;
+      lookReady = true;
+    }
+    const mouse = inp.mode === 'kbm';
+    if (inp.lookDX || inp.lookDY) {
+      applyLook(look, inp.lookDX, inp.lookDY, {
+        sensitivity: mouse ? sensitivityOf(s.sensitivity) : sensitivityOf(s.padLook),
+        invertY: !!s.invertY,
+      });
+    }
+    const alive = me && me.state !== 'dead';
+    if (s.aimAssist && !mouse && alive && local && lastView && input.enabled) {
+      look.yaw = aimAssist(look.yaw, local.x, local.y, lastView.zombies, dt);
+    }
+    if (inp.moveX || inp.moveY) {
+      moveToWorld(inp.moveX, inp.moveY, look.yaw, moveW);
+      inp.moveX = moveW.x;
+      inp.moveY = moveW.y;
+    }
+    return look.yaw;
+  }
+
   function step(now, dt) {
+    frameCount++;
     const viewBefore = lastView;
     const meBefore = findLocal(viewBefore);
     const inp = input.sample();
     handleUi(inp, viewBefore, meBefore);
 
-    // aim: from the predicted local player to the cursor in world space
     const local = session.getPredictedLocal();
     lastLocal = local;
     let aim = NaN;
-    if (local) {
+    if (fps) {
+      aim = firstPersonAim(inp, local, meBefore, dt);
+    } else if (local) {
+      // aim: from the predicted local player to the cursor in world space
       const sp = renderer.worldToScreen(local.x, local.y);
       input.setAnchor(sp.x, sp.y);
       const w = renderer.screenToWorld(inp.aimScreenX, inp.aimScreenY);
@@ -321,28 +510,36 @@ export function startMatch(ctx, session) {
       renderer.addEvents(events, { localId: session.localId });
       hud.addEvents(events);
       shop.onEvents(events, session.localId);
-      audio.addEvents(events, { x: lp.x, y: lp.y, localId: session.localId });
+      audio.addEvents(events, fps ? { x: lp.x, y: lp.y, yaw: lp.yaw, localId: session.localId } : { x: lp.x, y: lp.y, localId: session.localId });
     }
 
     const showCross = !overlayOpen() && (!me || me.state !== 'dead');
+    renderSettings.crosshair = showCross;
+    renderLook.yaw = look.yaw;
+    renderLook.pitch = look.pitch;
     renderer.render(view, {
       localId: session.localId, roster: session.roster, now, dt,
       cursor: showCross ? input.cursor : null, settings: renderSettings,
+      look: fps ? renderLook : undefined,
     });
+    updateLockHint(me);
 
     fpsAcc += dt;
     fpsN++;
     if (fpsAcc >= 0.5) {
-      fps = fpsN / fpsAcc;
+      fpsRate = fpsN / fpsAcc;
       fpsAcc = 0;
       fpsN = 0;
     }
-    hud.update(view, {
-      dt, mode: input.mode, stats: session.stats, fps, showStats: prefs.settings.showStats, isHost: session.isHost,
-      localPos: local, shopOpen: shop.isOpen,
-    });
     const cam = listenerPos();
-    audio.update(view, { localId: session.localId, dt, x: cam.x, y: cam.y });
+    hud.update(view, {
+      dt, mode: input.mode, stats: session.stats, fps: fpsRate, showStats: prefs.settings.showStats, isHost: session.isHost,
+      localPos: local, shopOpen: shop.isOpen,
+      yaw: fps ? (Number.isFinite(cam.yaw) ? cam.yaw : look.yaw) : undefined, camPos: fps ? cam : undefined,
+    });
+    audio.update(view, fps
+      ? { localId: session.localId, dt, x: cam.x, y: cam.y, yaw: cam.yaw }
+      : { localId: session.localId, dt, x: cam.x, y: cam.y });
     const cls = (session.roster.find((r) => r.id === session.localId) || { cls: prefs.cls }).cls;
     shop.update(lastView, me, cls, dt);
 
@@ -400,7 +597,20 @@ export function startMatch(ctx, session) {
   refreshEnabled();
   raf = requestAnimationFrame(frame);
 
-  ctx.setDebug({ renderer, hud, input, getView: () => lastView, getLocal: () => lastLocal });
+  ctx.setDebug({
+    renderer, hud, input, getView: () => lastView, getLocal: () => lastLocal,
+    view: fps ? 'fps' : 'topdown',
+    /**
+     * Test hook (documented in scripts/e2e.js): turn the first-person camera as if the
+     * mouse moved (dx, dy) CSS px under pointer lock. Headless browsers can lock the
+     * pointer but can't produce locked mouse movement.
+     */
+    look: (dx, dy) => input.addLook(dx, dy),
+    /** First person: the UI's camera angles { yaw, pitch } (radians) and lock state. */
+    getLook: () => ({
+      yaw: look.yaw, pitch: look.pitch, ready: lookReady, locked: input.locked, view: fps ? 'fps' : 'topdown', frames: frameCount,
+    }),
+  });
 
   return {
     setRoster(roster) {
@@ -410,6 +620,10 @@ export function startMatch(ctx, session) {
       hud.notice(text);
     },
     applySettings,
+    /** 'fps' | 'topdown': the view this match actually runs. */
+    get view() {
+      return fps ? 'fps' : 'topdown';
+    },
     get ended() {
       return endShown;
     },
@@ -439,11 +653,19 @@ export function startMatch(ctx, session) {
       screen.hidden = true;
       screen.classList.remove('ui-open');
       document.body.classList.remove('in-game');
-      const g = canvas.getContext('2d');
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.fillStyle = '#000';
-      g.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.setDebug({ renderer: null, hud: null, input: null, getView: () => null, getLocal: () => null });
+      screen.classList.remove('view-fps');
+      lockHint.remove();
+      if (!fps) {
+        // Blank the 2D canvas so the next game doesn't flash this one. (The WebGL canvas
+        // is cleared by the next renderer's first frame and hidden with the screen.)
+        const g = canvas.getContext('2d');
+        if (g) {
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.fillStyle = '#000';
+          g.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      ctx.setDebug(NULL_DEBUG);
     },
   };
 }

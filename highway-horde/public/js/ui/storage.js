@@ -3,6 +3,7 @@
 // blocked cookies and full quotas must never stop the game from starting.
 
 import { CLASS_IDS } from '../shared/classes.js';
+import { SENS_MIN, SENS_MAX } from './look.js';
 import { NAME_MAX_LENGTH, DEFAULT_SETTINGS, DIFFICULTY_IDS, WAVE_OPTIONS } from '../shared/constants.js';
 
 const KEY = 'highway-horde:prefs:v1';
@@ -18,7 +19,20 @@ export const DEFAULT_CLIENT_SETTINGS = {
   screenShake: true,
   showNames: true,
   showStats: false,
+  // First-person view (SPEC §7.5). 'fps' | 'topdown'; match.js falls back to top-down when
+  // WebGL is unavailable, without touching the stored choice.
+  view: 'fps',
+  fov: 80,
+  sensitivity: 1,     // mouse, × LOOK_RAD_PER_PX
+  padLook: 1,         // gamepad right stick and touch look drag
+  invertY: false,
+  aimAssist: true,    // gamepad/touch only
+  minimapRotate: true, // first person: the minimap turns so up = where you look
 };
+
+/** Field-of-view range offered in the settings (degrees). */
+export const FOV_MIN = 60;
+export const FOV_MAX = 110;
 
 const NAME_POOL = [
   'Ranger', 'Dusty', 'Maverick', 'Boone', 'Ripley', 'Hollis', 'Rook', 'Nova', 'Jinx', 'Tex',
@@ -60,6 +74,10 @@ function num01(v, fallback) {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
 }
 
+function numIn(v, lo, hi, fallback) {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+}
+
 function bool(v, fallback) {
   return typeof v === 'boolean' ? v : fallback;
 }
@@ -90,6 +108,13 @@ export function loadPrefs() {
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),
     showStats: bool(s.showStats, ds.showStats),
+    view: s.view === 'fps' || s.view === 'topdown' ? s.view : ds.view,
+    fov: Math.round(numIn(s.fov, FOV_MIN, FOV_MAX, ds.fov)),
+    sensitivity: numIn(s.sensitivity, SENS_MIN, SENS_MAX, ds.sensitivity),
+    padLook: numIn(s.padLook, SENS_MIN, SENS_MAX, ds.padLook),
+    invertY: bool(s.invertY, ds.invertY),
+    aimAssist: bool(s.aimAssist, ds.aimAssist),
+    minimapRotate: bool(s.minimapRotate, ds.minimapRotate),
   };
   const l = raw.lobby && typeof raw.lobby === 'object' ? raw.lobby : {};
   out.lobby = {

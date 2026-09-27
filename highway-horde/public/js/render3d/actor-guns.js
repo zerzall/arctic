@@ -353,6 +353,20 @@ function build(id) {
 
 /** Shared lit material for guns (vertex coloured, a little specular sheen). */
 let sharedMats = null;
+/**
+ * Free the GPU copies of the cached gun geometries and shared materials in every renderer
+ * that drew them (renderer3d calls this from destroy()). The objects stay cached and valid:
+ * the next renderer uploads them again. Without it each finished game left its
+ * WebGLRenderer reachable through the dispose listeners on these module-level objects,
+ * with its GPU buffers still allocated on the reused canvas' context.
+ */
+export function releaseSharedGuns() {
+  for (const m of cache.values()) {
+    for (const k of ['body', 'glow', 'spin', 'pump', 'tip']) if (m[k]) m[k].dispose();
+  }
+  if (sharedMats) for (const k in sharedMats) sharedMats[k].dispose();
+}
+
 export function gunMaterials() {
   if (sharedMats) return sharedMats;
   sharedMats = {

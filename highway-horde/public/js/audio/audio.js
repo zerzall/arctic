@@ -13,6 +13,11 @@
 // Voices are fixed slots with persistent gain/filter/pan nodes; a new sound only costs a
 // buffer-source node. When all slots are busy the least important voice (priority +
 // loudness) is faded out in 10 ms and reused, or the new sound is dropped.
+//
+// Listener orientation (SPEC §7.5): with `yaw` in the addEvents/update options (first-person
+// view) a sound pans by the sine of its angle off the facing direction and one behind the
+// listener is a little quieter and duller (the voice's own lowpass). Without `yaw`
+// (top-down) panning stays screen-relative (world dx).
 
 import { WEAPONS } from '../shared/weapons.js';
 import { BLEEDOUT_TIME } from '../shared/constants.js';
@@ -27,6 +32,14 @@ export const MAX_LOOPS = 12;
 export const AUDIBLE_RANGE = 1600;
 /** Horizontal offset (px) that pans a sound fully to one side (then capped at 0.85). */
 const PAN_WIDTH = 750;
+/** Hardest pan any positional sound gets. */
+const PAN_MAX = 0.85;
+/** First person: inside this distance (px) a sound's pan narrows toward the centre. */
+const PAN_NEAR = 120;
+/** First person: a sound straight behind is this much quieter … */
+const REAR_ATTENUATION = 0.25;
+/** … and low-passed down to this cutoff (Hz; at most 16 % of the open cutoff). */
+const REAR_LOWPASS = 3200;
 const NEAR_FIELD = 80;
 const HORDE_RADIUS = 900;
 const HORDE_NEAR = 350;
@@ -125,6 +138,45 @@ function makeImpulse(ctx, seconds = 1.3) {
   return ir;
 }
 
+/**
+ * Pan and "behindness" of a sound at offset (dx, dy) from a listener facing `yaw`
+ * (first-person view). pan = sin(relative angle) · PAN_MAX (right of the facing direction
+ * is positive), narrowed inside PAN_NEAR so a sound at your feet isn't hard-panned;
+ * behind = 0 in front / to the sides, rising to 1 straight behind.
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} yaw
+ * @param {{pan: number, behind: number}} [out]
+ * @returns {{pan: number, behind: number}}
+ */
+export function orientedPan(dx, dy, yaw, out = { pan: 0, behind: 0 }) {
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (!(d > 1e-6)) {
+    out.pan = 0;
+    out.behind = 0;
+    return out;
+  }
+  const rel = Math.atan2(dy, dx) - yaw;
+  out.pan = Math.sin(rel) * PAN_MAX * Math.min(1, d / PAN_NEAR);
+  out.behind = Math.max(0, -Math.cos(rel));
+  return out;
+}
+
+/**
+ * Rear shading for a first-person listener: gain multiplier and lowpass cap for a sound
+ * with the given `behind` (0..1, from orientedPan).
+ * @param {number} behind
+ * @param {number} maxLp the engine's open-filter cutoff
+ * @returns {{gain: number, lp: number}}
+ */
+export function rearShade(behind, maxLp) {
+  const b = Math.max(0, Math.min(1, behind || 0));
+  const k = b * b; // stays subtle at the sides, full effect only well behind
+  // Relative to the open cutoff, so low-rate devices (maxLp < 20 kHz) still hear a change.
+  const rear = Math.min(REAR_LOWPASS, maxLp * 0.16);
+  return { gain: 1 - REAR_ATTENUATION * k, lp: maxLp + (rear - maxLp) * k };
+}
+
 class Engine {
   constructor(options) {
     this.opts = options || {};
@@ -134,6 +186,9 @@ class Engine {
     this.muted = false;
     this.lx = 0;
     this.ly = 0;
+    /** Listener facing (first-person view) or null (top-down: screen-relative panning). */
+    this.lyaw = null;
+    this.op = { pan: 0, behind: 0 };
     this.localId = 0;
     this.players = null;
     this.mapFires = [];
@@ -352,10 +407,31 @@ class Engine {
     if (!(d < R)) return false;
     const k = d <= NEAR_FIELD ? 1 : 1 - (d - NEAR_FIELD) / (R - NEAR_FIELD);
     out.att = Math.pow(k, 1.7);
-    out.pan = clamp(dx / PAN_WIDTH, -1, 1) * 0.85;
     out.lp = 700 + (this.maxLp - 700) * Math.pow(k, 2.5);
     out.wetMul = 1 + (1 - k) * 1.5;
+    if (this.lyaw === null) {
+      out.pan = clamp(dx / PAN_WIDTH, -1, 1) * PAN_MAX;
+    } else {
+      const o = orientedPan(dx, dy, this.lyaw, this.op);
+      out.pan = o.pan;
+      if (o.behind > 0) {
+        const r = rearShade(o.behind, this.maxLp);
+        out.att *= r.gain;
+        out.lp = Math.min(out.lp, r.lp);
+      }
+    }
     return true;
+  }
+
+  /** Pan for a world offset: oriented in first person, screen-relative otherwise. */
+  panOf(dx, dy) {
+    if (this.lyaw === null) return clamp(dx / PAN_WIDTH, -1, 1) * PAN_MAX;
+    return orientedPan(dx, dy, this.lyaw, this.op).pan;
+  }
+
+  /** Listener facing from addEvents/update options: a finite yaw, else top-down (null). */
+  setListenerYaw(opts) {
+    this.lyaw = opts && Number.isFinite(opts.yaw) ? opts.yaw : null;
   }
 
   /**
@@ -382,7 +458,7 @@ class Engine {
       } else if (o.minGain) {
         // Important world events (boss, objective, downed teammates) stay faintly audible.
         g *= o.minGain;
-        pan = clamp((o.x - this.lx) / PAN_WIDTH, -1, 1) * 0.85;
+        pan = this.panOf(o.x - this.lx, o.y - this.ly);
         lp = 700;
         wet *= 2.5;
       } else {
@@ -520,6 +596,7 @@ class Engine {
       }
       if (opts.localId !== undefined && opts.localId !== null) this.localId = opts.localId;
     }
+    this.setListenerYaw(opts);
     // A huge batch is a backlog (tab back from the background): replaying seconds of
     // stale gunfire at once would be a wall of noise, so keep state changes only. A merely
     // busy batch skips the cheap detail sounds.
@@ -624,7 +701,7 @@ class Engine {
       case 'waveclear': return void this.play('waveclear', { local: true, prio: PRIO_UI });
       case 'drop':
         // The crate has just landed: join the flyover near its loudest point.
-        this.play('plane', { local: true, prio: 70, offset: 1.2, pan: clamp(((e.x ?? this.lx) - this.lx) / PAN_WIDTH, -1, 1) * 0.5 });
+        this.play('plane', { local: true, prio: 70, offset: 1.2, pan: clamp(this.panOf((e.x ?? this.lx) - this.lx, (e.y ?? this.ly) - this.ly) / PAN_MAX, -1, 1) * 0.5 });
         this.play('drop_thud', { ...pos, minGain: 0.15 });
         return;
       case 'gameover':
@@ -716,6 +793,7 @@ class Engine {
     }
     this.players = view.players;
     const me = this.playerById(this.localId);
+    this.setListenerYaw(opts);
     if (opts && Number.isFinite(opts.x) && Number.isFinite(opts.y)) {
       // The camera centre: the spectated teammate while we are dead.
       this.lx = opts.x;
@@ -783,7 +861,7 @@ class Engine {
       }
       if (d2 > R2) continue;
       count++;
-      sumDx += dx;
+      sumDx += this.lyaw === null ? dx : this.panOf(dx, dy);
       if (d2 < N2) near++;
       if (d2 < G2 && z.type !== 'boss') {
         // Reservoir sample: a uniformly random nearby zombie gets to groan.
@@ -793,11 +871,12 @@ class Engine {
       if (z.flags & 1) {
         const w = 1 - Math.sqrt(d2) / HORDE_RADIUS;
         burnW += w * 0.2;
-        burnDx += dx * w * 0.2;
+        burnDx += (this.lyaw === null ? dx : this.panOf(dx, dy) * PAN_WIDTH / PAN_MAX) * w * 0.2;
       }
     }
     if (count > 0) {
-      const pan = clamp(sumDx / count / PAN_WIDTH, -1, 1) * 0.7;
+      // Top-down: the mean offset pans; first person: the mean of the oriented pans.
+      const pan = this.lyaw === null ? clamp(sumDx / count / PAN_WIDTH, -1, 1) * 0.7 : clamp(sumDx / count / PAN_MAX, -1, 1) * 0.7;
       const far = Math.min(1, Math.sqrt(count / 45));
       want.push({ key: 'hordeFar', id: 'horde_far', g: SOUNDS.horde_far.g * far, pan, lp: this.maxLp, wet: 0.4, rate: 1 });
       if (near > 0) {
@@ -829,12 +908,15 @@ class Engine {
       if (d >= FIRE_RADIUS) continue;
       const life = Number.isFinite(h.life) ? clamp(h.life * 5, 0, 1) : 1; // fade in the last 20 %
       const w = Math.pow(1 - d / FIRE_RADIUS, 2) * life * clamp((h.r || 80) / 100, 0.4, 1.5);
+      // First person: the oriented pan expressed as an equivalent dx, so the
+      // weighting and the final pan formula below stay the same in both views.
+      const px = this.lyaw === null ? dx : this.panOf(dx, dy) * PAN_WIDTH / PAN_MAX;
       if (h.kind === 'acid') {
         aw += w;
-        adx += dx * w;
+        adx += px * w;
       } else {
         fw += w;
-        fdx += dx * w;
+        fdx += px * w;
       }
     }
     const mf = this.mapFires;
@@ -845,7 +927,7 @@ class Engine {
       if (d >= MAP_FIRE_RADIUS) continue;
       const w = Math.pow(1 - d / MAP_FIRE_RADIUS, 2) * MAP_FIRE_GAIN * clamp((f.r || 30) / 40, 0.5, 1.2);
       fw += w;
-      fdx += dx * w;
+      fdx += (this.lyaw === null ? dx : this.panOf(dx, dy) * PAN_WIDTH / PAN_MAX) * w;
     }
     if (fw > 0.01) {
       want.push({ key: 'fire', id: 'fire_loop', g: SOUNDS.fire_loop.g * Math.min(1, fw), pan: clamp(fdx / fw / PAN_WIDTH, -1, 1) * 0.8, lp: this.maxLp, wet: 0.2, rate: 1 });
@@ -1073,9 +1155,12 @@ export function createAudio(options = {}) {
         return Promise.resolve(false);
       }
     },
-    /** Play GameEvents (§4.1) heard from { x, y } (listener: the camera centre) as player `localId`. */
+    /**
+     * Play GameEvents (§4.1) heard from { x, y } (listener: the camera centre) as player
+     * `localId`; with `yaw` (first person) sounds pan relative to the facing direction.
+     */
     addEvents: safe((events, opts) => eng.addEvents(events, opts)),
-    /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. opts: { localId, dt, x?, y? } */
+    /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. opts: { localId, dt, x?, y?, yaw? } */
     update: safe((view, opts) => eng.update(view, opts)),
     /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'. */
     ui: safe((name) => eng.ui(name)),

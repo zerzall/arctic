@@ -108,6 +108,12 @@ export function createRigMaterial(rig, opts = {}) {
       .replace('#include <fog_fragment>', `float rigRim = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
   rigRim = rigRim * rigRim * rigRim;
   #include <fog_fragment>
+  #ifdef USE_FOG
+    // Readability in the fog: glowing eyes, hit flashes and flames shine through it (a
+    // pair of eyes in the murk is how a zombie should announce itself) and the rim holds
+    // up with distance instead of sinking into the fog colour with the body.
+    gl_FragColor.rgb += vRigGlow * fogFactor * 0.85 + vRimCol * rigRim * fogFactor * 1.2;
+  #endif
   gl_FragColor.rgb += vRimCol * rigRim;`);
   };
   mat.customProgramCacheKey = () => 'hh-rig-lambert';

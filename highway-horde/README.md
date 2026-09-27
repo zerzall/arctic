@@ -1,11 +1,11 @@
 # Highway Horde
 
-A top-down co-op zombie shooter for 1–6 players that runs in the browser. Pick a
+A first-person co-op zombie shooter for 1–6 players that runs in the browser. Pick a
 survivor, hold the line on a jammed highway, a desert truck stop, a river bridge or an
 army checkpoint, and gun down wave after wave of the dead with your friends. Nothing to
 install: one person hosts, everyone else opens the invite link.
 
-![Four survivors holding the school bus on Highway 9](docs/screenshot.png)
+![First-person view: survivors holding Highway 9 as the horde comes up the road](docs/screenshot.png)
 
 ## What's in it
 
@@ -33,9 +33,17 @@ install: one person hosts, everyone else opens the invite link.
 - **4 maps**, each built around something to defend: a school bus in a forty-car pileup,
   a diner full of survivors, an APC broken down in the middle of a bridge, and a radio
   tower at a crossroads checkpoint.
+- **First person, in 3D.** You see the road over your own gun: your flashlight
+  cutting through the dark, the horde coming out of the fog, teammates fighting beside
+  you with their name tags overhead. A compass strip points to the objective and the supply station, a
+  rotating radar shows the horde around you, and red arcs show where a hit came from.
+  Sounds come from where they happen: a groan behind you is quieter and muffled.
 - Night-time lighting with flashlights, muzzle flashes, burning wrecks and explosions.
   Blood and scorch marks stay on the ground, and all the sound (every gun, every zombie,
-  the music) is synthesised in the browser.
+  the music) is synthesised in the browser. All the art is built in code: no model or
+  texture files.
+- **Classic top-down view** as an option in Settings, for anyone who prefers the old
+  bird's-eye game (and used automatically on browsers without WebGL 2).
 - **Rules:** downed players bleed out unless a teammate revives them. Cash from kills
   buys guns and gear between waves, or mid-wave at the supply station. The game supports
   keyboard and mouse, gamepads, and touch screens.
@@ -80,9 +88,17 @@ Run `npm start` and have everyone open `http://<your computer's IP>:8080`.
 
 ## Controls
 
+**Click the game to capture the mouse**, then move the mouse to look around; your aim is
+wherever the crosshair is. **Esc** gives the mouse back and opens the menu (the game
+keeps running, your survivor just stands still); the menu's **Click to Resume** button
+captures it again.
+
 | Action | Keyboard & mouse | Gamepad |
 |---|---|---|
-| Move / aim / shoot | WASD or arrows / mouse / left click | Left stick / right stick / RT |
+| Move (forward / strafe) | WASD or arrows | Left stick |
+| Look & aim | Mouse (click the game first) | Right stick |
+| Shoot | Left click | RT |
+| Release the mouse / menu | Esc | Start |
 | Shove | Right click or V | LT or RB |
 | Sprint | Shift | Click left stick |
 | Reload | R | X |
@@ -92,15 +108,24 @@ Run `npm start` and have everyone open `http://<your computer's IP>:8080`.
 | Turret / barricade | T / C | D-pad ▲ / ▼ |
 | Shop | B | Click right stick |
 | Ready up (skip the break) | Space | D-pad ◀ |
-| Scoreboard / chat / menu | Tab / Enter / Esc | Back / — / Start |
+| Scoreboard / chat | Tab / Enter | Back / — |
 
-On phones and tablets the left thumb moves, the right thumb aims and fires, and the
-other actions have on-screen buttons.
+On phones and tablets the left thumb moves, dragging on the right half of the screen
+looks around, and a big FIRE button shoots (drag it to keep turning while you fire); the
+other actions have on-screen buttons. Gamepads and touch get a light aim assist.
+
+**Settings** (menu → Settings) has the view (**First-person** or **Classic top-down**; a
+change applies from the next game), field of view (horizontal degrees on a 4:3 screen,
+80 by default; wider screens see more at the sides), mouse sensitivity, stick and touch
+look speed, invert Y, aim assist, and whether the minimap turns with your view. In the
+classic top-down view the mouse points where you shoot and nothing is captured.
 
 ## Tips
 
 - Stay near the objective. Zombies go for whoever is closest, and chew on the
-  objective when nobody is around.
+  objective when nobody is around. The ◆ on the compass always points to it.
+- Check behind you. The horde comes from every side; listen for groans at your back and
+  turn toward the red arcs when something hits you.
 - Revive downed teammates by holding E next to them. They have 30 seconds.
 - The shop is open between waves. Mid-wave, you can only buy at the supply station.
 - Every fifth wave brings a boss. Save a frag or two for it.
@@ -113,10 +138,15 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 
 ```bash
 npm test                    # unit tests (node:test)
-npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots
+npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
+                            #   first-person solo and first-person 2-player relay
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 ```
 
-The `public/dev/` folder has sandboxes for the renderer, audio, networking and UI.
+The simulation is 2D and deterministic (a flat ground plane, like classic Doom-style
+shooters: aim is the view's yaw, bullets fly level), so the first-person view is purely a
+renderer: `public/js/render3d/` turns the same snapshots the classic view draws into a
+three.js scene. The `public/dev/` folder has sandboxes for both renderers, audio,
+networking and UI.
 
-PeerJS (MIT licence) is vendored in `public/vendor/`.
+PeerJS and three.js (both MIT licence) are vendored in `public/vendor/`.

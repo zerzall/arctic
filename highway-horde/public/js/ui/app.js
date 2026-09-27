@@ -33,6 +33,10 @@ const DISCONNECT_REASONS = {
  * @param {Function} deps.joinGame        net/session.js
  * @param {Function} deps.getServerInfo   net/session.js
  * @param {Function} deps.createRenderer  render/renderer.js
+ * @param {Function} [deps.createRenderer3D] render3d/renderer3d.js (first-person view; may be
+ *   filled in later by deps.renderer3dReady)
+ * @param {Function} [deps.isWebGLAvailable] render3d/renderer3d.js
+ * @param {Promise}  [deps.renderer3dReady] settles once the 3D module loaded (or failed to)
  * @param {Function} deps.renderMapPreview
  * @param {Function} deps.renderClassPortrait
  * @param {Function} deps.createAudio     audio/audio.js
@@ -61,6 +65,8 @@ export function startApp(deps) {
     applySettings,
     onLeave: () => leave(),
     onStartFailed: () => flashToast('Could not start the game', 'bad'),
+    /** WebGL check result (match.js asks once), undefined until then. */
+    webgl: undefined,
   };
   ctx.dialogs = createStatusDialogs(ctx);
   ctx.settingsDialog = createSettingsDialog(ctx);
@@ -190,8 +196,22 @@ export function startApp(deps) {
     if (match) match.setRoster(roster);
   }
 
+  let waiting3d = false;
   function beginMatch() {
     if (!session || match) return;
+    // The first-person renderer (three.js) loads in the background after boot. A game that
+    // starts before it arrives waits for it, rather than silently dropping to top-down.
+    if (prefs.settings.view !== 'topdown' && !deps.createRenderer3D && deps.renderer3dReady && !deps.renderer3dFailed) {
+      if (waiting3d) return;
+      waiting3d = true;
+      const s = session;
+      deps.renderer3dReady.finally(() => {
+        waiting3d = false;
+        if (!deps.createRenderer3D) deps.renderer3dFailed = true;
+        if (session === s && s.inGame && !match) beginMatch();
+      });
+      return;
+    }
     lobby.hide();
     ctx.modals.close($('#dlg-confirm'));
     try {

@@ -1,7 +1,7 @@
 {
   "name": "highway-horde",
   "version": "1.0.0",
-  "description": "Co-op top-down zombie shooter for 1-6 players in the browser.",
+  "description": "First-person co-op zombie shooter for 1-6 players in the browser.",
   "private": true,
   "type": "module",
   "license": "MIT",

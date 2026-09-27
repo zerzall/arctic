@@ -400,7 +400,19 @@ export function createStatusDialogs(ctx) {
 // ---- settings ---------------------------------------------------------------------------------
 
 /**
- * @param {object} ctx { prefs, savePrefs, modals, audio, applySettings() }
+ * Label for a settings slider: data-unit 'deg' (raw degrees), 'x' (multiplier, value/100)
+ * or percent (the default).
+ * @param {string|undefined} unit
+ * @param {number} raw the slider's value
+ */
+export function rangeLabel(unit, raw) {
+  if (unit === 'deg') return `${raw}°`;
+  if (unit === 'x') return `${(raw / 100).toFixed(2)}×`;
+  return `${raw}%`;
+}
+
+/**
+ * @param {object} ctx { prefs, savePrefs, modals, audio, applySettings(), deps, webgl, match }
  */
 export function createSettingsDialog(ctx) {
   const dlg = $('#dlg-settings');
@@ -408,20 +420,53 @@ export function createSettingsDialog(ctx) {
   const ranges = $$('input[type=range][data-setting]', dlg);
   const checks = $$('input[type=checkbox][data-setting]', dlg);
   const quality = $$('#set-quality .seg-btn', dlg);
+  const views = $$('#set-view .seg-btn', dlg);
+  const viewNote = $('#set-view-note', dlg);
+  // Sliders store value / data-scale (default 100: 0..100 % ↦ 0..1).
+  const scaleOf = (r) => Number(r.dataset.scale) || 100;
+
+  /** Whether the first-person view can run here: unknown (null) until the 3D module loads. */
+  function webglState() {
+    if (ctx.webgl === true || ctx.webgl === false) return ctx.webgl;
+    const d = ctx.deps || {};
+    if (d.renderer3dFailed) return false;
+    if (typeof d.isWebGLAvailable !== 'function') return null;
+    try {
+      ctx.webgl = !!d.isWebGLAvailable();
+    } catch {
+      ctx.webgl = false;
+    }
+    return ctx.webgl;
+  }
+
+  function syncView() {
+    const gl = webglState();
+    for (const b of views) {
+      b.setAttribute('aria-checked', b.dataset.value === s.view ? 'true' : 'false');
+      if (b.dataset.value === 'fps') b.disabled = gl === false;
+    }
+    let note = '';
+    if (gl === false) note = 'This browser can\'t run the 3D view (WebGL 2 unavailable) — the classic view is used.';
+    else if (ctx.match && ctx.match.view && ctx.match.view !== s.view) note = 'The new view starts with the next game.';
+    viewNote.textContent = note;
+    viewNote.hidden = !note;
+  }
 
   function sync() {
     for (const r of ranges) {
-      r.value = String(Math.round(s[r.dataset.setting] * 100));
-      r.nextElementSibling.textContent = `${r.value}%`;
+      const v = s[r.dataset.setting];
+      r.value = String(Math.round((Number.isFinite(v) ? v : 0) * scaleOf(r)));
+      r.nextElementSibling.textContent = rangeLabel(r.dataset.unit, Number(r.value));
     }
     for (const c of checks) c.checked = !!s[c.dataset.setting];
     for (const b of quality) b.setAttribute('aria-checked', b.dataset.value === s.quality ? 'true' : 'false');
+    syncView();
   }
 
   for (const r of ranges) {
     r.addEventListener('input', () => {
-      s[r.dataset.setting] = Number(r.value) / 100;
-      r.nextElementSibling.textContent = `${r.value}%`;
+      s[r.dataset.setting] = Number(r.value) / scaleOf(r);
+      r.nextElementSibling.textContent = rangeLabel(r.dataset.unit, Number(r.value));
       ctx.applySettings();
       ctx.savePrefs();
     });
@@ -441,6 +486,15 @@ export function createSettingsDialog(ctx) {
       ctx.audio.ui('click');
       sync();
       ctx.applySettings();
+      ctx.savePrefs();
+    });
+  }
+  for (const b of views) {
+    b.addEventListener('click', () => {
+      if (b.disabled) return;
+      s.view = b.dataset.value === 'topdown' ? 'topdown' : 'fps';
+      ctx.audio.ui('click');
+      syncView();
       ctx.savePrefs();
     });
   }

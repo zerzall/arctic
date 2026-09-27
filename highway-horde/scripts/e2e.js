@@ -14,6 +14,23 @@
 //   e  phone        390x844 touch device: layout, touch controls, left stick moves
 //   f  bots         solo lobby + Add Bot (BOT tags, ✕ removes one), the human readies,
 //                   the bots ready up after them, fight wave 1 and score kills
+//   g  fps-solo     first-person view (three.js): pointer lock, W walks along the view,
+//                   losing the lock opens the pause menu, turn toward the nearest zombie
+//                   with the view data and kill it, End Game + a second game (no leaks)
+//   h  fps-relay    2 players over the relay in first person: each one's camera sees the
+//                   other, and the client's W moves it along ITS yaw on the host
+//
+// Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
+// localStorage before every page load); g and h play first person at quality 'low'.
+// First-person test hooks (window.__HH, set by ui/match.js):
+//   __HH.look(dx, dy)  turn the camera as if the mouse moved dx/dy CSS px under pointer
+//                      lock (headless Chromium can lock the pointer but its synthetic mouse
+//                      moves carry no locked movement); 0.0022 rad/px at sensitivity 1
+//   __HH.getLook()     { yaw, pitch, ready, locked, view, frames } — the UI's camera angles
+//                      (frames: game frames run so far; look input is applied once per frame)
+//   __HH.view          'fps' | 'topdown' — the view the running match uses
+// Software WebGL (SwiftShader) renders only a few frames per second here, so the
+// first-person checks are written to hold at low frame rates.
 //
 // Every scenario runs in fresh browser contexts; any console error or page error fails it
 // (Google Fonts requests are answered locally so they never error). Screenshots land in
@@ -35,6 +52,15 @@ const OUT = path.join(ROOT, 'e2e-output');
 const VIEWPORT = { width: 1280, height: 720 };
 const SCENARIO_TIMEOUT = 150e3;
 const PEER_PATH = '/peerjs';
+/** First person runs on software WebGL here: a smaller window keeps the frames coming. */
+const FPS_VIEWPORT = { width: 960, height: 540 };
+/** Radians per px fed to __HH.look (ui/look.js LOOK_RAD_PER_PX at sensitivity 1). */
+const LOOK_RAD_PER_PX = 0.0022;
+/** Screenshot timeout for first-person pages (a frame can take seconds on software WebGL). */
+const FPS_SHOT_MS = 20e3;
+const PREFS_KEY = 'highway-horde:prefs:v1';
+/** Console warnings from software WebGL itself, not from the game. */
+const GL_NOISE = /GPU stall|GL Driver Message|SwiftShader|swiftshader|GroupMarkerNotSet/;
 
 // ---- small helpers -------------------------------------------------------------------------
 
@@ -138,10 +164,21 @@ class Scenario {
   /**
    * @param {string} tag label in error messages and screenshots
    * @param {object} [opts] { p2p: true (local PeerJS config, api/info → relay:false),
-   *   context: extra newContext options }
+   *   context: extra newContext options, view: 'topdown' (default) | 'fps', quality }
    */
   async player(tag, opts = {}) {
     const ctx = await this.browser.newContext({ viewport: VIEWPORT, ...opts.context });
+    // The view preference is forced before every load (the rest of the prefs persist).
+    await ctx.addInitScript(({ key, view, quality }) => {
+      try {
+        const p = JSON.parse(localStorage.getItem(key) || '{}') || {};
+        p.settings = { ...(p.settings || {}), view };
+        if (quality) p.settings.quality = quality;
+        localStorage.setItem(key, JSON.stringify(p));
+      } catch {
+        // about:blank and friends have no storage
+      }
+    }, { key: PREFS_KEY, view: opts.view || 'topdown', quality: opts.quality || null });
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: this.env.relay.url.replace(/\/$/, '') });
     // Fonts would need the internet (and a CA headless Chromium may not trust).
     await ctx.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
@@ -159,7 +196,7 @@ class Scenario {
     page.on('console', (m) => {
       const text = `[${tag}] console.${m.type()}: ${m.text()}`;
       if (m.type() === 'error') this.errors.push(text);
-      else if (m.type() === 'warning') this.warnings.push(text);
+      else if (m.type() === 'warning' && !GL_NOISE.test(m.text())) this.warnings.push(text);
     });
     page.on('pageerror', (e) => this.errors.push(`[${tag}] pageerror: ${e.stack || e.message}`));
     page.on('crash', () => this.errors.push(`[${tag}] page crashed`));
@@ -183,11 +220,12 @@ class Scenario {
     await pl.ctx.close();
   }
 
-  async screenshots(suffix) {
+  /** @param {number} [timeout] ms per page (software WebGL pages need longer for a frame) */
+  async screenshots(suffix, timeout = 5000) {
     for (const pl of this.players) {
       if (pl.closed) continue;
       try {
-        await pl.page.screenshot({ path: path.join(OUT, `${this.id}-${this.name}-${pl.tag}${suffix}.png`), timeout: 5000 });
+        await pl.page.screenshot({ path: path.join(OUT, `${this.id}-${this.name}-${pl.tag}${suffix}.png`), timeout });
       } catch {
         // page may be gone
       }
@@ -927,6 +965,291 @@ async function scenarioPhone(sc) {
   await sc.screenshots('-landscape');
 }
 
+// ---- first person --------------------------------------------------------------------------
+
+/** Signed smallest angle b - a. */
+function angleDiff(a, b) {
+  return Math.atan2(Math.sin(b - a), Math.cos(b - a));
+}
+
+/** Wait for a first-person game: view non-null, the UI's look initialised, the 3D renderer up. */
+async function waitFpsGame(pl, nPlayers, what) {
+  await waitFor(pl, (n) => {
+    const H = window.__HH;
+    const v = H.getView && H.getView();
+    const L = H.getLook && H.getLook();
+    return !document.querySelector('#screen-game').hidden && !!v && v.players.length === n
+      && v.players.some((p) => p.id === H.session.localId) && !!L && L.ready;
+  }, nPlayers, what || `the first-person game with ${nPlayers} players`, 60e3);
+  const info = await pl.page.evaluate(() => ({
+    view: window.__HH.view, mode: window.__HH.renderer && window.__HH.renderer.mode,
+    overlays: document.querySelectorAll('.hh-overlay3d').length,
+    hudView: document.querySelector('#hud').dataset.view,
+    compass: !!document.querySelector('.hud-compass') && !document.querySelector('.hud-compass').hidden,
+  }));
+  expect(info.view === 'fps' && info.mode === 'fps', `[${pl.tag}] expected the first-person renderer, got view ${info.view} / mode ${info.mode}`);
+  expect(info.overlays === 1, `[${pl.tag}] ${info.overlays} 3D overlay canvases (expected 1)`);
+  expect(info.hudView === 'fps' && info.compass, `[${pl.tag}] first-person HUD missing (view ${info.hudView}, compass ${info.compass})`);
+}
+
+/**
+ * Turn the local camera to `yaw` (and level it) through the __HH.look test hook. Without
+ * `wait` it feeds at most one correction per game frame (a second one before the frame
+ * applies the first would overshoot).
+ */
+async function turnTo(pl, yaw, { wait = true } = {}) {
+  await pl.page.evaluate(({ target, k }) => {
+    const H = window.__HH;
+    const L = H.getLook();
+    if (window.__e2eLookFrame === L.frames) return;
+    window.__e2eLookFrame = L.frames;
+    const d = Math.atan2(Math.sin(target - L.yaw), Math.cos(target - L.yaw));
+    // +dy looks down: dy = pitch / k levels the camera
+    H.look(d / k, L.pitch / k);
+  }, { target: yaw, k: LOOK_RAD_PER_PX });
+  if (!wait) return;
+  await waitFor(pl, (t) => {
+    const L = window.__HH.getLook();
+    return Math.abs(Math.atan2(Math.sin(t - L.yaw), Math.cos(t - L.yaw))) < 0.02 && Math.abs(L.pitch) < 0.02;
+  }, yaw, `the camera to turn to ${yaw.toFixed(2)} rad`, 20e3);
+}
+
+/**
+ * The most open of 16 headings from the local player's predicted position: simulated with
+ * the shared movement code for `ticks` ticks. @returns {{ yaw, dist, from }}
+ */
+function freeHeading(pl, ticks) {
+  return pl.page.evaluate(async (n) => {
+    const [{ createCollisionWorld, stepPlayerMovement }, { DT }] = await Promise.all([
+      import('/js/shared/movement.js'), import('/js/shared/constants.js'),
+    ]);
+    const H = window.__HH;
+    const v = H.getView();
+    const me = v.players.find((p) => p.id === H.session.localId);
+    const from = H.session.getPredictedLocal() || me;
+    const world = createCollisionWorld(H.session.getMap());
+    world.setBarricades(v.barricades || []);
+    let best = null;
+    for (let i = 0; i < 16; i++) {
+      const yaw = -Math.PI + (i / 16) * Math.PI * 2;
+      const p = { x: from.x, y: from.y, state: 'alive', stamina: 100, sprintLock: false, speedMult: 1, moveMult: 1 };
+      const cmd = { moveX: Math.cos(yaw), moveY: Math.sin(yaw), sprint: false };
+      for (let t = 0; t < n; t++) stepPlayerMovement(p, cmd, DT, world);
+      // straightness matters as much as distance: sliding along a wall bends the path
+      const dx = p.x - from.x, dy = p.y - from.y;
+      const along = dx * Math.cos(yaw) + dy * Math.sin(yaw);
+      if (!best || along > best.dist) best = { yaw, dist: along, from: { x: from.x, y: from.y } };
+    }
+    return best;
+  }, ticks);
+}
+
+/** Where `pid` is in `pl`'s view once it stops moving (net interpolation settles). */
+async function settledPos(pl, pid) {
+  let prev = null;
+  for (let i = 0; i < 40; i++) {
+    const p = (await readState(pl)).players.find((q) => q.id === pid);
+    if (prev && Math.abs(p.x - prev.x) < 0.05 && Math.abs(p.y - prev.y) < 0.05) return p;
+    prev = p;
+    await sleep(200);
+  }
+  return prev;
+}
+
+/**
+ * Hold W until `observer` sees `pid` about `dist` px from where it started (at a few
+ * frames per second a fixed hold time says little about how long W was sampled as held);
+ * returns start/end/yaw as `observer` saw them.
+ */
+async function walkForward(pl, observer, pid, dist) {
+  const yaw = (await pl.page.evaluate(() => window.__HH.getLook())).yaw;
+  const a = await settledPos(observer, pid);
+  await pl.page.keyboard.down('w');
+  const t0 = Date.now();
+  while (Date.now() - t0 < 12e3) {
+    const p = (await readState(observer)).players.find((q) => q.id === pid);
+    if (Math.hypot(p.x - a.x, p.y - a.y) >= dist) break;
+    await sleep(60);
+  }
+  await pl.page.keyboard.up('w');
+  const b = await settledPos(observer, pid);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy);
+  const along = d > 0 ? (dx * Math.cos(yaw) + dy * Math.sin(yaw)) / d : 0;
+  return { a, b, d, along, yaw };
+}
+
+/** g. Solo in first person. */
+async function scenarioFpsSolo(sc) {
+  const pl = await sc.player('fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Pointman', cls: 'soldier' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  await pl.page.click('#btn-start');
+  await waitFpsGame(pl, 1);
+  const me0 = (await readState(pl)).me;
+  const look0 = await pl.page.evaluate(() => window.__HH.getLook());
+  const angle0 = await pl.page.evaluate(() => window.__HH.getView().players[0].angle);
+  expect(Math.abs(angleDiff(look0.yaw, angle0)) < 0.05, `initial yaw ${look0.yaw.toFixed(2)} should be the snapshot angle ${angle0.toFixed(2)}`);
+
+  // Pointer lock: the Start click may already have captured the mouse; else click the game.
+  const { width, height } = FPS_VIEWPORT;
+  if (!(await pl.page.evaluate(() => window.__HH.getLook().locked))) await pl.page.mouse.click(width / 2, height / 2);
+  await waitFor(pl, () => window.__HH.getLook().locked, null, 'pointer lock after clicking the game', 8000);
+  await sc.screenshots('-start', FPS_SHOT_MS);
+  // Ready now: wave 1 spawns far out and walks in while we test walking and the pause menu.
+  await pl.page.keyboard.press('Space');
+  await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'wave 1 after Space', 10e3);
+
+  // W walks along the facing direction (turned to the most open heading first).
+  const free = await freeHeading(pl, 150);
+  expect(free.dist > 250, `test setup: no open heading around the spawn (${free.dist.toFixed(0)} px)`);
+  await turnTo(pl, free.yaw);
+  const w = await walkForward(pl, pl, me0.id, 110);
+  log(`    fps walk: yaw ${w.yaw.toFixed(2)}, moved ${w.d.toFixed(1)} px, along the view ${(w.along * 100).toFixed(1)} %`);
+  expect(w.d > 90, `W barely moved the player (${w.d.toFixed(1)} px)`);
+  expect(w.along > 0.95, `W moved the player off the view direction (cos ${w.along.toFixed(3)})`);
+
+  // Losing the pointer lock (Esc, alt-tab) opens the pause menu; resuming captures it again.
+  await pl.page.evaluate(() => document.exitPointerLock());
+  await waitFor(pl, () => !document.querySelector('#pause').hidden, null, 'the pause menu after the pointer lock was lost', 8000);
+  const resume = (await pl.page.textContent('#pause-resume')).trim();
+  expect(/click to resume/i.test(resume), `pause menu should say "Click to Resume", says "${resume}"`);
+  await pl.page.click('#pause-resume');
+  await waitFor(pl, () => document.querySelector('#pause').hidden && window.__HH.getLook().locked, null, 'the lock back after Click to Resume', 8000);
+
+  // Fight: turn toward the nearest zombie using the view data, hold the trigger.
+  let kills = 0, aimed = 0, seen = 0, maxZ = 0;
+  const t0 = Date.now();
+  while (Date.now() - t0 < 90e3) {
+    const t = await pl.page.evaluate(() => {
+      const H = window.__HH;
+      const v = H.getView();
+      const me = v.players.find((p) => p.id === H.session.localId);
+      const at = H.session.getPredictedLocal() || me;
+      let best = null, bd = Infinity;
+      for (const z of v.zombies) {
+        const d = Math.hypot(z.x - at.x, z.y - at.y);
+        if (d < bd) {
+          bd = d;
+          best = z;
+        }
+      }
+      const L = H.getLook();
+      // is the target where the camera looks? (projected by the 3D renderer)
+      const sp = best ? H.renderer.worldToScreen(best.x, best.y, 30) : null;
+      return {
+        kills: me.kills, n: v.zombies.length, dist: bd, yaw: L.yaw,
+        want: best ? Math.atan2(best.y - at.y, best.x - at.x) : null,
+        onScreen: !!(sp && sp.visible), locked: L.locked,
+      };
+    });
+    kills = t.kills;
+    maxZ = Math.max(maxZ, t.n);
+    if (kills >= 1) break;
+    const want = new Set();
+    if (t.want !== null) {
+      const facing = Math.abs(angleDiff(t.yaw, t.want)) < 0.1;
+      if (facing) {
+        aimed++;
+        if (t.onScreen) seen++;
+      }
+      await turnTo(pl, t.want, { wait: false });
+      // Wave 1 spawns far away: walk at the nearest zombie (W, we face it) until in range.
+      if (facing && t.dist > 650) {
+        want.add('w');
+        want.add('Shift');
+      }
+      if (t.dist < 1050 && !pl.mouseDown) {
+        if (!t.locked) await pl.page.mouse.click(width / 2, height / 2);
+        await pl.page.mouse.down();
+        pl.mouseDown = true;
+      }
+    } else if (pl.mouseDown) {
+      await pl.page.mouse.up();
+      pl.mouseDown = false;
+    }
+    await setKeys(pl, want);
+    await sleep(150);
+  }
+  await releaseAll(pl);
+  await sc.screenshots('-fight', FPS_SHOT_MS);
+  log(`    fps fight: kills ${kills}, max zombies ${maxZ}, aimed ${aimed}× (target on screen ${seen}×)`);
+  expect(maxZ > 0, 'no zombies ever appeared');
+  expect(kills > 0, 'turning toward zombies and firing killed nothing in 90 s');
+  expect(aimed === 0 || seen / aimed > 0.8, `the zombie we aimed at was on screen only ${seen}/${aimed} times`);
+
+  // End Game → lobby → a second game: the old renderer, overlay and loop are gone.
+  await pl.page.evaluate(() => document.exitPointerLock());
+  await waitFor(pl, () => !document.querySelector('#pause').hidden, null, 'the pause menu', 8000);
+  await pl.page.click('#pause-end');
+  await pl.page.click('#confirm-yes');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the lobby after End Game', 15e3);
+  const gone = await pl.page.evaluate(() => ({ overlays: document.querySelectorAll('.hh-overlay3d').length, renderer: window.__HH.renderer }));
+  expect(gone.overlays === 0 && !gone.renderer, `the first-person renderer outlived its game: ${JSON.stringify(gone)}`);
+  await pl.page.click('#btn-start');
+  await waitFpsGame(pl, 1, 'the second first-person game');
+  const m = await measureLoop(pl);
+  // (software WebGL may manage a single frame in the 1 s window: judge only real samples)
+  expect(m.frames < 3 || (m.ratio > 0.5 && m.ratio < 1.5), `second game loop ran ${m.calls} updates in ${m.frames} frames`);
+  await sc.screenshots('-second', FPS_SHOT_MS);
+}
+
+/** h. Two players over the relay, both in first person. */
+async function scenarioFpsRelay(sc) {
+  const opts = { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } };
+  const { host, invite } = await hostOnline(sc, 'fps-host', { name: 'Alpha', cls: 'soldier', color: 0 }, opts);
+  const client = await joinByLink(sc, 'fps-client', invite, opts);
+  for (const pl of [host, client]) {
+    await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden && document.querySelectorAll('#roster .roster-row').length === 2, null, 'a lobby roster of 2', 20e3);
+  }
+  await client.page.click('#btn-ready');
+  await waitFor(host, () => window.__HH.session.roster.filter((r) => r.ready).length === 1, null, 'the client ready');
+  await host.page.click('#btn-start');
+  for (const pl of [host, client]) await waitFpsGame(pl, 2);
+  const ids = {
+    host: await host.page.evaluate(() => window.__HH.session.localId),
+    client: await client.page.evaluate(() => window.__HH.session.localId),
+  };
+
+  // Each camera turned toward the other survivor has them in view.
+  const sees = async (pl, other) => {
+    const st = await readState(pl);
+    const me = st.me, o = st.players.find((p) => p.id === other);
+    await turnTo(pl, Math.atan2(o.y - me.y, o.x - me.x));
+    await sleep(500);
+    return pl.page.evaluate((id) => {
+      const H = window.__HH;
+      const p = H.getView().players.find((q) => q.id === id);
+      const s = H.renderer.worldToScreen(p.x, p.y, 40);
+      return { ...s, w: innerWidth, h: innerHeight };
+    }, other);
+  };
+  const hs = await sees(host, ids.client);
+  const cs = await sees(client, ids.host);
+  await sc.screenshots('-facing', FPS_SHOT_MS);
+  log(`    fps relay: host sees the client at (${hs.x.toFixed(0)}, ${hs.y.toFixed(0)}) visible ${hs.visible}; client sees the host at (${cs.x.toFixed(0)}, ${cs.y.toFixed(0)}) visible ${cs.visible}`);
+  expect(hs.visible && Math.abs(hs.x - hs.w / 2) < hs.w * 0.2, `the client isn't in the middle of the host's view: ${JSON.stringify(hs)}`);
+  expect(cs.visible && Math.abs(cs.x - cs.w / 2) < cs.w * 0.2, `the host isn't in the middle of the client's view: ${JSON.stringify(cs)}`);
+
+  // The client turns to an open heading; the host sees its angle, then its W walk along it.
+  const free = await freeHeading(client, 150);
+  expect(free.dist > 250, `test setup: no open heading around the client (${free.dist.toFixed(0)} px)`);
+  await turnTo(client, free.yaw);
+  await waitFor(host, ({ id, yaw }) => {
+    const p = window.__HH.getView().players.find((q) => q.id === id);
+    return Math.abs(Math.atan2(Math.sin(yaw - p.angle), Math.cos(yaw - p.angle))) < 0.05;
+  }, { id: ids.client, yaw: free.yaw }, 'the host to see the client\'s new facing', 15e3);
+  const w = await walkForward(client, host, ids.client, 110);
+  const pred = await client.page.evaluate(() => window.__HH.session.getPredictedLocal());
+  log(`    fps relay walk: client yaw ${w.yaw.toFixed(2)}, host saw it move ${w.d.toFixed(1)} px, along its view ${(w.along * 100).toFixed(1)} %, prediction off by ${Math.hypot(pred.x - w.b.x, pred.y - w.b.y).toFixed(1)} px`);
+  expect(w.d > 90, `the host saw the client move only ${w.d.toFixed(1)} px`);
+  expect(w.along > 0.95, `the client's W moved it off its own view direction on the host (cos ${w.along.toFixed(3)})`);
+  expect(Math.hypot(pred.x - w.b.x, pred.y - w.b.y) < 4, 'client prediction disagrees with the host after the walk');
+  await sc.screenshots('-walked', FPS_SHOT_MS);
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -934,6 +1257,8 @@ const SCENARIOS = [
   ['d', 'p2p', scenarioP2P],
   ['e', 'phone', scenarioPhone],
   ['f', 'bots', scenarioBots],
+  ['g', 'fps-solo', scenarioFpsSolo, 200e3],
+  ['h', 'fps-relay', scenarioFpsRelay, 200e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------
@@ -951,11 +1276,12 @@ async function main() {
   const browser = await chromium.launch({
     headless: !process.env.E2E_HEADED,
     slowMo: Number(process.env.E2E_SLOWMO) || 0,
-    args: ['--autoplay-policy=no-user-gesture-required'],
+    // SwiftShader is headless Chromium's WebGL; opting in explicitly silences its deprecation notice.
+    args: ['--autoplay-policy=no-user-gesture-required', '--enable-unsafe-swiftshader'],
   });
   const results = [];
   try {
-    for (const [id, name, run] of picked) {
+    for (const [id, name, run, limit = SCENARIO_TIMEOUT] of picked) {
       const sc = new Scenario(browser, id, name, env);
       const started = Date.now();
       let error = null;
@@ -964,7 +1290,7 @@ async function main() {
         await Promise.race([
           run(sc),
           new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Failure(`scenario timed out after ${SCENARIO_TIMEOUT / 1000}s`)), SCENARIO_TIMEOUT);
+            timer = setTimeout(() => reject(new Failure(`scenario timed out after ${limit / 1000}s`)), limit);
           }),
         ]);
         // Let late console errors (teardown, stragglers) surface before judging.

@@ -56,6 +56,12 @@ export function releaseFx(ctx) {
 // procedural sprite atlas
 
 let atlasTex = null;
+
+/** Free the shared sprite atlas' GPU copies (renderer3d.destroy; it re-uploads on reuse). */
+export function releaseFxAtlas() {
+  if (atlasTex) atlasTex.dispose();
+}
+
 function atlas() {
   if (atlasTex) return atlasTex;
   const S = 64, c = makeCanvas(S * 4, S * 4), g = c.getContext('2d');

@@ -262,6 +262,83 @@ function baseView(players, zombies, extra = {}) {
   };
 }
 
+function teamScene() {
+  // every class in a row (walking, firing, sprinting, reloading, downed, dead) with every
+  // item kind laid out in front of them
+  const local = fixturePlayer(1, 'soldier', 'rifle');
+  local.x = 1850; local.y = 1200;
+  const home = { x: local.x, y: local.y };
+  const weapons = ['rifle', 'uzi', 'shotgun', 'magnum', 'sawedoff', 'minigun'];
+  const players = [local];
+  CLASS_IDS.forEach((cls, k) => {
+    const p = fixturePlayer(k + 2, cls, weapons[k]);
+    p._k = k;
+    players.push(p);
+  });
+  const roster = players.map((p, k) => ({ id: p.id, name: ['You', 'Hawk', 'Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][k], color: k % 6, cls: k ? CLASS_IDS[k - 1] : 'soldier' }));
+  const pickups = PICKUP_KINDS.map((kind, i) => ({ id: i + 1, kind, x: home.x - 150 + i * 60, y: home.y - 110, weapon: kind === 'crate' ? 'rocket' : null }));
+  const turrets = [
+    { id: 1, owner: 3, x: home.x - 250, y: home.y - 190, angle: -Math.PI / 2, hp: 0.9, ammo: 0.7, firing: false },
+    { id: 2, owner: 3, x: home.x + 250, y: home.y - 190, angle: -Math.PI / 2, hp: 0.3, ammo: 0.1, firing: false },
+  ];
+  const barricades = [
+    { id: 1, owner: 3, x: home.x - 130, y: home.y - 420, angle: 0, hp: 1 },
+    { id: 2, owner: 3, x: home.x, y: home.y - 420, angle: 0, hp: 0.55 },
+    { id: 3, owner: 2, x: home.x + 130, y: home.y - 420, angle: 0, hp: 0.2 },
+  ];
+  const hazards = [
+    { id: 1, kind: 'fire', x: home.x - 330, y: home.y - 330, r: 110, life: 0.8 },
+    { id: 2, kind: 'acid', x: home.x + 330, y: home.y - 330, r: 60, life: 0.9 },
+  ];
+  let time = 0;
+  const projectiles = [];
+  let nextP = 1;
+  return {
+    localId: 1, roster, local, yaw: -Math.PI / 2,
+    step(dt) {
+      time += dt;
+      const events = [];
+      players.forEach((p) => {
+        if (p === local) return;
+        const k = p._k;
+        p.x = home.x + (k - 2.5) * 70;
+        p.y = home.y - 260 + Math.sin(time * 0.8 + k) * 20;
+        p.angle = (k % 2 ? -Math.PI / 2 : Math.PI / 2) + Math.sin(time * 0.5 + k) * 0.3;
+        p.state = k === 4 ? 'downed' : k === 5 && (time % 8) > 4 ? 'dead' : 'alive';
+        p.sprinting = k === 2;
+        p.reloading = k === 3 ? (time % 2) / 2 : 0;
+        p.bleedout = k === 4 ? 30 - (time % 30) : 0;
+        p.revive = k === 4 ? (time % 3) / 3 : 0;
+        p.hp = 20 + ((time * 10 + k * 17) % 80);
+        p.spin = p.slots[1] === 'minigun' ? 1 : 0;
+        p.meleeing = k === 1 && (time % 3) < 0.4 ? (time % 3) / 0.4 : 0;
+        if (k === 0 && Math.floor(time * 10) !== Math.floor((time - dt) * 10)) {
+          const a = p.angle;
+          events.push({ type: 'shot', pid: p.id, turret: 0, weapon: 'rifle', x: p.x + Math.cos(a) * 22, y: p.y + Math.sin(a) * 22, angle: a,
+            rays: [{ x: p.x + Math.cos(a) * 500, y: p.y + Math.sin(a) * 500, hit: 2 }] });
+        }
+      });
+      // projectiles of every kind flying across
+      if (Math.floor(time * 2) !== Math.floor((time - dt) * 2)) {
+        const kinds = ['bolt', 'grenade', 'rocket', 'flame', 'frag', 'molotov', 'acid'];
+        kinds.forEach((kind, i) => projectiles.push({ id: nextP++, kind, x: home.x - 400, y: home.y - 150 - i * 30, angle: 0, _v: kind === 'frag' || kind === 'molotov' ? 200 : 300 }));
+      }
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const pr = projectiles[i];
+        pr.x += Math.cos(pr.angle) * pr._v * dt;
+        if (pr.x > home.x + 400) projectiles.splice(i, 1);
+      }
+      turrets[0].angle = -Math.PI / 2 + Math.sin(time) * 0.6;
+      turrets[0].firing = (time % 1) < 0.5;
+      if (turrets[0].firing && Math.floor(time * 8) !== Math.floor((time - dt) * 8)) {
+        const t = turrets[0];
+        events.push({ type: 'shot', pid: 0, turret: 1, weapon: 'rifle', x: t.x + Math.cos(t.angle) * 22, y: t.y + Math.sin(t.angle) * 22, angle: t.angle, rays: [{ x: t.x + Math.cos(t.angle) * 400, y: t.y + Math.sin(t.angle) * 400, hit: 0 }] });
+      }
+      return { view: baseView(players, [], { pickups, turrets, barricades, hazards, projectiles }), events };
+    },
+  };
+}
+
 function hordeScene(opts) {
   const f = createFixtureScene(map, { zombies: opts.zombies ?? 250, seed: 7, localFires: opts.localFires ?? true });
   return {
@@ -289,9 +366,9 @@ let now = 0;
 
 function buildScene() {
   if (mode === 'lineup') scene = lineupScene();
-  else if (mode === 'team') scene = hordeScene({ zombies: 40, yaw: Math.PI / 2 });
+  else if (mode === 'team') scene = teamScene();
   else if (mode === 'guns') scene = hordeScene({ zombies: 60, localFires: false });
-  else if (mode === 'fx') scene = hordeScene({ zombies: 60 });
+  else if (mode === 'fx') scene = teamScene();
   else scene = hordeScene({ zombies: 250 });
   if (!Number.isFinite(yaw)) yaw = scene.yaw;
 }
@@ -352,6 +429,34 @@ async function main() {
     local: () => scene.local,
     fire(on) { if (on) keys.add('f'); else keys.delete('f'); },
     events(list) { R.addEvents(list, { localId: scene.localId }); },
+    fxManual: false,
+    pause(v) { paused = v; },
+    /** Fire showcase event #k at distance d in front of the camera. */
+    fxAt(k, d = 300, side = 0) {
+      const loc = scene.local;
+      const x = loc.x + Math.cos(yaw) * d + Math.cos(yaw + Math.PI / 2) * side, y = loc.y + Math.sin(yaw) * d + Math.sin(yaw + Math.PI / 2) * side;
+      const list = [
+        { type: 'explosion', x, y, r: 150, kind: 'frag' },
+        { type: 'chain', pid: 1, points: [{ x: loc.x, y: loc.y }, { x: x - 60, y: y + 30 }, { x, y: y - 20 }, { x: x + 80, y: y + 10 }, { x: x + 40, y: y + 90 }] },
+        { type: 'shot', pid: 1, turret: 0, weapon: 'railgun', x: loc.x + Math.cos(yaw) * 22, y: loc.y + Math.sin(yaw) * 22, angle: yaw, rays: [{ x: x + Math.cos(yaw) * 600, y: y + Math.sin(yaw) * 600, hit: 1 }] },
+        { type: 'ignite', x, y, r: 110 },
+        { type: 'slam', id: 99, x, y, r: 190 },
+        { type: 'explosion', x, y, r: 180, kind: 'rocket' },
+        { type: 'drop', x, y },
+        { type: 'explosion', x, y, r: 115, kind: 'bloater' },
+        { type: 'destroyed', kind: 'turret', id: 3, x, y },
+        { type: 'pickup', pid: 1, kind: 'health', x, y, weapon: null },
+        { type: 'scream', id: 98, x, y },
+        { type: 'zdie', id: 4242, ztype: 'brute', x, y, angle: yaw + Math.PI, by: 1, gib: true },
+        { type: 'zdie', id: 4243, ztype: 'walker', x, y, angle: yaw + Math.PI, by: 1, gib: false },
+        { type: 'shot', pid: 2, turret: 0, weapon: 'shotgun', x: x - 200, y: y + 100, angle: -0.4, rays: [0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({ x: x + 40 + k * 8, y: y - 40 + k * 12, hit: k % 3 === 0 ? 1 : 2 })) },
+        { type: 'shot', pid: 1, turret: 0, weapon: 'shotgun', x: loc.x + Math.cos(yaw) * 22, y: loc.y + Math.sin(yaw) * 22, angle: yaw, predicted: true, rays: [0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({ x: x + (k - 3.5) * 14, y: y + (k % 3) * 10, hit: k % 3 === 0 ? 1 : 2 })) },
+        { type: 'pdamage', pid: 1, amount: 25, x: loc.x + Math.cos(yaw + 2) * 50, y: loc.y + Math.sin(yaw + 2) * 50 },
+      ];
+      const e = list[k % list.length];
+      R.addEvents([e], { localId: scene.localId });
+      return e.type + (e.kind ? ':' + e.kind : '') + (e.weapon ? ':' + e.weapon : '');
+    },
   };
   requestAnimationFrame(loop);
 }
@@ -408,10 +513,10 @@ function loop(t) {
   // viewmodel cycling / weapon choice for the local record
   let wid = WEAPON_IDS[weaponIdx];
   if (mode === 'guns') wid = WEAPON_IDS[Math.floor(now / 2.5) % WEAPON_IDS.length];
-  loc.slots[1] = wid;
-  loc.slot = 1;
   const res = paused ? { view: lastView, events: [] } : scene.step(step, yaw);
   lastView = res.view;
+  loc.slots[1] = wid;
+  loc.slot = 1;
   loc.angle = yaw;
   loc.spin = wid === 'minigun' ? 1 : 0;
   const events = res.events.slice();
@@ -419,7 +524,7 @@ function loop(t) {
   if (!paused && mode === 'fx') fxShowcase(events, loc, step);
   if (events.length) R.addEvents(events, { localId: scene.localId });
   const r = R.render(res.view, {
-    localId: scene.localId, roster: scene.roster, now, dt: step, yaw, pitch, local: loc, camX: loc.x, camY: loc.y,
+    localId: scene.localId, roster: scene.roster, now, dt: paused ? 0 : step, yaw, pitch, local: loc, camX: loc.x, camY: loc.y,
     settings: { screenShake: true, showNames: true, fov: 80, lighting: true },
   });
   jsHist.push(r.jsMs);
@@ -472,6 +577,7 @@ function fakeOwnShot(events, loc, wid, dt) {
 // effect showcase: a rotating program of events in front of the camera
 let fxT = 0, fxK = 0;
 function fxShowcase(events, loc, dt) {
+  if (window.__SB && window.__SB.fxManual) return;
   fxT -= dt;
   if (fxT > 0) return;
   fxT = 0.9;

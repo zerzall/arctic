@@ -6,9 +6,16 @@
 // sample() and are true in exactly one sample. Gameplay fields are neutral while the input
 // is disabled (menus, chat, shop), but the UI edges keep working so Esc/B/Tab can close
 // whatever is open. Key presses aimed at text fields never reach the game at all.
+//
+// View 'fps' (first person, SPEC §7.5): sample() also reports lookDX/lookDY — mouse
+// movement under pointer lock, touch look-pad drags and the gamepad right stick (as an
+// equivalent delta per frame), in CSS px since the last sample. Clicking the canvas
+// requests pointer lock (that click doesn't fire); the owner hears about lock changes
+// through opts.onLockChange. View 'topdown' keeps the cursor aim of §7.2 unchanged.
 
 import { createTouchControls, isTouchDevice } from './touch.js';
 import { isTypingTarget } from './dom.js';
+import { padLookDelta, TOUCH_LOOK_GAIN } from './look.js';
 
 /** Keyboard layout (KeyboardEvent.code, so WASD works on AZERTY/Dvorak too). */
 const KEY_UP = ['KeyW', 'ArrowUp'];
@@ -48,6 +55,8 @@ const AIM_MAX = 270;
 /** Seconds without aiming after which the character faces where it walks. */
 const AIM_IDLE = 0.45;
 const WHEEL_PX_PER_STEP = 60;
+/** A pointer-locked mousemove bigger than this (px) is a browser glitch, not a flick. */
+const LOOK_GLITCH_PX = 400;
 
 function deadzone(x, y) {
   const m = Math.hypot(x, y);
@@ -68,8 +77,11 @@ function newEdges(names) {
  * @param {object} [opts]
  * @param {HTMLElement} [opts.touchRoot] where the touch controls are mounted (default: canvas parent)
  * @param {boolean} [opts.forceTouch] show touch controls regardless of the device
+ * @param {'fps'|'topdown'} [opts.view] 'fps' = first-person look (default 'topdown')
+ * @param {Function} [opts.onLockChange] (locked: boolean) after pointer lock is gained/lost
  * @returns {{ sample: Function, setEnabled: Function, setAnchor: Function, cursor: {x: number, y: number},
- *   mode: string, destroy: Function, releaseAll: Function, touch: object|null }}
+ *   mode: string, destroy: Function, releaseAll: Function, touch: object|null, view: string,
+ *   locked: boolean, requestLock: Function, exitLock: Function, addLook: Function }}
  */
 export function createInput(canvas, opts = {}) {
   const win = canvas.ownerDocument.defaultView || window;
@@ -96,6 +108,14 @@ export function createInput(canvas, opts = {}) {
   let aimDist = AIM_MIN;
   let aimIdle = 99;
   let lastSampleAt = 0;
+
+  // first-person look
+  let view = opts.view === 'fps' ? 'fps' : 'topdown';
+  let lookDX = 0, lookDY = 0;
+  let locked = false;
+  let skipLookMove = false;
+  let unadjusted = true;   // try raw mouse input first; dropped once the platform refuses
+  const padLook = { dx: 0, dy: 0 };
 
   const listeners = [];
   function on(target, type, fn, o) {
@@ -145,8 +165,15 @@ export function createInput(canvas, opts = {}) {
 
   function onMouseDown(e) {
     if (destroyed) return;
+    const fromTouch = !!(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents);
     mode = 'kbm';
     canvasPoint(e.clientX, e.clientY, cursor);
+    // First person without the lock: this click captures the mouse; it doesn't shoot.
+    // (A tap's compatibility mousedown never asks: phones look with the touch pad.)
+    if (view === 'fps' && !locked && enabled && lockSupported() && !fromTouch) {
+      requestLock();
+      return;
+    }
     if (e.button === 0) mouse.left = true;
     else if (e.button === 2) mouse.right = true;
     else if (e.button === 1) {
@@ -166,7 +193,84 @@ export function createInput(canvas, opts = {}) {
     if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
     if (Math.abs(e.clientX - lastMouse.x) + Math.abs(e.clientY - lastMouse.y) > 2) mode = 'kbm';
     lastMouse = { x: e.clientX, y: e.clientY };
+    if (view === 'fps' && locked) {
+      // The first event after locking can carry the jump to the lock position.
+      if (skipLookMove) {
+        skipLookMove = false;
+        return;
+      }
+      const mx = e.movementX || 0, my = e.movementY || 0;
+      if (Math.abs(mx) > LOOK_GLITCH_PX || Math.abs(my) > LOOK_GLITCH_PX) return;
+      if (mx || my) mode = 'kbm';
+      if (enabled) {
+        lookDX += mx;
+        lookDY += my;
+      }
+      return;
+    }
     canvasPoint(e.clientX, e.clientY, cursor);
+  }
+
+  // ---- pointer lock (first person) --------------------------------------------------
+
+  function lockSupported() {
+    return typeof canvas.requestPointerLock === 'function';
+  }
+
+  function requestLock() {
+    if (destroyed || locked || !lockSupported()) return;
+    const plain = () => {
+      try {
+        const q = canvas.requestPointerLock();
+        if (q && typeof q.catch === 'function') q.catch(() => {});
+      } catch {
+        // no user activation / not allowed right now: the next click tries again
+      }
+    };
+    if (!unadjusted) {
+      plain();
+      return;
+    }
+    let p = null;
+    try {
+      p = canvas.requestPointerLock({ unadjustedMovement: true });
+    } catch {
+      unadjusted = false;
+      plain();
+      return;
+    }
+    if (p && typeof p.catch === 'function') {
+      p.catch((err) => {
+        // Raw input isn't available on every platform (e.g. Linux): lock without it.
+        if (err && err.name === 'NotSupportedError') {
+          unadjusted = false;
+          plain();
+        }
+      });
+    }
+  }
+
+  function exitLock() {
+    if (locked && doc.exitPointerLock) {
+      try {
+        doc.exitPointerLock();
+      } catch {
+        // already released
+      }
+    }
+  }
+
+  function onLockChange() {
+    const now = doc.pointerLockElement === canvas;
+    if (now === locked) return;
+    locked = now;
+    skipLookMove = now;
+    lookDX = lookDY = 0;
+    if (!now) {
+      // Esc released the lock: nobody keeps firing or running into the horde.
+      mouse.left = mouse.right = false;
+    }
+    if (opts.onLockChange) opts.onLockChange(now);
   }
 
   function onWheel(e) {
@@ -214,6 +318,7 @@ export function createInput(canvas, opts = {}) {
   on(canvas, 'contextmenu', onContextMenu);
   on(win, 'blur', releaseAll);
   on(doc, 'visibilitychange', onVisibility);
+  on(doc, 'pointerlockchange', onLockChange);
 
   // ---- touch --------------------------------------------------------------------------
 
@@ -221,6 +326,7 @@ export function createInput(canvas, opts = {}) {
   function ensureTouch() {
     if (touch || destroyed) return;
     touch = createTouchControls(opts.touchRoot || canvas.parentElement);
+    touch.setLookMode(view === 'fps');
     mode = 'touch';
   }
   if (opts.forceTouch || isTouchDevice()) ensureTouch();
@@ -299,7 +405,13 @@ export function createInput(canvas, opts = {}) {
         if (pressed(PAD.L3)) padSprintToggle = !padSprintToggle;
         if (ls.m < 0.3) padSprintToggle = false;
         if (padSprintToggle) sprint = true;
-        if (rs.m > 0) {
+        if (view === 'fps') {
+          if (rs.m > 0) {
+            padLookDelta(rs.x, rs.y, dt, padLook);
+            lookDX += padLook.dx;
+            lookDY += padLook.dy;
+          }
+        } else if (rs.m > 0) {
           aimAngle = Math.atan2(rs.y, rs.x);
           aimDist = AIM_MIN + (AIM_MAX - AIM_MIN) * rs.m;
           aiming = true;
@@ -334,13 +446,19 @@ export function createInput(canvas, opts = {}) {
     // touch
     if (touch) {
       const t = touch.read();
-      if (t.active) mode = 'touch';
+      // (a look drag counts even when its last event is older than the activity window:
+      // at low frame rates a whole swipe fits between two samples)
+      if (t.active || t.lookDX || t.lookDY) mode = 'touch';
       if (mode === 'touch') {
         if (t.moveM > 0) {
           moveX = t.moveX;
           moveY = t.moveY;
         }
         if (t.moveM > 0.96) sprint = true;
+        if (t.lookDX || t.lookDY) {
+          lookDX += t.lookDX * TOUCH_LOOK_GAIN;
+          lookDY += t.lookDY * TOUCH_LOOK_GAIN;
+        }
         if (t.aimM > 0) {
           aimAngle = Math.atan2(t.aimY, t.aimX);
           aimDist = AIM_MIN + (AIM_MAX - AIM_MIN) * t.aimM;
@@ -360,7 +478,8 @@ export function createInput(canvas, opts = {}) {
     }
 
     // pad/touch aim point: projected in front of the player so the crosshair follows the stick
-    if (mode !== 'kbm') {
+    // (top-down only: in first person the camera is the aim)
+    if (mode !== 'kbm' && view !== 'fps') {
       if (aiming) {
         aimIdle = 0;
       } else {
@@ -391,8 +510,11 @@ export function createInput(canvas, opts = {}) {
       shop: edges.shop > 0, scoreboard, chat: edges.chat > 0, ready: edges.ready > 0, pause: edges.pause > 0,
       mode,
       nav: null,
+      lookDX: 0, lookDY: 0,
     };
     if (enabled) {
+      out.lookDX = lookDX;
+      out.lookDY = lookDY;
       out.moveX = moveX;
       out.moveY = moveY;
       out.fire = fire;
@@ -414,6 +536,8 @@ export function createInput(canvas, opts = {}) {
     for (const n of NAV_EDGES) nav[n] = 0;
     slot = -1;
     cycle = 0;
+    lookDX = 0;
+    lookDY = 0;
     return out;
   }
 
@@ -429,6 +553,7 @@ export function createInput(canvas, opts = {}) {
       slot = -1;
       cycle = 0;
       wheelAcc = 0;
+      lookDX = lookDY = 0;
       mouse.left = mouse.right = false;
       if (touch) touch.setEnabled(nb);
     },
@@ -450,8 +575,38 @@ export function createInput(canvas, opts = {}) {
       return touch;
     },
     releaseAll,
+    /** 'fps' | 'topdown' */
+    get view() {
+      return view;
+    },
+    setView(v) {
+      view = v === 'fps' ? 'fps' : 'topdown';
+      if (touch) touch.setLookMode(view === 'fps');
+      if (view !== 'fps') exitLock();
+    },
+    /** True while the canvas holds the pointer lock. */
+    get locked() {
+      return locked;
+    },
+    /** Whether this browser can lock the pointer at all. */
+    get lockSupported() {
+      return lockSupported();
+    },
+    /** Ask for pointer lock (needs a recent user gesture; failures are silent). */
+    requestLock,
+    exitLock,
+    /**
+     * Feed a look delta as if the mouse moved (CSS px). Test/debug hook behind
+     * window.__HH.look (headless browsers can't produce pointer-locked movement).
+     */
+    addLook(dx, dy) {
+      if (!enabled) return;
+      if (Number.isFinite(dx)) lookDX += dx;
+      if (Number.isFinite(dy)) lookDY += dy;
+    },
     destroy() {
       if (destroyed) return;
+      exitLock();
       destroyed = true;
       for (const off of listeners) off();
       listeners.length = 0;

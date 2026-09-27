@@ -11,7 +11,7 @@
 // become glossy and get puddles, so street lamps and the flashlight glint off wet roads.
 //
 // Decals (blood, scorch, acid, oil, gore) are painted into the tile canvases; dirty tiles
-// are re-uploaded a few per frame, nearest to the camera first. Memory is fixed: the
+// are re-uploaded one per frame, nearest to the camera first. Memory is fixed: the
 // canvases are allocated once.
 
 import * as THREE from 'three';
@@ -19,7 +19,7 @@ import { prepareMap, paintGround } from '../render/maplayer.js';
 import { bloodSplats, scorchSprite } from '../render/textures.js';
 import { periodicFbm, createRng } from '../render/util.js';
 
-const TILE = 512;               // playable-area tile size (world units)
+const TILE = 1024;              // playable-area tile size (world units): ~10 visible draw calls
 const SKIRT = 1300;             // how far the ground continues past the map bounds
 const SKIRT_TILE = 2200;        // max skirt tile length
 const SKIRT_SCALE = 0.16;       // texels per unit beyond the bounds (fog hides it)
@@ -135,7 +135,12 @@ export function createGround({ scene, map, quality, renderer }) {
   // ---- decals ----------------------------------------------------------------------
   const innerCols = Math.ceil(W / TILE);
   const innerRows = Math.ceil(H / TILE);
-  const maxUploads = high ? 2 : 1;
+  // One tile re-upload (≈1.3–2.4 MB plus its mipmaps) every UPLOAD_EVERY frames at most: in
+  // a big fight a zombie dies nearly every frame, and a full tile upload per frame was the
+  // largest single item in the frame's JS time. Blood shows up ~50 ms late at worst.
+  const maxUploads = 1;
+  const UPLOAD_EVERY = 3;
+  let uploadWait = 0;
   let uploads = 0, decals = 0;
   const _dirty = [];
 
@@ -193,6 +198,7 @@ export function createGround({ scene, map, quality, renderer }) {
 
   /** Upload dirty tiles (rate-limited, nearest to the camera first). */
   function update(frame) {
+    if (uploadWait > 0) { uploadWait--; return; }
     _dirty.length = 0;
     for (let i = 0; i < innerCols * innerRows; i++) if (tiles[i].dirty) _dirty.push(tiles[i]);
     if (!_dirty.length) return;
@@ -207,6 +213,7 @@ export function createGround({ scene, map, quality, renderer }) {
       _dirty[i].dirty = false;
       uploads++;
     }
+    uploadWait = UPLOAD_EVERY - 1;
   }
 
   /** Ground height at a sim point (0 except inside water areas). */
@@ -385,8 +392,10 @@ function makeGroundMaterial(tex, uniforms) {
         // grey = asphalt, concrete, white paint; yellow paint is saturated but bright
         gHard = (1.0 - smoothstep(0.2, 0.42, gSat)) + smoothstep(0.25, 0.4, gMax) * step(0.42, gSat) * 0.8;
         gHard = clamp(gHard, 0.0, 1.0);
-        // the painted tiles were tuned for a darkness overlay; lift them for real lighting
-        diffuseColor.rgb *= (0.72 + 0.56 * gDet.r) * 1.45;
+        // the painted tiles were tuned for a darkness overlay: lift the dark surfaces for
+        // real lighting, but leave bright paint and litter as they are (no glare)
+        float gLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb *= (0.72 + 0.56 * gDet.r) * mix(1.5, 1.0, smoothstep(0.08, 0.35, gLum));
         diffuseColor.rgb *= 0.86 + 0.28 * gDet2.b;
         gPuddle = smoothstep(0.56, 0.66, gDet2.g) * gHard * wetness;
         diffuseColor.rgb *= 1.0 - gPuddle * 0.55 - gHard * wetness * 0.12;`)

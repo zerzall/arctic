@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SOUNDS, SOUND_IDS, renderSound, soundRate } from '../public/js/audio/sounds.js';
 import { peak, rms, loopify, filter, makeBuf } from '../public/js/audio/synth.js';
-import { createAudio, MAX_VOICES } from '../public/js/audio/audio.js';
+import { createAudio, MAX_VOICES, orientedPan, rearShade } from '../public/js/audio/audio.js';
 import { WEAPONS } from '../public/js/shared/weapons.js';
 import { ZOMBIE_IDS } from '../public/js/shared/zombies.js';
 import { MockAudioContext } from './fixtures/audio-mock-context.js';
@@ -419,4 +419,80 @@ test('setMap: permanent map fires crackle near the listener (the camera centre)'
   step({ x: 1000, y: 0 });
   assert.ok(!eng.loops.has('fire'), 'cleared between games');
   assert.equal(audio.stats().errors, 0);
+});
+
+test('first-person panning math: sin of the angle off the facing direction, rear shading', () => {
+  const o = {};
+  // facing east (yaw 0): a sound to the south (+y) is on the right
+  orientedPan(0, 400, 0, o);
+  assert.ok(Math.abs(o.pan - 0.85) < 1e-9, `right: ${o.pan}`);
+  assert.ok(Math.abs(o.behind) < 1e-9);
+  orientedPan(0, -400, 0, o);
+  assert.ok(Math.abs(o.pan + 0.85) < 1e-9, `left: ${o.pan}`);
+  orientedPan(400, 0, 0, o);
+  assert.ok(Math.abs(o.pan) < 1e-9 && o.behind === 0, 'ahead: centred');
+  orientedPan(-400, 0, 0, o);
+  assert.ok(Math.abs(o.pan) < 1e-9 && Math.abs(o.behind - 1) < 1e-9, 'behind: centred, fully behind');
+  // turning the listener turns the image: facing south, the same southern sound is ahead
+  orientedPan(0, 400, Math.PI / 2, o);
+  assert.ok(Math.abs(o.pan) < 1e-9 && o.behind === 0);
+  // facing north, a sound to the east is on the right
+  orientedPan(400, 0, -Math.PI / 2, o);
+  assert.ok(o.pan > 0.84);
+  // 45° off to the right: sin(45°)
+  orientedPan(300, 300, 0, o);
+  assert.ok(Math.abs(o.pan - Math.SQRT1_2 * 0.85) < 1e-9);
+  // right at the listener's feet: not hard-panned
+  orientedPan(0, 30, 0, o);
+  assert.ok(o.pan > 0 && o.pan < 0.3, `near field ${o.pan}`);
+  orientedPan(0, 0, 1, o);
+  assert.equal(o.pan, 0);
+  // rear shading: nothing in front, quieter and duller behind
+  const front = rearShade(0, 20000);
+  assert.equal(front.gain, 1);
+  assert.equal(front.lp, 20000);
+  const back = rearShade(1, 20000);
+  assert.ok(back.gain < 0.85 && back.gain >= 0.7, `rear gain ${back.gain}`);
+  assert.ok(back.lp <= 4000, `rear lowpass ${back.lp}`);
+  const side = rearShade(0.3, 20000);
+  assert.ok(side.gain > back.gain && side.lp > back.lp);
+});
+
+test('first-person listener: pan follows the yaw, sounds behind are softer and muffled; no yaw = top-down', async () => {
+  const { audio, eng } = engine();
+  await audio.unlock();
+  // top-down (no yaw): screen-relative, a sound above the listener is centred
+  audio.addEvents([], { x: 0, y: 0, localId: 1 });
+  const sp = {};
+  eng.spatial(0, -400, 1, sp);
+  assert.ok(Math.abs(sp.pan) < 1e-9, 'top-down: straight up the screen is centred');
+  eng.spatial(400, 0, 1, sp);
+  const topRight = sp.pan;
+  assert.ok(topRight > 0.3);
+  // first person facing north (-y): east is right, west is left, north ahead
+  audio.addEvents([], { x: 0, y: 0, yaw: -Math.PI / 2, localId: 1 });
+  eng.spatial(400, 0, 1, sp);
+  assert.ok(sp.pan > 0.8, `east is right: ${sp.pan}`);
+  eng.spatial(-400, 0, 1, sp);
+  assert.ok(sp.pan < -0.8, `west is left: ${sp.pan}`);
+  eng.spatial(0, -400, 1, sp);
+  const ahead = { ...sp };
+  eng.spatial(0, 400, 1, sp);
+  const behind = { ...sp };
+  assert.ok(Math.abs(ahead.pan) < 1e-9 && Math.abs(behind.pan) < 1e-9);
+  assert.ok(behind.att < ahead.att, 'behind is quieter');
+  assert.ok(behind.att > ahead.att * 0.7, 'but only slightly');
+  assert.ok(behind.lp < ahead.lp && behind.lp <= 4000, 'and muffled');
+  // turning around swaps them
+  audio.update(view({ players: [player(1, 0, 0)] }), { localId: 1, dt: 1 / 60, x: 0, y: 0, yaw: Math.PI / 2 });
+  eng.spatial(0, 400, 1, sp);
+  assert.ok(Math.abs(sp.att - ahead.att) < 1e-9, 'now the southern sound is ahead');
+  // a later call without yaw goes back to screen-relative panning
+  audio.addEvents([], { x: 0, y: 0, localId: 1 });
+  eng.spatial(400, 0, 1, sp);
+  assert.equal(sp.pan, topRight);
+  // a positional one-shot from the right plays on the right voice pan
+  audio.addEvents([{ type: 'zattack', id: 3, ztype: 'walker', x: 0, y: 200, angle: 0 }], { x: 0, y: 0, yaw: 0, localId: 1 });
+  const v = eng.slots.find((q) => q.end > 0 && q.pan && q.pan.pan.value > 0.5);
+  assert.ok(v, 'a zombie on the right is heard on the right');
 });

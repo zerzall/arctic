@@ -13,7 +13,9 @@
 
 import * as THREE from 'three';
 
-const FIRE_H = 34;          // flame light height above its base
+// flame light height above its base: well up in the flames, so a wreck's own flanks and a
+// tanker's end cap under the fire are lit at a grazing angle instead of blown out white
+const FIRE_H = 62;
 const LAMP_H = 214;         // lamp light height (just under the 230 lamp head)
 // Pool lights use decay 0: brightness follows only three.js' smooth range window
 // (1 - (d/r)^4)^2, so a lamp 214 up and a fire 30 from a wreck both read as pools of
@@ -73,7 +75,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     return {
       key: 'map' + i, x: l.x, y: l.y, h, color: color(l.color),
       // lamps reach the ground at `r` from their foot; the cut-off is the slant distance
-      intensity: fire ? 1.1 : isLamp ? 1.6 : 0.9,
+      // fires sit right against wrecks: at 1.1 a pale tanker cap 30 units away blew out white
+      intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9,
       radius: isLamp ? Math.hypot(l.r, h) * 1.05 : l.r * (fire ? 1.25 : 1.1),
       flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0,
     };
@@ -131,8 +134,10 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     // flashlight from the camera
     camera.getWorldDirection(_fwd);
     const on = f.flashlight !== false;
+    // Off = zero intensity, never visible = false: hiding the light changes the scene's
+    // spot-light count, which recompiled every lit material (a hitch of ~12 programs) the
+    // moment the player died and again on respawn.
     flash.intensity = on ? 1150 : 0;
-    flash.visible = on;
     const cp = camera.position;
     const rx = -_fwd.z, rz = _fwd.x;   // right = forward × up
     const rl = Math.hypot(rx, rz) || 1;
@@ -279,11 +284,13 @@ export function ambientFor(map) {
   const a = map.ambient || { darkness: 0.65, tint: '#2c4a7a' };
   const d = Math.max(0, Math.min(1, a.darkness));
   const tint = new THREE.Color(a.tint);
-  const fog = new THREE.Color('#05070a').lerp(tint, 0.2 + (1 - d) * 0.25);
+  const fog = new THREE.Color('#05070a').lerp(tint, 0.17 + (1 - d) * 0.2);
   const horizon = fog.clone().lerp(tint, 0.15);
   const zenith = new THREE.Color('#010205').lerp(tint, 0.05);
   const sky = new THREE.Color('#7f93b5').lerp(tint, 0.45);
-  const ground = new THREE.Color('#1a1510').lerp(tint, 0.15);
+  // bounce from wet, lamp-lit asphalt: faces turned away from every light (a wreck
+  // backlit by its own fire) keep a little value instead of crushing to flat black
+  const ground = new THREE.Color('#3a3226').lerp(tint, 0.18);
   return {
     darkness: d,
     fog,
@@ -292,7 +299,7 @@ export function ambientFor(map) {
     zenith,
     sky,
     ground,
-    hemi: 0.55 + (1 - d) * 0.9,
+    hemi: 0.65 + (1 - d) * 0.9,
     moon: new THREE.Color('#9fb4d8').lerp(tint, 0.2),
     moonI: 0.25 + (1 - d) * 0.5,
   };

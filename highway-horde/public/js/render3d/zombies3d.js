@@ -203,7 +203,6 @@ export function createZombies3D(ctx) {
 
   // per-type colour tables: skin variations and dirtied clothes
   const skinCols = {}, clothCols = {};
-  const tmpC = new THREE.Color();
   for (const t of ZOMBIE_IDS) {
     const look = ZOMBIES[t].look;
     skinCols[t] = [0, 1, 2, 3].map((k) => new THREE.Color(mixHex(shadeHex(look.skin, 0.12), k % 2 ? '#a8a880' : '#6a8a5a', 0.12 + k * 0.05)));

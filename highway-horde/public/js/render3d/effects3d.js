@@ -12,7 +12,6 @@
 
 import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
-import { ZOMBIES } from '../shared/zombies.js';
 import { acquireFx, releaseFx, F_ADD, F_FLAT, F_STREAK, F_BOUNCE, F_FIRE, F_FLICKER, F_SPIN, FR } from './fx-core.js';
 import { col, PartBuilder } from './actor-kit.js';
 
@@ -33,7 +32,7 @@ export function createEffects3D(ctx) {
   let high = ctx.quality !== 'low';
   let localId = 0;
   let now = 0;
-  let camX = 0, camY = 0, pitch = 0, localRec = null;
+  let camX = 0, camY = 0, pitch = 0;
   const R = fx.rng;
 
   const tracers = [];      // { ax, ah, ay, bx, bh, by, len, age, color, w, core }
@@ -300,9 +299,10 @@ export function createEffects3D(ctx) {
     const rocket = kind === 'rocket';
     ctx.lights.flash(x, y, 50, '#ffb060', rocket ? 4.5 : 3.6, r * 3.2, 0.45);
     // hot core flash
-    fx.spawn(x, 30, y, 0, 0, 0, 0.18, r * 0.9, r * 1.8, C('#fff0c8'), 1, FR.GLOW, F_ADD, 0, 0);
-    fx.spawn(x, 30, y, 0, 0, 0, 0.12, r * 0.8, r * 1.2, C('#ffffff'), 1, FR.STAR, F_ADD, 0, 0);
-    fireball(x, 20, y, high ? 30 : 14, r * 0.28, r * 1.6, 0.7);
+    // a short hot flash, then an orange fireball (kept below white so ACES doesn't blow it out)
+    fx.spawn(x, 30, y, 0, 0, 0, 0.14, r * 0.8, r * 1.6, C('#ffc890'), 0.8, FR.GLOW, F_ADD, 0, 0);
+    fx.spawn(x, 30, y, 0, 0, 0, 0.1, r * 0.7, r * 1.1, C('#fff0d0'), 0.55, FR.STAR, F_ADD, 0, 0);
+    fireball(x, 20, y, high ? 30 : 14, r * 0.28, r * 1.6, 0.75, C('#ffa860'));
     ring(x, 3, y, r * 2.6, 0.45, C('#ffd8a0'), 0.9);
     ring(x, 30, y, r * 2.2, 0.3, C('#ffe8c0'), 0.4, false, FR.SOFTRING);
     sparks(x, 20, y, 0, TAU, high ? 26 : 12, 600, C('#ffc060'));
@@ -386,7 +386,7 @@ export function createEffects3D(ctx) {
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind); break;
       case 'ignite': {
         const r = e.r || 110;
-        fireball(e.x, 6, e.y, high ? 36 : 16, 22, r * 1.8, 0.8);
+        fireball(e.x, 6, e.y, high ? 36 : 16, 22, r * 1.8, 0.8, C('#ffa860'));
         for (let k = 0; k < 10; k++) {
           const a = R() * TAU, s = 80 + R() * 140;
           fx.spawn(e.x, 20, e.y, Math.cos(a) * s, 60 + R() * 90, Math.sin(a) * s, 1, 2.4, 1.6, C('#c8e8d8'), 0.9, FR.SHARD, F_ADD | F_BOUNCE | F_SPIN, 700, 0.5);
@@ -485,7 +485,6 @@ export function createEffects3D(ctx) {
     localId = frame.localId || localId;
     camX = frame.camX; camY = frame.camY;
     pitch = frame.pitch || 0;
-    localRec = frame.local || null;
     tracerBudget = high ? 48 : 20;
     players.clear();
     if (view && view.players) for (const p of view.players) players.set(p.id, p);
@@ -575,7 +574,6 @@ export function createEffects3D(ctx) {
     w = 0;
     for (let k = 0; k < crates.length; k++) {
       const c = crates[k];
-      const prevAge = c.age;
       c.age += dt;
       if (c.age > 1.6) continue;
       crates[w++] = c;

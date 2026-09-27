@@ -99,10 +99,10 @@ export function makeSky(amb, radius, fx) {
         vec3 cloud = uCloud + uMoonColor * 0.05 * moonLit;
         col += vec3(0.85, 0.9, 1.0) * star * 1.4 * (1.0 - cover);
         // moon disc, craters, glow
-        float disc = smoothstep(0.99935, 0.99952, md);
-        float crater = fbm(d.xy * 900.0) * 0.35;
+        float disc = smoothstep(0.99972, 0.99982, md);
+        float crater = fbm(d.xy * 1300.0) * 0.35;
         vec3 moon = uMoonColor * (1.25 - crater);
-        col += uMoonColor * (pow(max(md, 0.0), 900.0) * 0.5 + pow(max(md, 0.0), 60.0) * 0.05);
+        col += uMoonColor * (pow(max(md, 0.0), 1600.0) * 0.45 + pow(max(md, 0.0), 80.0) * 0.045);
         col = mix(col, moon, disc * (1.0 - cover * 0.8));
         col = mix(col, cloud, cover * 0.9);
         gl_FragColor = vec4(col, 1.0);
@@ -122,35 +122,46 @@ export function makeSky(amb, radius, fx) {
 // ---- fire ---------------------------------------------------------------------------------
 
 /**
- * Flames for permanent fires: three crossed quads per fire, shaded with scrolling noise.
+ * Flames for permanent fires: two camera-facing (upright) billboards per fire, shaded with
+ * scrolling noise. Billboards rather than crossed quads: seen edge-on, crossed quads left
+ * a dark slit, and three of them stacked additively saturated into a white disc.
  * @param {Array<{x, y, base, r}>} fires
  */
 export function makeFlames(fires, fx) {
-  const pos = [], uv = [], seed = [];
+  const pos = [], corner = [], uv = [], seed = [];
   fires.forEach((f, i) => {
-    const w = f.r * 2.1, h = f.r * 3.3;
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI + i;
-      const cx = Math.cos(a) * w / 2, cz = Math.sin(a) * w / 2;
+    for (let k = 0; k < 2; k++) {
+      // the back sheet is wider and a little shorter: a body of fire, not a paper cut-out
+      const w = f.r * (k ? 2.5 : 1.9), h = f.r * (k ? 2.7 : 3.2);
       const y0 = f.base - f.r * 0.15, y1 = f.base + h;
-      const q = [[-cx, y0, -cz, 0, 0], [cx, y0, cz, 1, 0], [cx, y1, cz, 1, 1], [-cx, y0, -cz, 0, 0], [cx, y1, cz, 1, 1], [-cx, y1, -cz, 0, 1]];
-      for (const [x, y, z, u, v] of q) {
-        pos.push(f.x + x, y, f.y + z);
+      const q = [[-1, y0, 0, 0], [1, y0, 1, 0], [1, y1, 1, 1], [-1, y0, 0, 0], [1, y1, 1, 1], [-1, y1, 0, 1]];
+      for (const [cx, y, u, v] of q) {
+        pos.push(f.x, y, f.y);
+        // pulled toward the camera: a fire burns on a wreck, and a sheet through its middle
+        // was clipped by the body into a glowing disc (a tanker's end cap) instead of
+        // reading as flames in front of it
+        corner.push(cx * w / 2, k ? -f.r * 0.2 : -f.r * 0.75);
         uv.push(u, v);
-        seed.push(i * 1.37 + k * 0.31);
+        seed.push(i * 1.37 + k * 0.53);
       }
     }
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCorner', new THREE.Float32BufferAttribute(corner, 2));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
   const mat = additive(fx, `
-    attribute float aSeed;
+    attribute float aSeed; attribute vec2 aCorner;
     varying vec2 vUv; varying float vSeed; varying float vDepth;
     void main() {
       vUv = uv; vSeed = aSeed;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      // upright billboard: spread the corners across the view, pushed back by aCorner.y
+      vec3 toCam = cameraPosition - position;
+      vec2 d = normalize(toCam.xz + vec2(1e-4, 0.0));
+      vec3 right = vec3(d.y, 0.0, -d.x);
+      vec3 p = position + right * aCorner.x - vec3(d.x, 0.0, d.y) * aCorner.y;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
       vDepth = -mv.z;
       gl_Position = projectionMatrix * mv;
     }`, COMMON + `
@@ -159,21 +170,24 @@ export function makeFlames(fires, fx) {
       float t = uTime + vSeed * 13.0;
       float x = (vUv.x - 0.5) * 2.0;
       float y = vUv.y;
-      x += (vnoise(vec2(y * 3.0 - t * 1.7, vSeed)) - 0.5) * 0.5 * y;
+      x += (vnoise(vec2(y * 3.0 - t * 1.7, vSeed)) - 0.5) * 0.55 * y;
       float n = fbm(vec2(vUv.x * 3.2 + vSeed * 5.0, y * 2.4 - t * 2.6));
       // teardrop: narrow at the base, widest low down, licking to a point
       float width = ((1.0 - y) * 0.95 + 0.05) * smoothstep(-0.35, 0.22, y);
-      float body = 1.0 - smoothstep(0.35 * width, width, abs(x));
-      float f = body * (1.25 - y * 1.05) - n * 0.75 + 0.2;
+      float body = 1.0 - smoothstep(0.3 * width, width, abs(x));
+      float f = body * (1.2 - y * 1.1) - n * 0.8 + 0.2;
       f = clamp(f, 0.0, 1.0);
-      f *= smoothstep(0.0, 0.06, y);
-      vec3 col = mix(vec3(0.9, 0.12, 0.01), vec3(1.0, 0.55, 0.12), smoothstep(0.15, 0.6, f));
-      col = mix(col, vec3(1.0, 0.92, 0.65), smoothstep(0.7, 1.0, f));
-      float a = smoothstep(0.02, 0.35, f) * fogVis(vDepth);
-      gl_FragColor = vec4(col * 1.35, a);
+      // the base fades in: it sits in the wreck, and a saturated blob there read as a
+      // glowing ball stuck to the body instead of flames licking up from it
+      f *= smoothstep(0.0, 0.3, y);
+      vec3 col = mix(vec3(0.75, 0.1, 0.01), vec3(1.0, 0.42, 0.07), smoothstep(0.12, 0.55, f));
+      col = mix(col, vec3(1.0, 0.75, 0.4), smoothstep(0.85, 1.0, f));
+      float a = smoothstep(0.02, 0.45, f) * fogVis(vDepth);
+      gl_FragColor = vec4(col * 0.7, a * 0.7);
     ` + TONE + '}', { side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, mat);
   mesh.name = 'fire-flames';
+  mesh.frustumCulled = false;   // corners are spread in the vertex shader
   mesh.renderOrder = 10;
   return mesh;
 }
@@ -325,14 +339,14 @@ export function makeHalos(list, fx) {
  * @param {Array<{x, y, h, color, radius, strength}>} list
  */
 export function makeShafts(list, fx) {
-  const parts = [];
   const tpl = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true).toNonIndexed();
   const tp = tpl.attributes.position.array, tn = tpl.attributes.normal.array;
-  const pos = [], nor = [], col = [], hh = [];
+  const pos = [], nor = [], col = [], hh = [], ctr = [];
   const c = new THREE.Color();
   for (const l of list) {
     c.set(l.color).multiplyScalar(l.strength ?? 1);
     for (let i = 0; i < tp.length / 3; i++) {
+      ctr.push(l.x, l.y, l.radius);
       const top = tp[i * 3 + 1] > 0;
       const r = top ? 7 : l.radius;
       pos.push(l.x + tp[i * 3] * r, top ? l.h : 0, l.y + tp[i * 3 + 2] * r);
@@ -347,11 +361,15 @@ export function makeShafts(list, fx) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('aH', new THREE.Float32BufferAttribute(hh, 1));
+  g.setAttribute('aCenter', new THREE.Float32BufferAttribute(ctr, 3));
   const mat = additive(fx, `
-    attribute vec3 aColor; attribute float aH;
+    attribute vec3 aColor; attribute float aH; attribute vec3 aCenter;
     varying vec3 vCol; varying float vH; varying vec3 vN; varying vec3 vV; varying float vDepth;
     void main() {
-      vCol = aColor; vH = aH;
+      // standing in (or next to) a shaft, its far wall faced the eye across the whole view
+      // as a flat grey band: the cone only reads from outside, so fade it as we walk in
+      float inside = length(cameraPosition.xz - aCenter.xy) / max(1.0, aCenter.z);
+      vCol = aColor * smoothstep(0.85, 1.6, inside); vH = aH;
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
       vN = normalize(normalMatrix * normal);
       vV = normalize(-mv.xyz);
@@ -362,14 +380,13 @@ export function makeShafts(list, fx) {
     void main() {
       float facing = abs(dot(normalize(vN), normalize(vV)));
       float a = pow(1.0 - vH, 1.4) * 0.8 + 0.08;
-      a *= facing * facing * 0.11;
+      a *= facing * facing * 0.09;
       a *= smoothstep(0.0, 60.0, vDepth) * fogVis(vDepth);
       gl_FragColor = vec4(vCol, a);
     ` + TONE + '}', { side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, mat);
   mesh.name = 'light-shafts';
   mesh.renderOrder = 9;
-  parts.push(mesh);
   return mesh;
 }
 

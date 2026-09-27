@@ -1,6 +1,11 @@
 // HUD minimap: the map's static layout is painted once into an offscreen canvas; each
 // refresh only blits it and draws dots for zombies, pickups, teammates and the local
 // player's arrow. Redrawn at MINIMAP_HZ rather than every frame.
+//
+// Radar mode (first-person view): a zoomed window centred on the player that turns with
+// the camera, so up is always where you look. A north marker rides the rim, and the
+// objective, supply station and teammates beyond the window are pinned to the rim so
+// you can always turn toward them.
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 
@@ -9,6 +14,8 @@ const AREA_COLORS = {
   asphalt: '#2a2d31', concrete: '#383b3e', grass: '#1c2819', dirt: '#302619',
   gravel: '#33312c', sand: '#463e2e', water: '#10304a',
 };
+/** Radar mode: world px from the player to the nearer edge of the window. */
+const RADAR_RANGE = 900;
 const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco']);
 
 function rotRect(g, x, y, w, h, a) {
@@ -22,21 +29,25 @@ function rotRect(g, x, y, w, h, a) {
 /**
  * @param {HTMLCanvasElement} canvas the visible minimap canvas (sized by CSS)
  * @param {object} map MapDef
+ * @param {{radar?: boolean}} [opts] radar: rotating player-centred window (first person)
  */
-export function createMinimap(canvas, map) {
+export function createMinimap(canvas, map, opts = {}) {
   const g = canvas.getContext('2d');
+  let radar = !!opts.radar;
   let W = 0, H = 0, dpr = 1, scale = 1, ox = 0, oy = 0;
   let base = null;
   let acc = 1;
+  let radarYaw = 0;
   let pulse = 0;
 
   function paintBase() {
     base = document.createElement('canvas');
-    base.width = W;
-    base.height = H;
+    // Radar: the whole map at the zoomed scale (a few hundred px), blitted rotated.
+    base.width = radar ? Math.ceil(map.width * scale + ox * 2) : W;
+    base.height = radar ? Math.ceil(map.height * scale + oy * 2) : H;
     const b = base.getContext('2d');
     b.fillStyle = '#0a0c0e';
-    b.fillRect(0, 0, W, H);
+    b.fillRect(0, 0, base.width, base.height);
     b.save();
     b.translate(ox, oy);
     b.scale(scale, scale);
@@ -80,9 +91,14 @@ export function createMinimap(canvas, map) {
     if (nw === W && nh === H && base) return;
     W = canvas.width = nw;
     H = canvas.height = nh;
-    scale = Math.min(W / map.width, H / map.height);
-    ox = (W - map.width * scale) / 2;
-    oy = (H - map.height * scale) / 2;
+    if (radar) {
+      scale = Math.min(W, H) / 2 / RADAR_RANGE;
+      ox = oy = 0;
+    } else {
+      scale = Math.min(W / map.width, H / map.height);
+      ox = (W - map.width * scale) / 2;
+      oy = (H - map.height * scale) / 2;
+    }
     paintBase();
     acc = 1;
   }
@@ -94,13 +110,21 @@ export function createMinimap(canvas, map) {
    * @param {number} dt
    * @param {object|null} localPos predicted {x, y, angle} of the local player
    */
-  function update(view, localId, rosterById, dt, localPos) {
+  function update(view, localId, rosterById, dt, localPos, yaw) {
     acc += dt;
     pulse += dt;
-    if (acc < 1 / MINIMAP_HZ) return;
+    // The radar turns with the camera: redraw whenever the view turned noticeably, else at
+    // 30 Hz (a rotated draw of the whole-map layer every frame was most of the HUD's time).
+    if (!radar && acc < 1 / MINIMAP_HZ) return;
+    if (radar && acc < 1 / 30 && !(Math.abs(Math.atan2(Math.sin((yaw || 0) - radarYaw), Math.cos((yaw || 0) - radarYaw))) > 0.02)) return;
+    radarYaw = yaw || 0;
     acc = 0;
     if (!base || W === 0) resize();
     g.setTransform(1, 0, 0, 1, 0, 0);
+    if (radar) {
+      drawRadar(view, localId, rosterById, localPos, yaw);
+      return;
+    }
     g.drawImage(base, 0, 0);
     if (!view) return;
     const k = scale;
@@ -195,5 +219,173 @@ export function createMinimap(canvas, map) {
     }
   }
 
-  return { update, resize };
+  // ---- radar (first person) ----------------------------------------------------------------
+
+  function drawRadar(view, localId, rosterById, localPos, yaw) {
+    const u = dpr;
+    const k = scale;
+    const cx = W / 2, cy = H / 2;
+    g.fillStyle = '#0a0c0e';
+    g.fillRect(0, 0, W, H);
+    let me = null;
+    if (view) for (const p of view.players || []) if (p.id === localId) me = p;
+    // Centre: the local player (predicted), else the camera's subject, else the objective.
+    const c = localPos && Number.isFinite(localPos.x) ? localPos : me || map.objective || { x: map.width / 2, y: map.height / 2 };
+    const facing = Number.isFinite(yaw) ? yaw : (localPos && Number.isFinite(localPos.angle) ? localPos.angle : me ? me.angle : -Math.PI / 2);
+    // World → radar: translate to the player, turn so `facing` points up (-y on screen).
+    const rot = -facing - Math.PI / 2;
+    const cr = Math.cos(rot), sr = Math.sin(rot);
+    const rx = (x, y) => cx + ((x - c.x) * cr - (y - c.y) * sr) * k;
+    const ry = (x, y) => cy + ((x - c.x) * sr + (y - c.y) * cr) * k;
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(rot);
+    g.translate(-c.x * k, -c.y * k);
+    g.drawImage(base, 0, 0);
+    g.restore();
+    const inside = (x, y, m) => x >= m && x <= W - m && y >= m && y <= H - m;
+    // Pin a point outside the window to its rim (along the ray from the centre).
+    const pin = (x, y, m) => {
+      const dx = x - cx, dy = y - cy;
+      const sx = dx ? (W / 2 - m) / Math.abs(dx) : Infinity;
+      const sy = dy ? (H / 2 - m) / Math.abs(dy) : Infinity;
+      const s = Math.min(1, sx, sy);
+      return { x: cx + dx * s, y: cy + dy * s };
+    };
+    if (view) {
+      // zombies
+      const zs = view.zombies || [];
+      const zr = Math.max(1.2, 1.5 * u);
+      for (let i = 0; i < zs.length; i++) {
+        const z = zs[i];
+        const x = rx(z.x, z.y), y = ry(z.x, z.y);
+        if (!inside(x, y, 0)) continue;
+        const big = z.type === 'boss' || z.type === 'brute';
+        if (big) {
+          g.fillStyle = z.type === 'boss' ? '#d500f9' : '#ff6d00';
+          g.beginPath();
+          g.arc(x, y, (z.type === 'boss' ? 5 : 3) * u, 0, Math.PI * 2);
+          g.fill();
+        } else {
+          g.fillStyle = '#ff3b30';
+          g.fillRect(x - zr, y - zr, zr * 2, zr * 2);
+        }
+      }
+      for (const p of view.pickups || []) {
+        if (p.kind !== 'crate') continue;
+        const x = rx(p.x, p.y), y = ry(p.x, p.y);
+        if (!inside(x, y, 0)) continue;
+        g.fillStyle = '#ffd54f';
+        g.fillRect(x - 2.5 * u, y - 2.5 * u, 5 * u, 5 * u);
+      }
+      for (const t of view.turrets || []) {
+        const x = rx(t.x, t.y), y = ry(t.x, t.y);
+        if (!inside(x, y, 0)) continue;
+        g.fillStyle = '#90caf9';
+        g.fillRect(x - 2 * u, y - 2 * u, 4 * u, 4 * u);
+      }
+    }
+    // objective + supply: pinned to the rim when out of range
+    const ob = map.objective;
+    if (ob) {
+      let x = rx(ob.x, ob.y), y = ry(ob.x, ob.y);
+      if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));
+      const hurt = view && view.objective && view.objective.hp < view.objective.maxHp * 0.35;
+      g.fillStyle = hurt && Math.sin(pulse * 8) > 0 ? '#ff5b4f' : '#ffc400';
+      g.strokeStyle = '#000';
+      g.lineWidth = 1.5 * u;
+      g.beginPath();
+      g.moveTo(x, y - 5 * u);
+      g.lineTo(x + 5 * u, y);
+      g.lineTo(x, y + 5 * u);
+      g.lineTo(x - 5 * u, y);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    }
+    const s = map.supply;
+    if (s) {
+      let x = rx(s.x, s.y), y = ry(s.x, s.y);
+      if (!inside(x, y, 5 * u)) ({ x, y } = pin(x, y, 5 * u));
+      g.fillStyle = '#56d67a';
+      g.fillRect(x - 1.2 * u, y - 4.5 * u, 2.4 * u, 9 * u);
+      g.fillRect(x - 4.5 * u, y - 1.2 * u, 9 * u, 2.4 * u);
+    }
+    // teammates (pinned so you can always find them)
+    const blink = Math.sin(pulse * 10) > 0;
+    if (view) {
+      for (const p of view.players || []) {
+        if (p.id === localId || p.state === 'dead') continue;
+        if (p.state === 'downed' && !blink) continue;
+        const r = rosterById.get(p.id);
+        let x = rx(p.x, p.y), y = ry(p.x, p.y);
+        if (!inside(x, y, 4 * u)) ({ x, y } = pin(x, y, 4 * u));
+        g.fillStyle = '#000';
+        g.beginPath();
+        g.arc(x, y, 4 * u, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = p.state === 'downed' ? '#ff5252' : PLAYER_COLORS[r ? r.color : 0] || '#fff';
+        g.beginPath();
+        g.arc(x, y, 2.8 * u, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    // view cone + the local player's arrow, always pointing up
+    if (me && me.state !== 'dead') {
+      const grad = g.createRadialGradient(cx, cy, 0, cx, cy, H * 0.55);
+      grad.addColorStop(0, 'rgba(255,255,255,0.16)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(cx, cy);
+      g.arc(cx, cy, H * 0.55, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6);
+      g.closePath();
+      g.fill();
+      const r = rosterById.get(localId);
+      g.beginPath();
+      g.moveTo(cx, cy - 7 * u);
+      g.lineTo(cx + 4.5 * u, cy + 4.5 * u);
+      g.lineTo(cx, cy + 2 * u);
+      g.lineTo(cx - 4.5 * u, cy + 4.5 * u);
+      g.closePath();
+      g.fillStyle = '#fff';
+      g.strokeStyle = PLAYER_COLORS[r ? r.color : 0] || '#000';
+      g.lineWidth = 1.5 * u;
+      g.fill();
+      g.stroke();
+    }
+    // north marker on the rim: world north is angle -π/2
+    const na = -Math.PI / 2 + rot;
+    const n = pin(cx + Math.cos(na) * W * 2, cy + Math.sin(na) * W * 2, 8 * u);
+    g.fillStyle = 'rgba(0,0,0,0.7)';
+    g.beginPath();
+    g.arc(n.x, n.y, 7 * u, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#ffc400';
+    g.font = `800 ${Math.round(10 * u)}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('N', n.x, n.y + 0.5 * u);
+    // frame
+    g.strokeStyle = 'rgba(255,255,255,0.14)';
+    g.lineWidth = u;
+    g.strokeRect(0.5, 0.5, W - 1, H - 1);
+  }
+
+  return {
+    update,
+    resize,
+    /** Switch between the whole-map view and the rotating radar. */
+    setRadar(on) {
+      const r = !!on;
+      if (r === radar) return;
+      radar = r;
+      W = H = 0;
+      base = null;
+      acc = 1;
+    },
+    get radar() {
+      return radar;
+    },
+  };
 }

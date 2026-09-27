@@ -1,6 +1,11 @@
 // On-screen controls for phones and tablets: two floating virtual sticks (left half moves,
 // right half aims and fires once pushed past FIRE_AT) plus action buttons. Pointer
 // events with capture, so each finger stays bound to the control it started on.
+//
+// Look mode (first-person view, SPEC §7.5): the right half becomes a look pad — dragging a
+// thumb there turns the camera (deltas in CSS px, consumed by read()) and the aim stick is
+// hidden; a big FIRE button fires while held, and dragging a thumb that holds FIRE turns
+// the camera too, so you can track a target while shooting.
 
 import { h } from './dom.js';
 
@@ -25,6 +30,7 @@ const BUTTONS = [
   ['reload', 'RELOAD', 'edge', 'main'],
   ['interact', 'USE', 'hold', 'main'],
   ['ready', 'READY', 'edge', 'solo'],
+  ['fire', 'FIRE', 'hold', 'fire'],
 ];
 
 /** True on phones/tablets (coarse primary pointer or touch-only devices). */
@@ -58,13 +64,19 @@ export function createTouchControls(root) {
     gear: h('div.tc.tc-gear'),
     main: h('div.tc.tc-main'),
     solo: h('div.tc.tc-solo'),
+    fire: h('div.tc.tc-fire'),
   };
   const btnWrap = h('div.touch-buttons', null, Object.values(clusters));
   const el = h('div.touch-layer', { 'aria-hidden': 'true' }, [zoneL, zoneR, btnWrap]);
   const move = createStick(zoneL, 'left');
   const aim = createStick(zoneR, 'right');
 
-  const held = { interact: false, melee: false, scoreboard: false };
+  const held = { interact: false, melee: false, scoreboard: false, fire: false };
+  // look mode: accumulated drag (CSS px) since the last read(), and the look pointer
+  let lookMode = false;
+  let lookDX = 0, lookDY = 0;
+  const lookPtr = { id: -1, x: 0, y: 0 };
+  const firePtr = { id: -1, x: 0, y: 0 };
   const edges = {};
   const buttonEls = {};
   const listeners = [];
@@ -93,6 +105,11 @@ export function createTouchControls(root) {
         // capture is best-effort
       }
       b.classList.add('pressed');
+      if (id === 'fire') {
+        firePtr.id = e.pointerId;
+        firePtr.x = e.clientX;
+        firePtr.y = e.clientY;
+      }
       if (kind === 'edge') edges[id]++;
       else if (kind === 'hold') held[id] = true;
       else held[id] = !held[id];
@@ -105,9 +122,21 @@ export function createTouchControls(root) {
         }
       }
     });
+    if (id === 'fire') {
+      on(b, 'pointermove', (e) => {
+        if (e.pointerId !== firePtr.id || !lookMode) return;
+        e.preventDefault();
+        activeUntil = performance.now() + 500;
+        lookDX += e.clientX - firePtr.x;
+        lookDY += e.clientY - firePtr.y;
+        firePtr.x = e.clientX;
+        firePtr.y = e.clientY;
+      });
+    }
     const up = (e) => {
       if (e.pointerId !== pointer) return;
       pointer = -1;
+      if (id === 'fire') firePtr.id = -1;
       b.classList.remove('pressed');
       if (kind === 'hold') held[id] = false;
     };
@@ -162,7 +191,7 @@ export function createTouchControls(root) {
 
   function bindZone(zone, s) {
     on(zone, 'pointerdown', (e) => {
-      if (s.id !== -1) return;
+      if (s.id !== -1 || (lookMode && s === aim)) return;
       e.preventDefault();
       activeUntil = performance.now() + 500;
       s.id = e.pointerId;
@@ -189,8 +218,40 @@ export function createTouchControls(root) {
   }
   bindZone(zoneL, move);
   bindZone(zoneR, aim);
+
+  // Look pad: the right zone in look mode. Registered after the stick handlers, which
+  // ignore the events while look mode is on (see bindZone's guard).
+  on(zoneR, 'pointerdown', (e) => {
+    if (!lookMode || lookPtr.id !== -1) return;
+    e.preventDefault();
+    activeUntil = performance.now() + 500;
+    lookPtr.id = e.pointerId;
+    lookPtr.x = e.clientX;
+    lookPtr.y = e.clientY;
+    try {
+      zoneR.setPointerCapture(e.pointerId);
+    } catch {
+      // best-effort
+    }
+  });
+  on(zoneR, 'pointermove', (e) => {
+    if (!lookMode || e.pointerId !== lookPtr.id) return;
+    e.preventDefault();
+    activeUntil = performance.now() + 500;
+    lookDX += e.clientX - lookPtr.x;
+    lookDY += e.clientY - lookPtr.y;
+    lookPtr.x = e.clientX;
+    lookPtr.y = e.clientY;
+  });
+  const lookEnd = (e) => {
+    if (e.pointerId === lookPtr.id) lookPtr.id = -1;
+  };
+  on(zoneR, 'pointerup', lookEnd);
+  on(zoneR, 'pointercancel', lookEnd);
+  on(zoneR, 'lostpointercapture', lookEnd);
   on(el, 'contextmenu', (e) => e.preventDefault());
 
+  buttonEls.fire.hidden = true;
   root.appendChild(el);
   // Lets CSS tell touch play apart from a narrow desktop window.
   document.body.classList.add('touch-ui');
@@ -203,10 +264,14 @@ export function createTouchControls(root) {
         active: move.id !== -1 || aim.id !== -1 || performance.now() < activeUntil,
         moveX: move.x, moveY: move.y, moveM: move.m,
         aimX: aim.x, aimY: aim.y, aimM: aim.m,
-        fire: aim.m > FIRE_AT,
+        fire: lookMode ? held.fire : aim.m > FIRE_AT,
         interact: held.interact, melee: held.melee, scoreboard: held.scoreboard,
+        lookDX, lookDY,
         edges: {},
       };
+      if (lookPtr.id !== -1 || firePtr.id !== -1) out.active = true;
+      lookDX = 0;
+      lookDY = 0;
       for (const k of Object.keys(edges)) {
         out.edges[k] = edges[k];
         edges[k] = 0;
@@ -216,7 +281,9 @@ export function createTouchControls(root) {
     reset() {
       release(move);
       release(aim);
-      held.interact = held.melee = false;
+      held.interact = held.melee = held.fire = false;
+      lookPtr.id = firePtr.id = -1;
+      lookDX = lookDY = 0;
       for (const b of Object.values(buttonEls)) b.classList.remove('pressed');
     },
     setEnabled(b) {
@@ -225,8 +292,27 @@ export function createTouchControls(root) {
       if (!enabled) {
         release(move);
         release(aim);
-        held.interact = held.melee = false;
+        held.interact = held.melee = held.fire = false;
+        lookPtr.id = firePtr.id = -1;
+        lookDX = lookDY = 0;
+        buttonEls.fire.classList.remove('pressed');
       }
+    },
+    /**
+     * First-person look mode: right half = look pad (aim stick hidden), FIRE button shown.
+     * @param {boolean} onOff
+     */
+    setLookMode(onOff) {
+      lookMode = !!onOff;
+      el.classList.toggle('look-mode', lookMode);
+      buttonEls.fire.hidden = !lookMode;
+      release(aim);
+      lookPtr.id = firePtr.id = -1;
+      held.fire = false;
+      lookDX = lookDY = 0;
+    },
+    get lookMode() {
+      return lookMode;
     },
     /** Show/hide individual buttons (e.g. READY only between waves). */
     showButton(id, shown) {

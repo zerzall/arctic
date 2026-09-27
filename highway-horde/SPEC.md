@@ -1,8 +1,10 @@
 # Highway Horde — architecture & contracts
 
-Top-down co-op zombie shooter for 1–6 players in the browser. One player hosts, friends
+First-person co-op zombie shooter for 1–6 players in the browser. One player hosts, friends
 join with a 5-letter room code or an invite link. The host's browser runs the
-authoritative simulation; everyone else sends inputs and renders snapshots.
+authoritative simulation (2D, on a flat ground plane); everyone else sends inputs and
+renders snapshots. The default view is first person in 3D (§7.5); the original top-down
+view (§7.1) is a settings option and the fallback without WebGL 2.
 
 This document is the contract between modules. **If you own a module, implement exactly
 the API described here; if you consume one, rely only on what is written here.** Consumers
@@ -19,8 +21,9 @@ must ignore unknown fields/events gracefully.
   simulation — use `createRng()` from `shared/rng.js` so a seeded game is reproducible.
 - 2-space indent, semicolons, single quotes, `const`/`let`, JSDoc on exported functions.
   Match the style of the files that already exist in `shared/`.
-- Only runtime dependency in the browser: `public/vendor/peerjs.min.js` (sets
-  `window.Peer`). Only server dependency: `ws`. Dev dependencies: `playwright`, `peer`.
+- Runtime dependencies in the browser, both vendored: `public/vendor/peerjs.min.js` (sets
+  `window.Peer`) and three.js r186 under `public/vendor/three/` (imported only by
+  `render3d/`, §7.5). Only server dependency: `ws`. Dev dependencies: `playwright`, `peer`.
 - Tests: `node --test` files named `tests/<area>.test.js`, using `node:test` and
   `node:assert/strict`. **Unit tests must only import Node built-ins and project files**
   (the repo root CI runs `node --test` without installing this folder's dependencies).
@@ -51,9 +54,11 @@ highway-horde/
   public/js/net/*.js                                 (net)
   public/js/render/*.js                              (render)
   public/js/render3d/*.js                            (render3d — first-person view, §7.5)
+  public/dev/*                                       (sandboxes, incl. fps-sandbox, actors3d-sandbox)
   public/vendor/three/                               (vendored three.js r186, do not edit)
   public/js/audio/*.js                               (audio)
-  public/js/ui/*.js  (main.js, input.js, hud.js, menus, shop, chat, touch, ...) (ui)
+  public/js/ui/*.js  (main.js, input.js, hud.js, menus, shop, chat, touch,
+                     look.js, compass.js, minimap.js, ...) (ui)
   tests/<area>.test.js                               (each owner)
 ```
 
@@ -584,7 +589,7 @@ carried into the next produced cmd (never lost, never duplicated).
 
 ## 7. Client (browser)
 
-### 7.1 Renderer — `render/renderer.js`
+### 7.1 Classic top-down renderer — `render/renderer.js`
 
 ```js
 export function createRenderer(canvas, { map, quality })  // quality 'high'|'low'
@@ -628,7 +633,18 @@ T turret, C barricade, B shop, Tab scoreboard (held), Enter chat, Space ready, E
 gamepad (standard mapping, right stick aim), touch (twin virtual sticks + buttons).
 `session.update(dt, input, aimAngle)` receives the InputState plus the aim angle, which
 the UI computes as the angle from `session.getPredictedLocal()` to
-`renderer.screenToWorld(input.aimScreenX, input.aimScreenY)`.
+`renderer.screenToWorld(input.aimScreenX, input.aimScreenY)` (top-down) or takes as the
+camera yaw (first person, §7.5).
+First-person additions: `createInput(canvas, { view: 'fps'|'topdown', onLockChange(locked),
+touchRoot, forceTouch })`; InputState also carries `lookDX, lookDY` (CSS px since the last
+sample: pointer-locked mouse movement, touch look-pad drags × TOUCH_LOOK_GAIN, the right
+stick via `padLookDelta()`; 0 while disabled; a locked move > 400 px is dropped as a browser
+glitch). `input.view` / `input.setView(v)`, `input.locked`, `input.lockSupported`,
+`input.requestLock()` / `input.exitLock()`, `input.addLook(dx, dy)` (test hook). In fps
+view a click on the canvas without the lock requests it and does not fire (a tap's
+compatibility mousedown never asks), and losing the lock releases the held mouse buttons.
+The look maths lives in `ui/look.js` (pure, unit-tested): `applyLook`, `moveToWorld`,
+`padLookDelta`, `aimAssist`, `wrapAngle`, `clampPitch`, `headingDeg`, `LOOK_RAD_PER_PX`.
 
 ### 7.3 HUD & UI — `ui/*`
 Screens: title (name, class picker with portraits, colour), host / join (code field,
@@ -638,7 +654,8 @@ chat; start; "+ Add Bot" under the roster (host only, solo too, disabled when fu
 a ✕ on bot rows (`removeBot`); bot rows show a BOT tag instead of the ping, read-only
 for non-hosts), in-game (canvas + HUD + chat + shop modal + scoreboard + pause/settings),
 end screen (victory/game over with per-player stats; host "Back to lobby"), settings
-(volume, quality, lighting, screen shake, name tags), how-to-play.
+(view, field of view, mouse sensitivity, stick/touch look, invert Y, aim assist, rotating
+minimap, volume, quality, lighting, screen shake, name tags), how-to-play.
 Pause menu: Resume, Settings, How to Play, **End Game (host only**: confirm "Return everyone
 to the lobby?" → `session.returnToLobby()`), Leave Game. Online games (not solo) show the
 room code + "Copy invite link" (late join works) in the pause menu and in the scoreboard
@@ -651,7 +668,20 @@ HUD: health/armour/stamina, weapon slots with ammo, cash, wave + remaining + pha
 objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed, chat,
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
 cleared +$250, "Sparks is down!"), ping/fps (toggle).
-`window.__HH = { session, renderer, hud, getView }` debug hook for end-to-end tests.
+`window.__HH = { session, renderer, hud, input, getView, getLocal, view, look(dx, dy),
+getLook() }` debug hook for end-to-end tests (`view` = 'fps'|'topdown' of the running
+match; `getLook()` → `{ yaw, pitch, ready, locked, view, frames }`; documented in
+scripts/e2e.js). Between games it is a module-level frozen null object — never a closure
+created inside a match, which would keep the finished match reachable.
+First-person HUD (`createHud(root, { …, view: 'fps', minimapRotate })`, `#hud[data-view=fps]`):
+no cursor crosshair (the renderer's overlay draws it), a compass strip at the top centre
+(`ui/compass.js`: heading tape, objective ◆ with distance in metres, supply +, teammates,
+edge arrows for markers off the arc), the minimap as a rotating radar (up = facing; redrawn
+at ≤ 30 Hz unless the view turns; settings.minimapRotate false = whole map north-up), the
+interaction prompt just under the crosshair and the shop hint at the bottom. `hud.update`
+info adds `yaw` and `camPos`. A "Click to play · Mouse to look · Esc releases the mouse"
+hint shows while playing with keyboard/mouse unlocked; the pause menu's resume button
+reads "Click to Resume".
 Touch HUD: the HUD columns sit along the top edges and the touch button rows go right
 below them. Their heights vary, so `hud.js` measures the boxes (5×/s) and publishes
 `--hud-col-top`, `--touch-util-top` and `--touch-gear-top` on `#screen-game`; the CSS
@@ -670,6 +700,8 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
+// First person: pass `yaw` in addEvents/update opts (see §7.5 "Audio orientation";
+// exported helpers orientedPan(dx, dy, yaw) and rearShade(behind, maxLp) are unit-tested).
 // addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
 // while dead); update(view, { localId, dt, x, y }) falls back to the local player without them.
 // 'reload' sounds are timed from the event's `time` (weapon table when absent). ui() is for menu/lobby sounds; in-game stingers come from events
@@ -723,6 +755,15 @@ effects3d.js    particles, tracers, muzzle flashes, explosions, arcs, beams, sha
 viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
 overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
                 damage-direction arcs, off-screen arrows, low-hp vignette
+  helpers (no ctx sub-system of their own):
+world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
+world-tex.js    procedural world textures (window/neon atlas, chain-link mask, water normals)
+world-fx.js     one-draw-call GPU-animated world pieces (sky, fires, embers, smoke, halos,
+                light shafts, fake far light pools, objective marker)
+actor-kit.js    PartBuilder (merge primitives into one vertex-coloured geometry), colours
+actor-rig.js    GPU-skinned InstancedMesh rig (pose rows in a float DataTexture per type)
+actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates
+fx-core.js      shared particle / streak / glow pools (3 draw calls), acquireFx(ctx)
 ```
 Each sub-system is created as `createX(ctx)` and returns
 `{ update(view, frame), addEvents?(events, opts), setQuality?(q), dispose() }`.
@@ -746,13 +787,22 @@ frame = { dt, now, localId, roster, local /* view record of the local player or 
 import { createRenderer3D } from './render3d/renderer3d.js';
 const r = createRenderer3D(canvas, { map, quality });
 r.render(view, { localId, roster, now, dt, look: { yaw, pitch }, settings })
-   // settings: { screenShake, showNames, fov (degrees, default 80), lighting }
+   // settings: { screenShake, showNames, lighting,
+   //   fov: horizontal degrees measured on a 4:3 frame (Hor+; default 80 → 64.4° vertical,
+   //        wider screens see more at the sides; narrower than 4:3 keeps the horizontal
+   //        angle, vertical capped at 100°),
+   //   crosshair: bool (false = a menu covers the view / dead: hide crosshair + markers) }
 r.addEvents(events, { localId })
 r.screenToWorld(sx, sy) → {x, y}   // ground point under a screen point (for API compatibility)
 r.worldToScreen(x, y, h = 0) → {x, y, visible}
 r.getCamera() → { x, y, yaw }      // camera position/orientation (listener for audio)
 r.resize(); r.setQuality(q); r.destroy(); r.stats; r.mode === 'fps'
+   // r.stats = { drawCalls, triangles, jsMs, updateMs, submitMs, fps, lights,
+   //             staticTriangles, frames }   (ms are rolling averages)
+   // r.debug = { renderer, scene, camera, world, lights, subs, ctx, createMs } — dev tools
+   //             and tests only, not API
 export function isWebGLAvailable()
+export function verticalFov(fovSetting, aspect) → degrees   // the Hor+ conversion above
 ```
 The renderer creates its overlay canvas as a sibling right after `canvas` (same CSS box,
 `pointer-events: none`) and removes it in `destroy()`.
@@ -772,9 +822,13 @@ updates yaw/pitch, rotates the local WASD vector into world space
 calling `session.update(dt, input, yaw)`. Pointer lock: clicking the canvas requests it;
 losing it (Esc, alt-tab) opens the pause menu ("Click to resume"). The initial yaw is the
 local player's snapshot angle. Settings (stored in prefs): view 'fps' | 'topdown'
-(default 'fps', forced 'topdown' when WebGL is unavailable), fov 60–110 (80),
-mouse sensitivity (default 1.0 ≈ 0.0022 rad/px), invert Y, aim assist for
-gamepad/touch (light yaw magnetism toward the zombie nearest the crosshair).
+(default 'fps'; a match runs top-down when WebGL 2 is unavailable or the 3D module failed
+to load, without changing the stored choice; a change applies from the next game), fov
+60–110 (80, see settings.fov above), mouse sensitivity 0.2–3 (default 1.0 ≈ 0.0022 rad/px),
+padLook 0.2–3 (right stick and touch look), invert Y, aim assist for gamepad/touch (light
+yaw magnetism toward the zombie nearest the crosshair, `look.js` AIM_ASSIST), minimapRotate
+(default true). `ui/main.js` imports render3d (three.js, ~1.3 MB) in the background after
+the title screen is up; a game that starts before it arrives waits for it (`app.js`).
 
 **First-person look & feel.** Night atmosphere: sky dome with stars/moon, fog tinted by
 `map.ambient`, dim moonlight + hemisphere light, the local flashlight (SpotLight from the
@@ -791,10 +845,41 @@ walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 (burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at
 1080p with 250 zombies on a mid laptop at 'high'; 'low' = no shadows, 4 pool lights,
 fewer particles, render scale 0.75. `r.stats` exposes draw calls, triangles, frame ms.
+Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
+235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms.
+The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).
+
+**GPU rules learned during the build** (every render3d module follows them):
+- Never toggle `visible` on a light or add/remove one: that changes the light count and
+  recompiles every lit material. Switch a light off with `intensity = 0` (the flashlight
+  of a dead player included).
+- renderer3d compiles every program at creation (`renderer.compile` on the world and the
+  viewmodel scenes, plus one render with shadow casters unculled; cost in
+  `r.debug.createMs.warm`). Meshes created later should reuse existing material
+  parameters so they hit the program cache.
+- Only actors (zombies, teammates, turrets, barricades) cast flashlight shadows; static
+  world meshes have `castShadow = false` (a light next to the eye puts their shadow right
+  behind them, invisible from the eye, at ~25 % of the triangles).
+- A module-level cache of GPU objects shared between renderers must export a release
+  function that `destroy()` calls (`releaseSharedGuns()`, `releaseFxAtlas()`; destroy also
+  disposes three's shared DFG lookup texture): three's dispose listeners on shared objects
+  otherwise keep every finished game's WebGLRenderer and scene alive.
+- Ground decal textures upload at most one chunk every 3 frames.
+- Rigged actors add glow (eyes, hit flash, burning) and rim light after fog, so eyes and
+  silhouettes read through the fog at range.
+
+**Overlay rules.** Off-screen arrows only for downed teammates and for the objective while
+it is being hit (4 s after an `objhit`) or below 30 % hp — the compass and radar show the
+rest; they sit on a ring around the crosshair ("behind" clamped to the lower sides) so
+they never cover the HUD panels, the prompt or the gun. Name tags fade out within 70–160
+units of the camera and in the outer 13–21 % of the screen width (the HUD columns); a
+teammate within 30 units of the camera is not drawn at all. The shotgun crosshair gap is
+capped at 7.5 % of the screen height (a design cap, not the exact spread).
 
 **Audio orientation.** `audio.addEvents/update(…, { x, y, yaw })`: when `yaw` is given,
 pan by the angle between the sound and the facing direction and muffle/soften sounds
-behind the listener; without `yaw` (top-down) keep screen-relative panning.
+behind the listener; without `yaw` (top-down) keep screen-relative panning. The listener
+is `r.getCamera()` (the spectated teammate's chase camera while dead).
 
 ## 8. Deployment
 - Static: `public/` can be served by any static host (Netlify: `netlify.toml` publishes
@@ -809,7 +894,8 @@ behind the listener; without `yaw` (top-down) keep screen-relative panning.
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through six scenarios in fresh browser contexts: solo with a scripted player,
+  Chromium through eight scenarios in fresh browser contexts (a–f force the classic
+  top-down view in localStorage; g and h play first person at quality 'low', 960x540): solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
   prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
   End Game, second game), late join
@@ -820,6 +906,12 @@ behind the listener; without `yaw` (top-down) keep screen-relative panning.
   locally. Screenshots go to `e2e-output/` (gitignored). `E2E_ONLY=a,c` runs a subset.
   Scenario f (bots): Play Solo, Add Bot ×3 (BOT tags), ✕ removes one, the human readies,
   the two bots ready after them and both score kills while the human stands still.
+  Scenario g (fps-solo): pointer lock, W walks along the view, losing the lock opens the
+  pause menu, turn toward the nearest zombie through `__HH.look` and kill it, End Game and
+  a second game (no leaked overlay canvases). Scenario h (fps-relay): 2 players over the
+  relay in first person — each camera sees the other, and the client's W moves it along
+  its own yaw on the host. Headless Chromium renders WebGL with SwiftShader (software), so
+  g/h are written to hold at a few frames per second.
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,

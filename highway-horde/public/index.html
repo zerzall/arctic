@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d10">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Highway Horde — a top-down co-op zombie shooter for 1 to 6 friends, right in your browser. Hold the line on the highway.">
+  <meta name="description" content="Highway Horde — a first-person co-op zombie shooter for 1 to 6 friends, right in your browser. Hold the line on the highway.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Highway Horde</title>
@@ -14,6 +14,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="css/game.css">
+  <!-- three.js for the first-person view (SPEC §7.5); must come before any module script. -->
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
   <script src="vendor/peerjs.min.js" defer></script>
   <script src="config.js" defer></script>
   <script type="module" src="js/ui/main.js"></script>
@@ -26,7 +30,7 @@
       <div class="menu-bg" aria-hidden="true"></div>
       <div class="title-wrap">
         <header class="logo">
-          <div class="logo-kicker"><span class="hazard-chip"></span>Co-op zombie survival · 1–6 players<span class="hazard-chip"></span></div>
+          <div class="logo-kicker"><span class="hazard-chip"></span>First-person co-op zombie survival · 1–6 players<span class="hazard-chip"></span></div>
           <h1 id="logo-title" class="logo-title"><span class="logo-line1">Highway</span><span class="logo-line2">Horde</span></h1>
           <p class="logo-tag">The road is blocked. The dead are coming. Hold the line together.</p>
         </header>
@@ -234,6 +238,27 @@
       <div class="panel modal-card settings-card">
         <h2 id="settings-title" class="modal-title">Settings</h2>
         <div class="settings-grid">
+          <fieldset class="settings-group settings-wide">
+            <legend>View &amp; controls</legend>
+            <div class="field-label" id="view-label">View</div>
+            <div class="seg seg-view" role="radiogroup" aria-labelledby="view-label" id="set-view">
+              <button type="button" class="seg-btn" role="radio" data-value="fps">First-person</button>
+              <button type="button" class="seg-btn" role="radio" data-value="topdown">Classic top-down</button>
+            </div>
+            <p class="settings-note" id="set-view-note" hidden></p>
+            <div class="settings-cols">
+              <div>
+                <label class="range-row wide-label" title="Horizontal degrees measured on a 4:3 screen — wide screens see more at the sides"><span>Field of view</span><input type="range" min="60" max="110" step="1" data-setting="fov" data-scale="1" data-unit="deg"><output></output></label>
+                <label class="range-row wide-label"><span>Mouse sensitivity</span><input type="range" min="20" max="300" step="5" data-setting="sensitivity" data-unit="x"><output></output></label>
+                <label class="range-row wide-label"><span>Stick &amp; touch look</span><input type="range" min="20" max="300" step="5" data-setting="padLook" data-unit="x"><output></output></label>
+              </div>
+              <div>
+                <label class="check-row"><input type="checkbox" data-setting="invertY"><span>Invert look up/down</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="aimAssist"><span>Aim assist (gamepad &amp; touch)</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="minimapRotate"><span>Minimap turns with the view</span></label>
+              </div>
+            </div>
+          </fieldset>
           <fieldset class="settings-group">
             <legend>Audio</legend>
             <label class="range-row"><span>Master</span><input type="range" min="0" max="100" step="1" data-setting="master"><output></output></label>
@@ -265,6 +290,7 @@
           <section class="howto-goal">
             <h3>The goal</h3>
             <p>Waves of zombies pour in from the edges of the map. <strong>Defend the objective</strong> in the middle — the school bus, the diner, the APC or the radio tower — and <strong>survive every wave</strong>. If the objective is destroyed, or nobody is left standing, the horde wins.</p>
+            <p><strong>First person:</strong> click the game to capture the mouse, move the mouse to look, <kbd>Esc</kbd> gives the mouse back. The compass at the top points to the objective (◆) and the supply station (+). Prefer the old bird's-eye view? Pick <em>Classic top-down</em> in Settings.</p>
           </section>
           <section>
             <h3>Controls</h3>
@@ -272,9 +298,10 @@
               <table class="controls-table">
                 <thead><tr><th scope="col">Action</th><th scope="col">Keyboard &amp; mouse</th><th scope="col">Gamepad</th><th scope="col">Touch</th></tr></thead>
                 <tbody>
-                  <tr><td>Move</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td>Left stick</td><td>Left thumb</td></tr>
-                  <tr><td>Aim</td><td>Mouse</td><td>Right stick</td><td>Right thumb</td></tr>
-                  <tr><td>Shoot</td><td>Left mouse</td><td>RT</td><td>Push right thumb far</td></tr>
+                  <tr><td>Move (forward / strafe)</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td>Left stick</td><td>Left thumb</td></tr>
+                  <tr><td>Look &amp; aim</td><td>Mouse (click the game to capture it)</td><td>Right stick</td><td>Drag on the right half</td></tr>
+                  <tr><td>Shoot</td><td>Left mouse</td><td>RT</td><td>FIRE (drag it to look while shooting)</td></tr>
+                  <tr><td>Release the mouse</td><td><kbd>Esc</kbd> (opens the menu)</td><td>—</td><td>—</td></tr>
                   <tr><td>Shove (melee)</td><td>Right mouse or <kbd>V</kbd></td><td>LT or RB</td><td>SHOVE</td></tr>
                   <tr><td>Sprint</td><td><kbd>Shift</kbd></td><td>Click left stick</td><td>Push left thumb fully</td></tr>
                   <tr><td>Reload</td><td><kbd>R</kbd></td><td>X</td><td>RELOAD</td></tr>
@@ -297,7 +324,8 @@
             <h3>Survival tips</h3>
             <ul class="tips">
               <li><strong>Revive your friends.</strong> A downed player bleeds out in 30 seconds. Stand next to them and hold <kbd>E</kbd> — you earn cash for every revive. Dead players come back when the wave is cleared.</li>
-              <li><strong>Spend your cash.</strong> Kills pay. Between waves the shop is open everywhere; during a wave only at the <span class="txt-supply">supply station</span> (green + on the minimap).</li>
+              <li><strong>Spend your cash.</strong> Kills pay. Between waves the shop is open everywhere; during a wave only at the <span class="txt-supply">supply station</span> (green + on the minimap and the compass).</li>
+              <li><strong>Watch your back.</strong> The horde comes from every side: turn when you hear groans behind you (they sound muffled), and follow the red arcs that show where a hit came from.</li>
               <li><strong>Bosses every 5 waves.</strong> The Abomination slams the ground around it — keep your distance and focus fire.</li>
               <li><strong>Know the specials.</strong> Bloaters burst when they die, spitters lob acid, screamers speed up the horde, brutes charge.</li>
               <li><strong>Fortify.</strong> Barricades make zombies go around or smash through; sentry turrets shoot on their own.</li>

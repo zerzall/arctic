@@ -21,6 +21,13 @@ import { acquireFx, releaseFx } from './fx-core.js';
 
 const HALF_PI = Math.PI / 2;
 const VM_FOV = 64;
+// Overall size of the held gun on screen. The PLACE scales were tuned in a sandbox at
+// 1280x720; in play at 1600x900 a rifle filled the lower-right third of the view and a
+// pistol looked like a rifle. Scaling about the firing hand keeps the grip where it was
+// and pulls the muzzle back toward it.
+const VM_SIZE = 0.74;
+// nudge right/down so the barrel stays clear of the crosshair's lower arm
+const VM_SHIFT_X = 0.7, VM_SHIFT_Y = -0.2;
 
 // gun origin (the firing hand) in camera space per style, + gun scale
 const PLACE = {
@@ -254,9 +261,11 @@ export function createViewmodel(ctx) {
     root.localToWorld(_v.set(model.length * 0.2, 1.8, model.dual && st.dualSide ? -1 : 1));
     c.m.position.copy(_v);
     c.m.material = w.category === 'shotgun' ? shellMat : casingMat;
-    c.m.scale.setScalar(w.category === 'shotgun' ? 1.8 : w.category === 'heavy' || w.category === 'rifle' || w.category === 'sniper' ? 1.25 : 1);
+    // (camera space: a casing flying at the lens looks fist-sized, so keep them small and
+    // throw them sideways and slightly away rather than toward the camera)
+    c.m.scale.setScalar(VM_SIZE * 0.7 * (w.category === 'shotgun' ? 1.8 : w.category === 'heavy' || w.category === 'rifle' || w.category === 'sniper' ? 1.25 : 1));
     const side = model.dual && st.dualSide ? -1 : 1;
-    c.v.set(side * (14 + Math.random() * 8), 14 + Math.random() * 8, 2 + Math.random() * 4);
+    c.v.set(side * (11 + Math.random() * 6), 11 + Math.random() * 6, -1 - Math.random() * 3);
     c.spin.set(Math.random() * 20, Math.random() * 20, Math.random() * 20);
     c.age = 0;
     c.m.visible = true;
@@ -340,7 +349,6 @@ export function createViewmodel(ctx) {
     // reload dip (local.reloading 0..1)
     const rl = local.reloading > 0 ? local.reloading : 0;
     const rlShape = rl > 0 ? Math.sin(Math.min(1, rl) * Math.PI) : 0;
-    const rlEase = rl > 0 ? Math.min(1, Math.min(rl, 1 - rl) * 6) : 0;
 
     // melee shove
     const ml = local.meleeing > 0 ? Math.sin(Math.min(1, local.meleeing) * Math.PI) : 0;
@@ -359,8 +367,8 @@ export function createViewmodel(ctx) {
     const bobA = st.bobAmt * (1 + st.sprint * 0.8);
     const bobX = Math.sin(st.bobPh) * 0.45 * bobA, bobY = -Math.abs(Math.cos(st.bobPh)) * 0.4 * bobA;
     const heavyK = model.heavy ? 0.75 : 1;
-    let x = P[0] + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + th * 1.5;
-    let y = P[1] + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 - rlShape * 2.2 - th * 3 - st.down * 2.5;
+    let x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + th * 1.5;
+    let y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 - rlShape * 2.2 - th * 3 - st.down * 2.5;
     let z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2;
     holder.position.set(x, y, z);
     holder.rotation.set(
@@ -368,12 +376,12 @@ export function createViewmodel(ctx) {
       -0.04 + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - th * 0.3,
       st.recoilRoll + rlShape * 0.55 + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');
-    holder.scale.setScalar(P[3]);
-    leftHolder.scale.setScalar(P[3]);
+    holder.scale.setScalar(P[3] * VM_SIZE);
+    leftHolder.scale.setScalar(P[3] * VM_SIZE);
     if (model.dual) {
       leftHolder.visible = true;
       const kL = st.dualSide === 0 ? rc * 0.3 : rc;
-      leftHolder.position.set(-P[0] - idleX + bobX + st.swayX * 0.6 + st.sprint * 1.2, y + (st.dualSide ? 0 : 0.2), P[2] + kL * 2.2);
+      leftHolder.position.set(-P[0] - VM_SHIFT_X - idleX + bobX + st.swayX * 0.6 + st.sprint * 1.2, y + (st.dualSide ? 0 : 0.2), P[2] + kL * 2.2);
       leftHolder.rotation.set(kL * 0.16 - st.sprint * 0.35 + rlShape * 0.25 - sw * 0.6, 0.04 + st.swayX * 0.03 - st.sprint * 0.7, -st.recoilRoll - rlShape * 0.55, 'YXZ');
     }
 
@@ -412,10 +420,10 @@ export function createViewmodel(ctx) {
     placeFlash(flashGroup, gunRoot, showFlash && (!model.dual || st.dualSide === 0), w);
     placeFlash(flashGroupL, leftRoot, showFlash && model.dual && st.dualSide === 1, w);
     const flameOn = w && w.kind === 'flame' && local.firing;
-    flashLight.intensity = showFlash ? 60 * (model.heavy ? 1.3 : 1) : flameOn ? 25 + Math.random() * 15 : 0;
+    flashLight.intensity = showFlash ? 260 * (model.heavy ? 1.3 : 1) : flameOn ? 90 + Math.random() * 50 : 0;
     flashLight.color.set(w && w.kind === 'chain' ? '#80d8ff' : style === 'railgun' ? '#b388ff' : '#ffb060');
-    if (w && w.kind === 'chain' && now - st.lastShot < 0.08) flashLight.intensity = 40;
-    if (style === 'railgun' && now - st.lastShot < 0.12) flashLight.intensity = 70;
+    if (w && w.kind === 'chain' && now - st.lastShot < 0.08) flashLight.intensity = 180;
+    if (style === 'railgun' && now - st.lastShot < 0.12) flashLight.intensity = 260;
 
     // throw animation: grenade arcs from the lower left out of view
     if (st.throwT < 0.55) {
@@ -452,7 +460,7 @@ export function createViewmodel(ctx) {
     _v2.sub(_v).normalize();
     _q.setFromUnitVectors(new THREE.Vector3(1, 0, 0), _v2);
     const k = w && w.category === 'shotgun' ? 1.5 : w && (w.category === 'pistol' || w.category === 'smg') ? 0.85 : 1.15;
-    const s = (5 + Math.random() * 2) * k;
+    const s = (11 + Math.random() * 4) * k * VM_SIZE;
     sideGroup.quaternion.copy(_q);
     sideGroup.rotateX(Math.random() * Math.PI);
     sideGroup.scale.set(s * 1.6, s * 0.7, s * 0.7);

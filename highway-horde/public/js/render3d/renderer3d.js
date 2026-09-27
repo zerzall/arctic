@@ -18,6 +18,8 @@ import * as itemsMod from './items3d.js';
 import * as effectsMod from './effects3d.js';
 import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
+import { releaseSharedGuns } from './actor-guns.js';
+import { releaseFxAtlas } from './fx-core.js';
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -41,6 +43,24 @@ export function isWebGLAvailable() {
   }
 }
 
+/**
+ * three.js camera FOV (vertical degrees) for the settings' field of view. The setting is
+ * the shooter convention: horizontal degrees measured on a 4:3 frame ("Hor+": wider screens
+ * see more at the sides, never less at the top). Read as a vertical angle, the default 80
+ * was a 113° horizontal fisheye at 16:9 that shrank cars, zombies and teammates.
+ * Screens narrower than 4:3 (a phone held upright) keep that horizontal angle instead,
+ * capped at 100° vertical, so portrait isn't a zoomed-in keyhole.
+ * @param {number} setting 60..110 (default 80 → 64.4° vertical at 4:3 and wider)
+ * @param {number} [aspect] width / height
+ * @returns {number}
+ */
+export function verticalFov(setting, aspect = 16 / 9) {
+  const h = Math.max(60, Math.min(110, Number(setting) || 80)) * Math.PI / 180;
+  const a = Number.isFinite(aspect) && aspect > 0 ? Math.min(4 / 3, aspect) : 4 / 3;
+  const v = Math.min(100, 2 * Math.atan(Math.tan(h / 2) / a) * 180 / Math.PI);
+  return Math.round(v * 100) / 100;
+}
+
 /** The first `create*` function a sub-system module exports (tolerant of naming). */
 function factoryOf(mod) {
   if (!mod) return null;
@@ -54,10 +74,12 @@ function factoryOf(mod) {
  * @param {{ map: object, quality?: 'high'|'low' }} opts
  */
 export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
+  const tCreate = performance.now();
   let q = quality === 'low' ? 'low' : 'high';
   const renderer = new THREE.WebGLRenderer({
     canvas, antialias: q === 'high', alpha: false, stencil: false, powerPreference: 'high-performance',
   });
+  const glMs = performance.now() - tCreate;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
@@ -65,13 +87,16 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.info.autoReset = false;
   renderer.autoClear = true;
+  // The canvas may carry a context from an earlier game: three.js caches GL state (e.g.
+  // UNPACK_FLIP_Y), so start from known defaults (and leave them again in destroy()).
+  renderer.resetState();
 
   const amb = ambientFor(map);
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(amb.fog.getHex(), amb.fogDensity);
   scene.background = amb.fog.clone();
   const far = Math.hypot(map.width, map.height) + 1400;
-  const camera = new THREE.PerspectiveCamera(80, 16 / 9, NEAR, far);
+  const camera = new THREE.PerspectiveCamera(verticalFov(80), 16 / 9, NEAR, far);
   camera.rotation.order = 'YXZ';
   const spawn = map.playerSpawns && map.playerSpawns[0] || { x: map.width / 2, y: map.height / 2 };
   camera.position.set(spawn.x, EYE, spawn.y);
@@ -123,7 +148,9 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     rng,
   };
 
+  const tWorld = performance.now();
   const world = createWorld(ctx, { renderer, lights });
+  const worldMs = performance.now() - tWorld;
   ctx.ground.decal = world.ground.decal;
 
   // ---- sub-systems ----
@@ -132,12 +159,15 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     if (errors++ < MAX_LOGS) console.error(`[renderer3d] ${where}:`, err);
   };
   const subs = [];
+  const subMs = {};
   let vm = null;
   for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {
+      const tSub = performance.now();
       const sys = make(ctx);
+      subMs[name] = Math.round(performance.now() - tSub);
       if (!sys) continue;
       sys.__name = name;
       if (name === 'viewmodel') vm = sys;
@@ -155,7 +185,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   };
   let lastSettings = { screenShake: true, fov: 80 };
   let localId = 0;
-  let fov = 80;
+  let fov = verticalFov(80);
   let destroyed = false;
 
   const _look = new THREE.Vector3();
@@ -223,7 +253,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       camera.rotation.y += t2 * 0.035 * (Math.sin(t * 0.9 + 2) * 0.6 + Math.sin(t * 2.1) * 0.4);
       camera.rotation.z += t2 * 0.02 * Math.sin(t * 1.7 + 4);
     }
-    const f = Math.max(60, Math.min(110, Number(settings.fov) || 80));
+    const f = verticalFov(settings.fov, camera.aspect);
     if (f !== fov || camera.fov !== f) { fov = f; camera.fov = f; camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
   }
@@ -257,6 +287,26 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     if (cs.zIndex && cs.zIndex !== 'auto') overlayCanvas.style.zIndex = cs.zIndex;
   }
   resize();
+
+  // Shader warm-up. Programs compile the first time a material is drawn: a boss, a molotov,
+  // the first ejected casing or a shadow depth variant each cost a compile mid-fight (13 of
+  // 36 programs were first built during play, 10-100 ms each on a real GPU). Compile every
+  // material now, and draw one frame with the shadow casters unculled so the depth variants
+  // exist too. Objects a sub-system creates later mostly share these programs (same
+  // material parameters → same program).
+  const tWarm = performance.now();
+  try {
+    renderer.compile(scene, camera);
+    if (vm && vm.scene && vm.camera) renderer.compile(vm.scene, vm.camera);
+    const unculled = [];
+    scene.traverse((o) => { if (o.castShadow && o.frustumCulled) { o.frustumCulled = false; unculled.push(o); } });
+    renderer.render(scene, camera);
+    for (const o of unculled) o.frustumCulled = true;
+  } catch (err) {
+    logErr('warm-up', err);
+  }
+  const warmMs = performance.now() - tWarm;
+  const createMs = { total: Math.round(performance.now() - tCreate), gl: Math.round(glMs), world: Math.round(worldMs), warm: Math.round(warmMs), subs: subMs };
 
   // ---- stats ----
   // jsMs = whole render() call; updateMs = scene updates (sub-systems, world, lights);
@@ -343,6 +393,10 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
 
   function addEvents(events, opts = {}) {
     if (destroyed || !events || !events.length) return;
+    // sub-systems may assume well-formed events; drop junk without allocating normally
+    for (let i = 0; i < events.length; i++) {
+      if (!events[i] || typeof events[i] !== 'object') { events = events.filter((e) => e && typeof e === 'object'); break; }
+    }
     const lid = opts.localId ?? localId;
     try {
       for (const e of events) {
@@ -402,19 +456,30 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     },
     get stats() { return stats; },
     /** Internals for dev tools / tests (not part of the SPEC API). */
-    get debug() { return { renderer, scene, camera, world, lights, subs, ctx }; },
+    get debug() { return { renderer, scene, camera, world, lights, subs, ctx, createMs }; },
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      // three.js keeps one module-level DFG lookup texture for every MeshStandardMaterial;
+      // each renderer that uploaded it hangs a dispose listener on it, which kept every
+      // finished game's WebGLRenderer (and through it its scene) reachable. Find it while
+      // the materials still carry their uniforms and dispose it at the end (it re-uploads).
+      let dfgLut = null;
+      scene.traverse((o) => {
+        const m = o.material;
+        if (dfgLut || !m || !m.isMeshStandardMaterial) return;
+        const u = renderer.properties.get(m).uniforms;
+        if (u && u.dfgLUT && u.dfgLUT.value && u.dfgLUT.value.isTexture) dfgLut = u.dfgLUT.value;
+      });
       for (const s of subs) {
         try { s.dispose(); } catch (err) { logErr('dispose ' + s.__name, err); }
       }
       subs.length = 0;
       try { world.dispose(); } catch (err) { logErr('dispose world', err); }
       try { lights.dispose(); } catch (err) { logErr('dispose lights', err); }
-      // anything a sub-system left behind
+      // anything a sub-system left behind (the viewmodel's own scene included)
       const seen = new Set();
-      scene.traverse((o) => {
+      const leftovers = (o) => {
         if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
         const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
         for (const m of mats) {
@@ -423,9 +488,21 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
           for (const v of Object.values(m)) if (v && v.isTexture) v.dispose();
           m.dispose();
         }
-      });
+      };
+      scene.traverse(leftovers);
+      if (vm && vm.scene) { vm.scene.traverse(leftovers); vm.scene.clear(); }
+      // module-level caches shared by every renderer: drop this renderer's GPU copies (and
+      // its dispose listeners, which otherwise keep the whole renderer reachable)
+      try {
+        releaseSharedGuns();
+        releaseFxAtlas();
+        if (dfgLut) dfgLut.dispose();
+      } catch (err) {
+        logErr('release shared', err);
+      }
       scene.clear();
       renderer.renderLists.dispose();
+      renderer.resetState();
       renderer.dispose();
       overlayCanvas.remove();
     },

@@ -17,7 +17,7 @@ import {
 } from './world-fx.js';
 
 const TIRE = '#151515';
-const RIM = '#6a6d70';
+const RIM = '#44474b';
 const GLASS = '#1d2a35';
 const DARK = '#1b1c1e';
 const CHROME = '#b8bec4';
@@ -28,6 +28,7 @@ const POLE = '#34383c';
 const WOOD = '#6b4a2c';
 const LEAF = ['#16261a', '#1c2f19', '#223619', '#1a2c1c', '#25331c'];
 const PINE = ['#15261a', '#1a2e1f', '#1f3322', '#172a1c'];
+const GRASS = ['#3d4f26', '#4a5a2c', '#56552f', '#34461f', '#5e5a36'];
 const VEHICLE = new Set(['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker']);
 
 /**
@@ -115,14 +116,15 @@ export function fireBaseHeight(map, x, y) {
  */
 export function createWorld(ctx, deps) {
   const { scene, map } = ctx;
-  const high = ctx.quality !== 'low';
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
 
+  const tA = performance.now();
   const ground = createGround({ scene, map, quality: ctx.quality, renderer: deps.renderer });
+  const tGround = performance.now() - tA;
   const amb = deps.lights.ambient;
   const fx = createFxUniforms();
   fx.uFog.value = amb.fogDensity;
@@ -134,6 +136,8 @@ export function createWorld(ctx, deps) {
   const mats = {
     paint: track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.35 })),
     matte: track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })),
+    // smooth-shaded cloth / rubber (sandbags, tyres, tarps)
+    soft: track(new THREE.MeshLambertMaterial({ vertexColors: true })),
     glass: track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.75 })),
     glow: track(new THREE.MeshBasicMaterial({ vertexColors: true, map: atlasTex })),
     neon: track(new THREE.MeshBasicMaterial({ vertexColors: true, map: atlasTex })),
@@ -143,9 +147,9 @@ export function createWorld(ctx, deps) {
     })),
   };
   const B = createGeoBuilder({
-    cell: 1200,
+    cell: 1600,
     buckets: {
-      paint: {}, matte: {}, glass: {}, glow: { uv: true, ao: false }, neon: { uv: true, ao: false },
+      paint: {}, matte: {}, soft: {}, glass: {}, glow: { uv: true, ao: false }, neon: { uv: true, ao: false },
       blink: { ao: false }, fence: { uv: true },
     },
   });
@@ -225,10 +229,15 @@ export function createWorld(ctx, deps) {
   // ---- build static meshes ----
   const staticMeshes = [];
   const built = B.finish();
+  const tGeo = performance.now() - tA - tGround;
   for (const { bucket, geometry } of built) {
     const mesh = new THREE.Mesh(geometry, mats[bucket]);
     mesh.matrixAutoUpdate = false;
-    mesh.castShadow = bucket === 'paint' || bucket === 'matte' || bucket === 'fence';
+    // The only shadow-casting light is the flashlight, 7 units off the eye: the shadow of a
+    // wall or a car falls almost exactly behind it as seen from the camera, so static casters
+    // were invisible but cost a quarter of the frame's triangles (a second pass over the
+    // world). Actors still cast (their slivers show on the ground and walls behind them).
+    mesh.castShadow = false;
     mesh.receiveShadow = bucket !== 'glow' && bucket !== 'neon' && bucket !== 'blink';
     mesh.name = 'world-' + bucket;
     root.add(mesh);
@@ -240,7 +249,7 @@ export function createWorld(ctx, deps) {
   const waterNormal = track(makeWaterNormal());
   waterNormal.repeat.set(1, 1);
   const waterMat = track(new THREE.MeshStandardMaterial({
-    color: '#0a1517', roughness: 0.1, metalness: 0.2, normalMap: waterNormal, normalScale: new THREE.Vector2(0.35, 0.35),
+    color: '#0a1517', roughness: 0.14, metalness: 0.1, normalMap: waterNormal, normalScale: new THREE.Vector2(0.16, 0.16), envMapIntensity: 0.7,
   }));
   const waterMeshes = [];
   for (const w of ground.waters) {
@@ -248,7 +257,7 @@ export function createWorld(ctx, deps) {
     const geo = new THREE.PlaneGeometry(gw, gh, 1, 1);
     geo.rotateX(-Math.PI / 2);
     const uv = geo.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * gw / 260, uv.getY(i) * gh / 260);
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * gw / 520, uv.getY(i) * gh / 520);
     geo.translate((w.x0 + w.x1) / 2, WATER.surface, (w.y0 + w.y1) / 2);
     const m = new THREE.Mesh(geo, waterMat);
     m.receiveShadow = true;
@@ -260,6 +269,7 @@ export function createWorld(ctx, deps) {
 
   // ---- fx meshes ----
   const far = Math.hypot(map.width, map.height) + 1400;
+  const tE = performance.now();
   const sky = makeSky(amb, Math.min(far * 0.9, 6000), fx);
   root.add(sky);
   disposables.push(sky.geometry, sky.material);
@@ -271,7 +281,7 @@ export function createWorld(ctx, deps) {
     const envScene = new THREE.Scene();
     const envSky = makeSky(amb, 100, fx);
     envScene.add(envSky);
-    envRT = pmrem.fromScene(envScene, 0.02, 0.5, 400);
+    envRT = pmrem.fromScene(envScene, 0, 0.5, 400, { size: 64 });
     scene.environment = envRT.texture;
     envSky.geometry.dispose();
     envSky.material.dispose();
@@ -279,6 +289,7 @@ export function createWorld(ctx, deps) {
   } catch (err) {
     console.warn('world: environment bake failed', err);
   }
+  const tEnv = performance.now() - tE;
   mats.paint.envMapIntensity = 0.9;
   mats.glass.envMapIntensity = 1.6;
   const fxMeshes = [];
@@ -314,10 +325,8 @@ export function createWorld(ctx, deps) {
     fx.uTime.value = time;
     const cam = ctx.camera;
     sky.position.copy(cam.position);
-    // points sizing: pixels per unit at distance 1
-    const hPx = deps.renderer.domElement.height / Math.max(1e-3, deps.renderer.getPixelRatio());
+    // points sizing: drawing-buffer pixels per world unit at distance 1
     fx.uPx.value = (deps.renderer.domElement.height * 0.5) / Math.tan((cam.fov * Math.PI) / 360);
-    void hPx;
     waterNormal.offset.set((time * 0.013) % 1, (time * 0.021) % 1);
     // neon: mostly steady with the odd stutter
     const st = Math.sin(time * 1.3) + Math.sin(time * 3.7 + 1) * 0.6;
@@ -347,7 +356,10 @@ export function createWorld(ctx, deps) {
     update,
     setQuality() { /* static world is quality independent after build (ground density fixed) */ },
     get stats() {
-      return { staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats };
+      return {
+        staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
+        buildMs: { ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv) },
+      };
     },
     dispose() {
       ground.dispose();
@@ -356,7 +368,6 @@ export function createWorld(ctx, deps) {
       scene.remove(root);
     },
   };
-  void high;
 }
 
 // ---- flags ----------------------------------------------------------------------------------
@@ -413,8 +424,26 @@ function makeFlagMesh(list) {
 
 // ---- obstacles ------------------------------------------------------------------------------
 
+/** The builder with 'paint' parts sent to the matte bucket (burnt paint has no gloss). */
+function wreckBuilder(B) {
+  return new Proxy(B, {
+    get(t, k) {
+      const v = t[k];
+      if (typeof v !== 'function') return v;
+      return (bucket, ...rest) => v.call(t, bucket === 'paint' ? 'matte' : bucket, ...rest);
+    },
+  });
+}
+
 function buildObstacle(B, o, map) {
   const L = o.w, W = o.h;
+  if (o.wrecked) {
+    // Burnt-out wrecks: ash and rust over whatever colour the map gave them, on the matte
+    // material. (Near-black glossy paint rendered big wrecks next to the spawn as flat
+    // black holes in the picture: nothing lit their faces but the dim sky.)
+    o = { ...o, color: mixHex(o.color || '#555555', '#4d443b', 0.6) };
+    B = wreckBuilder(B);
+  }
   switch (o.kind) {
     case 'car': case 'suv': case 'pickup': case 'van': case 'truck':
       vehicle(B, o.kind, L, W, o.color, o.wrecked, o.id);
@@ -436,7 +465,7 @@ function buildObstacle(B, o, map) {
     case 'pillar': pillar(B, L, W, o.color); break;
     case 'tent': tent(B, L, W, o.color, o.roof); break;
     case 'booth': booth(B, L, W, o.color, o.roof); break;
-    case 'tree': trunk(B, L, map, o); break;
+    case 'tree': trunk(B, L, o); break;
     case 'rock': rock(B, L, W, o.color, obstacleHeight('rock', o)); break;
     default: B.block('matte', 0, 0, 0, L, 40, W, o.color || '#777');
   }
@@ -451,7 +480,7 @@ function wheelsAt(B, xs, W, r, width, wrecked, inset = 0) {
       if (wrecked) {
         B.cylZ('matte', x, r * 0.78, z, r * 0.72, width * 0.8, '#3d2a1e', 8);
       } else {
-        B.cylZ('matte', x, r, z, r, width, TIRE, 10);
+        B.cylZ('soft', x, r, z, r, width, TIRE, 10);
         B.cylZ('paint', x, r, z + s * 0.4, r * 0.55, width, RIM, 8);
       }
     }
@@ -470,7 +499,8 @@ function lamps(B, L, W, y, wrecked, id, front = 0.5, rear = -0.5, spread = 0.34)
 
 /** Glass (or black holes when wrecked). */
 function glassBucket(wrecked) { return wrecked ? 'matte' : 'glass'; }
-function glassColor(wrecked) { return wrecked ? '#0b0b0c' : GLASS; }
+// (a burnt-out cabin is a sooty hole, not a pure-black cut-out: pure black read as a hole in the picture)
+function glassColor(wrecked) { return wrecked ? '#1e1b18' : GLASS; }
 
 function soot(B, L, W, H, wrecked) {
   if (!wrecked) return;
@@ -555,7 +585,7 @@ function vehicle(B, kind, L, W, color, wrecked, id) {
       const canvasC = wrecked ? '#262620' : mixHex(bodyC, '#6f6a4a', 0.35);
       if (!wrecked || B.rng.chance(0.5)) {
         B.block('matte', -0.2 * L, 34 + sag, 0, 0.58 * L, 36, W * 0.96, canvasC);
-        B.add('matte', T.cyl(10, 1, false), [-0.2 * L, 70 + sag, 0], [W * 0.48, 0.58 * L, 22], [0, 0, Math.PI / 2], canvasC);
+        B.add('soft', T.cyl(12, 1, false), [-0.2 * L, 70 + sag, 0], [W * 0.48, 0.58 * L, 22], [0, 0, Math.PI / 2], canvasC);
       } else {
         for (let x = -0.45; x < 0.1; x += 0.13) B.add('matte', T.torus(8, 0.05), [x * L, 62 + sag, 0], [W * 0.46, W * 0.46, W * 0.46], [0, Math.PI / 2, 0], '#1a1a18');
       }
@@ -642,6 +672,12 @@ function bus(B, L, W, color, wrecked, objective, id) {
   B.block('paint', 0, 14 + sag, 0, L, 78, W, color);
   B.block('paint', 0, 92 + sag, 0, L * 0.97, 5, W * 0.92, color);
   B.block('paint', 0, 97 + sag, 0, L * 0.9, 3, W * 0.7, shadeHex(color, -0.08));
+  B.block('paint', 0, 13 + sag, 0, L * 1.002, 14, W * 1.01, shadeHex(color, -0.35));      // grimy skirt
+  for (const s of [-1, 1]) {
+    B.box('paint', 0.5 * L + 6, 70 + sag, s * (W / 2 + 4), 2, 12, 5, '#1a1a1a');          // mirrors
+    B.box('glow', -L / 2 - 0.3, 30 + sag, s * W * 0.38, 0.6, 6, 6, TAIL, null, { emissive: 0.5, uv: atlasUV('white') });
+    B.box('paint', 0, 30 + sag, s * (W / 2 + 0.5), L * 0.97, 1.6, 0.8, shadeHex(color, -0.4));
+  }
   const x0 = -0.44 * L, x1 = 0.34 * L;
   const n = Math.max(3, Math.round((x1 - x0) / 26));
   const step = (x1 - x0) / n;
@@ -670,6 +706,10 @@ function bus(B, L, W, color, wrecked, objective, id) {
   B.box(glassBucket(wrecked), L / 2 + 0.35, 66 + sag, 0, 0.7, 26, W * 0.86, objective ? '#2a2a24' : glassColor(wrecked));
   if (objective) B.add('glow', T.plane(), [L / 2 + 0.75, 88 + sag, 0], [W * 0.6, 7, 1], [0, Math.PI / 2, 0], '#ffcf6a', { emissive: 1.3, uv: atlasUV('white') });
   B.box('paint', L / 2 + 1, 18 + sag, 0, 3, 8, W * 0.98, '#1a1a1a');
+  // rear: emergency door with its window, bumper
+  B.box(glassBucket(wrecked), -L / 2 - 0.35, 68 + sag, 0, 0.7, 22, W * 0.34, objective ? '#3a2a18' : glassColor(wrecked));
+  B.box('paint', -L / 2 - 0.5, 50 + sag, 0, 0.8, 70, W * 0.4, shadeHex(color, -0.12));
+  B.box('paint', -L / 2 - 1, 18 + sag, 0, 3, 8, W * 0.98, '#1a1a1a');
   if (school) {
     // stop arm, hood-less flat nose
     B.cyl('paint', 0.36 * L, 50 + sag, -W / 2 - 3, 7, 1.2, '#b01818', 8, 1, [Math.PI / 2, 0, 0]);
@@ -694,15 +734,16 @@ function jersey(B, L, W, color) {
 
 function sandbags(B, L, W, color) {
   const r = B.rng;
-  const rows = 4, bagL = 20, bagH = 8;
+  const rows = 4, bagL = 21, bagH = 7.8;
   const depth = Math.min(W, 26);
+  color = mixHex(color, '#4a4232', 0.3);
   for (let row = 0; row < rows; row++) {
     const n = Math.max(1, Math.round(L / (bagL - 1.5)));
     const off = row % 2 ? 0.5 : 0;
     for (let i = 0; i < n; i++) {
       const x = -L / 2 + ((i + 0.5 + off * (i < n - 1 ? 1 : 0)) * L) / n;
       const c = mixHex(color, r.chance(0.5) ? '#a09070' : '#5e5238', r.range(0, 0.35));
-      B.add('matte', T.sphere(6, 4), [x, bagH * 0.5 + row * (bagH - 0.6), 0], [bagL / 2, bagH * 0.62, depth / 2 - row * 1.2], [0, r.range(-0.08, 0.08), 0], c);
+      B.add('soft', T.sphere(8, 5), [x, bagH * 0.5 + row * (bagH - 0.6), r.range(-1, 1)], [bagL / 2, bagH * 0.6, depth / 2 - row * 1.2], [r.range(-0.05, 0.05), r.range(-0.1, 0.1), r.range(-0.06, 0.06)], c);
     }
   }
 }
@@ -938,7 +979,7 @@ function booth(B, L, W, color, roof) {
   B.box('blink', 0, 92, 0, 4, 4, 4, '#ff3a2a');
 }
 
-function trunk(B, size, map, o) {
+function trunk(B, size, o) {
   const r = B.rng;
   const rad = size * 0.28;
   B.cyl('matte', 0, 0, 0, rad, 96, o.color || '#4a3826', 7, 0.55, null, { wobble: { amp: 0.08, seed: o.id } });
@@ -948,7 +989,6 @@ function trunk(B, size, map, o) {
     const a = r.range(0, 6.28);
     B.add('matte', T.cyl(5, 0.4), [Math.cos(a) * rad, 70 + i * 14, Math.sin(a) * rad], [rad * 0.4, 40, rad * 0.4], [Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9], o.color || '#4a3826');
   }
-  void map;
 }
 
 /** Canopies for every 'tree_canopy' decor (centred on the trunk). */
@@ -1042,22 +1082,32 @@ function diner(B, L, W, halos, ob) {
 }
 
 function apc(B, L, W) {
-  const olive = '#4b5320';
-  B.prism('paint', 'apc-hull', P(L, [[-0.5, 14], [0.5, 14], [0.5, 34], [0.34, 56], [-0.5, 60]]), 0, W * 0.92, olive);
-  B.box('paint', 0, 34, 0, L * 0.96, 8, W * 0.98, shadeHex(olive, -0.15));
+  const olive = '#434a22';
+  const dark = shadeHex(olive, -0.25);
+  // welded hull: sloped glacis, flat deck, sloped rear; side skirts over the wheels
+  B.prism('paint', 'apc-hull', P(L, [[-0.5, 16], [0.5, 16], [0.5, 30], [0.3, 55], [-0.44, 58], [-0.5, 48]]), 0, W * 0.9, olive);
+  B.prism('paint', 'apc-upper', P(L, [[-0.42, 57], [0.26, 55.5], [0.2, 60], [-0.38, 61]]), 0, W * 0.72, shadeHex(olive, 0.04));
+  for (const s of [-1, 1]) {
+    B.box('paint', 0, 33, s * (W * 0.47), L * 0.86, 12, 2, dark, [s * 0.12, 0, 0]);
+    B.box('paint', -0.1 * L, 50, s * (W * 0.42), 16, 8, 3, dark);          // stowage boxes
+    B.box('paint', 0.18 * L, 50, s * (W * 0.42), 12, 7, 3, dark);
+    B.box('glass', 0.3 * L, 50, s * W * 0.3, 3, 4, 8, GLASS, [0, 0, 0.6]);   // vision blocks
+  }
   const xs = [-0.36, -0.12, 0.12, 0.36].map((v) => v * L);
   wheelsAt(B, xs, W, 13, 11, false);
   // turret + gun
-  B.cyl('paint', -0.08 * L, 58, 0, 17, 13, shadeHex(olive, 0.05), 8);
-  B.cylX('paint', 0.18 * L, 66, 0, 2.2, 0.55 * L, '#2b2d22', 6);
-  B.box('paint', 0.02 * L, 66, 0, 12, 8, 10, '#2b2d22');
-  // open hatch with the crew's light inside
-  B.box('paint', -0.34 * L, 61, W * 0.22, 14, 2, 14, shadeHex(olive, -0.1), [0, 0, 0.9]);
-  B.box('glow', -0.34 * L, 60.2, 0, 13, 0.5, 13, '#a8d8ff', null, { emissive: 1.4, uv: atlasUV('white') });
-  for (const s of [-1, 1]) B.box('paint', 0.1 * L, 44, s * (W * 0.49 + 0.4), 10, 10, 0.4, '#d8d8c8');   // white markings
-  B.box('glass', 0.4 * L, 44, 0, 4, 5, W * 0.5, GLASS);
-  B.box('matte', -0.5 * L - 2, 30, 0, 3, 20, 20, '#2a2c22');
-  B.cyl('paint', -0.4 * L, 60, -W * 0.3, 1, 70, '#222', 4);   // radio whip
+  B.cyl('paint', -0.06 * L, 60, 0, 17, 12, shadeHex(olive, 0.06), 8, 0.85);
+  B.box('paint', 0.02 * L, 67, 0, 16, 9, 14, shadeHex(olive, 0.02));
+  B.cylX('paint', 0.22 * L, 67, 0, 2.2, 0.5 * L, '#23251c', 6);
+  B.cylX('paint', 0.46 * L, 67, 0, 3.2, 8, '#23251c', 6);
+  // open rear hatch with the crew's blue work light inside
+  B.box('paint', -0.34 * L, 64, W * 0.2, 16, 2, 16, dark, [0, 0, 0.9]);
+  B.box('glow', -0.34 * L, 61.2, 0, 14, 0.5, 14, '#a8d8ff', null, { emissive: 1.4, uv: atlasUV('white') });
+  for (const s of [-1, 1]) B.box('paint', 0.02 * L, 42, s * (W * 0.47 + 1.2), 9, 9, 0.4, '#c9c9b8', [s * 0.12, 0, 0]);   // markings
+  B.box('glow', 0.5 * L + 0.4, 26, W * 0.33, 1, 3, 6, '#ffe7b0', null, { emissive: 1.1, uv: atlasUV('white') });
+  B.box('glow', 0.5 * L + 0.4, 26, -W * 0.33, 1, 3, 6, '#ffe7b0', null, { emissive: 1.1, uv: atlasUV('white') });
+  B.cyl('paint', -0.4 * L, 60, -W * 0.3, 0.8, 80, '#222', 4);   // radio whip
+  B.add('soft', T.cyl(8), [-0.48 * L, 40, 0], [7, W * 0.6, 7], [Math.PI / 2, 0, 0], '#3a3a2a');   // spare wheel / rolled tarp
 }
 
 function beam(B, bucket, x0, y0, z0, x1, y1, z1, rad, color) {
@@ -1171,7 +1221,7 @@ function buildDecor(B, d, i, light, halos, shafts, flags) {
     case 'tire': {
       const R = 7.5 * s;
       const stack = r.chance(0.35) ? 2 : 1;
-      for (let k = 0; k < stack; k++) B.add('matte', T.torus(10, 0.42), [k * 2, R * 0.42 + k * R * 0.84, 0], [R, R, R], [Math.PI / 2, 0, 0], TIRE);
+      for (let k = 0; k < stack; k++) B.add('soft', T.torus(10, 0.42), [k * 2, R * 0.42 + k * R * 0.84, 0], [R, R, R], [Math.PI / 2, 0, 0], TIRE);
       break;
     }
     case 'rubble': {
@@ -1224,6 +1274,15 @@ function buildDecor(B, d, i, light, halos, shafts, flags) {
       B.add('glow', T.plane(), [0, 64, 0.1], [Ls - 1, 23, 1], null, '#ffffff', { emissive: 0.32, uv: atlasUV('sign') });
       break;
     }
+    case 'grass_tuft': {
+      // a few thin blades (double-sided triangles): near-field detail on the fields
+      const n = 4 + (i % 4);
+      for (let k = 0; k < n; k++) {
+        const h = r.range(7, 15) * s;
+        B.add('matte', T.blade(), [r.range(-5, 5) * s, 0, r.range(-5, 5) * s], [r.range(1.6, 2.6), h, 1], [r.range(-0.35, 0.35), r.range(0, 6.28), r.range(-0.35, 0.35)], r.pick(GRASS), { noAO: true });
+      }
+      break;
+    }
     case 'flag': {
       B.cyl('paint', 0, 0, 0, 1.4, 130 * s, '#8a8e92', 6);
       flags.push({ x: d.x, y: d.y, h: 128 * s, L: 32 * s, H: 20 * s, s, color: ['#8a1c1c', '#1c3a8a', '#e3e3e3', '#2e5d2e'][Math.floor(hash01(i) * 4)], ph: hash01(i + 3) * 6 });
@@ -1256,9 +1315,36 @@ function buildTreeLine(B, map, waters) {
     for (const w of waters) if (x > w.x0 - 30 && x < w.x1 + 30 && y > w.y0 - 30 && y < w.y1 + 30) return true;
     return false;
   };
-  const place = (x, y) => {
+  // sandy ground (red above green) = desert: rock formations and dead trees, no forest
+  const gc = lin(map.ground);
+  const desert = gc.r > gc.g * 1.05;
+  const place = (x, y, dist) => {
     if (blocked(x, y)) return;
+    // one merged strip per map side: 2–3 draw calls for the whole tree line
+    B.setCell(y < 0 ? 'tl-n' : y > H ? 'tl-s' : x < 0 ? 'tl-w' : 'tl-e');
     B.obj(x, y, rng.range(0, 6.28), Math.floor(rng.next() * 1e6));
+    B.setCell(null);
+    if (desert) {
+      const roll = rng.next();
+      if (roll < 0.45 && dist > 200) {
+        // weathered rock outcrop, bigger further out (buttes on the horizon)
+        const big = dist > 450 ? rng.range(1.6, 3) : rng.range(0.6, 1.3);
+        const rc = rng.pick(['#5e4a38', '#6b5642', '#54443a', '#735c44']);
+        B.add('matte', T.dodeca(), [0, 30 * big, 0], [70 * big, 70 * big * rng.range(0.6, 1.1), 55 * big], [0, rng.range(0, 6), 0], rc, { wobble: { amp: 0.3, seed: Math.floor(roll * 999) } });
+        B.add('matte', T.dodeca(), [40 * big, 12 * big, 20 * big], [36 * big, 30 * big, 30 * big], [0.4, 1, 0], rc, { wobble: { amp: 0.3, seed: 5 } });
+      } else if (roll < 0.62) {
+        // dead tree: bare trunk and a few crooked limbs
+        const s = rng.range(0.8, 1.4);
+        B.cyl('matte', 0, 0, 0, 5 * s, 110 * s, '#3a2e24', 5, 0.4);
+        for (let k = 0; k < 3; k++) {
+          const a = rng.range(0, 6.28);
+          B.add('matte', T.cyl(4, 0.3), [Math.cos(a) * 8 * s, (60 + k * 16) * s, Math.sin(a) * 8 * s], [3 * s, 50 * s, 3 * s], [Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9], '#3a2e24');
+        }
+      } else if (roll < 0.8) {
+        B.add('matte', T.ico(0), [0, 8, 0], [16, 10, 16], [0, rng.range(0, 6), 0], rng.pick(['#4a4a2a', '#5a5230', '#3e4426']), { wobble: { amp: 0.25, seed: 3 } });
+      }
+      return;
+    }
     const s = rng.range(0.8, 1.5);
     B.cyl('matte', 0, 0, 0, 5 * s, 60 * s, '#2a2118', 5);
     const top = rng.range(220, 330) * s;
@@ -1274,7 +1360,7 @@ function buildTreeLine(B, map, waters) {
       for (let row = 0; row < 3; row++) {
         const dist = band[0] + row * 150 + rng.range(0, 150);
         const y = edge ? H + dist : -dist;
-        place(x + rng.range(-20, 20), y);
+        place(x + rng.range(-20, 20), y, dist);
       }
     }
   }
@@ -1282,7 +1368,7 @@ function buildTreeLine(B, map, waters) {
     for (const edge of [0, 1]) {
       for (let row = 0; row < 3; row++) {
         const dist = band[0] + row * 150 + rng.range(0, 150);
-        place(edge ? W + dist : -dist, y + rng.range(-20, 20));
+        place(edge ? W + dist : -dist, y + rng.range(-20, 20), dist);
       }
     }
   }

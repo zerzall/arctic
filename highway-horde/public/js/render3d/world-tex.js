@@ -46,7 +46,6 @@ function atlasCanvas() {
   const g = atlas.getContext('2d');
   g.fillStyle = '#000';
   g.fillRect(0, 0, AW, AH);
-  const rng = createRng(777);
   const cell = (name, fn) => {
     const [x0, y0, x1, y1] = CELLS[name];
     g.save();
@@ -187,7 +186,7 @@ function atlasCanvas() {
     g.font = 'bold 30px Arial, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(rng.next() < 2 ? 'EXIT 9 ▸' : '', w / 2, h / 2 + 2);
+    g.fillText('EXIT 9 ▸', w / 2, h / 2 + 2);
   });
   cell('stripe', (w, h) => {
     for (let x = -h; x < w + h; x += 32) {

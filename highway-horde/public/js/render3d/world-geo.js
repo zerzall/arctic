@@ -95,6 +95,14 @@ export const T = {
   sphere: (w = 8, h = 6) => tpl(`sph${w}:${h}`, () => new THREE.SphereGeometry(1, w, h)),
   /** Quad in the XY plane facing +z. */
   plane: () => tpl('plane', () => new THREE.PlaneGeometry(1, 1)),
+  /** A grass blade: a thin upright triangle (base width 1 on x, height 1), both sides. */
+  blade: () => tpl('blade', () => {
+    const g = new THREE.BufferGeometry();
+    const p = [-0.5, 0, 0, 0.5, 0, 0, 0.05, 1, 0, 0.5, 0, 0, -0.5, 0, 0, 0.05, 1, 0];
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1], 3));
+    return g;
+  }),
   torus: (seg = 10, tube = 0.35) => tpl('torus' + seg + tube, () => new THREE.TorusGeometry(1, tube, 5, seg)),
   /**
    * A side profile (array of [x, y] points, counter-clockwise) extruded along z by 1,
@@ -121,11 +129,12 @@ export function createGeoBuilder(opts) {
   const bucketDefs = opts.buckets;
   const store = new Map();   // bucket → Map(cellKey → {pos, nor, col, uv})
   for (const b of Object.keys(bucketDefs)) store.set(b, new Map());
-  let ox = 0, oy = 0, cellKey = '0,0';
+  let cellKey = '0,0';
   let jitter = 0.08;
   let rng = seededRng(1);
   let aoH = 34, aoMin = 0.42;
   let triCount = 0;
+  let cellOverride = null;
 
   function target(bucket) {
     const cells = store.get(bucket);
@@ -141,14 +150,15 @@ export function createGeoBuilder(opts) {
   const B = {
     /** Place the object frame at sim (x, y) with sim angle a; seeds colour jitter. */
     obj(x, y, a = 0, seed = 0, groundY = 0) {
-      ox = x; oy = y;
       _obj.makeRotationY(-a);
       _obj.setPosition(x, groundY, y);
-      cellKey = Math.floor(x / cellSize) + ',' + Math.floor(y / cellSize);
+      cellKey = cellOverride || Math.floor(x / cellSize) + ',' + Math.floor(y / cellSize);
       rng = seededRng((seed * 2654435761) >>> 0);
       return B;
     },
     get rng() { return rng; },
+    /** Force following objects into a named cell (null = by position). */
+    setCell(key) { cellOverride = key; return B; },
     /** Per-call colour variation amplitude (0 = exact colours). */
     setJitter(j) { jitter = j; return B; },
     /** Fake ambient occlusion: vertices near the ground are darkened (below `h` units). */

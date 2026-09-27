@@ -1,6 +1,11 @@
 // In-game HUD (SPEC §7.3): a DOM overlay over the canvas. Built once per match; update()
 // runs every frame but only writes to the DOM when a displayed value actually changed
 // (see dom.js setters), so a quiet frame costs a few comparisons.
+//
+// First-person view (SPEC §7.5): the renderer's overlay draws the crosshair, hit markers
+// and name tags, so the HUD adds none of those. It adds a compass strip at the top centre,
+// turns the minimap into a rotating radar (up = facing; toggle in the settings) and moves
+// the interaction prompt just below the crosshair (CSS: #hud[data-view='fps']).
 
 import {
   PLAYER_COLORS, ARMOR_MAX, STAMINA_MAX, BLEEDOUT_TIME, REVIVE_RADIUS, INTERACT_RADIUS, SUPPLY_RADIUS,
@@ -12,6 +17,7 @@ import { perksFor } from '../shared/classes.js';
 import { PICKUPS } from '../shared/items.js';
 import { h, setText, setStyle, setClass, setShown, formatCash } from './dom.js';
 import { createMinimap } from './minimap.js';
+import { createCompass } from './compass.js';
 import { createScoreboard } from './scoreboard.js';
 import { priceOf, itemName, shopState } from './shop.js';
 import { activeWeapon } from '../shared/sim/players.js';
@@ -53,10 +59,14 @@ function pct(v) {
  * @param {object} opts.audio
  * @param {{ code: string, onCopy: Function }|null} [opts.invite] online games: room code and
  *   invite-link copy in the scoreboard header
+ * @param {'fps'|'topdown'} [opts.view] first person adds the compass and the radar minimap
+ * @param {boolean} [opts.minimapRotate] first person: rotating radar (default true)
  */
-export function createHud(root, { map, renderClassPortrait, audio, invite = null }) {
+export function createHud(root, { map, renderClassPortrait, audio, invite = null, view = 'topdown', minimapRotate = true }) {
   root.replaceChildren();
   root.hidden = false;
+  const fps = view === 'fps';
+  root.dataset.view = fps ? 'fps' : 'topdown';
 
   // ---- build DOM -----------------------------------------------------------------------
 
@@ -89,7 +99,10 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const bannerSub = h('div.banner-sub');
   const banner = h('div.hud-banner', { hidden: true, role: 'status' }, [bannerTitle, bannerSub]);
   const toasts = h('div.hud-toasts', { role: 'status', 'aria-live': 'polite' });
-  const topCentre = h('div.hud-top-centre', null, [bossPanel, banner, toasts]);
+  // first person: heading tape (the canvas is sized by CSS)
+  const compassCanvas = h('canvas.compass-canvas', { 'aria-hidden': 'true' });
+  const compassEl = h('div.hud-compass', { hidden: !fps }, compassCanvas);
+  const topCentre = h('div.hud-top-centre', null, [compassEl, bossPanel, banner, toasts]);
 
   // minimap, net stats, kill feed (top-right)
   const miniCanvas = h('canvas.minimap-canvas', { 'aria-label': 'Minimap' });
@@ -103,7 +116,9 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const promptProg = h('span.prompt-progress', { hidden: true }, promptBar);
   const prompt = h('div.hud-prompt', { hidden: true }, [promptText, promptProg]);
   const hint = h('div.hud-hint', { hidden: true });
-  const bottomCentre = h('div.hud-bottom-centre', null, [prompt, hint]);
+  // First person: the prompt goes under the crosshair, the standing shop hint stays low.
+  const bottomCentre = h('div.hud-bottom-centre', null, fps ? [prompt] : [prompt, hint]);
+  const bottomHint = fps ? h('div.hud-bottom-hint', null, hint) : null;
 
   // vitals + cash (bottom-left)
   const portrait = h('canvas.vital-portrait', { width: 96, height: 96, 'aria-hidden': 'true' });
@@ -162,10 +177,12 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const spectate = h('div.hud-spectate', { hidden: true });
 
   root.append(topLeft, topCentre, topRight, bottomCentre, bottomLeft, bottomRight, spectate);
+  if (bottomHint) root.append(bottomHint);
 
   // Mounted next to the HUD, above the touch layer, so the invite button can be tapped.
   const scoreboard = createScoreboard(root.parentElement || root, { invite });
-  const minimap = createMinimap(miniCanvas, map);
+  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate });
+  const compass = fps ? createCompass(compassCanvas, map) : null;
 
   // ---- state -----------------------------------------------------------------------------
 
@@ -467,7 +484,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
 
   /**
    * @param {object|null} view Snapshot from session.getView()
-   * @param {object} info { dt, mode, stats: {ping, fps, ...}, showStats, localPos, shopOpen, isHost }
+   * @param {object} info { dt, mode, stats: {ping, fps, ...}, showStats, localPos, shopOpen, isHost,
+   *   yaw (first person: camera facing), camPos ({x, y} camera position) }
    */
   function update(view, info) {
     const dt = info.dt || 0;
@@ -484,7 +502,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       touchLayoutT = 0;
       if (keyMode !== 'touch') clearTouchLayout();
     }
-    minimap.update(v, localId, rosterById, dt, info.localPos);
+    minimap.update(v, localId, rosterById, dt, info.localPos, info.yaw);
+    if (compass) compass.update(info.yaw, info.camPos || info.localPos, v, localId, rosterById, dt);
     if (!v) return;
     const me = localPlayer(v);
     root.dataset.phase = v.phase;
@@ -806,6 +825,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
 
   function resize() {
     minimap.resize();
+    if (compass) compass.resize();
     touchLayoutT = 0;
   }
 
@@ -818,6 +838,10 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     toast,
     banner: showBanner,
     scoreboard,
+    /** First person: rotating radar (true) or the whole map north-up (false). */
+    setMinimapRotate(on) {
+      if (fps) minimap.setRadar(!!on);
+    },
     /** Notice from the session ('notice' event). */
     notice(text) {
       toast(text, 'minor', 4);
@@ -829,6 +853,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       root.hidden = true;
       delete root.dataset.phase;
       delete root.dataset.input;
+      delete root.dataset.view;
     },
   };
 }

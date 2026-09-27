@@ -50,7 +50,8 @@ function viewpoints(map) {
   const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
   const v = [];
   // a clear spot 300..460 from the objective (not inside or hugging an obstacle)
-  const clear = (x, y, pad) => map.obstacles.every((o) => {
+  const wet = (x, y) => map.areas.some((a) => a.kind === 'water' && Math.abs(x - a.x) < a.w / 2 + 40 && Math.abs(y - a.y) < a.h / 2 + 40);
+  const clear = (x, y, pad) => !wet(x, y) && map.obstacles.every((o) => {
     const c = Math.cos(o.a || 0), s = Math.sin(o.a || 0), dx = x - o.x, dy = y - o.y;
     return Math.abs(dx * c + dy * s) > o.w / 2 + pad || Math.abs(-dx * s + dy * c) > o.h / 2 + pad;
   });
@@ -241,6 +242,15 @@ async function main() {
     /** Advance n frames synchronously at 60 Hz (for deterministic screenshots). */
     step(n = 1) { for (let i = 0; i < n; i++) step(1 / 60, (performance.now() / 1000)); },
     recreate(mapId) { setup(mapId || opt.map); },
+    /** Simulate n ticks without rendering (the local player idles; bots play). */
+    advance(n = 60) {
+      for (let i = 0; i < n; i++) {
+        game.setInput(1, { ...idle, seq: ++seq, angle: yaw });
+        game.step();
+      }
+      game.snapshot();
+    },
+    look(y, p = 0) { yaw = y; pitch = p; },
     setTour(on) { opt.tour = !!on; tourT = 0; },
   };
   setup(opt.map);
