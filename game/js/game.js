@@ -876,7 +876,7 @@
     if (!step.shown && secs < 2.2) {
       step.shown = true;
       const h = step.hint;
-      ui('hint', typeof h === 'string' ? h : h ? (isTouch ? h.touch : h.key) || h.key || '' : '', 6000);
+      ui('hint', h || step.action, 6000, { urgent: false }); // the UI picks keyboard or touch wording from the device in use
     }
     if (step.action === 'coins' || step.action === 'magnet') {
       if (secs < -0.5) { step.done = true; ui('clearHint'); }
@@ -884,6 +884,7 @@
       return;
     }
     const target = step.shown && secs < 1.1 ? 0.22 : 1;
+    if (target < 1 && !step.urgent) { step.urgent = true; ui('hint', step.hint || step.action, 6000, { urgent: true }); }
     timeScale = RR.damp(timeScale, target, 8, dt);
     if (secs < -1.5) { step.done = true; ui('clearHint'); }
   }
