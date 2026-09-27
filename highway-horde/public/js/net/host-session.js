@@ -15,8 +15,9 @@ import { interpolateSnapshots } from './interpolation.js';
 import { NetStats } from './stats.js';
 import {
   sanitizeName, uniqueName, pickColor, isColor, sanitizeClass, sanitizeChat, mergeSettings, ChatLimiter,
-  botProfile,
+  botProfile, isShopItem, clientToken,
 } from './lobby-rules.js';
+import { IMPORTANT_EVENTS, PERISHABLE_EVENTS } from './event-rules.js';
 
 /** Input older than this means the host is not looking (hidden tab): stand still. */
 const STALE_INPUT = 0.25;
@@ -26,13 +27,21 @@ const HELLO_TIMEOUT = 10;
 const PEER_SILENCE = 15;
 /** Presentation events kept for drainEvents() when the UI is not draining (background). */
 const MAX_LOCAL_EVENTS = 1000;
-/** Events worth repeating in the next snapshots on a lossy channel (see ECHO_SNAPSHOTS). */
-const IMPORTANT = new Set([
-  'wave', 'waveclear', 'gameover', 'victory', 'buy', 'buyfail', 'down', 'revived', 'died', 'respawn',
-  'pickup', 'place', 'placefail', 'destroyed', 'bossspawn', 'drop', 'throw', 'zdie', 'explosion', 'ignite',
-]);
+/** Snapshots whose IMPORTANT_EVENTS are repeated in the next ones (the `echo`). */
 const ECHO_SNAPSHOTS = 2;
 const FLUSH_DELAY_MS = 250;
+/**
+ * Control messages one peer may send (pong/bye aside): CTL_BURST at once, then CTL_RATE
+ * a second. Past that they are dropped; a peer that keeps going (CTL_KICK_DROPS dropped
+ * within CTL_KICK_WINDOW seconds) is disconnected.
+ */
+const CTL_RATE = 20;
+const CTL_BURST = 40;
+const CTL_KICK_DROPS = 4 * CTL_RATE;
+const CTL_KICK_WINDOW = 2;
+/** Roster broadcasts caused by peers' profile changes: ROSTER_BURST at once, then ROSTER_RATE/s. */
+const ROSTER_RATE = 10;
+const ROSTER_BURST = 5;
 
 function wallClock() {
   return (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
@@ -103,7 +112,15 @@ export class HostSession extends Emitter {
     this.echo = [];
     this.lastView = null;
     this.pingAt = 0;
+    /** Only ping changes are waiting to be published (sent with the next ping round). */
     this.rosterDirty = false;
+    /** Profile changes are waiting to be published (as soon as rosterLimiter allows). */
+    this.rosterPending = false;
+    this.rosterLimiter = new ChatLimiter(ROSTER_BURST, 1 / ROSTER_RATE);
+    /** Keys (see _peerKeys) of kicked players: refused for the rest of the session. */
+    this.banned = new Set();
+    /** Host-only switch: refuse every new player. */
+    this.locked = false;
 
     this.netStats = new NetStats();
     this.stats = this.netStats.view;
@@ -216,7 +233,7 @@ export class HostSession extends Emitter {
   }
 
   buy(itemId) {
-    if (this.game) this.game.command(1, { type: 'buy', item: String(itemId) });
+    if (this.game && isShopItem(itemId)) this.game.command(1, { type: 'buy', item: itemId });
   }
 
   ready() {
@@ -230,9 +247,22 @@ export class HostSession extends Emitter {
   kick(pid) {
     const peerId = this.pidToPeer.get(pid);
     if (peerId === undefined) return false;
+    // Kept out for the rest of the session (same tab, or the same name from anywhere).
+    const entry = this._entry(pid);
+    for (const key of this._peerKeys(this.peers.get(peerId), entry && entry.name)) this.banned.add(key);
     this.net.send(peerId, 'ctl', { t: 'kick' });
     this._removePeer(peerId, 'kicked');
     setTimeout(() => this.net.disconnect(peerId), FLUSH_DELAY_MS);
+    return true;
+  }
+
+  /**
+   * Host only: a locked room refuses every new player ('Room is locked'); the players in
+   * it stay. Not in the original SPEC list; see §6.2.
+   * @param {boolean} locked
+   */
+  setLocked(locked) {
+    this.locked = !!locked;
     return true;
   }
 
@@ -313,23 +343,27 @@ export class HostSession extends Emitter {
       game.step();
       const send = game.tick % SNAPSHOT_EVERY === 0;
       // Nobody renders a hidden host tab: only snapshot when the network needs one.
-      if (active || send) this._takeSnapshot(send);
+      if (active || send) this._takeSnapshot(send, active);
     }
   }
 
-  _takeSnapshot(send) {
+  _takeSnapshot(send, active = true) {
     const snap = this.game.snapshot();
     this.prevSnap = this.curSnap;
     this.curSnap = snap;
     if (snap.events.length) {
       for (const ev of snap.events) this.netEvents.push(ev);
-      this._pushLocalEvents(snap.events);
+      this._pushLocalEvents(snap.events, active);
     }
     if (send) this._broadcastSnapshot(snap);
   }
 
-  _pushLocalEvents(events) {
-    for (const ev of events) this.localEvents.push(ev);
+  /**
+   * Queue events for drainEvents(). While nobody is looking (hidden tab) only the ones
+   * that still matter later are kept; tracers and sounds would all play in one frame.
+   */
+  _pushLocalEvents(events, active = true) {
+    for (const ev of events) if (active || !PERISHABLE_EVENTS.has(ev.type)) this.localEvents.push(ev);
     if (this.localEvents.length > MAX_LOCAL_EVENTS) {
       this.localEvents.splice(0, this.localEvents.length - MAX_LOCAL_EVENTS);
     }
@@ -339,14 +373,15 @@ export class HostSession extends Emitter {
     const events = this.netEvents;
     this.netEvents = [];
     if (!this._hasPlayers()) return;
-    // Only the p2p state channel can lose messages; the others are reliable.
-    const lossy = this.transport === 'p2p';
+    // p2p and relay may skip a state message for a congested peer, and the p2p state
+    // channel is unordered (a retransmitted snapshot arrives after its successors).
+    const lossy = this.transport !== 'local';
     const msg = { ...snap, events, match: this.match, echo: lossy ? this.echo : undefined };
     const buf = encodeSnapshot(msg);
     this.netStats.addOut(this._sendAll('state', buf));
     this.netStats.addSnapshot();
     if (lossy) {
-      const important = events.filter((e) => IMPORTANT.has(e.type));
+      const important = events.filter((e) => IMPORTANT_EVENTS.has(e.type));
       if (important.length) this.echo.push({ tick: snap.tick, events: important });
       // Only snapshots from the last ECHO_SNAPSHOTS sends are worth repeating.
       const oldest = snap.tick - ECHO_SNAPSHOTS * SNAPSHOT_EVERY;
@@ -384,7 +419,10 @@ export class HostSession extends Emitter {
       return;
     }
     const now = this.clock();
-    this.peers.set(peerId, { peerId, pid: 0, since: now, lastSeen: now, lastSeq: 0, pingN: 0 });
+    this.peers.set(peerId, {
+      peerId, pid: 0, since: now, lastSeen: now, lastSeq: 0, pingN: 0, name: '', token: null,
+      limiter: new ChatLimiter(CTL_BURST, 1 / CTL_RATE), drops: 0, dropsSince: now,
+    });
   }
 
   _onMessage(peerId, channel, data) {
@@ -402,10 +440,11 @@ export class HostSession extends Emitter {
       if (data.t === 'hello') this._hello(peer, data);
       return;
     }
+    if (data.t !== 'pong' && data.t !== 'bye' && !this._takeCtl(peer)) return;
     switch (data.t) {
       case 'profile': {
         const entry = this._entry(peer.pid);
-        if (entry && this._applyProfile(entry, data, peer)) this._rosterChanged();
+        if (entry && this._applyProfile(entry, data, peer)) this._rosterSoon();
         if (data.ready === true && this.game) this.game.command(peer.pid, { type: 'ready' });
         break;
       }
@@ -413,7 +452,8 @@ export class HostSession extends Emitter {
         this._chat(peer.pid, data.text, peer);
         break;
       case 'buy':
-        if (this.game && (typeof data.item === 'string')) this.game.command(peer.pid, { type: 'buy', item: data.item });
+        // Only real shop ids reach the sim (its buyfail event echoes the item back).
+        if (this.game && isShopItem(data.item)) this.game.command(peer.pid, { type: 'buy', item: data.item });
         break;
       case 'ready':
         if (this.game) this.game.command(peer.pid, { type: 'ready' });
@@ -427,6 +467,25 @@ export class HostSession extends Emitter {
         break;
       default:
     }
+  }
+
+  /**
+   * Per-peer control message budget. @returns {boolean} false = drop the message (the
+   * peer may have been disconnected for flooding)
+   */
+  _takeCtl(peer) {
+    const now = this.clock();
+    if (peer.limiter.take(now)) return true;
+    if (now - peer.dropsSince > CTL_KICK_WINDOW) {
+      peer.drops = 0;
+      peer.dropsSince = now;
+    }
+    if (++peer.drops > CTL_KICK_DROPS) {
+      this._send(peer, { t: 'bye', reason: 'Disconnected: too many messages' });
+      this._removePeer(peer.peerId, 'kicked');
+      setTimeout(() => this.net.disconnect(peer.peerId), FLUSH_DELAY_MS);
+    }
+    return false;
   }
 
   _onInputs(peer, data) {
@@ -447,6 +506,16 @@ export class HostSession extends Emitter {
   _hello(peer, msg) {
     if (msg.version !== GAME_VERSION || msg.protocol !== PROTOCOL_VERSION) {
       this._reject(peer, 'Game version mismatch');
+      return;
+    }
+    peer.name = sanitizeName(msg.name);
+    peer.token = clientToken(msg.token);
+    if (this._peerKeys(peer).some((k) => this.banned.has(k))) {
+      this._reject(peer, 'You were kicked from this room');
+      return;
+    }
+    if (this.locked) {
+      this._reject(peer, 'Room is locked');
       return;
     }
     // A full room with bots in it makes room for a human (in the lobby or mid-game).
@@ -474,7 +543,8 @@ export class HostSession extends Emitter {
     this.chatLimiters.set(pid, new ChatLimiter());
     this._send(peer, { t: 'welcome', id: pid, code: this.code, roster: this.roster, settings: this.settings });
     if (this.game) {
-      // Late join: the newcomer starts spectating and respawns with the next wave.
+      // Late join: the newcomer starts spectating and respawns with the next wave. The
+      // Game gives someone coming back under the same name what they left with (§3.1).
       this.game.addPlayer({ id: pid, name: entry.name, color: entry.color, cls: entry.cls });
       this._send(peer, this._startMessage());
     }
@@ -511,6 +581,20 @@ export class HostSession extends Emitter {
     if (next < 0) return false;
     holder.color = next;
     return true;
+  }
+
+  /**
+   * Keys that recognise a returning (kicked) player: the tab's token and the names they
+   * used (not the default name everyone without one gets).
+   */
+  _peerKeys(peer, ...moreNames) {
+    if (!peer) return [];
+    const keys = [];
+    for (const name of [peer.name, ...moreNames]) {
+      if (typeof name === 'string' && name && name !== sanitizeName(null)) keys.push(`n:${name.toLowerCase()}`);
+    }
+    if (peer.token) keys.push(`t:${peer.token}`);
+    return keys;
   }
 
   _reject(peer, reason) {
@@ -594,8 +678,15 @@ export class HostSession extends Emitter {
 
   _rosterChanged() {
     this.rosterDirty = false;
+    this.rosterPending = false;
     this._sendAll('ctl', { t: 'roster', roster: this.roster });
     this.emit('roster', this.roster);
+  }
+
+  /** Publish a peer's profile change now, or soon if peers are changing it very often. */
+  _rosterSoon() {
+    if (this.rosterLimiter.take(this.clock())) this._rosterChanged();
+    else this.rosterPending = true;
   }
 
   _chat(pid, text, peer) {
@@ -650,6 +741,7 @@ export class HostSession extends Emitter {
         this.net.disconnect(peer.peerId);
       }
     }
+    if (this.rosterPending && this.rosterLimiter.take(now)) this._rosterChanged();
     if (now - this.pingAt >= PING_EVERY) {
       this.pingAt = now;
       if (this.rosterDirty) this._rosterChanged();

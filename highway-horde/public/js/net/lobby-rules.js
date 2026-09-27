@@ -7,21 +7,31 @@ import {
 } from '../shared/constants.js';
 import { CLASS_IDS } from '../shared/classes.js';
 import { MAP_LIST } from '../shared/maps.js';
+import { WEAPONS } from '../shared/weapons.js';
+import { ITEMS } from '../shared/items.js';
 
 const DEFAULT_NAME = 'Survivor';
-// Control characters, zero-width/bidi overrides and other invisible troublemakers.
-const INVISIBLE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g;
+// Control characters, zero-width/bidi overrides, tag characters and code points that
+// render as blank (Hangul fillers, braille blank, soft hyphen ...).
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164\ufeff\uffa0\u{e0000}-\u{e007f}]/gu;
+/** More than this many combining marks on one character are dropped (no "Zalgo" towers). */
+const MAX_MARKS = 2;
+const EXCESS_MARKS = new RegExp(`(\\p{M}{${MAX_MARKS}})\\p{M}+`, 'gu');
+/** A name needs at least one letter, digit, symbol or punctuation mark to be visible. */
+const VISIBLE = /[\p{L}\p{N}\p{S}\p{P}]/u;
 const MAX_WAVES = 999;
 
 /**
- * Clean a display name: no invisible characters, collapsed spaces, ≤ NAME_MAX_LENGTH.
+ * Clean a display name: no invisible characters, at most MAX_MARKS combining marks per
+ * character, collapsed spaces, ≤ NAME_MAX_LENGTH, and something visible left in it.
  * @param {*} name
  * @returns {string}
  */
 export function sanitizeName(name) {
   if (typeof name !== 'string') return DEFAULT_NAME;
-  const clean = [...name.replace(INVISIBLE, '').replace(/\s+/g, ' ').trim()].slice(0, NAME_MAX_LENGTH).join('').trim();
-  return clean || DEFAULT_NAME;
+  const stripped = name.replace(INVISIBLE, '').replace(EXCESS_MARKS, '$1').replace(/\s+/g, ' ').trim();
+  const clean = [...stripped].slice(0, NAME_MAX_LENGTH).join('').trim();
+  return VISIBLE.test(clean) ? clean : DEFAULT_NAME;
 }
 
 /**
@@ -59,6 +69,31 @@ export function pickColor(wanted, taken) {
   if (!taken.includes(want)) return want;
   for (let c = 0; c < PLAYER_COLORS.length; c++) if (!taken.includes(c)) return c;
   return want;
+}
+
+/** Longest shop id the host passes on to the sim (the real ones are far shorter). */
+const MAX_ITEM_LENGTH = 32;
+
+/**
+ * True if `id` names something the shop sells: a gun with a price or an ITEMS entry
+ * (own keys only, so 'constructor' / '__proto__' are not items).
+ * @param {*} id
+ * @returns {boolean}
+ */
+export function isShopItem(id) {
+  if (typeof id !== 'string' || id.length > MAX_ITEM_LENGTH) return false;
+  if (Object.hasOwn(ITEMS, id)) return true;
+  return Object.hasOwn(WEAPONS, id) && WEAPONS[id].price > 0;
+}
+
+/**
+ * The per-tab id a client sends in its hello (so the host recognises a player coming
+ * back after a reload), or null if `token` is not a well-formed one.
+ * @param {*} token
+ * @returns {string|null}
+ */
+export function clientToken(token) {
+  return typeof token === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(token) ? token : null;
 }
 
 /** A valid class id (unknown → the first class). */
@@ -125,7 +160,10 @@ export function mergeSettings(current, patch) {
   return out;
 }
 
-/** Token bucket for chat: `burst` messages at once, then one every `every` seconds. */
+/**
+ * Token bucket: `burst` messages at once, then one every `every` seconds. Used for chat
+ * lines and, with a bigger bucket, for every control message a peer sends.
+ */
 export class ChatLimiter {
   constructor(burst = 4, every = 1.5) {
     this.burst = burst;

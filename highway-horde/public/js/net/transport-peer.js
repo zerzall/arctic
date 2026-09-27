@@ -3,7 +3,9 @@
 // PEER_ID_PREFIX + code; each client opens two DataConnections to it:
 //   'ctl'   reliable, ordered, JSON   (lobby/chat/buy/ping)
 //   'state' unordered, raw binary     (snapshots/inputs; PeerJS 1.5 maps reliable:false
-//                                      to an unordered channel)
+//                                      to an unordered but still fully reliable channel:
+//                                      a retransmitted message arrives after later ones.
+//                                      Sends are skipped while the channel is congested.)
 //
 // PeerJS does not reliably notice a vanished remote (a closed laptop lid never sends a
 // close), so both sides exchange a small heartbeat on 'ctl' and give up after
@@ -26,8 +28,18 @@ const PEER_TIMEOUT_MS = 8000;
 const OPEN_TIMEOUT_MS = 15000;
 /** Host: both channels of a new client must be open within this long. */
 const HANDSHAKE_MS = 20000;
-/** Skip snapshots to a peer whose send buffer is this full (slow link) instead of queueing lag. */
-const STATE_BUFFER_LIMIT = 256 * 1024;
+/**
+ * Skip a state message to a peer whose send buffer already holds more than a few of them
+ * (slow link) instead of queueing seconds of stale snapshots: the channel retransmits
+ * everything it has accepted.
+ */
+const STATE_BUFFER_MIN = 16 * 1024;
+const STATE_BUFFERED_MESSAGES = 3;
+/** Host: ctl messages held for a remote whose 'state' channel is not open yet. */
+const MAX_HELD_MESSAGES = 32;
+const MAX_HELD_BYTES = 64 * 1024;
+/** Host: remotes still opening their channels at once (more are turned away). */
+const MAX_PENDING_REMOTES = 12;
 const RECONNECT_MAX_MS = 30000;
 const HEARTBEAT = { __hb: 1 };
 
@@ -100,9 +112,10 @@ function safeClose(conn) {
   }
 }
 
-function congested(conn) {
+/** True if a state message of `bytes` should be skipped: a few are already queued. */
+export function congested(conn, bytes) {
   const dc = conn.dataChannel;
-  return !!dc && dc.bufferedAmount > STATE_BUFFER_LIMIT;
+  return !!dc && dc.bufferedAmount > Math.max(STATE_BUFFER_MIN, STATE_BUFFERED_MESSAGES * bytes);
 }
 
 /**
@@ -190,7 +203,13 @@ export class PeerHostTransport extends HostTransport {
     }
     let r = this.remotes.get(conn.peer);
     if (!r) {
-      r = { id: conn.peer, ctl: null, state: null, joined: false, since: now(), lastSeen: now(), held: [] };
+      let pending = 0;
+      for (const q of this.remotes.values()) if (!q.joined) pending++;
+      if (pending >= MAX_PENDING_REMOTES) {
+        safeClose(conn);
+        return;
+      }
+      r = { id: conn.peer, ctl: null, state: null, joined: false, since: now(), lastSeen: now(), held: [], heldBytes: 0 };
       this.remotes.set(conn.peer, r);
     }
     if (r[conn.label] && r[conn.label] !== conn) safeClose(r[conn.label]);
@@ -204,8 +223,17 @@ export class PeerHostTransport extends HostTransport {
       r.lastSeen = now();
       if (conn.label === 'ctl') {
         if (data && data.__hb) return;
-        if (!r.joined) r.held.push(data);
-        else this._deliver(r.id, 'ctl', data);
+        if (r.joined) {
+          this._deliver(r.id, 'ctl', data);
+          return;
+        }
+        // A real client sends one hello before its state channel opens; more is abuse.
+        r.heldBytes += messageBytes('ctl', data);
+        if (r.held.length >= MAX_HELD_MESSAGES || r.heldBytes > MAX_HELD_BYTES) {
+          this._drop(r, 'flood');
+          return;
+        }
+        r.held.push(data);
         return;
       }
       const ab = toArrayBuffer(data);
@@ -225,6 +253,7 @@ export class PeerHostTransport extends HostTransport {
     this.emit('peerjoin', r.id);
     const held = r.held;
     r.held = [];
+    r.heldBytes = 0;
     for (const msg of held) this._deliver(r.id, 'ctl', msg);
   }
 
@@ -262,7 +291,7 @@ export class PeerHostTransport extends HostTransport {
     if (!r || !r.joined || this.closed) return 0;
     const conn = channel === 'ctl' ? r.ctl : r.state;
     if (!conn || !conn.open) return 0;
-    if (channel === 'state' && congested(conn)) return 0;
+    if (channel === 'state' && congested(conn, messageBytes(channel, data))) return 0;
     try {
       conn.send(data);
     } catch (err) {
@@ -418,7 +447,7 @@ export class PeerClientTransport extends ClientTransport {
     if (this.closed) return 0;
     const conn = channel === 'ctl' ? this.ctl : this.state;
     if (!conn || !conn.open) return 0;
-    if (channel === 'state' && congested(conn)) return 0;
+    if (channel === 'state' && congested(conn, messageBytes(channel, data))) return 0;
     try {
       conn.send(data);
     } catch (err) {

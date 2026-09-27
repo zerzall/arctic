@@ -6,11 +6,11 @@ import {
   REVIVE_TIME, REVIVE_RADIUS, REVIVE_HP, SELF_REVIVE_DELAY, RESPAWN_HP, REVIVE_BONUS,
   INTERACT_RADIUS, PICKUP_RADIUS, PICKUP_LIFETIME, SUPPLY_RADIUS, MELEE_RANGE, MELEE_ARC,
   MELEE_DAMAGE, MELEE_KNOCKBACK, MELEE_COOLDOWN, FRAG_MAX, MOLOTOV_MAX, THROW_COOLDOWN,
-  TURRET, BARRICADE, DOWNED_HIT_BLEED, DOWNED_HIT_BLEED_RATE, DOWNED_HIT_BLEED_BANK,
+  TURRET, BARRICADE, DOWNED_HIT_BLEED, DOWNED_HIT_BLEED_RATE, DOWNED_HIT_BLEED_BANK, WAVE_CLEAR_BONUS,
 } from '../constants.js';
 import { WEAPONS, crateWeaponPool } from '../weapons.js';
 import { CLASSES, perksFor } from '../classes.js';
-import { ITEMS, isBuyable, ammoPrice, DROP_TABLE } from '../items.js';
+import { ITEMS, isBuyable, isWeaponId, isItemId, ammoPrice, DROP_TABLE } from '../items.js';
 import { angleDiff } from '../math.js';
 import { makeObb, circleOverlapsObb } from '../geom.js';
 import { stepPlayerMovement } from '../movement.js';
@@ -19,7 +19,15 @@ import {
   fireWeaponShot, damageZombie, knockZombie, throwProjectile, rebuildBarricades, MAX_ZOMBIE_RADIUS,
 } from './combat.js';
 
-const MAX_QUEUE = 6;
+/** Most InputCmds a player's queue holds (SPEC §3.3). */
+export const MAX_QUEUE = 6;
+/**
+ * Backlog drain (SPEC §3.3): when a player's queue never ran below DRAIN_MIN cmds for
+ * DRAIN_WINDOW ticks in a row, one extra cmd is dropped, so a burst of late inputs
+ * doesn't add latency for the rest of the match.
+ */
+const DRAIN_WINDOW = 20;
+const DRAIN_MIN = 2;
 const MELEE_ANIM = 0.25;
 /** Weapon switch: no shot for this long (clients mirror it for shot prediction). */
 export const SWITCH_DELAY = 0.15;
@@ -58,7 +66,7 @@ export function createPlayer(game, info) {
     frags: perks.startFrags, molotovs: perks.startMolotovs,
     turrets: perks.startTurrets, barricades: 0, selfRevive: false,
     bleedout: 0, hitBleed: 0, downT: 0, revive: 0, reviver: 0, respawn: false, ready: false, lastSeq: 0,
-    queue: [], cmd: { ...DEFAULT_CMD }, prevInteract: false,
+    queue: [], qMin: MAX_QUEUE, qWin: 0, cmd: { ...DEFAULT_CMD }, prevInteract: false,
     dotAcc: 0, dotT: 0, dotX: 0, dotY: 0,
   };
   giveStarterKit(p);
@@ -105,11 +113,24 @@ export function spawnPointFor(game, i) {
 // -------------------------------------------------------------------------------------
 // Input queue (SPEC §3.3)
 
+/**
+ * Queue one (already copied) InputCmd for p. The queue never holds more than MAX_QUEUE:
+ * the oldest is dropped, its presses OR-ed into the next one.
+ */
+export function queueCmd(p, c) {
+  const q = p.queue;
+  while (q.length >= MAX_QUEUE) mergeEdges(q.length > 1 ? q[1] : c, q.shift());
+  q.push(c);
+}
+
 function nextCmd(p) {
   const q = p.queue;
-  while (q.length > MAX_QUEUE) {
-    const dropped = q.shift();
-    mergeEdges(q[0], dropped);
+  while (q.length > MAX_QUEUE) mergeEdges(q[1], q.shift());
+  if (q.length < p.qMin) p.qMin = q.length;
+  if (++p.qWin >= DRAIN_WINDOW) {
+    if (p.qMin >= DRAIN_MIN) mergeEdges(q[1], q.shift());
+    p.qWin = 0;
+    p.qMin = MAX_QUEUE;
   }
   if (q.length) {
     const c = q.shift();
@@ -126,16 +147,26 @@ function nextCmd(p) {
 
 /**
  * The weapon the player fires right now: { id, slot } (slot -1 = free downed pistol).
- * Needs only { state, slots, slot }, so clients use it for shot prediction too.
+ * Downed players use a pistol-category gun in slot 0 while it has any ammo left, else
+ * the free infinite pistol. Needs { state, slots, slot } plus the ammo as either
+ * { mag, res } arrays (sim, client weapon state) or snapshot `ammo` pairs, so clients
+ * use it for shot prediction too; without ammo info slot 0 counts as loaded.
  */
 export function activeWeapon(p) {
   if (p.state === 'downed') {
     const s0 = p.slots[0];
-    if (s0 && WEAPONS[s0].category === 'pistol') return { id: s0, slot: 0 };
+    if (s0 && WEAPONS[s0].category === 'pistol' && !slot0Dry(p)) return { id: s0, slot: 0 };
     return { id: 'pistol', slot: -1 };
   }
   const id = p.slots[p.slot];
   return { id, slot: id ? p.slot : -1 };
+}
+
+/** True if slot 0's magazine and reserve are both empty. */
+function slot0Dry(p) {
+  if (p.mag && p.res) return p.mag[0] <= 0 && p.res[0] === 0;
+  const a = p.ammo && p.ammo[0];
+  return !!a && a[0] <= 0 && a[1] === 0;
 }
 
 /** Apply one InputCmd per player: movement, weapons, melee, throwables, deployables, crates. */
@@ -175,9 +206,11 @@ export function updatePlayers(game) {
     p.vx = (p.x - ox) / DT;
     p.vy = (p.y - oy) / DT;
 
-    if (cmd.reload && alive) startReload(game, p);
+    // Downed players reload too (the dead never get here).
+    if (cmd.reload) startReload(game, p);
     handleFire(game, p, cmd, aw);
-    if (alive) {
+    // Game over / victory are terminal: no melee, throws, building or crates either.
+    if (alive && !game.over) {
       if (cmd.melee && p.meleeCd <= 0) doMelee(game, p);
       if (cmd.frag && p.frags > 0 && p.throwCd <= 0) {
         p.frags--;
@@ -342,20 +375,69 @@ function doMelee(game, p) {
 // -------------------------------------------------------------------------------------
 // Deployables
 
-function placeTurret(game, p) {
-  if (p.turrets <= 0) return;
-  const d = BARRICADE.placeDistance;
-  const x = p.x + Math.cos(p.angle) * d, y = p.y + Math.sin(p.angle) * d;
-  let ok = game.world.isCircleFree(x, y, TURRET.radius) && game.world.lineOfSight(p.x, p.y, x, y);
-  if (ok) {
-    for (const t of game.turrets) {
-      if (!t.dead && Math.hypot(t.x - x, t.y - y) < TURRET.radius * 2 + 4) { ok = false; break; }
+/**
+ * Where a deployable may go, best first: BARRICADE.placeDistance straight ahead, then
+ * other distances and small turns, ordered by how far each is from that spot (fixed
+ * order, so placement stays deterministic). Each entry is [distance, angle offset].
+ */
+const PLACE_CANDIDATES = (() => {
+  const d0 = BARRICADE.placeDistance;
+  const list = [];
+  for (const d of [d0, 40, 70, 30, 90]) {
+    for (const a of [0, 0.3, -0.3, 0.6, -0.6]) {
+      list.push([d, a, Math.hypot(d * Math.cos(a) - d0, d * Math.sin(a))]);
     }
   }
-  if (!ok) {
+  list.sort((u, v) => u[2] - v[2]);
+  return list.map(([d, a]) => [d, a]);
+})();
+
+function canPlaceTurretAt(game, p, x, y) {
+  if (!game.world.isCircleFree(x, y, TURRET.radius) || !game.world.lineOfSight(p.x, p.y, x, y)) return false;
+  for (const t of game.turrets) {
+    if (!t.dead && Math.hypot(t.x - x, t.y - y) < TURRET.radius * 2 + 4) return false;
+  }
+  return true;
+}
+
+function canPlaceBarricadeAt(game, p, x, y, ob) {
+  if (!game.world.isObbFree(ob) || !game.world.lineOfSight(p.x, p.y, x, y)) return false;
+  for (const q of game.players) {
+    if (q.state !== 'dead' && circleOverlapsObb(ob, q.x, q.y, PLAYER_RADIUS + 1)) return false;
+  }
+  for (const t of game.turrets) {
+    if (!t.dead && circleOverlapsObb(ob, t.x, t.y, TURRET.radius)) return false;
+  }
+  return true;
+}
+
+/**
+ * The spot where p would place a 'turret' or 'barricade' aiming at `angle`: the first
+ * free candidate in front (see PLACE_CANDIDATES), in line of sight of the player.
+ * @returns {{x: number, y: number, a: number}|null} a = facing (turret) / wall angle (barricade)
+ */
+export function findPlacement(game, p, kind, angle = p.angle) {
+  for (const [d, off] of PLACE_CANDIDATES) {
+    const a = angle + off;
+    const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+    if (kind === 'turret') {
+      if (canPlaceTurretAt(game, p, x, y)) return { x, y, a: angle };
+    } else {
+      const wa = a + Math.PI / 2;
+      if (canPlaceBarricadeAt(game, p, x, y, makeObb(x, y, BARRICADE.width, BARRICADE.height, wa))) return { x, y, a: wa };
+    }
+  }
+  return null;
+}
+
+function placeTurret(game, p) {
+  if (p.turrets <= 0) return;
+  const spot = findPlacement(game, p, 'turret');
+  if (!spot) {
     game.emit({ type: 'placefail', pid: p.id, kind: 'turret' });
     return;
   }
+  const { x, y } = spot;
   p.turrets--;
   const t = {
     id: game.ids.turret.alloc(), owner: p.id, x, y, angle: p.angle,
@@ -368,25 +450,12 @@ function placeTurret(game, p) {
 
 function placeBarricade(game, p) {
   if (p.barricades <= 0) return;
-  const d = BARRICADE.placeDistance;
-  const x = p.x + Math.cos(p.angle) * d, y = p.y + Math.sin(p.angle) * d;
-  const a = p.angle + Math.PI / 2;
-  const ob = makeObb(x, y, BARRICADE.width, BARRICADE.height, a);
-  let ok = game.world.isObbFree(ob) && game.world.lineOfSight(p.x, p.y, x, y);
-  if (ok) {
-    for (const q of game.players) {
-      if (q.state !== 'dead' && circleOverlapsObb(ob, q.x, q.y, PLAYER_RADIUS + 1)) { ok = false; break; }
-    }
-  }
-  if (ok) {
-    for (const t of game.turrets) {
-      if (!t.dead && circleOverlapsObb(ob, t.x, t.y, TURRET.radius)) { ok = false; break; }
-    }
-  }
-  if (!ok) {
+  const spot = findPlacement(game, p, 'barricade');
+  if (!spot) {
     game.emit({ type: 'placefail', pid: p.id, kind: 'barricade' });
     return;
   }
+  const { x, y, a } = spot;
   p.barricades--;
   game.barricades.push({
     id: game.ids.barricade.alloc(), owner: p.id, x, y, a, hp: BARRICADE.hp, maxHp: BARRICADE.hp, dead: false,
@@ -762,11 +831,11 @@ export function shopWave(game) {
 
 /** Price the player would pay for `item` right now (guns: refill price when owned). */
 export function priceFor(game, p, item) {
-  if (item in WEAPONS) {
+  if (isWeaponId(item)) {
     return p.slots.includes(item) ? ammoPrice(item) : WEAPONS[item].price;
   }
   if (item === 'turret') return Math.round(ITEMS.turret.price * (1 - (p.perks.turretDiscount || 0)));
-  return ITEMS[item] ? ITEMS[item].price : 0;
+  return isItemId(item) ? ITEMS[item].price : 0;
 }
 
 /** Validate and apply command(id, { type: 'buy', item }). */
@@ -778,7 +847,7 @@ export function applyBuy(game, p, item) {
   }
   const price = priceFor(game, p, item);
   p.cash -= price;
-  if (item in WEAPONS) {
+  if (isWeaponId(item)) {
     giveWeapon(game, p, item);
   } else {
     switch (item) {
@@ -810,7 +879,7 @@ function buyCheck(game, p, item) {
   if (game.phase === 'gameover' || game.phase === 'victory') return 'closed';
   if (!isBuyable(item)) return 'invalid';
   if (p.state !== 'alive' || !shopOpen(game, p)) return 'closed';
-  if (item in WEAPONS) {
+  if (isWeaponId(item)) {
     const w = WEAPONS[item];
     if (w.unlockWave > shopWave(game)) return 'invalid';
     const s = p.slots.indexOf(item);
@@ -851,8 +920,64 @@ function buyCheck(game, p, item) {
       default: return 'invalid';
     }
   }
-  if (p.cash < priceFor(game, p, item)) return 'cash';
+  const price = priceFor(game, p, item);
+  if (!Number.isFinite(price)) return 'invalid';
+  if (p.cash < price) return 'cash';
   return null;
+}
+
+// -------------------------------------------------------------------------------------
+// Leaving and rejoining
+
+/** Wave clears so far (each paid WAVE_CLEAR_BONUS to everyone connected). */
+export function waveClears(game) {
+  return game.phase === 'intermission' || game.phase === 'victory' ? game.wave : Math.max(0, game.wave - 1);
+}
+
+/**
+ * What a leaving player keeps for a rejoin under the same name: cash, stats and kit.
+ * `placedTurrets` / `placedBarricades` (taken off the map) come back as owned units.
+ */
+export function departRecord(game, p, placedTurrets, placedBarricades) {
+  return {
+    cash: p.cash, earned: p.earned, kills: p.kills, damage: p.damage, revives: p.revives, downs: p.downs,
+    slots: p.slots.slice(), mag: p.mag.slice(), res: p.res.slice(), slot: p.slot,
+    frags: p.frags, molotovs: p.molotovs, selfRevive: p.selfRevive, armor: p.armor,
+    turrets: p.turrets + placedTurrets, barricades: p.barricades + placedBarricades,
+    hp: p.state === 'alive' ? p.hp : 0,
+    clears: waveClears(game),
+  };
+}
+
+/**
+ * Give a rejoining player (fresh from createPlayer, state already set) what they left
+ * with, plus the clear bonuses paid while they were away.
+ */
+export function restoreDeparted(game, p, rec) {
+  p.cash = rec.cash + Math.max(0, waveClears(game) - rec.clears) * WAVE_CLEAR_BONUS;
+  p.earned = rec.earned;
+  p.kills = rec.kills;
+  p.damage = rec.damage;
+  p.revives = rec.revives;
+  p.downs = rec.downs;
+  for (let i = 0; i < WEAPON_SLOTS; i++) {
+    p.slots[i] = rec.slots[i];
+    p.mag[i] = rec.mag[i];
+    p.res[i] = rec.res[i];
+  }
+  // Left dead (loadout lost): back with the starter guns, like a respawn.
+  if (!p.slots.some(Boolean)) giveStarterKit(p);
+  else {
+    p.slot = p.slots[rec.slot] ? rec.slot : p.slots.findIndex(Boolean);
+    p.lastSlot = p.slot;
+  }
+  p.frags = rec.frags;
+  p.molotovs = rec.molotovs;
+  p.turrets = rec.turrets;
+  p.barricades = rec.barricades;
+  p.selfRevive = rec.selfRevive;
+  p.armor = rec.armor;
+  if (p.state === 'alive') p.hp = Math.min(p.maxHp, rec.hp > 0 ? rec.hp : RESPAWN_HP);
 }
 
 // -------------------------------------------------------------------------------------
@@ -895,5 +1020,6 @@ export function playerSnapshot(game, p) {
     ready: p.ready,
     lastSeq: p.lastSeq,
     sprintLock: p.sprintLock,
+    freeMag: p.freeMag,     // the downed player's free pistol (so clients predict it exactly)
   };
 }

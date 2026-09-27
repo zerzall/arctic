@@ -7,8 +7,20 @@ import { HostTransport, ClientTransport, toArrayBuffer } from './transport-base.
 const CH_CTL = 0;
 const CH_STATE = 1;
 const CONNECT_TIMEOUT_MS = 10000;
-/** Skip 'state' messages while this much is still waiting in the socket (slow uplink). */
-const STATE_BACKLOG_LIMIT = 256 * 1024;
+/**
+ * Skip a 'state' message while more than a few of them are still waiting in the socket
+ * (slow uplink) rather than queue seconds of stale snapshots behind it.
+ */
+const STATE_BACKLOG_MIN = 16 * 1024;
+const STATE_BACKLOG_MESSAGES = 3;
+
+/**
+ * True if a state frame of `bytes` should be skipped. `fanout` = frames of that size the
+ * caller sends in one go (a host sending to each peer separately).
+ */
+export function backlogged(ws, bytes, fanout = 1) {
+  return ws.bufferedAmount > Math.max(STATE_BACKLOG_MIN, STATE_BACKLOG_MESSAGES * bytes * fanout);
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -187,9 +199,10 @@ export class RelayHostTransport extends HostTransport {
   _sendFrame(channel, data, peer) {
     const ws = this.ws;
     if (this.closed || ws.readyState !== 1) return 0;
-    if (channel === 'state' && ws.bufferedAmount > STATE_BACKLOG_LIMIT) return 0;
     const out = frame(channel, data, 2, peer);
     if (!out) return 0;
+    // A snapshot to each peer separately (peer ≠ 0) is up to peers.size frames per tick.
+    if (channel === 'state' && backlogged(ws, out.length, peer ? this.peers.size : 1)) return 0;
     ws.send(out);
     return out.length;
   }
@@ -251,9 +264,9 @@ export class RelayClientTransport extends ClientTransport {
   send(channel, data) {
     const ws = this.ws;
     if (this.closed || ws.readyState !== 1) return 0;
-    if (channel === 'state' && ws.bufferedAmount > STATE_BACKLOG_LIMIT) return 0;
     const out = frame(channel, data, 0, 0);
     if (!out) return 0;
+    if (channel === 'state' && backlogged(ws, out.length)) return 0;
     ws.send(out);
     return out.length;
   }

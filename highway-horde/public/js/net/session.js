@@ -6,13 +6,15 @@
 // relay when the page is served by the relay server, else p2p.
 //
 // Control messages on the reliable 'ctl' channel (JSON, { t, ... }):
-//   client → host  hello { version, protocol, name, color, cls } · profile { name?, color?, cls?, ready? }
+//   client → host  hello { version, protocol, name, color, cls, token } · profile { name?, color?, cls?, ready? }
 //                  chat { text } · buy { item } · ready · pong { n, ts } · bye
 //   host → client  welcome { id, code, roster, settings } · reject { reason } · roster { roster }
 //                  settings { settings } · chat { pid, name, text, system } · notice { text }
 //                  start { match, mapId, seed, settings, roster } · lobby · ping { n, ts }
 //                  bye { reason } · kick
 // Binary on 'state': snapshots (host → client) and inputs (client → host), shared/protocol.js.
+// The host trusts nothing a client sends: see lobby-rules.js and HostSession._onMessage
+// (per-peer message budget, shop ids only, kick bans by tab token and name, room lock).
 
 import { createLocalHub } from './transport-local.js';
 import { createPeerHost, connectPeer } from './transport-peer.js';

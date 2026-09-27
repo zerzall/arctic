@@ -18,7 +18,7 @@ import { WEAPONS } from '../weapons.js';
 import { ITEMS } from '../items.js';
 import { FlowField, BARRICADE_COST } from '../flowfield.js';
 import { angleDiff, turnTowards, TAU } from '../math.js';
-import { activeWeapon, priceFor, shopWave } from './players.js';
+import { activeWeapon, priceFor, shopWave, findPlacement } from './players.js';
 import { MODE_CHARGE } from './zombies.js';
 
 // Zombie target kinds (z.tgtKind, see zombies.js).
@@ -901,11 +901,13 @@ function planDeploy(game, b) {
     return;
   }
   // Barricades only in open ground away from the humans: never wall off a choke point.
-  const d = BARRICADE.placeDistance;
-  const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+  // Judge the spot the placement would really use (it may shift off a blocked one).
+  const spot = findPlacement(game, p, 'barricade', a);
+  if (!spot) return;
+  const { x, y } = spot;
   for (const q of game.players) if (!q.bot && q.state !== 'dead' && Math.hypot(q.x - x, q.y - y) < 180) return;
   const world = game.world;
-  const nx = -Math.sin(a), ny = Math.cos(a);
+  const nx = Math.cos(spot.a), ny = Math.sin(spot.a);
   const span = BARRICADE.width / 2 + 70;
   if (!world.isCircleFree(x + nx * span, y + ny * span, PLAYER_RADIUS + 6)) return;
   if (!world.isCircleFree(x - nx * span, y - ny * span, PLAYER_RADIUS + 6)) return;

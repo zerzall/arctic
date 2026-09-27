@@ -62,8 +62,12 @@ const CLOSE_HOST_LEFT = 4000;
 const CLOSE_KICKED = 4001;
 const CLOSE_IDLE = 4002;
 const CLOSE_POLICY = 1008;
-/** Skip 'state' frames to a socket whose send buffer is this full (it is lagging). */
-const STATE_BACKLOG_LIMIT = 512 * 1024;
+/**
+ * Skip a 'state' frame to a socket that already has more than a few waiting (it is
+ * lagging): stale snapshots queued behind each other only add seconds of delay.
+ */
+const STATE_BACKLOG_MIN = 32 * 1024;
+const STATE_BACKLOG_FRAMES = 3;
 const MAX_CONTROL_BYTES = 1024;
 const MAX_JOIN_ATTEMPTS = 20;
 
@@ -78,6 +82,16 @@ const DEFAULTS = {
   rate: { msgsPerSec: 300, msgBurst: 600, bytesPerSec: 3 * 1024 * 1024, byteBurst: 6 * 1024 * 1024 },
   log: true,
 };
+
+/**
+ * A room host sends every roster, chat line and snapshot for up to maxPeersPerRoom - 1
+ * clients (one frame each while a client is still in its handshake): it gets that many
+ * times a client's budget.
+ */
+function hostRate(rate, peers) {
+  const k = Math.max(1, peers);
+  return { ...rate, msgsPerSec: rate.msgsPerSec * k, msgBurst: rate.msgBurst * k, bytesPerSec: rate.bytesPerSec * k, byteBurst: rate.byteBurst * k };
+}
 
 /** Token bucket for messages and bytes; refills continuously. */
 class RateLimiter {
@@ -293,7 +307,8 @@ export function createRelayServer(options = {}) {
     conn.alive = true;
     const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
     if (!conn.limiter.take(buf.length)) {
-      if (conn.limiter.abusive) conn.ws.close(CLOSE_POLICY, 'Rate limit exceeded');
+      // Closing a host would end the game for everyone in its room: its excess is only dropped.
+      if (conn.limiter.abusive && conn.role !== 'host') conn.ws.close(CLOSE_POLICY, 'Rate limit exceeded');
       return;
     }
     if (!isBinary) {
@@ -334,7 +349,7 @@ export function createRelayServer(options = {}) {
 
   function forward(ws, frame, channel) {
     if (ws.readyState !== ws.OPEN) return;
-    if (channel === CH_STATE && ws.bufferedAmount > STATE_BACKLOG_LIMIT) return;
+    if (channel === CH_STATE && ws.bufferedAmount > Math.max(STATE_BACKLOG_MIN, STATE_BACKLOG_FRAMES * frame.length)) return;
     ws.send(frame, { binary: true });
   }
 
@@ -359,6 +374,7 @@ export function createRelayServer(options = {}) {
         rooms.set(code, room);
         conn.room = room;
         conn.role = 'host';
+        conn.limiter = new RateLimiter(hostRate(opts.rate, opts.maxPeersPerRoom - 1));
         sendJson(conn.ws, { t: 'created', code });
         log(`room ${code} created (${rooms.size} rooms)`);
         return;

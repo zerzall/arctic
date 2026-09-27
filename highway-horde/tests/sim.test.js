@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {
   DT, PREP_TIME, INTERMISSION_TIME, WAVE_CLEAR_BONUS, REVIVE_TIME, REVIVE_HP, REVIVE_BONUS, BLEEDOUT_TIME,
   SELF_REVIVE_DELAY, START_CASH, FRAG_MAX, MOLOTOV_MAX, TURRET, BARRICADE, PLAYER_RADIUS, MELEE_DAMAGE,
-  ARMOR_ABSORB, HP_GROWTH_PER_WAVE, DIFFICULTIES, SUPPLY_RADIUS, WAVE_ZOMBIES, waveZombieCount,
+  ARMOR_ABSORB, HP_GROWTH_PER_WAVE, DIFFICULTIES, SUPPLY_RADIUS, WAVE_ZOMBIES, waveZombieCount, MAX_PLAYERS,
 } from '../public/js/shared/constants.js';
 import { CLASSES } from '../public/js/shared/classes.js';
 import { WEAPONS, WEAPON_IDS, THROWABLES } from '../public/js/shared/weapons.js';
 import { ZOMBIES, ZFLAG } from '../public/js/shared/zombies.js';
-import { ammoPrice } from '../public/js/shared/items.js';
+import { ammoPrice, isBuyable } from '../public/js/shared/items.js';
 import { damagePlayer, giveWeapon, spawnPickup } from '../public/js/shared/sim/players.js';
-import { damageZombie } from '../public/js/shared/sim/combat.js';
+import { damageZombie, lobAcid } from '../public/js/shared/sim/combat.js';
 import { GameCore } from '../public/js/shared/sim/core.js';
 import {
   makeGame, addZombie, place, run, cmd, godMode, eventsOf, buildFixtureMap, buildArenaMap,
@@ -1229,4 +1229,264 @@ describe('every map', { skip: !Game && 'shared/maps.js not available' }, () => {
       assert.equal(g.phase, 'victory', `${id}: ended ${g.phase}/${g.over} on wave ${g.wave}, objective ${g.objective && Math.round(g.objective.hp)}`);
     });
   }
+});
+
+// -------------------------------------------------------------------------------------
+// Regressions from the review: host robustness, rule tie-breaks and edge cases.
+describe('robustness and rule edge cases', () => {
+  const lastBuy = (g, id, item) => {
+    g.command(id, { type: 'buy', item });
+    const ev = g.snapshot().events.filter((e) => e.type === 'buy' || e.type === 'buyfail');
+    return ev[ev.length - 1];
+  };
+
+  test('prototype keys are not for sale: no NaN cash, no free shopping afterwards', () => {
+    for (const key of ['constructor', '__proto__', 'valueOf', 'toString', 'hasOwnProperty']) {
+      assert.equal(isBuyable(key), false, key);
+    }
+    const g = makeGame();
+    const p = place(g, 1, 400, 900);
+    for (const key of ['constructor', '__proto__', 'valueOf', 'toString', 'hasOwnProperty', 'isPrototypeOf']) {
+      assert.deepEqual(lastBuy(g, 1, key), { type: 'buyfail', pid: 1, item: key, reason: 'invalid' });
+    }
+    assert.equal(p.cash, START_CASH);
+    assert.deepEqual(p.slots, ['pistol', 'rifle', null]);
+    p.cash = 0;
+    assert.equal(lastBuy(g, 1, 'armor').reason, 'cash', 'still pays for things');
+  });
+
+  test('an input flood never grows the queue past 6 and a tick stays cheap', () => {
+    const g = makeGame();
+    const p = place(g, 1, 400, 900);
+    for (let s = 1; s <= 50000; s++) g.setInput(1, cmd({ seq: s, frag: s === 3 }));
+    assert.ok(p.queue.length <= 6, `queue ${p.queue.length}`);
+    const t0 = process.hrtime.bigint();
+    const ev = run(g, 1);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    assert.ok(ms < 50, `step took ${ms.toFixed(1)} ms`);
+    assert.equal(eventsOf(ev, 'throw').length, 1, 'a press in a dropped cmd still counts');
+    assert.equal(p.lastSeq, 49995);
+  });
+
+  test('a backlog left by a burst drains; steady jittery input never loses a cmd', () => {
+    const g = makeGame({ n: 2 });
+    const a = place(g, 1, 400, 900), b = place(g, 2, 600, 900);
+    let sa = 0, sb = 0;
+    // Player 1: six late cmds arrive at once, then one per tick like a 60 Hz client.
+    for (let i = 0; i < 6; i++) g.setInput(1, cmd({ seq: ++sa, moveX: 1 }));
+    const bSeqs = [];
+    for (let t = 0; t < 240; t++) {
+      g.setInput(1, cmd({ seq: ++sa, moveX: 1 }));
+      // Player 2: two cmds every other tick (jitter, no backlog).
+      if (t % 2 === 0) for (let k = 0; k < 2; k++) g.setInput(2, cmd({ seq: ++sb, moveX: -1 }));
+      g.step();
+      bSeqs.push(b.lastSeq);
+    }
+    assert.ok(sa - a.lastSeq <= 1, `still ${sa - a.lastSeq} cmds behind`);
+    for (let i = 1; i < bSeqs.length; i++) assert.equal(bSeqs[i] - bSeqs[i - 1], 1, `tick ${i}: skipped a cmd`);
+  });
+
+  test('leaving takes your deployables with you; rejoining by name restores your stash', () => {
+    const g = makeGame({ players: [{ id: 1, name: 'Host', cls: 'soldier' }, { id: 2, name: 'Eng', cls: 'engineer' }] });
+    g.wave = 8;
+    const e = place(g, 2, 400, 900);
+    e.turrets = 2;
+    e.barricades = 1;
+    run(g, 3, (gg, t) => ({ 2: [{ turret: true, angle: 0 }, { turret: true, angle: Math.PI }, { barricade: true, angle: Math.PI / 2 }][t] }));
+    assert.equal(g.turrets.filter((t) => t.owner === 2).length, 2);
+    assert.equal(g.barricades.length, 1);
+    e.cash = 150;
+    e.kills = 42;
+    e.downs = 7;
+    g.removePlayer(2);
+    run(g, 2);
+    assert.equal(g.turrets.length, 0, 'turrets leave with their owner');
+    assert.equal(g.barricades.length, 0, 'barricades too');
+    assert.equal(g.snapshot().turrets.length, 0);
+    const back = g.addPlayer({ id: 3, name: 'Eng', color: 1, cls: 'engineer' });
+    assert.equal(back.cash, 150, 'no fresh catch-up cash for a returning player');
+    assert.equal(back.kills, 42);
+    assert.equal(back.downs, 7);
+    assert.equal(back.turrets, 2, 'placed turrets come back as owned ones');
+    assert.equal(back.barricades, 1);
+    back.cash = 1e5;
+    assert.equal(lastBuy(g, 3, 'turret').reason, 'max', 'the per-player cap still holds');
+    // Missed wave clears are paid on return.
+    back.cash = 100;
+    g.removePlayer(3);
+    g.wave = 9;
+    const again = g.addPlayer({ id: 4, name: 'Eng', color: 1, cls: 'engineer' });
+    assert.equal(again.cash, 100 + WAVE_CLEAR_BONUS);
+  });
+
+  test('catch-up cash for new names is limited per match (bots exempt)', () => {
+    const g = makeGame();
+    g.wave = 10;
+    for (let i = 0; i < MAX_PLAYERS; i++) {
+      const p = g.addPlayer({ id: 10 + i, name: `New${i}`, color: 1, cls: 'soldier' });
+      assert.equal(p.cash, START_CASH + 10 * WAVE_CLEAR_BONUS);
+      g.removePlayer(10 + i);
+    }
+    assert.equal(g.addPlayer({ id: 30, name: 'Renamed', color: 1, cls: 'soldier' }).cash, START_CASH);
+    assert.equal(g.addPlayer({ id: 31, name: 'Bot', color: 2, cls: 'soldier', bot: true }).cash, START_CASH + 10 * WAVE_CLEAR_BONUS);
+  });
+
+  test('piercing guns report flesh on a lone target (magnum, dmr, sniper, lmg, railgun)', () => {
+    for (const id of ['pistol', 'magnum', 'dmr', 'sniper', 'lmg', 'railgun']) {
+      const g = makeGame();
+      const p = place(g, 1, 400, 900);
+      giveWeapon(g, p, id);
+      g.snapshot();
+      const z = addZombie(g, 'brute', 500, 900);
+      z.hp = z.maxHp = 1e6;
+      const ev = run(g, 1, () => ({ 1: { fire: true, angle: 0 } }));
+      const shot = eventsOf(ev, 'shot')[0];
+      assert.ok(shot, id);
+      assert.equal(shot.rays[0].hit, 1, `${id}: ${JSON.stringify(shot.rays[0])}`);
+      assert.ok(z.hp < 1e6, `${id} did damage`);
+    }
+  });
+
+  test('killing the last zombie clears the wave even if its burst downs the last survivor', () => {
+    const g = makeGame({ n: 2, sandbox: false, settings: { waves: 1 } });
+    g._startWave(1);
+    g.spawnQueue = 0;
+    const a = place(g, 1, 400, 900), b = place(g, 2, 900, 900);
+    damagePlayer(g, b, 1e4, 0, 0);
+    assert.equal(b.state, 'downed');
+    a.hp = 5;
+    a.armor = 0;
+    const z = addZombie(g, 'bloater', 460, 900);
+    z.hp = 1;
+    const ev = run(g, 1, () => ({ 1: { fire: true, angle: 0 } }));
+    assert.equal(eventsOf(ev, 'zdie').length, 1);
+    assert.equal(eventsOf(ev, 'gameover').length, 0, JSON.stringify(ev.map((e) => e.type)));
+    assert.equal(eventsOf(ev, 'waveclear').length, 1);
+    assert.equal(g.phase, 'victory', 'the last wave cleared is a victory');
+    assert.deepEqual(g.players.map((p) => p.state), ['alive', 'alive']);
+  });
+
+  test('acid still in flight at wave clear is dropped: no damage in the intermission', () => {
+    const g = makeGame({ n: 2, sandbox: false });
+    g._startWave(1);
+    g.spawnQueue = 0;
+    const a = place(g, 1, 400, 900);
+    place(g, 2, 900, 900);
+    const z = addZombie(g, 'spitter', 400, 560);
+    lobAcid(g, z, a.x, a.y);
+    damageZombie(g, z, 1e9, 2);
+    const ev = run(g, 120);
+    assert.equal(eventsOf(ev, 'waveclear').length, 1);
+    assert.equal(g.phase, 'intermission');
+    assert.equal(eventsOf(ev, 'pdamage').length, 0);
+    assert.equal(a.hp, a.maxHp);
+    assert.equal(g.hazards.length, 0);
+    assert.equal(g.projectiles.length, 0);
+  });
+
+  test('bosses keep the wave-start player count when someone joins or leaves before they spawn', () => {
+    const bossHps = (n, change) => {
+      const g = makeGame({ n, sandbox: false });
+      g._startWave(5);
+      g.spawnQueue = 0;
+      change(g);
+      run(g, 60 * 11, () => { godMode(g); return {}; });
+      return g.zombies.filter((z) => z.boss).map((z) => Math.round(z.maxHp));
+    };
+    const three = bossHps(3, () => {});
+    assert.equal(three.length, 1);
+    assert.deepEqual(bossHps(3, (g) => g.addPlayer({ id: 9, name: 'Late', color: 1, cls: 'soldier' })), three);
+    const four = bossHps(4, () => {});
+    assert.equal(four.length, 2);
+    assert.deepEqual(bossHps(4, (g) => g.removePlayer(4)), four);
+  });
+
+  test('after game over nobody fires, throws, swings, builds or scores (turrets included)', () => {
+    const g = makeGame({ players: [{ id: 1, name: 'E', cls: 'engineer' }, { id: 2, name: 'D', cls: 'demo' }] });
+    const e = place(g, 1, 400, 900), d = place(g, 2, 480, 900);
+    run(g, 1, () => ({ 1: { turret: true, angle: 0 } }));
+    assert.equal(g.turrets.length, 1);
+    e.barricades = 1;
+    for (let i = 0; i < 6; i++) addZombie(g, 'walker', 640 + i * 30, 880 + (i % 2) * 40);
+    g._gameOver('objective');
+    const kills = e.kills + d.kills, cash = e.cash + d.cash;
+    const ev = run(g, 200, (gg, t) => {
+      godMode(gg);
+      return { 1: { melee: true, barricade: t === 5, angle: 0 }, 2: { frag: t % 40 === 0, molotov: t === 20, melee: true, angle: 0 } };
+    });
+    for (const type of ['shot', 'throw', 'melee', 'place', 'explosion']) assert.equal(eventsOf(ev, type).length, 0, type);
+    assert.equal(e.kills + d.kills, kills);
+    assert.equal(e.cash + d.cash, cash);
+  });
+
+  test('downed with a dry pistol-class gun in slot 0: falls back to the free pistol; R reloads while downed', () => {
+    const g = makeGame({ n: 2 });
+    const p = place(g, 1, 400, 900);
+    place(g, 2, 700, 900);
+    p.slots = ['magnum', 'rifle', 'uzi'];
+    p.mag = [0, 30, 32];
+    p.res = [0, 0, 0];
+    damagePlayer(g, p, 1e4, 0, 0);
+    assert.equal(p.state, 'downed');
+    const ev = run(g, 60, () => ({ 1: { fire: true, angle: 0 } }));
+    const shots = eventsOf(ev, 'shot').filter((s) => s.pid === 1);
+    assert.ok(shots.length > 0, 'the downed player can still shoot');
+    assert.equal(shots[0].weapon, 'pistol');
+    // A downed player with a half-empty pistol can press R.
+    const g2 = makeGame({ n: 2 });
+    const q = place(g2, 1, 400, 900);
+    place(g2, 2, 700, 900);
+    q.slot = 0;
+    q.mag[0] = 3;
+    damagePlayer(g2, q, 1e4, 0, 0);
+    const ev2 = run(g2, 1, () => ({ 1: { reload: true } }));
+    assert.equal(eventsOf(ev2, 'reload').length, 1);
+    run(g2, 120);
+    assert.equal(q.mag[0], WEAPONS.pistol.mag);
+  });
+
+  test('truckstop: walkers pressed against the objective chew on it instead of pushing at a player behind it', { skip: !Game && 'maps.js unavailable' }, () => {
+    const g = new Game({ mapId: 'truckstop', seed: 11, players: [{ id: 1, name: 'a', color: 0, cls: 'soldier' }] });
+    const o = g.map.objective, p = g.players[0];
+    p.x = o.x;
+    p.y = o.y - o.h / 2 - 150;
+    g.world.resolveCircle(p, PLAYER_RADIUS);
+    g._startWave(1);
+    g.spawnQueue = 0;
+    g.bossQueue = 0;
+    for (let i = -2; i <= 2; i++) {
+      const pos = { x: o.x + i * 40, y: o.y + o.h / 2 + 20 };
+      g.world.resolveCircle(pos, 14);
+      addZombie(g, 'walker', pos.x, pos.y);
+    }
+    g._rebuildFlow('all');
+    const hp0 = g.objective.hp;
+    run(g, 60 * 6, (gg, t) => { godMode(gg); return { 1: { angle: 0 } }; });
+    assert.ok(g.objective.hp < hp0, 'the objective took damage');
+  });
+
+  test('highway: turrets and barricades fit from the spawn lane (placement searches nearby spots)', { skip: !Game && 'maps.js unavailable' }, () => {
+    let fails = 0, total = 0;
+    const g0 = new Game({ mapId: 'highway', seed: 7, players: [{ id: 1, name: 'a', color: 0, cls: 'engineer' }] });
+    for (const s of g0.map.playerSpawns) {
+      for (let k = 0; k < 16; k++) {
+        for (const kind of ['turret', 'barricade']) {
+          const g = new Game({ mapId: 'highway', seed: 7, players: [{ id: 1, name: 'a', color: 0, cls: 'engineer' }] });
+          const p = g.players[0];
+          p.turrets = 1;
+          p.barricades = 1;
+          place(g, 1, s.x, s.y);
+          const ev = run(g, 1, () => ({ 1: { angle: (k * Math.PI) / 8, [kind]: true } }));
+          total++;
+          const placed = eventsOf(ev, 'place')[0];
+          if (!placed) {
+            fails++;
+            continue;
+          }
+          assert.ok(Math.hypot(placed.x - s.x, placed.y - s.y) < 100, 'placed near the player');
+        }
+      }
+    }
+    assert.ok(fails <= total * 0.03, `${fails}/${total} placements refused`);
+  });
 });

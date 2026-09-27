@@ -313,6 +313,50 @@ rtest('relay: floods are rate limited and abusers disconnected; room cap', async
   }
 });
 
+rtest('relay: a room host gets a budget for the whole room and is never closed for flooding', async () => {
+  const { createRelayServer } = await import('../server/relay-server.js');
+  const small = createRelayServer({ log: false, rate: { msgsPerSec: 50, msgBurst: 50 } });
+  const port = await small.listen(PORT + 3, '127.0.0.1');
+  try {
+    const url = `ws://127.0.0.1:${port}/relay`;
+    const host = await open(url);
+    json(host, { t: 'create' });
+    const { code } = await host.next();
+    const c = await open(url);
+    json(c, { t: 'join', code });
+    await c.next();
+    await host.next();
+    // One frame per client for 5 clients: 5 x a client's burst is fine for a host.
+    for (let i = 0; i < 200; i++) host.send(new Uint8Array([0, 1, 0, 0x7b, 0x7d]));
+    let got = 0;
+    try {
+      for (;;) {
+        await c.next(300);
+        got++;
+      }
+    } catch {
+      // Drained.
+    }
+    assert.equal(got, 200, 'all forwarded');
+    // Far over even that budget: the excess is dropped but the room stays up.
+    for (let i = 0; i < 2000; i++) host.send(new Uint8Array([1, 1, 0, 1]));
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(host.readyState, WebSocket.OPEN);
+    assert.equal(small.rooms.has(code), true);
+    c.send(new Uint8Array([1, 9]));
+    let fromClient = null;
+    for (let i = 0; i < 3000 && !fromClient; i++) {
+      const m = await host.next();
+      if (m instanceof Uint8Array && m[3] === 9) fromClient = m;
+    }
+    assert.deepEqual([...fromClient], [1, 1, 0, 9], 'the room still relays');
+    host.close();
+    await c.closed;
+  } finally {
+    await small.close();
+  }
+});
+
 rtest('transport-relay + session: a full lobby handshake and snapshot flow over real WebSockets', async () => {
   const { createRelayHost, connectRelay } = await import('../public/js/net/transport-relay.js');
   const { hostGame, joinGame } = await import('../public/js/net/session.js');

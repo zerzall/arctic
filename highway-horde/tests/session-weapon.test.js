@@ -156,7 +156,91 @@ test('client view: predicted ammo drops on the frame a shot is fired and matches
 
   // The host's own view is the sim's state (nothing predicted, no extra fields).
   const hv = env.host.getView().players.find((p) => p.id === env.host.localId);
-  assert.equal(hv.freeMag, undefined);
+  assert.equal(hv.predicted, undefined);
+  assert.equal(hv.reloading, 0);
   env.host.leave();
   await flush(6);
+});
+
+test('client view: the free pistol (downed) keeps its predicted mag across a reload and a stalled uplink', async (t) => {
+  const Game = await realGame();
+  if (typeof Game !== 'function') {
+    t.skip(`shared/sim.js not loadable: ${Game.message}`);
+    return;
+  }
+  const { downPlayer } = await import('../public/js/shared/sim/players.js');
+  for (const [stall, published] of [[0, false], [0, true], [20, true], [60, true]]) {
+    const env = await setup(Game);
+    const a = env.client;
+    const g = env.game();
+    const snapshot = g.snapshot.bind(g);
+    // SPEC §4: the player record carries freeMag. Without it (published = false, or a sim
+    // that does not send it yet) the client can only rebuild it from its own cmds, which
+    // is exact unless the host repeated or dropped cmds (a stalled uplink).
+    g.snapshot = () => {
+      const snap = snapshot();
+      for (const rec of snap.players) {
+        if (!published) delete rec.freeMag;
+        else if (rec.freeMag === undefined) rec.freeMag = g.getPlayer(rec.id).freeMag;
+      }
+      return snap;
+    };
+    await env.frames(30);
+    // A bought gun replaced the pistol in slot 0; downed, the player gets the free pistol.
+    const p = hostPlayerOf(env);
+    p.slots[0] = 'uzi';
+    p.mag[0] = 10;
+    p.res[0] = 10;
+    downPlayer(env.game(), p);
+    p.bleedout = 1e9;
+    await env.frames(20);
+    // Fire through the mag and its reload; the uplink stalls just before the reload ends.
+    const send = a.net.send.bind(a.net);
+    let held = null;
+    a.net.send = (ch, data) => {
+      if (held && ch === 'state') {
+        held.push(data);
+        return 1;
+      }
+      return send(ch, data);
+    };
+    const fire = () => input({ fire: true });
+    await env.frames(Math.round(60 * 3.2), fire);
+    if (stall) held = [];
+    await env.frames(stall, fire);
+    const h = held || [];
+    held = null;
+    for (const d of h) send('state', d);
+    await env.frames(20, fire);
+    await settle(env);
+    const me = localOf(a);
+    assert.equal(me.state, 'downed');
+    assert.equal(me.freeMag, p.freeMag, `stall ${stall}, published ${published}: predicted free pistol mag matches the host`);
+    env.host.leave();
+    await flush(6);
+  }
+});
+
+test('predicted rays follow the sim rule: flesh on any hit, pierce budget decides the end point', async () => {
+  const { ClientSession } = await import('../public/js/net/client-session.js');
+  const trace = ClientSession.prototype._traceRay;
+  // A wall 400 px down the +x axis and one walker 200 px away.
+  const self = {
+    world: { raycastSolid: (x, y, dx, dy, maxT) => (dx > 0.99 && maxT >= 400 ? 400 : -1) },
+    lastView: { zombies: [{ id: 1, type: 'walker', x: 200, y: 0 }] },
+    hitScratch: null,
+  };
+  // Pierce 3 with one victim: still flesh, but the ray runs on to the wall.
+  const magnum = trace.call(self, 0, 0, 0, WEAPONS.magnum);
+  assert.equal(magnum.hit, 1);
+  assert.equal(magnum.x, 400);
+  // Pierce 1: the ray stops in the zombie.
+  const pistol = trace.call(self, 0, 0, 0, WEAPONS.pistol);
+  assert.equal(pistol.hit, 1);
+  assert.ok(pistol.x < 200 && pistol.x > 180, `ended at ${pistol.x}`);
+  // No zombie on the line: the wall.
+  self.lastView = { zombies: [] };
+  const miss = trace.call(self, 0, 0, 0, WEAPONS.magnum);
+  assert.equal(miss.hit, 2);
+  assert.equal(miss.x, 400);
 });

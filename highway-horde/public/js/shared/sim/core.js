@@ -9,7 +9,7 @@
 
 import {
   DT, PREP_TIME, INTERMISSION_TIME, BOSS_EVERY, WAVE_CLEAR_BONUS, DIFFICULTIES, DEFAULT_SETTINGS,
-  NAV_REBUILD_INTERVAL, TICK_RATE, waveZombieCount, OBJECTIVE_HP_PER_PLAYER,
+  NAV_REBUILD_INTERVAL, TICK_RATE, waveZombieCount, OBJECTIVE_HP_PER_PLAYER, MAX_PLAYERS,
 } from '../constants.js';
 import { createRng, hashString } from '../rng.js';
 import { round1 } from '../math.js';
@@ -19,7 +19,7 @@ import { FlowField } from '../flowfield.js';
 import { createCollisionWorld, MASK_HEAVY } from '../movement.js';
 import {
   createPlayer, updatePlayers, updateDowned, updatePickups, applyBuy, respawnPlayer,
-  revivePlayer, playerSnapshot, dropCrate, spawnPointFor,
+  revivePlayer, playerSnapshot, dropCrate, spawnPointFor, queueCmd, departRecord, restoreDeparted,
 } from './players.js';
 import {
   updateProjectiles, updateHazards, updateTurrets, rebuildBarricades,
@@ -103,6 +103,10 @@ export class GameCore {
     this.over = null;
 
     this.players = [];
+    /** Players who left, by departKey(): what a rejoin under the same name gets back. */
+    this.departed = new Map();
+    /** Late joiners under new names paid catch-up cash so far (capped, see addPlayer). */
+    this.catchUps = 0;
     /** Brains of the AI players (bots.js), in join order. */
     this.bots = [];
     /** The bots' navigation grid, built on their first tick (bots.js). */
@@ -134,6 +138,8 @@ export class GameCore {
     this.bossTimer = 0;
     this.spawnTimer = 0;
     this.wavePlayers = 1;
+    /** Bosses this wave, fixed at wave start with wavePlayers (they share the hp multiplier). */
+    this.waveBosses = 0;
     this.waveTotal = 0;
     this.aliveCount = 0;
 
@@ -155,20 +161,55 @@ export class GameCore {
   // ---------------------------------------------------------------------------------
   // Public API (SPEC §3.1)
 
-  /** Late join: enters as 'dead' mid-wave (respawns at the next wave clear), alive otherwise. */
+  /**
+   * Late join: enters as 'dead' mid-wave (respawns at the next wave clear), alive
+   * otherwise. Someone who left earlier under the same name gets their cash, stats and
+   * kit back (+ the clear bonuses paid meanwhile); a new name gets wave × WAVE_CLEAR_BONUS
+   * catch-up cash, for at most MAX_PLAYERS human newcomers per match (bots always), so
+   * leaving and rejoining under new names can't print money.
+   */
   addPlayer(info) {
     const existing = this.getPlayer(info.id);
     if (existing) return existing;
     const midWave = this.phase === 'wave' || this.phase === 'gameover' || this.phase === 'victory';
     const p = this._addPlayer(info, midWave ? 'dead' : 'alive');
-    // Late joiners get a share of the clear bonuses they missed so they can gear up.
-    p.cash += this.wave * WAVE_CLEAR_BONUS;
+    const key = departKey(p);
+    const rec = this.departed.get(key);
+    if (rec) {
+      this.departed.delete(key);
+      restoreDeparted(this, p, rec);
+    } else if (this.wave > 0 && (p.bot || this.catchUps < MAX_PLAYERS)) {
+      // Late joiners get a share of the clear bonuses they missed so they can gear up.
+      if (!p.bot) this.catchUps++;
+      p.cash += this.wave * WAVE_CLEAR_BONUS;
+    }
     return p;
   }
 
+  /** A player leaves: their turrets and barricades leave with them (kept for a rejoin). */
   removePlayer(id) {
     const i = this.players.findIndex((p) => p.id === id);
     if (i < 0) return;
+    const p = this.players[i];
+    let turrets = 0, barricades = 0, w = 0;
+    for (const t of this.turrets) {
+      if (t.owner === id && !t.dead) {
+        t.dead = true;
+        this.ids.turret.free(t.id);
+        turrets++;
+        continue;
+      }
+      this.turrets[w++] = t;
+    }
+    this.turrets.length = w;
+    for (const b of this.barricades) {
+      if (b.owner === id && !b.dead) {
+        b.dead = true;
+        barricades++;
+      }
+    }
+    if (barricades) rebuildBarricades(this);
+    this.departed.set(departKey(p), departRecord(this, p, turrets, barricades));
     this.players.splice(i, 1);
     const bi = this.bots.findIndex((b) => b.pid === id);
     if (bi >= 0) this.bots.splice(bi, 1);
@@ -181,11 +222,11 @@ export class GameCore {
     for (const z of this.zombies) if (z.tgt && z.tgt.id === id && z.tgtKind === 1) z.retargetT = 0;
   }
 
-  /** Queue one InputCmd for a player (SPEC §3.3). */
+  /** Queue one InputCmd for a player (SPEC §3.3); at most MAX_QUEUE are kept. */
   setInput(id, cmd) {
     const p = this.getPlayer(id);
     if (!p || !cmd) return;
-    p.queue.push(copyCmd(cmd));
+    queueCmd(p, copyCmd(cmd));
   }
 
   /** Reliable one-off requests: { type: 'buy', item } | { type: 'ready' }. */
@@ -379,7 +420,8 @@ export class GameCore {
     this.wavePlayers = players;
     this.waveTotal = waveZombieCount(w, players, this.diff);
     const boss = w % BOSS_EVERY === 0;
-    this.bossQueue = boss ? Math.ceil(players / 3) : 0;
+    this.waveBosses = boss ? Math.ceil(players / 3) : 0;
+    this.bossQueue = this.waveBosses;
     this.bossTimer = 10;
     startWaveSpawns(this);
     this.emit({ type: 'wave', wave: w, boss });
@@ -396,8 +438,10 @@ export class GameCore {
       else if (p.state === 'downed') revivePlayer(this, p, 0);
       i++;
     }
-    // Acid does not outlive the wave; fires burn out on their own.
+    // Acid does not outlive the wave (pools and globs still in the air); fires burn out
+    // on their own and the survivors' own grenades/rockets still land.
     for (const h of this.hazards) if (h.kind === 'acid') h.life = 0;
+    for (const pr of this.projectiles) if (pr.kind === 'acid' || !pr.owner) pr.dead = true;
     dropCrate(this);
     if (this.settings.waves > 0 && w >= this.settings.waves) {
       this.phase = 'victory';
@@ -423,6 +467,16 @@ export class GameCore {
       this._gameOver('objective');
       return;
     }
+    // A cleared wave wins a tie with a wipe: the clear revives the downed (the last
+    // zombie's death, a bloater burst, may have knocked down the last survivor).
+    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0) {
+      let any = false;
+      for (const z of this.zombies) if (!z.dead) { any = true; break; }
+      if (!any) {
+        this._waveClear();
+        return;
+      }
+    }
     if (this.players.length > 0) {
       let standing = false;
       for (const p of this.players) {
@@ -431,17 +485,14 @@ export class GameCore {
           break;
         }
       }
-      if (!standing) {
-        this._gameOver('wiped');
-        return;
-      }
-    }
-    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0) {
-      let any = false;
-      for (const z of this.zombies) if (!z.dead) { any = true; break; }
-      if (!any) this._waveClear();
+      if (!standing) this._gameOver('wiped');
     }
   }
+}
+
+/** Rejoin key: the (host-sanitised) name, bots and humans apart. */
+function departKey(p) {
+  return (p.bot ? 'bot:' : 'human:') + p.name;
 }
 
 function clamp01(v) {

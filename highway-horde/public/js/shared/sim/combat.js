@@ -62,7 +62,8 @@ export function damageZombie(game, z, amount, by, gib = false) {
   if (z.dead || !(amount > 0)) return false;
   const dealt = amount < z.hp ? amount : Math.max(0, z.hp);
   z.hp -= amount;
-  if (by) {
+  // Stats are final once the game is over (a frag landing late scores nothing).
+  if (by && !game.over) {
     const p = game.getPlayer(by);
     if (p) p.damage += dealt;
     z.lastBy = by;
@@ -92,7 +93,7 @@ export function killZombie(game, z, by, gib) {
     type: 'zdie', id: z.id, ztype: z.type, x: Math.round(z.x), y: Math.round(z.y), angle: z.angle,
     by: by || 0, gib: !!gib,
   });
-  if (by) {
+  if (by && !game.over) {
     const p = game.getPlayer(by);
     if (p) {
       p.kills++;
@@ -289,13 +290,14 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
       }
       hitO[i] = null;
     }
-    let endT = w.range, hit = 0;
+    // The ray ends at its last victim once the pierce budget is spent, else at the wall
+    // or max range; it is 'flesh' whenever it hit anyone (SPEC §4.1).
+    let endT = w.range, hit = nh > 0 ? 1 : 0;
     if (nh >= pierce) {
       endT = hitT[nh - 1];
-      hit = 1;
     } else if (tw >= 0) {
       endT = tw;
-      hit = 2;
+      if (!hit) hit = 2;
     }
     if (ev.rays.length < MAX_RAYS_PER_EVENT) {
       ev.rays.push({ x: Math.round((x + dx * endT) * 10) / 10, y: Math.round((y + dy * endT) * 10) / 10, hit });
@@ -342,7 +344,8 @@ function fireRail(game, p, id, w) {
     damageZombie(game, z, dmg, p.id, true);
   }
   if (ev.rays.length < MAX_RAYS_PER_EVENT) {
-    ev.rays.push({ x: Math.round((x + dx * maxT) * 10) / 10, y: Math.round((y + dy * maxT) * 10) / 10, hit: tw >= 0 ? 2 : 0 });
+    const hit = nh > 0 ? 1 : tw >= 0 ? 2 : 0;
+    ev.rays.push({ x: Math.round((x + dx * maxT) * 10) / 10, y: Math.round((y + dy * maxT) * 10) / 10, hit });
   }
 }
 
@@ -794,8 +797,15 @@ export function updateHazards(game) {
 /** Sentry turrets: keep/acquire the nearest visible zombie, turn, fire; drop destroyed ones. */
 export function updateTurrets(game) {
   const list = game.turrets;
+  // Game over / victory are terminal: turrets go idle like everyone else's guns.
+  const idle = !!game.over;
   for (const t of list) {
     if (t.dead) continue;
+    if (idle) {
+      t.firingT = 0;
+      t.target = null;
+      continue;
+    }
     t.cooldown -= DT;
     if (t.cooldown < -DT) t.cooldown = -DT;
     if (t.firingT > 0) t.firingT -= DT;

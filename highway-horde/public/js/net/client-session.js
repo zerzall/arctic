@@ -27,7 +27,8 @@ import { createTicker } from './ticker.js';
 import { CmdBuilder } from './cmd-builder.js';
 import { interpolateSnapshots } from './interpolation.js';
 import { NetStats } from './stats.js';
-import { sanitizeName, isColor, sanitizeClass } from './lobby-rules.js';
+import { sanitizeName, isColor, sanitizeClass, clientToken } from './lobby-rules.js';
+import { IMPORTANT_EVENTS, PERISHABLE_EVENTS, STALE_EVENT_AGE } from './event-rules.js';
 
 const HELLO_TIMEOUT_MS = 10000;
 /** Nothing at all from the host for this long (it pings every 2 s): give up. */
@@ -35,16 +36,34 @@ const HOST_SILENCE = 10;
 const STALE_INPUT = 0.25;
 /** Cmds sent per message: the new ones, and at least this many for redundancy. */
 const REDUNDANT_CMDS = 4;
-/** Unacknowledged cmds kept for replay (2 s); older ones are lost to the host anyway. */
-const MAX_PENDING = 120;
+/**
+ * Unacknowledged cmds kept for replay (10 s). If the acks fall further behind than this
+ * (a badly congested link), the replay would start from a gap: the prediction is kept
+ * as it is until the acks catch up instead.
+ */
+const MAX_PENDING = 600;
 /** Visual correction: error decays with this rate (1/s, ≈ 100 ms), bigger errors snap. */
 const CORRECTION_RATE = 30;
 const SNAP_DISTANCE = 120;
 /** How far past the newest snapshot remote entities may be extrapolated before holding. */
 const MAX_EXTRAPOLATE = 0.1;
-/** Clock offset estimate: smoothing factor per snapshot, and the jump that forces a resync. */
+/**
+ * Clock offset estimate (host tick time minus our clock): smoothing per snapshot when
+ * data arrives earlier than expected (slowly: that is usually jitter), when it arrives
+ * later (fast: the host fell behind real time or the latency rose, and render time must
+ * not run past the newest snapshot), and the jump that forces a resync.
+ */
 const OFFSET_SMOOTHING = 0.05;
+const OFFSET_FALL = 0.5;
 const OFFSET_RESYNC = 0.5;
+/**
+ * Render time follows the offset through its playback speed (at most ±RATE_RANGE off
+ * real time, closing RATE_GAIN of the gap per second) so remote entities move smoothly
+ * in slight slow/fast motion instead of freezing and jumping; beyond RENDER_SNAP it jumps.
+ */
+const RATE_GAIN = 8;
+const RATE_RANGE = 0.5;
+const RENDER_SNAP = 0.25;
 /** Snapshots kept behind the render time (for late arrivals and extrapolation). */
 const BUFFER_KEEP = 1.0;
 const SEEN_TICKS_KEEP = 600;
@@ -54,6 +73,28 @@ const MAX_QUEUED_SNAPSHOTS = 200;
 const FIRING_HOLD = 0.1;
 /** Undrained predicted shots kept (a hidden tab does not drain). */
 const MAX_PREDICTED_EVENTS = 60;
+const TOKEN_KEY = 'hh-client-token';
+
+/**
+ * This tab's id for the hello: kept in sessionStorage so the host recognises a reload of
+ * the same tab (a kick keeps it out under any name); fresh in every other tab.
+ */
+function tabToken() {
+  const a = new Uint8Array(12);
+  if (globalThis.crypto && globalThis.crypto.getRandomValues) globalThis.crypto.getRandomValues(a);
+  else for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+  const fresh = [...a].map((b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const store = globalThis.sessionStorage;
+    if (!store) return fresh;
+    const kept = clientToken(store.getItem(TOKEN_KEY));
+    if (kept) return kept;
+    store.setItem(TOKEN_KEY, fresh);
+  } catch {
+    // Storage blocked: a new id each time is fine.
+  }
+  return fresh;
+}
 
 function wallClock() {
   return (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
@@ -92,6 +133,7 @@ export class ClientSession extends Emitter {
     this.settings = { ...DEFAULT_SETTINGS };
     this.inGame = false;
     this.left = false;
+    this.locked = false;
     this.match = -1;
     this.lastHostMsg = this.clock();
 
@@ -115,9 +157,12 @@ export class ClientSession extends Emitter {
     this.buffer = [];
     this.newest = null;
     this.eventQueue = [];
+    /** Ticks whose full snapshot events were queued / whose echo (important ones) was. */
     this.seenTicks = new Set();
+    this.echoedTicks = new Set();
     this.offset = null;
     this.lastRender = -Infinity;
+    this.lastRenderAt = null;
     this.pred = null;
     this.newestLocal = null;
     this.predSlot = 0;
@@ -135,6 +180,8 @@ export class ClientSession extends Emitter {
       lastSlot: 0, cooldown: 0, spin: 0, lastFireAt: -Infinity,
     };
     this.shotLog = new Map();
+    /** seq → the free pistol's mag before that pending cmd (snapshots do not carry it). */
+    this.freeMagLog = new Map();
     this.predEvents = [];
     this.ackSlot = -1;
     this.ackLastSlot = 0;
@@ -164,6 +211,7 @@ export class ClientSession extends Emitter {
         name: sanitizeName(profile.name),
         color: isColor(profile.color) ? profile.color : 0,
         cls: sanitizeClass(profile.cls),
+        token: this.hooks.token || tabToken(),
       });
     });
   }
@@ -189,6 +237,10 @@ export class ClientSession extends Emitter {
   }
 
   kick() {
+    return false;
+  }
+
+  setLocked() {
     return false;
   }
 
@@ -271,9 +323,12 @@ export class ClientSession extends Emitter {
     const rt = this._renderTime();
     const out = [];
     const q = this.eventQueue;
+    // Back from a hidden tab: long-gone tracers and sounds are not worth one big burst.
+    const staleBefore = rt - STALE_EVENT_AGE;
     let n = 0;
     while (n < q.length && snapTime(q[n]) <= rt + 1e-6) {
-      for (const ev of q[n].events) out.push(ev);
+      const stale = snapTime(q[n]) < staleBefore;
+      for (const ev of q[n].events) if (!stale || !PERISHABLE_EVENTS.has(ev.type)) out.push(ev);
       n++;
     }
     if (n) q.splice(0, n);
@@ -412,10 +467,11 @@ export class ClientSession extends Emitter {
     if (!this.inGame || snap.match !== this.match) return;
     this.netStats.addSnapshot();
     const now = this.clock();
-    this._queueEvents(snap.tick, snap.events);
+    this._queueEvents(snap.tick, snap.events, false);
     if (snap.echo) {
-      // Important events of snapshots we never received (the state channel may drop).
-      for (const e of snap.echo) this._queueEvents(e.tick, e.events);
+      // Important events of snapshots we did not get (yet): a state message may be skipped
+      // for a congested link, or overtaken by later ones on the unordered p2p channel.
+      for (const e of snap.echo) this._queueEvents(e.tick, e.events, true);
     }
     const buf = this.buffer;
     if (this.newest && snap.tick <= this.newest.tick) {
@@ -439,12 +495,23 @@ export class ClientSession extends Emitter {
     if (drop) buf.splice(0, drop);
   }
 
-  _queueEvents(tick, events) {
+  /**
+   * Queue a snapshot's events for drainEvents(). `echo` = only its important events,
+   * repeated by a later snapshot; the full list may still come and then adds the rest.
+   */
+  _queueEvents(tick, events, echo) {
     if (this.seenTicks.has(tick)) return;
-    this.seenTicks.add(tick);
-    if (this.seenTicks.size > SEEN_TICKS_KEEP) {
+    if (echo) {
+      if (this.echoedTicks.has(tick)) return;
+      this.echoedTicks.add(tick);
+    } else {
+      this.seenTicks.add(tick);
+      if (this.echoedTicks.delete(tick) && events) events = events.filter((e) => !(e && IMPORTANT_EVENTS.has(e.type)));
+    }
+    if (this.seenTicks.size + this.echoedTicks.size > SEEN_TICKS_KEEP) {
       const floor = tick - SEEN_TICKS_KEEP * 3;
       for (const t of this.seenTicks) if (t < floor) this.seenTicks.delete(t);
+      for (const t of this.echoedTicks) if (t < floor) this.echoedTicks.delete(t);
     }
     if (!events || events.length === 0) return;
     // The host's version of a shot we already showed (predicted): see SPEC §4.1.
@@ -464,14 +531,32 @@ export class ClientSession extends Emitter {
       // Host clock jumped (it stalled, or we just started): allow render time to move back.
       this.lastRender = -Infinity;
     } else {
-      this.offset += (sample - this.offset) * OFFSET_SMOOTHING;
+      this.offset += (sample - this.offset) * (sample < this.offset ? OFFSET_FALL : OFFSET_SMOOTHING);
     }
   }
 
+  /**
+   * The time remote entities are drawn at: INTERP_DELAY behind the host's clock as
+   * estimated by `offset`. It never runs backwards; small errors are closed by playing a
+   * little slower or faster, big ones by a jump.
+   */
   _renderTime() {
     if (this.offset === null) return -Infinity;
-    const rt = Math.max(this.lastRender, this.clock() + this.offset - INTERP_DELAY);
+    const now = this.clock();
+    const target = now + this.offset - INTERP_DELAY;
+    let rt;
+    if (this.lastRender === -Infinity || this.lastRenderAt === null || Math.abs(target - this.lastRender) > RENDER_SNAP) {
+      rt = Math.max(this.lastRender, target);
+    } else {
+      const dt = Math.max(0, now - this.lastRenderAt);
+      const rate = 1 + Math.min(RATE_RANGE, Math.max(-RATE_RANGE, (target - this.lastRender) * RATE_GAIN));
+      rt = this.lastRender + dt * rate;
+    }
+    // Nothing to show past the extrapolation limit: wait there for the next snapshot
+    // instead of running on (and freezing longer once it arrives late).
+    if (this.newest) rt = Math.min(rt, Math.max(this.lastRender, snapTime(this.newest) + MAX_EXTRAPOLATE));
     this.lastRender = rt;
+    this.lastRenderAt = now;
     return rt;
   }
 
@@ -534,7 +619,10 @@ export class ClientSession extends Emitter {
 
   _applyCmd(cmd) {
     this.pending.push(cmd);
-    if (this.pending.length > MAX_PENDING) this.pending.splice(0, this.pending.length - MAX_PENDING);
+    if (this.pending.length > MAX_PENDING) {
+      this.pending.splice(0, this.pending.length - MAX_PENDING);
+      this._forgetBefore(this.pending[0].seq - 1);
+    }
     this.recent.push(cmd);
     if (this.recent.length > MAX_INPUTS_PER_MESSAGE) this.recent.shift();
     if (this.pred && this.pred.state !== 'dead') this._step(cmd, true);
@@ -578,12 +666,15 @@ export class ClientSession extends Emitter {
   _stepWeapon(cmd, sp, live) {
     const W = this.wpn;
     const p = this.pred;
+    this.freeMagLog.set(cmd.seq, W.freeMag);
     if (live) {
       W.cooldown -= DT;
       if (W.cooldown < -DT) W.cooldown = -DT;
     }
-    const aw = activeWeapon({ state: p.state, slots: sp.slots, slot: this.predSlot });
-    if (cmd.reload && p.state === 'alive') this._startReload(aw);
+    // Predicted mags/reserves decide the downed fallback exactly like the sim's
+    // (a dry pistol in slot 0 falls back to the free pistol); downed players reload too.
+    const aw = activeWeapon({ state: p.state, slots: sp.slots, slot: this.predSlot, mag: W.mag, res: W.res });
+    if (cmd.reload && p.state !== 'dead') this._startReload(aw);
     if (!aw.id || !WEAPONS[aw.id]) {
       if (live) W.spin = 0;
       return;
@@ -616,8 +707,10 @@ export class ClientSession extends Emitter {
       return;
     }
     if (!live) {
-      // Replay: the free pistol's mag is only known locally, it already counts these.
-      if (aw.slot >= 0) W.mag[aw.slot] = Math.max(0, mag - (this.shotLog.get(cmd.seq) || 0));
+      // Replay: the shots predicted for this cmd back then.
+      const left = Math.max(0, mag - (this.shotLog.get(cmd.seq) || 0));
+      if (aw.slot >= 0) W.mag[aw.slot] = left;
+      else W.freeMag = left;
       return;
     }
     if (w.spinup && W.spin < 1) {
@@ -685,13 +778,14 @@ export class ClientSession extends Emitter {
         hits[j] = t;
       }
     }
-    let endT = w.range, hit = 0;
+    // Same rule as the sim's fireHitscan: 'flesh' whenever a zombie was hit; the ray ends
+    // at its last victim only once the pierce budget is spent, else at the wall or range.
+    let endT = w.range, hit = hits.length > 0 ? 1 : 0;
     if (hits.length >= pierce) {
       endT = hits[hits.length - 1];
-      hit = 1;
     } else if (tw >= 0) {
       endT = tw;
-      hit = 2;
+      if (!hit) hit = 2;
     }
     return { x: round1(x + dx * endT), y: round1(y + dy * endT), hit };
   }
@@ -732,6 +826,24 @@ export class ClientSession extends Emitter {
     this.netStats.addOut(bytes);
   }
 
+  /** Drop the per-cmd logs of every seq ≤ `seq`. */
+  _forgetBefore(seq) {
+    for (const log of [this.shotLog, this.freeMagLog]) {
+      for (const s of log.keys()) if (s <= seq) log.delete(s);
+    }
+  }
+
+  /** The collision world's barricades as of `snap` (they block the predicted player). */
+  _syncBarricades(snap) {
+    const bars = this.barricadeScratch;
+    bars.length = snap.barricades.length;
+    for (let i = 0; i < bars.length; i++) {
+      const b = snap.barricades[i];
+      bars[i] = { x: b.x, y: b.y, a: b.angle };
+    }
+    this.world.setBarricades(bars);
+  }
+
   _reconcile(snap) {
     const sp = snap.players.find((p) => p.id === this.localId) || null;
     this.newestLocal = sp;
@@ -739,10 +851,7 @@ export class ClientSession extends Emitter {
     let n = 0;
     while (n < this.pending.length && this.pending[n].seq <= acked) n++;
     if (n) this.pending.splice(0, n);
-    for (const seq of this.shotLog.keys()) {
-      if (seq <= acked) this.shotLog.delete(seq);
-      else break;
-    }
+    this._forgetBefore(acked);
     if (sp && sp.state === 'dead') this.ackState = 'dead';
     if (!sp || sp.state === 'dead') {
       this.pred = null;
@@ -750,6 +859,13 @@ export class ClientSession extends Emitter {
       return;
     }
     const old = this.pred;
+    if (old && old.state === sp.state && this.pending.length && this.pending[0].seq > acked + 1 && acked > 0) {
+      // The ack is older than our oldest pending cmd: the cmds in between are no longer
+      // known, so a replay would start from the wrong place. Keep predicting until the
+      // acks catch up (the host is only far behind, not in disagreement).
+      this._syncBarricades(snap);
+      return;
+    }
     const shownX = old ? old.x + this.offX : sp.x;
     const shownY = old ? old.y + this.offY : sp.y;
     const cls = (this._localEntry() || {}).cls;
@@ -767,15 +883,16 @@ export class ClientSession extends Emitter {
     p.moveMult = this._moveMultFor(sp.slots, sp.slot, sp.state);
     this.pred = p;
     this._resetWeapon(sp);
-
-    const bars = this.barricadeScratch;
-    bars.length = snap.barricades.length;
-    for (let i = 0; i < bars.length; i++) {
-      const b = snap.barricades[i];
-      bars[i] = { x: b.x, y: b.y, a: b.angle };
+    // The free pistol's mag: the host's (when its snapshots carry it), else what it was
+    // before the first unacknowledged cmd (else a replayed reload would refill it and
+    // the shots after it would never be taken off again).
+    if (typeof sp.freeMag === 'number') {
+      this.wpn.freeMag = sp.freeMag;
+    } else if (this.pending.length && this.freeMagLog.has(this.pending[0].seq)) {
+      this.wpn.freeMag = this.freeMagLog.get(this.pending[0].seq);
     }
-    this.world.setBarricades(bars);
 
+    this._syncBarricades(snap);
     for (const cmd of this.pending) this._step(cmd, false);
     // Keep showing the player where they were and let the error melt away.
     this.offX = shownX - p.x;

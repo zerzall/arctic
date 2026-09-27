@@ -147,9 +147,12 @@ const game = new Game({
 game.map                  // MapDef
 game.tick                 // ticks simulated so far
 game.addPlayer({ id, name, color, cls, bot })   // late join: mid-wave enters 'dead' and respawns at the
-                          //   wave clear; during prep/intermission enters alive. Gets
-                          //   wave × WAVE_CLEAR_BONUS catch-up cash.
-game.removePlayer(id)
+                          //   wave clear; during prep/intermission enters alive. A name that
+                          //   left earlier gets its cash, stats and kit back (+ clear bonuses
+                          //   paid meanwhile); a new name gets wave × WAVE_CLEAR_BONUS
+                          //   catch-up cash (at most MAX_PLAYERS human newcomers per match;
+                          //   bots always).
+game.removePlayer(id)     // the leaver's turrets/barricades leave too (owned units on rejoin)
 game.setInput(id, cmd)    // queue one InputCmd (§3.3). Host calls this for every received cmd.
 game.command(id, cmd)     // reliable one-off requests: { type: 'buy', item } | { type: 'ready' }
 game.step()               // advance exactly one tick (DT = 1/60 s)
@@ -195,15 +198,18 @@ InputCmd = {
 }
 ```
 Host applies one cmd per player per tick. If a player's queue is empty it repeats the
-last cmd **with edge fields cleared**. If more than 6 are queued it drops the oldest
-(but keeps any edge flags by OR-ing them into the next cmd).
+last cmd **with edge fields cleared**. The queue holds at most 6: queuing a 7th drops the
+oldest (but keeps any edge flags by OR-ing them into the next cmd). A standing backlog
+drains: when a player's queue held ≥ 2 cmds at every tick of a 20-tick window, one extra
+cmd is dropped the same way (so a burst of late inputs doesn't add latency for good).
 
 ### 3.4 Gameplay rules the sim implements
 
 **Phases.** `prep` (PREP_TIME s, shop open) → `wave` → `intermission` (INTERMISSION_TIME s,
 shop open, skipped early when every connected player sent `{type:'ready'}`) → `wave` → …
 After the last wave (settings.waves, 0 = endless) is cleared → `victory`. Everyone
-dead/downed at once (no one standing) → `gameover` (reason 'wiped'). Objective hp 0 while
+dead/downed at once (no one standing) → `gameover` (reason 'wiped'), unless the wave is
+cleared in that same tick (the clear wins: it revives the downed). Objective hp 0 while
 settings.objective → `gameover` (reason 'objective'). The objective takes no damage and
 isn't targeted when settings.objective is false. Game over/victory are terminal.
 
@@ -214,7 +220,8 @@ the map's zombieSpawns, preferring spawn rectangles farther than 700 px from eve
 player, never more than `difficulty.maxAlive` alive at once. Type picked by
 `ZOMBIES[type].weight(w)`. 2% of non-boss spawns from wave 4 are ELITE (1.6x hp, +20% speed).
 Every BOSS_EVERY-th wave also spawns `ceil(players / 3)` bosses about 10 s in; they share
-the boss hp multiplier `hpBase + hpPerPlayer × players` and grow by their own `hpGrowth`.
+the boss hp multiplier `hpBase + hpPerPlayer × players` and grow by their own `hpGrowth`
+(players and bosses counted at the wave's start: joins/leaves before they spawn change neither).
 HP scale: `hp * (1 + HP_GROWTH_PER_WAVE*(w-1)) * difficulty.hp`; speed scale capped at
 SPEED_GROWTH_CAP; damage × difficulty.damage. `remaining` = alive + not yet spawned.
 Wave clear → WAVE_CLEAR_BONUS cash to every connected player, dead players respawn
@@ -249,13 +256,14 @@ by solid obstacles (ray from centre). Melee: cone MELEE_ARC/MELEE_RANGE, MELEE_D
 MELEE_KNOCKBACK (× meleeMult), cooldown MELEE_COOLDOWN. Frag (G): thrown at THROW_SPEED
 toward the aim, bounces off obstacles, explodes after fuse. Molotov (F): shatters on
 first obstacle/zombie contact or after 0.9 s, leaving a 'fire' hazard. Turret (T) /
-barricade (C): placed BARRICADE.placeDistance in front if the spot is clear, requires an
+barricade (C): placed BARRICADE.placeDistance in front if the spot is clear, else at the nearest clear
+spot of a fixed set of nearby distances/small turns (`findPlacement()`), requires an
 owned unit (bought in the shop). Turrets auto-target the nearest zombie in range with
 line of sight, have `ammo`, hp, can be destroyed. Medic heal aura regenerates teammates.
 
 **Downed / revive.** hp ≤ 0 → 'downed' (emit 'down'), BLEEDOUT_TIME countdown, can move
-at DOWNED_SPEED and fire only the pistol (slot 0 if it holds a pistol-category gun,
-otherwise a free infinite pistol). A living teammate holding `interact` within
+at DOWNED_SPEED and fire only the pistol (slot 0 if it holds a pistol-category gun with
+any ammo left, otherwise a free infinite pistol) and reload it. A living teammate holding `interact` within
 REVIVE_RADIUS for REVIVE_TIME / reviveSpeed revives them at REVIVE_HP (+REVIVE_BONUS cash
 to the reviver). A self-revive kit revives after SELF_REVIVE_DELAY automatically.
 Bleedout reaching 0 → 'dead' (emit 'died'); dead players spectate and respawn at the next
@@ -393,6 +401,7 @@ Snapshot = {
     lastSeq,                // last InputCmd seq applied
     earned,                 // total cash earned this game (end-screen stat)
     sprintLock,             // true while exhausted (must regain STAMINA_MIN_TO_SPRINT) — for exact prediction
+    freeMag,                // rounds in the free pistol (fired while downed with no pistol) — for exact prediction
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/ } ],
   projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
@@ -412,7 +421,7 @@ All events carry the fields listed; consumers ignore unknown types.
 
 | type | fields | meaning |
 |---|---|---|
-| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer; hit: 0 nothing/max range, 1 flesh, 2 obstacle. Projectile/flame/chain weapons send `rays: []`. |
+| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer: its last victim once its `pierce` budget is spent, else the first solid obstacle or max range; hit: 1 flesh (it hit at least one target), else 2 obstacle, 0 nothing/max range. Projectile/flame/chain weapons send `rays: []`. |
 | `placefail` | pid, kind | turret/barricade could not be placed (spot blocked) |
 | `chain` | pid, points: [{x, y}] | tesla arc path (muzzle → first zombie → …) |
 | `melee` | pid, x, y, angle, hits | shove swing (hits = zombies struck) |
@@ -467,7 +476,7 @@ export function decodeInputs(buf)    → InputCmd[]
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
 u8. Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
 Events may be packed as compact JSON (with numbers rounded to 1 decimal) inside the
-buffer. A 6-player, 250-zombie snapshot with ~60 events must stay under 14 KB. First byte
+buffer; an event whose JSON exceeds `MAX_JSON_EVENT_BYTES` (1 KB) is dropped. A 6-player, 250-zombie snapshot with ~60 events must stay under 14 KB. First byte
 of every binary message is a message-type tag so snapshots and inputs can share a channel.
 Tests (`tests/protocol.test.js`): round-trip every field, every event type, empty arrays,
 max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
@@ -477,7 +486,9 @@ max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
 ### 6.1 Transports (implementation detail of net)
 - **p2p** (`transport-peer.js`): PeerJS. Host peer id = `PEER_ID_PREFIX + code`. Two
   DataConnections per client: `ctl` (reliable, serialization 'json') for control messages
-  and `state` (reliable:false → unordered, serialization 'raw') for binary snapshots/inputs.
+  and `state` (reliable:false → unordered but still retransmitted, serialization 'raw') for
+  binary snapshots/inputs. p2p and relay both skip a state message to a peer while a few
+  are already queued for it (slow link), so snapshots echo their important events (§6.2).
   Signalling server defaults to the public PeerJS cloud; `window.HH_CONFIG.peer` (from
   `public/config.js`) may override host/port/path/secure/key and `config.iceServers`
   (TURN). JSON messages must stay under 16 KB.
@@ -496,7 +507,8 @@ export async function getServerInfo()   // → { relay: boolean }
 export async function hostGame({ name, color, cls, transport })  // → Session (resolves when joinable)
 export async function joinGame({ code, via, name, color, cls })  // → Session; rejects Error(msg)
                                         // msgs: 'Room not found', 'Room is full',
-                                        // 'Game version mismatch', 'Could not connect'
+                                        // 'Game version mismatch', 'Could not connect',
+                                        // 'Room is locked', 'You were kicked from this room'
 
 session.isHost, session.localId, session.code, session.inviteUrl, session.transport
 session.roster      // [{ id, name, color, cls, ready, ping, host, bot? }]  (lobby + in game;
@@ -523,15 +535,19 @@ session.getView(nowSeconds)           // → Snapshot for rendering (host: lates
                                       //   spin, firing AND the weapon state — slot, ammo,
                                       //   reloading — come from prediction (the ammo counter drops
                                       //   the frame a shot is fired; matches the host once acked).
-                                      //   Downed with no pistol it also carries `freeMag` (the
-                                      //   free pistol's mag, which snapshots don't have).
+                                      //   Downed with no pistol its `freeMag` (the free pistol's
+                                      //   mag) is predicted too.
 session.drainEvents()                 // → GameEvent[] due for presentation (client releases
-                                      //   each snapshot's events when render time reaches it)
+                                      //   each snapshot's events when render time reaches it;
+                                      //   presentation-only events more than 1 s old — e.g.
+                                      //   after a hidden tab — are dropped, see net/event-rules.js)
 session.getMap()                      // MapDef of the running game
 session.getPredictedLocal()           // {x, y, angle} of the local player right now (for aim)
 session.stats                         // { ping, fps?, kbpsIn, kbpsOut, snapshotsPerSec }
 session.leave()
-session.kick(pid)                     // host only
+session.kick(pid)                     // host only; the player (same tab or same name) is
+                                      //   refused for the rest of the session
+session.setLocked(bool)               // host only: refuse every new player; session.locked
 session.addBot()                      // host only, lobby only → the new roster entry, or null
                                       //   (room full / in game); works in solo too
 session.removeBot(pid)                // host only, lobby only → true if a bot was removed
@@ -544,6 +560,11 @@ Host: runs `Game`, stepping with a real-time accumulator driven by a Worker-base
 Snapshots every SNAPSHOT_EVERY ticks. Host's own input goes straight into
 `game.setInput`. Handles hello/version check, MAX_PLAYERS, names made unique, colours
 kept distinct where possible, chat relay, ping measurement, late join, player leave.
+Everything a client sends is untrusted: `buy` only with a real shop id, and each peer has
+a control-message budget (20/s, burst 40; pong/bye exempt) — excess is dropped, a peer
+that keeps flooding is disconnected ('Disconnected: too many messages'). Roster updates
+from peers' profile changes are coalesced (≤ 10/s). The hello carries a per-tab `token`
+(sessionStorage) so a kick also refuses the same tab under another name.
 **Bots** (AI survivors, §3.6): roster entries `{ id, name, color, cls, ready: true, ping: 0,
 host: false, bot: true }` with a name from `BOT_NAMES` (lobby-rules.js; fictional, never real
 people), a free colour and preferably a class no one has. They count toward MAX_PLAYERS,

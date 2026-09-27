@@ -421,3 +421,46 @@ test('a snapshot produced by the real Game after a few hundred ticks round-trips
   }
   assert.ok(checked >= 5);
 });
+
+test('an oversized JSON event is dropped instead of blowing up the snapshot', () => {
+  const events = [
+    { type: 'buyfail', pid: 2, item: 'A'.repeat(40000), reason: 'invalid' },
+    { type: 'mystery', blob: 'x'.repeat(1024) },
+    { type: 'buy', pid: 1, item: 'x'.repeat(200) },
+    { type: 'down', pid: 3 },
+  ];
+  const buf = encodeSnapshot({ ...bigSnapshot(0), players: [], zombies: [], events, echo: [{ tick: 3, events }] });
+  assert.ok(buf.byteLength < 2000, `snapshot stays small (${buf.byteLength} bytes)`);
+  const d = decodeSnapshot(buf);
+  assert.deepEqual(d.events, [events[2], events[3]]);
+  assert.deepEqual(d.echo[0].events, [events[2], events[3]]);
+});
+
+test('freeMag round-trips when the sender publishes it, and is absent otherwise', () => {
+  for (const freeMag of [0, 7, 12, 254]) {
+    const d = decodeSnapshot(encodeSnapshot({ ...bigSnapshot(0), players: [{ ...samplePlayer(3), freeMag }] }));
+    assert.equal(d.players[0].freeMag, freeMag);
+  }
+  for (const freeMag of [undefined, -1, 1.5, 255, 'x']) {
+    const d = decodeSnapshot(encodeSnapshot({ ...bigSnapshot(0), players: [{ ...samplePlayer(3), freeMag }] }));
+    assert.equal('freeMag' in d.players[0], false);
+  }
+});
+
+test('decodeInputs refuses more cmds than an honest client ever sends', async () => {
+  const { encodeInputs, decodeInputs, MAX_INPUTS_PER_MESSAGE } = await import('../public/js/shared/protocol.js');
+  const cmd = (seq) => ({ seq, moveX: 0, moveY: 0, angle: 0, fire: false, melee: false, sprint: false, interact: false,
+    reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false, slot: -1, cycle: 0 });
+  const one = new Uint8Array(encodeInputs([cmd(1)]));
+  const two = new Uint8Array(encodeInputs([cmd(1), cmd(2)]));
+  const cmdSize = two.length - one.length;
+  const headerLen = one.length - 1 - cmdSize;
+  const full = new Uint8Array(encodeInputs(Array.from({ length: MAX_INPUTS_PER_MESSAGE }, (_, i) => cmd(i + 1))));
+  assert.equal(decodeInputs(full.buffer).length, MAX_INPUTS_PER_MESSAGE);
+  // Same message with one more cmd appended and the count bumped.
+  const over = new Uint8Array(full.length + cmdSize);
+  over.set(full);
+  over.set(full.subarray(full.length - cmdSize), full.length);
+  over[headerLen] = MAX_INPUTS_PER_MESSAGE + 1;
+  assert.throws(() => decodeInputs(over.buffer), /Too many inputs/);
+});

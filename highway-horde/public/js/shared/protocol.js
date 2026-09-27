@@ -14,7 +14,8 @@
 //   0..1 values                   u8 (reloading/meleeing never round a non-zero to 0)
 //   kinds and ids of data tables  u8 indices into WEAPON_IDS, ZOMBIE_IDS, ...
 // Events use a per-type binary schema; an event this file does not know (or one whose
-// values do not fit its schema) is sent as JSON instead, so nothing is ever dropped.
+// values do not fit its schema) is sent as JSON instead, so nothing is dropped unless
+// that JSON is over MAX_JSON_EVENT_BYTES.
 
 import { PROTOCOL_VERSION } from './constants.js';
 import { TAU, wrapAngle } from './math.js';
@@ -37,8 +38,14 @@ export const MAX_INPUTS_PER_MESSAGE = 8;
 const NONE = 255;
 const POS_OFFSET = 1024;
 const JSON_EVENT = 255;
+/**
+ * An event that only fits as JSON and is bigger than this is sent as `null` (dropped by
+ * the decoder): no single event may blow a snapshot past a transport's message limit.
+ */
+export const MAX_JSON_EVENT_BYTES = 1024;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
+const JSON_NULL = TEXT_ENCODER.encode('null');
 
 // ---- index lookups (Map beats indexOf for the 18-entry weapon list in hot loops)
 
@@ -450,7 +457,8 @@ function writeEvents(w, events) {
     const ev = list[i];
     const idx = ev && typeof ev === 'object' ? schemaFor(ev) : -1;
     if (idx < 0) {
-      const b = TEXT_ENCODER.encode(JSON.stringify(ev ?? null, roundJson));
+      let b = TEXT_ENCODER.encode(JSON.stringify(ev ?? null, roundJson));
+      if (b.length > MAX_JSON_EVENT_BYTES) b = JSON_NULL;
       w.u8(JSON_EVENT);
       w.u32(b.length);
       w.bytesOf(b);
@@ -546,6 +554,8 @@ function writePlayer(w, p) {
   w.u8(qUnit(p.revive));
   w.u8(qInt(p.reviver, 255));
   w.u32(qInt(p.lastSeq, 0xffffffff));
+  // The free pistol's mag (SPEC §4): NONE when the sender does not publish it.
+  w.u8(Number.isInteger(p.freeMag) && p.freeMag >= 0 && p.freeMag < NONE ? p.freeMag : NONE);
 }
 
 function readPlayer(r) {
@@ -569,7 +579,7 @@ function readPlayer(r) {
     const res = r.u16();
     ammo[i] = [mag, res === 0xffff ? -1 : res];
   }
-  return {
+  const rec = {
     id, x, y, angle, state,
     hp, maxHp, armor, stamina,
     sprinting: (flags & P_SPRINTING) !== 0,
@@ -597,6 +607,9 @@ function readPlayer(r) {
     lastSeq: r.u32(),
     sprintLock: (flags & P_SPRINT_LOCK) !== 0,
   };
+  const freeMag = r.u8();
+  if (freeMag !== NONE) rec.freeMag = freeMag;
+  return rec;
 }
 
 /**
@@ -918,6 +931,8 @@ export function decodeInputs(buf) {
   const r = new Reader(buf);
   checkHeader(r, MSG.INPUTS);
   const n = r.u8();
+  // Honest clients never send more (encodeInputs caps it); anything bigger is a flood.
+  if (n > MAX_INPUTS_PER_MESSAGE) throw new Error(`Too many inputs in one message: ${n}`);
   const out = new Array(n);
   for (let i = 0; i < n; i++) {
     const seq = r.u32();

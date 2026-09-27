@@ -31,9 +31,19 @@ export function ammoPrice(weaponId) {
   return Math.max(100, Math.round((w.price * 0.25) / 50) * 50);
 }
 
+/** True if `id` is a weapon id (own keys only: 'constructor' and friends are not guns). */
+export function isWeaponId(id) {
+  return typeof id === 'string' && Object.hasOwn(WEAPONS, id);
+}
+
+/** True if `id` is a non-gun shop item (own keys only). */
+export function isItemId(id) {
+  return typeof id === 'string' && Object.hasOwn(ITEMS, id);
+}
+
 /** True if `id` names something purchasable (gun or item). */
 export function isBuyable(id) {
-  return (id in ITEMS) || (id in WEAPONS && WEAPONS[id].price > 0);
+  return isItemId(id) || (isWeaponId(id) && WEAPONS[id].price > 0);
 }
 
 // Pickups dropped by zombies or found as crates.

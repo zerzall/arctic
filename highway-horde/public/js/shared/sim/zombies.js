@@ -154,11 +154,15 @@ export function spawnZombie(game, type, x, y, elite = false) {
   const w = Math.max(1, game.wave);
   const boss = type === 'boss';
   const sp = def.special;
-  const players = Math.max(1, game.players.length);
-  // Boss hp: (hpBase + hpPerPlayer × players) shared by the wave's ceil(players / 3) bosses.
+  // Boss hp: (hpBase + hpPerPlayer × players) shared by the wave's ceil(players / 3)
+  // bosses, both counted at the boss wave's start (joins/leaves before they spawn
+  // change neither); a boss spawned outside a boss wave uses the current roster.
+  const bossWave = game.waveBosses > 0;
+  const players = Math.max(1, bossWave ? game.wavePlayers : game.players.length);
+  const bosses = bossWave ? game.waveBosses : Math.ceil(players / 3);
   const growth = boss && sp.hpGrowth != null ? sp.hpGrowth : HP_GROWTH_PER_WAVE;
   const hp = def.hp * (1 + growth * (w - 1)) * game.diff.hp
-    * (elite ? 1.6 : 1) * (boss ? (def.special.hpBase + def.special.hpPerPlayer * players) / Math.ceil(players / 3) : 1);
+    * (elite ? 1.6 : 1) * (boss ? (def.special.hpBase + def.special.hpPerPlayer * players) / bosses : 1);
   const speedScale = Math.min(SPEED_GROWTH_CAP, 1 + SPEED_GROWTH_PER_WAVE * (w - 1));
   const speed = rng.range(def.speed[0], def.speed[1]) * speedScale * (elite ? 1.2 : 1);
   const heavy = def.radius >= BIG_RADIUS;
@@ -238,6 +242,29 @@ function chooseTarget(game, z) {
     const back = kind === TK_OBJECTIVE ? z.radius * 0.5 + 3 : 0;
     z.tgtLos = game.world.lineOfMovement(z.x, z.y, z.tgtX + (dx / d) * back, z.tgtY + (dy / d) * back, z.body * 0.5, z.mask);
   }
+  if ((kind === TK_PLAYER || kind === TK_TURRET) && !z.tgtLos && pinnedOnObjective(game, z)) {
+    z.tgtKind = TK_OBJECTIVE;
+    z.tgt = null;
+    refreshTarget(game, z);
+    z.tgtLos = true;
+  }
+}
+
+/**
+ * True if z stands at the live objective and its flow field leads into it: the
+ * objective's seed is nearer by path than the survivor or turret picked by straight-line
+ * distance (e.g. on the far side of the building), so walking on would only push into
+ * the wall. Such a zombie chews on the objective instead.
+ */
+function pinnedOnObjective(game, z) {
+  const o = game.objective;
+  if (!o || o.hp <= 0 || !game.objObb || fieldFor(game, z) !== game.flow) return false;
+  if (distToObb(game.objObb, z.x, z.y) - z.radius > z.def.attackRange + 8) return false;
+  if (!game.flow.sample(z.x, z.y, flowOut)) return false;
+  closestPointOnObb(game.objObb, z.x, z.y, pt);
+  const dx = pt.x - z.x, dy = pt.y - z.y;
+  const d = Math.hypot(dx, dy);
+  return d < 1e-6 || (flowOut.x * dx + flowOut.y * dy) / d > 0.5;
 }
 
 /** Update the target point, centre distance and surface gap for the current target. */
