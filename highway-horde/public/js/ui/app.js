@@ -18,6 +18,8 @@ const JOIN_ERRORS = {
   'Room is full': 'That room already has six survivors. Ask the host to make space.',
   'Game version mismatch': 'Your game version doesn\'t match the host\'s. Both of you should reload the page.',
   'Could not connect': 'Couldn\'t reach the host. Check your connection and try again — strict school or office networks can block peer-to-peer play.',
+  'Room is locked': 'The host has locked this room. Ask them to unlock it, then try again.',
+  'You were kicked from this room': 'The host removed you from this room, so you can\'t rejoin it.',
 };
 
 const DISCONNECT_REASONS = {

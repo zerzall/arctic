@@ -172,6 +172,14 @@ export function createLobby(ctx) {
   codeBtn.addEventListener('click', () => session && copy(session.code, 'Room code'));
   $('#copy-code').addEventListener('click', () => session && copy(session.code, 'Room code'));
   $('#copy-link').addEventListener('click', () => session && copy(session.inviteUrl || session.code, 'Invite link'));
+  const lockBtn = $('#lock-room');
+  lockBtn.addEventListener('click', () => {
+    if (!session || !session.isHost || typeof session.setLocked !== 'function') return;
+    session.setLocked(!session.locked);
+    audio.ui('click');
+    flashToast(session.locked ? 'Room locked — nobody new can join' : 'Room unlocked', 'good');
+    renderRoom();
+  });
   $('#lobby-leave').addEventListener('click', () => ctx.onLeave());
 
   readyBtn.addEventListener('click', () => {
@@ -382,6 +390,10 @@ export function createLobby(ctx) {
     $('#room-panel').hidden = solo;
     codeBtn.textContent = session.code || '-----';
     $('#copy-link').disabled = !session.inviteUrl && !session.code;
+    // Only the host of an online room can lock it (kicked players are banned anyway).
+    lockBtn.hidden = solo || !session.isHost || typeof session.setLocked !== 'function';
+    lockBtn.setAttribute('aria-pressed', session.locked ? 'true' : 'false');
+    lockBtn.textContent = session.locked ? 'Room locked' : 'Lock room';
     setText($('#lobby-transport'), transportLabel(session));
     setText($('#lobby-title'), solo ? 'Solo Mission' : session.isHost ? 'Your Room' : 'Lobby');
     screen.classList.toggle('solo', solo);
