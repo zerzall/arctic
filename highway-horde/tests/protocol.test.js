@@ -60,6 +60,7 @@ function checkPlayer(d, s) {
   near(d.revive, s.revive, U8, `${w} revive`);
   assert.equal(d.respawn, s.respawn);
   assert.equal(d.ready, s.ready);
+  assert.equal(d.sprintLock, !!s.sprintLock, `${w} sprintLock`);
 }
 
 function checkEvent(d, s) {
@@ -181,6 +182,29 @@ test('every SPEC event type has a compact encoding and round-trips', () => {
   const snap = { ...bigSnapshot(0), events };
   const d = decodeSnapshot(encodeSnapshot(snap));
   events.forEach((ev, i) => checkEvent(d.events[i], ev));
+});
+
+test('reload time is carried compactly to the millisecond', () => {
+  const events = [
+    { type: 'reload', pid: 3, weapon: 'rifle', time: 1.615 },
+    { type: 'reload', pid: 3, weapon: 'minigun', time: 5 },
+  ];
+  const base = encodeSnapshot({ ...bigSnapshot(0), events: [] }).byteLength;
+  const buf = encodeSnapshot({ ...bigSnapshot(0), events });
+  assert.ok(buf.byteLength - base <= 2 * 6, 'binary, not JSON');
+  const d = decodeSnapshot(buf);
+  assert.deepEqual(d.events, events);
+  // Without a time (older senders) it still arrives, as JSON.
+  const old = decodeSnapshot(encodeSnapshot({ ...bigSnapshot(0), events: [{ type: 'reload', pid: 1, weapon: 'pistol' }] }));
+  assert.deepEqual(old.events, [{ type: 'reload', pid: 1, weapon: 'pistol' }]);
+});
+
+test('sprintLock round-trips both ways', () => {
+  for (const lock of [true, false]) {
+    const p = { ...samplePlayer(4), sprintLock: lock };
+    const d = decodeSnapshot(encodeSnapshot({ ...bigSnapshot(0), players: [p] }));
+    assert.equal(d.players[0].sprintLock, lock);
+  }
 });
 
 test('unknown events and events that do not fit their schema travel as JSON', () => {

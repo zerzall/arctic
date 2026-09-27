@@ -1584,12 +1584,12 @@ input[type='range'] { accent-color: var(--hazard); width: 100%; height: 26px; }
 }
 .touch-btn.pressed { background: rgba(255, 196, 0, 0.45); border-color: var(--hazard); transform: scale(0.93); }
 .touch-btn.on { background: rgba(255, 196, 0, 0.3); border-color: var(--hazard); }
-/* utility row: under the left HUD column */
-.tc-util { left: calc(8px + var(--sa-l)); top: calc(222px + var(--sa-t)); }
+/* utility row: under the left HUD column (hud.js measures it into --touch-util-top) */
+.tc-util { left: calc(8px + var(--sa-l)); top: var(--touch-util-top, calc(222px + var(--sa-t))); }
 .touch-btn-shop { border-color: rgba(86, 214, 122, 0.75); color: #c9ffd6; }
 .touch-btn-pause { font-size: 13px; }
-/* throwables & deployables: under the right HUD column */
-.tc-gear { right: calc(8px + var(--sa-r)); top: calc(212px + var(--sa-t)); }
+/* throwables & deployables: under the right HUD column (--touch-gear-top, from hud.js) */
+.tc-gear { right: calc(8px + var(--sa-r)); top: var(--touch-gear-top, calc(212px + var(--sa-t))); }
 .tc-gear .touch-btn { border-radius: 50%; }
 /* primary actions: 2x2 above-left of the aim thumb */
 .tc-main {
@@ -1609,9 +1609,19 @@ input[type='range'] { accent-color: var(--hazard); width: 100%; height: 26px; }
 
 @media (orientation: landscape) {
   /* short screens: the left HUD column is shorter, the aim thumb sits lower */
-  .tc-util { top: calc(186px + var(--sa-t)); }
-  .tc-gear { top: calc(206px + var(--sa-t)); }
-  .tc-main { right: calc(150px + var(--sa-r)); bottom: calc(10px + var(--sa-b)); }
+  .tc-util { top: var(--touch-util-top, calc(186px + var(--sa-t))); }
+  .tc-gear { top: var(--touch-gear-top, calc(206px + var(--sa-t))); }
+  .tc-main { right: calc(150px + var(--sa-r)); bottom: calc(6px + var(--sa-b)); }
+}
+/* short landscape phones: the throwables row (under the weapon panel) must clear the
+   primary buttons (above the aim thumb) */
+@media (orientation: landscape) and (max-height: 430px) {
+  .tc-util .touch-btn, .tc-gear .touch-btn { width: 40px; height: 40px; font-size: 10px; }
+}
+@media (orientation: landscape) and (max-height: 380px) {
+  .tc-main { grid-template-columns: 50px 56px; gap: 6px; }
+  .tc-main .touch-btn { width: 50px; height: 50px; font-size: 11px; }
+  .tc-main .touch-btn-interact { width: 56px; height: 56px; }
 }
 
 /* ------------------------------------------------------------------ responsive */
@@ -1737,6 +1747,11 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd { disp
   .tc { gap: 5px; }
   .tc-util .touch-btn, .tc-gear .touch-btn { width: 40px; height: 40px; font-size: 10px; }
 }
+@media (orientation: portrait) and (max-width: 374px) {
+  /* two rows of four side by side must fit 360 px phones */
+  .tc-util .touch-btn, .tc-gear .touch-btn { width: 36px; height: 36px; font-size: 9px; }
+  .hud[data-input='touch'] .hud-vitals { grid-template-columns: 40px 146px; }
+}
 
 /* compact HUD for small screens (phones in either orientation, small windows) */
 @media (max-width: 760px), (max-height: 520px) {
@@ -1800,7 +1815,7 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd { disp
   bottom: auto;
   flex-direction: column-reverse;
 }
-.hud[data-input='touch'] .hud-top-left { top: calc(var(--hud-pad) + var(--sa-t) + 84px); width: 180px; gap: 4px; }
+.hud[data-input='touch'] .hud-top-left { top: var(--hud-col-top, calc(var(--hud-pad) + var(--sa-t) + 84px)); width: 180px; gap: 4px; }
 .hud[data-input='touch'] .hud-top-right { width: 132px; }
 .hud[data-input='touch'] .minimap { width: 132px; height: 96px; }
 .hud[data-input='touch'] .killfeed { display: none; }
@@ -1821,7 +1836,7 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd { disp
 .hud[data-input='touch'] .hud-spectate { top: 40%; }
 
 @media (orientation: landscape) {
-  .hud[data-input='touch'] .hud-top-left { top: calc(var(--hud-pad) + var(--sa-t) + 78px); }
+  .hud[data-input='touch'] .hud-top-left { top: var(--hud-col-top, calc(var(--hud-pad) + var(--sa-t) + 78px)); }
   .hud[data-input='touch'] .hud-objective { display: flex; align-items: center; gap: 8px; }
   .hud[data-input='touch'] .hud-objective .obj-head { margin: 0; min-width: 104px; gap: 6px; }
   .hud[data-input='touch'] .hud-objective .bar { flex: 1; }
@@ -1830,8 +1845,18 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd { disp
   .hud[data-input='touch'] .hud-bottom-centre { bottom: calc(var(--sa-b) + 70px); }
 }
 
+@media (orientation: landscape) and (max-height: 380px) {
+  /* a smaller minimap lifts the weapon panel and the throwables row under it */
+  .hud[data-input='touch'] .minimap { width: 116px; height: 80px; }
+  .hud[data-input='touch'] .hud-top-right { width: 116px; }
+  .hud[data-input='touch'] .hud-bottom-right { top: calc(var(--hud-pad) + var(--sa-t) + 88px); }
+}
+
 @media (orientation: portrait) {
-  .hud[data-input='touch'] .hud-top-centre { top: calc(var(--hud-pad) + var(--sa-t) + 274px); width: 90vw; }
+  /* the left column and the weapon panel share the top rows: half the width each */
+  .hud[data-input='touch'] .hud-top-left { width: min(180px, calc(50vw - 16px)); }
+  .hud[data-input='touch'] .hud-weapon { width: min(200px, calc(50vw - 16px)); }
+  .hud[data-input='touch'] .hud-top-centre { top: max(calc(var(--hud-pad) + var(--sa-t) + 274px), calc(var(--touch-util-top, 0px) + 52px)); width: 90vw; }
   .hud[data-input='touch'] .hud-bottom-centre { bottom: calc(var(--sa-b) + 76px); width: 92vw; }
   .hud[data-input='touch'] .hud-chat { top: auto; bottom: calc(var(--sa-b) + 290px); left: calc(var(--hud-pad) + var(--sa-l)); width: 56vw; }
   .screen-game::before {

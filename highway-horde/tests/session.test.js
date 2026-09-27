@@ -682,3 +682,213 @@ test('real Game solo: hostGame({ transport: "local" }) runs the simulation', asy
   assert.ok(Math.abs(solo.getPredictedLocal().x - p1.x) < 1e-9);
   solo.leave();
 });
+
+test('shot prediction: own shots shown at once, host shots echoed, mag and reload respected', async (t) => {
+  const Game = await realGame();
+  if (typeof Game !== 'function') {
+    t.skip(`shared/sim.js not loadable: ${Game.message}`);
+    return;
+  }
+  const { WEAPONS } = await import('../public/js/shared/weapons.js');
+  const { perksFor } = await import('../public/js/shared/classes.js');
+  const { damagePlayer } = await import('../public/js/shared/sim/players.js');
+  const env = await setup({ clients: [{ name: 'Alice', cls: 'soldier', color: 1 }], createGame: (opts) => new Game(opts) });
+  const [a] = env.clients;
+  env.host.start();
+  await flush();
+  const g = env.game();
+  await frames(env, 20);
+  a.drainEvents();
+  env.host.drainEvents();
+  const rifle = WEAPONS.rifle;
+  const reload = rifle.reload * perksFor('soldier').reloadMult;
+
+  // Hold fire: the very first frame already yields a predicted shot, before any snapshot.
+  const hostEvents = [];
+  const log = [];
+  const firing = (n) => frames(env, n, (s) => (s === a ? input({ fire: true }) : null));
+  await firing(1);
+  const first = a.drainEvents().filter((e) => e.type === 'shot');
+  assert.equal(first.length, 1, 'predicted immediately');
+  const s0 = first[0];
+  assert.equal(s0.predicted, true);
+  assert.equal(s0.echo, undefined);
+  assert.equal(s0.pid, a.localId);
+  assert.equal(s0.turret, 0);
+  assert.equal(s0.weapon, 'rifle');
+  assert.equal(s0.rays.length, 1);
+  const me = a.getPredictedLocal();
+  assert.ok(Math.hypot(s0.x - me.x, s0.y - me.y) < 23, 'muzzle in front of the player');
+  log.push({ frame: 0, ev: s0 });
+
+  // Keep firing ~6 s: a full mag, an auto reload, then more.
+  for (let frame = 1; frame < 400; frame++) {
+    await firing(1);
+    for (const e of a.drainEvents()) if (e.type === 'shot') log.push({ frame, ev: e });
+    hostEvents.push(...env.host.drainEvents());
+  }
+  await frames(env, 40);
+  for (const e of a.drainEvents()) if (e.type === 'shot') log.push({ frame: 999, ev: e });
+  hostEvents.push(...env.host.drainEvents());
+
+  const predicted = log.filter((l) => l.ev.predicted);
+  const echoes = log.filter((l) => l.ev.echo);
+  assert.equal(predicted.length + echoes.length, log.length, 'every own shot is predicted or an echo');
+  assert.ok(echoes.every((l) => l.ev.pid === a.localId && !l.ev.predicted));
+  const hostShots = hostEvents.filter((e) => e.type === 'shot' && e.pid === a.localId);
+  assert.equal(echoes.length, hostShots.length, 'every host shot came back as an echo');
+  assert.ok(Math.abs(predicted.length - echoes.length) <= 1, `predicted ${predicted.length} vs host ${echoes.length}`);
+  // The host never marks anything.
+  assert.ok(hostEvents.every((e) => !e.predicted && !e.echo));
+  // Exactly one magazine, then a pause of about the reload time.
+  const frames1 = predicted.map((l) => l.frame);
+  let gapAt = -1;
+  for (let i = 1; i < frames1.length; i++) {
+    if (frames1[i] - frames1[i - 1] > 20) {
+      gapAt = i;
+      break;
+    }
+  }
+  assert.equal(gapAt, rifle.mag, 'first burst is one magazine');
+  const gap = (frames1[gapAt] - frames1[gapAt - 1]) / 60;
+  assert.ok(gap >= reload && gap < reload + 0.3, `reload pause ${gap.toFixed(3)} s vs ${reload}`);
+  const hostP = g.players.find((p) => p.id === a.localId);
+  assert.ok(predicted.length > rifle.mag + 10, `kept firing after the reload (${predicted.length} shots)`);
+
+  // A manual reload stops prediction until it is done.
+  await frames(env, 5);
+  a.drainEvents();
+  assert.ok(hostP.mag[1] < rifle.mag);
+  await frames(env, 1, (s) => (s === a ? input({ reload: true }) : null));
+  const during = [];
+  for (let i = 0; i < Math.floor(reload * 60) - 4; i++) {
+    await firing(1);
+    for (const e of a.drainEvents()) if (e.type === 'shot' && e.predicted) during.push(e);
+  }
+  assert.equal(during.length, 0, 'no shots predicted while reloading');
+  await firing(20);
+  assert.ok(a.drainEvents().some((e) => e.type === 'shot' && e.predicted), 'fires again after the reload');
+
+  // Rays are traced against the rendered zombies (and a zombie right in front is hit).
+  await frames(env, 30);
+  a.drainEvents();
+  const view = a.getView();
+  const pos = a.getPredictedLocal();
+  view.zombies.push({ id: 60000, type: 'walker', x: pos.x + 120, y: pos.y, angle: 0, hp: 1, flags: 0 });
+  await firing(1);
+  const traced = a.drainEvents().find((e) => e.type === 'shot' && e.predicted);
+  assert.ok(traced, 'a predicted shot');
+  assert.equal(traced.rays[0].hit, 1);
+  assert.ok(Math.abs(traced.rays[0].x - (pos.x + 120 - 14)) < 3, `ray stops at the zombie: ${traced.rays[0].x}`);
+
+  // Downed: pistol rules.
+  await frames(env, 30);
+  damagePlayer(g, hostP, 1e6, hostP.x, hostP.y);
+  await frames(env, 20);
+  a.drainEvents();
+  await firing(10);
+  const downed = a.drainEvents().filter((e) => e.type === 'shot' && e.predicted);
+  assert.ok(downed.length >= 1);
+  assert.ok(downed.every((e) => e.weapon === 'pistol'));
+  env.host.leave();
+  await flush(6);
+});
+
+test('shot prediction: never on the host, never for other players, nothing once the game is over', async (t) => {
+  const Game = await realGame();
+  if (typeof Game !== 'function') {
+    t.skip(`shared/sim.js not loadable: ${Game.message}`);
+    return;
+  }
+  const env = await setup({ clients: [{ name: 'Alice', cls: 'medic', color: 1 }, { name: 'Bea', cls: 'heavy', color: 2 }], createGame: (opts) => new Game(opts) });
+  const [a, b] = env.clients;
+  env.host.start();
+  await flush();
+  const g = env.game();
+  await frames(env, 20);
+  for (const s of [env.host, a, b]) s.drainEvents();
+  const seen = new Map([[env.host, []], [a, []], [b, []]]);
+  const all = (n) => frames(env, n, () => input({ fire: true })).then(() => {
+    for (const [s, list] of seen) list.push(...s.drainEvents().filter((e) => e.type === 'shot'));
+  });
+  for (let i = 0; i < 60; i++) await all(1);
+  await frames(env, 20);
+  for (const [s, list] of seen) list.push(...s.drainEvents().filter((e) => e.type === 'shot'));
+  assert.ok(seen.get(env.host).length > 10);
+  assert.ok(seen.get(env.host).every((e) => !e.predicted && !e.echo), 'host: no flags');
+  for (const c of [a, b]) {
+    const list = seen.get(c);
+    for (const e of list) {
+      if (e.pid === c.localId) assert.ok(e.predicted || e.echo, 'own shots are flagged');
+      else assert.ok(!e.predicted && !e.echo, 'other players\' shots are not');
+    }
+    assert.ok(list.some((e) => e.pid !== c.localId), 'sees the others shoot');
+  }
+  // Game over: firing is impossible, nothing is predicted (and the host fires nothing).
+  g._gameOver('wiped');
+  await frames(env, 10);
+  for (const s of [env.host, a, b]) s.drainEvents();
+  for (let i = 0; i < 30; i++) await frames(env, 1, () => input({ fire: true }));
+  for (const s of [env.host, a, b]) assert.equal(s.drainEvents().filter((e) => e.type === 'shot').length, 0);
+  env.host.leave();
+  await flush(6);
+});
+
+test('getServerInfo: relay only on a JSON { relay: true }; HTML, static file, 404 or junk mean p2p', async () => {
+  const saved = { fetch: globalThis.fetch, location: globalThis.location, HH_CONFIG: globalThis.HH_CONFIG };
+  const cases = [
+    [{ ok: true, body: '{"relay":true,"version":"1.0.0","protocol":1}' }, { relay: true, version: '1.0.0' }],
+    [{ ok: true, body: '{"relay":false}\n' }, { relay: false }],
+    [{ ok: true, body: '<!doctype html><html><body>index</body></html>' }, { relay: false }],
+    [{ ok: true, body: '' }, { relay: false }],
+    [{ ok: false, body: 'Not found' }, { relay: false }],
+    [{ throws: true }, { relay: false }],
+  ];
+  try {
+    delete globalThis.HH_CONFIG;
+    Object.defineProperty(globalThis, 'location', { value: { href: 'http://game.test/play/', protocol: 'http:' }, configurable: true, writable: true });
+    let n = 0;
+    for (const [reply, want] of cases) {
+      const urls = [];
+      globalThis.fetch = async (url) => {
+        urls.push(String(url));
+        if (reply.throws) throw new TypeError('network down');
+        return { ok: reply.ok, status: reply.ok ? 200 : 404, text: async () => reply.body };
+      };
+      // A fresh module instance: the result is cached per page load.
+      const mod = await import(`../public/js/net/session.js?case=${n++}`);
+      assert.deepEqual(await mod.getServerInfo(), want, JSON.stringify(reply));
+      assert.deepEqual(urls, ['http://game.test/play/api/info']);
+      assert.equal(await mod.getServerInfo(), await mod.getServerInfo(), 'cached');
+    }
+  } finally {
+    globalThis.fetch = saved.fetch;
+    Object.defineProperty(globalThis, 'location', { value: saved.location, configurable: true, writable: true });
+    if (saved.location === undefined) delete globalThis.location;
+    if (saved.HH_CONFIG !== undefined) globalThis.HH_CONFIG = saved.HH_CONFIG;
+  }
+});
+
+test('prediction takes the sprint lock from the snapshot (host-side exhaustion converges exactly)', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  const [a] = env.clients;
+  env.host.start();
+  await flush();
+  await frames(env, 10);
+  const run = (n) => frames(env, n, (s, i) => (s === a ? input({ moveX: Math.cos(i / 40), moveY: Math.sin(i / 40), sprint: true }) : null));
+  await run(30);
+  // The host exhausts the player out of band (the client could never derive this).
+  const hp = hostPlayer(env, a.localId);
+  hp.stamina = 2;
+  hp.sprintLock = true;
+  const tick = env.game().tick;
+  for (let i = 0; i < 30 && !(a.newest && a.newest.tick > tick); i++) await run(1);
+  assert.equal(a.newestLocal.sprintLock, true, 'the snapshot carries the lock');
+  assert.equal(a.pred.sprintLock, true, 'prediction adopted it');
+  assert.equal(a.pred.sprinting, false);
+  await run(40);
+  await frames(env, 30);
+  const pred = a.getPredictedLocal();
+  assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
+  assert.equal(a.pred.sprintLock, hp.sprintLock);
+});

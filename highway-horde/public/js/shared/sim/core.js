@@ -141,6 +141,8 @@ export class GameCore {
     this.tmpC = [];
 
     for (const p of players) this._addPlayer(p, 'alive');
+    // Solo would otherwise end at the first knock-down (SPEC §3.4): start with a kit.
+    if (this.players.length === 1) this.players[0].selfRevive = true;
     this._rebuildFlow('all');
   }
 

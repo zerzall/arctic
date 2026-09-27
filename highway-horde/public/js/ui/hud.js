@@ -28,6 +28,10 @@ const FEED_LIFE = 4.5;
 const FEED_MERGE = 2;
 const TOAST_MAX = 4;
 const LOW_HP = 0.3;
+/** Touch layout: re-measure the HUD columns this often (s), keep this gap (px) below them. */
+const TOUCH_LAYOUT_EVERY = 0.2;
+const TOUCH_GAP = 6;
+const TOUCH_VARS = ['--hud-col-top', '--touch-util-top', '--touch-gear-top'];
 
 function bar(cls) {
   const fill = h('i.bar-fill');
@@ -179,6 +183,8 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
   const teamRows = new Map();
   let keys = KEY_LABELS.kbm;
   let keyMode = '';
+  let touchLayoutT = 0;
+  const touchVars = {};
 
   function nameOf(pid) {
     const r = rosterById.get(pid);
@@ -423,6 +429,36 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
     }
   }
 
+  // ---- touch layout ------------------------------------------------------------------------------
+
+  /**
+   * On touch screens the HUD columns sit at the top edges and the touch button rows go
+   * right below them (the thumbs own the bottom corners). The boxes change height (phase
+   * text, the kit tag, compact media queries), so fixed offsets overlap: measure them and
+   * publish CSS variables on the game screen, which holds both the HUD and the touch layer.
+   */
+  function setTouchVar(host, name, value) {
+    if (touchVars[name] === value) return;
+    touchVars[name] = value;
+    if (value === null) host.style.removeProperty(name);
+    else host.style.setProperty(name, value);
+  }
+
+  function layoutTouch() {
+    const host = root.parentElement;
+    if (!host) return;
+    const top = root.getBoundingClientRect().top;
+    const below = (el) => `${Math.round(el.getBoundingClientRect().bottom - top + TOUCH_GAP)}px`;
+    setTouchVar(host, '--hud-col-top', below(bottomLeft));
+    setTouchVar(host, '--touch-util-top', below(topLeft));
+    setTouchVar(host, '--touch-gear-top', below(bottomRight));
+  }
+
+  function clearTouchLayout() {
+    const host = root.parentElement;
+    if (host) for (const name of TOUCH_VARS) setTouchVar(host, name, null);
+  }
+
   // ---- per-frame update ----------------------------------------------------------------------
 
   /**
@@ -441,6 +477,8 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
       keys = KEY_LABELS[keyMode] || KEY_LABELS.kbm;
       for (const id of Object.keys(equip)) setText(equip[id].key, keys[id]);
       root.dataset.input = keyMode;
+      touchLayoutT = 0;
+      if (keyMode !== 'touch') clearTouchLayout();
     }
     minimap.update(v, localId, rosterById, dt, info.localPos);
     if (!v) return;
@@ -466,6 +504,8 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
       const what = v.phase === 'prep' ? 'First wave' : 'Next wave';
       let text;
       if (me && me.ready) text = `${what} in ${secs}s — you're ready (${readyN}/${total})`;
+      // Touch has a big READY button on screen, and no room for a long line.
+      else if (keyMode === 'touch') text = `${what} in ${secs}s · ${readyN}/${total} ready`;
       else text = `${what} in ${secs}s — press ${keys.ready} when ready (${readyN}/${total} ready)`;
       setText(phaseLine, text);
       setShown(phaseLine, true);
@@ -530,6 +570,15 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
     }
 
     scoreboard.update(v, roster, localId, dt, v.totalWaves ? `Wave ${v.wave} of ${v.totalWaves}` : `Wave ${v.wave} · Endless`);
+
+    // After this frame's DOM writes, so the measurement sees the new text.
+    if (keyMode === 'touch') {
+      touchLayoutT -= dt;
+      if (touchLayoutT <= 0) {
+        touchLayoutT = TOUCH_LAYOUT_EVERY;
+        layoutTouch();
+      }
+    }
   }
 
   function updateLocal(v, me, info) {
@@ -747,6 +796,7 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
 
   function resize() {
     minimap.resize();
+    touchLayoutT = 0;
   }
 
   return {
@@ -763,6 +813,7 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
       toast(text, 'minor', 4);
     },
     destroy() {
+      clearTouchLayout();
       root.replaceChildren();
       root.hidden = true;
       delete root.dataset.phase;

@@ -48,7 +48,7 @@ export function sampleEvents(rng = createRng(7)) {
     { type: 'pickup', pid: 2, kind: 'crate', x: x(), y: x(), weapon: 'minigun' },
     { type: 'buy', pid: 1, item: 'rifle' },
     { type: 'buyfail', pid: 1, item: 'turret', reason: 'cash' },
-    { type: 'reload', pid: 2, weapon: 'lmg' },
+    { type: 'reload', pid: 2, weapon: 'lmg', time: 3.4 },
     { type: 'switch', pid: 2, weapon: 'pistol' },
     { type: 'switch', pid: 2, weapon: null },
     { type: 'empty', pid: 4 },
@@ -82,7 +82,7 @@ export function samplePlayer(id, rng = createRng(id)) {
     downs: rng.int(0, 40), earned: rng.int(0, 90000),
     frags: rng.int(0, 8), molotovs: rng.int(0, 3), turrets: rng.int(0, 2), barricades: rng.int(0, 4),
     selfRevive: rng.chance(0.5), bleedout: rng.range(0, 30), revive: rng.range(0, 1), reviver: rng.int(0, 6),
-    respawn: rng.chance(0.3), ready: rng.chance(0.5), lastSeq: rng.int(0, 1e6),
+    respawn: rng.chance(0.3), ready: rng.chance(0.5), lastSeq: rng.int(0, 1e6), sprintLock: rng.chance(0.3),
   };
 }
 
@@ -250,7 +250,7 @@ export class FakeGame {
           rays: [{ x: p.x + Math.cos(p.angle) * 400, y: p.y + Math.sin(p.angle) * 400, hit: 0 }],
         });
       }
-      if (cmd.reload) this.events.push({ type: 'reload', pid: p.id, weapon: w || 'pistol' });
+      if (cmd.reload) this.events.push({ type: 'reload', pid: p.id, weapon: w || 'pistol', time: WEAPONS[w || 'pistol'].reload });
     }
     // Every half second, one event of every kind so presentation paths get exercised.
     if (this.tick % 30 === 0) for (const ev of sampleEvents(this.rng)) this.events.push(ev);
@@ -281,7 +281,7 @@ export class FakeGame {
         ammo: [[12, -1], [30, 270], [0, 0]], reloading: 0, spin: 0, firing: false, meleeing: 0,
         cash: p.cash, kills: 0, damage: 0, revives: 0, downs: 0, frags: 0, molotovs: 0, turrets: 0,
         barricades: 0, selfRevive: false, bleedout: 0, revive: 0, reviver: 0, respawn: p.state === 'dead',
-        ready: p.ready, lastSeq: p.lastSeq,
+        ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock,
       })),
       zombies,
       projectiles: [{ id: 1, kind: 'rocket', x: cx + (t * 300) % 800, y: cy, angle: 0 }],

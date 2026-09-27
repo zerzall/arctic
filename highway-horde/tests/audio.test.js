@@ -333,3 +333,90 @@ test('a stale backlog (tab back from background) only replays state changes', as
   assert.equal(eng.slots.filter((s) => s.group === 'rifle').length, 0);
   assert.equal(eng.slots.filter((s) => s.group === 'st_waveclear').length, 1);
 });
+
+test('shot prediction: predicted shots play like own shots, echoes are silent', async () => {
+  const { ctx, audio, eng } = engine();
+  await audio.unlock();
+  audio.update(view({ players: [player(1, 0, 0), player(2, 300, 0)] }), { localId: 1, dt: 1 / 60 });
+  const shot = (over) => ({ type: 'shot', pid: 1, turret: 0, weapon: 'rifle', x: 20, y: 0, angle: 0, rays: [{ x: 300, y: 0, hit: 1 }], ...over });
+  let before = audio.stats().played;
+  audio.addEvents([shot({ echo: true }), shot({ echo: true, weapon: 'shotgun' })], { x: 0, y: 0, localId: 1 });
+  assert.equal(audio.stats().played, before, 'echo shots play nothing (no shot, no impact)');
+  assert.equal(eng.lastShotT.has(1), false, 'echo does not feed the gun loops');
+  audio.addEvents([shot({ predicted: true })], { x: 0, y: 0, localId: 1 });
+  const s = eng.slots.find((q) => q.group === 'rifle' && q.end > ctx.currentTime);
+  assert.ok(s, 'predicted shot played');
+  assert.equal(s.pan.pan.value, 0, 'centred like an own shot');
+  assert.ok(s.gainVal >= SOUNDS.rifle.g * 0.9);
+  assert.ok(audio.stats().played >= before + 2, 'shot + impact');
+  // Other players' shots are never echoes and still play.
+  ctx.currentTime += 1;
+  before = audio.stats().played;
+  audio.addEvents([shot({ pid: 2, x: 300 })], { x: 0, y: 0, localId: 1 });
+  assert.ok(audio.stats().played > before);
+});
+
+test('shot prediction: the minigun / flamethrower loops run on predicted shots, not echoes', async () => {
+  const { ctx, audio, eng } = engine();
+  await audio.unlock();
+  const step = (v, dt = 1 / 60) => {
+    ctx.currentTime += dt;
+    audio.update(v, { localId: 1, dt });
+  };
+  const mini = player(1, 0, 0, { slot: 2, slots: ['pistol', null, 'minigun'], spin: 1, firing: false });
+  step(view({ players: [mini] }));
+  assert.ok(eng.loops.has('spin1') && !eng.loops.has('mfire1'));
+  audio.addEvents([{ type: 'shot', pid: 1, turret: 0, weapon: 'minigun', x: 0, y: 0, angle: 0, rays: [], echo: true }], { x: 0, y: 0, localId: 1 });
+  step(view({ players: [mini] }));
+  assert.ok(!eng.loops.has('mfire1'), 'echo does not start the fire loop');
+  audio.addEvents([{ type: 'shot', pid: 1, turret: 0, weapon: 'minigun', x: 0, y: 0, angle: 0, rays: [], predicted: true }], { x: 0, y: 0, localId: 1 });
+  step(view({ players: [mini] }));
+  assert.ok(eng.loops.has('mfire1'), 'predicted shot starts the fire loop');
+  for (let i = 0; i < 30; i++) step(view({ players: [{ ...mini, spin: 0.2 }] }));
+  assert.ok(!eng.loops.has('mfire1'), 'and it stops with the shots');
+  const flamer = player(1, 0, 0, { slots: ['flamethrower', null, null], firing: false });
+  audio.addEvents([{ type: 'shot', pid: 1, turret: 0, weapon: 'flamethrower', x: 0, y: 0, angle: 0, rays: [], predicted: true }], { x: 0, y: 0, localId: 1 });
+  step(view({ players: [flamer] }));
+  assert.ok(eng.loops.has('flame1'));
+});
+
+test('reload sounds are timed from the event time (perks), else the weapon table', async () => {
+  const { ctx, audio, eng } = engine();
+  await audio.unlock();
+  const lastStart = (pid) => Math.max(...eng.slots.filter((s) => s.reloadPid === pid && s.end > ctx.currentTime).map((s) => s.start)) - ctx.currentTime;
+  audio.addEvents([{ type: 'reload', pid: 1, weapon: 'rifle', time: 1.0 }], { x: 0, y: 0, localId: 1 });
+  const fast = lastStart(1);
+  assert.ok(Math.abs(fast - 0.86 * 1.0 * 0.95) < 0.02, `rack at ${fast}`);
+  ctx.currentTime += 5;
+  audio.addEvents([{ type: 'reload', pid: 1, weapon: 'rifle' }], { x: 0, y: 0, localId: 1 });
+  const table = lastStart(1);
+  assert.ok(Math.abs(table - 0.86 * WEAPONS.rifle.reload * 0.95) < 0.02, `rack at ${table}`);
+});
+
+test('setMap: permanent map fires crackle near the listener (the camera centre)', async () => {
+  const { ctx, audio, eng } = engine();
+  assert.doesNotThrow(() => audio.setMap({ fires: [{ x: 1000, y: 0, r: 28 }] }), 'safe before unlock');
+  await audio.unlock();
+  const step = (opts, v = view()) => {
+    ctx.currentTime += 0.2;
+    audio.update(v, { localId: 1, dt: 0.2, ...opts });
+  };
+  step({});
+  assert.ok(!eng.loops.has('fire'), 'far from the fire (player at 0,0)');
+  step({ x: 900, y: 0 });
+  assert.ok(eng.loops.has('fire'), 'listener next to the burning wreck');
+  assert.ok(eng.loops.get('fire').pan.pan.value > 0, 'fire to the right pans right');
+  // A dead player spectating a teammate hears around the camera, not their corpse.
+  const dead = player(1, 0, 0, { state: 'dead' });
+  step({ x: 950, y: 30 }, view({ players: [dead, player(2, 950, 30)] }));
+  assert.ok(eng.loops.has('fire'));
+  assert.equal(eng.lx, 950);
+  step({ x: 0, y: 0 });
+  step({ x: 0, y: 0 });
+  assert.ok(!eng.loops.has('fire'));
+  audio.setMap(null);
+  step({ x: 1000, y: 0 });
+  step({ x: 1000, y: 0 });
+  assert.ok(!eng.loops.has('fire'), 'cleared between games');
+  assert.equal(audio.stats().errors, 0);
+});

@@ -996,6 +996,7 @@ export function createStubRenderer(canvas, { map }) {
   resize();
   const toScreen = (x, y) => ({ x: (x - cam.x) * scale + W / 2, y: (y - cam.y) * scale + H / 2 });
   return {
+    getCamera: () => ({ x: cam.x, y: cam.y }),
     render(view, opts = {}) {
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.fillStyle = map.ground || '#222';
@@ -1074,6 +1075,6 @@ export function stubPortrait(canvas, cls, color) {
 
 export function createStubAudio() {
   const noop = () => {};
-  return { unlock: () => Promise.resolve(false), addEvents: noop, update: noop, ui: noop, setVolume: noop, setMuted: noop };
+  return { unlock: () => Promise.resolve(false), addEvents: noop, update: noop, ui: noop, setVolume: noop, setMuted: noop, setMap: noop };
 }
 

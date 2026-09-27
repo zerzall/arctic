@@ -44,7 +44,14 @@ async function fetchServerInfo() {
   try {
     const res = await fetch(new URL('api/info', location.href), { cache: 'no-store', signal: ctrl && ctrl.signal });
     if (!res.ok) return { relay: false };
-    const info = await res.json();
+    // Static hosts serve public/api/info ({ relay: false }), maybe with an odd content
+    // type, and SPA-style hosts may answer with an HTML page: anything but JSON is "no".
+    let info = null;
+    try {
+      info = JSON.parse(await res.text());
+    } catch {
+      info = null;
+    }
     return info && info.relay === true ? { relay: true, version: info.version } : { relay: false };
   } catch {
     return { relay: false };

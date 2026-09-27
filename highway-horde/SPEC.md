@@ -277,7 +277,8 @@ per zombies.js (`hpBase + hpPerPlayer × players`). Heavies (bloater, brute, bos
 through low cover (solid:false). Zombies weigh the objective as farther away than it is,
 so they prefer nearby players and chew on the objective when nobody is close.
 **In a one-player game the survivor starts with a Self-Revive Kit** (solo would otherwise
-end at the first knock-down).
+end at the first knock-down); only at game start, respawns never hand out a kit. Nobody
+fires once the game is over (`gameover`/`victory`); clients' shot prediction agrees.
 
 ### 3.5 Required tests (`tests/sim.test.js`, `tests/movement.test.js`, `tests/flowfield.test.js`)
 - Determinism: two Games with the same seed and scripted inputs produce identical snapshots
@@ -421,7 +422,9 @@ max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
   (TURN). JSON messages must stay under 16 KB.
 - **relay** (`transport-relay.js` + `server/relay-server.js`): WebSocket to our own Node
   server at `/relay`, which forwards frames between room members. Available only when the
-  page is served by the relay server (`GET api/info` → `{ relay: true }`).
+  page is served by the relay server (`GET api/info` → `{ relay: true }`). Static hosts serve
+  the file `public/api/info` (`{"relay":false}`) instead, so the probe never 404s; the relay
+  server's live route takes precedence over that file. Anything but JSON `relay: true` = no.
 - **local** (`transport-local.js`): in-memory, for solo play and tests.
 - `auto` = relay when available, else p2p.
 
@@ -489,6 +492,8 @@ r.render(view, { localId, roster, now, dt, cursor /*{x,y} screen px*/, settings 
 r.addEvents(events, { localId })     // particles, decals, tracers, shake, hit markers
 r.screenToWorld(sx, sy) → {x, y}
 r.worldToScreen(x, y)  → {x, y}
+r.getCamera()          → {x, y}       // world point at the screen centre (read-only copy):
+                                      //   the UI passes it to audio as the listener
 r.resize()                            // call on window resize (handles devicePixelRatio)
 r.setQuality(q)
 r.destroy()
@@ -536,6 +541,11 @@ objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill fe
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
 cleared +$250, "Sparks is down!"), ping/fps (toggle).
 `window.__HH = { session, renderer, hud, getView }` debug hook for end-to-end tests.
+Touch HUD: the HUD columns sit along the top edges and the touch button rows go right
+below them. Their heights vary, so `hud.js` measures the boxes (5×/s) and publishes
+`--hud-col-top`, `--touch-util-top` and `--touch-gear-top` on `#screen-game`; the CSS
+falls back to fixed offsets without them. No HUD panel or touch button may overlap
+another at phone sizes (checked by the e2e phone scenario, portrait and landscape).
 
 ### 7.4 Audio — `audio/audio.js`
 ```js
@@ -548,9 +558,10 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
                 //  |'gameover'|'victory'|'countdown'|'ready'
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
-audio.setMap(map)                            // permanent map fires crackle when nearby
+audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
 // addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
-// while dead). ui() is for menu/lobby sounds; in-game stingers come from events
+// while dead); update(view, { localId, dt, x, y }) falls back to the local player without them.
+// 'reload' sounds are timed from the event's `time` (weapon table when absent). ui() is for menu/lobby sounds; in-game stingers come from events
 // (audio dedupes overlaps anyway).
 ```
 All sound synthesised with WebAudio (no files). Voice limiting (max ~24 concurrent,
@@ -565,3 +576,20 @@ procedural low drone/percussion that intensifies during waves and boss fights.
   serves `public/` and a WebSocket relay; the client then prefers the relay (no NAT issues).
 - `public/config.js` (optional, loaded before main.js) may set
   `window.HH_CONFIG = { peer: {...}, relayUrl: 'wss://…' }`.
+
+## 9. Testing & CI
+- `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
+- `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
+  PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
+  Chromium through five scenarios in fresh browser contexts: solo with a scripted player,
+  3-player relay game (invite link, roster, chat, settings, movement replication and
+  prediction, shot/kill credit, a player leaving, back to lobby, second game), late join
+  (prep → alive, mid-wave → spectating), p2p via the local PeerJS server (config.js and
+  api/info are routed), and a 390x844 touch phone (layout, left stick, rotation). Any
+  console error or page error fails a scenario; Google Fonts requests are answered
+  locally. Screenshots go to `e2e-output/` (gitignored). `E2E_ONLY=a,c` runs a subset.
+- CI: `.github/workflows/highway-horde.yml` at the repo root (paths `highway-horde/**`)
+  runs `npm ci`, `npm test`, installs Chromium and runs `npm run e2e`, uploading
+  `e2e-output/` as an artifact. The repo root's own `node --test` also discovers
+  `tests/*.test.js` without this folder's node_modules: those tests pass or skip (the
+  relay tests skip without `ws`).

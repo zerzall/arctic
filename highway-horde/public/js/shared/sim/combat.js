@@ -13,8 +13,9 @@ import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS } from './players.js'
 
 /** Largest zombie radius: pad for spatial ray/radius queries. */
 export const MAX_ZOMBIE_RADIUS = Math.max(...Object.values(ZOMBIES).map((z) => z.radius));
-const MUZZLE = 22;
-const MAX_RAYS_PER_EVENT = 40;
+/** Shot events start this far in front of the shooter (clients predict shots the same way). */
+export const MUZZLE = 22;
+export const MAX_RAYS_PER_EVENT = 40;
 const MAX_KNOCK = 700;
 const FF_MULT = 0.25;
 const EXPLOSION_PLAYER_MULT = 0.35;

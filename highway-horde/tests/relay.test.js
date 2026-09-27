@@ -112,6 +112,11 @@ rtest('GET /api/info', async () => {
   assert.match(res.headers['content-type'], /application\/json/);
   assert.equal(res.headers['cache-control'], 'no-store');
   assert.deepEqual(JSON.parse(res.body), { relay: true, version: GAME_VERSION, protocol: PROTOCOL_VERSION });
+  // public/api/info is the static-hosting answer ({ relay: false }); the live route wins here.
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(JSON.parse(readFileSync(new URL('../public/api/info', import.meta.url), 'utf8')), { relay: false });
+  const slash = await request('/api/info/');
+  assert.equal(JSON.parse(slash.body).relay, true);
 });
 
 rtest('static files: MIME types, cache headers, ETag revalidation, HEAD', async () => {

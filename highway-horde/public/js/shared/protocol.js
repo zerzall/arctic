@@ -259,7 +259,7 @@ function dqWeapon(i) {
 // ---- event schemas
 //
 // Field codecs: pid u8 | id u16 | u16 | u32 | pos (event position) | ang (u16 angle)
-// | amt/rad (u16, 0.1 units) | bool | wpn (weapon index, nullable) | ztype | pkind
+// | amt/rad (u16, 0.1 units) | dur (u16, 1 ms: durations ≤ 65 s) | bool | wpn (weapon index, nullable) | ztype | pkind
 // | str (≤ 60 chars) | enum list | rays | points.
 
 const ENUMS = {
@@ -290,7 +290,7 @@ const EVENT_SCHEMAS = [
   ['pickup', [['pid', 'pid'], ['kind', 'pkind'], ['x', 'pos'], ['y', 'pos'], ['weapon', 'wpn']]],
   ['buy', [['pid', 'pid'], ['item', 'str']]],
   ['buyfail', [['pid', 'pid'], ['item', 'str'], ['reason', ENUMS.buyfail]]],
-  ['reload', [['pid', 'pid'], ['weapon', 'wpn']]],
+  ['reload', [['pid', 'pid'], ['weapon', 'wpn'], ['time', 'dur']]],
   ['switch', [['pid', 'pid'], ['weapon', 'wpn']]],
   ['empty', [['pid', 'pid']]],
   ['throw', [['pid', 'pid'], ['kind', ENUMS.throwKind]]],
@@ -333,6 +333,7 @@ function fits(codec, v) {
     case 'u32': return isInt(v, 0xffffffff);
     case 'pos': case 'ang': return isNum(v);
     case 'amt': case 'rad': return isNum(v) && v >= 0 && v <= 6553.5;
+    case 'dur': return isNum(v) && v >= 0 && v <= 65.535;
     case 'bool': return typeof v === 'boolean';
     case 'wpn': return v === null || WEAPON_INDEX.has(v);
     case 'ztype': return ZOMBIE_INDEX.has(v);
@@ -362,6 +363,7 @@ function writeField(w, codec, v) {
     case 'pos': w.i16(qEventPos(v)); break;
     case 'ang': w.u16(qAngle16(v)); break;
     case 'amt': case 'rad': w.u16(qFixed(v, 10, 65535)); break;
+    case 'dur': w.u16(qFixed(v, 1000, 65535)); break;
     case 'bool': w.u8(v ? 1 : 0); break;
     case 'wpn': w.u8(qWeapon(v)); break;
     case 'ztype': w.u8(ZOMBIE_INDEX.get(v)); break;
@@ -399,6 +401,7 @@ function readField(r, codec) {
     case 'pos': return r.i16() / 2;
     case 'ang': return dqAngle16(r.u16());
     case 'amt': case 'rad': return r.u16() / 10;
+    case 'dur': return r.u16() / 1000;
     case 'bool': return r.u8() !== 0;
     case 'wpn': return dqWeapon(r.u8());
     case 'ztype': return kindAt(ZOMBIE_IDS, r.u8());
@@ -480,7 +483,7 @@ function readEvents(r) {
 
 // ---- snapshot
 
-const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16;
+const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32;
 const H_OBJECTIVE = 1, H_ECHO = 2;
 
 const snapWriter = new Writer(32 * 1024);
@@ -510,7 +513,7 @@ function writePlayer(w, p) {
   w.u16(qAngle16(p.angle));
   w.u8(kindIndex(STATE_INDEX, p.state));
   w.u8((p.sprinting ? P_SPRINTING : 0) | (p.firing ? P_FIRING : 0) | (p.selfRevive ? P_SELF_REVIVE : 0)
-    | (p.respawn ? P_RESPAWN : 0) | (p.ready ? P_READY : 0));
+    | (p.respawn ? P_RESPAWN : 0) | (p.ready ? P_READY : 0) | (p.sprintLock ? P_SPRINT_LOCK : 0));
   w.u16(qFixed(p.hp, 10, 65535));
   w.u16(qFixed(p.maxHp, 10, 65535));
   w.u16(qFixed(p.armor, 10, 65535));
@@ -592,6 +595,7 @@ function readPlayer(r) {
     respawn: (flags & P_RESPAWN) !== 0,
     ready: (flags & P_READY) !== 0,
     lastSeq: r.u32(),
+    sprintLock: (flags & P_SPRINT_LOCK) !== 0,
   };
 }
 

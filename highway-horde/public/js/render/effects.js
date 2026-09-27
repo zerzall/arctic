@@ -271,11 +271,17 @@ export function createEffects(opts) {
   function shot(e, env) {
     const w = WEAPONS[e.weapon];
     if (!w) return;
+    const rays = e.rays || [];
+    if (e.echo) {
+      // The host's copy of a shot we already drew as predicted (SPEC §4.1): nothing to
+      // draw again, but its hits are the real ones, so they drive the hit marker.
+      if (e.pid && e.pid === env.localId) for (const r of rays) if (r && r.hit === 1) hitMarker = 1;
+      return;
+    }
     const ca = Math.cos(e.angle), sa = Math.sin(e.angle);
     const extra = e.pid ? muzzleOffset(e.weapon) - 22 : 6;
     const mx = e.x + ca * extra, my = e.y + sa * extra;
     const local = e.pid && e.pid === env.localId;
-    const rays = e.rays || [];
     let anyFlesh = false;
     if (w.kind === 'rail') {
       const end = rays.length ? rays[0] : { x: mx + ca * w.range, y: my + sa * w.range, hit: 0 };
@@ -343,7 +349,8 @@ export function createEffects(opts) {
     if (local) {
       env.shake(w.recoil * 0.22);
       bloom = Math.min(1, bloom + w.recoil * 0.9 + 0.08);
-      if (anyFlesh) hitMarker = 1;
+      // Predicted hits are guesses; the echo confirms them.
+      if (anyFlesh && !e.predicted) hitMarker = 1;
     }
   }
 

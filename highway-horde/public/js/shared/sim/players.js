@@ -21,7 +21,8 @@ import {
 
 const MAX_QUEUE = 6;
 const MELEE_ANIM = 0.25;
-const SWITCH_DELAY = 0.15;
+/** Weapon switch: no shot for this long (clients mirror it for shot prediction). */
+export const SWITCH_DELAY = 0.15;
 const MAX_PICKUPS = 80;
 const PLAYER_KB_DECAY = 7;
 const DOWNED_HIT_BLEED = 0.12;   // seconds of bleedout lost per point of damage while downed
@@ -124,8 +125,11 @@ function nextCmd(p) {
 // -------------------------------------------------------------------------------------
 // Per-tick player update
 
-/** The weapon the player fires right now: { id, slot } (slot -1 = free downed pistol). */
-function activeWeapon(p) {
+/**
+ * The weapon the player fires right now: { id, slot } (slot -1 = free downed pistol).
+ * Needs only { state, slots, slot }, so clients use it for shot prediction too.
+ */
+export function activeWeapon(p) {
   if (p.state === 'downed') {
     const s0 = p.slots[0];
     if (s0 && WEAPONS[s0].category === 'pistol') return { id: s0, slot: 0 };
@@ -234,7 +238,7 @@ function startReload(game, p) {
   p.reloadTotal = w.reload * (p.perks.reloadMult || 1);
   p.reloadT = p.reloadTotal;
   p.reloadSlot = aw.slot;
-  game.emit({ type: 'reload', pid: p.id, weapon: aw.id });
+  game.emit({ type: 'reload', pid: p.id, weapon: aw.id, time: p.reloadTotal });
   return true;
 }
 
@@ -268,13 +272,15 @@ function handleFire(game, p, cmd, aw) {
       if (p.reloadT <= 0) finishReload(p, aw);
     }
   }
+  // Game over / victory are terminal: nobody fires any more (client prediction agrees).
+  const fire = cmd.fire && !game.over;
   if (w.spinup) {
-    if (cmd.fire) p.spin = Math.min(1, p.spin + DT / w.spinup);
+    if (fire) p.spin = Math.min(1, p.spin + DT / w.spinup);
     else p.spin = Math.max(0, p.spin - DT / (w.spinup * 0.6));
   } else {
     p.spin = 0;
   }
-  if (!cmd.fire) {
+  if (!fire) {
     p.emptyLatch = false;
     if (p.cooldown < 0) p.cooldown = 0;
     return;
@@ -883,5 +889,6 @@ export function playerSnapshot(game, p) {
     respawn: p.state === 'dead' && p.respawn,
     ready: p.ready,
     lastSeq: p.lastSeq,
+    sprintLock: p.sprintLock,
   };
 }

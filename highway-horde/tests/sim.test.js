@@ -291,6 +291,41 @@ describe('downed, revive, death, respawn', () => {
     assert.deepEqual(eventsOf(ev, 'revived')[0], { type: 'revived', pid: 1, by: 1 });
   });
 
+  test('solo: the only survivor starts with a self-revive kit; respawn does not hand out another', () => {
+    const solo = makeGame({ n: 1, sandbox: false });
+    assert.equal(solo.getPlayer(1).selfRevive, true);
+    assert.equal(solo.snapshot().players[0].selfRevive, true);
+    const duo = makeGame({ n: 2, sandbox: false });
+    assert.equal(duo.getPlayer(1).selfRevive, false);
+    assert.equal(duo.getPlayer(2).selfRevive, false);
+    // The kit is used up; a later death and respawn at the wave clear gives no new one.
+    const g = makeGame({ n: 1, sandbox: false });
+    g._startWave(1);
+    const a = place(g, 1, 500, 900);
+    damagePlayer(g, a, 1000, 0, 0);
+    run(g, Math.round(SELF_REVIVE_DELAY / DT) + 2);
+    assert.equal(a.state, 'alive');
+    assert.equal(a.selfRevive, false);
+    // (A second survivor keeps the game going while the first one bleeds out.)
+    const t = makeGame({ n: 2, sandbox: false });
+    t._startWave(1);
+    const b = place(t, 1, 500, 900);
+    b.selfRevive = true;
+    place(t, 2, 1500, 300);
+    damagePlayer(t, b, 1000, 0, 0);
+    run(t, Math.round(SELF_REVIVE_DELAY / DT) + 2, () => { godMode(t); return {}; });
+    damagePlayer(t, b, 1000, 0, 0);
+    run(t, Math.round(BLEEDOUT_TIME / DT) + 2, () => { godMode(t); return {}; });
+    assert.equal(b.state, 'dead');
+    run(t, 60 * 120, () => {
+      godMode(t);
+      for (const z of t.zombies) damageZombie(t, z, 1e9, 2);
+      return {};
+    }, (gg) => gg.phase !== 'wave');
+    assert.equal(b.state, 'alive', 'respawned at the wave clear');
+    assert.equal(b.selfRevive, false);
+  });
+
   test('zombies attack downed players (bleedout drops faster) but ignore the dead', () => {
     const g = makeGame({ n: 2 });
     const a = place(g, 1, 500, 900);
@@ -316,6 +351,9 @@ describe('downed, revive, death, respawn', () => {
     run(g, 60);
     assert.equal(g.phase, 'gameover');
     assert.equal(g.snapshot().phase, 'gameover');
+    // Terminal: the downed can no longer fire their pistols (clients predict the same).
+    const shots = run(g, 60, () => ({ 1: { fire: true }, 2: { fire: true } }));
+    assert.equal(eventsOf(shots, 'shot').length, 0);
   });
 
   test('armour absorbs its share of damage', () => {
@@ -408,6 +446,8 @@ describe('shop', () => {
     assert.equal(buyEv(g, 1, 'frag').reason, 'max');
     for (let i = 0; i < MOLOTOV_MAX; i++) assert.equal(buyEv(g, 1, 'molotov').type, 'buy');
     assert.equal(buyEv(g, 1, 'molotov').reason, 'max');
+    assert.equal(buyEv(g, 1, 'selfrevive').reason, 'owned', 'a solo survivor starts with a kit');
+    p.selfRevive = false;
     assert.equal(buyEv(g, 1, 'selfrevive').type, 'buy');
     assert.equal(buyEv(g, 1, 'selfrevive').reason, 'owned');
     for (let i = 0; i < TURRET.maxPerPlayer; i++) assert.equal(buyEv(g, 1, 'turret').type, 'buy');
@@ -592,7 +632,7 @@ describe('weapons', () => {
     p.mag[1] = 5;
     const res = p.res[1];
     let ev2 = run(g, 1, () => ({ 1: { reload: true } }));
-    assert.deepEqual(eventsOf(ev2, 'reload')[0], { type: 'reload', pid: 1, weapon: 'rifle' });
+    assert.deepEqual(eventsOf(ev2, 'reload')[0], { type: 'reload', pid: 1, weapon: 'rifle', time: WEAPONS.rifle.reload * (p.perks.reloadMult || 1) });
     assert.ok(g.snapshot().players[0].reloading > 0);
     run(g, Math.ceil(WEAPONS.rifle.reload * 0.85 / DT) + 1);
     assert.equal(p.mag[1], 30);
@@ -997,9 +1037,13 @@ describe('roster changes and snapshots', () => {
     const p = s.players[0];
     for (const k of ['id', 'x', 'y', 'angle', 'state', 'hp', 'maxHp', 'armor', 'stamina', 'sprinting', 'slot', 'slots',
       'ammo', 'reloading', 'spin', 'firing', 'meleeing', 'cash', 'kills', 'damage', 'revives', 'downs', 'frags', 'molotovs',
-      'turrets', 'barricades', 'selfRevive', 'bleedout', 'revive', 'reviver', 'respawn', 'ready', 'lastSeq']) {
+      'turrets', 'barricades', 'selfRevive', 'bleedout', 'revive', 'reviver', 'respawn', 'ready', 'lastSeq', 'sprintLock']) {
       assert.ok(k in p, `player.${k}`);
     }
+    assert.equal(p.sprintLock, false);
+    g.getPlayer(1).stamina = 1;
+    run(g, 4, () => ({ 1: { moveX: 1, sprint: true } }));
+    assert.equal(g.snapshot().players[0].sprintLock, true, 'exhausted players are sprint-locked');
     assert.equal(p.slots.length, 3);
     assert.deepEqual(p.ammo[2], [0, 0]);
     assert.equal(p.ammo[0][1], -1, 'pistol reserve is infinite');

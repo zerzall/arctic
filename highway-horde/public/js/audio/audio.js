@@ -32,6 +32,9 @@ const HORDE_RADIUS = 900;
 const HORDE_NEAR = 350;
 const GROAN_RADIUS = 750;
 const FIRE_RADIUS = 700;
+/** Permanent map fires (burning wrecks) crackle within this range, a bit less than hazards. */
+const MAP_FIRE_RADIUS = 520;
+const MAP_FIRE_GAIN = 0.7;
 const LOW_HP = 0.3;
 /** A loop no longer wanted keeps playing this long, so a flickering `firing` flag doesn't restart it. */
 const LOOP_GRACE = 0.15;
@@ -133,6 +136,7 @@ class Engine {
     this.ly = 0;
     this.localId = 0;
     this.players = null;
+    this.mapFires = [];
     this.slots = [];
     this.loops = new Map();
     this.groupLast = new Map();
@@ -535,7 +539,8 @@ class Engine {
     const own = !!e.pid && e.pid === me;
     const pos = { x: e.x, y: e.y };
     switch (e.type) {
-      case 'shot': return this.shot(e, own, flood);
+      // An echo is the host's copy of a shot already played as predicted (SPEC §4.1).
+      case 'shot': return e.echo ? undefined : this.shot(e, own, flood);
       case 'chain': {
         if (flood || !Array.isArray(e.points)) return;
         const pts = e.points;
@@ -676,7 +681,9 @@ class Engine {
   reload(e, own) {
     const w = WEAPONS[e.weapon];
     const seq = RELOADS[e.weapon] || RELOADS.rifle;
-    const dur = (w ? w.reload : 1.8) * 0.95;
+    // The event's time has the shooter's reload perks in it; older senders lack it.
+    const t = Number.isFinite(e.time) && e.time > 0 ? e.time : w ? w.reload : 1.8;
+    const dur = t * 0.95;
     for (const [id, f, rate] of seq) {
       const o = { delay: f * dur, rate, reloadPid: e.pid || 0 };
       if (own) this.play(id, { ...o, local: true, prio: PRIO_OWN });
@@ -709,7 +716,11 @@ class Engine {
     }
     this.players = view.players;
     const me = this.playerById(this.localId);
-    if (me && me.state !== 'dead' && Number.isFinite(me.x)) {
+    if (opts && Number.isFinite(opts.x) && Number.isFinite(opts.y)) {
+      // The camera centre: the spectated teammate while we are dead.
+      this.lx = opts.x;
+      this.ly = opts.y;
+    } else if (me && me.state !== 'dead' && Number.isFinite(me.x)) {
       this.lx = me.x;
       this.ly = me.y;
     }
@@ -825,6 +836,16 @@ class Engine {
         fw += w;
         fdx += dx * w;
       }
+    }
+    const mf = this.mapFires;
+    for (let i = 0; i < mf.length; i++) {
+      const f = mf[i];
+      const dx = f.x - this.lx, dy = f.y - this.ly;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= MAP_FIRE_RADIUS) continue;
+      const w = Math.pow(1 - d / MAP_FIRE_RADIUS, 2) * MAP_FIRE_GAIN * clamp((f.r || 30) / 40, 0.5, 1.2);
+      fw += w;
+      fdx += dx * w;
     }
     if (fw > 0.01) {
       want.push({ key: 'fire', id: 'fire_loop', g: SOUNDS.fire_loop.g * Math.min(1, fw), pan: clamp(fdx / fw / PAN_WIDTH, -1, 1) * 0.8, lp: this.maxLp, wet: 0.2, rate: 1 });
@@ -1001,6 +1022,11 @@ class Engine {
     this.music.tick(this.now());
   }
 
+  setMap(map) {
+    const fires = map && Array.isArray(map.fires) ? map.fires : [];
+    this.mapFires = fires.filter((f) => f && Number.isFinite(f.x) && Number.isFinite(f.y));
+  }
+
   stats() {
     const bank = this.bank ? this.bank.progress() : { done: 0, total: 0 };
     return {
@@ -1047,15 +1073,17 @@ export function createAudio(options = {}) {
         return Promise.resolve(false);
       }
     },
-    /** Play GameEvents (§4.1) heard from { x, y } (listener) as player `localId`. */
+    /** Play GameEvents (§4.1) heard from { x, y } (listener: the camera centre) as player `localId`. */
     addEvents: safe((events, opts) => eng.addEvents(events, opts)),
-    /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. */
+    /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. opts: { localId, dt, x?, y? } */
     update: safe((view, opts) => eng.update(view, opts)),
     /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'. */
     ui: safe((name) => eng.ui(name)),
     /** Volumes 0..1 (any subset of master, sfx, music). Kept across unlock. */
     setVolume: safe((v) => eng.setVolume(v)),
     setMuted: safe((m) => eng.setMuted(m)),
+    /** The running game's MapDef (null between games): its permanent fires crackle nearby. */
+    setMap: safe((map) => eng.setMap(map)),
     /** Diagnostics: context state, active voices, loops, drop/steal counters, bake progress. */
     stats: () => {
       try {

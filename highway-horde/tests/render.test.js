@@ -185,6 +185,52 @@ function runScene(map, quality, frames, opts = {}) {
   return st;
 }
 
+test('predicted shots draw but never flash the hit marker; echo shots only drive it', async () => {
+  const { createEffects } = await import('../public/js/render/effects.js');
+  const noop = new Proxy({}, { get: () => () => {} });
+  const fx = createEffects({ cap: 2000, quality: 'high', decals: noop, zsprites: null });
+  let shake = 0;
+  const env = { localId: 2, time: 0, player: () => null, dist: () => 0, shake: (a) => { shake += a; } };
+  const shotEv = (over) => ({
+    type: 'shot', pid: 2, turret: 0, weapon: 'rifle', x: 500, y: 500, angle: 0,
+    rays: [{ x: 700, y: 500, hit: 1 }], ...over,
+  });
+  // Echo: nothing drawn (no particles, flash, light or shake) but a real hit marks.
+  fx.addEvents([shotEv({ echo: true })], env);
+  assert.equal(fx.count, 0, 'echo spawns no particles');
+  assert.equal(shake, 0, 'echo does not shake');
+  assert.equal(fx.bloom, 0, 'echo adds no crosshair bloom');
+  assert.equal(fx.hitMarker, 1, 'echo hit drives the hit marker');
+  fx.update(1);
+  assert.equal(fx.hitMarker, 0);
+  fx.addEvents([shotEv({ echo: true, rays: [{ x: 700, y: 500, hit: 2 }] })], env);
+  assert.equal(fx.hitMarker, 0, 'an echo miss does not mark');
+  // Predicted: drawn like any own shot, but its guessed hit does not mark.
+  fx.addEvents([shotEv({ predicted: true })], env);
+  assert.ok(fx.count > 0, 'predicted shot spawns effects');
+  assert.ok(shake > 0, 'predicted shot kicks the camera');
+  assert.equal(fx.hitMarker, 0, 'predicted hits are guesses');
+  // Unflagged own shot (host / solo): drawn and marks.
+  fx.addEvents([shotEv({})], env);
+  assert.equal(fx.hitMarker, 1);
+});
+
+test('getCamera exposes the camera centre (the audio listener)', () => {
+  const map = createFixtureMap('bus');
+  const r = createRenderer(mockCanvas(1280, 720), { map, quality: 'high' });
+  const scene = createFixtureScene(map, { zombies: 10, seed: 3 });
+  noRenderErrors(() => {
+    for (let i = 0; i < 60; i++) r.render(scene.step(1 / 60, i / 60).view, { localId: 1, roster: scene.roster, now: i / 60, dt: 1 / 60, settings: { screenShake: false } });
+  });
+  const c = r.getCamera();
+  assert.ok(Number.isFinite(c.x) && Number.isFinite(c.y));
+  const mid = r.screenToWorld(640, 360);
+  assert.ok(Math.abs(mid.x - c.x) < 1e-6 && Math.abs(mid.y - c.y) < 1e-6, 'centre of the screen');
+  c.x = -1;
+  assert.notEqual(r.getCamera().x, -1, 'read-only copy');
+  r.destroy();
+});
+
 test('renderer draws the fixture scene in both qualities without errors', () => {
   const map = createFixtureMap('bus');
   counters.drawImage = 0;

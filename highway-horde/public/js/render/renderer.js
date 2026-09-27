@@ -1077,6 +1077,10 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     screenToWorld(sx, sy) {
       return { x: (sx * dpr - K0.tx) / K0.k, y: (sy * dpr - K0.ty) / K0.k };
     },
+    /** World point at the centre of the screen (shake excluded): the audio listener. */
+    getCamera() {
+      return { x: camera.x, y: camera.y };
+    },
     worldToScreen(x, y) {
       return { x: (K0.tx + x * K0.k) / dpr, y: (K0.ty + y * K0.k) / dpr };
     },

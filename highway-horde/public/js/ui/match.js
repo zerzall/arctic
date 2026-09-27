@@ -43,6 +43,7 @@ export function startMatch(ctx, session) {
   const input = createInput(canvas, { touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch });
   const hud = createHud(hudEl, { map, renderClassPortrait: deps.renderClassPortrait, audio });
   hud.setRoster(session.roster, session.localId);
+  audio.setMap(map);
 
   let pauseOpen = false;
   let endShown = false;
@@ -240,11 +241,10 @@ export function startMatch(ctx, session) {
     return null;
   }
 
-  function listenerPos(view, local) {
-    if (local) return local;
-    const me = findLocal(view);
-    if (me && me.state !== 'dead') return me;
-    if (view) for (const p of view.players) if (p.state === 'alive') return p;
+  /** Audio listener: the camera centre, so a dead player hears around the spectated teammate. */
+  function listenerPos() {
+    const c = renderer.getCamera ? renderer.getCamera() : null;
+    if (c && Number.isFinite(c.x) && Number.isFinite(c.y)) return c;
     return map.objective || { x: map.width / 2, y: map.height / 2 };
   }
 
@@ -273,7 +273,7 @@ export function startMatch(ctx, session) {
     const events = session.drainEvents();
     if (events && events.length) {
       for (const e of events) if (e.type === 'gameover') gameoverReason = e.reason;
-      const lp = listenerPos(lastView, local);
+      const lp = listenerPos();
       renderer.addEvents(events, { localId: session.localId });
       hud.addEvents(events);
       shop.onEvents(events, session.localId);
@@ -297,7 +297,8 @@ export function startMatch(ctx, session) {
       dt, mode: input.mode, stats: session.stats, fps, showStats: prefs.settings.showStats, isHost: session.isHost,
       localPos: local, shopOpen: shop.isOpen,
     });
-    audio.update(view, { localId: session.localId, dt });
+    const cam = listenerPos();
+    audio.update(view, { localId: session.localId, dt, x: cam.x, y: cam.y });
     const cls = (session.roster.find((r) => r.id === session.localId) || { cls: prefs.cls }).cls;
     shop.update(lastView, me, cls, dt);
 
@@ -383,6 +384,7 @@ export function startMatch(ctx, session) {
       }
       try {
         audio.update(null, { localId: session.localId, dt: 0 });
+        audio.setMap(null);
       } catch {
         // audio is best-effort
       }
