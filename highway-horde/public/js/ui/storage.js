@@ -50,12 +50,25 @@ export function cleanName(name) {
   return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, NAME_MAX_LENGTH);
 }
 
+/**
+ * Phones and tablets start on 'low' (frame rate, heat, battery) until the player picks a
+ * quality in Settings; desktops start on DEFAULT_CLIENT_SETTINGS.quality.
+ */
+export function defaultQuality() {
+  try {
+    if (globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches) return 'low';
+  } catch {
+    // no matchMedia (Node tests, old browsers): use the desktop default
+  }
+  return DEFAULT_CLIENT_SETTINGS.quality;
+}
+
 function defaults() {
   return {
     name: '',
     cls: CLASS_IDS[0],
     color: 0,
-    settings: { ...DEFAULT_CLIENT_SETTINGS },
+    settings: { ...DEFAULT_CLIENT_SETTINGS, quality: defaultQuality() },
     lobby: { ...DEFAULT_SETTINGS },
     seenHowTo: false,
   };
@@ -103,7 +116,7 @@ export function loadPrefs() {
     sfx: num01(s.sfx, ds.sfx),
     music: num01(s.music, ds.music),
     muted: bool(s.muted, ds.muted),
-    quality: s.quality === 'low' || s.quality === 'high' ? s.quality : ds.quality,
+    quality: s.quality === 'low' || s.quality === 'high' ? s.quality : defaultQuality(),
     lighting: bool(s.lighting, ds.lighting),
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),

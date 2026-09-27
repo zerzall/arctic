@@ -365,3 +365,26 @@ test('statRows merges roster and snapshot, best first, earned falls back to cash
 test('every class has readable perk lines', () => {
   for (const id of CLASS_IDS) assert.ok(perkLines(id).length >= 2, id);
 });
+
+test('phones start on low quality until the player picks one; desktops on high', () => {
+  const mem = new Map();
+  const store = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
+  const hadMM = 'matchMedia' in globalThis;
+  const oldMM = globalThis.matchMedia;
+  try {
+    globalThis.matchMedia = (q) => ({ matches: q === '(pointer: coarse)' });
+    withStorage(store, () => {
+      const p = loadPrefs();
+      assert.equal(p.settings.quality, 'low');
+      p.settings.quality = 'high';
+      savePrefs(p);
+      assert.equal(loadPrefs().settings.quality, 'high', 'an explicit choice sticks');
+    });
+    globalThis.matchMedia = () => ({ matches: false });
+    mem.clear();
+    withStorage(store, () => assert.equal(loadPrefs().settings.quality, 'high'));
+  } finally {
+    if (hadMM) globalThis.matchMedia = oldMM;
+    else delete globalThis.matchMedia;
+  }
+});
