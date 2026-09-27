@@ -1,0 +1,471 @@
+// Animated / atmospheric pieces of the static world (WORLD): night sky dome, permanent
+// fires (flames, embers, smoke), lamp halos, light shafts, the fake far light pools on the
+// ground and the objective marker. Each is ONE draw call with a small custom shader that
+// animates on the GPU from a shared `uTime` uniform, so there is no per-frame CPU work
+// beyond a few uniform writes. Additive pieces fade with the scene's exp² fog.
+
+import * as THREE from 'three';
+
+/** Uniforms shared by every world effect shader. */
+export function createFxUniforms() {
+  return {
+    uTime: { value: 0 },
+    uFog: { value: 0.001 },
+    uFogColor: { value: new THREE.Color('#000000') },
+    uPx: { value: 500 },          // pixels per world unit at distance 1 (points sizing)
+  };
+}
+
+const COMMON = /* glsl */`
+uniform float uTime;
+uniform float uFog;
+uniform vec3 uFogColor;
+uniform float uPx;
+float fogVis(float d) { return exp(-uFog * uFog * d * d); }
+float h11(float n) { return fract(sin(n) * 43758.5453123); }
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+  return s;
+}
+`;
+
+const TONE = `
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+`;
+
+function additive(uniforms, vertexShader, fragmentShader, extra = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms, vertexShader, fragmentShader,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, ...extra,
+  });
+}
+
+// ---- sky ----------------------------------------------------------------------------------
+
+/**
+ * Night sky dome: gradient, clouds, stars and a moon. Follows the camera; drawn first,
+ * without depth, so it never clips anything.
+ */
+export function makeSky(amb, radius, fx) {
+  const uniforms = {
+    ...fx,
+    uHorizon: { value: amb.horizon.clone() },
+    uZenith: { value: amb.zenith.clone() },
+    uMoonDir: { value: new THREE.Vector3(-0.45, 0.42, -0.64).normalize() },
+    uMoonColor: { value: new THREE.Color('#dfe8ff') },
+    uCloud: { value: amb.fog.clone().lerp(new THREE.Color('#000000'), 0.35) },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: COMMON + `
+      uniform vec3 uHorizon, uZenith, uMoonDir, uMoonColor, uCloud;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col = mix(uHorizon, uZenith, smoothstep(-0.03, 0.5, h));
+        col += uHorizon * 0.35 * exp(-abs(h) * 18.0);
+        float md = dot(d, uMoonDir);
+        // stars: one candidate per cell of a 3D grid over the direction
+        vec3 p = d * 240.0;
+        vec3 c = floor(p);
+        float r = h21(c.xy + c.z * 17.13);
+        float star = 0.0;
+        if (r > 0.972) {
+          vec3 o = vec3(h21(c.yz), h21(c.zx), h21(c.xy + 3.1)) * 0.6 + 0.2;
+          float dd = length(fract(p) - o);
+          float tw = 0.65 + 0.35 * sin(uTime * (1.5 + r * 4.0) + r * 80.0);
+          star = smoothstep(0.16, 0.0, dd) * (r - 0.972) / 0.028 * tw * smoothstep(0.03, 0.3, h);
+        }
+        // slow cloud bank, lit a little around the moon
+        vec2 cp = d.xz / (h + 0.28) * 1.4 + vec2(uTime * 0.006, uTime * 0.002);
+        float cl = fbm(cp);
+        float cover = smoothstep(0.48, 0.82, cl) * smoothstep(-0.05, 0.25, h);
+        float moonLit = pow(max(md, 0.0), 12.0);
+        vec3 cloud = uCloud + uMoonColor * 0.05 * moonLit;
+        col += vec3(0.85, 0.9, 1.0) * star * 1.4 * (1.0 - cover);
+        // moon disc, craters, glow
+        float disc = smoothstep(0.99935, 0.99952, md);
+        float crater = fbm(d.xy * 900.0) * 0.35;
+        vec3 moon = uMoonColor * (1.25 - crater);
+        col += uMoonColor * (pow(max(md, 0.0), 900.0) * 0.5 + pow(max(md, 0.0), 60.0) * 0.05);
+        col = mix(col, moon, disc * (1.0 - cover * 0.8));
+        col = mix(col, cloud, cover * 0.9);
+        gl_FragColor = vec4(col, 1.0);
+      ` + TONE + '}',
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16), mat);
+  mesh.renderOrder = -1000;
+  mesh.frustumCulled = false;
+  mesh.name = 'sky';
+  return mesh;
+}
+
+// ---- fire ---------------------------------------------------------------------------------
+
+/**
+ * Flames for permanent fires: three crossed quads per fire, shaded with scrolling noise.
+ * @param {Array<{x, y, base, r}>} fires
+ */
+export function makeFlames(fires, fx) {
+  const pos = [], uv = [], seed = [];
+  fires.forEach((f, i) => {
+    const w = f.r * 2.1, h = f.r * 3.3;
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI + i;
+      const cx = Math.cos(a) * w / 2, cz = Math.sin(a) * w / 2;
+      const y0 = f.base - f.r * 0.15, y1 = f.base + h;
+      const q = [[-cx, y0, -cz, 0, 0], [cx, y0, cz, 1, 0], [cx, y1, cz, 1, 1], [-cx, y0, -cz, 0, 0], [cx, y1, cz, 1, 1], [-cx, y1, -cz, 0, 1]];
+      for (const [x, y, z, u, v] of q) {
+        pos.push(f.x + x, y, f.y + z);
+        uv.push(u, v);
+        seed.push(i * 1.37 + k * 0.31);
+      }
+    }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  const mat = additive(fx, `
+    attribute float aSeed;
+    varying vec2 vUv; varying float vSeed; varying float vDepth;
+    void main() {
+      vUv = uv; vSeed = aSeed;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vDepth = -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }`, COMMON + `
+    varying vec2 vUv; varying float vSeed; varying float vDepth;
+    void main() {
+      float t = uTime + vSeed * 13.0;
+      float x = (vUv.x - 0.5) * 2.0;
+      float y = vUv.y;
+      x += (vnoise(vec2(y * 3.0 - t * 1.7, vSeed)) - 0.5) * 0.5 * y;
+      float n = fbm(vec2(vUv.x * 3.2 + vSeed * 5.0, y * 2.4 - t * 2.6));
+      // teardrop: narrow at the base, widest low down, licking to a point
+      float width = ((1.0 - y) * 0.95 + 0.05) * smoothstep(-0.35, 0.22, y);
+      float body = 1.0 - smoothstep(0.35 * width, width, abs(x));
+      float f = body * (1.25 - y * 1.05) - n * 0.75 + 0.2;
+      f = clamp(f, 0.0, 1.0);
+      f *= smoothstep(0.0, 0.06, y);
+      vec3 col = mix(vec3(0.9, 0.12, 0.01), vec3(1.0, 0.55, 0.12), smoothstep(0.15, 0.6, f));
+      col = mix(col, vec3(1.0, 0.92, 0.65), smoothstep(0.7, 1.0, f));
+      float a = smoothstep(0.02, 0.35, f) * fogVis(vDepth);
+      gl_FragColor = vec4(col * 1.35, a);
+    ` + TONE + '}', { side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'fire-flames';
+  mesh.renderOrder = 10;
+  return mesh;
+}
+
+/** Glowing embers rising from fires (GPU animated points). */
+export function makeEmbers(fires, fx) {
+  const pos = [], seed = [], rad = [];
+  fires.forEach((f, i) => {
+    const n = Math.round(8 + f.r * 0.6);
+    for (let k = 0; k < n; k++) {
+      pos.push(f.x + (Math.random() - 0.5) * f.r, f.base + f.r * 0.3, f.y + (Math.random() - 0.5) * f.r);
+      seed.push(Math.random());
+      rad.push(f.r);
+    }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  g.setAttribute('aR', new THREE.Float32BufferAttribute(rad, 1));
+  const mat = additive(fx, COMMON + `
+    attribute float aSeed; attribute float aR;
+    varying float vA;
+    void main() {
+      float ph = fract(uTime * (0.25 + 0.25 * fract(aSeed * 7.3)) + aSeed);
+      vec3 p = position;
+      p.y += ph * aR * 7.0;
+      p.x += sin(ph * 5.0 + aSeed * 30.0) * aR * 0.5 * ph + ph * ph * aR * 1.4;
+      p.z += cos(ph * 4.0 + aSeed * 21.0) * aR * 0.5 * ph;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = clamp(uPx * 2.2 / -mv.z, 1.0, 6.0);
+      vA = (1.0 - ph) * fogVis(-mv.z) * (0.6 + 0.4 * sin(uTime * 20.0 + aSeed * 50.0));
+      gl_Position = projectionMatrix * mv;
+    }`, `
+    varying float vA;
+    void main() {
+      float r = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.1, r) * vA;
+      gl_FragColor = vec4(vec3(1.0, 0.55, 0.15) * 2.0, a);
+    ` + TONE + '}');
+  const pts = new THREE.Points(g, mat);
+  pts.name = 'fire-embers';
+  pts.frustumCulled = false;
+  return pts;
+}
+
+/** Smoke columns over the bigger fires (alpha blended, lit orange at the base). */
+export function makeSmoke(fires, fx) {
+  const pos = [], seed = [], rad = [];
+  for (const f of fires) {
+    const n = f.r > 16 ? 14 : 6;
+    for (let k = 0; k < n; k++) {
+      pos.push(f.x, f.base + f.r, f.y);
+      seed.push(k / n + Math.random() * 0.05);
+      rad.push(f.r);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  g.setAttribute('aR', new THREE.Float32BufferAttribute(rad, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: fx,
+    vertexShader: COMMON + `
+      attribute float aSeed; attribute float aR;
+      varying float vA; varying vec3 vCol; varying float vRot;
+      void main() {
+        float ph = fract(uTime * 0.055 * (0.85 + 0.3 * fract(aSeed * 13.1)) + aSeed);
+        vec3 p = position;
+        p.y += ph * (aR * 9.0 + 160.0);
+        p.x += ph * ph * (aR * 5.0 + 60.0) + sin(aSeed * 40.0) * aR * 0.4;
+        p.z += cos(aSeed * 31.0) * aR * 0.4 * ph;
+        float size = aR * 1.3 + ph * (aR * 5.0 + 40.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = clamp(uPx * size / -mv.z, 1.0, 420.0);
+        float v = fogVis(-mv.z);
+        vA = smoothstep(0.0, 0.1, ph) * (1.0 - ph) * 0.55;
+        vCol = mix(vec3(0.42, 0.2, 0.07), vec3(0.075, 0.07, 0.068), smoothstep(0.0, 0.3, ph));
+        vCol = mix(uFogColor, vCol, v);
+        vRot = aSeed * 6.28;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: COMMON + `
+      varying float vA; varying vec3 vCol; varying float vRot;
+      void main() {
+        vec2 q = gl_PointCoord - 0.5;
+        float r = length(q);
+        float n = vnoise(q * 5.0 + vRot * 3.0);
+        float a = smoothstep(0.5, 0.15, r + (n - 0.5) * 0.25) * vA;
+        gl_FragColor = vec4(vCol, a);
+      ` + TONE + '}',
+    transparent: true, depthWrite: false, fog: false,
+  });
+  const pts = new THREE.Points(g, mat);
+  pts.name = 'fire-smoke';
+  pts.frustumCulled = false;
+  pts.renderOrder = 12;
+  return pts;
+}
+
+// ---- lamp glow ------------------------------------------------------------------------------
+
+/**
+ * Soft halos around lamp heads and fires (additive points). flicker > 0 follows the fire
+ * flicker; blink > 0 blinks (radio mast beacons).
+ * @param {Array<{x, y, h, color, size, flicker, blink, strength}>} list
+ */
+export function makeHalos(list, fx) {
+  const pos = [], col = [], size = [], fl = [];
+  const c = new THREE.Color();
+  for (const l of list) {
+    pos.push(l.x, l.h, l.y);
+    c.set(l.color).multiplyScalar(l.strength ?? 1);
+    col.push(c.r, c.g, c.b);
+    size.push(l.size);
+    fl.push(l.flicker || 0, l.blink || 0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
+  g.setAttribute('aFx', new THREE.Float32BufferAttribute(fl, 2));
+  const mat = additive(fx, COMMON + `
+    attribute vec3 aColor; attribute float aSize; attribute vec2 aFx;
+    varying vec3 vCol;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float k = 1.0;
+      if (aFx.x > 0.0) k *= 1.0 - aFx.x * 0.5 * (0.5 + 0.5 * sin(uTime * 11.0 + position.x) * sin(uTime * 7.0 + position.z));
+      if (aFx.y > 0.0) k *= step(0.55, fract(uTime * 0.8 + position.y * 0.002));
+      gl_PointSize = clamp(uPx * aSize / -mv.z, 0.0, 600.0);
+      vCol = aColor * k * fogVis(-mv.z * 0.8);
+      gl_Position = projectionMatrix * mv;
+    }`, `
+    varying vec3 vCol;
+    void main() {
+      float r = length(gl_PointCoord - 0.5) * 2.0;
+      float a = exp(-r * r * 5.0) * 0.8 + exp(-r * r * 40.0) * 0.9;
+      gl_FragColor = vec4(vCol, a);
+    ` + TONE + '}');
+  const pts = new THREE.Points(g, mat);
+  pts.name = 'halos';
+  pts.frustumCulled = false;
+  pts.renderOrder = 11;
+  return pts;
+}
+
+/**
+ * Faint volumetric light cones under street lamps.
+ * @param {Array<{x, y, h, color, radius, strength}>} list
+ */
+export function makeShafts(list, fx) {
+  const parts = [];
+  const tpl = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true).toNonIndexed();
+  const tp = tpl.attributes.position.array, tn = tpl.attributes.normal.array;
+  const pos = [], nor = [], col = [], hh = [];
+  const c = new THREE.Color();
+  for (const l of list) {
+    c.set(l.color).multiplyScalar(l.strength ?? 1);
+    for (let i = 0; i < tp.length / 3; i++) {
+      const top = tp[i * 3 + 1] > 0;
+      const r = top ? 7 : l.radius;
+      pos.push(l.x + tp[i * 3] * r, top ? l.h : 0, l.y + tp[i * 3 + 2] * r);
+      nor.push(tn[i * 3], 0, tn[i * 3 + 2]);
+      col.push(c.r, c.g, c.b);
+      hh.push(top ? 0 : 1);
+    }
+  }
+  tpl.dispose();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aH', new THREE.Float32BufferAttribute(hh, 1));
+  const mat = additive(fx, `
+    attribute vec3 aColor; attribute float aH;
+    varying vec3 vCol; varying float vH; varying vec3 vN; varying vec3 vV; varying float vDepth;
+    void main() {
+      vCol = aColor; vH = aH;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vN = normalize(normalMatrix * normal);
+      vV = normalize(-mv.xyz);
+      vDepth = -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }`, COMMON + `
+    varying vec3 vCol; varying float vH; varying vec3 vN; varying vec3 vV; varying float vDepth;
+    void main() {
+      float facing = abs(dot(normalize(vN), normalize(vV)));
+      float a = pow(1.0 - vH, 1.4) * 0.8 + 0.08;
+      a *= facing * facing * 0.11;
+      a *= smoothstep(0.0, 60.0, vDepth) * fogVis(vDepth);
+      gl_FragColor = vec4(vCol, a);
+    ` + TONE + '}', { side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'light-shafts';
+  mesh.renderOrder = 9;
+  parts.push(mesh);
+  return mesh;
+}
+
+/**
+ * Additive light pools painted on the ground for every map light, scaled per light by
+ * `setLevels` so they stand in for lamps the fixed light pool does not cover right now.
+ * @param {Array<{x, y, r, color, flicker, strength, base}>} list
+ */
+export function makePools(list, fx) {
+  const pos = [], uv = [], col = [], lvl = [], fl = [];
+  const c = new THREE.Color();
+  for (const l of list) {
+    c.set(l.color).multiplyScalar(l.strength);
+    const r = l.r, y = (l.base || 0) + 0.35;
+    const q = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+    for (const [u, v] of q) {
+      pos.push(l.x + u * r, y, l.y + v * r);
+      uv.push(u, v);
+      col.push(c.r, c.g, c.b);
+      lvl.push(1);
+      fl.push(l.flicker || 0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
+  const levelAttr = new THREE.Float32BufferAttribute(lvl, 1);
+  levelAttr.setUsage(THREE.DynamicDrawUsage);
+  g.setAttribute('aLevel', levelAttr);
+  g.setAttribute('aFlicker', new THREE.Float32BufferAttribute(fl, 1));
+  const mat = additive(fx, COMMON + `
+    attribute vec3 aColor; attribute float aLevel; attribute float aFlicker;
+    varying vec3 vCol; varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float k = 1.0 - aFlicker * 0.4 * (0.5 + 0.5 * sin(uTime * 11.3 + position.x * 0.1) * sin(uTime * 6.1 + position.z));
+      vCol = aColor * aLevel * k * fogVis(-mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`, `
+    varying vec3 vCol; varying vec2 vUv;
+    void main() {
+      float r = length(vUv);
+      float a = pow(max(0.0, 1.0 - r), 2.2);
+      gl_FragColor = vec4(vCol, a);
+    ` + TONE + '}', { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'light-pools';
+  mesh.renderOrder = 5;
+  return {
+    mesh,
+    /** levels[i] = 0..1 how much fake pool light i shows (1 - real light level). */
+    setLevels(levels) {
+      const a = levelAttr.array;
+      let changed = false;
+      for (let i = 0; i < list.length; i++) {
+        const v = levels[i];
+        if (Math.abs(a[i * 6] - v) > 0.004) {
+          for (let k = 0; k < 6; k++) a[i * 6 + k] = v;
+          changed = true;
+        }
+      }
+      if (changed) levelAttr.needsUpdate = true;
+    },
+  };
+}
+
+/** A soft pulsing ring on the ground around the objective. */
+export function makeMarker(obj, fx) {
+  const r0 = Math.hypot(obj.w, obj.h) / 2 + 26, r1 = r0 + 16;
+  const g = new THREE.RingGeometry(r0, r1, 72, 1);
+  g.rotateX(-Math.PI / 2);
+  g.rotateY(-(obj.a || 0));
+  g.translate(obj.x, 0.5, obj.y);
+  const mat = additive({ ...fx, uR0: { value: r0 }, uR1: { value: r1 }, uC: { value: new THREE.Vector2(obj.x, obj.y) } }, `
+    varying vec3 vW; varying float vDepth;
+    void main() {
+      vW = position;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vDepth = -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }`, COMMON + `
+    uniform float uR0, uR1; uniform vec2 uC;
+    varying vec3 vW; varying float vDepth;
+    void main() {
+      vec2 d = vW.xz - uC;
+      float r = (length(d) - uR0) / (uR1 - uR0);
+      float band = smoothstep(0.0, 0.5, r) * smoothstep(1.0, 0.5, r);
+      float ang = atan(d.y, d.x);
+      float dash = 0.6 + 0.4 * step(0.5, fract(ang * 6.0 / 3.14159 + uTime * 0.08));
+      float pulse = 0.55 + 0.45 * sin(uTime * 1.8);
+      gl_FragColor = vec4(vec3(0.45, 0.85, 1.0), band * dash * pulse * 0.32 * fogVis(vDepth));
+    ` + TONE + '}', { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'objective-marker';
+  mesh.renderOrder = 6;
+  return mesh;
+}
