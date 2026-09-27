@@ -34,13 +34,13 @@
     SKY_RADIUS: 1100,
     // --- physics & hit shapes (game.js applies them; director/obstacles build to them) ---
     ROLL_T: 0.62, // seconds a roll lasts; a jump cancels it
-    COYOTE: 0.1, // seconds after leaving an edge where a jump still works
-    JUMP_BUFFER: 0.18, // a jump pressed this long before landing fires on landing
+    COYOTE: 0.14, // seconds after leaving an edge where a jump still works (>= the director's 0.12 s timing slack)
+    JUMP_BUFFER: 0.2, // a jump pressed this long before landing fires on landing (COYOTE + JUMP_BUFFER >= roof fall time)
     ROLL_BUFFER: 0.15,
     BODY_H: 1.85, // standing body height
     BODY_ROLL_H: 0.95, // body height while rolling
     HALF_D: 0.3, // half the body's depth along z
-    HALF_W: 1.0, // |px - obstacle.x| below this counts as the same lane
+    HALF_W: 1.45, // |px - obstacle.x| below this counts as the same lane (>= half a lane, so a lane change never passes through a gap)
     HURDLE_TOP: 1.05, HURDLE_CLEAR: 0.85, // feet must be >= HURDLE_CLEAR to pass a hurdle
     BAR_BOTTOM: 1.42, BAR_TOP: 3.4, // overhead sign: roll under; too tall to jump over at any frame rate
     BLOCK_TOP: 3.2, // tall barrier: change lane (super-jump can clear it)
