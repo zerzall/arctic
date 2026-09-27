@@ -66,6 +66,37 @@ export function sanitizeClass(cls) {
   return CLASS_IDS.includes(cls) ? cls : CLASS_IDS[0];
 }
 
+/** Names for AI survivors (fictional characters and call signs, never real people). */
+export const BOT_NAMES = [
+  'Ripley', 'Hicks', 'Vasquez', 'Tank-Girl', 'Chopper', 'Hudson', 'Bishop', 'Newt', 'Apone', 'Frost',
+  'Dutch', 'Buckshot', 'Dozer', 'Scrapper', 'Ironside', 'Maverick',
+];
+/** Classes a bot picks, in order of preference (a medic first: bots revive a lot). */
+export const BOT_CLASS_ORDER = ['medic', 'soldier', 'engineer', 'heavy', 'scout', 'demo'];
+
+/**
+ * Profile for a new AI survivor joining `roster`: a name nobody uses, a free colour and
+ * preferably a class nobody has picked yet (else the least-picked one).
+ * @param {object[]} roster current roster entries ({ name, color, cls })
+ * @returns {{ name: string, color: number, cls: string }}
+ */
+export function botProfile(roster) {
+  const names = roster.map((r) => r.name);
+  const lower = new Set(names.map((n) => n.toLowerCase()));
+  const free = BOT_NAMES.find((n) => !lower.has(n.toLowerCase()));
+  const name = free || uniqueName('Bot', names);
+  const color = pickColor(0, roster.map((r) => r.color));
+  let cls = BOT_CLASS_ORDER[0], fewest = Infinity;
+  for (const c of BOT_CLASS_ORDER) {
+    const n = roster.filter((r) => r.cls === c).length;
+    if (n < fewest) {
+      fewest = n;
+      cls = c;
+    }
+  }
+  return { name, color, cls };
+}
+
 /**
  * Clean a chat line.
  * @param {*} text

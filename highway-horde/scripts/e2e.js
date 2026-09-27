@@ -12,6 +12,8 @@
 //   d  p2p          host + client over PeerJS (local signalling), snapshots, movement,
 //                   host closes → client sees the disconnect
 //   e  phone        390x844 touch device: layout, touch controls, left stick moves
+//   f  bots         solo lobby + Add Bot (BOT tags, ✕ removes one), the human readies,
+//                   the bots ready up after them, fight wave 1 and score kills
 //
 // Every scenario runs in fresh browser contexts; any console error or page error fails it
 // (Google Fonts requests are answered locally so they never error). Screenshots land in
@@ -509,6 +511,38 @@ async function scenarioSolo(sc) {
   expect(hudCash.replace(/[^0-9]/g, '') !== '' && Number(hudCash.replace(/[^0-9]/g, '')) > cash0, `HUD cash "${hudCash}" did not increase from ${cash0}`);
 }
 
+/** f. Play Solo with an AI squad: bots added in the lobby fight for an idle human. */
+async function scenarioBots(sc) {
+  const pl = await sc.player('squad');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Leader', cls: 'soldier' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  expect(await visible(pl, '#btn-add-bot'), 'the solo lobby has no Add Bot button');
+  for (let i = 0; i < 3; i++) await pl.page.click('#btn-add-bot');
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 4, null, 'four roster rows');
+  const tags = await pl.page.$$eval('#roster .roster-row', (rows) => rows.map((r) => !r.querySelector('.roster-bot').hidden));
+  expect(JSON.stringify(tags) === '[false,true,true,true]', `BOT tags on the bot rows only: ${JSON.stringify(tags)}`);
+  await pl.page.locator('#roster .roster-row').nth(3).locator('.roster-kick').click();
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 3, null, 'the ✕ to remove a bot');
+  const roster = await pl.page.evaluate(() => window.__HH.session.roster);
+  const botIds = roster.filter((r) => r.bot).map((r) => r.id);
+  expect(botIds.length === 2 && roster.every((r) => r.bot ? r.ready : r.name === 'Leader'), `roster: ${JSON.stringify(roster)}`);
+  expect(new Set(roster.map((r) => r.color)).size === 3 && new Set(roster.map((r) => r.cls)).size === 3, `bots should take free colours and classes: ${JSON.stringify(roster)}`);
+  await pl.page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH.getView() && window.__HH.getView().players.length === 3, null, 'the game with three survivors');
+  await pl.page.keyboard.press('Space'); // the human readies; the bots follow
+  await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'the wave (bots ready after the human)', 8000);
+  // The human stands still; the squad has to do the killing.
+  const kills = await waitFor(pl, (ids) => {
+    const v = window.__HH.getView();
+    const k = v.players.filter((p) => ids.includes(p.id)).map((p) => p.kills);
+    return k.every((n) => n > 0) ? k : false;
+  }, botIds, 'both bots to kill zombies', 60e3);
+  await sc.screenshots('');
+  log(`    bots: kills ${kills.join(', ')} for an idle human`);
+}
+
 async function hostOnline(sc, tag, profile, opts = {}) {
   const pl = await sc.player(tag, opts);
   pl.url = sc.env.relay.url;
@@ -680,10 +714,26 @@ async function scenarioRelay(sc) {
     await waitFor(pl, (n) => [...document.querySelectorAll('#hud .chat-line.system')].some((l) => l.textContent === `${n} left the game`), c2Name, `the system chat line "${c2Name} left the game"`);
   }
 
-  // back to the lobby (the pause menu has no such button: the session API it is)
-  expect(await host.page.evaluate(() => window.__HH.session.returnToLobby()) === true, 'returnToLobby() refused');
+  // back to the lobby through the host's pause menu: End Game → confirm. A client's pause
+  // menu has no End Game, and both show the room code with an invite-link button.
+  await c1.page.keyboard.press('Escape');
+  await waitFor(c1, () => !document.querySelector('#pause').hidden, null, 'the client pause menu');
+  const cPause = await c1.page.evaluate(() => ({
+    end: !document.querySelector('#pause-end').hidden, invite: !document.querySelector('#pause-invite').hidden,
+    code: document.querySelector('#pause-code').textContent, want: window.__HH.session.code,
+  }));
+  expect(!cPause.end, 'a client\'s pause menu offers End Game');
+  expect(cPause.invite && cPause.code === cPause.want, `client pause menu invite: ${JSON.stringify(cPause)}`);
+  await c1.page.keyboard.press('Escape');
+  await host.page.keyboard.press('Escape');
+  await waitFor(host, () => !document.querySelector('#pause').hidden && !document.querySelector('#pause-end').hidden, null, 'the host pause menu with End Game');
+  await host.page.click('#pause-end');
+  await waitFor(host, () => !document.querySelector('#dlg-confirm').hidden, null, 'the End Game confirmation');
+  const confirmTitle = await host.page.textContent('#confirm-title');
+  expect(confirmTitle === 'Return everyone to the lobby?', `End Game confirmation reads "${confirmTitle}"`);
+  await host.page.click('#confirm-yes');
   for (const pl of [host, c1]) {
-    await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden && document.querySelector('#screen-game').hidden && !window.__HH.session.inGame, null, 'the lobby after returnToLobby');
+    await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden && document.querySelector('#screen-game').hidden && !window.__HH.session.inGame, null, 'the lobby after End Game');
   }
 
   // a second game (client 1 is not ready: the host confirms)
@@ -844,6 +894,28 @@ async function scenarioPhone(sc) {
   expect(gameLayout.sw <= gameLayout.iw, `game screen scrolls horizontally: ${JSON.stringify(gameLayout)}`);
   await sc.screenshots('-portrait');
 
+  // SHOP opens on the touch, and the tap's trailing click must not buy the card that
+  // appears under the finger.
+  await pl.page.evaluate(() => {
+    const s = window.__HH.session;
+    window.__e2eBuys = 0;
+    const orig = s.buy.bind(s);
+    s.buy = (id) => {
+      window.__e2eBuys++;
+      return orig(id);
+    };
+  });
+  await pl.page.tap('.touch-btn-shop');
+  const shopShown = () => {
+    const b = document.querySelector('#shop-root .shop-backdrop');
+    return !!b && !b.hidden;
+  };
+  await waitFor(pl, shopShown, null, 'the shop after tapping SHOP');
+  await sleep(700);
+  expect(await pl.page.evaluate(() => window.__e2eBuys) === 0, 'tapping SHOP bought the item under the finger');
+  await pl.page.tap('#shop-root .shop-close');
+  await waitFor(pl, () => document.querySelector('#shop-root .shop-backdrop').hidden, null, 'the shop to close');
+
   // Turned sideways: the renderer and the HUD follow, nothing overlaps.
   await pl.page.setViewportSize({ width: 844, height: 390 });
   await waitFor(pl, () => document.querySelector('#game-canvas').getBoundingClientRect().width === 844, null, 'the canvas to follow the rotation');
@@ -861,6 +933,7 @@ const SCENARIOS = [
   ['c', 'late-join', scenarioLateJoin],
   ['d', 'p2p', scenarioP2P],
   ['e', 'phone', scenarioPhone],
+  ['f', 'bots', scenarioBots],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

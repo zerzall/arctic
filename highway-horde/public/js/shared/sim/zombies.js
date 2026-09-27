@@ -4,6 +4,7 @@
 
 import {
   DT, PLAYER_RADIUS, TURRET, HP_GROWTH_PER_WAVE, SPEED_GROWTH_PER_WAVE, SPEED_GROWTH_CAP,
+  WAVE_ZOMBIES, SPAWN_PACING, OBJECTIVE_DAMAGE_MULT,
 } from '../constants.js';
 import { ZOMBIES, ZOMBIE_IDS } from '../zombies.js';
 import { distToObb, closestPointOnObb, MASK_MOVE } from '../geom.js';
@@ -26,7 +27,7 @@ const SK_BARRICADE = 4;
 
 const DIRECT_RANGE = 200;       // steer straight at the target inside this range (with a clear line)
 const RETARGET = 0.25;
-const DOWNED_BIAS = 80;         // standing players are preferred over downed ones this much
+const DOWNED_BIAS = 150;        // standing players are preferred over downed ones this much
 const TURRET_BIAS = 30;
 const SEP_SPEED = 150;          // px/s of push at full overlap
 const SEP_HARD = 0.3;           // share of deep overlap corrected positionally per tick
@@ -85,7 +86,8 @@ export function updateSpawning(game) {
     return;
   }
   const w = game.wave;
-  const group = Math.min(game.spawnQueue, room, rng.int(3, 5 + Math.floor(w / 3)));
+  const sp = SPAWN_PACING;
+  const group = Math.min(game.spawnQueue, room, rng.int(sp.groupMin, sp.groupMax + Math.floor(w / sp.groupPerWaves)));
   const rect = pickSpawnRect(game);
   for (let i = 0; i < group; i++) {
     const type = pickType(game, w);
@@ -96,9 +98,9 @@ export function updateSpawning(game) {
     spawnZombie(game, type, p.x, p.y, elite);
   }
   game.spawnQueue -= group;
-  const crowd = (1 + 0.6 * (game.wavePlayers - 1)) * game.diff.count;
-  const base = Math.max(1.2, Math.min(3.6, 3.6 - 0.12 * (w - 1)));
-  game.spawnTimer = (base / Math.sqrt(Math.max(1, crowd))) * rng.range(0.75, 1.25);
+  const crowd = (1 + WAVE_ZOMBIES.perPlayer * (game.wavePlayers - 1)) * game.diff.count;
+  const base = Math.max(sp.min, Math.min(sp.start, sp.start - sp.perWave * (w - 1)));
+  game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25);
 }
 
 function pickType(game, w) {
@@ -151,12 +153,14 @@ export function spawnZombie(game, type, x, y, elite = false) {
   const rng = game.rng;
   const w = Math.max(1, game.wave);
   const boss = type === 'boss';
+  const sp = def.special;
   const players = Math.max(1, game.players.length);
-  const hp = def.hp * (1 + HP_GROWTH_PER_WAVE * (w - 1)) * game.diff.hp
-    * (elite ? 1.6 : 1) * (boss ? def.special.hpBase + def.special.hpPerPlayer * players : 1);
+  // Boss hp: (hpBase + hpPerPlayer × players) shared by the wave's ceil(players / 3) bosses.
+  const growth = boss && sp.hpGrowth != null ? sp.hpGrowth : HP_GROWTH_PER_WAVE;
+  const hp = def.hp * (1 + growth * (w - 1)) * game.diff.hp
+    * (elite ? 1.6 : 1) * (boss ? (def.special.hpBase + def.special.hpPerPlayer * players) / Math.ceil(players / 3) : 1);
   const speedScale = Math.min(SPEED_GROWTH_CAP, 1 + SPEED_GROWTH_PER_WAVE * (w - 1));
   const speed = rng.range(def.speed[0], def.speed[1]) * speedScale * (elite ? 1.2 : 1);
-  const sp = def.special;
   const heavy = def.radius >= BIG_RADIUS;
   const z = {
     id: game.ids.zombie.alloc(), type, def, x, y,
@@ -559,7 +563,7 @@ function resolveSwing(game, z) {
     case TK_OBJECTIVE:
       if (game.objObb && distToObb(game.objObb, z.x, z.y) - z.radius <= reach) {
         closestPointOnObb(game.objObb, z.x, z.y, pt);
-        damageObjective(game, z.damage, pt.x, pt.y);
+        damageObjective(game, z.damage * OBJECTIVE_DAMAGE_MULT, pt.x, pt.y);
       }
       break;
     case SK_BARRICADE:

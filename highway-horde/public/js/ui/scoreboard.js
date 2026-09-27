@@ -82,11 +82,35 @@ export function fillStatsTable(table, rows, localId, opts = {}) {
 }
 
 /**
- * The hold-Tab scoreboard overlay.
- * @param {HTMLElement} root container (the HUD)
+ * The room code + "Copy invite link" chip shown in online games (late join is supported).
+ * @param {{ code: string, onCopy: Function }|null} invite
+ * @param {string} [cls] extra class
+ * @returns {HTMLElement|null}
  */
-export function createScoreboard(root) {
-  const title = h('div.sb-title', null, [h('span', { text: 'SCOREBOARD' }), h('span.sb-meta')]);
+export function inviteChip(invite, cls = '') {
+  if (!invite || !invite.code) return null;
+  const btn = h('button.btn.btn-small.btn-accent.sb-invite-copy', { type: 'button', text: 'Copy invite link' });
+  btn.addEventListener('click', (e) => {
+    invite.onCopy();
+    // Keep Space/Enter for the game, not this button.
+    e.currentTarget.blur();
+  });
+  return h(`div.sb-invite${cls ? `.${cls}` : ''}`, null, [
+    h('span.sb-invite-label', { text: 'Room' }),
+    h('span.sb-invite-code', { text: invite.code }),
+    btn,
+  ]);
+}
+
+/**
+ * The hold-Tab scoreboard overlay (a toggle on touch).
+ * @param {HTMLElement} root container (the game screen, above the touch layer)
+ * @param {object} [opts]
+ * @param {{ code: string, onCopy: Function }|null} [opts.invite] online games: room code
+ *   and invite-link copy in the header
+ */
+export function createScoreboard(root, opts = {}) {
+  const title = h('div.sb-title', null, [h('span', { text: 'SCOREBOARD' }), inviteChip(opts.invite), h('span.sb-meta')]);
   const table = h('table.stats-table');
   const el = h('div.scoreboard.panel', { hidden: true, role: 'dialog', 'aria-label': 'Scoreboard' }, [title, table]);
   root.appendChild(el);

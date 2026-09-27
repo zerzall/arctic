@@ -46,6 +46,8 @@ export function createLobby(ctx) {
   const status = $('#lobby-status');
   const miniClasses = $('#lobby-classes');
   const miniColors = $('#lobby-colors');
+  const botsRow = $('#roster-bots');
+  const addBotBtn = $('#btn-add-bot');
 
   let session = null;
   let unsubChat = null;
@@ -199,6 +201,11 @@ export function createLobby(ctx) {
     }
   });
 
+  addBotBtn.addEventListener('click', () => {
+    if (!session || !session.isHost || typeof session.addBot !== 'function') return;
+    audio.ui(session.addBot() ? 'join' : 'deny');
+  });
+
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (session) sendFromInput(chatInput, session);
@@ -232,21 +239,27 @@ export function createLobby(ctx) {
         const cls = h('span.roster-class');
         const ready = h('span.roster-ready');
         const ping = h('span.roster-ping');
+        const bot = h('span.roster-bot', { text: 'BOT', title: 'AI survivor' });
         const crown = h('span.roster-crown', { text: '♛', title: 'Host', 'aria-label': 'Host' });
         const you = h('span.roster-you', { text: 'YOU' });
         const kick = h('button.btn-icon.roster-kick', { type: 'button', title: 'Remove from room', 'aria-label': `Remove ${r.name}`, text: '✕' });
         kick.addEventListener('click', () => {
-          if (!session || typeof session.kick !== 'function') return;
+          if (!session) return;
           const target = session.roster.find((q) => q.id === r.id);
+          if (target && target.bot) {
+            if (typeof session.removeBot === 'function' && session.removeBot(r.id)) audio.ui('leave');
+            return;
+          }
+          if (typeof session.kick !== 'function') return;
           ctx.dialogs.confirm('Remove player?', `Remove ${target ? target.name : 'this player'} from the room?`, 'Remove', () => session.kick(r.id));
         });
         const el = h('li.roster-row', null, [
           canvas,
           h('div.roster-main', null, [h('div.roster-top', null, [crown, name, you]), cls]),
-          h('div.roster-side', null, [ready, ping]),
+          h('div.roster-side', null, [ready, ping, bot]),
           kick,
         ]);
-        row = { el, canvas, name, cls, ready, ping, crown, you, kick, key: '' };
+        row = { el, canvas, name, cls, ready, ping, bot, crown, you, kick, key: '' };
         rosterRows.set(r.id, row);
       }
       const key = `${r.cls}:${r.color}`;
@@ -269,9 +282,14 @@ export function createLobby(ctx) {
       row.ready.hidden = solo;
       setText(row.ready, r.host ? 'HOST' : r.ready ? 'READY' : 'NOT READY');
       row.ready.className = `roster-ready ${r.host ? 'host' : r.ready ? 'yes' : 'no'}`;
-      row.ping.hidden = solo || r.host;
+      row.ping.hidden = solo || r.host || !!r.bot;
       setText(row.ping, r.host ? '' : `${r.ping | 0} ms`);
-      row.kick.hidden = !(session.isHost && !r.host && typeof session.kick === 'function');
+      row.bot.hidden = !r.bot;
+      row.el.classList.toggle('is-bot', !!r.bot);
+      const removable = r.bot ? typeof session.removeBot === 'function' : typeof session.kick === 'function';
+      row.kick.hidden = !(session.isHost && !r.host && removable);
+      row.kick.title = r.bot ? 'Remove bot' : 'Remove from room';
+      row.kick.setAttribute('aria-label', `Remove ${r.name}`);
       rosterEl.appendChild(row.el);
     }
     for (const [id, row] of rosterRows) {
@@ -282,10 +300,15 @@ export function createLobby(ctx) {
     }
     // empty slots, so the room size is obvious
     for (const e of [...rosterEl.querySelectorAll('.roster-empty')]) e.remove();
-    if (session.transport !== 'local') {
+    const solo = session.transport === 'local';
+    if (!solo) {
       for (let i = list.length; i < MAX_PLAYERS; i++) rosterEl.appendChild(h('li.roster-empty', { text: 'Open slot' }));
     }
-    setText($('#roster-count'), session.transport === 'local' ? '' : `${list.length} / ${MAX_PLAYERS}`);
+    setText($('#roster-count'), solo && list.length < 2 ? '' : `${list.length} / ${MAX_PLAYERS}`);
+    // Host: fill empty slots with AI survivors (solo too: that's the "AI squad" mode).
+    const canBot = session.isHost && typeof session.addBot === 'function';
+    botsRow.hidden = !canBot;
+    addBotBtn.disabled = !canBot || list.length >= MAX_PLAYERS || !!session.inGame;
   }
 
   function renderMine() {
@@ -342,11 +365,12 @@ export function createLobby(ctx) {
     const others = session.roster.filter((r) => !r.host);
     const readyN = others.filter((r) => r.ready).length;
     const allReady = readyN === others.length;
+    const humans = others.filter((r) => !r.bot).length;
     startBtn.classList.toggle('btn-primary', allReady);
     startBtn.textContent = solo ? 'Start Game' : allReady ? 'Start Game' : 'Start Anyway';
     let text;
-    if (solo) text = 'Pick a battlefield and start when you are ready.';
-    else if (session.isHost && others.length === 0) text = 'Waiting for friends to join — share the invite link. You can also start alone.';
+    if (solo) text = others.length ? 'Your AI squad is ready. Start when you are.' : 'Pick a battlefield and start when you are ready — or add bots for an AI squad.';
+    else if (session.isHost && humans === 0) text = `Waiting for friends to join — share the invite link. You can also start ${others.length ? 'with your bots' : 'alone'}.`;
     else if (session.isHost) text = allReady ? 'Everyone is ready. Start the game!' : `${readyN} of ${others.length} ready`;
     else if (me && me.ready) text = 'You\'re ready. Waiting for the host to start…';
     else text = 'Press Ready when you\'re set. The host starts the game.';

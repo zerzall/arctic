@@ -22,9 +22,9 @@
 export const CLASSES = {
   soldier: {
     name: 'Sarge', role: 'Soldier',
-    desc: 'Frontline rifleman. +15% gun damage and faster reloads.',
+    desc: 'Frontline rifleman. +20% gun damage and faster reloads.',
     startWeapon: 'rifle',
-    perks: { damageMult: 1.15, reloadMult: 0.85, startFrags: 1 },
+    perks: { damageMult: 1.2, reloadMult: 0.85, startFrags: 1 },
     look: { outfit: '#4e5b31', vest: '#3b4424', hat: 'helmet' },
   },
   medic: {
@@ -36,16 +36,16 @@ export const CLASSES = {
   },
   engineer: {
     name: 'Sparks', role: 'Engineer',
-    desc: 'Sentry turrets cost half and hit 50% harder. Starts with one.',
+    desc: 'Sentry turrets cost half and hit 25% harder. Starts with one.',
     startWeapon: 'shotgun',
-    perks: { turretDiscount: 0.5, turretDamage: 1.5, startTurrets: 1 },
+    perks: { turretDiscount: 0.5, turretDamage: 1.25, startTurrets: 1 },
     look: { outfit: '#f57c00', vest: '#424242', hat: 'hardhat' },
   },
   scout: {
     name: 'Swift', role: 'Scout',
-    desc: 'Fast and tireless. Earns 15% more cash per kill.',
+    desc: 'Fast and tireless. Earns 25% more cash per kill.',
     startWeapon: 'magnum',
-    perks: { speedMult: 1.15, staminaMult: 1.6, cashMult: 1.15 },
+    perks: { speedMult: 1.15, staminaMult: 1.6, cashMult: 1.25 },
     look: { outfit: '#00695c', vest: '#004d40', hat: 'bandana' },
   },
   demo: {

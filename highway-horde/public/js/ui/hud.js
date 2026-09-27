@@ -14,6 +14,7 @@ import { h, setText, setStyle, setClass, setShown, formatCash } from './dom.js';
 import { createMinimap } from './minimap.js';
 import { createScoreboard } from './scoreboard.js';
 import { priceOf, itemName, shopState } from './shop.js';
+import { activeWeapon } from '../shared/sim/players.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
@@ -50,8 +51,10 @@ function pct(v) {
  * @param {object} opts.map MapDef
  * @param {Function} opts.renderClassPortrait (canvas, classId, colorIndex)
  * @param {object} opts.audio
+ * @param {{ code: string, onCopy: Function }|null} [opts.invite] online games: room code and
+ *   invite-link copy in the scoreboard header
  */
-export function createHud(root, { map, renderClassPortrait, audio }) {
+export function createHud(root, { map, renderClassPortrait, audio, invite = null }) {
   root.replaceChildren();
   root.hidden = false;
 
@@ -160,7 +163,8 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
 
   root.append(topLeft, topCentre, topRight, bottomCentre, bottomLeft, bottomRight, spectate);
 
-  const scoreboard = createScoreboard(root);
+  // Mounted next to the HUD, above the touch layer, so the invite button can be tapped.
+  const scoreboard = createScoreboard(root.parentElement || root, { invite });
   const minimap = createMinimap(miniCanvas, map);
 
   // ---- state -----------------------------------------------------------------------------
@@ -569,7 +573,9 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
       setText(netStats, `PING ${ping} · ${Math.round(info.fps || 0)} FPS${s.snapshotsPerSec ? ` · ${Math.round(s.snapshotsPerSec)} snap/s` : ''}`);
     }
 
-    scoreboard.update(v, roster, localId, dt, v.totalWaves ? `Wave ${v.wave} of ${v.totalWaves}` : `Wave ${v.wave} · Endless`);
+    // Same wave number as the wave panel (prep counts toward wave 1, not "wave 0").
+    const waveShown = v.phase === 'prep' ? 1 : v.wave;
+    scoreboard.update(v, roster, localId, dt, v.totalWaves ? `Wave ${waveShown} of ${v.totalWaves}` : `Wave ${waveShown} · Endless`);
 
     // After this frame's DOM writes, so the measurement sees the new text.
     if (keyMode === 'touch') {
@@ -652,20 +658,23 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
     }
     setText(cashEl, formatCash(Math.round(cashShown)));
 
-    // weapon
-    const wid = me.slots[me.slot];
-    const w = wid ? WEAPONS[wid] : null;
-    const am = me.ammo[me.slot] || [0, 0];
+    // weapon: the one actually in hand (downed players fall back to a pistol). On a client
+    // the local record carries the predicted slot/ammo/reload (SPEC §6.2).
+    const aw = activeWeapon(me);
+    const w = aw.id ? WEAPONS[aw.id] : null;
+    // The free pistol's mag is only known to the predicting client (`freeMag`).
+    const am = aw.slot >= 0 ? me.ammo[aw.slot] || [0, 0] : [Number.isFinite(me.freeMag) ? me.freeMag : -1, -1];
     if (w) {
       setText(wName, w.name);
-      setText(wMag, String(am[0]));
+      setText(wMag, am[0] < 0 ? '' : String(am[0]));
       setText(wRes, am[1] < 0 ? '/ ∞' : `/ ${am[1]}`);
-      const low = am[0] <= Math.max(1, Math.floor(w.mag * 0.25));
+      const low = am[0] >= 0 && am[0] <= Math.max(1, Math.floor(w.mag * 0.25));
       setClass(wMag, 'low', low && am[0] > 0);
       setClass(wMag, 'empty', am[0] === 0);
       if (me.reloading > 0) setText(wHint, 'RELOADING');
       else if (am[0] === 0 && am[1] === 0) setText(wHint, 'OUT OF AMMO — BUY AMMO');
-      else if (am[0] === 0 || (low && am[1] !== 0)) setText(wHint, `${keys.reload} TO RELOAD`);
+      // Downed survivors can't reload by hand (an empty mag still auto-reloads).
+      else if (me.state === 'alive' && (am[0] === 0 || (low && am[1] !== 0))) setText(wHint, `${keys.reload} TO RELOAD`);
       else setText(wHint, '');
       setClass(wHint, 'warn', am[0] === 0);
     } else {
@@ -680,7 +689,8 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
       const s = slots[i];
       const id = me.slots[i];
       const sw = id ? WEAPONS[id] : null;
-      setClass(s.el, 'active', i === me.slot);
+      // No slot is lit while a downed survivor fires the free pistol.
+      setClass(s.el, 'active', aw.id ? i === aw.slot : i === me.slot);
       setClass(s.el, 'empty', !sw);
       setText(s.name, sw ? sw.short : '—');
       if (sw) {
@@ -814,6 +824,7 @@ export function createHud(root, { map, renderClassPortrait, audio }) {
     },
     destroy() {
       clearTouchLayout();
+      scoreboard.destroy();
       root.replaceChildren();
       root.hidden = true;
       delete root.dataset.phase;

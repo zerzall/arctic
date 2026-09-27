@@ -17,7 +17,7 @@ export class Game extends GameCore {
    *   mapId, seed      the map is built with buildMap(mapId, seed)
    *   map              optional ready MapDef (tests/tools); takes precedence over mapId
    *   settings         { difficulty, waves, objective, friendlyFire }
-   *   players          [{ id, name, color, cls }]
+   *   players          [{ id, name, color, cls, bot? }] — bot: true makes an AI survivor
    */
   constructor(opts = {}) {
     const map = opts.map || buildMap(opts.mapId, opts.seed);

@@ -9,7 +9,7 @@
 
 import {
   DT, PREP_TIME, INTERMISSION_TIME, BOSS_EVERY, WAVE_CLEAR_BONUS, DIFFICULTIES, DEFAULT_SETTINGS,
-  NAV_REBUILD_INTERVAL, TICK_RATE,
+  NAV_REBUILD_INTERVAL, TICK_RATE, waveZombieCount, OBJECTIVE_HP_PER_PLAYER,
 } from '../constants.js';
 import { createRng, hashString } from '../rng.js';
 import { round1 } from '../math.js';
@@ -27,6 +27,7 @@ import {
 import {
   updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, HEAVY_BODY_RADIUS,
 } from './zombies.js';
+import { createBrain, updateBots } from './bots.js';
 
 /** Events that are pure presentation and may be dropped when a snapshot overflows. */
 const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch']);
@@ -72,7 +73,7 @@ export class GameCore {
    *   mapId     informational
    *   seed      uint32
    *   settings  { difficulty, waves, objective, friendlyFire } (DEFAULT_SETTINGS fills gaps)
-   *   players   [{ id, name, color, cls }]
+   *   players   [{ id, name, color, cls, bot?, botSkill? }] (bot: true = AI survivor, see bots.js)
    */
   constructor({ map, mapId, seed = 1, settings = {}, players = [] } = {}) {
     if (!map) throw new Error('GameCore needs a map');
@@ -102,6 +103,10 @@ export class GameCore {
     this.over = null;
 
     this.players = [];
+    /** Brains of the AI players (bots.js), in join order. */
+    this.bots = [];
+    /** The bots' navigation grid, built on their first tick (bots.js). */
+    this.botNav = null;
     this.zombies = [];
     this.turrets = [];
     this.barricades = [];
@@ -113,9 +118,10 @@ export class GameCore {
       turret: new IdPool(), barricade: new IdPool(), hazard: new IdPool(),
     };
 
-    this.objective = this.settings.objective && map.objective
-      ? { hp: map.objective.hp, maxHp: map.objective.hp }
-      : null;
+    const objHp = map.objective
+      ? Math.round(map.objective.hp * (1 + OBJECTIVE_HP_PER_PLAYER * (Math.max(1, players.length) - 1)))
+      : 0;
+    this.objective = this.settings.objective && map.objective ? { hp: objHp, maxHp: objHp } : null;
     this.objHitCd = 0;
     // The objective as a flow-field goal, biased so that players win close calls.
     this.objTarget = map.objective
@@ -164,6 +170,8 @@ export class GameCore {
     const i = this.players.findIndex((p) => p.id === id);
     if (i < 0) return;
     this.players.splice(i, 1);
+    const bi = this.bots.findIndex((b) => b.pid === id);
+    if (bi >= 0) this.bots.splice(bi, 1);
     for (const p of this.players) {
       if (p.reviver === id) {
         p.reviver = 0;
@@ -206,6 +214,8 @@ export class GameCore {
     this._updatePhase();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
+    // AI survivors decide now and queue their cmds like everyone else's input.
+    if (this.bots.length) this._runBots();
     updatePlayers(this);
     updateDowned(this);
     updatePickups(this);
@@ -307,9 +317,17 @@ export class GameCore {
   // ---------------------------------------------------------------------------------
   // Internals
 
+  /** One brain step for every bot (a method so tests can time it). */
+  _runBots() {
+    updateBots(this);
+  }
+
   _addPlayer(info, state) {
     const p = createPlayer(this, info);
+    p.bot = !!info.bot;
     this.players.push(p);
+    // botSkill 0..1 (default 1): how well the AI plays, see bots.js skillProfile.
+    if (p.bot) this.bots.push(createBrain(this, p, info.botSkill ?? 1));
     const sp = spawnPointFor(this, this.players.length - 1);
     p.x = sp.x;
     p.y = sp.y;
@@ -359,7 +377,7 @@ export class GameCore {
     for (const p of this.players) p.ready = false;
     const players = Math.max(1, this.players.length);
     this.wavePlayers = players;
-    this.waveTotal = Math.round((12 + 6 * w) * (1 + 0.6 * (players - 1)) * this.diff.count);
+    this.waveTotal = waveZombieCount(w, players, this.diff);
     const boss = w % BOSS_EVERY === 0;
     this.bossQueue = boss ? Math.ceil(players / 3) : 0;
     this.bossTimer = 10;

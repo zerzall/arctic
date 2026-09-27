@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {
   DT, PREP_TIME, INTERMISSION_TIME, WAVE_CLEAR_BONUS, REVIVE_TIME, REVIVE_HP, REVIVE_BONUS, BLEEDOUT_TIME,
   SELF_REVIVE_DELAY, START_CASH, FRAG_MAX, MOLOTOV_MAX, TURRET, BARRICADE, PLAYER_RADIUS, MELEE_DAMAGE,
-  ARMOR_ABSORB, HP_GROWTH_PER_WAVE, DIFFICULTIES, SUPPLY_RADIUS,
+  ARMOR_ABSORB, HP_GROWTH_PER_WAVE, DIFFICULTIES, SUPPLY_RADIUS, WAVE_ZOMBIES, waveZombieCount,
 } from '../public/js/shared/constants.js';
+import { CLASSES } from '../public/js/shared/classes.js';
 import { WEAPONS, WEAPON_IDS, THROWABLES } from '../public/js/shared/weapons.js';
 import { ZOMBIES, ZFLAG } from '../public/js/shared/zombies.js';
 import { ammoPrice } from '../public/js/shared/items.js';
@@ -80,8 +81,9 @@ describe('phases and waves', () => {
     let ev = run(g, Math.round(PREP_TIME / DT) + 1);
     assert.equal(g.phase, 'wave');
     assert.deepEqual(eventsOf(ev, 'wave')[0], { type: 'wave', wave: 1, boss: false });
-    assert.equal(g.remaining(), 18);
-    assert.equal(g.snapshot().remaining, 18);
+    const n1 = WAVE_ZOMBIES.base + WAVE_ZOMBIES.perWave;
+    assert.equal(g.remaining(), n1);
+    assert.equal(g.snapshot().remaining, n1);
     const p = g.getPlayer(1);
     const cash0 = p.cash;
     // Kill everything as it spawns.
@@ -91,9 +93,9 @@ describe('phases and waves', () => {
     }, (gg) => gg.phase !== 'wave');
     assert.equal(g.phase, 'intermission');
     assert.deepEqual(eventsOf(ev, 'waveclear')[0], { type: 'waveclear', wave: 1, bonus: WAVE_CLEAR_BONUS });
-    assert.equal(eventsOf(ev, 'zdie').length, 18);
-    assert.equal(p.kills, 18);
-    assert.equal(p.cash, cash0 + 18 * ZOMBIES.walker.cash + WAVE_CLEAR_BONUS);
+    assert.equal(eventsOf(ev, 'zdie').length, n1);
+    assert.equal(p.kills, n1);
+    assert.equal(p.cash, cash0 + n1 * ZOMBIES.walker.cash + WAVE_CLEAR_BONUS);
     assert.equal(eventsOf(ev, 'drop').length, 1);
     assert.equal(g.pickups.filter((k) => k.kind === 'crate').length, 1);
     const crate = g.pickups.find((k) => k.kind === 'crate');
@@ -107,14 +109,18 @@ describe('phases and waves', () => {
     ev = run(g, 1);
     assert.equal(g.phase, 'wave');
     assert.equal(g.wave, 2);
-    assert.equal(g.remaining(), 24);
+    assert.equal(g.remaining(), WAVE_ZOMBIES.base + 2 * WAVE_ZOMBIES.perWave);
     assert.equal(g.getPlayer(1).ready, false, 'ready flags reset each wave');
   });
 
   test('zombie count scales with players and difficulty; boss waves add bosses', () => {
     const g = makeGame({ sandbox: false, n: 3, settings: { difficulty: 'hard' } });
     g._startWave(4);
-    assert.equal(g.remaining(), Math.round((12 + 24) * (1 + 0.6 * 2) * DIFFICULTIES.hard.count));
+    const z = WAVE_ZOMBIES;
+    assert.equal(g.remaining(), Math.round((z.base + 4 * z.perWave) * (1 + z.perPlayer * 2) * DIFFICULTIES.hard.count));
+    assert.equal(g.remaining(), waveZombieCount(4, 3, DIFFICULTIES.hard));
+    // Boss waves bring fewer regulars (bossWave share) besides the bosses.
+    assert.equal(waveZombieCount(5, 4), Math.round((z.base + 5 * z.perWave) * (1 + z.perPlayer * 3) * z.bossWave));
     const g5 = makeGame({ sandbox: false, n: 4 });
     const ev0 = [];
     g5._startWave(5);
@@ -125,7 +131,9 @@ describe('phases and waves', () => {
     const bosses = eventsOf(ev, 'bossspawn');
     assert.equal(bosses.length, 2);
     const boss = g5.zombies.find((z) => z.type === 'boss');
-    const want = ZOMBIES.boss.hp * (1 + HP_GROWTH_PER_WAVE * 4) * (ZOMBIES.boss.special.hpBase + ZOMBIES.boss.special.hpPerPlayer * 4);
+    // Boss hp: own wave growth, (hpBase + hpPerPlayer × players) split over the 2 bosses.
+    const sp = ZOMBIES.boss.special;
+    const want = ZOMBIES.boss.hp * (1 + sp.hpGrowth * 4) * (sp.hpBase + sp.hpPerPlayer * 4) / 2;
     assert.ok(approx(boss.maxHp, want, 1e-6));
     const s = g5.snapshot();
     assert.ok(s.bossHp > 0 && s.bossHp <= 1);
@@ -734,9 +742,10 @@ describe('weapons', () => {
     const p = place(g, 1, 300, 900);
     const c0 = p.cash;
     damageZombie(g, addZombie(g, 'walker', 600, 900), 1e9, 1);
-    assert.equal(p.cash, c0 + Math.round(10 * 1.25 * 1.15));
+    const k = DIFFICULTIES.easy.cash * CLASSES.scout.perks.cashMult;
+    assert.equal(p.cash, c0 + Math.round(ZOMBIES.walker.cash * k));
     damageZombie(g, addZombie(g, 'runner', 600, 900, true), 1e9, 1);
-    assert.equal(p.cash, c0 + Math.round(10 * 1.25 * 1.15) + Math.round(15 * 1.25 * 1.15 * 2));
+    assert.equal(p.cash, c0 + Math.round(ZOMBIES.walker.cash * k) + Math.round(ZOMBIES.runner.cash * k * 2));
     assert.equal(p.kills, 2);
     assert.equal(p.earned, p.cash - c0);
   });

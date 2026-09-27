@@ -4,7 +4,7 @@
 
 import {
   GAME_VERSION, PROTOCOL_VERSION, MAX_PLAYERS, DT, SNAPSHOT_EVERY, MAX_CATCHUP_TICKS, TICK_RATE,
-  DEFAULT_SETTINGS,
+  DEFAULT_SETTINGS, PLAYER_COLORS,
 } from '../shared/constants.js';
 import { encodeSnapshot, decodeInputs, messageType, MSG } from '../shared/protocol.js';
 import { Game } from '../shared/sim.js';
@@ -15,6 +15,7 @@ import { interpolateSnapshots } from './interpolation.js';
 import { NetStats } from './stats.js';
 import {
   sanitizeName, uniqueName, pickColor, isColor, sanitizeClass, sanitizeChat, mergeSettings, ChatLimiter,
+  botProfile,
 } from './lobby-rules.js';
 
 /** Input older than this means the host is not looking (hidden tab): stand still. */
@@ -148,9 +149,10 @@ export class HostSession extends Emitter {
       mapId: s.mapId,
       seed: this.seed,
       settings: { difficulty: s.difficulty, waves: s.waves, objective: s.objective, friendlyFire: s.friendlyFire },
-      players: this.roster.map((r) => ({ id: r.id, name: r.name, color: r.color, cls: r.cls })),
+      players: this.roster.map((r) => ({ id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot })),
     });
-    for (const r of this.roster) r.ready = false;
+    // Bots are ready by definition (the in-game ready vote is theirs to cast).
+    for (const r of this.roster) r.ready = !!r.bot;
     this.builder.reset();
     this.inGame = true;
     this.t0 = this.clock();
@@ -171,7 +173,7 @@ export class HostSession extends Emitter {
   returnToLobby() {
     if (!this.inGame || this.left) return false;
     this._stopGame();
-    for (const r of this.roster) r.ready = false;
+    for (const r of this.roster) r.ready = !!r.bot;
     this._sendAll('ctl', { t: 'lobby' });
     this._rosterChanged();
     this.emit('lobby');
@@ -180,6 +182,37 @@ export class HostSession extends Emitter {
 
   sendChat(text) {
     this._chat(1, text);
+  }
+
+  /**
+   * Host only, lobby only: fill an empty slot with an AI survivor (SPEC §6.2). Bots keep
+   * their slot through repeated games until removed.
+   * @returns {object|null} the new roster entry, or null (in game, room full, left)
+   */
+  addBot() {
+    if (this.inGame || this.left || this.roster.length >= MAX_PLAYERS) return null;
+    const pid = this._allocPid();
+    if (!pid) return null;
+    const prof = botProfile(this.roster);
+    const entry = { id: pid, name: prof.name, color: prof.color, cls: prof.cls, ready: true, ping: 0, host: false, bot: true };
+    this.roster.push(entry);
+    this._rosterChanged();
+    this._system(`${entry.name} (bot) joined the squad`);
+    return entry;
+  }
+
+  /**
+   * Host only, lobby only: take an AI survivor out of the room.
+   * @returns {boolean} true if a bot was removed
+   */
+  removeBot(pid) {
+    if (this.inGame || this.left) return false;
+    const i = this.roster.findIndex((r) => r.id === pid && r.bot);
+    if (i < 0) return false;
+    const [entry] = this.roster.splice(i, 1);
+    this._rosterChanged();
+    this._system(`${entry.name} (bot) left the squad`);
+    return true;
   }
 
   buy(itemId) {
@@ -416,12 +449,15 @@ export class HostSession extends Emitter {
       this._reject(peer, 'Game version mismatch');
       return;
     }
+    // A full room with bots in it makes room for a human (in the lobby or mid-game).
+    if (this.roster.length >= MAX_PLAYERS) this._dropBotFor(sanitizeName(msg.name));
     const pid = this.roster.length < MAX_PLAYERS ? this._allocPid() : 0;
     if (!pid) {
       this._reject(peer, 'Room is full');
       return;
     }
     const others = this.roster;
+    if (isColor(msg.color)) this._freeBotColor(msg.color, -1);
     const entry = {
       id: pid,
       name: uniqueName(sanitizeName(msg.name), others.map((r) => r.name)),
@@ -444,6 +480,37 @@ export class HostSession extends Emitter {
     }
     this._rosterChanged();
     this._system(`${entry.name} joined the game`);
+  }
+
+  /** Remove the most recently added bot (also from a running game) so `who` can join. */
+  _dropBotFor(who) {
+    let i = -1;
+    for (let k = this.roster.length - 1; k >= 0; k--) {
+      if (this.roster[k].bot) {
+        i = k;
+        break;
+      }
+    }
+    if (i < 0) return false;
+    const [entry] = this.roster.splice(i, 1);
+    if (this.game) this.game.removePlayer(entry.id);
+    this._system(`${entry.name} (bot) left to make room for ${who}`);
+    return true;
+  }
+
+  /**
+   * A human wants `color` but a bot has it: the bot moves to `fallback` (the human's old
+   * colour, or -1 for any free one). @returns {boolean} true if the colour is now free
+   */
+  _freeBotColor(color, fallback) {
+    const holder = this.roster.find((r) => r.color === color);
+    if (!holder || !holder.bot) return !holder;
+    const taken = this.roster.map((r) => r.color);
+    let next = isColor(fallback) ? fallback : -1;
+    if (next < 0) next = PLAYER_COLORS.findIndex((_, c) => !taken.includes(c));
+    if (next < 0) return false;
+    holder.color = next;
+    return true;
   }
 
   _reject(peer, reason) {
@@ -502,6 +569,8 @@ export class HostSession extends Emitter {
       }
     }
     if (isColor(patch.color) && patch.color !== entry.color) {
+      // Bots give their colour up to a human (they take the human's old one).
+      this._freeBotColor(patch.color, entry.color);
       if (this.roster.some((r) => r !== entry && r.color === patch.color)) {
         this._noticeTo(peer, 'That colour is already taken');
       } else {

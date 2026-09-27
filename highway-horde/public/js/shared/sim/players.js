@@ -6,7 +6,7 @@ import {
   REVIVE_TIME, REVIVE_RADIUS, REVIVE_HP, SELF_REVIVE_DELAY, RESPAWN_HP, REVIVE_BONUS,
   INTERACT_RADIUS, PICKUP_RADIUS, PICKUP_LIFETIME, SUPPLY_RADIUS, MELEE_RANGE, MELEE_ARC,
   MELEE_DAMAGE, MELEE_KNOCKBACK, MELEE_COOLDOWN, FRAG_MAX, MOLOTOV_MAX, THROW_COOLDOWN,
-  TURRET, BARRICADE,
+  TURRET, BARRICADE, DOWNED_HIT_BLEED, DOWNED_HIT_BLEED_RATE, DOWNED_HIT_BLEED_BANK,
 } from '../constants.js';
 import { WEAPONS, crateWeaponPool } from '../weapons.js';
 import { CLASSES, perksFor } from '../classes.js';
@@ -25,7 +25,6 @@ const MELEE_ANIM = 0.25;
 export const SWITCH_DELAY = 0.15;
 const MAX_PICKUPS = 80;
 const PLAYER_KB_DECAY = 7;
-const DOWNED_HIT_BLEED = 0.12;   // seconds of bleedout lost per point of damage while downed
 // Float residue (1/30 - 2/60 is not exactly 0) must not cost a whole tick per shot.
 export const COOLDOWN_EPS = 1e-6;
 
@@ -58,7 +57,7 @@ export function createPlayer(game, info) {
     cash: START_CASH, kills: 0, damage: 0, revives: 0, downs: 0, earned: 0,
     frags: perks.startFrags, molotovs: perks.startMolotovs,
     turrets: perks.startTurrets, barricades: 0, selfRevive: false,
-    bleedout: 0, downT: 0, revive: 0, reviver: 0, respawn: false, ready: false, lastSeq: 0,
+    bleedout: 0, hitBleed: 0, downT: 0, revive: 0, reviver: 0, respawn: false, ready: false, lastSeq: 0,
     queue: [], cmd: { ...DEFAULT_CMD }, prevInteract: false,
     dotAcc: 0, dotT: 0, dotX: 0, dotY: 0,
   };
@@ -405,6 +404,7 @@ export function downPlayer(game, p) {
   p.state = 'downed';
   p.hp = 0;
   p.bleedout = BLEEDOUT_TIME;
+  p.hitBleed = 0;
   p.downT = 0;
   p.revive = 0;
   p.reviver = 0;
@@ -479,7 +479,7 @@ export function damagePlayer(game, p, amount, fromX, fromY, ff = false, dot = fa
   if (!(amount > 0) || p.state === 'dead') return;
   if (p.state === 'downed') {
     if (ff) return;
-    p.bleedout -= amount * DOWNED_HIT_BLEED;
+    p.hitBleed = Math.min(DOWNED_HIT_BLEED_BANK, p.hitBleed + amount * DOWNED_HIT_BLEED);
     if (!dot) game.emit({ type: 'pdamage', pid: p.id, amount: Math.round(amount), x: Math.round(fromX), y: Math.round(fromY) });
     return;
   }
@@ -519,6 +519,11 @@ export function updateDowned(game) {
       p.selfRevive = false;
       revivePlayer(game, p, p.id);
       continue;
+    }
+    if (p.hitBleed > 0) {
+      const d = Math.min(p.hitBleed, DOWNED_HIT_BLEED_RATE * DT);
+      p.hitBleed -= d;
+      p.bleedout -= d;
     }
     // Keep the current reviver while they keep holding; otherwise take the nearest.
     let rv = null;

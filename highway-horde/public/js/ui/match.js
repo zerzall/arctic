@@ -8,15 +8,18 @@
 // starts from a clean slate.
 
 import { DIFFICULTIES } from '../shared/constants.js';
-import { $, createScope, formatShort, h, setShown } from './dom.js';
+import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
 import { createShop, shopState } from './shop.js';
 import { createGameChat } from './chat.js';
 import { fillStatsTable, statRows } from './scoreboard.js';
 import { padNavigate } from './padnav.js';
+import { flashToast } from './menus.js';
 
 const END_DELAY = 2.6;
+/** After a touch button opens the shop/pause menu, clicks this soon are the same tap (s). */
+const GHOST_CLICK_WINDOW = 0.6;
 const MAX_LOGGED_ERRORS = 5;
 
 /**
@@ -39,9 +42,20 @@ export function startMatch(ctx, session) {
   screen.hidden = false;
   document.body.classList.add('in-game');
 
+  // Late join works, so online games show the room code and an invite link in game
+  // (pause menu + scoreboard header). Not in solo, which has no network.
+  const solo = session.transport === 'local';
+  const invite = !solo && session.code ? { code: session.code, onCopy: () => copyInvite() } : null;
+
+  async function copyInvite() {
+    const ok = await copyText(session.inviteUrl || session.code);
+    audio.ui(ok ? 'click' : 'deny');
+    flashToast(ok ? 'Invite link copied' : 'Couldn\'t copy — share the room code instead', ok ? 'good' : 'bad');
+  }
+
   const renderer = deps.createRenderer(canvas, { map, quality: prefs.settings.quality });
   const input = createInput(canvas, { touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch });
-  const hud = createHud(hudEl, { map, renderClassPortrait: deps.renderClassPortrait, audio });
+  const hud = createHud(hudEl, { map, renderClassPortrait: deps.renderClassPortrait, audio, invite });
   hud.setRoster(session.roster, session.localId);
   audio.setMap(map);
 
@@ -95,7 +109,6 @@ export function startMatch(ctx, session) {
 
   // ---- pause ---------------------------------------------------------------------------------
 
-  const solo = session.transport === 'local';
   $('#pause-note').textContent = solo
     ? 'The game keeps running — the horde doesn\'t wait. Your survivor stands still while this menu is open.'
     : 'The game keeps running in multiplayer — your survivor stands still while this menu is open.';
@@ -124,6 +137,19 @@ export function startMatch(ctx, session) {
   scope.on($('#pause-resume'), 'click', () => closePause());
   scope.on($('#pause-settings'), 'click', () => ctx.settingsDialog.open(() => refreshEnabled()));
   scope.on($('#pause-howto'), 'click', () => ctx.howTo.open(() => refreshEnabled()));
+  setShown($('#pause-invite'), !!invite);
+  if (invite) $('#pause-code').textContent = invite.code;
+  scope.on($('#pause-copy'), 'click', () => copyInvite());
+  // The host can end the run for everyone (back to the lobby, same room).
+  setShown($('#pause-end'), session.isHost);
+  scope.on($('#pause-end'), 'click', () => {
+    ctx.dialogs.confirm(
+      solo ? 'Return to the lobby?' : 'Return everyone to the lobby?',
+      solo ? 'This run ends here.' : 'This run ends for every survivor. The room stays open for the next game.',
+      'End Game',
+      () => session.returnToLobby(),
+    );
+  });
   scope.on($('#pause-leave'), 'click', () => {
     const text = solo
       ? 'Your progress in this run will be lost.'
@@ -188,12 +214,29 @@ export function startMatch(ctx, session) {
 
   // ---- UI edges ----------------------------------------------------------------------------------
 
+  // A touch button acts on pointerdown, but the browser still sends the tap's click when the
+  // finger lifts — by then onto whatever just opened under it (a shop card would be bought).
+  let ghostUntil = 0;
+  function guardGhostClick() {
+    if (input.mode === 'touch') ghostUntil = performance.now() + GHOST_CLICK_WINDOW * 1000;
+  }
+  scope.on(window, 'click', (e) => {
+    if (performance.now() >= ghostUntil) return;
+    if (e.target && e.target.closest && e.target.closest('.touch-btn')) return;
+    ghostUntil = 0;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   function handleUi(inp, view, me) {
     if (inp.pause) {
       if (shop.isOpen) shop.close();
       else if (chat.isOpen) chat.close();
       else if (pauseOpen) closePause();
-      else if (!endShown && ctx.modals.count === 0) openPause();
+      else if (!endShown && ctx.modals.count === 0) {
+        openPause();
+        guardGhostClick();
+      }
     }
     if (inp.shop && !pauseOpen && !endShown && !chat.isOpen && ctx.modals.count === 0) {
       if (shop.isOpen) {
@@ -202,6 +245,7 @@ export function startMatch(ctx, session) {
         const st = shopState(view, me, map);
         if (st.open || !view || !me || view.phase === 'prep' || view.phase === 'intermission') {
           shop.open();
+          guardGhostClick();
           audio.ui('click');
         } else {
           // Opening mid-wave would freeze the player away from cover: explain instead.

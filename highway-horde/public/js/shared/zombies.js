@@ -18,7 +18,7 @@ export const ZOMBIES = {
   runner: {
     name: 'Runner', hp: 45, speed: [150, 178], radius: 12, damage: 8, attackRate: 1.4, attackRange: 8,
     mass: 0.1, cash: 15, score: 15,
-    weight: (w) => (w < 2 ? 0 : 18 + w * 2.5),
+    weight: (w) => (w < 2 ? 0 : 28 + w * 1.8),
     look: { skin: '#a3b88a', clothes: ['#c62828', '#1565c0', '#2e7d32', '#f9a825'], scale: 0.9 },
   },
   crawler: {
@@ -38,10 +38,10 @@ export const ZOMBIES = {
   spitter: {
     name: 'Spitter', hp: 90, speed: [66, 78], radius: 14, damage: 10, attackRate: 1.0, attackRange: 10,
     mass: 0.2, cash: 25, score: 25,
-    weight: (w) => (w < 5 ? 0 : 5 + w * 0.5),
+    weight: (w) => (w < 4 ? 0 : 4 + w * 0.4),
     // Stops at `keepAway` px from its target and lobs an 'acid' projectile every `cooldown`
     // seconds while it has line of sight within `range`. The glob leaves an 'acid' hazard.
-    special: { range: 380, keepAway: 260, cooldown: 3.2, speed: 420, poolRadius: 60, poolDps: 14, poolDuration: 4 },
+    special: { range: 380, keepAway: 260, cooldown: 3.8, speed: 420, poolRadius: 60, poolDps: 10, poolDuration: 4 },
     look: { skin: '#6f8f3a', clothes: ['#827717', '#558b2f'], scale: 1 },
   },
   screamer: {
@@ -55,20 +55,21 @@ export const ZOMBIES = {
   brute: {
     name: 'Brute', hp: 1100, speed: [56, 64], radius: 26, damage: 35, attackRate: 0.7, attackRange: 14,
     mass: 0.9, cash: 120, score: 120,
-    weight: (w) => (w < 5 ? 0 : 1 + w * 0.15),
+    weight: (w) => (w < 5 ? 0 : 1.6 + w * 0.08),
     // Within `triggerRange` of its target it charges at `chargeSpeed` for `duration` s,
     // knocking back and damaging (`chargeDamage`) whoever it runs into. Recharges after `cooldown`.
     special: { triggerRange: 320, chargeSpeed: 330, duration: 1.1, cooldown: 6, chargeDamage: 30, knockback: 520 },
     look: { skin: '#6b7d5c', clothes: ['#3e2723', '#263238'], scale: 1.9 },
   },
   boss: {
-    name: 'Abomination', hp: 7000, speed: [58, 58], radius: 44, damage: 50, attackRate: 0.6, attackRange: 20,
+    name: 'Abomination', hp: 8500, speed: [62, 62], radius: 44, damage: 50, attackRate: 0.6, attackRange: 20,
     mass: 1, cash: 1000, score: 1000,
     // Never spawned by weight; one per player-count bracket on every BOSS_EVERY-th wave.
     weight: () => 0,
     // Slams the ground every `cooldown` s when a target is within `radius`: `damage` + knockback.
-    // HP is multiplied by (hpBase + hpPerPlayer * playerCount) on top of wave/difficulty scaling.
-    special: { radius: 190, damage: 40, knockback: 650, cooldown: 4.5, windup: 0.8, hpBase: 0.5, hpPerPlayer: 0.3 },
+    // HP is multiplied by (hpBase + hpPerPlayer * playerCount) / bossCount on top of the
+    // difficulty and its own wave growth: hp × (1 + hpGrowth × (wave - 1)).
+    special: { radius: 190, damage: 40, knockback: 650, cooldown: 4.5, windup: 0.8, hpBase: 0.4, hpPerPlayer: 0.25, hpGrowth: 0.04 },
     look: { skin: '#5b6b3f', clothes: ['#4a148c'], scale: 3.2 },
   },
 };

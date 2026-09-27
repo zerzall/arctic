@@ -84,6 +84,10 @@
             <div class="panel roster-panel">
               <div class="panel-head"><h2>Survivors</h2><span id="roster-count" class="panel-meta"></span></div>
               <ul id="roster" class="roster" aria-live="polite"></ul>
+              <div id="roster-bots" class="roster-bots" hidden>
+                <button id="btn-add-bot" class="btn btn-small" type="button" title="Fill an empty slot with an AI survivor">+ Add Bot</button>
+                <span class="roster-bots-hint">AI survivors fill empty slots</span>
+              </div>
               <div class="my-survivor">
                 <label class="field field-inline" for="lobby-name">
                   <span class="field-label">Your name</span>
@@ -152,10 +156,16 @@
         <div class="panel overlay-card pause-card">
           <h2 id="pause-title" class="overlay-title">Paused</h2>
           <p class="overlay-sub" id="pause-note">The game keeps running — the horde doesn't wait. Your survivor is standing still.</p>
+          <div id="pause-invite" class="sb-invite pause-invite" hidden>
+            <span class="sb-invite-label">Room</span>
+            <span id="pause-code" class="sb-invite-code">-----</span>
+            <button id="pause-copy" class="btn btn-small btn-accent" type="button">Copy invite link</button>
+          </div>
           <div class="pause-btns">
             <button id="pause-resume" class="btn btn-primary btn-big" type="button">Resume</button>
             <button id="pause-settings" class="btn" type="button">Settings</button>
             <button id="pause-howto" class="btn" type="button">How to Play</button>
+            <button id="pause-end" class="btn btn-danger" type="button" hidden>End Game</button>
             <button id="pause-leave" class="btn btn-danger" type="button">Leave Game</button>
           </div>
         </div>
@@ -268,7 +278,7 @@
                   <tr><td>Shove (melee)</td><td>Right mouse or <kbd>V</kbd></td><td>LT or RB</td><td>SHOVE</td></tr>
                   <tr><td>Sprint</td><td><kbd>Shift</kbd></td><td>Click left stick</td><td>Push left thumb fully</td></tr>
                   <tr><td>Reload</td><td><kbd>R</kbd></td><td>X</td><td>RELOAD</td></tr>
-                  <tr><td>Revive / take crate</td><td>Hold <kbd>E</kbd></td><td>Hold A</td><td>Hold USE</td></tr>
+                  <tr><td>Revive (hold) / take crate (tap)</td><td><kbd>E</kbd></td><td>A</td><td>USE</td></tr>
                   <tr><td>Switch weapon</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>, wheel, <kbd>Q</kbd> last</td><td>Y next, D-pad ▶ last</td><td>SWAP</td></tr>
                   <tr><td>Frag grenade</td><td><kbd>G</kbd></td><td>LB</td><td>FRAG</td></tr>
                   <tr><td>Molotov</td><td><kbd>F</kbd></td><td>B</td><td>MOLO</td></tr>

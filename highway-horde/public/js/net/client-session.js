@@ -131,7 +131,7 @@ export class ClientSession extends Emitter {
     // Shot prediction: weapon state as of the newest predicted cmd (rebuilt on every
     // snapshot), local fire cooldown/spin, shots predicted per pending cmd seq.
     this.wpn = {
-      mag: [0, 0, 0], res: [0, 0, 0], freeMag: WEAPONS.pistol.mag, reloadLeft: 0, reloadSlot: -1,
+      mag: [0, 0, 0], res: [0, 0, 0], freeMag: WEAPONS.pistol.mag, reloadLeft: 0, reloadTotal: 0, reloadSlot: -1,
       lastSlot: 0, cooldown: 0, spin: 0, lastFireAt: -Infinity,
     };
     this.shotLog = new Map();
@@ -554,7 +554,7 @@ export class ClientSession extends Emitter {
     const mag = aw.slot < 0 ? W.freeMag : W.mag[aw.slot];
     const res = aw.slot < 0 ? -1 : W.res[aw.slot];
     if (mag >= w.mag || res === 0) return;
-    W.reloadLeft = this._reloadTime(aw.id);
+    W.reloadLeft = W.reloadTotal = this._reloadTime(aw.id);
     W.reloadSlot = aw.slot;
   }
 
@@ -716,7 +716,8 @@ export class ClientSession extends Emitter {
     }
     const aw = activeWeapon(sp);
     if (sp.reloading > 0 && aw.id && WEAPONS[aw.id]) {
-      W.reloadLeft = Math.max(DT / 2, (1 - sp.reloading) * this._reloadTime(aw.id));
+      W.reloadTotal = this._reloadTime(aw.id);
+      W.reloadLeft = Math.max(DT / 2, (1 - sp.reloading) * W.reloadTotal);
       W.reloadSlot = aw.slot;
     } else {
       W.reloadLeft = 0;
@@ -798,6 +799,7 @@ export class ClientSession extends Emitter {
         spin: this.wpn.spin,
         firing: this.clock() - this.wpn.lastFireAt <= FIRING_HOLD,
       };
+      this._predictedWeapon(local, sp);
     } else {
       // Dead / spectating: position as interpolated, everything else as fresh as possible.
       const vp = i >= 0 ? view.players[i] : sp;
@@ -805,6 +807,23 @@ export class ClientSession extends Emitter {
     }
     if (i >= 0) view.players[i] = local;
     else view.players.push(local);
+  }
+
+  /**
+   * The HUD and crosshair read the local record: give them the predicted weapon state
+   * (slot, mags/reserves, reload progress) so the counter drops the instant we fire
+   * instead of one round trip later. The free pistol (downed without one) adds `freeMag`.
+   */
+  _predictedWeapon(local, sp) {
+    const W = this.wpn;
+    const ammo = [];
+    for (let i = 0; i < sp.slots.length; i++) ammo.push(sp.slots[i] ? [W.mag[i], W.res[i]] : [0, 0]);
+    local.slot = this.predSlot;
+    local.ammo = ammo;
+    local.reloading = W.reloadLeft > 0 && W.reloadTotal > 0
+      ? Math.min(1, Math.max(0.01, 1 - W.reloadLeft / W.reloadTotal))
+      : 0;
+    if (activeWeapon(local).slot < 0) local.freeMag = W.freeMag;
   }
 
   // ---- lifecycle -----------------------------------------------------------------------

@@ -11,7 +11,7 @@
 import {
   DEFAULT_SETTINGS, PLAYER_COLORS, PLAYER_SPEED, SPRINT_MULT, STAMINA_MAX, START_CASH,
   PREP_TIME, INTERMISSION_TIME, WAVE_CLEAR_BONUS, SUPPLY_RADIUS, FRAG_MAX, MOLOTOV_MAX, TURRET, BARRICADE,
-  ARMOR_MAX, REVIVE_TIME, REVIVE_RADIUS, INTERACT_RADIUS,
+  ARMOR_MAX, REVIVE_TIME, REVIVE_RADIUS, INTERACT_RADIUS, waveZombieCount,
 } from '../js/shared/constants.js';
 import { WEAPONS } from '../js/shared/weapons.js';
 import { ZOMBIE_IDS, ZFLAG } from '../js/shared/zombies.js';
@@ -691,7 +691,7 @@ class MockSession extends Emitter {
     g.phase = 'wave';
     g.wave = n;
     g.timer = 0;
-    g.remaining = Math.round((12 + 6 * n) * (1 + 0.6 * (g.players.length - 1)));
+    g.remaining = waveZombieCount(n, g.players.length);
     g.readyCount = 0;
     for (const p of g.players) p.ready = false;
     const boss = n % 5 === 0;

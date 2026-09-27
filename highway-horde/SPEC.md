@@ -38,6 +38,7 @@ highway-horde/
   package.json, README.md, SPEC.md, netlify.toml     (lead)
   server/relay-server.js                             (net)
   scripts/e2e.js                                     (integration)
+  scripts/balance.js, docs/BALANCE.md                (balance — headless harness + tuning notes)
   public/index.html, public/css/game.css             (ui)
   public/config.js                                   (net — optional overrides, see §8)
   public/vendor/peerjs.min.js                        (vendored, do not edit)
@@ -45,6 +46,7 @@ highway-horde/
   public/js/shared/weapons.js zombies.js classes.js items.js  (lead — data, read only)
   public/js/shared/maps.js                           (maps)
   public/js/shared/geom.js spatial.js flowfield.js movement.js sim.js  (sim)
+  public/js/shared/sim/bots.js                       (bots — AI survivors, §3.6)
   public/js/shared/protocol.js                       (net)
   public/js/net/*.js                                 (net)
   public/js/render/*.js                              (render)
@@ -136,11 +138,13 @@ import { Game } from './sim.js';
 const game = new Game({
   mapId, seed,                            // map built internally with buildMap(mapId, seed)
   settings: { difficulty, waves, objective, friendlyFire },   // see DEFAULT_SETTINGS
-  players: [ { id, name, color, cls } ],  // id: 1..255 (host = 1), color: 0..5, cls: CLASS_IDS
+  players: [ { id, name, color, cls, bot } ],  // id: 1..255 (host = 1), color: 0..5, cls: CLASS_IDS
+                                          // bot: true = AI survivor (§3.6), optional;
+                                          // botSkill: 0..1 (default 1) how well it plays
 });
 game.map                  // MapDef
 game.tick                 // ticks simulated so far
-game.addPlayer({ id, name, color, cls })   // late join: mid-wave enters 'dead' and respawns at the
+game.addPlayer({ id, name, color, cls, bot })   // late join: mid-wave enters 'dead' and respawns at the
                           //   wave clear; during prep/intermission enters alive. Gets
                           //   wave × WAVE_CLEAR_BONUS catch-up cash.
 game.removePlayer(id)
@@ -201,12 +205,14 @@ dead/downed at once (no one standing) → `gameover` (reason 'wiped'). Objective
 settings.objective → `gameover` (reason 'objective'). The objective takes no damage and
 isn't targeted when settings.objective is false. Game over/victory are terminal.
 
-**Waves.** Zombie count for wave w:
-`round((12 + 6w) * (1 + 0.6 * (players - 1)) * difficulty.count)`. Spawned over time at
+**Waves.** Zombie count for wave w (`waveZombieCount()` in constants.js, numbers in
+`WAVE_ZOMBIES`): `round((base + perWave·w) * (1 + perPlayer * (players - 1)) * difficulty.count)`,
+× `bossWave` on boss waves (the boss is the fight). Spawned in groups (`SPAWN_PACING`) at
 the map's zombieSpawns, preferring spawn rectangles farther than 700 px from every living
 player, never more than `difficulty.maxAlive` alive at once. Type picked by
 `ZOMBIES[type].weight(w)`. 2% of non-boss spawns from wave 4 are ELITE (1.6x hp, +20% speed).
-Every BOSS_EVERY-th wave also spawns `ceil(players / 3)` bosses about 10 s in.
+Every BOSS_EVERY-th wave also spawns `ceil(players / 3)` bosses about 10 s in; they share
+the boss hp multiplier `hpBase + hpPerPlayer × players` and grow by their own `hpGrowth`.
 HP scale: `hp * (1 + HP_GROWTH_PER_WAVE*(w-1)) * difficulty.hp`; speed scale capped at
 SPEED_GROWTH_CAP; damage × difficulty.damage. `remaining` = alive + not yet spawned.
 Wave clear → WAVE_CLEAR_BONUS cash to every connected player, dead players respawn
@@ -270,13 +276,16 @@ uses the same rule). Buyfail reasons: 'max' (ammo/armour/medkit/repair already f
 throwable/turret/barricade limits), 'owned' (owned gun already full, second self-revive
 kit), 'invalid' (repair with objective off, unknown id, pistol), 'cash', 'closed'. Buying
 'ammo' also refills the buyer's placed turrets. Death drops the loadout; respawn restores
-pistol + class weapon. Hits on downed players cost 0.12 s of bleedout per damage point.
+pistol + class weapon. Hits on downed players cost DOWNED_HIT_BLEED s of bleedout per damage
+point, drained at most DOWNED_HIT_BLEED_RATE extra s per s (a mauled survivor bleeds out at most
+twice as fast). The objective's hp is the map's × (1 + OBJECTIVE_HP_PER_PLAYER × (players − 1))
+at game start; zombie hits on it do OBJECTIVE_DAMAGE_MULT of their damage.
 Explosions hurt players at 35%; explosiveMult only boosts damage to zombies. Molotov fire
 hurts players only with friendly fire (25%). Bosses bypass maxAlive; boss hp multiplier
-per zombies.js (`hpBase + hpPerPlayer × players`). Heavies (bloater, brute, boss) crash
+per zombies.js (`(hpBase + hpPerPlayer × players) / bosses`, own `hpGrowth`). Heavies (bloater, brute, boss) crash
 through low cover (solid:false). Zombies weigh the objective as farther away than it is,
 so they prefer nearby players and chew on the objective when nobody is close.
-**In a one-player game the survivor starts with a Self-Revive Kit** (solo would otherwise
+**In a one-player game (exactly one player, bots included) the survivor starts with a Self-Revive Kit** (solo would otherwise
 end at the first knock-down); only at game start, respawns never hand out a kit. Nobody
 fires once the game is over (`gameover`/`victory`); clients' shot prediction agrees.
 
@@ -289,6 +298,56 @@ fires once the game is over (`gameover`/`victory`); clients' shot prediction agr
   wiped, objective destruction, buy validation, each weapon kind damages zombies, bloater
   burst, spitter pool, brute charge, boss slam, turret kills credit the owner.
 - Perf: 250 zombies + 6 bot players, 600 ticks, average `step()` under 4 ms in Node.
+
+### 3.6 AI survivors — `shared/sim/bots.js`
+A player given `bot: true` (constructor list or `addPlayer`) is an AI survivor; `game.bots`
+holds one brain per bot in join order (`removePlayer` drops it; `brain.holding` is true while
+it stands still on purpose). Every tick, after the zombie grid is rebuilt and before inputs
+are applied, each brain produces one InputCmd and queues it with `game.setInput`: the same
+movement, firing, reviving and pickup rules as a human; purchases and the ready vote go
+through `game.command`. No stat changes, no shooting at what it can't see (line of sight),
+every random choice from `game.rng` (a game with bots stays deterministic). `botSkill`
+(default 1 = everything below) scales it through `skillProfile()`: lower = slower reactions,
+larger and slower-settling aim error, looser trigger, less threat awareness, zombies let closer,
+fewer throws, moments of tunnel vision mid-wave (no backing off), reloading whenever low and
+plain shopping (best gun affordable now, no saving). `BOT_SKILL.AVERAGE` stands in for an
+average human in `scripts/balance.js` (docs/BALANCE.md). Behaviour:
+- **Anchor**: a living human (bots spread over the humans), or the objective when no human is
+  alive, when the humans are holding the objective anyway (within 260 px of it) or there are
+  none. Each bot takes a free, reachable defend spot on its own bearing around the anchor,
+  kept ≥ 90 px from teammates. Players never collide with each other, so bots can't block a
+  human; they place barricades only in open ground ≥ 180 px from any human.
+- **Targets** (every 6 ticks): the best-scoring zombie in sight — closer, mauling a teammate
+  (humans first) or the objective, spitters/screamers at range, charging brutes, bosses;
+  bloaters only when no teammate is within 130 px; out of weapon range scores below zero.
+  When it saw ≥ 4 zombies chewing on the objective, those outrank everything, even far away.
+- **Aim**: 0.08–0.32 s reaction after a new target, an aim error of 0.05–0.15 rad that decays
+  while tracking, a finite turn speed; fires only with the crosshair on the target, in bursts
+  with automatic guns beyond 260 px. With friendly fire on it never fires through a
+  teammate, and never an explosive near one.
+- **Movement**: kites back from zombies closing in (bosses, brutes and bloaters by their
+  reach) by probing 12 directions with the real collide-and-slide (walls, cars, the map
+  edge, other zombies, acid), follows A* paths over its own player-sized nav grid (at most
+  one search per tick for all bots), and wiggles free in a random open direction when it
+  makes no progress. After 3 s with nothing in sight mid-wave it hunts the nearest zombie
+  (within 950 px of the anchor unless ≤ 8 are left).
+- **Weapons**: the best gun for the range, reload when the magazine is low and nothing is
+  within 250 px (or top up in a lull), shove when touched or surrounded, a frag into a pack
+  of ≥ 6 at 260–440 px (molotov: ≥ 5 at 160–380 px) with no teammate within 210/160 px.
+- **Support**: the nearest standing bot revives a downed teammate (≥ 3 zombies around them:
+  clears the area first unless the bleedout is nearly over), grabs pickups it needs (a hurt
+  human closer to a first-aid kit gets it) and crates better than its weakest gun; a
+  downed bot crawls toward the nearest teammate firing its pistol.
+- **Between waves**: walks to the supply station and buys one item every ~0.5 s: ammo
+  (< 50 % reserve), medkit (< 60 % hp), repair (objective < 45 %), the best unlocked gun
+  upgrade into its weakest slot (saving up when a better gun is within $450), a self-revive
+  kit with $1500 to spare, armour, turrets (engineer), frags. Buys at once when the humans are ready or < 4 s are left. It
+  votes ready once done shopping and every human has (at once when no human is alive), and
+  places owned turrets at its spot facing out.
+- **Cost**: sensing every 6 ticks, strategy every 30, steering every 3, staggered per bot,
+  buffers reused; the nav grid is built on the first bot tick. 5 bots stay well under 0.5 ms
+  per tick. Tests: `tests/bots.test.js` (brain, every map with an idle human + 3 bots
+  clearing waves 1–3 with no bot stuck, determinism, cost), `tests/bots-session.test.js`.
 
 ---------------------------------------------------------------------------------------
 
@@ -438,7 +497,8 @@ export async function joinGame({ code, via, name, color, cls })  // → Session;
                                         // 'Game version mismatch', 'Could not connect'
 
 session.isHost, session.localId, session.code, session.inviteUrl, session.transport
-session.roster      // [{ id, name, color, cls, ready, ping, host }]  (lobby + in game)
+session.roster      // [{ id, name, color, cls, ready, ping, host, bot? }]  (lobby + in game;
+                    //   bot: true on AI survivors, see "Bots" below)
 session.settings    // { mapId, difficulty, waves, objective, friendlyFire }
 session.inGame      // true between 'start' and 'lobby'
 session.on(event, fn) / session.off(event, fn)
@@ -457,6 +517,12 @@ session.update(frameDt, input, aimAngle) // every animation frame while in game 
 session.getView(nowSeconds)           // → Snapshot for rendering (host: latest sim state;
                                       //   client: interpolated at now - INTERP_DELAY, with the
                                       //   local player replaced by its predicted state), or null
+                                      //   Client local record: x, y, angle, stamina, sprinting,
+                                      //   spin, firing AND the weapon state — slot, ammo,
+                                      //   reloading — come from prediction (the ammo counter drops
+                                      //   the frame a shot is fired; matches the host once acked).
+                                      //   Downed with no pistol it also carries `freeMag` (the
+                                      //   free pistol's mag, which snapshots don't have).
 session.drainEvents()                 // → GameEvent[] due for presentation (client releases
                                       //   each snapshot's events when render time reaches it)
 session.getMap()                      // MapDef of the running game
@@ -464,6 +530,9 @@ session.getPredictedLocal()           // {x, y, angle} of the local player right
 session.stats                         // { ping, fps?, kbpsIn, kbpsOut, snapshotsPerSec }
 session.leave()
 session.kick(pid)                     // host only
+session.addBot()                      // host only, lobby only → the new roster entry, or null
+                                      //   (room full / in game); works in solo too
+session.removeBot(pid)                // host only, lobby only → true if a bot was removed
    // Extras: returnToLobby() works at any time (host "end game"); getView()/drainEvents()
    // use the session's own clock (performance.now) whatever `now` is passed; decoded
    // snapshots may carry `match` and `echo` (netcode internals, ignore them).
@@ -473,6 +542,15 @@ Host: runs `Game`, stepping with a real-time accumulator driven by a Worker-base
 Snapshots every SNAPSHOT_EVERY ticks. Host's own input goes straight into
 `game.setInput`. Handles hello/version check, MAX_PLAYERS, names made unique, colours
 kept distinct where possible, chat relay, ping measurement, late join, player leave.
+**Bots** (AI survivors, §3.6): roster entries `{ id, name, color, cls, ready: true, ping: 0,
+host: false, bot: true }` with a name from `BOT_NAMES` (lobby-rules.js; fictional, never real
+people), a free colour and preferably a class no one has. They count toward MAX_PLAYERS,
+are ready by definition (start/returnToLobby keep them ready), are passed to `Game` with
+`bot: true` and keep their slot through repeated games until removed. A human joining a
+full room with bots in it makes the newest bot leave (lobby: roster only; mid-game: also
+`game.removePlayer`) — the joiner enters normally (a late joiner mid-wave), taking over
+nothing; with room to spare the bots just stay. A human who asks for a colour a bot has
+gets it (the bot takes the human's old colour, or any free one on join).
 Client: fixed-step 60 Hz input sampling; each cmd applied to a local predicted copy of
 the player via `stepPlayerMovement` and sent (with the previous 3 for redundancy) every
 frame; on snapshot, reconcile from `lastSeq` and replay pending cmds; smooth visual
@@ -533,9 +611,19 @@ the UI computes as the angle from `session.getPredictedLocal()` to
 Screens: title (name, class picker with portraits, colour), host / join (code field,
 join via link `?join=CODE` [&via=relay]), lobby (roster with class/colour/ready/ping,
 host controls: map with preview, difficulty, waves, objective toggle; invite link copy;
-chat; start), in-game (canvas + HUD + chat + shop modal + scoreboard + pause/settings),
+chat; start; "+ Add Bot" under the roster (host only, solo too, disabled when full) and
+a ✕ on bot rows (`removeBot`); bot rows show a BOT tag instead of the ping, read-only
+for non-hosts), in-game (canvas + HUD + chat + shop modal + scoreboard + pause/settings),
 end screen (victory/game over with per-player stats; host "Back to lobby"), settings
 (volume, quality, lighting, screen shake, name tags), how-to-play.
+Pause menu: Resume, Settings, How to Play, **End Game (host only**: confirm "Return everyone
+to the lobby?" → `session.returnToLobby()`), Leave Game. Online games (not solo) show the
+room code + "Copy invite link" (late join works) in the pause menu and in the scoreboard
+header; the scoreboard is mounted on `#screen-game` above the touch layer, letting
+everything but that button through. A touch button that opens the shop or pause menu
+swallows the tap's trailing click (it would land on what just opened, e.g. buy a card).
+The HUD weapon panel shows the weapon actually in hand (`activeWeapon()`: a downed
+survivor's pistol).
 HUD: health/armour/stamina, weapon slots with ammo, cash, wave + remaining + phase timer,
 objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed, chat,
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
@@ -581,13 +669,22 @@ procedural low drone/percussion that intensifies during waves and boss fights.
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through five scenarios in fresh browser contexts: solo with a scripted player,
+  Chromium through six scenarios in fresh browser contexts: solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
-  prediction, shot/kill credit, a player leaving, back to lobby, second game), late join
+  prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
+  End Game, second game), late join
   (prep → alive, mid-wave → spectating), p2p via the local PeerJS server (config.js and
-  api/info are routed), and a 390x844 touch phone (layout, left stick, rotation). Any
+  api/info are routed), and a 390x844 touch phone (layout, left stick, SHOP tap buys
+  nothing, rotation). Any
   console error or page error fails a scenario; Google Fonts requests are answered
   locally. Screenshots go to `e2e-output/` (gitignored). `E2E_ONLY=a,c` runs a subset.
+  Scenario f (bots): Play Solo, Add Bot ×3 (BOT tags), ✕ removes one, the human readies,
+  the two bots ready after them and both score kills while the human stands still.
+- `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
+  whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
+  team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,
+  economy, guns, classes and objective numbers. `--quick` ≈ 2 min on 4 cores. See
+  docs/BALANCE.md for the options, the tuning targets and the current tables.
 - CI: `.github/workflows/highway-horde.yml` at the repo root (paths `highway-horde/**`)
   runs `npm ci`, `npm test`, installs Chromium and runs `npm run e2e`, uploading
   `e2e-output/` as an artifact. The repo root's own `node --test` also discovers
