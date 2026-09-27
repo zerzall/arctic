@@ -769,7 +769,7 @@ Each sub-system is created as `createX(ctx)` and returns
 `{ update(view, frame), addEvents?(events, opts), setQuality?(q), dispose() }`.
 `ctx` (built by renderer3d.js, read-only for sub-systems):
 ```
-ctx = { THREE, scene, camera, map, quality,           // quality 'high' | 'low'
+ctx = { THREE, scene, camera, map, quality,           // quality 'ultra' | 'high' | 'low'
         overlay,                                       // CanvasRenderingContext2D of the overlay (CSS px)
         lights: { flash(x, y, h, color, intensity, radius, life),   // transient light (muzzle, explosion)
                   steady(key, x, y, h, color, intensity, radius) }, // per-frame persistent source
@@ -844,7 +844,11 @@ Zombies: one InstancedMesh per body part per type (≤ ~60 draw calls for 300 zo
 walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 (burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at
 1080p with 250 zombies on a mid laptop at 'high'; 'low' = no shadows, 4 pool lights,
-fewer particles, render scale 0.75. `r.stats` exposes draw calls, triangles, frame ms.
+fewer particles, render scale 0.75; 'ultra' = native resolution (pixel ratio up to 3),
+12 pool lights, 2048² flashlight shadows, full-density ground textures, 16x anisotropy,
+more particles. Phones and tablets (coarse pointer) default to 'ultra' at the owner's
+request — they run hot; desktops default to 'high'. Sub-systems treat any quality other
+than 'low' as high. `r.stats` exposes draw calls, triangles, frame ms.
 Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
 235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms.
 The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).

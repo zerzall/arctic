@@ -113,8 +113,11 @@ captures it again.
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); the
 other actions have on-screen buttons. Gamepads and touch get a light aim assist.
+Phones and tablets start on the **Ultra** graphics preset (full screen resolution, extra
+lights, sharp shadows): it looks its best but makes the phone run warm and drains the
+battery faster; pick High or Low in Settings if it stutters.
 
-**Settings** (menu → Settings) has the view (**First-person** or **Classic top-down**; a
+**Settings** (menu → Settings) has graphics quality (Ultra, High, Low), the view (**First-person** or **Classic top-down**; a
 change applies from the next game), field of view (horizontal degrees on a 4:3 screen,
 80 by default; wider screens see more at the sides), mouse sensitivity, stick and touch
 look speed, invert Y, aim assist, and whether the minimap turns with your view. In the

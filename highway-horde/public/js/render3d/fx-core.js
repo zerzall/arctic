@@ -22,6 +22,7 @@ export const FR = {
 };
 
 const QUALITY = {
+  ultra: { particles: 4200, beams: 480 },
   high: { particles: 2600, beams: 320 },
   low: { particles: 1000, beams: 160 },
 };
@@ -354,7 +355,8 @@ function fxMaterial(vert, frag, additive, extra = {}) {
 
 function createFx(ctx) {
   const q = QUALITY[ctx.quality] || QUALITY.high;
-  const CAP = QUALITY.high.particles, BCAP = QUALITY.high.beams;
+  // Buffers sized for the biggest tier so setQuality can switch without reallocating.
+  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams;
   let cap = q.particles, bcap = q.beams;
   const R = ctx.rng || Math.random;
 

@@ -252,7 +252,7 @@ test('prefs round-trip through localStorage and garbage is ignored', () => {
     assert.equal(q.color, 3);
     assert.equal(q.settings.master, 0.3);
     assert.equal(q.lobby.waves, 20);
-    mem.set([...mem.keys()][0], JSON.stringify({ name: 42, cls: 'wizard', color: 99, settings: { master: 7, quality: 'ultra' }, lobby: { waves: 13 } }));
+    mem.set([...mem.keys()][0], JSON.stringify({ name: 42, cls: 'wizard', color: 99, settings: { master: 7, quality: 'insane' }, lobby: { waves: 13 } }));
     const r = loadPrefs();
     assert.equal(r.name, '');
     assert.equal(r.cls, CLASS_IDS[0]);
@@ -366,7 +366,7 @@ test('every class has readable perk lines', () => {
   for (const id of CLASS_IDS) assert.ok(perkLines(id).length >= 2, id);
 });
 
-test('phones start on low quality until the player picks one; desktops on high', () => {
+test('phones start on ultra quality until the player picks one; desktops on high', () => {
   const mem = new Map();
   const store = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
   const hadMM = 'matchMedia' in globalThis;
@@ -375,10 +375,10 @@ test('phones start on low quality until the player picks one; desktops on high',
     globalThis.matchMedia = (q) => ({ matches: q === '(pointer: coarse)' });
     withStorage(store, () => {
       const p = loadPrefs();
-      assert.equal(p.settings.quality, 'low');
-      p.settings.quality = 'high';
+      assert.equal(p.settings.quality, 'ultra');
+      p.settings.quality = 'low';
       savePrefs(p);
-      assert.equal(loadPrefs().settings.quality, 'high', 'an explicit choice sticks');
+      assert.equal(loadPrefs().settings.quality, 'low', 'an explicit choice sticks');
     });
     globalThis.matchMedia = () => ({ matches: false });
     mem.clear();

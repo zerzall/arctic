@@ -68,16 +68,21 @@ function factoryOf(mod) {
   return typeof mod.default === 'function' ? mod.default : null;
 }
 
+/** 'ultra' | 'high' | 'low' (anything unknown is 'high'). */
+function normQuality(v) {
+  return v === 'low' || v === 'ultra' ? v : 'high';
+}
+
 /**
  * Create the first-person renderer on `canvas`.
  * @param {HTMLCanvasElement} canvas
- * @param {{ map: object, quality?: 'high'|'low' }} opts
+ * @param {{ map: object, quality?: 'ultra'|'high'|'low' }} opts
  */
 export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   const tCreate = performance.now();
-  let q = quality === 'low' ? 'low' : 'high';
+  let q = normQuality(quality);
   const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: q === 'high', alpha: false, stencil: false, powerPreference: 'high-performance',
+    canvas, antialias: q !== 'low', alpha: false, stencil: false, powerPreference: 'high-performance',
   });
   const glMs = performance.now() - tCreate;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -261,6 +266,8 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   // ---- sizing ----
   function pixelRatio() {
     const d = window.devicePixelRatio || 1;
+    // Ultra renders at the screen's native resolution (phones are ~3x): sharp, and hot.
+    if (q === 'ultra') return Math.min(d, 3);
     return q === 'high' ? Math.min(d, 1.5) : Math.min(d, 1) * 0.75;
   }
   function resize() {
@@ -443,7 +450,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     },
     resize,
     setQuality(nq) {
-      const n = nq === 'low' ? 'low' : 'high';
+      const n = normQuality(nq);
       if (n === q) return;
       q = n;
       ctx.quality = n;

@@ -51,12 +51,13 @@ export function cleanName(name) {
 }
 
 /**
- * Phones and tablets start on 'low' (frame rate, heat, battery) until the player picks a
- * quality in Settings; desktops start on DEFAULT_CLIENT_SETTINGS.quality.
+ * Phones and tablets start on 'ultra' (native resolution, every effect; they will run
+ * hot) until the player picks a quality in Settings; desktops start on
+ * DEFAULT_CLIENT_SETTINGS.quality.
  */
 export function defaultQuality() {
   try {
-    if (globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches) return 'low';
+    if (globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches) return 'ultra';
   } catch {
     // no matchMedia (Node tests, old browsers): use the desktop default
   }
@@ -116,7 +117,7 @@ export function loadPrefs() {
     sfx: num01(s.sfx, ds.sfx),
     music: num01(s.music, ds.music),
     muted: bool(s.muted, ds.muted),
-    quality: s.quality === 'low' || s.quality === 'high' ? s.quality : defaultQuality(),
+    quality: s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra' ? s.quality : defaultQuality(),
     lighting: bool(s.lighting, ds.lighting),
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),

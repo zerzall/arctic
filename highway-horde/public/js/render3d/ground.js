@@ -36,8 +36,10 @@ const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
  */
 export function createGround({ scene, map, quality, renderer }) {
   const high = quality !== 'low';
-  const scale = high ? 0.75 : 0.5;
-  const maxAniso = renderer ? Math.min(high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
+  const ultra = quality === 'ultra';
+  // texels per world unit: ultra paints the ground at full detail
+  const scale = ultra ? 1 : high ? 0.75 : 0.5;
+  const maxAniso = renderer ? Math.min(ultra ? 16 : high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
   const W = map.width, H = map.height;
 
   // ---- painting source: the map with edge-touching roads/rivers carried into the skirt

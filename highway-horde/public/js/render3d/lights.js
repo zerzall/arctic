@@ -1,8 +1,8 @@
 // Lighting of the first-person view (WORLD, SPEC §7.5). Every light is created once —
 // adding or removing lights at runtime would recompile every shader — and reused:
 //   - a dim moonlight (DirectionalLight) and a HemisphereLight tuned per map.ambient,
-//   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'),
-//   - a fixed pool of PointLights (8 on 'high', 4 on 'low'). Each frame the pool is handed
+//   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'/'ultra'),
+//   - a fixed pool of PointLights (12 on 'ultra', 8 on 'high', 4 on 'low'). Each frame the pool is handed
 //     to the most relevant sources near the camera: the map's lamps and fires, steady()
 //     registrations from sub-systems (burning zombies, hazards, turrets...) and flash()
 //     transients (muzzle flashes, explosions). Pool slots fade in and out so lights never
@@ -44,10 +44,17 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.44, 0.6, 1);
   flash.target = new THREE.Object3D();
   group.add(flash, flash.target);
-  let high = quality !== 'low';
+  let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
+  let high = tier !== 'low';
+  const POOL = { ultra: 12, high: 8, low: 4 };
   const setShadows = () => {
     flash.castShadow = high;
-    flash.shadow.mapSize.set(512, 512);
+    const size = tier === 'ultra' ? 2048 : 512;
+    if (flash.shadow.mapSize.x !== size && flash.shadow.map) {
+      flash.shadow.map.dispose();
+      flash.shadow.map = null;
+    }
+    flash.shadow.mapSize.set(size, size);
     flash.shadow.camera.near = 6;
     flash.shadow.camera.far = 900;
     flash.shadow.bias = -0.0006;
@@ -100,7 +107,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
       pool.push({ light, src: null, level: 0 });
     }
   }
-  buildPool(high ? 8 : 4);
+  buildPool(POOL[tier]);
 
   const cands = [];
   const _fwd = new THREE.Vector3();
@@ -255,13 +262,14 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     },
     update,
     setQuality(q) {
-      const nh = q !== 'low';
-      if (nh === high) return;
-      high = nh;
+      const nt = q === 'low' || q === 'ultra' ? q : 'high';
+      if (nt === tier) return;
+      tier = nt;
+      high = tier !== 'low';
       for (const s of mapSources) s.slot = null;
       for (const s of steadyMap.values()) s.slot = null;
       for (const s of flashes) s.slot = null;
-      buildPool(high ? 8 : 4);
+      buildPool(POOL[tier]);
       setShadows();
     },
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
