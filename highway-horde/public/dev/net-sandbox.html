@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Net Sandbox</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; --bg: #111418; --panel: #1b2027; --text: #d8dee6; --muted: #8a96a3; --accent: #ffb74d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .panel { background: var(--panel); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  input, select, button { font: inherit; background: #0d1014; color: var(--text); border: 1px solid #333b45; border-radius: 4px; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #status { color: var(--accent); }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-all; font: 12px/1.35 ui-monospace, monospace; max-height: 260px; overflow: auto; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  canvas { background: #0a0c0f; border-radius: 4px; width: 100%; max-width: 640px; }
+  .muted { color: var(--muted); }
+</style>
+<script>
+  // Point PeerJS at a local signalling server when the URL says so, e.g.
+  // ?peerHost=127.0.0.1&peerPort=9000&peerPath=/peer (host candidates only: same machine).
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const cfg = {};
+    if (q.get('peerHost')) {
+      cfg.peer = {
+        host: q.get('peerHost'), port: Number(q.get('peerPort')) || 9000, path: q.get('peerPath') || '/',
+        secure: q.get('peerSecure') === '1', key: q.get('peerKey') || 'peerjs', config: { iceServers: [] },
+      };
+    }
+    if (q.get('relayUrl')) cfg.relayUrl = q.get('relayUrl');
+    window.HH_CONFIG = cfg;
+  })();
+</script>
+<script src="../vendor/peerjs.min.js"></script>
+</head>
+<body>
+<h1>Highway Horde · net sandbox <span id="status" class="muted">idle</span></h1>
+<div class="panel">
+  <div class="row">
+    <label>Name <input id="name" value="Tester" maxlength="16" size="10"></label>
+    <label>Class <select id="cls"></select></label>
+    <label>Colour <input id="color" type="number" min="0" max="5" value="0" style="width:4em"></label>
+  </div>
+  <div class="row">
+    <select id="transport"><option>auto</option><option>relay</option><option>p2p</option><option>local</option></select>
+    <button id="host">Host</button>
+    <span class="muted">or</span>
+    <input id="code" placeholder="CODE" size="7">
+    <select id="via"><option value="">auto</option><option>relay</option><option>p2p</option></select>
+    <button id="join">Join</button>
+    <button id="leave">Leave</button>
+  </div>
+  <div class="row">
+    <button id="start">Start</button>
+    <button id="lobby">Back to lobby</button>
+    <label><input id="walk" type="checkbox"> walk in circles + fire</label>
+    <input id="chat" placeholder="chat…" size="24"><button id="send">Send</button>
+  </div>
+</div>
+<div class="grid">
+  <div class="panel"><div class="muted">session</div><pre id="info"></pre></div>
+  <div class="panel"><div class="muted">view</div><pre id="view"></pre></div>
+  <div class="panel"><div class="muted">roster</div><pre id="roster"></pre></div>
+  <div class="panel"><div class="muted">log</div><pre id="log"></pre></div>
+</div>
+<canvas id="map" width="640" height="400"></canvas>
+<script type="module" src="net-sandbox.js"></script>
+</body>
+</html>

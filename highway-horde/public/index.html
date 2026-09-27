@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Highway Horde — a top-down co-op zombie shooter for 1 to 6 friends, right in your browser. Hold the line on the highway.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Highway Horde</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23101215'/%3E%3CclipPath id='c'%3E%3Crect x='0' y='46' width='64' height='18' rx='0'/%3E%3C/clipPath%3E%3Cg clip-path='url(%23c)'%3E%3Crect y='46' width='64' height='18' fill='%23ffc400'/%3E%3Cpath d='M-4 64 10 46h8L4 64zM14 64 28 46h8L22 64zM32 64 46 46h8L40 64zM50 64 64 46h8L58 64z' fill='%23101215'/%3E%3C/g%3E%3Cpath d='M12 10h9v12h10V10h9v32h-9V30H21v12h-9z' fill='%23ffc400'/%3E%3Ccircle cx='50' cy='16' r='6' fill='%23e53935'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/game.css">
+  <script src="vendor/peerjs.min.js" defer></script>
+  <script src="config.js" defer></script>
+  <script type="module" src="js/ui/main.js"></script>
+</head>
+<body>
+  <div id="app" class="app booting">
+
+    <!-- ================= TITLE ================= -->
+    <section id="screen-title" class="screen screen-title" aria-labelledby="logo-title">
+      <div class="menu-bg" aria-hidden="true"></div>
+      <div class="title-wrap">
+        <header class="logo">
+          <div class="logo-kicker"><span class="hazard-chip"></span>Co-op zombie survival · 1–6 players<span class="hazard-chip"></span></div>
+          <h1 id="logo-title" class="logo-title"><span class="logo-line1">Highway</span><span class="logo-line2">Horde</span></h1>
+          <p class="logo-tag">The road is blocked. The dead are coming. Hold the line together.</p>
+        </header>
+
+        <div class="title-grid">
+          <div class="panel profile-panel">
+            <div class="panel-head"><h2>Your Survivor</h2></div>
+            <label class="field" for="name-input">
+              <span class="field-label">Callsign</span>
+              <input id="name-input" class="text-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Your name">
+            </label>
+            <div class="field-label" id="class-label">Class</div>
+            <div id="class-grid" class="class-grid" role="radiogroup" aria-labelledby="class-label"></div>
+            <div id="class-detail" class="class-detail" aria-live="polite"></div>
+            <div class="field-label" id="color-label">Colour</div>
+            <div id="color-swatches" class="swatches" role="radiogroup" aria-labelledby="color-label"></div>
+          </div>
+
+          <nav class="panel menu-panel" aria-label="Main menu">
+            <button id="btn-solo" class="btn btn-primary btn-big" type="button"><span class="btn-title">Play Solo</span><span class="btn-sub">Just you against the horde</span></button>
+            <button id="btn-host" class="btn btn-big" type="button"><span class="btn-title">Host Online Game</span><span class="btn-sub">Get a room code for your friends</span></button>
+            <button id="btn-join" class="btn btn-big" type="button"><span class="btn-title">Join Game</span><span class="btn-sub">Enter a code or invite link</span></button>
+            <div class="menu-row">
+              <button id="btn-settings" class="btn" type="button">Settings</button>
+              <button id="btn-howto" class="btn" type="button">How to Play</button>
+            </div>
+            <p id="server-status" class="menu-foot">Checking connection options…</p>
+          </nav>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LOBBY ================= -->
+    <section id="screen-lobby" class="screen screen-lobby" hidden aria-labelledby="lobby-title">
+      <div class="menu-bg" aria-hidden="true"></div>
+      <div class="lobby-wrap">
+        <header class="lobby-head">
+          <button id="lobby-leave" class="btn btn-ghost" type="button">‹ Leave</button>
+          <h1 id="lobby-title" class="lobby-title">Lobby</h1>
+          <div id="lobby-transport" class="lobby-transport"></div>
+        </header>
+
+        <div class="lobby-grid">
+          <div class="lobby-col">
+            <div id="room-panel" class="panel room-panel">
+              <div class="room-code-label">Room code</div>
+              <button id="room-code" class="room-code" type="button" title="Click to copy the code">-----</button>
+              <div class="room-actions">
+                <button id="copy-code" class="btn btn-small" type="button">Copy code</button>
+                <button id="copy-link" class="btn btn-small btn-accent" type="button">Copy invite link</button>
+              </div>
+              <p id="room-hint" class="room-hint">Send the invite link to your friends — it opens the game and joins this room.</p>
+            </div>
+
+            <div class="panel roster-panel">
+              <div class="panel-head"><h2>Survivors</h2><span id="roster-count" class="panel-meta"></span></div>
+              <ul id="roster" class="roster" aria-live="polite"></ul>
+              <div class="my-survivor">
+                <label class="field field-inline" for="lobby-name">
+                  <span class="field-label">Your name</span>
+                  <input id="lobby-name" class="text-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
+                </label>
+                <div class="field-label">Change survivor</div>
+                <div id="lobby-classes" class="mini-classes" role="radiogroup" aria-label="Class"></div>
+                <div id="lobby-colors" class="swatches small" role="radiogroup" aria-label="Colour"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lobby-col lobby-col-wide">
+            <div class="panel settings-panel">
+              <div class="panel-head"><h2>Mission</h2><span id="settings-owner" class="panel-meta"></span></div>
+              <div id="map-cards" class="map-cards" role="radiogroup" aria-label="Map"></div>
+              <div class="opt-grid">
+                <div class="opt">
+                  <div class="field-label" id="diff-label">Difficulty</div>
+                  <div id="opt-difficulty" class="seg" role="radiogroup" aria-labelledby="diff-label"></div>
+                </div>
+                <div class="opt">
+                  <div class="field-label" id="waves-label">Waves</div>
+                  <div id="opt-waves" class="seg" role="radiogroup" aria-labelledby="waves-label"></div>
+                </div>
+                <div class="opt">
+                  <div class="field-label" id="obj-label">Defend objective</div>
+                  <div id="opt-objective" class="seg" role="radiogroup" aria-labelledby="obj-label"></div>
+                </div>
+                <div class="opt">
+                  <div class="field-label" id="ff-label">Friendly fire</div>
+                  <div id="opt-ff" class="seg" role="radiogroup" aria-labelledby="ff-label"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel chat-panel">
+              <div class="panel-head"><h2>Chat</h2></div>
+              <div id="lobby-chat-log" class="lobby-chat-log" role="log" aria-live="polite"></div>
+              <form id="lobby-chat-form" class="lobby-chat-form">
+                <input id="lobby-chat-input" class="text-input" type="text" maxlength="160" autocomplete="off" placeholder="Say hi to your squad…" aria-label="Chat message" enterkeyhint="send">
+                <button class="btn btn-small" type="submit">Send</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <footer class="lobby-foot">
+          <p id="lobby-status" class="lobby-status" aria-live="polite"></p>
+          <div class="lobby-foot-btns">
+            <button id="btn-ready" class="btn btn-big btn-toggle" type="button" aria-pressed="false" data-silent>Ready</button>
+            <button id="btn-start" class="btn btn-big btn-primary" type="button">Start Game</button>
+          </div>
+        </footer>
+      </div>
+    </section>
+
+    <!-- ================= GAME ================= -->
+    <section id="screen-game" class="screen screen-game" hidden aria-label="Game">
+      <canvas id="game-canvas" class="game-canvas"></canvas>
+      <div id="hud" class="hud" hidden></div>
+      <div id="touch-root" class="touch-root"></div>
+      <div id="shop-root" class="shop-root"></div>
+
+      <div id="pause" class="overlay pause" hidden role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <div class="panel overlay-card pause-card">
+          <h2 id="pause-title" class="overlay-title">Paused</h2>
+          <p class="overlay-sub" id="pause-note">The game keeps running — the horde doesn't wait. Your survivor is standing still.</p>
+          <div class="pause-btns">
+            <button id="pause-resume" class="btn btn-primary btn-big" type="button">Resume</button>
+            <button id="pause-settings" class="btn" type="button">Settings</button>
+            <button id="pause-howto" class="btn" type="button">How to Play</button>
+            <button id="pause-leave" class="btn btn-danger" type="button">Leave Game</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="endscreen" class="overlay endscreen" hidden role="dialog" aria-modal="true" aria-labelledby="end-title">
+        <div class="panel overlay-card end-card">
+          <div class="end-stripe" aria-hidden="true"></div>
+          <h2 id="end-title" class="end-title">Victory</h2>
+          <p id="end-sub" class="end-sub"></p>
+          <div class="end-summary" id="end-summary"></div>
+          <div class="table-wrap"><table id="end-table" class="stats-table"></table></div>
+          <p id="end-wait" class="end-wait" hidden>Waiting for the host to return to the lobby…</p>
+          <div class="end-btns">
+            <button id="end-leave" class="btn" type="button">Main Menu</button>
+            <button id="end-lobby" class="btn btn-primary btn-big" type="button">Back to Lobby</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= DIALOGS ================= -->
+    <div id="dlg-join" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="join-title">
+      <form class="panel modal-card join-card" id="join-form" novalidate>
+        <h2 id="join-title" class="modal-title">Join Game</h2>
+        <p class="modal-text">Type the 5-letter room code from your host, or paste their invite link.</p>
+        <label class="field" for="join-code">
+          <span class="field-label">Room code</span>
+          <input id="join-code" class="text-input code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="300" placeholder="ABCDE" aria-describedby="join-error">
+        </label>
+        <p id="join-error" class="form-error" role="alert"></p>
+        <div class="btn-row">
+          <button type="button" class="btn" data-close>Cancel</button>
+          <button type="submit" id="join-go" class="btn btn-primary">Join</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="dlg-connecting" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="connecting-title">
+      <div class="panel modal-card connecting-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <h2 id="connecting-title" class="modal-title">Connecting…</h2>
+        <p id="connecting-text" class="modal-text"></p>
+        <div class="btn-row center"><button type="button" id="connecting-cancel" class="btn">Cancel</button></div>
+      </div>
+    </div>
+
+    <div id="dlg-error" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-text">
+      <div class="panel modal-card error-card">
+        <div class="error-stripe" aria-hidden="true"></div>
+        <h2 id="error-title" class="modal-title">Disconnected</h2>
+        <p id="error-text" class="modal-text"></p>
+        <div class="btn-row center"><button type="button" id="error-ok" class="btn btn-primary">Back to Title</button></div>
+      </div>
+    </div>
+
+    <div id="dlg-confirm" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="panel modal-card">
+        <h2 id="confirm-title" class="modal-title">Are you sure?</h2>
+        <p id="confirm-text" class="modal-text"></p>
+        <div class="btn-row"><button type="button" id="confirm-no" class="btn">Stay</button><button type="button" id="confirm-yes" class="btn btn-danger">Leave</button></div>
+      </div>
+    </div>
+
+    <div id="dlg-settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="panel modal-card settings-card">
+        <h2 id="settings-title" class="modal-title">Settings</h2>
+        <div class="settings-grid">
+          <fieldset class="settings-group">
+            <legend>Audio</legend>
+            <label class="range-row"><span>Master</span><input type="range" min="0" max="100" step="1" data-setting="master"><output></output></label>
+            <label class="range-row"><span>Effects</span><input type="range" min="0" max="100" step="1" data-setting="sfx"><output></output></label>
+            <label class="range-row"><span>Music</span><input type="range" min="0" max="100" step="1" data-setting="music"><output></output></label>
+            <label class="check-row"><input type="checkbox" data-setting="muted"><span>Mute all sound</span></label>
+          </fieldset>
+          <fieldset class="settings-group">
+            <legend>Graphics</legend>
+            <div class="field-label" id="quality-label">Quality</div>
+            <div class="seg" role="radiogroup" aria-labelledby="quality-label" id="set-quality">
+              <button type="button" class="seg-btn" role="radio" data-value="high">High</button>
+              <button type="button" class="seg-btn" role="radio" data-value="low">Low (faster)</button>
+            </div>
+            <label class="check-row"><input type="checkbox" data-setting="lighting"><span>Night lighting &amp; flashlights</span></label>
+            <label class="check-row"><input type="checkbox" data-setting="screenShake"><span>Screen shake</span></label>
+            <label class="check-row"><input type="checkbox" data-setting="showNames"><span>Name tags over teammates</span></label>
+            <label class="check-row"><input type="checkbox" data-setting="showStats"><span>Show ping &amp; FPS</span></label>
+          </fieldset>
+        </div>
+        <div class="btn-row"><button type="button" class="btn btn-primary" data-close>Done</button></div>
+      </div>
+    </div>
+
+    <div id="dlg-howto" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="howto-title">
+      <div class="panel modal-card howto-card">
+        <h2 id="howto-title" class="modal-title">How to Play</h2>
+        <div class="howto-body">
+          <section class="howto-goal">
+            <h3>The goal</h3>
+            <p>Waves of zombies pour in from the edges of the map. <strong>Defend the objective</strong> in the middle — the school bus, the diner, the APC or the radio tower — and <strong>survive every wave</strong>. If the objective is destroyed, or nobody is left standing, the horde wins.</p>
+          </section>
+          <section>
+            <h3>Controls</h3>
+            <div class="table-wrap">
+              <table class="controls-table">
+                <thead><tr><th scope="col">Action</th><th scope="col">Keyboard &amp; mouse</th><th scope="col">Gamepad</th><th scope="col">Touch</th></tr></thead>
+                <tbody>
+                  <tr><td>Move</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td>Left stick</td><td>Left thumb</td></tr>
+                  <tr><td>Aim</td><td>Mouse</td><td>Right stick</td><td>Right thumb</td></tr>
+                  <tr><td>Shoot</td><td>Left mouse</td><td>RT</td><td>Push right thumb far</td></tr>
+                  <tr><td>Shove (melee)</td><td>Right mouse or <kbd>V</kbd></td><td>LT or RB</td><td>SHOVE</td></tr>
+                  <tr><td>Sprint</td><td><kbd>Shift</kbd></td><td>Click left stick</td><td>Push left thumb fully</td></tr>
+                  <tr><td>Reload</td><td><kbd>R</kbd></td><td>X</td><td>RELOAD</td></tr>
+                  <tr><td>Revive / take crate</td><td>Hold <kbd>E</kbd></td><td>Hold A</td><td>Hold USE</td></tr>
+                  <tr><td>Switch weapon</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>, wheel, <kbd>Q</kbd> last</td><td>Y next, D-pad ▶ last</td><td>SWAP</td></tr>
+                  <tr><td>Frag grenade</td><td><kbd>G</kbd></td><td>LB</td><td>FRAG</td></tr>
+                  <tr><td>Molotov</td><td><kbd>F</kbd></td><td>B</td><td>MOLO</td></tr>
+                  <tr><td>Place turret</td><td><kbd>T</kbd></td><td>D-pad ▲</td><td>TURRET</td></tr>
+                  <tr><td>Place barricade</td><td><kbd>C</kbd></td><td>D-pad ▼</td><td>WALL</td></tr>
+                  <tr><td>Shop</td><td><kbd>B</kbd></td><td>Click right stick</td><td>SHOP</td></tr>
+                  <tr><td>Ready (skip the break)</td><td><kbd>Space</kbd></td><td>D-pad ◀</td><td>READY</td></tr>
+                  <tr><td>Scoreboard</td><td>Hold <kbd>Tab</kbd></td><td>Hold Back</td><td>SCORES</td></tr>
+                  <tr><td>Chat</td><td><kbd>Enter</kbd></td><td>—</td><td>CHAT</td></tr>
+                  <tr><td>Menu</td><td><kbd>Esc</kbd></td><td>Start</td><td>❚❚</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section>
+            <h3>Survival tips</h3>
+            <ul class="tips">
+              <li><strong>Revive your friends.</strong> A downed player bleeds out in 30 seconds. Stand next to them and hold <kbd>E</kbd> — you earn cash for every revive. Dead players come back when the wave is cleared.</li>
+              <li><strong>Spend your cash.</strong> Kills pay. Between waves the shop is open everywhere; during a wave only at the <span class="txt-supply">supply station</span> (green + on the minimap).</li>
+              <li><strong>Bosses every 5 waves.</strong> The Abomination slams the ground around it — keep your distance and focus fire.</li>
+              <li><strong>Know the specials.</strong> Bloaters burst when they die, spitters lob acid, screamers speed up the horde, brutes charge.</li>
+              <li><strong>Fortify.</strong> Barricades make zombies go around or smash through; sentry turrets shoot on their own.</li>
+              <li><strong>Play your class.</strong> Doc heals and revives fast, Sparks builds turrets, Boom loves explosions, Tank soaks hits, Swift outruns everything, Sarge just shoots better.</li>
+            </ul>
+          </section>
+        </div>
+        <div class="btn-row"><button type="button" class="btn btn-primary" data-close>Got it</button></div>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+    <noscript><div class="noscript">Highway Horde needs JavaScript to run.</div></noscript>
+  </div>
+  <script>
+    // If the game modules never boot (very old browser, blocked script), say so instead of
+    // leaving a dimmed menu that does nothing.
+    setTimeout(function () {
+      var app = document.getElementById('app');
+      var status = document.getElementById('server-status');
+      if (app && app.classList.contains('booting') && status) {
+        status.textContent = 'The game failed to load. Please reload the page in an up-to-date browser.';
+        status.style.color = '#ff5b4f';
+      }
+    }, 12000);
+  </script>
+</body>
+</html>

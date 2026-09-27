@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Render Sandbox</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; --bg: #0b0d10; --panel: rgba(16,19,24,0.86); --text: #d8dee6; --muted: #8a96a3; --accent: #ffb74d; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 12px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: none; touch-action: none; }
+  #hud { position: fixed; top: 8px; left: 8px; background: var(--panel); border-radius: 6px; padding: 8px 10px; max-width: calc(100vw - 16px); }
+  #hud .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  #fps { font: 600 13px ui-monospace, monospace; color: var(--accent); }
+  #stats { font: 11px ui-monospace, monospace; color: var(--muted); }
+  button, select { font: inherit; background: #0d1014; color: var(--text); border: 1px solid #333b45; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  #hud:hover { cursor: default; }
+  #gallery { display: none; padding: 16px; overflow: auto; height: 100%; }
+  #gallery h2 { font-size: 14px; margin: 16px 0 8px; color: var(--accent); }
+  #gallery .grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  #gallery figure { margin: 0; text-align: center; color: var(--muted); }
+  #gallery canvas { display: block; border-radius: 4px; background: #000; }
+  body.gallery #game, body.gallery #hud { display: none; }
+  body.gallery { overflow: auto; }
+  body.gallery #gallery { display: block; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div><span id="fps">-- fps</span> <span id="stats"></span></div>
+  <div class="row">
+    <select id="map" aria-label="Map">
+      <option value="fixture">fixture</option>
+      <option value="highway">highway</option>
+      <option value="truckstop">truckstop</option>
+      <option value="bridge">bridge</option>
+      <option value="checkpoint">checkpoint</option>
+    </select>
+    <button id="quality" aria-pressed="false">quality: high</button>
+    <button id="lighting" aria-pressed="true">lighting</button>
+    <button id="spam" aria-pressed="false">event spam</button>
+    <button id="names" aria-pressed="true">names</button>
+    <button id="shake" aria-pressed="true">shake</button>
+    <button id="pause" aria-pressed="false">pause</button>
+    <a href="?gallery=1" style="color:var(--muted)">gallery</a>
+  </div>
+  <div class="row" style="color:var(--muted)">WASD move · mouse aim · Q quality · L lighting · E spam · P pause · <a href="?sim=1&amp;map=highway" style="color:var(--muted)">real sim</a> (?sim=1)</div>
+</div>
+<div id="gallery">
+  <h2>Map previews</h2>
+  <div class="grid" id="previews"></div>
+  <h2>Class portraits</h2>
+  <div class="grid" id="portraits"></div>
+  <h2>Sprite sheets</h2>
+  <div class="grid" id="sheets"></div>
+</div>
+<script type="module" src="./render-sandbox.js"></script>
+</body>
+</html>

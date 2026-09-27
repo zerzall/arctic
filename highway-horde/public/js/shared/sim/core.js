@@ -1,0 +1,479 @@
+// GameCore: the authoritative simulation for one match, independent of how the map
+// was built (sim.js wraps it with buildMap). The host steps it at 60 Hz and sends
+// snapshots; nothing here touches the DOM or Math.random.
+//
+// The rules are split by area: players.js (input, movement, weapons, deployables,
+// revive, shop, pickups), combat.js (damage, hitscan/projectiles/explosions, turrets,
+// hazards) and zombies.js (spawning, AI, specials). Each exports plain functions that
+// take the game as their first argument, which keeps hot loops free of closures.
+
+import {
+  DT, PREP_TIME, INTERMISSION_TIME, BOSS_EVERY, WAVE_CLEAR_BONUS, DIFFICULTIES, DEFAULT_SETTINGS,
+  NAV_REBUILD_INTERVAL, TICK_RATE,
+} from '../constants.js';
+import { createRng, hashString } from '../rng.js';
+import { round1 } from '../math.js';
+import { MASK_OBJECTIVE } from '../geom.js';
+import { SpatialHash } from '../spatial.js';
+import { FlowField } from '../flowfield.js';
+import { createCollisionWorld, MASK_HEAVY } from '../movement.js';
+import {
+  createPlayer, updatePlayers, updateDowned, updatePickups, applyBuy, respawnPlayer,
+  revivePlayer, playerSnapshot, dropCrate, spawnPointFor,
+} from './players.js';
+import {
+  updateProjectiles, updateHazards, updateTurrets, rebuildBarricades,
+} from './combat.js';
+import {
+  updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, HEAVY_BODY_RADIUS,
+} from './zombies.js';
+
+/** Events that are pure presentation and may be dropped when a snapshot overflows. */
+const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch']);
+/** Soft cap: cosmetic events beyond this are dropped. */
+const EVENT_SOFT_CAP = 180;
+/** Hard cap on buffered events if snapshot() is never called (headless use). */
+const EVENT_HARD_CAP = 2000;
+/** Zombies treat the objective as this much farther away than it is (px). */
+export const OBJECTIVE_BIAS = 360;
+/** ...and big zombies (bloater, brute, boss) much more so: they hunt survivors. */
+export const OBJECTIVE_BIAS_BIG = 700;
+const NAV_TICKS = Math.max(1, Math.round(NAV_REBUILD_INTERVAL * TICK_RATE));
+
+/** Allocates uint16 ids (1..65535), reusing only ids no live entity holds. */
+export class IdPool {
+  constructor() {
+    this.used = new Uint8Array(65536);
+    this.next = 1;
+  }
+
+  alloc() {
+    for (let i = 0; i < 65535; i++) {
+      const id = this.next;
+      this.next = id >= 65535 ? 1 : id + 1;
+      if (!this.used[id]) {
+        this.used[id] = 1;
+        return id;
+      }
+    }
+    return 0;
+  }
+
+  free(id) {
+    this.used[id] = 0;
+  }
+}
+
+/** Everything of Game except building the map; see sim.js for the public entry point. */
+export class GameCore {
+  /**
+   * @param {object} opts
+   *   map       MapDef (required here; sim.js builds it from mapId/seed)
+   *   mapId     informational
+   *   seed      uint32
+   *   settings  { difficulty, waves, objective, friendlyFire } (DEFAULT_SETTINGS fills gaps)
+   *   players   [{ id, name, color, cls }]
+   */
+  constructor({ map, mapId, seed = 1, settings = {}, players = [] } = {}) {
+    if (!map) throw new Error('GameCore needs a map');
+    this.map = map;
+    this.mapId = mapId || map.id;
+    this.seed = seed >>> 0;
+    this.settings = { ...DEFAULT_SETTINGS, ...settings };
+    this.settings.waves = Math.max(0, Math.floor(Number(this.settings.waves) || 0));
+    this.diff = DIFFICULTIES[this.settings.difficulty] || DIFFICULTIES.normal;
+    this.rng = createRng((this.seed ^ hashString('highway-horde-sim')) >>> 0);
+
+    this.world = createCollisionWorld(map);
+    const colliders = this.world.colliders;
+    this.objObb = colliders.find((c) => c.mask & MASK_OBJECTIVE) || null;
+    this.flow = new FlowField(map, { colliders, pad: 3 });
+    // Heavies (bloater, brute, boss) crash over low cover but need wide gaps between
+    // cars; they path on their own field. A pad equal to the body radius means
+    // "fits along the centre line".
+    this.flowBig = new FlowField(map, { colliders, pad: HEAVY_BODY_RADIUS, mask: MASK_HEAVY });
+    this.zgrid = new SpatialHash(map.width, map.height, 64);
+
+    this.tick = 0;
+    this.time = 0;
+    this.phase = 'prep';
+    this.timer = PREP_TIME;
+    this.wave = 0;
+    this.over = null;
+
+    this.players = [];
+    this.zombies = [];
+    this.turrets = [];
+    this.barricades = [];
+    this.projectiles = [];
+    this.pickups = [];
+    this.hazards = [];
+    this.ids = {
+      zombie: new IdPool(), projectile: new IdPool(), pickup: new IdPool(),
+      turret: new IdPool(), barricade: new IdPool(), hazard: new IdPool(),
+    };
+
+    this.objective = this.settings.objective && map.objective
+      ? { hp: map.objective.hp, maxHp: map.objective.hp }
+      : null;
+    this.objHitCd = 0;
+    // The objective as a flow-field goal, biased so that players win close calls.
+    this.objTarget = map.objective
+      ? { x: map.objective.x, y: map.objective.y, w: map.objective.w, h: map.objective.h, a: map.objective.a || 0, bias: OBJECTIVE_BIAS }
+      : null;
+
+    // Wave bookkeeping.
+    this.spawnQueue = 0;
+    this.bossQueue = 0;
+    this.bossTimer = 0;
+    this.spawnTimer = 0;
+    this.wavePlayers = 1;
+    this.waveTotal = 0;
+    this.aliveCount = 0;
+
+    this.events = [];
+    this._tickShots = new Map();
+    this._flowTargets = [];
+    this.barricadesDirty = false;
+    // Scratch arrays reused by the rule modules.
+    this.tmpA = [];
+    this.tmpB = [];
+    this.tmpC = [];
+
+    for (const p of players) this._addPlayer(p, 'alive');
+    this._rebuildFlow('all');
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Public API (SPEC §3.1)
+
+  /** Late join: enters as 'dead' mid-wave (respawns at the next wave clear), alive otherwise. */
+  addPlayer(info) {
+    const existing = this.getPlayer(info.id);
+    if (existing) return existing;
+    const midWave = this.phase === 'wave' || this.phase === 'gameover' || this.phase === 'victory';
+    const p = this._addPlayer(info, midWave ? 'dead' : 'alive');
+    // Late joiners get a share of the clear bonuses they missed so they can gear up.
+    p.cash += this.wave * WAVE_CLEAR_BONUS;
+    return p;
+  }
+
+  removePlayer(id) {
+    const i = this.players.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    this.players.splice(i, 1);
+    for (const p of this.players) {
+      if (p.reviver === id) {
+        p.reviver = 0;
+        p.revive = 0;
+      }
+    }
+    for (const z of this.zombies) if (z.tgt && z.tgt.id === id && z.tgtKind === 1) z.retargetT = 0;
+  }
+
+  /** Queue one InputCmd for a player (SPEC §3.3). */
+  setInput(id, cmd) {
+    const p = this.getPlayer(id);
+    if (!p || !cmd) return;
+    p.queue.push(copyCmd(cmd));
+  }
+
+  /** Reliable one-off requests: { type: 'buy', item } | { type: 'ready' }. */
+  command(id, cmd) {
+    const p = this.getPlayer(id);
+    if (!p || !cmd) return;
+    if (cmd.type === 'buy') {
+      applyBuy(this, p, String(cmd.item));
+    } else if (cmd.type === 'ready') {
+      if (this.phase === 'intermission' || this.phase === 'prep') p.ready = true;
+    }
+  }
+
+  getPlayer(id) {
+    for (const p of this.players) if (p.id === id) return p;
+    return null;
+  }
+
+  /** Advance exactly one tick. */
+  step() {
+    this.tick++;
+    this.time += DT;
+    this._tickShots.clear();
+    if (this.objHitCd > 0) this.objHitCd -= DT;
+
+    this._updatePhase();
+    // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
+    this.zgrid.rebuild(this.zombies, this.zombies.length);
+    updatePlayers(this);
+    updateDowned(this);
+    updatePickups(this);
+    updateTurrets(this);
+    updateProjectiles(this);
+    updateHazards(this);
+    if (this.barricadesDirty) rebuildBarricades(this);
+    // The two fields rebuild half an interval apart to spread the cost.
+    if (this.tick % NAV_TICKS === 0) this._rebuildFlow('small');
+    else if (this.tick % NAV_TICKS === (NAV_TICKS >> 1)) this._rebuildFlow('big');
+    updateZombies(this);
+    removeDeadZombies(this);
+    if (this.phase === 'wave') updateSpawning(this);
+    this._checkEnd();
+  }
+
+  /** Render state (SPEC §4); drains the event buffer. */
+  snapshot() {
+    let alive = 0, bossHp = 0, bossMax = 0;
+    const zs = [];
+    for (const z of this.zombies) {
+      if (z.dead) continue;
+      alive++;
+      if (z.boss) {
+        bossHp += Math.max(0, z.hp);
+        bossMax += z.maxHp;
+      }
+      zs.push({
+        id: z.id, type: z.type, x: z.x, y: z.y, angle: z.angle,
+        hp: clamp01(z.hp / z.maxHp), flags: zombieFlags(z),
+      });
+    }
+    let readyCount = 0;
+    for (const p of this.players) if (p.ready) readyCount++;
+    const events = this.events;
+    this.events = [];
+    return {
+      tick: this.tick,
+      phase: this.phase,
+      wave: this.wave,
+      totalWaves: this.settings.waves,
+      timer: this.phase === 'prep' || this.phase === 'intermission' ? Math.max(0, this.timer) : 0,
+      remaining: this.remaining(),
+      bossHp: bossMax > 0 ? clamp01(bossHp / bossMax) : -1,
+      objective: this.objective ? { hp: Math.max(0, Math.round(this.objective.hp)), maxHp: this.objective.maxHp } : null,
+      readyCount,
+      players: this.players.map((p) => playerSnapshot(this, p)),
+      zombies: zs,
+      projectiles: this.projectiles.filter((pr) => !pr.dead).map((pr) => ({
+        id: pr.id, kind: pr.kind, x: pr.x, y: pr.y, angle: pr.angle,
+      })),
+      pickups: this.pickups.map((k) => ({ id: k.id, kind: k.kind, x: k.x, y: k.y, weapon: k.weapon || null })),
+      turrets: this.turrets.map((t) => ({
+        id: t.id, owner: t.owner, x: t.x, y: t.y, angle: t.angle,
+        hp: clamp01(t.hp / t.maxHp), ammo: clamp01(t.ammo / t.maxAmmo), firing: t.firingT > 0,
+      })),
+      barricades: this.barricades.map((b) => ({
+        id: b.id, owner: b.owner, x: b.x, y: b.y, angle: b.a, hp: clamp01(b.hp / b.maxHp),
+      })),
+      hazards: this.hazards.map((h) => ({
+        id: h.id, kind: h.kind, x: h.x, y: h.y, r: h.r, life: clamp01(h.life / h.maxLife),
+      })),
+      events,
+    };
+  }
+
+  /** Zombies left this wave: alive + not yet spawned. */
+  remaining() {
+    let alive = 0;
+    for (const z of this.zombies) if (!z.dead) alive++;
+    return alive + this.spawnQueue + this.bossQueue;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Events
+
+  /** Queue a GameEvent for the next snapshot, dropping cosmetic ones under load. */
+  emit(ev) {
+    const n = this.events.length;
+    if (n >= EVENT_SOFT_CAP && COSMETIC.has(ev.type)) return;
+    if (n >= EVENT_HARD_CAP) this.events.splice(0, n >> 1);
+    this.events.push(ev);
+  }
+
+  /**
+   * Merge every hitscan ray a shooter fires in one tick into one 'shot' event.
+   * @param {string|number} key shooter key (pid or 't'+turretId)
+   */
+  shotEvent(key, pid, turret, weapon, x, y, angle) {
+    let ev = this._tickShots.get(key);
+    if (!ev) {
+      ev = { type: 'shot', pid, turret, weapon, x: round1(x), y: round1(y), angle, rays: [] };
+      this._tickShots.set(key, ev);
+      this.emit(ev);
+    }
+    return ev;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Internals
+
+  _addPlayer(info, state) {
+    const p = createPlayer(this, info);
+    this.players.push(p);
+    const sp = spawnPointFor(this, this.players.length - 1);
+    p.x = sp.x;
+    p.y = sp.y;
+    if (state === 'dead') {
+      p.state = 'dead';
+      p.respawn = true;
+      p.hp = 0;
+    }
+    return p;
+  }
+
+  /**
+   * Recompute the flow fields. which: 'small' | 'big' | 'all'. The small field leads
+   * to players, turrets and the objective; the wide-gap field for big zombies leads
+   * only to survivors and turrets (heavies hunt people, the small fry swarm the
+   * objective).
+   */
+  _rebuildFlow(which) {
+    const targets = this._flowTargets;
+    let n = 0;
+    for (const p of this.players) {
+      if (p.state === 'dead') continue;
+      targets[n++] = p;
+    }
+    for (const t of this.turrets) if (!t.dead) targets[n++] = t;
+    const hunters = n;
+    if (this.objective && this.objective.hp > 0 && this.objTarget) targets[n++] = this.objTarget;
+    targets.length = n;
+    if (which !== 'big') this.flow.update(targets, n);
+    if (which !== 'small') this.flowBig.update(targets, hunters > 0 ? hunters : n);
+  }
+
+  _updatePhase() {
+    const ph = this.phase;
+    if (ph === 'prep' || ph === 'intermission') {
+      this.timer -= DT;
+      let allReady = this.players.length > 0;
+      for (const p of this.players) if (!p.ready) { allReady = false; break; }
+      if (this.timer <= 0 || allReady) this._startWave(this.wave + 1);
+    }
+  }
+
+  _startWave(w) {
+    this.wave = w;
+    this.phase = 'wave';
+    this.timer = 0;
+    for (const p of this.players) p.ready = false;
+    const players = Math.max(1, this.players.length);
+    this.wavePlayers = players;
+    this.waveTotal = Math.round((12 + 6 * w) * (1 + 0.6 * (players - 1)) * this.diff.count);
+    const boss = w % BOSS_EVERY === 0;
+    this.bossQueue = boss ? Math.ceil(players / 3) : 0;
+    this.bossTimer = 10;
+    startWaveSpawns(this);
+    this.emit({ type: 'wave', wave: w, boss });
+  }
+
+  _waveClear() {
+    const w = this.wave;
+    this.emit({ type: 'waveclear', wave: w, bonus: WAVE_CLEAR_BONUS });
+    let i = 0;
+    for (const p of this.players) {
+      p.cash += WAVE_CLEAR_BONUS;
+      p.earned += WAVE_CLEAR_BONUS;
+      if (p.state === 'dead') respawnPlayer(this, p, i);
+      else if (p.state === 'downed') revivePlayer(this, p, 0);
+      i++;
+    }
+    // Acid does not outlive the wave; fires burn out on their own.
+    for (const h of this.hazards) if (h.kind === 'acid') h.life = 0;
+    dropCrate(this);
+    if (this.settings.waves > 0 && w >= this.settings.waves) {
+      this.phase = 'victory';
+      this.over = 'victory';
+      this.emit({ type: 'victory' });
+      return;
+    }
+    this.phase = 'intermission';
+    this.timer = INTERMISSION_TIME;
+  }
+
+  _gameOver(reason) {
+    this.phase = 'gameover';
+    this.over = reason;
+    this.spawnQueue = 0;
+    this.bossQueue = 0;
+    this.emit({ type: 'gameover', reason });
+  }
+
+  _checkEnd() {
+    if (this.phase === 'gameover' || this.phase === 'victory') return;
+    if (this.objective && this.objective.hp <= 0) {
+      this._gameOver('objective');
+      return;
+    }
+    if (this.players.length > 0) {
+      let standing = false;
+      for (const p of this.players) {
+        if (p.state === 'alive' || (p.state === 'downed' && p.selfRevive)) {
+          standing = true;
+          break;
+        }
+      }
+      if (!standing) {
+        this._gameOver('wiped');
+        return;
+      }
+    }
+    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0) {
+      let any = false;
+      for (const z of this.zombies) if (!z.dead) { any = true; break; }
+      if (!any) this._waveClear();
+    }
+  }
+}
+
+function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** ZFLAG bits for a zombie (computed at snapshot time). */
+function zombieFlags(z) {
+  let f = 0;
+  if (z.burnT > 0) f |= 1;
+  if (z.swingT > 0 || z.flashT > 0) f |= 2;
+  if (z.mode === 1 || z.mode === 2) f |= 4;
+  if (z.buffT > 0) f |= 8;
+  if (z.elite) f |= 16;
+  return f;
+}
+
+const EDGE_KEYS = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon'];
+
+/** Defensive copy of an InputCmd with every field normalised. */
+export function copyCmd(c) {
+  let mx = Number(c.moveX) || 0, my = Number(c.moveY) || 0;
+  const l = Math.hypot(mx, my);
+  if (l > 1) {
+    mx /= l;
+    my /= l;
+  }
+  const slot = Number.isInteger(c.slot) && c.slot >= 0 && c.slot <= 2 ? c.slot : -1;
+  const cycle = c.cycle > 0 ? 1 : c.cycle < 0 ? -1 : 0;
+  return {
+    seq: (c.seq >>> 0) || 0,
+    moveX: mx, moveY: my,
+    angle: Number.isFinite(c.angle) ? c.angle : 0,
+    fire: !!c.fire, melee: !!c.melee, sprint: !!c.sprint, interact: !!c.interact,
+    reload: !!c.reload, frag: !!c.frag, molotov: !!c.molotov, turret: !!c.turret,
+    barricade: !!c.barricade, lastWeapon: !!c.lastWeapon,
+    slot, cycle,
+  };
+}
+
+/** Clear the edge-triggered fields of a command (used when repeating it). */
+export function clearEdges(c) {
+  for (const k of EDGE_KEYS) c[k] = false;
+  c.slot = -1;
+  c.cycle = 0;
+  return c;
+}
+
+/** OR the edge fields of `from` into `into` (queue overflow must not lose presses). */
+export function mergeEdges(into, from) {
+  for (const k of EDGE_KEYS) if (from[k]) into[k] = true;
+  if (into.slot < 0 && from.slot >= 0) into.slot = from.slot;
+  if (into.cycle === 0 && from.cycle !== 0) into.cycle = from.cycle;
+  return into;
+}
