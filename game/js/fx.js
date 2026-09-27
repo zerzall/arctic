@@ -286,7 +286,7 @@
     '    vec2 d = uv - 0.5;',
     '    float r = length(d * vec2(uAspect, 1.0));',
     '    float m = smoothstep(0.2, 0.8, r) * uSpeedFx;',
-    '    vec2 st = d * m * 0.045;',
+    '    vec2 st = d * m * 0.018;',
     '    c = vec3(0.0);',
     '    for (int i = 0; i < 6; i++) { c += tex(uv - st * (float(i) / 5.0)); }',
     '    c /= 6.0;',
@@ -729,7 +729,7 @@
     if (!post.black) { post.black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat); post.black.needsUpdate = true; }
     const U = {
       tDiffuse: { value: null }, tBloom: { value: post.black }, uTexel: { value: new THREE.Vector2(1 / 1024, 1 / 512) }, uAspect: { value: 1.6 },
-      uSat: { value: 1 }, uVig: { value: BASE_VIG }, uSpeedFx: { value: 0 }, uCA: { value: 0.006 }, uBloomOn: { value: 0 }, uFrame: { value: 0 },
+      uSat: { value: 1 }, uVig: { value: BASE_VIG }, uSpeedFx: { value: 0 }, uCA: { value: 0.002 }, uBloomOn: { value: 0 }, uFrame: { value: 0 },
       uShadowT: { value: new THREE.Vector3() }, uHighT: { value: new THREE.Vector3() }, uVigCol: { value: new THREE.Vector3(0.2, 0.15, 0.3) }
     };
     return new THREE.ShaderMaterial({
@@ -1198,7 +1198,7 @@
     const kg = 1 - Math.exp(-6 * dt);
     G.sat += (G.satT - G.sat) * kg;
     G.vig += (G.vigT - G.vig) * kg;
-    const sfx = jet ? 1 : RR.smoothstep(44, 50, sp) * 0.45;
+    const sfx = jet ? 0.55 : RR.smoothstep(44, 50, sp) * 0.2;
     G.speedFx += (sfx - G.speedFx) * (1 - Math.exp(-3 * dt));
     if (G.speedFx < 0.003) G.speedFx = 0;
     updateDomGrade();

@@ -20,13 +20,16 @@
   const FLAT = C.TERRAIN_FLAT; // 18
   const TUN = C.TUNNEL_HALF; // 60
   const S_SLEEP = CH / 64; // sleeper spacing (64 per chunk per track)
-  const GAUGE = 0.6; // rail offset from the lane centre
-  const Y_BAL = 0.05, Y_SLP = 0.14, Y_RAIL = 0.28, Y_XING = 0.14;
+  const num = (v, d) => (typeof v === 'number' ? v : d);
+  const GAUGE = num(C.RAIL_GAUGE_HALF, 0.6); // rail offset from the lane centre
+  const Y_BAL = num(C.BALLAST_Y, 0.05), Y_SLP = num(C.SLEEPER_Y, 0.14), Y_RAIL = num(C.RAIL_Y, 0.28), Y_XING = 0.14; // rail top = Y_SLP + 0.14
   const ORIGIN_STEP = 3000; // shader origin shift (multiple of every texture period, 1000 and 250)
   const SEA_L = -0.7, RIV_L = -0.9, CAN_L = -1.4, CAN_BED = -3.2, LAKE_L = -0.7;
   const TRACK_BUDGET_MS = 2.0;
   const READY = 5; // chunk build stages: 0 heights, 1 vertices, 2 water, 3 dressing, 4 finalize, 5 ready
   const MAX_CHUNKS = 40, WSLOTS = 24;
+  const RAIL_SEG = 25, RAIL_SLABS = 76; // rail slab length (m) and slab count (1900 m >= widest coverage window)
+  const RAIL_BEHIND_CAM = 30; // rails end at most this far behind the camera when it looks ahead
   const STREET_HALF = 5; // city level crossings: street half width (z)
 
   // terrain columns (x); symmetric; dense near the track and around the water edges
@@ -812,8 +815,8 @@
   };
   let terrainMats = [], sleeperMats = {}, railMat = null, waterMat = null, boardMat = null;
   let TEX = {};
-  let railMesh = null;
-  const stats = { buildMs: 0, maxStepMs: 0, lastFrameMs: 0, builds: 0, chunks: 0, queue: 0, stageMax: [0, 0, 0, 0, 0, 0], streamMax: 0 };
+  let railMesh = null, railIdxPerSlab = 0;
+  const stats = { buildMs: 0, maxStepMs: 0, lastFrameMs: 0, builds: 0, chunks: 0, queue: 0, stageMax: [0, 0, 0, 0, 0, 0], streamMax: 0, railSlabs: 0 };
 
   function commonUniforms(target) { Object.keys(SU).forEach((k) => (target[k] = SU[k])); return target; }
 
@@ -867,7 +870,10 @@
       .replace('#include <aomap_fragment>', SHADE_FS);
   }
 
-  // Rails: metallic Phong with per-world tint, candy stripes, neon glow, sky/sun reflection streaks, moving glints.
+  // Rails: polished steel (Phong). The running surface mirrors the sky (Fresnel-weighted, slightly desaturated like
+  // steel) with long polish bands and sparse speed streaks that are anchored in the world, so they stream past;
+  // a low sun ahead lights the rail heads up. Web and foot are dark oiled steel (candy: striped; neon: cyan glow).
+  // Every varying is bounded: aTop is per face and clamped, the view vector is normalised with a floor.
   const RAIL_FS = [
     '#include <color_fragment>',
     'vec3 rrEmis = vec3(0.0);',
@@ -875,29 +881,39 @@
     'float wk = max(floor(-wp.z * 0.001) + uOriginK, 0.0);',
     'float wi = mod(wk, ' + NW.toFixed(1) + ');',
     'vec3 tint = wi < 0.5 ? uRT0 : wi < 1.5 ? uRT1 : wi < 2.5 ? uRT2 : wi < 3.5 ? uRT3 : uRT4;',
-    'float top = vTop;',
-    'diffuseColor.rgb *= tint;',
+    'float top = clamp(vTop, 0.0, 1.0);',
+    'float run = top * top * top;', // 1 running surface, 0.51 chamfers, 0.09 head sides, 0 web/foot
     'float isCandy = 1.0 - step(0.5, abs(wi - uCandyIdx)), isNeon = 1.0 - step(0.5, abs(wi - uNeonIdx));',
+    'diffuseColor.rgb *= tint * (1.0 - 0.6 * run);', // a mirror-polished head has little diffuse
     'if (isCandy > 0.5 && top < 0.9) { float cs = step(0.5, fract(wp.z * 1.3 + wp.y * 4.0)); diffuseColor.rgb = mix(vec3(0.86, 0.84, 0.86), vec3(0.86, 0.2, 0.36), cs) * (0.55 + 0.45 * top); }',
-    'vec3 Vr = normalize(cameraPosition - uOrigin - wp);',
-    'vec3 Rr = reflect(-Vr, vec3(0.0, 1.0, 0.0));',
-    // sparse point glints on the running surface (2.22 m cells, ~3 % lit, 4 cm long) that stream past = speed
-    'float gl = rrHash(vec2(mod(floor(wp.z * 0.45), 997.0) + 0.37, floor(wp.x * 1.3 + 50.0) * 1.37));',
-    'float glint = step(0.97, gl) * (1.0 - smoothstep(0.004, 0.009, abs(fract(wp.z * 0.45) - 0.5))) * (1.0 - 0.75 * isNeon);',
-    'float fres = pow(1.0 - clamp(Vr.y, 0.0, 1.0), 3.0);',
-    'float run = top * top * top;',
-    'rrEmis += mix(rrSky(Rr.y), vec3(dot(rrSky(Rr.y), vec3(0.333))), 0.45) * run * (0.07 + 0.26 * fres) * (1.0 - isNeon * 0.6);',
-    // continuous thin lines stay under the bloom threshold (bloom beads 1-2 px lines); only sparse glints use uGlow
-    'rrEmis += uSunCol * pow(max(dot(Rr, uSunDir), 0.0), 120.0) * run * 0.75;',
-    'rrEmis += vec3(1.0) * glint * run * 1.2 * uGlow * (1.0 - smoothstep(15.0, 60.0, length(vViewPosition)));',
-    'rrEmis += vec3(0.25, 0.95, 1.0) * isNeon * (0.35 + 0.65 * top) * 0.78;'
+    'vec3 Vr = cameraPosition - uOrigin - wp; Vr *= inversesqrt(max(dot(Vr, Vr), 1e-6));',
+    'float vy = clamp(Vr.y, 0.0, 1.0);',
+    'float fres = pow(1.0 - vy, 4.0);',
+    'float vd = length(vViewPosition);',
+    'vec3 env = rrSky(vy);', // mirror of the view ray about the running surface: the sky at the same elevation
+    'env = mix(env, vec3(dot(env, vec3(0.3333))), 0.4);',
+    'float band = 0.8 + 0.2 * sin(wp.z * 0.9 + 1.7 * sin(wp.z * 0.137));',
+    'vec3 Rr = vec3(-Vr.x, Vr.y, -Vr.z);', // reflect(-V, up)
+    'vec3 steel = run * (0.4 * tint + env * (0.3 + 0.4 * fres)) * band * (1.0 - 0.3 * isNeon);',
+    'steel += uSunCol * pow(max(dot(Rr, uSunDir), 0.0), 40.0) * run * 0.5;',
+    'float head = smoothstep(0.3, 0.5, top);',
+    'steel += (uHorizon * 0.5 + tint * 0.08) * head * (1.0 - run) * 0.25;', // head sides / chamfers: soft horizon sheen
+    'rrEmis += min(steel, vec3(0.68));', // continuous lines stay under the bloom threshold (bloom beads 1-2 px lines)
+    // speed streaks: ~25 % of 4 m cells carry a 0.3-1.1 m highlight on the running surface (fades out by 90 m)
+    'float sf = fract(wp.z * 0.25);',
+    'float sh = rrHash(vec2(floor(wp.z * 0.25) + 0.37, floor(wp.x * 1.3 + 50.0) * 1.37));',
+    'float sl = 0.08 + 0.2 * fract(sh * 7.3);',
+    'float streak = step(0.75, sh) * smoothstep(0.0, 0.03, sf) * (1.0 - smoothstep(sl - 0.03, sl, sf));',
+    'rrEmis += vec3(1.0) * streak * run * 0.7 * (1.0 - smoothstep(25.0, 90.0, vd));',
+    'rrEmis += vec3(0.25, 0.95, 1.0) * isNeon * (0.55 * (1.0 - smoothstep(0.3, 0.5, top)) + 0.1 * run);'
   ].join('\n');
   function railCompile(shader) {
     commonUniforms(shader.uniforms);
     const U = this.userData.u; Object.assign(shader.uniforms, U);
+    // local = world - mesh offset; uRailZ = mesh z - origin z (computed in double precision on the CPU)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\n' + SIMPLE_VS_DECL + '\nattribute float aTop; varying float vTop;')
-      .replace('#include <begin_vertex>', SIMPLE_VS_BODY + '\nvTop = aTop;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos; uniform float uRailZ; attribute float aTop; varying float vTop;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = vec3(transformed.xy, transformed.z + uRailZ);\nvTop = clamp(aTop, 0.0, 1.0);');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + GLSL_COMMON + '\nvarying vec3 vWPos; varying float vTop; uniform vec3 uRT0; uniform vec3 uRT1; uniform vec3 uRT2; uniform vec3 uRT3; uniform vec3 uRT4; uniform float uCandyIdx; uniform float uNeonIdx;')
       .replace('#include <color_fragment>', RAIL_FS)
@@ -1235,41 +1251,83 @@
     return solidOf(p);
   }
 
+  // Rails: RAIL_SLABS slabs of RAIL_SEG metres (all 6 rails per slab, slab-major so a draw range selects a
+  // contiguous run of slabs). Local z runs from 0 (near end of slab 0) toward -z; placeRails() snaps the mesh to
+  // a multiple of RAIL_SEG and draws only the slabs between just behind the camera and the far streaming edge.
+  // Short slabs matter: a 1.5 km quad crossing the near plane gets clipped / depth-interpolated badly (rails won
+  // the depth test against the hero, trains and obstacles, and extrapolated varyings gave specks and streaks).
+  // The base (on the sleepers), the downward-facing head undersides (the camera is always above the rails) and the
+  // end caps are never visible and are omitted. Per face: flat normal, aTop
+  // (1 running surface, 0.8 chamfers, 0.45 head sides, 0 web/foot) and a vertex colour.
   function buildRailGeo() {
-    const s = new THREE.Shape();
     const fw = 0.075, ft = 0.018, ww = 0.018, hw = 0.038, hb = 0.092, ht = 0.14, ch = 0.012;
-    s.moveTo(-fw, 0); s.lineTo(fw, 0); s.lineTo(fw, ft * 0.6); s.lineTo(ww * 1.7, ft); s.lineTo(ww, ft + 0.014); s.lineTo(ww, hb - 0.012);
-    s.lineTo(hw, hb); s.lineTo(hw, ht - ch); s.lineTo(hw - ch, ht); s.lineTo(-hw + ch, ht); s.lineTo(-hw, ht - ch); s.lineTo(-hw, hb);
-    s.lineTo(-ww, hb - 0.012); s.lineTo(-ww, ft + 0.014); s.lineTo(-ww * 1.7, ft); s.lineTo(-fw, ft * 0.6);
-    const AHEAD = 820, BEHIND = 700, L = AHEAD + BEHIND;
-    const one = new THREE.ExtrudeGeometry(s, { depth: L, bevelEnabled: false, steps: 1, curveSegments: 1 });
-    one.translate(0, 0, -AHEAD);
-    const g = one.index ? one.toNonIndexed() : one;
-    g.computeVertexNormals();
-    const P = g.attributes.position, N = g.attributes.normal, n = P.count;
+    const pr = [[-fw, 0], [fw, 0], [fw, ft * 0.6], [ww * 1.7, ft], [ww, ft + 0.014], [ww, hb - 0.012], [hw, hb], [hw, ht - ch], [hw - ch, ht],
+      [-hw + ch, ht], [-hw, ht - ch], [-hw, hb], [-ww, hb - 0.012], [-ww, ft + 0.014], [-ww * 1.7, ft], [-fw, ft * 0.6]]; // counter-clockwise
+    const faces = [];
+    for (let e = 1; e < pr.length; e++) { // edge 0 is the base (faces down onto the sleepers)
+      const a = pr[e], b = pr[(e + 1) % pr.length];
+      let nx = b[1] - a[1], ny = -(b[0] - a[0]); const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl; // outward normal
+      if (ny < -0.5) continue; // head underside
+      const ym = Math.max(a[1], b[1]);
+      const t = ym > ht - 0.001 && ny > 0.9 ? 1 : ym > ht - ch - 0.001 && ny > 0.3 ? 0.8 : ym > hb - 0.001 && Math.abs(nx) > 0.5 ? 0.45 : 0;
+      faces.push({ a, b, nx, ny, t });
+    }
     const xs = [];
     C.LANES.forEach((l) => { xs.push(l - GAUGE, l + GAUGE); });
-    const pos = new Float32Array(n * 3 * xs.length), nor = new Float32Array(n * 3 * xs.length), col = new Float32Array(n * 3 * xs.length), top = new Float32Array(n * xs.length);
-    for (let r = 0; r < xs.length; r++) {
-      for (let i = 0; i < n; i++) {
-        const o = (r * n + i) * 3;
-        const y = P.getY(i), ny = N.getY(i), nx = N.getX(i);
-        pos[o] = P.getX(i) + xs[r]; pos[o + 1] = y + Y_SLP; pos[o + 2] = P.getZ(i);
-        nor[o] = nx; nor[o + 1] = ny; nor[o + 2] = N.getZ(i);
-        const t = y > ht - 0.001 && ny > 0.9 ? 1 : y > ht - ch - 0.001 && ny > 0.3 ? 0.8 : y > hb - 0.001 && Math.abs(nx) > 0.5 ? 0.45 : 0;
-        top[r * n + i] = t;
-        const c = t > 0.9 ? 1 : t > 0.6 ? 0.82 : t > 0.4 ? 0.56 : 0.34;
-        col[o] = c; col[o + 1] = c * (t > 0.4 ? 0.97 : 0.84); col[o + 2] = c * (t > 0.4 ? 0.95 : 0.74);
+    const vps = xs.length * faces.length * 4, nv = vps * RAIL_SLABS;
+    if (nv > 65535) throw new Error('track: rail vertex count ' + nv);
+    railIdxPerSlab = xs.length * faces.length * 6;
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3), top = new Float32Array(nv);
+    const idx = new Uint16Array(railIdxPerSlab * RAIL_SLABS);
+    let v = 0, o = 0;
+    for (let s = 0; s < RAIL_SLABS; s++) {
+      const z0 = -s * RAIL_SEG, z1 = -(s + 1) * RAIL_SEG;
+      for (let r = 0; r < xs.length; r++) {
+        for (let f = 0; f < faces.length; f++) {
+          const F = faces[f], c = F.t > 0.9 ? 1 : F.t > 0.6 ? 0.85 : F.t > 0.4 ? 0.68 : 0.5; // web / foot: oiled steel
+          const cg = c * (F.t > 0.4 ? 0.98 : 0.93), cb = c * (F.t > 0.4 ? 0.99 : 0.88);
+          // A0, B0, A1, B1
+          const P4 = [[F.a, z0], [F.b, z0], [F.a, z1], [F.b, z1]];
+          for (let q = 0; q < 4; q++) {
+            const p = P4[q][0], k = v + q;
+            pos[k * 3] = p[0] + xs[r]; pos[k * 3 + 1] = p[1] + Y_SLP; pos[k * 3 + 2] = P4[q][1];
+            nor[k * 3] = F.nx; nor[k * 3 + 1] = F.ny; nor[k * 3 + 2] = 0;
+            col[k * 3] = c; col[k * 3 + 1] = cg; col[k * 3 + 2] = cb;
+            top[k] = F.t;
+          }
+          idx[o++] = v; idx[o++] = v + 3; idx[o++] = v + 1; // (A0, B1, B0)
+          idx[o++] = v; idx[o++] = v + 2; idx[o++] = v + 3; // (A0, A1, B1)
+          v += 4;
+        }
       }
     }
-    g.dispose(); if (one !== g) one.dispose();
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     geo.setAttribute('aTop', new THREE.BufferAttribute(top, 1));
-    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.2, -(AHEAD - BEHIND) / 2), L);
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.setDrawRange(0, 0);
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.2, -RAIL_SLABS * RAIL_SEG / 2), RAIL_SLABS * RAIL_SEG / 2 + 5);
     return geo;
+  }
+  // Show the rail slabs covering [zNear, zFar]: ahead to the terrain streaming edge; behind, at most
+  // RAIL_BEHIND_CAM past the camera (or as far back as the terrain when the camera looks backward).
+  function placeRails(pz) {
+    if (!railMesh) return;
+    let zNear;
+    if (covBack) zNear = pz + covBehind;
+    else {
+      const cz = camera ? RR.clamp(camera.position.z, pz - 20, pz + 20) : pz + 10;
+      zNear = Math.max(pz, cz) + RAIL_BEHIND_CAM;
+    }
+    const zFar = pz - covAhead;
+    const k0 = Math.ceil(-zNear / RAIL_SEG), k1 = Math.floor(-zFar / RAIL_SEG);
+    const n = Math.max(0, Math.min(RAIL_SLABS, k1 - k0));
+    railMesh.position.z = -k0 * RAIL_SEG;
+    railMesh.geometry.setDrawRange(0, n * railIdxPerSlab);
+    railMat.userData.u.uRailZ.value = railMesh.position.z - SU.uOrigin.value.z; // exact (both are multiples of 25)
+    stats.railSlabs = n;
   }
 
   // ------------------------------------------------------------------ pools
@@ -1676,7 +1734,7 @@
 
   // ------------------------------------------------------------------ streaming
   const _fwd = new THREE.Vector3();
-  let covAhead = 560, covBehind = 60;
+  let covAhead = 560, covBehind = 60, covBack = false;
   const range = { near: 115, plates: 36 };
   function coverage(pz, titleReset, atReset) {
     const fogFar = scene && scene.fog && scene.fog.far ? scene.fog.far : C.FOG_FAR;
@@ -1685,6 +1743,7 @@
     if (titleReset) back = true;
     else if (camera) { camera.getWorldDirection(_fwd); back = _fwd.z > -0.35 || (!atReset && camera.position.z < pz - 1); }
     covBehind = back ? Math.min(covAhead, fogFar + 40) : C.DESPAWN_BEHIND + 20;
+    covBack = back;
     SU.uRise.value.set(fogFar * 0.97, fogFar + 45);
   }
   function findChunk(c) { for (let i = 0; i < active.length; i++) if (active[i].c === c) return active[i]; return null; }
@@ -1804,11 +1863,12 @@
     for (let i = 0; i < NW; i++) terrainMats.push(makeTerrainMat(i));
     const sm = (map) => { const m = new THREE.MeshLambertMaterial({ map: map || null, vertexColors: true }); m.onBeforeCompile = simpleCompile; m.customProgramCacheKey = () => 'rr-simple' + (map ? 'M' : ''); return m; };
     sleeperMats = { wood: sm(TEX.sleeper.wood), frost: sm(TEX.sleeper.frost), concrete: sm(TEX.sleeper.concrete), candy: sm(TEX.sleeper.candy), plain: sm(null) };
-    railMat = new THREE.MeshPhongMaterial({ vertexColors: true, color: 0x76767e, specular: 0x8a8a90, shininess: 90 });
+    railMat = new THREE.MeshPhongMaterial({ vertexColors: true, color: 0x80808a, specular: 0x9a9aa0, shininess: 80 });
     railMat.userData.u = {};
     for (let i = 0; i < 5; i++) { const k = WORLDS[i % NW].kind; railMat.userData.u['uRT' + i] = { value: new THREE.Color(RAIL_TINT_BY_KIND[k] || 0xffffff) }; }
     railMat.userData.u.uCandyIdx = { value: WORLDS.findIndex((w) => w.kind === 'candy') };
     railMat.userData.u.uNeonIdx = { value: WORLDS.findIndex((w) => w.kind === 'neon') };
+    railMat.userData.u.uRailZ = { value: 0 };
     railMat.onBeforeCompile = railCompile; railMat.customProgramCacheKey = () => 'rr-rail';
     waterMat = makeWaterMat();
     boardMat = new THREE.MeshLambertMaterial({ map: boardTex, vertexColors: true });
@@ -1826,7 +1886,7 @@
     railMesh = new THREE.Mesh(buildRailGeo(), railMat);
     railMesh.name = 'track-rails';
     railMesh.receiveShadow = true;
-    railMesh.frustumCulled = false;
+    railMesh.frustumCulled = false; // always in view; the draw range limits it to the visible window
     root.add(railMesh);
     scene.add(root);
     stats.initMs = performance.now() - t0;
@@ -1846,7 +1906,7 @@
     stream(pz, true); // second pass writes near-range sleepers for the freshly built chunks
     commitAll();
     stats.resetMs = performance.now() - t0;
-    railMesh.position.set(0, 0, pz);
+    placeRails(pz);
   }
 
   function update(dt, frame) {
@@ -1861,7 +1921,7 @@
     processQueue(TRACK_BUDGET_MS);
     animateSignals(frame);
     commitAll();
-    railMesh.position.z = pz;
+    placeRails(pz);
     stats.chunks = active.length; stats.queue = queue.length;
     stats.lastFrameMs = performance.now() - t0;
   }
@@ -1936,7 +1996,7 @@
     SURF: { BALLAST_Y: Y_BAL, SLEEPER_Y: Y_SLP, RAIL_Y: Y_RAIL, GAUGE, RAIL_X: C.LANES.map((l) => [l - GAUGE, l + GAUGE]), SLEEPER_SPACING: S_SLEEP },
     WATER_LEVELS: { sea: SEA_L, river: RIV_L, canal: CAN_L, lake: LAKE_L },
     stats,
-    info() { return { texMs: stats.texMs, chunks: active.length, queue: queue.length, buildMs: stats.buildMs, maxStepMs: stats.maxStepMs, stageMax: stats.stageMax.map((v) => +v.toFixed(2)), streamMax: +stats.streamMax.toFixed(2), lastFrameMs: stats.lastFrameMs, initMs: stats.initMs, resetMs: stats.resetMs, builds: stats.builds }; },
+    info() { return { texMs: stats.texMs, chunks: active.length, queue: queue.length, buildMs: stats.buildMs, maxStepMs: stats.maxStepMs, stageMax: stats.stageMax.map((v) => +v.toFixed(2)), streamMax: +stats.streamMax.toFixed(2), lastFrameMs: stats.lastFrameMs, initMs: stats.initMs, resetMs: stats.resetMs, builds: stats.builds, railSlabs: stats.railSlabs }; },
     group: root
   };
   RR.register('track', api);

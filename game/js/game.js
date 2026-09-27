@@ -913,9 +913,7 @@
       S.board = false; S.boardT = 0; S.invulnT = 1.5;
       endCombo();
       runStat('boardSaves', 1);
-      if (rec) rec.ghost = true;
-      if (RR.obstacles && RR.obstacles.clearAhead) safe('obstacles.clearAhead', () => RR.obstacles.clearAhead(S.pz + 6, 30));
-      S.autoQueue.length = 0;
+      if (rec) rec.ghost = true; // pass through what hit the board; the track ahead stays as it was
       shake(0.5);
       fx('board-break', S.px, S.py + 0.4, S.pz);
       RR.emit('board-break');
