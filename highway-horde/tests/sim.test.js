@@ -125,7 +125,7 @@ describe('phases and waves', () => {
     const bosses = eventsOf(ev, 'bossspawn');
     assert.equal(bosses.length, 2);
     const boss = g5.zombies.find((z) => z.type === 'boss');
-    const want = ZOMBIES.boss.hp * (1 + HP_GROWTH_PER_WAVE * 4) * (0.6 + 0.4 * 4);
+    const want = ZOMBIES.boss.hp * (1 + HP_GROWTH_PER_WAVE * 4) * (ZOMBIES.boss.special.hpBase + ZOMBIES.boss.special.hpPerPlayer * 4);
     assert.ok(approx(boss.maxHp, want, 1e-6));
     const s = g5.snapshot();
     assert.ok(s.bossHp > 0 && s.bossHp <= 1);

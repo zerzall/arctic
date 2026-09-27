@@ -153,7 +153,7 @@ export function spawnZombie(game, type, x, y, elite = false) {
   const boss = type === 'boss';
   const players = Math.max(1, game.players.length);
   const hp = def.hp * (1 + HP_GROWTH_PER_WAVE * (w - 1)) * game.diff.hp
-    * (elite ? 1.6 : 1) * (boss ? 0.6 + 0.4 * players : 1);
+    * (elite ? 1.6 : 1) * (boss ? def.special.hpBase + def.special.hpPerPlayer * players : 1);
   const speedScale = Math.min(SPEED_GROWTH_CAP, 1 + SPEED_GROWTH_PER_WAVE * (w - 1));
   const speed = rng.range(def.speed[0], def.speed[1]) * speedScale * (elite ? 1.2 : 1);
   const sp = def.special;

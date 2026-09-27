@@ -86,10 +86,13 @@ MapDef = {
                                          // |'rock'|'cone'|'debris'|'tire'|'crack'|'oil'|'blood_old'
                                          // |'paper'|'skid'|'manhole'|'lamp_post'|'sign'|'flag'|'rubble'
                                          // s = scale (1 = normal)
-  lights: [ { x, y, r, color, flicker } ],// static light sources (street lamps, burning wrecks)
+  lights: [ { x, y, r, color, flicker } ],// static light sources (street lamps, burning wrecks);
+                                         // flicker = 0..1 amplitude (0 = steady). A lit 'lamp_post'
+                                         // decor has a light at exactly the same x, y.
   fires: [ { x, y, r } ],                // permanent burning spots (cosmetic flames + light; no damage)
   playerSpawns: [ {x, y} ],              // >= 6 clear points near the objective
   zombieSpawns: [ { x, y, w, h } ],      // rectangles near the map edges where zombies appear
+                                         // (x, y = centre, like every other rect in the MapDef)
   objective: { kind, name, x, y, w, h, a, hp },  // thing the team defends; also a collider
                                          // kind: 'bus'|'diner'|'apc'|'radio'
   supply: { x, y },                      // supply station (ammo crates + shop mid-wave)
@@ -107,6 +110,15 @@ Obstacle = {
   roof,                                  // buildings: roof colour
 }
 ```
+
+Kind conventions used by maps.js (renderers rely on them): 'semi' is both the cab
+(length ≤ 100) and the trailer (240 long) of a rig; 'tanker' is the tank body with a
+'semi' cab; 'bus' is also used for RVs (draw with the obstacle colour, not always school-bus
+yellow); 'container' also covers dumpsters, a propane cage and a generator; 'wall' with
+h ≤ 8 is a thin fence (solid:false), thicker is masonry; 'pillar' = canopy posts; 'tree' is
+the trunk with a 'tree_canopy' decor centred on it. Crosswalk lines run across the road
+and `w` is the stripe length. `roof` is null for kinds without a roof. Water areas are
+axis-aligned. Map sizes are within 2400..4000 x 1600..3000 (checkpoint is 3000 x 3000).
 
 Rules: every `playerSpawn` and the `supply` point must be reachable from every
 `zombieSpawn` for a 28 px-diameter walker; nothing spawns inside an obstacle or water;
@@ -128,7 +140,9 @@ const game = new Game({
 });
 game.map                  // MapDef
 game.tick                 // ticks simulated so far
-game.addPlayer({ id, name, color, cls })   // late join: enters as 'dead', respawns next wave
+game.addPlayer({ id, name, color, cls })   // late join: mid-wave enters 'dead' and respawns at the
+                          //   wave clear; during prep/intermission enters alive. Gets
+                          //   wave × WAVE_CLEAR_BONUS catch-up cash.
 game.removePlayer(id)
 game.setInput(id, cmd)    // queue one InputCmd (§3.3). Host calls this for every received cmd.
 game.command(id, cmd)     // reliable one-off requests: { type: 'buy', item } | { type: 'ready' }
@@ -145,10 +159,11 @@ calls per tick). All randomness from a seeded rng.
 
 ```js
 export function createCollisionWorld(map);   // static colliders (obstacles, objective, water, bounds)
-world.setBarricades(list)                    // [{x, y, a}] dynamic walls (BARRICADE size)
+world.setBarricades(list)                    // [{x, y, a}] or [{x, y, angle}] dynamic walls (BARRICADE size)
 export function stepPlayerMovement(p, cmd, dt, world);
 ```
-`p` needs `{ x, y, state, stamina, sprintLock, speedMult, moveMult }` and is mutated
+`p` needs `{ x, y, state, stamina, sprintLock, speedMult, moveMult }` (+ optional
+`staminaMult`, class perk: drain ÷ it, regen × it) and is mutated
 (x, y, stamina, sprintLock, sprinting). `speedMult` comes from the class perk,
 `moveMult` from the held weapon. Players collide with static obstacles (solid or not),
 water, the objective, barricades and the map bounds — **not** with zombies or other
@@ -249,6 +264,21 @@ BARRICADE.maxPerPlayer, one self-revive), and cash; emits 'buy' or 'buyfail'
 (reason: 'cash'|'closed'|'max'|'invalid'|'owned').
 Stats per player: kills, damage dealt, revives, downs, cash earned.
 
+**Rules settled during the build.** Shop guns are buyable when
+`unlockWave <= (phase === 'wave' ? wave : wave + 1)` (exported as `shopWave()`; the shop UI
+uses the same rule). Buyfail reasons: 'max' (ammo/armour/medkit/repair already full,
+throwable/turret/barricade limits), 'owned' (owned gun already full, second self-revive
+kit), 'invalid' (repair with objective off, unknown id, pistol), 'cash', 'closed'. Buying
+'ammo' also refills the buyer's placed turrets. Death drops the loadout; respawn restores
+pistol + class weapon. Hits on downed players cost 0.12 s of bleedout per damage point.
+Explosions hurt players at 35%; explosiveMult only boosts damage to zombies. Molotov fire
+hurts players only with friendly fire (25%). Bosses bypass maxAlive; boss hp multiplier
+per zombies.js (`hpBase + hpPerPlayer × players`). Heavies (bloater, brute, boss) crash
+through low cover (solid:false). Zombies weigh the objective as farther away than it is,
+so they prefer nearby players and chew on the objective when nobody is close.
+**In a one-player game the survivor starts with a Self-Revive Kit** (solo would otherwise
+end at the first knock-down).
+
 ### 3.5 Required tests (`tests/sim.test.js`, `tests/movement.test.js`, `tests/flowfield.test.js`)
 - Determinism: two Games with the same seed and scripted inputs produce identical snapshots
   after 3000 ticks.
@@ -299,6 +329,8 @@ Snapshot = {
     respawn,                // true while dead and waiting for the wave to end
     ready,                  // voted to skip intermission
     lastSeq,                // last InputCmd seq applied
+    earned,                 // total cash earned this game (end-screen stat)
+    sprintLock,             // true while exhausted (must regain STAMINA_MIN_TO_SPRINT) — for exact prediction
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/ } ],
   projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
@@ -318,7 +350,8 @@ All events carry the fields listed; consumers ignore unknown types.
 
 | type | fields | meaning |
 |---|---|---|
-| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player). rays = end point of every pellet/beam/tracer; hit: 0 nothing/max range, 1 flesh, 2 obstacle. Projectile/flame/chain weapons send `rays: []`. |
+| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer; hit: 0 nothing/max range, 1 flesh, 2 obstacle. Projectile/flame/chain weapons send `rays: []`. |
+| `placefail` | pid, kind | turret/barricade could not be placed (spot blocked) |
 | `chain` | pid, points: [{x, y}] | tesla arc path (muzzle → first zombie → …) |
 | `melee` | pid, x, y, angle, hits | shove swing (hits = zombies struck) |
 | `zdie` | id, ztype, x, y, angle, by, gib | zombie died; by = killer pid (0 = none/turret owner unknown); gib = blown apart by explosion/rail |
@@ -334,7 +367,7 @@ All events carry the fields listed; consumers ignore unknown types.
 | `pickup` | pid, kind, x, y, weapon | collected |
 | `buy` | pid, item | purchase succeeded |
 | `buyfail` | pid, item, reason | purchase refused |
-| `reload` | pid, weapon | reload started |
+| `reload` | pid, weapon, time | reload started; time = its duration in seconds (perks applied) |
 | `switch` | pid, weapon | weapon changed |
 | `empty` | pid | dry fire |
 | `throw` | pid, kind | 'frag' or 'molotov' thrown |
@@ -347,6 +380,14 @@ All events carry the fields listed; consumers ignore unknown types.
 | `drop` | x, y | supply crate landed |
 | `gameover` | reason | 'wiped'|'objective' |
 | `victory` | — | all waves cleared |
+
+**Client-side shot prediction.** On a client, the session emits the local player's own
+shots immediately as `shot` events with `predicted: true` (rays traced locally against
+solid obstacles and the rendered zombies; `hit` is a guess). When the host's authoritative
+`shot` for the local player later arrives it is passed on with `echo: true`: renderer and
+audio must NOT draw/play an `echo` shot again (no tracer, flash, casing or sound) but the
+renderer uses its rays' `hit` for the hit marker. On the host nothing is predicted and no
+event carries either flag.
 
 The sim must not emit more than ~200 events per snapshot; hitscan `shot` events from one
 shooter in one tick are merged.
@@ -419,6 +460,10 @@ session.getMap()                      // MapDef of the running game
 session.getPredictedLocal()           // {x, y, angle} of the local player right now (for aim)
 session.stats                         // { ping, fps?, kbpsIn, kbpsOut, snapshotsPerSec }
 session.leave()
+session.kick(pid)                     // host only
+   // Extras: returnToLobby() works at any time (host "end game"); getView()/drainEvents()
+   // use the session's own clock (performance.now) whatever `now` is passed; decoded
+   // snapshots may carry `match` and `echo` (netcode internals, ignore them).
 ```
 Host: runs `Game`, stepping with a real-time accumulator driven by a Worker-based ticker
 (`net/ticker.js`) so the game keeps running when the host's tab is in the background.
@@ -503,6 +548,10 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
                 //  |'gameover'|'victory'|'countdown'|'ready'
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
+audio.setMap(map)                            // permanent map fires crackle when nearby
+// addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
+// while dead). ui() is for menu/lobby sounds; in-game stingers come from events
+// (audio dedupes overlaps anyway).
 ```
 All sound synthesised with WebAudio (no files). Voice limiting (max ~24 concurrent,
 per-sound rate limits) so a minigun into a horde doesn't clip. Music: optional

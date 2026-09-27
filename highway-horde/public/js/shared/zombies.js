@@ -62,13 +62,13 @@ export const ZOMBIES = {
     look: { skin: '#6b7d5c', clothes: ['#3e2723', '#263238'], scale: 1.9 },
   },
   boss: {
-    name: 'Abomination', hp: 9000, speed: [58, 58], radius: 44, damage: 50, attackRate: 0.6, attackRange: 20,
+    name: 'Abomination', hp: 7000, speed: [58, 58], radius: 44, damage: 50, attackRate: 0.6, attackRange: 20,
     mass: 1, cash: 1000, score: 1000,
     // Never spawned by weight; one per player-count bracket on every BOSS_EVERY-th wave.
     weight: () => 0,
     // Slams the ground every `cooldown` s when a target is within `radius`: `damage` + knockback.
-    // HP is multiplied by (0.6 + 0.4 * playerCount) on top of wave/difficulty scaling.
-    special: { radius: 190, damage: 40, knockback: 650, cooldown: 4.5, windup: 0.8 },
+    // HP is multiplied by (hpBase + hpPerPlayer * playerCount) on top of wave/difficulty scaling.
+    special: { radius: 190, damage: 40, knockback: 650, cooldown: 4.5, windup: 0.8, hpBase: 0.5, hpPerPlayer: 0.3 },
     look: { skin: '#5b6b3f', clothes: ['#4a148c'], scale: 3.2 },
   },
 };
