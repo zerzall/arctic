@@ -9,14 +9,15 @@ import {
 } from './constants.js';
 import {
   StaticIndex, makeObb, setObbPose, circleObbPush, circleOverlapsObb, mapColliders, obbOverlap,
-  MASK_MOVE, MASK_SOLID, MASK_WATER, MASK_BARRICADE,
+  MASK_MOVE, MASK_SOLID, MASK_WATER, MASK_BARRICADE, MASK_BULKY,
 } from './geom.js';
 
 /**
- * Collision mask for heavies (bloater, brute, boss): they crash over low cover
- * (obstacles with solid: false) but not cars, buildings, water or the objective.
+ * Collision mask for heavies (bloater, brute, boss): they crash over crushable low
+ * cover (barriers, sandbags, guard rails, fences) but not vehicles, buildings, water
+ * or the objective.
  */
-export const MASK_HEAVY = MASK_SOLID | MASK_WATER;
+export const MASK_HEAVY = MASK_BULKY | MASK_WATER;
 
 const RESOLVE_ITERATIONS = 4;
 

@@ -50,6 +50,8 @@ highway-horde/
   public/js/shared/protocol.js                       (net)
   public/js/net/*.js                                 (net)
   public/js/render/*.js                              (render)
+  public/js/render3d/*.js                            (render3d — first-person view, §7.5)
+  public/vendor/three/                               (vendored three.js r186, do not edit)
   public/js/audio/*.js                               (audio)
   public/js/ui/*.js  (main.js, input.js, hud.js, menus, shop, chat, touch, ...) (ui)
   tests/<area>.test.js                               (each owner)
@@ -655,6 +657,123 @@ audio.setMap(map)                            // permanent map fires crackle when
 All sound synthesised with WebAudio (no files). Voice limiting (max ~24 concurrent,
 per-sound rate limits) so a minigun into a horde doesn't clip. Music: optional
 procedural low drone/percussion that intensifies during waves and boss fights.
+
+### 7.5 First-person 3D view — `render3d/*` (the default view)
+
+The game is a **first-person shooter**. The simulation stays 2D (a flat ground plane,
+like classic Doom-style shooters): aim is the camera yaw, bullets travel horizontally,
+so vertical aim never matters for hits. The 3D renderer turns snapshots into a
+first-person scene. The old top-down renderer (§7.1) stays as a "Classic top-down" view
+option and as the fallback when WebGL is unavailable.
+
+**Library.** three.js r186, vendored: `public/vendor/three/three.module.js` (imports
+`./three.core.js`) and addons under `public/vendor/three/addons/` (e.g.
+`addons/utils/BufferGeometryUtils.js`). `index.html` declares an import map
+`{ "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" }`
+before any module script. Only `render3d/` imports `three`. Unit tests must not import
+render3d (Node can't resolve it without installing three) — test it in the browser.
+
+**Coordinates & scale.** Sim point (x, y) ↦ three.js `Vector3(x, height, y)`; +Y is up.
+1 world unit = 1 sim px ≈ 1/32 m. Sim angle `a` (0 = +x, +π/2 = +y) is the direction
+`(cos a, 0, sin a)`; a three.js camera looking along angle `a` with pitch `p` has
+`rotation.order = 'YXZ'`, `rotation.y = -a - π/2`, `rotation.x = p`.
+Canonical heights (units) — keep visibility consistent with the sim's `solid` flag
+(shots pass over solid:false cover, so it must sit below the eye):
+eye 52 (downed 16) · car 44 · rock 16–30 · guardrail 22 · barrier 26 · sandbags 30 ·
+fence (thin wall) 40 · pump 52 · suv 56 · pickup 58 (bed 34) · hesco 70 · van 72 ·
+tent 80 · container 84 · wall (thick) 90 · booth 90 · bus 100 · truck 100 · tanker 112 ·
+semi cab 110 / trailer 124 · pillar 150 · building 150–260 · tree trunk 70 + canopy up
+to 180–300 · lamp post 230 · zombie walker ~56 (scaled by `look.scale`) · player ~56.
+
+**Module layout** (all ES modules under `public/js/render3d/`):
+```
+renderer3d.js   createRenderer3D(canvas, { map, quality }) — the public API below; owns the
+                WebGLRenderer, scene, camera rig, fog, sky, light pool, ground, overlay canvas,
+                frame loop plumbing; creates the sub-systems with the shared ctx
+world.js        static world from the MapDef: ground, obstacles, objective, supply, decor,
+                trees, lamps, fires, water, sky dome
+ground.js       ground textures painted with render/maplayer.js `paintGround` into chunked
+                canvases + the decal API (blood, scorch, acid, corpses' pools)
+lights.js       fixed pool of PointLights + the flashlight SpotLight
+zombies3d.js    instanced zombies (+ corpses, gibs)
+players3d.js    teammates (third person), their weapons and flashlight cones
+items3d.js      projectiles, pickups, turrets, barricades, hazards
+effects3d.js    particles, tracers, muzzle flashes, explosions, arcs, beams, shake requests
+viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
+overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
+                damage-direction arcs, off-screen arrows, low-hp vignette
+```
+Each sub-system is created as `createX(ctx)` and returns
+`{ update(view, frame), addEvents?(events, opts), setQuality?(q), dispose() }`.
+`ctx` (built by renderer3d.js, read-only for sub-systems):
+```
+ctx = { THREE, scene, camera, map, quality,           // quality 'high' | 'low'
+        overlay,                                       // CanvasRenderingContext2D of the overlay (CSS px)
+        lights: { flash(x, y, h, color, intensity, radius, life),   // transient light (muzzle, explosion)
+                  steady(key, x, y, h, color, intensity, radius) }, // per-frame persistent source
+        ground: { decal(kind, x, y, r, angle, alpha) },  // kind 'blood'|'scorch'|'acid'|'oil'|'gore'
+        project(x, y, h) → { x, y, visible },          // world → overlay CSS px
+        shake(amount),                                 // camera shake request (0..1)
+        heightOf(kind, obstacle) → units,              // canonical heights above
+        rng }                                          // cosmetic randomness (Math.random is fine here)
+frame = { dt, now, localId, roster, local /* view record of the local player or null */,
+          camX, camY, yaw, pitch, settings }
+```
+
+**Public API** (same shape as §7.1 so `ui/match.js` can use either renderer):
+```js
+import { createRenderer3D } from './render3d/renderer3d.js';
+const r = createRenderer3D(canvas, { map, quality });
+r.render(view, { localId, roster, now, dt, look: { yaw, pitch }, settings })
+   // settings: { screenShake, showNames, fov (degrees, default 80), lighting }
+r.addEvents(events, { localId })
+r.screenToWorld(sx, sy) → {x, y}   // ground point under a screen point (for API compatibility)
+r.worldToScreen(x, y, h = 0) → {x, y, visible}
+r.getCamera() → { x, y, yaw }      // camera position/orientation (listener for audio)
+r.resize(); r.setQuality(q); r.destroy(); r.stats; r.mode === 'fps'
+export function isWebGLAvailable()
+```
+The renderer creates its overlay canvas as a sibling right after `canvas` (same CSS box,
+`pointer-events: none`) and removes it in `destroy()`.
+
+**Camera.** At the local player's rendered position (the view's local record, already
+predicted on clients) at eye height, looking along `look.yaw` / `look.pitch`, with walk
+bob, landing of recoil kicks and screen shake (respect settings.screenShake). Downed:
+eye 16, slight roll. Dead/spectating: a smooth third-person chase camera behind a living
+teammate (their angle), or a slow orbit over the objective when nobody is alive.
+
+**Look & movement (UI side, `ui/match.js` + `ui/input.js`).** In fps view the UI owns
+`yaw`/`pitch` (radians; pitch clamped to ±1.35). `input.sample()` also returns
+`lookDX, lookDY` (mouse/touch deltas in CSS px since the last sample; gamepad right stick
+is converted to an equivalent delta per frame). The UI applies sensitivity/invert-Y and
+updates yaw/pitch, rotates the local WASD vector into world space
+(`forward = (cos yaw, sin yaw)`, `right = (cos(yaw + π/2), sin(yaw + π/2))`) before
+calling `session.update(dt, input, yaw)`. Pointer lock: clicking the canvas requests it;
+losing it (Esc, alt-tab) opens the pause menu ("Click to resume"). The initial yaw is the
+local player's snapshot angle. Settings (stored in prefs): view 'fps' | 'topdown'
+(default 'fps', forced 'topdown' when WebGL is unavailable), fov 60–110 (80),
+mouse sensitivity (default 1.0 ≈ 0.0022 rad/px), invert Y, aim assist for
+gamepad/touch (light yaw magnetism toward the zombie nearest the crosshair).
+
+**First-person look & feel.** Night atmosphere: sky dome with stars/moon, fog tinted by
+`map.ambient`, dim moonlight + hemisphere light, the local flashlight (SpotLight from the
+camera; shadows only on 'high'), teammates' flashlights as cheap additive cones, map
+lights/fires/muzzle flashes/explosions through the fixed light pool (never add/remove
+lights at runtime — shader recompiles). Everything procedural and low-poly (no model or
+texture files). Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
+gloved hands in the class outfit colour, idle sway, walk/sprint bob, recoil kick on each
+own `shot` (predicted shots included; `echo` shots ignored), reload dip over
+`reloading`, weapon switch lower/raise, melee swing, throw motion, minigun barrel spin,
+flamethrower pilot light; drawn in its own pass so it never clips into walls.
+Zombies: one InstancedMesh per body part per type (≤ ~60 draw calls for 300 zombies),
+walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
+(burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at
+1080p with 250 zombies on a mid laptop at 'high'; 'low' = no shadows, 4 pool lights,
+fewer particles, render scale 0.75. `r.stats` exposes draw calls, triangles, frame ms.
+
+**Audio orientation.** `audio.addEvents/update(…, { x, y, yaw })`: when `yaw` is given,
+pan by the angle between the sound and the facing direction and muffle/soften sounds
+behind the listener; without `yaw` (top-down) keep screen-relative panning.
 
 ## 8. Deployment
 - Static: `public/` can be served by any static host (Netlify: `netlify.toml` publishes

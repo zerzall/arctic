@@ -88,7 +88,8 @@ const CONTAINER_COLORS = ['#7a3b2e', '#2f5a78', '#3d6b45', '#8a6d2f', '#6b3f5e',
 const TRUNK_COLOR = '#4a3826';
 
 const KIND_DEFAULTS = {
-  car: { color: null, solid: true },
+  // Sedans and rocks sit below eye level: shots fly over them (first-person view).
+  car: { color: null, solid: false },
   suv: { color: null, solid: true },
   pickup: { color: null, solid: true },
   van: { color: null, solid: true },
@@ -103,7 +104,7 @@ const KIND_DEFAULTS = {
   container: { color: '#2f5a78', solid: true, roof: '#2f5a78' },
   pump: { color: '#c9c4b6', solid: true },
   tree: { color: TRUNK_COLOR, solid: true },
-  rock: { color: '#6d6a63', solid: true },
+  rock: { color: '#6d6a63', solid: false },
   hesco: { color: '#a08a62', solid: true },
   tent: { color: '#5a6340', solid: true, roof: '#6b7449' },
   booth: { color: '#5b6150', solid: true, roof: '#44493c' },

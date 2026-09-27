@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createCollisionWorld, stepPlayerMovement } from '../public/js/shared/movement.js';
+import { createCollisionWorld, stepPlayerMovement, MASK_HEAVY } from '../public/js/shared/movement.js';
 import { circleOverlapsObb, MASK_MOVE, MASK_BARRICADE } from '../public/js/shared/geom.js';
 import {
   DT, PLAYER_RADIUS, PLAYER_SPEED, SPRINT_MULT, STAMINA_MAX, STAMINA_DRAIN, STAMINA_REGEN,
@@ -213,4 +213,19 @@ test('lineOfSight ignores low cover and water; lineOfMovement does not', () => {
   assert.ok(!world.lineOfMovement(200, 500, 400, 500));
   const t = world.raycastSolid(500, 700, 1, 0, 1000);
   assert.ok(near(t, 90));
+});
+
+test('sedans are shot over but block heavies; barriers are trampled by heavies', () => {
+  const world = createCollisionWorld(wallMap([
+    ob(0, 300, 300, 84, 42, 0, false, 'car'),
+    ob(1, 600, 300, 96, 26, 0, false, 'barrier'),
+  ]));
+  // Bullets pass over both kinds of low cover.
+  assert.equal(world.lineOfSight(200, 300, 700, 300), true);
+  // Walkers are blocked by both.
+  assert.equal(world.isCircleFree(300, 300, 14, false, MASK_MOVE), false);
+  assert.equal(world.isCircleFree(600, 300, 14, false, MASK_MOVE), false);
+  // Heavies are blocked by the car but crash through the barrier.
+  assert.equal(world.isCircleFree(300, 300, 14, false, MASK_HEAVY), false);
+  assert.equal(world.isCircleFree(600, 300, 14, false, MASK_HEAVY), true);
 });

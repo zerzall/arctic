@@ -16,6 +16,18 @@ export const MASK_WATER = 4;
 export const MASK_OBJECTIVE = 8;
 /** A player-built barricade. */
 export const MASK_BARRICADE = 16;
+/**
+ * Too big for heavies (bloater, brute, boss) to crash through: everything except
+ * crushable low cover (see isCrushable). Separate from MASK_SOLID because a sedan
+ * blocks a brute but, seen from eye level, not a bullet fired over its bonnet.
+ */
+export const MASK_BULKY = 32;
+
+/** Low cover that heavies trample: jersey barriers, sandbags, guard rails, fences. */
+export function isCrushable(o) {
+  return o.kind === 'barrier' || o.kind === 'sandbags' || o.kind === 'guardrail'
+    || (o.kind === 'wall' && !o.solid);
+}
 
 const EPS = 1e-9;
 
@@ -427,22 +439,23 @@ export class StaticIndex {
 }
 
 /**
- * Build the collision boxes for a MapDef: every obstacle (walk-blocking, and
- * shot-blocking when `solid`), every 'water' area (walk-blocking only) and the
- * objective (walk- and shot-blocking).
+ * Build the collision boxes for a MapDef: every obstacle (walk-blocking, shot-blocking
+ * when `solid`, heavy-blocking unless crushable), every 'water' area (walk-blocking
+ * only) and the objective (blocks everything).
  * @returns {object[]} boxes with `ref` pointing at the source object
  */
 export function mapColliders(map) {
   const out = [];
   for (const o of map.obstacles || []) {
-    out.push(makeObb(o.x, o.y, o.w, o.h, o.a || 0, MASK_MOVE | (o.solid ? MASK_SOLID : 0), o));
+    const mask = MASK_MOVE | (o.solid ? MASK_SOLID : 0) | (isCrushable(o) ? 0 : MASK_BULKY);
+    out.push(makeObb(o.x, o.y, o.w, o.h, o.a || 0, mask, o));
   }
   for (const ar of map.areas || []) {
     if (ar.kind === 'water') out.push(makeObb(ar.x, ar.y, ar.w, ar.h, ar.a || 0, MASK_MOVE | MASK_WATER, ar));
   }
   const ob = map.objective;
   if (ob && ob.w > 0 && ob.h > 0) {
-    out.push(makeObb(ob.x, ob.y, ob.w, ob.h, ob.a || 0, MASK_MOVE | MASK_SOLID | MASK_OBJECTIVE, ob));
+    out.push(makeObb(ob.x, ob.y, ob.w, ob.h, ob.a || 0, MASK_MOVE | MASK_SOLID | MASK_BULKY | MASK_OBJECTIVE, ob));
   }
   return out;
 }
