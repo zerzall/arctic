@@ -1,13 +1,35 @@
-// Procedural textures of the static world (WORLD): the emissive atlas (lit windows with
-// silhouettes, neon signs, pump displays), the chain-link fence mask and the water normal
-// map. All painted on canvases at start-up; nothing is loaded from files.
+// Procedural textures of the static world (WORLD): the atlas (lit windows with silhouettes,
+// neon signs, pump displays, licence plates, hazard stripes, placards, posters, shop
+// fronts, fluorescent tubes), the chain-link fence mask, leaf-cluster and grass cards and
+// the water normal map. All painted on canvases at start-up; nothing is loaded from files.
 
 import * as THREE from 'three';
 import { periodicFbm, createRng } from '../render/util.js';
 
-const AW = 1024, AH = 512;
+const AW = 1024, AH = 1024;
 // Atlas cells in canvas pixels [x0, y0, x1, y1] (y down).
 const CELLS = {
+  plate0: [0, 512, 128, 576],
+  plate1: [128, 512, 256, 576],
+  plate2: [256, 512, 384, 576],
+  plate3: [384, 512, 512, 576],
+  stripeRW: [512, 512, 640, 576],
+  stripeYB: [640, 512, 768, 576],
+  tube: [768, 512, 832, 576],
+  hazmat: [832, 512, 896, 576],
+  star: [896, 512, 960, 576],
+  poster0: [0, 576, 128, 768],
+  poster1: [128, 576, 256, 768],
+  poster2: [256, 576, 384, 768],
+  shop: [384, 576, 640, 704],
+  winTV: [640, 576, 768, 704],
+  winBlind: [768, 576, 896, 704],
+  winOffice: [896, 576, 1024, 704],
+  truckSign: [0, 768, 512, 896],
+  garage: [512, 768, 640, 896],
+  speed: [640, 768, 768, 896],
+  roadSign: [768, 768, 1024, 896],
+  motel: [0, 896, 512, 1024],
   white: [8, 8, 56, 56],
   win: [64, 0, 192, 128],
   winCool: [192, 0, 320, 128],
@@ -196,7 +218,310 @@ function atlasCanvas() {
       g.fill();
     }
   });
+  paintExtraCells(g, cell, person);
   return atlas;
+}
+
+/** Plates, hazard stripes, placards, posters, shop fronts, signs (the atlas' lower half). */
+function paintExtraCells(g, cell, person) {
+  const plates = [['7HX 214', '#f4f2ea', '#1b2a5a', 'CALIFORNIA'], ['BRT 9Z2', '#f7e7a8', '#1a1a1a', 'NEVADA'], ['4KD-771', '#eef1f4', '#8a1a1a', 'OREGON'], ['ZMB 0NE', '#f2f2f2', '#1d4a2a', 'ARIZONA']];
+  plates.forEach(([txt, bg, fg, state], k) => cell('plate' + k, (w, h) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(0,0,0,0.55)';
+    g.lineWidth = 4;
+    g.strokeRect(3, 3, w - 6, h - 6);
+    g.fillStyle = fg;
+    g.font = 'bold 12px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    g.fillText(state, w / 2, 7);
+    g.font = 'bold 30px "Courier New", monospace';
+    g.textBaseline = 'middle';
+    g.fillText(txt, w / 2, h * 0.62);
+    // grime toward the bottom
+    const gr = g.createLinearGradient(0, h * 0.5, 0, h);
+    gr.addColorStop(0, 'rgba(60,50,30,0)');
+    gr.addColorStop(1, 'rgba(60,50,30,0.35)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, w, h);
+  }));
+  const stripes = (w, h, a, b) => {
+    g.fillStyle = a;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = b;
+    for (let x = -h * 2; x < w + h; x += 32) {
+      g.beginPath();
+      g.moveTo(x, h); g.lineTo(x + 16, h); g.lineTo(x + 16 + h, 0); g.lineTo(x + h, 0);
+      g.fill();
+    }
+  };
+  cell('stripeRW', (w, h) => stripes(w, h, '#f2efe8', '#c41a1a'));
+  cell('stripeYB', (w, h) => stripes(w, h, '#f2c21a', '#141414'));
+  cell('tube', (w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, 'rgba(255,255,255,0.35)');
+    gr.addColorStop(0.3, '#ffffff');
+    gr.addColorStop(0.7, '#ffffff');
+    gr.addColorStop(1, 'rgba(255,255,255,0.35)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, w, h);
+  });
+  cell('hazmat', (w, h) => {
+    g.fillStyle = '#d8262a';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 3;
+    g.strokeRect(5, 5, w - 10, h - 10);
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 22px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('1203', w / 2, h * 0.42);
+    g.font = 'bold 12px Arial, sans-serif';
+    g.fillText('3', w / 2, h * 0.78);
+  });
+  cell('star', (w, h) => {
+    g.fillStyle = 'rgba(0,0,0,0)';
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = '#434a22';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#d9d6c4';
+    g.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? w * 0.18 : w * 0.44;
+      g.lineTo(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr);
+    }
+    g.fill();
+  });
+  const poster = (w, h, bg, title, sub, col) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = col;
+    g.font = 'bold 26px Impact, "Arial Black", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    g.fillText(title, w / 2, 14);
+    g.font = 'bold 13px Arial, sans-serif';
+    g.fillText(sub, w / 2, 48);
+    person(w * 0.5, h * 0.52, 1.5, 'rgba(0,0,0,0.6)');
+    // torn corner and weathering
+    g.fillStyle = 'rgba(40,36,30,0.9)';
+    g.beginPath();
+    g.moveTo(w, h); g.lineTo(w * 0.62, h); g.lineTo(w, h * 0.78);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.12)';
+    for (let k = 0; k < 40; k++) g.fillRect(Math.random() * w, Math.random() * h, 2, 6);
+  };
+  cell('poster0', (w, h) => poster(w, h, '#d8cfb8', 'MISSING', 'HAVE YOU SEEN ME?', '#1a1a1a'));
+  cell('poster1', (w, h) => poster(w, h, '#8a1d1d', 'EVACUATE', 'ROUTE 9 NORTH', '#f2e6c8'));
+  cell('poster2', (w, h) => poster(w, h, '#1d3a5a', 'QUARANTINE', 'ZONE C - NO ENTRY', '#f2e6c8'));
+  cell('shop', (w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#fff6e0');
+    gr.addColorStop(1, '#d8b47a');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, w, h);
+    // shelves with goods
+    for (let y = 30; y < h - 10; y += 28) {
+      g.fillStyle = '#6a4a2a';
+      g.fillRect(0, y, w, 4);
+      for (let x = 4; x < w - 8; x += 9) {
+        g.fillStyle = ['#c43a2a', '#2a6ac4', '#e0c02a', '#3a9a4a', '#e8e8e8'][(x * 7 + y) % 5];
+        g.fillRect(x, y - 8 - ((x * 13 + y) % 7), 7, 8 + ((x * 13 + y) % 7));
+      }
+    }
+    g.fillStyle = 'rgba(20,10,5,0.85)';
+    g.fillRect(0, 0, w, 6);
+    g.fillRect(0, h - 6, w, 6);
+    for (let x = 0; x <= w; x += w / 3) g.fillRect(x - 3, 0, 6, h);
+    person(w * 0.7, h * 0.36, 1.3, 'rgba(25,14,8,0.85)');
+  });
+  cell('winTV', (w, h) => {
+    const gr = g.createLinearGradient(0, 0, w, h);
+    gr.addColorStop(0, '#7fa8ff');
+    gr.addColorStop(1, '#27407a');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#0a0d14';
+    g.lineWidth = 6;
+    g.strokeRect(3, 3, w - 6, h - 6);
+    g.fillStyle = '#0a0d14';
+    g.fillRect(w / 2 - 3, 0, 6, h);
+  });
+  cell('winBlind', (w, h) => {
+    g.fillStyle = '#f0d6a0';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(90,60,30,0.55)';
+    for (let y = 4; y < h; y += 7) g.fillRect(0, y, w, 3);
+    g.strokeStyle = '#120d08';
+    g.lineWidth = 6;
+    g.strokeRect(3, 3, w - 6, h - 6);
+  });
+  cell('winOffice', (w, h) => {
+    g.fillStyle = '#e8f0ff';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let x = 12; x < w; x += 40) g.fillRect(x, 6, 26, 5);   // ceiling tubes
+    g.fillStyle = 'rgba(60,70,90,0.5)';
+    g.fillRect(0, h * 0.62, w, h * 0.38);                       // desks / partitions
+    person(w * 0.3, h * 0.44, 0.9, 'rgba(20,24,34,0.8)');
+    g.strokeStyle = '#141820';
+    g.lineWidth = 6;
+    g.strokeRect(3, 3, w - 6, h - 6);
+  });
+  const neonText = (w, h, text, core, glow, size, frame = true) => {
+    g.fillStyle = '#0c0a10';
+    g.fillRect(0, 0, w, h);
+    if (frame) {
+      g.strokeStyle = 'rgba(90,80,90,0.9)';
+      g.lineWidth = 6;
+      g.strokeRect(4, 4, w - 8, h - 8);
+    }
+    g.font = `bold ${size}px "Arial Black", Arial, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.shadowColor = glow;
+    for (const blur of [24, 12, 5]) {
+      g.shadowBlur = blur;
+      g.strokeStyle = glow;
+      g.lineWidth = 6;
+      g.strokeText(text, w / 2, h / 2 + 3);
+    }
+    g.shadowBlur = 3;
+    g.lineWidth = 2.5;
+    g.strokeStyle = core;
+    g.strokeText(text, w / 2, h / 2 + 3);
+    g.shadowBlur = 0;
+  };
+  cell('truckSign', (w, h) => neonText(w, h, 'TRUCK STOP', '#fff8e0', '#ffb020', 58));
+  cell('motel', (w, h) => neonText(w, h, 'MOTEL  VACANCY', '#f0fff8', '#20e0a0', 50));
+  cell('garage', (w, h) => {
+    g.fillStyle = '#8a8c88';
+    g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) {
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fillRect(0, y + 13, w, 3);
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      g.fillRect(0, y, w, 2);
+    }
+    g.fillStyle = 'rgba(80,40,20,0.35)';
+    g.fillRect(0, h * 0.8, w, h * 0.2);
+  });
+  cell('speed', (w, h) => {
+    g.fillStyle = '#f4f4f0';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#111';
+    g.lineWidth = 5;
+    g.strokeRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#111';
+    g.font = 'bold 18px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    g.fillText('SPEED', w / 2, 16);
+    g.fillText('LIMIT', w / 2, 36);
+    g.font = 'bold 52px Arial, sans-serif';
+    g.fillText('55', w / 2, 60);
+  });
+  cell('roadSign', (w, h) => {
+    g.fillStyle = '#1d5a36';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#eeeeee';
+    g.lineWidth = 4;
+    g.strokeRect(6, 6, w - 12, h - 12);
+    g.fillStyle = '#eeeeee';
+    g.font = 'bold 24px Arial, sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillText('BLACKWATER', 18, 38);
+    g.fillText('FORT DELTA', 18, 76);
+    g.textAlign = 'right';
+    g.fillText('12', w - 18, 38);
+    g.fillText('31', w - 18, 76);
+    g.font = 'bold 16px Arial, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('▲ NORTH  I-9', 18, 108);
+  });
+}
+
+// ---- foliage cards ---------------------------------------------------------------------------
+
+/**
+ * Leaf-cluster atlas (alpha): 2×2 cells — broadleaf clusters A and B, a pine bough, a
+ * scrub / bush cluster. Grey-scale (the vertex colour tints it), dense enough that
+ * alpha-tested mips stay full at distance.
+ */
+export const LEAF_CELLS = { broadA: [0, 0, 0.5, 0.5], broadB: [0.5, 0, 1, 0.5], pine: [0, 0.5, 0.5, 1], scrub: [0.5, 0.5, 1, 1] };
+
+let leafCanvas = null;
+export function makeLeafTexture(anisotropy = 4) {
+  if (!leafCanvas) {
+    const S = 512, H = S / 2;
+    leafCanvas = document.createElement('canvas');
+    leafCanvas.width = leafCanvas.height = S;
+    const g = leafCanvas.getContext('2d');
+    g.clearRect(0, 0, S, S);
+    const rng = createRng(9001);
+    const leaf = (x, y, len, wid, ang, shade) => {
+      g.save();
+      g.translate(x, y);
+      g.rotate(ang);
+      g.fillStyle = `rgb(${shade},${shade},${shade})`;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(len * 0.5, -wid, len, 0);
+      g.quadraticCurveTo(len * 0.5, wid, 0, 0);
+      g.fill();
+      g.restore();
+    };
+    const cluster = (ox, oy, n, spread, len, wid, pineMode) => {
+      g.save();
+      g.beginPath();
+      g.rect(ox + 1, oy + 1, H - 2, H - 2);
+      g.clip();
+      // twigs first, then leaves from the outside in (inner leaves lighter: light through)
+      g.strokeStyle = 'rgb(70,60,50)';
+      g.lineWidth = 2;
+      for (let k = 0; k < 7; k++) {
+        const a = rng.next() * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(ox + H / 2, oy + H / 2);
+        g.lineTo(ox + H / 2 + Math.cos(a) * spread * 0.8, oy + H / 2 + Math.sin(a) * spread * 0.8);
+        g.stroke();
+      }
+      for (let k = 0; k < n; k++) {
+        const a = rng.next() * Math.PI * 2;
+        const rr = Math.sqrt(rng.next()) * spread;
+        const x = ox + H / 2 + Math.cos(a) * rr, y = oy + H / 2 + Math.sin(a) * rr * 0.9;
+        const shade = Math.round(120 + (1 - rr / spread) * 90 + rng.range(-25, 25));
+        if (pineMode) {
+          // needles: bundles of thin strokes along a bough
+          g.strokeStyle = `rgb(${shade},${shade},${shade})`;
+          g.lineWidth = 1.6;
+          const ang = a + rng.range(-0.4, 0.4);
+          for (let m = 0; m < 5; m++) {
+            g.beginPath();
+            g.moveTo(x, y);
+            g.lineTo(x + Math.cos(ang + (m - 2) * 0.25) * len, y + Math.sin(ang + (m - 2) * 0.25) * len);
+            g.stroke();
+          }
+        } else {
+          leaf(x, y, len * rng.range(0.7, 1.2), wid * rng.range(0.7, 1.2), rng.next() * Math.PI * 2, shade);
+        }
+      }
+      g.restore();
+    };
+    cluster(0, H, 520, H * 0.44, 20, 8, false);     // broadA (uv top-left in GL = bottom row here)
+    cluster(H, H, 420, H * 0.42, 26, 10, false);    // broadB
+    cluster(0, 0, 360, H * 0.44, 18, 0, true);      // pine
+    cluster(H, 0, 620, H * 0.42, 13, 6, false);     // scrub
+  }
+  const tex = new THREE.CanvasTexture(leafCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = anisotropy;
+  return tex;
 }
 
 /** Chain-link fence mask (alpha), repeat every 16 units. */
@@ -216,6 +541,9 @@ export function makeChainLinkTexture() {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
   return tex;
 }
 

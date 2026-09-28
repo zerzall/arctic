@@ -4,9 +4,16 @@
 // canvas, and drives the sub-systems (zombies, players, items, effects, viewmodel,
 // overlay) through the shared read-only `ctx`.
 //
-// Frame order: camera rig → sub-systems (they may register lights/decals) → world →
-// light pool → world pass → viewmodel pass (depth cleared, own scene/camera) → stats.
-// render() never throws: failures are caught and logged a few times.
+// Frame order: settings → camera rig → sub-systems (they may register lights/decals) →
+// world → light pool → post chain (post.js: world pass into an HDR target → AO → viewmodel
+// pass (depth cleared, own scene/camera) → bloom → grade/tone map → AA → upscale) →
+// dynamic resolution → stats. render() never throws: failures are caught and logged a few
+// times, and a post chain that fails falls back to drawing the world straight to the canvas.
+//
+// Graphics settings (render(view, { settings })), applied live and cheap when unchanged:
+//   quality 'ultra'|'high'|'low', renderScale 'auto'|0.5..1 (fraction of the tier's
+//   pixel-ratio cap; 'auto' = dynamic resolution), bloom, ao (ignored on 'low'),
+//   antialias 'smaa'|'fxaa'|'off' ('low' uses FXAA), filmGrain, vignette.
 
 import * as THREE from 'three';
 import { createWorld, obstacleHeight, objectiveHeight, fireBaseHeight } from './world.js';
@@ -20,6 +27,7 @@ import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { releaseFxAtlas } from './fx-core.js';
+import { createPost, createDynRes, createGpuTimer, normPostSettings } from './post.js';
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -81,8 +89,10 @@ function normQuality(v) {
 export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   const tCreate = performance.now();
   let q = normQuality(quality);
+  // No MSAA on the canvas: the world is drawn into the post chain's HDR target and only a
+  // full-screen quad reaches the canvas (SMAA / FXAA do the anti-aliasing).
   const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: q !== 'low', alpha: false, stencil: false, powerPreference: 'high-performance',
+    canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance',
   });
   const glMs = performance.now() - tCreate;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -119,6 +129,8 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   const lights = createLights({ scene, camera, map, quality: q, fireBase: (x, y) => fireBaseHeight(map, x, y) });
   let trauma = 0;
   let cssW = 1, cssH = 1, dpr = 1;
+  // prFull = the tier's pixel-ratio cap (canvas), prInner = prFull × renderScale (world pass)
+  let prFull = 1, prInner = 1, renderScale = 1;
   const _p = new THREE.Vector3();
 
   function project(x, y, h = 0) {
@@ -154,7 +166,8 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   };
 
   const tWorld = performance.now();
-  const world = createWorld(ctx, { renderer, lights });
+  // drawing-buffer height of the world pass (points and halos are sized in its pixels)
+  const world = createWorld(ctx, { renderer, lights, pixelHeight: () => Math.max(1, Math.floor(cssH * prInner)) });
   const worldMs = performance.now() - tWorld;
   ctx.ground.decal = world.ground.decal;
 
@@ -263,19 +276,44 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     camera.updateMatrixWorld();
   }
 
+  // ---- post chain + dynamic resolution ----
+  let post = null;
+  try {
+    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q });
+  } catch (err) {
+    logErr('post chain', err);
+    post = null;
+  }
+  const dyn = createDynRes();
+  let gpuTimer = null;
+  try { gpuTimer = createGpuTimer(renderer.getContext()); } catch { gpuTimer = null; }
+  let postSet = normPostSettings(null);
+  // raw values of the last settings seen: re-normalised only when one of them changes
+  const rawSet = { quality: undefined, renderScale: undefined, bloom: undefined, ao: undefined, antialias: undefined, filmGrain: undefined, vignette: undefined };
+  let postErrors = 0;
+
   // ---- sizing ----
+  /** The tier's pixel-ratio cap (the canvas' resolution; renderScale is a fraction of it). */
   function pixelRatio() {
     const d = window.devicePixelRatio || 1;
     // Ultra renders at the screen's native resolution (phones are ~3x): sharp, and hot.
     if (q === 'ultra') return Math.min(d, 3);
-    return q === 'high' ? Math.min(d, 1.5) : Math.min(d, 1) * 0.75;
+    return q === 'high' ? Math.min(d, 2) : Math.min(d, 1) * 0.75;
+  }
+  /** Re-size the post chain's internal targets for the current render scale. */
+  function applyScale() {
+    prInner = prFull * renderScale;
+    if (post) post.setSize(cssW, cssH, prFull, prInner);
   }
   function resize() {
     if (destroyed) return;
     cssW = Math.max(1, canvas.clientWidth || window.innerWidth);
     cssH = Math.max(1, canvas.clientHeight || window.innerHeight);
-    renderer.setPixelRatio(pixelRatio());
+    prFull = pixelRatio();
+    // without the post chain the canvas itself is the render target: scale it instead
+    renderer.setPixelRatio(post ? prFull : prFull * renderScale);
     renderer.setSize(cssW, cssH, false);
+    applyScale();
     camera.aspect = cssW / cssH;
     camera.updateProjectionMatrix();
     if (vm && vm.camera && vm.camera.isPerspectiveCamera) {
@@ -301,15 +339,26 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   // material now, and draw one frame with the shadow casters unculled so the depth variants
   // exist too. Objects a sub-system creates later mostly share these programs (same
   // material parameters → same program).
+  // Programs depend on the render target (tone mapping / output colour space), so compile
+  // them against the post chain's HDR target, the one they are drawn into.
   const tWarm = performance.now();
   try {
+    if (post) renderer.setRenderTarget(post.readBuffer);
     renderer.compile(scene, camera);
     if (vm && vm.scene && vm.camera) renderer.compile(vm.scene, vm.camera);
+    // the moon's map (static casters, their depth programs) is drawn here, not mid-game
+    if (lights.updateMoonShadow) lights.updateMoonShadow(renderer, scene, world.moonCasters);
     const unculled = [];
     scene.traverse((o) => { if (o.castShadow && o.frustumCulled) { o.frustumCulled = false; unculled.push(o); } });
     renderer.render(scene, camera);
     for (const o of unculled) o.frustumCulled = true;
+    renderer.setRenderTarget(null);
+    if (post) {
+      post.configure(postSet, q);
+      post.warm();
+    }
   } catch (err) {
+    renderer.setRenderTarget(null);
     logErr('warm-up', err);
   }
   const warmMs = performance.now() - tWarm;
@@ -318,7 +367,9 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   // ---- stats ----
   // jsMs = whole render() call; updateMs = scene updates (sub-systems, world, lights);
   // submitMs = three.js render calls (draw submission; includes driver time on software GL)
-  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0 };
+  // renderScale = fraction of the tier's pixel-ratio cap in use; gpuMs only where the
+  // browser exposes GPU timer queries (EXT_disjoint_timer_query_webgl2)
+  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0, renderScale: 1, pixelRatio: 1, post: !!post };
   let fpsAcc = 0, fpsN = 0, jsAvg = 0, updAvg = 0, subAvg = 0;
 
   function render(view, opts = {}) {
@@ -329,6 +380,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       const dt = Math.max(0, Math.min(0.1, Number(opts.dt) || 0));
       const settings = opts.settings || lastSettings;
       lastSettings = settings;
+      applySettings(settings);
       if ((canvas.clientWidth && canvas.clientWidth !== cssW) || (canvas.clientHeight && canvas.clientHeight !== cssH)) resize();
       const local = view && view.players ? view.players.find((p) => p.id === localId) || null : null;
       const look = opts.look || { yaw: local ? local.angle : rig.yaw, pitch: 0 };
@@ -356,9 +408,15 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
 
       const t1 = performance.now();
       renderer.info.reset();
-      renderer.render(scene, camera);
-      if (vm) renderViewmodel(frame);
+      if (lights.updateMoonShadow) {
+        try { lights.updateMoonShadow(renderer, scene, world.moonCasters); } catch (err) { logErr('moon shadow', err); }
+      }
+      drawFrame(frame, dt);
       const t2 = performance.now();
+      if (postSet.renderScale === 'auto') {
+        const ns = dyn.tick(t2, gpuTimer ? gpuTimer.ms : undefined);
+        if (ns !== null && ns !== renderScale) { renderScale = ns; resize(); }
+      }
       updAvg += (t1 - t0 - updAvg) * 0.1;
       subAvg += (t2 - t1 - subAvg) * 0.1;
       stats.updateMs = Math.round(updAvg * 100) / 100;
@@ -369,6 +427,11 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       stats.triangles = info.triangles;
       stats.lights = lights.activeCount;
       stats.staticTriangles = world.stats.staticTriangles;
+      if (post) { stats.sceneCalls = post.sceneInfo.calls; stats.sceneTriangles = post.sceneInfo.triangles; }
+      stats.renderScale = Math.round(renderScale * 100) / 100;
+      stats.pixelRatio = Math.round(prInner * 1000) / 1000;
+      stats.post = !!post;
+      if (gpuTimer && Number.isFinite(gpuTimer.ms)) stats.gpuMs = Math.round(gpuTimer.ms * 100) / 100;
       stats.frames++;
       if (dt > 0) {
         fpsAcc += dt; fpsN++;
@@ -380,6 +443,55 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     const ms = performance.now() - t0;
     jsAvg += (ms - jsAvg) * 0.1;
     stats.jsMs = Math.round(jsAvg * 100) / 100;
+  }
+
+  /** Draw the frame: through the post chain, or straight to the canvas without one. */
+  function drawFrame(frame, dt) {
+    if (post) {
+      try {
+        if (gpuTimer) gpuTimer.begin();
+        post.render(dt, frame);
+        if (gpuTimer) gpuTimer.end();
+        return;
+      } catch (err) {
+        if (gpuTimer) gpuTimer.end();
+        logErr('post chain', err);
+        renderer.setRenderTarget(null);
+        renderer.autoClear = true;
+        // a chain that keeps failing is dropped for good: the world still draws
+        if (++postErrors >= 3) {
+          try { post.dispose(); } catch { /* already broken */ }
+          post = null;
+          resize();
+        }
+      }
+    }
+    renderer.render(scene, camera);
+    if (vm) renderViewmodel(frame);
+  }
+
+  /**
+   * Apply the graphics settings carried by render()'s settings (SPEC §7.5 contract):
+   * compares the raw values first, so an unchanged settings object costs a few compares.
+   */
+  function applySettings(s) {
+    if (!s) return;
+    if (s.quality !== rawSet.quality) {
+      rawSet.quality = s.quality;
+      if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra') api.setQuality(s.quality);
+    }
+    if (s.renderScale === rawSet.renderScale && s.bloom === rawSet.bloom && s.ao === rawSet.ao && s.antialias === rawSet.antialias
+      && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette) return;
+    rawSet.renderScale = s.renderScale; rawSet.bloom = s.bloom; rawSet.ao = s.ao; rawSet.antialias = s.antialias;
+    rawSet.filmGrain = s.filmGrain; rawSet.vignette = s.vignette;
+    const prev = postSet.renderScale;
+    postSet = normPostSettings(s);
+    if (post) post.configure(postSet, q);
+    if (postSet.renderScale !== prev) {
+      const target = postSet.renderScale === 'auto' ? renderScale : postSet.renderScale;
+      if (postSet.renderScale === 'auto') dyn.reset(renderScale);
+      if (target !== renderScale) { renderScale = target; resize(); }
+    }
   }
 
   function renderViewmodel(frame) {
@@ -459,11 +571,15 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
         if (typeof s.setQuality !== 'function') continue;
         try { s.setQuality(n); } catch (err) { logErr('setQuality ' + s.__name, err); }
       }
+      try { world.setQuality(n); } catch (err) { logErr('setQuality world', err); }
+      if (post) post.configure(postSet, n);
+      // a new tier has a new pixel-ratio cap: let dynamic resolution start over from full
+      if (postSet.renderScale === 'auto') { renderScale = 1; dyn.reset(1); }
       resize();
     },
     get stats() { return stats; },
     /** Internals for dev tools / tests (not part of the SPEC API). */
-    get debug() { return { renderer, scene, camera, world, lights, subs, ctx, createMs }; },
+    get debug() { return { renderer, scene, camera, world, lights, subs, ctx, createMs, post, settings: postSet }; },
     destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -484,6 +600,9 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       subs.length = 0;
       try { world.dispose(); } catch (err) { logErr('dispose world', err); }
       try { lights.dispose(); } catch (err) { logErr('dispose lights', err); }
+      try { if (post) post.dispose(); } catch (err) { logErr('dispose post', err); }
+      post = null;
+      try { if (gpuTimer) gpuTimer.dispose(); } catch (err) { logErr('dispose gpu timer', err); }
       // anything a sub-system left behind (the viewmodel's own scene included)
       const seen = new Set();
       const leftovers = (o) => {

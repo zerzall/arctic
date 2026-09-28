@@ -1,11 +1,14 @@
 // Shared GPU-friendly effect primitives for the ACTORS sub-systems. One instance per
 // renderer ctx (looked up with acquireFx(ctx) so zombies, items, players and effects all
-// feed the same pools): simulated particles (billboards or ground-flat quads, additive
-// or alpha-blended, optional ground bounce), streak particles and beams (camera-facing
-// ribbons: tracers, sparks, tesla arcs, rail beams), and immediate-mode glows that a
-// module re-submits every frame (pickup halos, status lights, rocket exhausts).
+// feed the same pools): simulated particles (billboards, ground-flat quads or sprites
+// stretched along their velocity; additive in HDR — they bloom — or alpha-blended smoke
+// that is warm while it is hot and lit from above; optional ground bounce), streak
+// particles and beams (camera-facing ribbons: tracers, sparks, tesla arcs, rail beams),
+// immediate-mode glows re-submitted every frame (pickup halos, status lights, exhausts),
+// and surface decals (bullet holes and scorch marks on obstacles, oriented by the
+// surface normal, fading out oldest-first).
 //
-// Three draw calls in total. Buffers are written once per rendered frame from a
+// Four draw calls in total. Buffers are written once per rendered frame from a
 // THREE.LOD's update() hook, which three.js calls while projecting the scene — i.e.
 // after every sub-system's update() and before the attribute upload — so the order in
 // which renderer3d updates the sub-systems never matters.
@@ -14,17 +17,21 @@ import * as THREE from 'three';
 import { makeCanvas } from './actor-kit.js';
 
 // particle flags
-export const F_ADD = 1, F_FLAT = 2, F_STREAK = 4, F_BOUNCE = 8, F_FIRE = 16, F_FLICKER = 32, F_SHRINK = 64, F_SPIN = 128;
-// atlas frames (4 x 4)
+export const F_ADD = 1, F_FLAT = 2, F_STREAK = 4, F_BOUNCE = 8, F_FIRE = 16, F_FLICKER = 32, F_SHRINK = 64, F_SPIN = 128,
+  F_VSTRETCH = 256, F_HOT = 512;
+// atlas frames (8 x 8 of 128 px)
 export const FR = {
   GLOW: 0, DOT: 1, SMOKE: 2, SMOKE2: 3, FLAME: 4, STAR: 5, RING: 6, CHUNK: 7,
   FLASH: 8, MIST: 9, SQUARE: 10, SHARD: 11, SOFTRING: 12, BOLT: 13, CROSS: 14, BUBBLE: 15,
+  SMOKE3: 16, SMOKE4: 17, FLAME2: 18, SPARK: 19, DROP: 20, SPLAT: 21, HOLE: 22, SCORCH: 23,
+  DUST: 24, FIREBALL: 25, EMBER: 26, SHOCK: 27, GLINT: 28, CRACK: 29, BLOB: 30, SMOKE5: 31,
 };
+const GRID = 8;
 
 const QUALITY = {
-  ultra: { particles: 4200, beams: 480 },
-  high: { particles: 2600, beams: 320 },
-  low: { particles: 1000, beams: 160 },
+  ultra: { particles: 4200, beams: 480, decals: 220 },
+  high: { particles: 2600, beams: 320, decals: 150 },
+  low: { particles: 900, beams: 140, decals: 50 },
 };
 
 const registry = new WeakMap();
@@ -57,6 +64,7 @@ export function releaseFx(ctx) {
 // procedural sprite atlas
 
 let atlasTex = null;
+let atlasCanvas = null;
 
 /** Free the shared sprite atlas' GPU copies (renderer3d.destroy; it re-uploads on reuse). */
 export function releaseFxAtlas() {
@@ -65,15 +73,58 @@ export function releaseFxAtlas() {
 
 function atlas() {
   if (atlasTex) return atlasTex;
-  const S = 64, c = makeCanvas(S * 4, S * 4), g = c.getContext('2d');
+  if (!atlasCanvas) atlasCanvas = paintAtlas();
+  atlasTex = new THREE.CanvasTexture(atlasCanvas);
+  atlasTex.generateMipmaps = true;
+  atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
+  atlasTex.anisotropy = 4;
+  return atlasTex;
+}
+
+// tiny value noise for the smoke/fire cells
+function makeNoise(seed) {
+  const P = 64, L = new Float32Array(P * P);
+  let s = seed;
+  for (let i = 0; i < L.length; i++) { s = (s * 16807) % 2147483647; L[i] = s / 2147483647; }
+  const n = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+    const a = ((xi % P) + P) % P, b = ((yi % P) + P) % P, a1 = (a + 1) % P, b1 = (b + 1) % P;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const v00 = L[b * P + a], v10 = L[b * P + a1], v01 = L[b1 * P + a], v11 = L[b1 * P + a1];
+    return v00 + (v10 - v00) * sx + (v01 - v00) * sy + (v00 - v10 - v01 + v11) * sx * sy;
+  };
+  return (x, y, oct = 4) => {
+    let v = 0, amp = 0.5, f = 1, t = 0;
+    for (let o = 0; o < oct; o++) { v += n(x * f, y * f) * amp; t += amp; amp *= 0.5; f *= 2.03; }
+    return v / t;
+  };
+}
+
+function paintAtlas() {
+  const S = 128, c = makeCanvas(S * GRID, S * GRID), g = c.getContext('2d');
+  const R = S / 2;
   const cell = (i, fn) => {
     g.save();
-    g.translate((i % 4) * S + S / 2, Math.floor(i / 4) * S + S / 2);
+    g.translate((i % GRID) * S + R, Math.floor(i / GRID) * S + R);
     g.beginPath();
-    g.rect(-S / 2, -S / 2, S, S);
+    g.rect(-R, -R, S, S);
     g.clip();
-    fn(S / 2);
+    fn(R);
     g.restore();
+  };
+  // per-pixel cells (noise): write white RGB with the computed alpha
+  const pixels = (i, fn) => {
+    const img = g.createImageData(S, S);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const u = (x + 0.5) / S * 2 - 1, v = (y + 0.5) / S * 2 - 1;
+        const a = Math.max(0, Math.min(1, fn(u, v)));
+        const o = (y * S + x) * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = 255;
+        img.data[o + 3] = Math.round(a * 255);
+      }
+    }
+    g.putImageData(img, (i % GRID) * S, Math.floor(i / GRID) * S);
   };
   const radial = (r, stops) => {
     const gr = g.createRadialGradient(0, 0, 0, 0, 0, r);
@@ -81,61 +132,77 @@ function atlas() {
     g.fillStyle = gr;
     g.fillRect(-r, -r, r * 2, r * 2);
   };
-  // deterministic noise for smoke puffs
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  cell(FR.GLOW, (r) => radial(r, [[0, 1], [0.25, 0.55], [0.6, 0.12], [1, 0]]));
-  cell(FR.DOT, (r) => radial(r, [[0, 1], [0.35, 0.9], [0.55, 0.2], [1, 0]]));
-  for (const fr of [FR.SMOKE, FR.SMOKE2]) {
-    cell(fr, (r) => {
-      for (let k = 0; k < 14; k++) {
-        const a = rnd() * Math.PI * 2, d = rnd() * r * 0.45, rr = r * (0.25 + rnd() * 0.3);
-        const gr = g.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d, 0, Math.cos(a) * d, Math.sin(a) * d, rr);
-        gr.addColorStop(0, 'rgba(255,255,255,0.35)');
-        gr.addColorStop(1, 'rgba(255,255,255,0)');
-        g.fillStyle = gr;
-        g.fillRect(-r, -r, r * 2, r * 2);
-      }
+  const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  cell(FR.GLOW, (r) => radial(r, [[0, 1], [0.2, 0.6], [0.5, 0.16], [1, 0]]));
+  cell(FR.DOT, (r) => radial(r, [[0, 1], [0.35, 0.95], [0.6, 0.25], [1, 0]]));
+  // billowing smoke puffs: fbm density inside a soft disc, a different seed per variant
+  [FR.SMOKE, FR.SMOKE2, FR.SMOKE3, FR.SMOKE4, FR.SMOKE5].forEach((fr, k) => {
+    const nz = makeNoise(101 + k * 37);
+    pixels(fr, (u, v) => {
+      const d = Math.hypot(u, v);
+      const n = nz(u * 2.2 + k * 3.1 + 5, v * 2.2 + 7, 5);
+      const edge = 1 - sm(0.35, 1.0, d + (n - 0.5) * 0.7);
+      return edge * sm(0.25, 0.75, n + 0.28 - d * 0.25) * 0.95;
     });
-  }
-  cell(FR.FLAME, (r) => {
-    // teardrop flame: bright core, tapering tip upward
-    g.scale(1, 1);
-    const gr = g.createRadialGradient(0, r * 0.3, 0, 0, r * 0.2, r * 0.8);
-    gr.addColorStop(0, 'rgba(255,255,255,1)');
-    gr.addColorStop(0.4, 'rgba(255,255,255,0.6)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr;
-    g.beginPath();
-    g.moveTo(0, -r * 0.95);
-    g.quadraticCurveTo(r * 0.75, r * 0.1, r * 0.5, r * 0.6);
-    g.quadraticCurveTo(0, r * 1.05, -r * 0.5, r * 0.6);
-    g.quadraticCurveTo(-r * 0.75, r * 0.1, 0, -r * 0.95);
-    g.fill();
   });
+  // dust: a flatter, grainier puff
+  { const nz = makeNoise(211); pixels(FR.DUST, (u, v) => { const d = Math.hypot(u, v * 1.3); const n = nz(u * 4 + 3, v * 4, 4); return (1 - sm(0.3, 1.0, d + (n - 0.5) * 0.6)) * sm(0.2, 0.8, n) * 0.85; }); }
+  // flames: teardrop tongues with a turbulent edge (white core; colour from the particle)
+  [FR.FLAME, FR.FLAME2].forEach((fr, k) => {
+    const nz = makeNoise(307 + k * 19);
+    pixels(fr, (u, v) => {
+      const y = -v;                               // up is +y
+      const w = 0.55 * Math.pow(Math.max(0, (1 - y) / 2), 0.7) * (y > 0.85 ? 0 : 1);
+      const n = nz(u * 3 + k * 5, y * 2.2 + 3, 4);
+      const d = Math.abs(u + (n - 0.5) * 0.35 * (1 + y)) / Math.max(0.02, w + (n - 0.5) * 0.25);
+      const core = 1 - sm(0.2, 1.0, d);
+      return core * sm(-1.0, -0.55, y) * (1 - sm(0.55, 0.95, y + (n - 0.5) * 0.4));
+    });
+  });
+  // fireball: a lumpy hot ball
+  { const nz = makeNoise(401); pixels(FR.FIREBALL, (u, v) => { const d = Math.hypot(u, v); const n = nz(u * 3 + 1, v * 3 + 2, 5); return (1 - sm(0.45, 0.95, d + (n - 0.5) * 0.55)) * (0.55 + n * 0.6); }); }
   cell(FR.STAR, (r) => {
-    radial(r * 0.55, [[0, 1], [0.5, 0.5], [1, 0]]);
+    radial(r * 0.5, [[0, 1], [0.5, 0.45], [1, 0]]);
     g.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 6; k++) {
+    for (let k = 0; k < 8; k++) {
       g.save();
-      g.rotate((k / 6) * Math.PI * 2 + (k % 2) * 0.2);
-      const L = r * (k % 2 ? 0.7 : 0.98);
+      g.rotate((k / 8) * Math.PI * 2 + rnd() * 0.3);
+      const L = r * (k % 2 ? 0.6 : 0.97);
       const gr = g.createLinearGradient(0, 0, L, 0);
-      gr.addColorStop(0, 'rgba(255,255,255,0.9)');
+      gr.addColorStop(0, 'rgba(255,255,255,0.95)');
       gr.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = gr;
       g.beginPath();
-      g.moveTo(0, -r * 0.09); g.lineTo(L, 0); g.lineTo(0, r * 0.09);
+      g.moveTo(0, -r * 0.07); g.quadraticCurveTo(L * 0.5, -r * 0.02, L, 0); g.quadraticCurveTo(L * 0.5, r * 0.02, 0, r * 0.07);
       g.fill();
       g.restore();
     }
   });
-  cell(FR.RING, (r) => radial(r, [[0, 0], [0.72, 0], [0.84, 1], [0.92, 0.4], [1, 0]]));
+  cell(FR.GLINT, (r) => {
+    radial(r * 0.3, [[0, 1], [1, 0]]);
+    g.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < 4; k++) {
+      g.save();
+      g.rotate(k * Math.PI / 2);
+      const gr = g.createLinearGradient(0, 0, r, 0);
+      gr.addColorStop(0, 'rgba(255,255,255,1)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(0, -r * 0.05); g.lineTo(r, 0); g.lineTo(0, r * 0.05); g.fill();
+      g.restore();
+    }
+  });
+  cell(FR.RING, (r) => radial(r, [[0, 0], [0.74, 0], [0.86, 1], [0.93, 0.35], [1, 0]]));
+  cell(FR.SOFTRING, (r) => radial(r, [[0, 0], [0.45, 0.04], [0.76, 0.55], [0.9, 0.22], [1, 0]]));
+  cell(FR.SHOCK, (r) => radial(r, [[0, 0], [0.6, 0.02], [0.82, 0.35], [0.9, 0.9], [0.96, 0.3], [1, 0]]));
   cell(FR.CHUNK, (r) => {
     g.fillStyle = '#fff';
     g.beginPath();
     for (let k = 0; k < 7; k++) {
-      const a = (k / 7) * Math.PI * 2, d = r * (0.55 + rnd() * 0.3);
+      const a = (k / 7) * Math.PI * 2, d = r * (0.5 + rnd() * 0.35);
       if (k === 0) g.moveTo(Math.cos(a) * d, Math.sin(a) * d); else g.lineTo(Math.cos(a) * d, Math.sin(a) * d);
     }
     g.fill();
@@ -154,13 +221,13 @@ function atlas() {
       g.fill();
     }
   });
+  // blood mist: a cloud of fine droplets
   cell(FR.MIST, (r) => {
-    for (let k = 0; k < 18; k++) {
-      const a = rnd() * Math.PI * 2, d = rnd() * r * 0.6, rr = r * (0.08 + rnd() * 0.18);
+    radial(r * 0.7, [[0, 0.35], [1, 0]]);
+    for (let k = 0; k < 40; k++) {
+      const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * r * 0.75, rr = r * (0.03 + rnd() * 0.07);
       g.fillStyle = `rgba(255,255,255,${0.5 + rnd() * 0.5})`;
-      g.beginPath();
-      g.arc(Math.cos(a) * d, Math.sin(a) * d, rr, 0, Math.PI * 2);
-      g.fill();
+      g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, rr, 0, Math.PI * 2); g.fill();
     }
   });
   cell(FR.SQUARE, (r) => { g.fillStyle = '#fff'; g.fillRect(-r * 0.6, -r * 0.45, r * 1.2, r * 0.9); });
@@ -170,10 +237,9 @@ function atlas() {
     g.moveTo(-r * 0.2, -r * 0.8); g.lineTo(r * 0.5, r * 0.1); g.lineTo(-r * 0.1, r * 0.8); g.lineTo(-r * 0.45, 0);
     g.fill();
   });
-  cell(FR.SOFTRING, (r) => radial(r, [[0, 0], [0.45, 0.05], [0.75, 0.6], [0.9, 0.25], [1, 0]]));
   cell(FR.BOLT, (r) => {
     g.strokeStyle = '#fff';
-    g.lineWidth = 3;
+    g.lineWidth = 5;
     g.beginPath();
     g.moveTo(-r, 0);
     for (let k = 1; k <= 8; k++) g.lineTo(-r + (k / 8) * r * 2, (rnd() - 0.5) * r * 0.7);
@@ -188,16 +254,37 @@ function atlas() {
   cell(FR.BUBBLE, (r) => {
     g.strokeStyle = 'rgba(255,255,255,0.9)';
     g.lineWidth = r * 0.14;
-    g.beginPath();
-    g.arc(0, 0, r * 0.6, 0, Math.PI * 2);
-    g.stroke();
+    g.beginPath(); g.arc(0, 0, r * 0.6, 0, Math.PI * 2); g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.25)';
     g.fill();
   });
-  atlasTex = new THREE.CanvasTexture(c);
-  atlasTex.generateMipmaps = true;
-  atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
-  return atlasTex;
+  // spark: a thin hot line with a bright head (stretched along velocity)
+  cell(FR.SPARK, (r) => {
+    const gr = g.createLinearGradient(-r, 0, r, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,0)');
+    gr.addColorStop(0.75, 'rgba(255,255,255,0.8)');
+    gr.addColorStop(1, 'rgba(255,255,255,1)');
+    g.fillStyle = gr;
+    g.beginPath(); g.ellipse(0, 0, r * 0.95, r * 0.12, 0, 0, Math.PI * 2); g.fill();
+  });
+  // blood drop: a teardrop (stretched along velocity), and a flat splat for the ground
+  cell(FR.DROP, (r) => {
+    g.fillStyle = '#fff';
+    g.beginPath();
+    g.moveTo(r * 0.9, 0);
+    g.quadraticCurveTo(r * 0.1, -r * 0.34, -r * 0.55, -r * 0.3);
+    g.arc(-r * 0.55, 0, r * 0.3, -Math.PI / 2, Math.PI / 2, true);
+    g.quadraticCurveTo(r * 0.1, r * 0.34, r * 0.9, 0);
+    g.fill();
+  });
+  { const nz = makeNoise(503); pixels(FR.SPLAT, (u, v) => { const a = Math.atan2(v, u), d = Math.hypot(u, v); const n = nz(Math.cos(a) * 2 + 3, Math.sin(a) * 2 + 3, 3); const reach = 0.45 + n * 0.45 + (Math.sin(a * 7) > 0.8 ? 0.2 : 0); return sm(reach, reach - 0.08, d) * 0.95 + (nz(u * 9, v * 9, 2) > 0.72 && d < 0.95 ? 0.8 : 0); }); }
+  // bullet hole: dark core, cracked rim, soot
+  { const nz = makeNoise(601); pixels(FR.HOLE, (u, v) => { const d = Math.hypot(u, v), a = Math.atan2(v, u); const n = nz(Math.cos(a) * 3 + 5, Math.sin(a) * 3 + 5, 3); const soot = (1 - sm(0.15, 0.9, d + (n - 0.5) * 0.5)) * 0.6; const core = 1 - sm(0.12, 0.2, d); const crack = Math.abs(Math.sin(a * 5 + n * 4)) > 0.96 && d < 0.6 ? 0.7 : 0; return Math.max(core, soot, crack); }); }
+  { const nz = makeNoise(701); pixels(FR.SCORCH, (u, v) => { const d = Math.hypot(u, v); const n = nz(u * 3 + 2, v * 3 + 9, 4); return (1 - sm(0.2, 1.0, d + (n - 0.5) * 0.8)) * (0.6 + n * 0.4); }); }
+  { const nz = makeNoise(801); pixels(FR.CRACK, (u, v) => { const d = Math.hypot(u, v), a = Math.atan2(v, u); let m = 0; for (let k = 0; k < 7; k++) { const ak = k * 0.9 + 0.3; const da = Math.abs(((a - ak + Math.PI * 3) % (Math.PI * 2)) - Math.PI); m = Math.max(m, sm(0.06, 0.0, da * d + (nz(d * 6, k, 2) - 0.5) * 0.05)); } return m * (1 - sm(0.7, 1, d)) * 0.9; }); }
+  cell(FR.EMBER, (r) => radial(r * 0.5, [[0, 1], [0.4, 0.8], [1, 0]]));
+  { const nz = makeNoise(901); pixels(FR.BLOB, (u, v) => { const d = Math.hypot(u, v); const n = nz(u * 2.5 + 4, v * 2.5 + 1, 3); return 1 - sm(0.55, 0.8, d + (n - 0.5) * 0.4); }); }
+  return c;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -219,27 +306,41 @@ float hhFog() {
 
 const PART_VERT = /* glsl */`
 attribute vec4 iPos;    // xyz, rotation
-attribute vec4 iCol;    // rgb, alpha
-attribute vec4 iSize;   // width, height, frame, flat
+attribute vec4 iCol;    // rgb (HDR), alpha
+attribute vec4 iSize;   // width, height, frame, flags (1 flat, 2 stretch along velocity)
+attribute vec4 iVel;    // velocity xyz, stretch seconds
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vLocalY;
+varying float vDepth;
 #include <fog_pars_vertex>
 void main() {
   vec2 c = position.xy;          // -0.5..0.5 quad corner
+  float fl = iSize.w;
   float cr = cos(iPos.w), sr = sin(iPos.w);
   vec2 q = vec2(c.x * cr - c.y * sr, c.x * sr + c.y * cr) * iSize.xy;
   vec4 mvPosition;
-  if (iSize.w > 0.5) {
+  if (mod(fl, 2.0) > 0.5) {
     // lying flat on the ground (rings, glows, puddles)
     mvPosition = modelViewMatrix * vec4(iPos.x + q.x, iPos.y, iPos.z + q.y, 1.0);
   } else {
     mvPosition = modelViewMatrix * vec4(iPos.xyz, 1.0);
+    if (mod(floor(fl / 2.0), 2.0) > 0.5) {
+      // stretched along the screen-space velocity (blood drops, sparks, debris trails)
+      vec3 vv = (modelViewMatrix * vec4(iVel.xyz, 0.0)).xyz;
+      float l = length(vv.xy);
+      vec2 ax = l > 1e-3 ? vv.xy / l : vec2(1.0, 0.0);
+      vec2 ay = vec2(-ax.y, ax.x);
+      q = ax * c.x * (iSize.x + l * iVel.w) + ay * c.y * iSize.y;
+    }
     mvPosition.xy += q;
   }
   gl_Position = projectionMatrix * mvPosition;
   float fr = iSize.z;
-  vUv = (vec2(mod(fr, 4.0), 3.0 - floor(fr / 4.0)) + (c + 0.5)) * 0.25;
+  vUv = (vec2(mod(fr, ${GRID}.0), ${GRID - 1}.0 - floor(fr / ${GRID}.0)) + (c + 0.5)) / ${GRID}.0;
   vCol = iCol;
+  vLocalY = c.y + 0.5;
+  vDepth = -mvPosition.z;
   #include <fog_vertex>
 }
 `;
@@ -249,16 +350,22 @@ uniform sampler2D uMap;
 uniform float uAdditive;
 varying vec2 vUv;
 varying vec4 vCol;
+varying float vLocalY;
+varying float vDepth;
 #include <fog_pars_fragment>
 ${FOG_FACTOR}
 void main() {
   float a = texture2D(uMap, vUv).a * vCol.a;
+  // right in front of the lens a puff would fill the screen: fade it away
+  a *= smoothstep(3.0, 20.0, vDepth);
   if (a < 0.003) discard;
   float f = hhFog();
   vec3 rgb = vCol.rgb;
   if (uAdditive > 0.5) {
     gl_FragColor = vec4(rgb * a * (1.0 - f * 0.8), 1.0);
   } else {
+    // smoke and dust: lit from above, shadowed underneath
+    rgb *= mix(0.7, 1.15, vLocalY);
     #ifdef USE_FOG
       rgb = mix(rgb, fogColor, f);
     #endif
@@ -315,8 +422,51 @@ void main() {
   if (vParam.y > 0.0) along *= smoothstep(0.0, vParam.y, vUv.x);
   if (vParam.z > 0.0) along *= smoothstep(1.0, 1.0 - vParam.z, vUv.x);
   float a = (glow + core) * along * vCol.a;
-  vec3 rgb = mix(vCol.rgb, vec3(1.0), core * 0.6) * a;
+  vec3 rgb = mix(vCol.rgb, vec3(max(vCol.r, max(vCol.g, vCol.b))), core * 0.6) * a;
   gl_FragColor = vec4(rgb * (1.0 - hhFog() * 0.8), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+const DECAL_VERT = /* glsl */`
+attribute vec4 iPos;    // xyz, rotation
+attribute vec4 iNrm;    // normal xyz, size
+attribute vec4 iCol;    // rgb, alpha
+attribute vec4 iInfo;   // frame
+varying vec2 vUv;
+varying vec4 vCol;
+#include <fog_pars_vertex>
+void main() {
+  vec3 n = normalize(iNrm.xyz);
+  vec3 t = normalize(abs(n.y) > 0.9 ? cross(vec3(1.0, 0.0, 0.0), n) : cross(vec3(0.0, 1.0, 0.0), n));
+  vec3 b = cross(n, t);
+  vec2 c = position.xy;
+  float cr = cos(iPos.w), sr = sin(iPos.w);
+  vec2 q = vec2(c.x * cr - c.y * sr, c.x * sr + c.y * cr) * iNrm.w;
+  vec4 mvPosition = modelViewMatrix * vec4(iPos.xyz + n * 0.25 + t * q.x + b * q.y, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  float fr = iInfo.x;
+  vUv = (vec2(mod(fr, ${GRID}.0), ${GRID - 1}.0 - floor(fr / ${GRID}.0)) + (c + 0.5)) / ${GRID}.0;
+  vCol = iCol;
+  #include <fog_vertex>
+}
+`;
+
+const DECAL_FRAG = /* glsl */`
+uniform sampler2D uMap;
+varying vec2 vUv;
+varying vec4 vCol;
+#include <fog_pars_fragment>
+${FOG_FACTOR}
+void main() {
+  float a = texture2D(uMap, vUv).a * vCol.a;
+  if (a < 0.01) discard;
+  vec3 rgb = vCol.rgb;
+  #ifdef USE_FOG
+    rgb = mix(rgb, fogColor, hhFog());
+  #endif
+  gl_FragColor = vec4(rgb, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -356,8 +506,8 @@ function fxMaterial(vert, frag, additive, extra = {}) {
 function createFx(ctx) {
   const q = QUALITY[ctx.quality] || QUALITY.high;
   // Buffers sized for the biggest tier so setQuality can switch without reallocating.
-  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams;
-  let cap = q.particles, bcap = q.beams;
+  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams, DCAP = QUALITY.ultra.decals;
+  let cap = q.particles, bcap = q.beams, dcap = q.decals;
   const R = ctx.rng || Math.random;
 
   // ---- particle state (structure of arrays, swap-remove compaction) ----
@@ -367,7 +517,7 @@ function createFx(ctx) {
   const s0 = new Float32Array(CAP), s1 = new Float32Array(CAP), stretch = new Float32Array(CAP);
   const cr = new Float32Array(CAP), cg = new Float32Array(CAP), cb = new Float32Array(CAP), ca = new Float32Array(CAP);
   const rot = new Float32Array(CAP), vrot = new Float32Array(CAP), grav = new Float32Array(CAP), drag = new Float32Array(CAP);
-  const frame = new Uint8Array(CAP), flags = new Uint16Array(CAP);
+  const frame = new Uint8Array(CAP), flags = new Uint16Array(CAP), vstr = new Float32Array(CAP);
   let n = 0;
 
   // immediate-mode (per frame) glows and beams
@@ -376,31 +526,42 @@ function createFx(ctx) {
   let gn = 0;
   const bm = new Float32Array(BCAP * 16);
   let bn = 0;
+  // decals (ring buffer)
+  const dPos = new Float32Array(DCAP * 4), dNrm = new Float32Array(DCAP * 4), dCol = new Float32Array(DCAP * 4), dInfo = new Float32Array(DCAP * 4), dAge = new Float32Array(DCAP), dLife = new Float32Array(DCAP);
+  let dn = 0, dHead = 0, dDirty = true;
 
   // ---- GPU side ----
   const map = atlas();
-  const addQ = quadGeometry(CAP + G_CAP, ['iPos', 'iCol', 'iSize']);
-  const nrmQ = quadGeometry(CAP, ['iPos', 'iCol', 'iSize']);
+  const addQ = quadGeometry(CAP + G_CAP, ['iPos', 'iCol', 'iSize', 'iVel']);
+  const nrmQ = quadGeometry(CAP, ['iPos', 'iCol', 'iSize', 'iVel']);
   const beamQ = quadGeometry(BCAP, ['iA', 'iB', 'iCol', 'iParam']);
+  const decQ = quadGeometry(DCAP, ['iPos', 'iNrm', 'iCol', 'iInfo']);
   const addMat = fxMaterial(PART_VERT, PART_FRAG, true, { uMap: { value: map }, uAdditive: { value: 1 } });
   const nrmMat = fxMaterial(PART_VERT, PART_FRAG, false, { uMap: { value: map }, uAdditive: { value: 0 } });
   const beamMat = fxMaterial(BEAM_VERT, BEAM_FRAG, true);
+  const decMat = fxMaterial(DECAL_VERT, DECAL_FRAG, false, { uMap: { value: map } });
+  decMat.polygonOffset = true;
+  decMat.polygonOffsetFactor = -2;
+  decMat.polygonOffsetUnits = -4;
   addMat.uniforms.uMap.value = map;
   nrmMat.uniforms.uMap.value = map;
+  decMat.uniforms.uMap.value = map;
   const addMesh = new THREE.Mesh(addQ.geometry, addMat);
   const nrmMesh = new THREE.Mesh(nrmQ.geometry, nrmMat);
   const beamMesh = new THREE.Mesh(beamQ.geometry, beamMat);
-  for (const m of [addMesh, nrmMesh, beamMesh]) {
+  const decMesh = new THREE.Mesh(decQ.geometry, decMat);
+  for (const m of [addMesh, nrmMesh, beamMesh, decMesh]) {
     m.frustumCulled = false;
     m.matrixAutoUpdate = false;
   }
-  // draw smoke first, then additive light on top of it
+  // decals first, then smoke, then additive light on top of it
+  decMesh.renderOrder = 8;
   nrmMesh.renderOrder = 10;
   addMesh.renderOrder = 11;
   beamMesh.renderOrder = 12;
   const root = new THREE.LOD();
   root.name = 'fx-core';
-  root.add(nrmMesh, addMesh, beamMesh);
+  root.add(decMesh, nrmMesh, addMesh, beamMesh);
   root.update = () => flush();     // called by three.js while projecting the scene
   ctx.scene.add(root);
 
@@ -418,6 +579,7 @@ function createFx(ctx) {
 
   /**
    * Spawn one particle. Position in three.js space: (x, h, y) = sim (x, y) at height h.
+   * Colours may exceed 1 (HDR: additive particles above ~1 bloom).
    * @returns {number} index or -1 when the pool is full
    */
   function spawn(x, h, y, vxs, vhs, vys, lifeS, size0, size1, color, alpha, fr, fl, g = 0, dr = 0) {
@@ -426,7 +588,7 @@ function createFx(ctx) {
     px[i] = x; py[i] = h; pz[i] = y;
     vx[i] = vxs; vy[i] = vhs; vz[i] = vys;
     age[i] = 0; life[i] = Math.max(0.01, lifeS);
-    s0[i] = size0; s1[i] = size1; stretch[i] = 1;
+    s0[i] = size0; s1[i] = size1; stretch[i] = 1; vstr[i] = 0.03;
     cr[i] = color.r; cg[i] = color.g; cb[i] = color.b; ca[i] = alpha;
     rot[i] = R() * Math.PI * 2; vrot[i] = (fl & F_SPIN) ? (R() - 0.5) * 6 : (R() - 0.5) * 0.8;
     grav[i] = g; drag[i] = dr;
@@ -442,7 +604,7 @@ function createFx(ctx) {
         const j = --n;
         if (i !== j) {
           px[i] = px[j]; py[i] = py[j]; pz[i] = pz[j]; vx[i] = vx[j]; vy[i] = vy[j]; vz[i] = vz[j];
-          age[i] = age[j]; life[i] = life[j]; s0[i] = s0[j]; s1[i] = s1[j]; stretch[i] = stretch[j];
+          age[i] = age[j]; life[i] = life[j]; s0[i] = s0[j]; s1[i] = s1[j]; stretch[i] = stretch[j]; vstr[i] = vstr[j];
           cr[i] = cr[j]; cg[i] = cg[j]; cb[i] = cb[j]; ca[i] = ca[j]; rot[i] = rot[j]; vrot[i] = vrot[j];
           grav[i] = grav[j]; drag[i] = drag[j]; frame[i] = frame[j]; flags[i] = flags[j];
         }
@@ -460,6 +622,8 @@ function createFx(ctx) {
       }
       i++;
     }
+    // decals age (fade in the last 20 % of their life)
+    for (let d = 0; d < dn; d++) dAge[d] += dt;
   }
 
   function flush() {
@@ -467,8 +631,8 @@ function createFx(ctx) {
     flushedNow = lastNow;
     if (pendingDt > 0) step(pendingDt);
     pendingDt = 0;
-    const aP = addQ.attrs.iPos.array, aC = addQ.attrs.iCol.array, aS = addQ.attrs.iSize.array;
-    const nP = nrmQ.attrs.iPos.array, nC = nrmQ.attrs.iCol.array, nS = nrmQ.attrs.iSize.array;
+    const aP = addQ.attrs.iPos.array, aC = addQ.attrs.iCol.array, aS = addQ.attrs.iSize.array, aV = addQ.attrs.iVel.array;
+    const nP = nrmQ.attrs.iPos.array, nC = nrmQ.attrs.iCol.array, nS = nrmQ.attrs.iSize.array, nV = nrmQ.attrs.iVel.array;
     let na = 0, nn = 0;
     bn = Math.min(bn, bcap);
     for (let i = 0; i < n; i++) {
@@ -479,11 +643,15 @@ function createFx(ctx) {
       if (f & F_FLICKER) a *= 0.7 + R() * 0.3;
       let r = cr[i], g = cg[i], b = cb[i];
       if (f & F_FIRE) {
-        // white-yellow core → orange → deep red as the tongue rises and cools
-        const u = Math.min(1, t * 1.6);
-        r = 1.6 - u * 0.4; g = 1.1 - u * 0.85; b = 0.45 - u * 0.44;
+        // white-yellow core → orange → deep red as the tongue rises and cools (HDR: blooms)
+        const u = Math.min(1, t * 1.8);
+        r = 1.75 - u * 0.95; g = 1.05 - u * 0.87; b = 0.42 - u * 0.4;
         r *= cr[i]; g *= cg[i]; b *= cb[i];
         a *= 1 - t * 0.4;
+      } else if (f & F_HOT) {
+        // smoke that leaves a fire glows orange before it cools to its own colour
+        const u = Math.min(1, t * 3.5);
+        r = r + (1.25 - r) * (1 - u); g = g + (0.5 - g) * (1 - u); b = b + (0.12 - b) * (1 - u);
       }
       const size = s0[i] + (s1[i] - s0[i]) * t;
       if (f & F_STREAK) {
@@ -497,17 +665,19 @@ function createFx(ctx) {
         bm[o + 12] = 0.8; bm[o + 13] = 0; bm[o + 14] = 0.5; bm[o + 15] = 0;
         continue;
       }
-      let P, C, S, o;
-      if (f & F_ADD) { P = aP; C = aC; S = aS; o = na++ * 4; } else { P = nP; C = nC; S = nS; o = nn++ * 4; }
+      let P, C, S, V, o;
+      if (f & F_ADD) { P = aP; C = aC; S = aS; V = aV; o = na++ * 4; } else { P = nP; C = nC; S = nS; V = nV; o = nn++ * 4; }
       P[o] = px[i]; P[o + 1] = py[i]; P[o + 2] = pz[i]; P[o + 3] = rot[i];
       C[o] = r; C[o + 1] = g; C[o + 2] = b; C[o + 3] = a;
-      S[o] = size; S[o + 1] = size * stretch[i]; S[o + 2] = frame[i]; S[o + 3] = (f & F_FLAT) ? 1 : 0;
+      S[o] = size; S[o + 1] = size * stretch[i]; S[o + 2] = frame[i]; S[o + 3] = ((f & F_FLAT) ? 1 : 0) + ((f & F_VSTRETCH) ? 2 : 0);
+      V[o] = vx[i]; V[o + 1] = vy[i]; V[o + 2] = vz[i]; V[o + 3] = vstr[i];
     }
     for (let k = 0; k < gn; k++) {
       const s = k * 12, o = na++ * 4;
       aP[o] = gl[s]; aP[o + 1] = gl[s + 1]; aP[o + 2] = gl[s + 2]; aP[o + 3] = gl[s + 3];
       aC[o] = gl[s + 4]; aC[o + 1] = gl[s + 5]; aC[o + 2] = gl[s + 6]; aC[o + 3] = gl[s + 7];
       aS[o] = gl[s + 8]; aS[o + 1] = gl[s + 9]; aS[o + 2] = gl[s + 10]; aS[o + 3] = gl[s + 11];
+      aV[o] = 0; aV[o + 1] = 0; aV[o + 2] = 0; aV[o + 3] = 0;
     }
     gn = 0;
     const bA = beamQ.attrs.iA.array, bB = beamQ.attrs.iB.array, bC = beamQ.attrs.iCol.array, bPa = beamQ.attrs.iParam.array;
@@ -521,13 +691,38 @@ function createFx(ctx) {
     upload(addQ, na);
     upload(nrmQ, nn);
     upload(beamQ, bn);
+    flushDecals();
     // children are projected after this hook, so hiding empty pools saves their draw
     addMesh.visible = na > 0;
     nrmMesh.visible = nn > 0;
     beamMesh.visible = bn > 0;
+    decMesh.visible = dn > 0;
     stats.particles = n;
     stats.beams = bn;
+    stats.decals = dn;
     bn = 0;
+  }
+
+  function flushDecals() {
+    // alpha fades only in the last part of a decal's life: re-upload while any is fading
+    let fading = false;
+    const C = decQ.attrs.iCol.array;
+    for (let d = 0; d < dn; d++) {
+      const k = dAge[d] / dLife[d];
+      if (k > 0.8) {
+        fading = true;
+        C[d * 4 + 3] = dCol[d * 4 + 3] * Math.max(0, (1 - k) / 0.2);
+      }
+    }
+    if (!dDirty && !fading) return;
+    if (dDirty) {
+      decQ.attrs.iPos.array.set(dPos.subarray(0, dn * 4));
+      decQ.attrs.iNrm.array.set(dNrm.subarray(0, dn * 4));
+      decQ.attrs.iInfo.array.set(dInfo.subarray(0, dn * 4));
+      for (let d = 0; d < dn * 4; d++) if ((d & 3) !== 3 || dAge[d >> 2] / dLife[d >> 2] <= 0.8) C[d] = dCol[d];
+    }
+    upload(decQ, dn);
+    dDirty = false;
   }
 
   function upload(qd, count) {
@@ -564,7 +759,25 @@ function createFx(ctx) {
     bm[o + 12] = core; bm[o + 13] = fadeIn; bm[o + 14] = fadeOut; bm[o + 15] = 0;
   }
 
-  const stats = { particles: 0, beams: 0 };
+  /**
+   * A decal on a surface: sim point (x, y) at height h, surface normal (nx, nh, ny) in
+   * three.js axes, `size` across. Oldest decals are recycled first.
+   */
+  function decal(x, h, y, nx, nh, ny, size, fr, color, alpha, lifeS = 40) {
+    if (dcap <= 0) return;
+    let d;
+    if (dn < dcap) d = dn++;
+    else { d = dHead; dHead = (dHead + 1) % dcap; }
+    const o = d * 4;
+    dPos[o] = x; dPos[o + 1] = h; dPos[o + 2] = y; dPos[o + 3] = R() * Math.PI * 2;
+    dNrm[o] = nx; dNrm[o + 1] = nh; dNrm[o + 2] = ny; dNrm[o + 3] = size;
+    dCol[o] = color.r; dCol[o + 1] = color.g; dCol[o + 2] = color.b; dCol[o + 3] = alpha;
+    dInfo[o] = fr;
+    dAge[d] = 0; dLife[d] = lifeS;
+    dDirty = true;
+  }
+
+  const stats = { particles: 0, beams: 0, decals: 0 };
 
   return {
     refs: 0,
@@ -573,6 +786,7 @@ function createFx(ctx) {
     spawn,
     glow,
     beam,
+    decal,
     rng: R,
     /** Fraction of the particle pool in use (ambient emitters back off when high). */
     load: () => n / cap,
@@ -581,16 +795,21 @@ function createFx(ctx) {
     get camHeight() { return camH; },
     /** Multiply the last spawned particle's height by `k` (stretched sprites: flames). */
     stretchLast: (i, k) => { if (i >= 0) stretch[i] = k; },
+    /** Seconds of velocity a F_VSTRETCH particle is stretched by (default 0.03). */
+    velStretch: (i, k) => { if (i >= 0) vstr[i] = k; },
+    get quality() { return cap >= QUALITY.ultra.particles ? 'ultra' : cap <= QUALITY.low.particles ? 'low' : 'high'; },
     setQuality(qn) {
       const qq = QUALITY[qn] || QUALITY.high;
       cap = qq.particles;
       bcap = qq.beams;
       if (n > cap) n = cap;
+      if (qq.decals < dcap) { dn = Math.min(dn, qq.decals); dHead = 0; dDirty = true; }
+      dcap = qq.decals;
     },
     dispose() {
       root.removeFromParent();
-      addQ.geometry.dispose(); nrmQ.geometry.dispose(); beamQ.geometry.dispose();
-      addMat.dispose(); nrmMat.dispose(); beamMat.dispose();
+      addQ.geometry.dispose(); nrmQ.geometry.dispose(); beamQ.geometry.dispose(); decQ.geometry.dispose();
+      addMat.dispose(); nrmMat.dispose(); beamMat.dispose(); decMat.dispose();
     },
   };
 }

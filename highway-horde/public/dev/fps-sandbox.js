@@ -2,9 +2,10 @@
 // map with AI bot teammates and renders it with createRenderer3D. You play slot 1 with
 // keyboard + mouse (pointer lock), or watch a scripted flythrough (?tour=1).
 //
-// URL params: map (highway|truckstop|bridge|checkpoint), seed, quality=high|low, bots=N (0..5),
+// URL params: map (highway|truckstop|bridge|checkpoint), seed, quality=ultra|high|low, bots=N (0..5),
 // tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
-// reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1.
+// reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
+// graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0.
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
 // stats(), step(n), recreate(mapId), renderer, game.
 
@@ -16,7 +17,7 @@ const params = new URLSearchParams(location.search);
 const opt = {
   map: MAP_LIST.some((m) => m.id === params.get('map')) ? params.get('map') : 'highway',
   seed: Number(params.get('seed') || 1234),
-  quality: params.get('quality') === 'low' ? 'low' : 'high',
+  quality: ['low', 'ultra'].includes(params.get('quality')) ? params.get('quality') : 'high',
   bots: Math.max(0, Math.min(5, Number(params.get('bots') ?? 3))),
   tour: params.get('tour') === '1',
   view: params.get('view') || null,
@@ -28,6 +29,16 @@ const opt = {
   paused: params.get('paused') === '1',
 };
 if (params.get('clean') === '1') document.body.classList.add('clean');
+// graphics settings passed to render() every frame (the object is reused, like ui/match.js)
+const gfx = {
+  screenShake: true, showNames: true, fov: opt.fov, lighting: true,
+  renderScale: params.get('scale') && params.get('scale') !== 'auto' ? Number(params.get('scale')) : 'auto',
+  bloom: params.get('bloom') !== '0',
+  ao: params.get('ao') !== '0',
+  antialias: ['smaa', 'fxaa', 'off'].includes(params.get('aa')) ? params.get('aa') : 'smaa',
+  filmGrain: params.get('grain') !== '0',
+  vignette: params.get('vignette') !== '0',
+};
 
 const canvas = document.getElementById('game');
 const $stats = document.getElementById('stats');
@@ -65,7 +76,17 @@ function viewpoints(map) {
   }
   best = best || map.playerSpawns[0];
   v.push(at('objective', best.x, best.y, ob.x, ob.y));
-  v.push(at('supply', sp.x + (sp.x - ob.x) * 0.4, sp.y + (sp.y - ob.y) * 0.4 + 30, ob.x, ob.y));
+  // the supply station seen from a clear spot 180..300 away, looking at it
+  let sv = null;
+  for (let r = 180; r <= 300 && !sv; r += 40) {
+    for (let k = 0; k < 16; k++) {
+      const a = Math.atan2(sp.y - ob.y, sp.x - ob.x) + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+      const x = sp.x + Math.cos(a) * r, y = sp.y + Math.sin(a) * r;
+      if (clear(x, y, 50)) { sv = { x, y }; break; }
+    }
+  }
+  sv = sv || { x: sp.x + (sp.x - ob.x) * 0.4, y: sp.y + (sp.y - ob.y) * 0.4 + 30 };
+  v.push(at('supply', sv.x, sv.y, sp.x, sp.y, -0.08));
   // longest road area
   let road = null;
   for (const a of map.areas) if (a.kind === 'asphalt' && (!road || Math.max(a.w, a.h) > Math.max(road.w, road.h))) road = a;
@@ -166,7 +187,7 @@ mapSel.value = opt.map;
 mapSel.onchange = () => { opt.map = mapSel.value; setup(opt.map); };
 
 function toggleQuality() {
-  quality = quality === 'high' ? 'low' : 'high';
+  quality = quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'ultra';
   renderer.setQuality(quality);
 }
 
@@ -212,14 +233,14 @@ function step(dt, nowS) {
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });
-  renderer.render(view, { localId: 1, roster, now: nowS, dt, look, settings: { screenShake: true, showNames: true, fov: opt.fov, lighting: true } });
+  renderer.render(view, { localId: 1, roster, now: nowS, dt, look, settings: gfx });
   statT += dt;
   if (statT > 0.25) {
     statT = 0;
     const s = renderer.stats;
     const me = snap.players.find((p) => p.id === 1);
-    $stats.textContent = `${game.map.name} · ${quality} · ${s.fps} fps · js ${s.jsMs.toFixed(2)} ms\n`
-      + `draw calls ${s.drawCalls} · tris ${(s.triangles / 1000).toFixed(1)}k · static ${(s.staticTriangles / 1000).toFixed(1)}k · lights ${s.lights}\n`
+    $stats.textContent = `${game.map.name} · ${quality} · ${s.fps} fps · js ${s.jsMs.toFixed(2)} ms · scale ${s.renderScale}${s.gpuMs !== undefined ? ` · gpu ${s.gpuMs} ms` : ''}\n`
+      + `draw calls ${s.drawCalls} (world ${s.sceneCalls ?? '-'}) · tris ${(s.triangles / 1000).toFixed(1)}k · static ${(s.staticTriangles / 1000).toFixed(1)}k · lights ${s.lights}\n`
       + `phase ${snap.phase} wave ${snap.wave} · zombies ${snap.zombies.length} · you ${me ? `${Math.round(me.x)},${Math.round(me.y)} ${me.state}` : '-'}`;
   }
 }
@@ -251,6 +272,8 @@ async function main() {
       game.snapshot();
     },
     look(y, p = 0) { yaw = y; pitch = p; },
+    /** Graphics settings object handed to render() (mutate it to test live changes). */
+    gfx,
     setTour(on) { opt.tour = !!on; tourT = 0; },
   };
   setup(opt.map);

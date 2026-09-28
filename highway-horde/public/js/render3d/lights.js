@@ -1,6 +1,9 @@
 // Lighting of the first-person view (WORLD, SPEC §7.5). Every light is created once —
 // adding or removing lights at runtime would recompile every shader — and reused:
-//   - a dim moonlight (DirectionalLight) and a HemisphereLight tuned per map.ambient,
+//   - a dim moonlight (DirectionalLight) and a HemisphereLight tuned per map.ambient; on
+//     'high'/'ultra' the moon casts soft shadows of the static world from a shadow map
+//     that follows the camera and is re-rendered only when the camera has travelled far
+//     (static casters never move, so it costs a pass every few seconds, not every frame),
 //   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'/'ultra'),
 //   - a fixed pool of PointLights (12 on 'ultra', 8 on 'high', 4 on 'low'). Each frame the pool is handed
 //     to the most relevant sources near the camera: the map's lamps and fires, steady()
@@ -23,6 +26,7 @@ const LAMP_H = 214;         // lamp light height (just under the 230 lamp head)
 const E0 = 5.5;
 const FADE_IN = 3.5, FADE_OUT = 7;  // per second
 const MAX_FLASHES = 40;
+const FLASH_I = 900;
 
 /**
  * @param {object} o { scene, camera, map, quality, heightAt?(x, y) base height of fires }
@@ -36,12 +40,16 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   const hemi = new THREE.HemisphereLight(amb.sky, amb.ground, amb.hemi);
   group.add(hemi);
   const moon = new THREE.DirectionalLight(amb.moon, amb.moonI);
-  moon.position.set(-0.45, 0.62, -0.64).multiplyScalar(1000);
+  const MOON_DIR = new THREE.Vector3(-0.45, 0.62, -0.64).normalize();
+  moon.position.copy(MOON_DIR).multiplyScalar(1000);
   moon.target.position.set(0, 0, 0);
   group.add(moon, moon.target);
+  const moonShadow = { cx: NaN, cz: NaN, span: 1000 };
 
   // flashlight: warm-white, a slightly soft cone, from just right of and below the eye
-  const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.44, 0.6, 1);
+  // decay a little over 1: bright enough to read zombies at 400+, without the hot spot on
+  // a wall 100 away blowing out (and blooming) the middle of the screen
+  const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.44, 0.72, 1.12);
   flash.target = new THREE.Object3D();
   group.add(flash, flash.target);
   let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
@@ -49,7 +57,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   const POOL = { ultra: 12, high: 8, low: 4 };
   const setShadows = () => {
     flash.castShadow = high;
-    const size = tier === 'ultra' ? 2048 : 512;
+    const size = tier === 'ultra' ? 2048 : 1024;
     if (flash.shadow.mapSize.x !== size && flash.shadow.map) {
       flash.shadow.map.dispose();
       flash.shadow.map = null;
@@ -59,9 +67,32 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     flash.shadow.camera.far = 900;
     flash.shadow.bias = -0.0006;
     flash.shadow.normalBias = 0.6;
-    flash.shadow.radius = 2;
+    // soft edges (PCF over a rotated Vogel disc): wider on the larger 'ultra' map
+    flash.shadow.radius = tier === 'ultra' ? 3.5 : 2.5;
   };
+  function setMoonShadow() {
+    const on = tier !== 'low';
+    moon.castShadow = on;
+    moon.shadow.autoUpdate = false;
+    const size = tier === 'ultra' ? 2048 : 1024;
+    if (moon.shadow.mapSize.x !== size && moon.shadow.map) {
+      moon.shadow.map.dispose();
+      moon.shadow.map = null;
+    }
+    moon.shadow.mapSize.set(size, size);
+    const S = tier === 'ultra' ? 1300 : 1000;
+    moonShadow.span = S;
+    const c = moon.shadow.camera;
+    c.left = -S; c.right = S; c.top = S; c.bottom = -S;
+    c.near = 10; c.far = 5200;
+    c.updateProjectionMatrix();
+    moon.shadow.bias = -0.0005;
+    moon.shadow.normalBias = 1.6;
+    moon.shadow.radius = tier === 'ultra' ? 3 : 2;
+    moonShadow.cx = NaN;   // re-render at the next opportunity
+  }
   setShadows();
+  setMoonShadow();
 
   // ---- sources ----------------------------------------------------------------------
   const colors = new Map();
@@ -97,14 +128,17 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
 
   // ---- pool ----------------------------------------------------------------------------
   const pool = [];
+  const poolLights = [];
   function buildPool(n) {
-    for (const s of pool) group.remove(s.light);
+    for (const s of pool) { group.remove(s.light); s.light.dispose(); }
     pool.length = 0;
+    poolLights.length = 0;
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight('#ffffff', 0, 300, 0);
       light.castShadow = false;
       group.add(light);
       pool.push({ light, src: null, level: 0 });
+      poolLights.push(light);
     }
   }
   buildPool(POOL[tier]);
@@ -144,7 +178,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     // Off = zero intensity, never visible = false: hiding the light changes the scene's
     // spot-light count, which recompiled every lit material (a hitch of ~12 programs) the
     // moment the player died and again on respawn.
-    flash.intensity = on ? 1150 : 0;
+    flash.intensity = on ? FLASH_I : 0;
     const cp = camera.position;
     const rx = -_fwd.z, rz = _fwd.x;   // right = forward × up
     const rl = Math.hypot(rx, rz) || 1;
@@ -227,8 +261,75 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     }
   }
 
+  // The moon's map holds the static world only (actors move; they keep their flashlight
+  // shadows). It is drawn by rendering a small shadow-only scene: a caster light SHARING
+  // the moon's LightShadow (same map, same matrix) and proxy meshes that reuse the static
+  // meshes' geometry and materials (no extra GPU buffers), seen by a camera that sees
+  // nothing — so only the shadow pass draws. (WebGLShadowMap can't be driven outside
+  // renderer.render(), and toggling castShadow in the main scene would put the statics
+  // into the flashlight's map too.)
+  const shadowScene = new THREE.Scene();
+  shadowScene.name = 'moon-shadow';
+  const casterLight = new THREE.DirectionalLight('#ffffff', 0);
+  casterLight.castShadow = true;
+  casterLight.shadow = moon.shadow;
+  shadowScene.add(casterLight, casterLight.target);
+  const blindCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1);
+  blindCam.position.set(0, -1e6, 0);
+  blindCam.lookAt(0, -2e6, 0);
+  blindCam.updateMatrixWorld();
+  let blindRT = null;
+  let proxies = null;
+  const _mf = new THREE.Vector3();
+  /**
+   * Re-render the moon's shadow map when the camera has moved far from its centre.
+   * @param {THREE.Mesh[]} casters the static world meshes (built into proxies once)
+   * @returns {boolean} whether the map was re-rendered this frame
+   */
+  function updateMoonShadow(renderer, scene, casters) {
+    if (!moon.castShadow || !casters || !casters.length) return false;
+    const S = moonShadow.span;
+    camera.getWorldDirection(_mf);
+    const l = Math.hypot(_mf.x, _mf.z) || 1;
+    const tx = camera.position.x + (_mf.x / l) * S * 0.3, tz = camera.position.z + (_mf.z / l) * S * 0.3;
+    if (Math.hypot(tx - moonShadow.cx, tz - moonShadow.cz) < S * 0.32) return false;
+    if (!proxies) {
+      proxies = casters.map((m) => {
+        const p = new THREE.Mesh(m.geometry, m.material);
+        p.castShadow = true;
+        p.receiveShadow = false;
+        p.matrixAutoUpdate = false;
+        p.matrix.copy(m.matrixWorld);
+        shadowScene.add(p);
+        return p;
+      });
+    }
+    const snap = S / 8;
+    moonShadow.cx = Math.round(tx / snap) * snap;
+    moonShadow.cz = Math.round(tz / snap) * snap;
+    for (const L of [moon, casterLight]) {
+      L.target.position.set(moonShadow.cx, 0, moonShadow.cz);
+      L.position.copy(MOON_DIR).multiplyScalar(2600).add(L.target.position);
+      L.target.updateMatrixWorld();
+      L.updateMatrixWorld();
+    }
+    if (!blindRT) blindRT = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+    const prev = renderer.getRenderTarget();
+    moon.shadow.needsUpdate = true;
+    try {
+      renderer.setRenderTarget(blindRT);
+      renderer.render(shadowScene, blindCam);
+    } finally {
+      renderer.setRenderTarget(prev);
+    }
+    return true;
+  }
+
   return {
     hemi, moon, flashlight: flash, ambient: amb,
+    updateMoonShadow,
+    /** The pool's PointLights (read-only: rain streaks are lit by them). */
+    poolLights,
     /** Real-light level 0..1 of map light i this frame (fake light pools fill the rest). */
     mapLevel,
     mapSources,
@@ -271,10 +372,15 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
       for (const s of flashes) s.slot = null;
       buildPool(POOL[tier]);
       setShadows();
+      setMoonShadow();
     },
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
     dispose() {
       flash.shadow.map?.dispose();
+      moon.shadow.map?.dispose();
+      blindRT?.dispose();
+      shadowScene.clear();
+      proxies = null;
       flash.dispose();
       moon.dispose();
       hemi.dispose();

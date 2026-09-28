@@ -3,7 +3,9 @@
 // not given); otherwise builds a minimal ctx itself (SPEC §7.5 ctx contract) so the actor
 // sub-systems can be developed and screenshot on their own.
 //
-// URL: ?mode=lineup|horde|team|guns|fx  &yaw= &pitch= &x= &y= &weapon=  &q=low  &shot=1 (hide HUD)
+// URL: ?mode=lineup|horde|team|guns|fx|closeup  &yaw= &pitch= &x= &y= &weapon=  &q=ultra|high|low
+//      &shot=1 (hide HUD)  &zombies=N (horde size)  &studio=1 (stub: inspection lighting)
+//      closeup: &types=walker,runner &dist= &spacing= &anim=walk|idle|attack|burn|die|hit &face=
 //      &time=<s> (fast-forward the fixture before the first frame)  &ctx=stub
 
 import * as THREE from 'three';
@@ -19,7 +21,7 @@ const statsEl = document.getElementById('stats');
 if (qs.get('shot')) document.body.classList.add('shot');
 let mode = qs.get('mode') || 'lineup';
 document.getElementById('mode').value = mode;
-let quality = qs.get('q') === 'low' ? 'low' : 'high';
+let quality = qs.get('q') === 'low' || qs.get('q') === 'ultra' ? qs.get('q') : 'high';
 
 const map = createFixtureMap('bus');
 
@@ -45,11 +47,25 @@ function createStubRenderer() {
   const camera = new THREE.PerspectiveCamera(70, 1, 2, 6000);
   camera.rotation.order = 'YXZ';
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight('#5a6a90', '#2a2a20', 1.4));
-  const moon = new THREE.DirectionalLight('#9ab0e0', 0.5);
+  const studio = !!qs.get('studio');
+  scene.add(new THREE.HemisphereLight('#5a6a90', '#2a2a20', studio ? 1.1 : 1.4));
+  const moon = new THREE.DirectionalLight('#9ab0e0', studio ? 1.6 : 0.5);
   moon.position.set(-600, 900, -400);
   scene.add(moon);
-  const flashlight = new THREE.SpotLight('#fff2d8', 2.2, 1100, 0.55, 0.55, 0);
+  if (studio) {
+    // inspection lighting: a warm key from behind the camera and a cool rim from behind
+    const keyL = new THREE.DirectionalLight('#ffe6cc', 2.4);
+    keyL.position.set(map.objective.x + 600, 700, map.objective.y + 1400);
+    keyL.target.position.set(map.objective.x, 0, map.objective.y);
+    scene.add(keyL, keyL.target);
+    const rimL = new THREE.DirectionalLight('#8fb0ff', 1.6);
+    rimL.position.set(map.objective.x - 300, 500, map.objective.y - 1400);
+    rimL.target.position.set(map.objective.x, 0, map.objective.y);
+    scene.add(rimL, rimL.target);
+    scene.background = new THREE.Color('#1a2130');
+    scene.fog.density = 0.0004;
+  }
+  const flashlight = new THREE.SpotLight('#fff2d8', studio ? 0 : 2.2, 1100, 0.55, 0.55, 0);
   flashlight.castShadow = true;
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.camera.near = 10;
@@ -244,6 +260,47 @@ function lineupScene() {
   };
 }
 
+function closeupScene() {
+  // a few zombies close to the camera for inspection
+  //   &types=walker,runner  &dist=110  &anim=walk|idle|attack|burn|die|hit  &flags=<ZFLAG bits>  &face=<angle offset>
+  const list = (qs.get('types') || 'walker,runner,crawler,bloater').split(',').filter((t) => ZOMBIES[t]);
+  const dist = parseFloat(qs.get('dist') || '110');
+  const anim = qs.get('anim') || 'walk';
+  const face = parseFloat(qs.get('face') || '0');
+  const flags0 = parseInt(qs.get('flags') || '0', 10) | (anim === 'burn' ? ZFLAG.BURNING : 0) | (anim === 'attack' ? ZFLAG.ATTACKING : 0);
+  const local = fixturePlayer(1, 'soldier', 'rifle');
+  local.x = cx; local.y = cy + 330;
+  const spacing = parseFloat(qs.get('spacing') || '40');
+  let id = 100;
+  const zombies = list.map((t, k) => ({ id: id++ * 7 + k, type: t, x: local.x + (k - (list.length - 1) / 2) * spacing * (t === 'boss' ? 2 : t === 'brute' ? 1.4 : 1),
+    y: local.y - dist * (t === 'boss' ? 1.7 : 1), angle: Math.PI / 2 + face, hp: 1, flags: flags0, _spd: anim === 'idle' || anim === 'attack' ? 0 : ZOMBIES[t].speed[0] }));
+  let time = 0, dieT = 0;
+  return {
+    localId: 1, roster: [{ id: 1, name: 'You', color: 0, cls: 'soldier' }], local, yaw: -Math.PI / 2,
+    step(dt) {
+      time += dt;
+      const events = [];
+      if (anim === 'attack' && Math.floor(time / 1.1) !== Math.floor((time - dt) / 1.1)) {
+        for (const z of zombies) events.push({ type: 'zattack', id: z.id, ztype: z.type, x: z.x, y: z.y, angle: z.angle });
+      }
+      if (anim === 'hit' && Math.floor(time / 0.7) !== Math.floor((time - dt) / 0.7)) {
+        events.push({ type: 'shot', pid: 1, turret: 0, weapon: 'rifle', x: local.x, y: local.y, angle: -Math.PI / 2, rays: zombies.map((z) => ({ x: z.x, y: z.y, hit: 1 })) });
+      }
+      if (anim === 'die') {
+        dieT += dt;
+        if (dieT > 2.5) {
+          dieT = 0;
+          for (const z of zombies) {
+            events.push({ type: 'zdie', id: z.id, ztype: z.type, x: z.x, y: z.y, angle: z.angle, by: 1, gib: false });
+            z.id += 1000;
+          }
+        }
+      }
+      return { view: baseView([local], anim === 'die' && dieT > 0.02 && dieT < 2.5 ? [] : zombies), events };
+    },
+  };
+}
+
 function fixturePlayer(id, cls, weapon) {
   return {
     id, x: cx, y: cy, angle: -Math.PI / 2, state: 'alive', hp: 80, maxHp: 100, armor: 20, stamina: 100, sprinting: false,
@@ -369,7 +426,8 @@ function buildScene() {
   else if (mode === 'team') scene = teamScene();
   else if (mode === 'guns') scene = hordeScene({ zombies: 60, localFires: false });
   else if (mode === 'fx') scene = teamScene();
-  else scene = hordeScene({ zombies: 250 });
+  else if (mode === 'closeup') scene = closeupScene();
+  else scene = hordeScene({ zombies: qs.get('zombies') !== null ? parseInt(qs.get('zombies'), 10) : 250 });
   if (!Number.isFinite(yaw)) yaw = scene.yaw;
 }
 
@@ -393,6 +451,7 @@ async function main() {
     };
     const names = { zombies3d: 'zombies', players3d: 'players', items3d: 'items', effects3d: 'effects', viewmodel: 'viewmodel', overlay: 'overlay' };
     for (const s of (r.debug && r.debug.subs) || []) subs[names[s.__name] || s.__name] = s;
+    wrapTiming(subs);
   } else {
     R = createStubRenderer();
     const ctx = R.ctx;
@@ -412,6 +471,7 @@ async function main() {
         R.attach(subs[key], key === 'viewmodel');
       }
     }
+    wrapTiming(subs);
   }
   buildScene();
   scene.local.x += parseFloat(qs.get('dx') || '0');
@@ -461,6 +521,24 @@ async function main() {
   requestAnimationFrame(loop);
 }
 
+/** Per-sub-system update time (rolling average ms) → window.__SB.subMs. */
+const subMs = {};
+function wrapTiming(list) {
+  for (const k in list) {
+    const s = list[k];
+    if (!s || typeof s.update !== 'function' || s.__timed) continue;
+    const u = s.update;
+    s.__timed = true;
+    subMs[k] = 0;
+    s.update = function timed(view, frame) {
+      const t0 = performance.now();
+      const r = u.call(this, view, frame);
+      subMs[k] += (performance.now() - t0 - subMs[k]) * 0.1;
+      return r;
+    };
+  }
+}
+
 function setMode(m) {
   mode = m;
   yaw = NaN;
@@ -486,7 +564,7 @@ window.addEventListener('pointermove', (e) => {
 });
 document.getElementById('mode').addEventListener('change', (e) => setMode(e.target.value));
 document.getElementById('quality').addEventListener('click', (e) => {
-  quality = quality === 'high' ? 'low' : 'high';
+  quality = quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'ultra';
   e.target.textContent = 'quality: ' + quality;
   R.setQuality(quality);
 });
@@ -525,14 +603,19 @@ function loop(t) {
   if (events.length) R.addEvents(events, { localId: scene.localId });
   const r = R.render(res.view, {
     localId: scene.localId, roster: scene.roster, now, dt: paused ? 0 : step, yaw, pitch, local: loc, camX: loc.x, camY: loc.y,
-    settings: { screenShake: true, showNames: true, fov: 80, lighting: true },
+    // uiScale as the game's UI passes it (≈ viewport height / 1000, 1 at small sizes)
+    settings: { screenShake: true, showNames: true, fov: 80, lighting: true, uiScale: parseFloat(qs.get('ui') || '0') || Math.max(1, window.innerHeight / 1000) },
   });
   jsHist.push(r.jsMs);
   if (jsHist.length > 120) jsHist.shift();
   const jsAvg = jsHist.reduce((a, b) => a + b, 0) / jsHist.length;
   const s = { fps: +fps.toFixed(1), jsMs: +jsAvg.toFixed(2), calls: r.calls, tris: r.tris, stub: !!R.stub, zombies: res.view.zombies.length };
   if (subs.zombies && subs.zombies.stats) Object.assign(s, subs.zombies.stats);
-  if (window.__SB) { window.__SB.stats = s; window.__SB.frames++; window.__SB.raw = r.raw; }
+  if (window.__SB) {
+    s.subMs = {};
+    for (const k in subMs) s.subMs[k] = +subMs[k].toFixed(2);
+    window.__SB.stats = s; window.__SB.frames++; window.__SB.raw = r.raw;
+  }
   statsEl.textContent = `${mode} · ${s.fps} fps · js ${s.jsMs} ms · ${s.calls} calls · ${s.tris} tris · ${s.zombies} zombies${R.stub ? ' · stub ctx' : ''}`;
   requestAnimationFrame(loop);
 }

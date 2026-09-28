@@ -1,127 +1,53 @@
 // Teammates in the first-person view (ACTORS, SPEC §7.5): every player except the local
-// one while alive (the local one too when dead/spectating), as low-poly soldiers on the
-// same GPU rig as the zombies (actor-rig.js): one InstancedMesh per class (outfit, vest
-// and hat baked in, skin/outfit/player colour per instance), holding their current gun
-// (actor-guns.js), walking/strafing from their rendered motion, aiming along their angle,
-// sprinting with the gun lowered, recoil on their shots, reload tilt, melee shove,
-// downed (propped on an elbow, pistol up), dead (corpse). Each has a cheap additive
-// flashlight cone; the two nearest also get a real light from ctx.lights.steady.
+// one while alive (the local one too when dead/spectating), as sculpted soldiers per class
+// (actor-smodels.js) on the GPU rig (actor-rig.js) — one instanced draw per class and LOD.
+//
+// The held gun (actor-guns.js) is placed first — shouldered rifle stance, two-handed
+// pistol, hip-fired heavies, a rocket tube on the shoulder, dual pistols — then both arms
+// reach for it with two-bone IK (firing hand on the grip, support hand on the foregrip),
+// so the hands stay on the gun through walk/strafe/run cycles, recoil, the reload (support
+// hand to the mag well, down to a pouch and back), the sprint low-ready and the melee
+// butt-stroke. Downed: propped on an elbow, pistol up. Dead: a corpse on its back. Each
+// has a weapon-light beam (cheap additive cone); the two nearest also get a real light.
 // Publishes each teammate's muzzle position in fx.muzzles for tracers (effects3d).
 
 import * as THREE from 'three';
 import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
-import { PartBuilder, shadeHex, angleDiff, damp, hash01 } from './actor-kit.js';
-import { RigInstances, rigPoint, B, SLOT, T_ROOT, T_SKIN, T_CLOTH, T_ACCENT, T_FX } from './actor-rig.js';
-import { gunModel, gunMaterials } from './actor-guns.js';
+import { angleDiff, damp, hash01 } from './actor-kit.js';
+import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2 } from './actor-rig.js';
+import { buildSoldier, soldierSkeleton, SP } from './actor-smodels.js';
+import { geometryFromArrays } from './actor-shape.js';
+import { actorTextures } from './actor-tex.js';
+import { gunObject } from './actor-guns.js';
 import { acquireFx, releaseFx } from './fx-core.js';
 
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 const CAP = 8;
 const SKIN = { soldier: '#c68e6a', medic: '#e3b899', engineer: '#8d5a3b', scout: '#b9835a', demo: '#d9a57c', heavy: '#6f4a33' };
-const BOOT = '#1e1a16', GLOVE = '#2b2420', BELT = '#2a241c';
+const GUN_SCALE = 0.84;
 
-// soldier proportions (a touch taller and broader than a walker)
-const P = {
-  hip: 28, knee: 15, legW: 4.6, legGap: 3.6, torsoH: 16, torsoD: 8.4, torsoW: 15, shoulder: 45.5, sw: 8.4,
-  uarm: 11.5, farm: 10.5, armW: 3.6, head: [7, 8, 6.8], neck: 48,
+// how each weapon style is held
+const HOLD = {
+  pistol: 'pistol', revolver: 'pistol', dual: 'dual', rocket: 'shoulder', minigun: 'hip', lmg: 'hip', flamethrower: 'hip',
 };
 
-function skeleton() {
-  const piv = [];
-  piv[B.HIPS] = [0, P.hip, 0];
-  piv[B.SPINE] = [0, P.hip + 2, 0];
-  piv[B.HEAD] = [0.5, P.neck, 0];
-  piv[B.UARM_L] = [0, P.shoulder, -P.sw];
-  piv[B.FARM_L] = [0, P.shoulder - P.uarm, -P.sw];
-  piv[B.UARM_R] = [0, P.shoulder, P.sw];
-  piv[B.FARM_R] = [0, P.shoulder - P.uarm, P.sw];
-  piv[B.THIGH_L] = [0, P.hip, -P.legGap];
-  piv[B.SHIN_L] = [0, P.knee, -P.legGap];
-  piv[B.THIGH_R] = [0, P.hip, P.legGap];
-  piv[B.SHIN_R] = [0, P.knee, P.legGap];
-  piv[B.X1] = [0, P.shoulder, 0];
-  piv[B.X2] = [0, P.shoulder, 0];
-  return { pivots: piv, parents: [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9, 1, 1] };
+const cache = new Map();
+function soldierArrays(cls, L) {
+  const k = cls + L;
+  let a = cache.get(k);
+  if (!a) { a = buildSoldier(cls, L).arrays(); cache.set(k, a); }
+  return a;
 }
-
-function buildSoldier(cls) {
-  const look = CLASSES[cls].look;
-  const vest = look.vest;
-  const pb = new PartBuilder();
-  for (const s of [-1, 1]) {
-    const z = s * P.legGap;
-    const t = s < 0 ? B.THIGH_L : B.THIGH_R, sh = s < 0 ? B.SHIN_L : B.SHIN_R;
-    pb.add('box', { at: [0, P.knee + (P.hip - P.knee) / 2, z], size: [P.legW * 1.15, P.hip - P.knee + 1, P.legW], color: '#e0e0e0', slot: SLOT.CLOTH, bone: t, taper: [0.9] });
-    pb.add('box', { at: [0, P.knee / 2 + 2, z], size: [P.legW, P.knee - 2, P.legW * 0.9], color: '#cfcfcf', slot: SLOT.CLOTH, bone: sh });
-    pb.add('box', { at: [0.2, P.knee - 1, z], size: [P.legW * 1.2, 2.2, P.legW * 1.05], color: shadeHex(vest, -0.1), bone: sh }); // knee pad
-    pb.add('box', { at: [1.6, 1.6, z], size: [P.legW * 1.7, 3.2, P.legW * 1.1], color: BOOT, bone: sh });
-  }
-  pb.add('box', { at: [0, P.hip + 1, 0], size: [P.torsoD * 0.95, 5, P.torsoW * 0.85], color: '#d8d8d8', slot: SLOT.CLOTH, bone: B.HIPS });
-  pb.add('box', { at: [0, P.hip + 3, 0], size: [P.torsoD * 1.02, 1.6, P.torsoW * 0.88], color: BELT, bone: B.SPINE });
-  const ty = P.hip + 3 + P.torsoH / 2;
-  pb.add('box', { at: [0, ty, 0], size: [P.torsoD, P.torsoH, P.torsoW * 0.86], color: '#ffffff', slot: SLOT.CLOTH, bone: B.SPINE, taper: [1.05, 1.12] });
-  // vest (front + back plates) — the class read from behind as well as the front
-  const heavy = cls === 'heavy';
-  pb.add('box', { at: [0, ty - 0.5, 0], size: [P.torsoD * (heavy ? 1.3 : 1.18), P.torsoH * 0.82, P.torsoW * (heavy ? 0.95 : 0.9)], color: vest, bone: B.SPINE, taper: [1.02, 1.08] });
-  if (cls === 'medic') {
-    pb.add('box', { at: [-P.torsoD * 0.62, ty + 1, 0], size: [0.4, 6, 1.8], color: '#ffffff', bone: B.SPINE, ao: 0 });
-    pb.add('box', { at: [-P.torsoD * 0.62, ty + 1, 0], size: [0.4, 1.8, 6], color: '#ffffff', bone: B.SPINE, ao: 0 });
-  } else if (cls === 'engineer') {
-    pb.add('box', { at: [-P.torsoD * 0.75, ty, 0], size: [4, 10, 9], color: '#5d4a32', bone: B.SPINE }); // tool pack
-  } else if (cls === 'demo') {
-    for (let k = -1; k <= 1; k++) pb.add('cyl6', { at: [P.torsoD * 0.66, ty - 3, k * 3.2], size: [2.2, 4, 2.2], color: '#4a5a2a', bone: B.SPINE }); // grenades on the vest
-  } else if (cls === 'soldier') {
-    for (let k = -1; k <= 1; k++) pb.add('box', { at: [P.torsoD * 0.68, ty - 3.5, k * 3.6], size: [1.6, 4, 3], color: shadeHex(vest, -0.15), bone: B.SPINE }); // mag pouches
-    pb.add('box', { at: [-P.torsoD * 0.72, ty + 0.5, 0], size: [3.5, 11, 10], color: shadeHex(look.outfit, -0.15), bone: B.SPINE }); // pack
-  } else if (cls === 'scout') {
-    pb.add('box', { at: [-P.torsoD * 0.7, ty + 2, 0], size: [2.4, 8, 7], color: '#3b3226', bone: B.SPINE });
-  }
-  // head + hat
-  const hy = P.neck + 1.5 + P.head[1] / 2;
-  pb.add('box', { at: [0.5, P.neck, 0], size: [3.2, 3.5, 3.4], color: '#d8d8d8', slot: SLOT.SKIN, bone: B.HEAD });
-  pb.add('box', { at: [1, hy, 0], size: P.head, color: '#ffffff', slot: SLOT.SKIN, bone: B.HEAD, taper: [0.94] });
-  pb.add('box', { at: [1 + P.head[0] * 0.5, hy + 0.8, 0], size: [0.4, 1.2, P.head[2] * 0.62], color: '#1a1410', bone: B.HEAD, ao: 0 }); // eye line
-  const hat = look.hat;
-  if (hat === 'helmet') {
-    pb.add('ico1', { at: [0.6, hy + 2.6, 0], size: [9.4, 7.2, 9.0], color: look.outfit, bone: B.HEAD, ao: 0.2 });
-    pb.add('box', { at: [0.6, hy + 1.2, 0], size: [9.8, 1.0, 9.4], color: shadeHex(look.outfit, -0.2), bone: B.HEAD });
-    pb.add('box', { at: [0.6, hy + 5.4, 0], size: [9.0, 1.2, 1.6], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  } else if (hat === 'cap') {
-    pb.add('box', { at: [0.6, hy + 3.4, 0], size: [8, 2.6, 7.6], color: '#f0f0f0', bone: B.HEAD });
-    pb.add('box', { at: [5.2, hy + 2.4, 0], size: [4, 0.6, 6.6], color: '#c62828', bone: B.HEAD });
-    pb.add('box', { at: [0.6, hy + 4.8, 0], size: [5.6, 0.6, 1.4], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  } else if (hat === 'hardhat') {
-    pb.add('ico1', { at: [0.6, hy + 3.2, 0], size: [8.6, 6.4, 8.2], color: '#ffb300', bone: B.HEAD, ao: 0.15 });
-    pb.add('box', { at: [0.9, hy + 1.6, 0], size: [11.4, 0.8, 10.2], color: '#f59f00', bone: B.HEAD });
-    pb.add('box', { at: [0.6, hy + 6.2, 0], size: [7, 1.0, 1.4], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  } else if (hat === 'bandana') {
-    pb.add('box', { at: [1, hy + 2.2, 0], size: [7.6, 2.2, 7.4], color: look.vest === '#004d40' ? '#26a69a' : look.vest, bone: B.HEAD });
-    pb.add('box', { at: [-3.4, hy + 1.8, 0], size: [2.2, 1.2, 1.6], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-    pb.add('box', { at: [-4.6, hy + 0.8, 0], size: [2.6, 0.8, 1.2], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  } else if (hat === 'beanie') {
-    pb.add('box', { at: [0.6, hy + 3.2, 0], size: [8, 4.4, 7.8], color: '#2a2a2a', bone: B.HEAD, taper: [0.8] });
-    pb.add('box', { at: [0.6, hy + 1.6, 0], size: [8.4, 1.6, 8.2], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  } else {
-    pb.add('box', { at: [0.2, hy + 3.9, 0], size: [7.2, 1.4, 7], color: '#1f1a14', bone: B.HEAD });
-    pb.add('box', { at: [1, hy - 2.6, 0], size: [7.2, 2.4, 7], color: '#2e2418', bone: B.HEAD }); // beard
-    pb.add('box', { at: [0.6, hy + 4.4, 0], size: [4, 0.6, 7.2], color: '#ffffff', slot: SLOT.ACCENT, bone: B.HEAD, ao: 0 });
-  }
-  // arms (hang down; the pose code aims them at the gun)
-  for (const s of [-1, 1]) {
-    const z = s * P.sw;
-    const u = s < 0 ? B.UARM_L : B.UARM_R, f = s < 0 ? B.FARM_L : B.FARM_R;
-    pb.add('box', { at: [0, P.shoulder - P.uarm / 2 + 1, z], size: [P.armW * 1.15, P.uarm + 2, P.armW * 1.15], color: '#ffffff', slot: SLOT.CLOTH, bone: u });
-    pb.add('box', { at: [0, P.shoulder - 5, z], size: [P.armW * 1.25, 2.4, P.armW * 1.25], color: '#ffffff', slot: SLOT.ACCENT, bone: u, ao: 0 }); // armband
-    pb.add('box', { at: [0, P.shoulder - P.uarm - P.farm / 2, z], size: [P.armW * 0.95, P.farm, P.armW * 0.95], color: '#e8e8e8', slot: SLOT.CLOTH, bone: f });
-    pb.add('box', { at: [0.3, P.shoulder - P.uarm - P.farm - 1.6, z], size: [P.armW * 1.1, 3.4, P.armW * 0.8], color: GLOVE, bone: f });
-  }
-  if (heavy) {
-    for (const s of [-1, 1]) pb.add('box', { at: [0, P.shoulder + 0.5, s * P.sw], size: [6, 3.4, 5.6], color: vest, bone: s < 0 ? B.UARM_L : B.UARM_R }); // pauldrons
-  }
-  return pb.build({ rig: true });
+function instancedGeometry(a) {
+  const g = geometryFromArrays(a);
+  const ig = new THREE.InstancedBufferGeometry();
+  for (const name in g.attributes) ig.setAttribute(name, g.attributes[name]);
+  ig.setIndex(g.index);
+  ig.boundingSphere = g.boundingSphere;
+  return ig;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -162,16 +88,23 @@ void main() {
       f = smoothstep(fogNear, fogFar, vFogDepth);
     #endif
   #endif
-  // brightest at the lens, fading along the beam; soft at the silhouette edges
   float a = pow(vAlong, 1.6) * smoothstep(0.0, 0.6, vEdge) * uStrength * (1.0 - f);
-  // a teammate standing next to the camera put the fat near end of their beam across half
-  // the screen as a grey bar: fade the haze out close to the eye
+  // a teammate next to the camera put the fat near end of their beam across half the
+  // screen as a grey bar: fade the haze out close to the eye
   a *= smoothstep(40.0, 260.0, vDepth);
   gl_FragColor = vec4(uColor * a, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
 `;
+
+// rig-order Euler from a row-major 3×3 (R = Ry·Rx·Rz)
+function eulerOf(R, out) {
+  const sx = Math.max(-1, Math.min(1, -R[5]));
+  out[0] = Math.asin(sx);
+  if (Math.abs(sx) < 0.9999) { out[2] = Math.atan2(R[3], R[4]); out[1] = Math.atan2(R[2], R[8]); } else { out[2] = 0; out[1] = Math.atan2(-R[6], R[0]); }
+  return out;
+}
 
 /**
  * @param {object} ctx renderer ctx (SPEC §7.5)
@@ -183,27 +116,31 @@ export function createPlayers3D(ctx) {
   root.name = 'players3d';
   ctx.scene.add(root);
   let high = ctx.quality !== 'low';
-  const rig = skeleton();
+  const tex = actorTextures(8);
+  const pool = new RigPool({ capacity: CAP + 2, textures: tex });
+  const sk = soldierSkeleton();
   const bodies = {};
   for (const cls of CLASS_IDS) {
-    const inst = new RigInstances(buildSoldier(cls), rig, CAP, { rim: '#b8d0ff', rimStrength: 0.45 });
-    inst.mesh.castShadow = high;
-    root.add(inst.mesh);
-    bodies[cls] = inst;
+    bodies[cls] = [0, 1].map((L) => {
+      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L)), sk, { rim: '#b8d0ff', rimStrength: 0.42, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
+      root.add(m.mesh);
+      return m;
+    });
   }
+  pool.warm();
   const skinCol = {}, outfitCol = {};
   for (const cls of CLASS_IDS) {
     skinCol[cls] = new THREE.Color(SKIN[cls] || '#c68e6a');
     outfitCol[cls] = new THREE.Color(CLASSES[cls].look.outfit);
   }
   const pcol = PLAYER_COLORS.map((c) => new THREE.Color(c));
-  const mats = gunMaterials();
+  const hairCol = new THREE.Color('#2a1d14');
 
-  // flashlight cones (instanced, additive)
-  const coneGeo = new THREE.CylinderGeometry(58, 3, 300, 16, 1, true);
-  coneGeo.rotateZ(HALF_PI);          // axis along X (lens = the narrow bottom end)
-  coneGeo.translate(-150, 0, 0);     // lens at the origin, beam toward -X ...
-  coneGeo.rotateY(Math.PI);          // ... flipped so the beam runs along +X
+  // weapon-light cones (instanced, additive)
+  const coneGeo = new THREE.CylinderGeometry(58, 2.5, 300, 16, 1, true);
+  coneGeo.rotateZ(HALF_PI);
+  coneGeo.translate(-150, 0, 0);
+  coneGeo.rotateY(Math.PI);
   const coneMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uColor: { value: new THREE.Color('#fff0d0') }, uStrength: { value: 0.05 } }]),
     vertexShader: CONE_VERT, fragmentShader: CONE_FRAG,
@@ -216,16 +153,18 @@ export function createPlayers3D(ctx) {
   root.add(cones);
 
   const state = new Map();   // pid → anim state
-  const guns = new Map();    // pid → { group, body, glow, weapon }
+  const guns = new Map();    // pid → { obj, weapon, model, left }
   let frameNo = 0;
+  const pose = new Pose();
   const _o = { x: 0, y: 0, z: 0 };
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+  const _mc = new THREE.Matrix4();
   const nearLights = [];
 
   function getState(p) {
     let s = state.get(p.id);
     if (!s) {
-      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, melee: 0, seen: 0, sprint: 0, down: 0, dead: 0 };
+      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, seen: 0, sprint: 0, down: 0, dead: 0, fwd: 1, side: 0 };
       state.set(p.id, s);
     }
     return s;
@@ -242,28 +181,107 @@ export function createPlayers3D(ctx) {
 
   function gunFor(pid, weaponId) {
     let g = guns.get(pid);
-    if (!g) {
-      g = { group: new THREE.Group(), body: null, glow: null, weapon: null };
-      g.group.rotation.order = 'YXZ';
-      root.add(g.group);
-      guns.set(pid, g);
-    }
+    if (!g) { g = { obj: null, left: null, weapon: undefined, model: null }; guns.set(pid, g); }
     if (g.weapon !== weaponId) {
-      if (g.body) g.body.removeFromParent();
-      if (g.glow) g.glow.removeFromParent();
-      g.body = g.glow = null;
+      if (g.obj) { g.obj.removeFromParent(); g.obj.userData.dispose(); }
+      if (g.left) { g.left.removeFromParent(); g.left.userData.dispose(); }
+      g.obj = g.left = null;
       g.weapon = weaponId;
       if (weaponId) {
-        const m = gunModel(weaponId);
-        g.body = new THREE.Mesh(m.body, mats.lambert);
-        g.body.castShadow = high;
-        g.group.add(g.body);
-        if (m.glow) { g.glow = new THREE.Mesh(m.glow, mats.glow); g.group.add(g.glow); }
-        g.model = m;
+        g.obj = gunObject(weaponId, { shadow: high, lite: true });
+        g.obj.rotation.order = 'YXZ';
+        g.obj.scale.setScalar(GUN_SCALE);
+        root.add(g.obj);
+        g.model = g.obj.userData.model;
+        if (g.model.dual) {
+          g.left = gunObject(weaponId, { shadow: high, mirror: true, lite: true });
+          g.left.rotation.order = 'YXZ';
+          g.left.scale.setScalar(GUN_SCALE);
+          root.add(g.left);
+        }
       }
     }
     return g;
   }
+
+  // ---- IK ---------------------------------------------------------------------------------
+  const Rc = new Float64Array(9), Rua = new Float64Array(9), Rf = new Float64Array(9), Rh = new Float64Array(9), T9 = new Float64Array(9);
+  const eul = [0, 0, 0];
+  const S = new THREE.Vector3(), E = new THREE.Vector3(), W = new THREE.Vector3(), dir = new THREE.Vector3(), perp = new THREE.Vector3();
+  const u = new THREE.Vector3(), f = new THREE.Vector3(), uL = new THREE.Vector3(), fL = new THREE.Vector3(), X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3();
+  const gunRot = new Float64Array(9);
+  const armLen = [SP.uarm, SP.farm];
+
+  function rotOfMatrix4(m4, out) {
+    const e = m4.elements;
+    const sx = Math.hypot(e[0], e[1], e[2]) || 1, sy = Math.hypot(e[4], e[5], e[6]) || 1, sz = Math.hypot(e[8], e[9], e[10]) || 1;
+    // row-major out[r*3+c] = column c row r
+    out[0] = e[0] / sx; out[3] = e[1] / sx; out[6] = e[2] / sx;
+    out[1] = e[4] / sy; out[4] = e[5] / sy; out[7] = e[6] / sy;
+    out[2] = e[8] / sz; out[5] = e[9] / sz; out[8] = e[10] / sz;
+    return out;
+  }
+  // out = A^T · B (row-major 3×3)
+  function mulTN(out, A, Bm) {
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out[r * 3 + c] = A[r] * Bm[c] + A[3 + r] * Bm[3 + c] + A[6 + r] * Bm[6 + c];
+  }
+  function mulNN(out, A, Bm) {
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out[r * 3 + c] = A[r * 3] * Bm[c] + A[r * 3 + 1] * Bm[3 + c] + A[r * 3 + 2] * Bm[6 + c];
+  }
+
+  /**
+   * Two-bone IK for one arm: shoulder (from the solved chest) → wrist target W, elbow
+   * toward `pole`; the hand takes world rotation `handR` (row-major 3×3). Writes the
+   * arm's Euler angles into the pose.
+   */
+  function solveArm(k, model, side, pole, handR) {
+    const UA = side > 0 ? B.UARM_R : B.UARM_L, FA = side > 0 ? B.FARM_R : B.FARM_L, HD = side > 0 ? B.HAND_R : B.HAND_L;
+    const pv = sk.pivots[UA];
+    pool.point(k, B.CHEST, pv[0], pv[1], pv[2], _o);
+    S.set(_o.x, _o.y, _o.z);
+    const a = armLen[0], b = armLen[1];
+    dir.subVectors(W, S);
+    let d = dir.length();
+    dir.divideScalar(d || 1);
+    d = Math.max(Math.abs(a - b) + 0.01, Math.min(a + b - 0.01, d));
+    const cosA = (a * a + d * d - b * b) / (2 * a * d);
+    const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+    perp.copy(pole).addScaledVector(dir, -pole.dot(dir));
+    if (perp.lengthSq() < 1e-6) perp.set(0, -1, 0);
+    perp.normalize();
+    E.copy(S).addScaledVector(dir, a * cosA).addScaledVector(perp, a * sinA);
+    u.subVectors(E, S).normalize();
+    f.copy(S).addScaledVector(dir, d).sub(E).normalize();
+    // into chest space
+    uL.set(Rc[0] * u.x + Rc[3] * u.y + Rc[6] * u.z, Rc[1] * u.x + Rc[4] * u.y + Rc[7] * u.z, Rc[2] * u.x + Rc[5] * u.y + Rc[8] * u.z);
+    fL.set(Rc[0] * f.x + Rc[3] * f.y + Rc[6] * f.z, Rc[1] * f.x + Rc[4] * f.y + Rc[7] * f.z, Rc[2] * f.x + Rc[5] * f.y + Rc[8] * f.z);
+    Y.copy(uL).negate();
+    X.copy(fL).addScaledVector(uL, -fL.dot(uL));
+    if (X.lengthSq() < 1e-5) X.set(1, 0, 0).addScaledVector(uL, -uL.x);
+    X.normalize();
+    Z.crossVectors(X, Y);
+    Rua[0] = X.x; Rua[1] = Y.x; Rua[2] = Z.x;
+    Rua[3] = X.y; Rua[4] = Y.y; Rua[5] = Z.y;
+    Rua[6] = X.z; Rua[7] = Y.z; Rua[8] = Z.z;
+    eulerOf(Rua, eul);
+    pose.set(UA, eul[0], eul[1], eul[2]);
+    const bend = Math.acos(Math.max(-1, Math.min(1, uL.dot(fL))));
+    pose.set(FA, 0, 0, bend);
+    if (handR) {
+      // forearm world rotation = Rc · Rua · Rz(bend); hand local = Rf^T · handR
+      const c = Math.cos(bend), s = Math.sin(bend);
+      T9[0] = c; T9[1] = -s; T9[2] = 0; T9[3] = s; T9[4] = c; T9[5] = 0; T9[6] = 0; T9[7] = 0; T9[8] = 1;
+      mulNN(Rh, Rua, T9);
+      mulNN(Rf, Rc, Rh);
+      mulTN(T9, Rf, handR);
+      eulerOf(T9, eul);
+      pose.set(HD, eul[0], eul[1], eul[2]);
+    }
+  }
+
+  // wrist offsets in gun space (the hand model's wrist → palm is along its -Y)
+  const WR_R = new THREE.Vector3(-0.6, 2.2, 0.35);
+  const hand90 = new Float64Array(9);
 
   function update(view, frame) {
     fx.begin(frame);
@@ -274,16 +292,13 @@ export function createPlayers3D(ctx) {
     const local = frame.local;
     const spectating = !local || local.state === 'dead';
     const roster = frame.roster || [];
-    for (const cls of CLASS_IDS) bodies[cls].begin();
+    pool.begin(time);
     let nc = 0;
     nearLights.length = 0;
     const list = (view && view.players) || [];
     for (let k = 0; k < list.length; k++) {
       const p = list[k];
-      if (p.id === localId && !(spectating && p.state === 'dead')) {
-        hideGun(p.id);
-        continue;
-      }
+      if (p.id === localId && !(spectating && p.state === 'dead')) { hideGun(p.id); continue; }
       const r = roster.find((q) => q.id === p.id);
       const cls = r && CLASSES[r.cls] ? r.cls : CLASS_IDS[(p.id - 1) % CLASS_IDS.length];
       const color = pcol[(r ? r.color : p.id - 1) % pcol.length] || pcol[0];
@@ -302,64 +317,54 @@ export function createPlayers3D(ctx) {
       s.sprint += ((p.sprinting ? 1 : 0) - s.sprint) * damp(6, dt);
       s.down += ((p.state === 'downed' ? 1 : 0) - s.down) * damp(5, dt);
       s.dead += ((p.state === 'dead' ? 1 : 0) - s.dead) * damp(4, dt);
-      // legs cycle with speed; backwards when moving against the aim
-      const back = Math.abs(angleDiff(s.a, s.mvA)) > HALF_PI ? -1 : 1;
-      s.ph += (s.spd / 64) * TAU * dt * back;
+      // movement relative to the aim: forward/back and strafe components (smoothed)
+      const rel = angleDiff(s.a, s.mvA);
+      const mv = Math.min(1, s.spd / 40);
+      s.fwd += (Math.cos(rel) * mv - s.fwd) * damp(8, dt);
+      s.side += (Math.sin(rel) * mv - s.side) * damp(8, dt);
+      s.ph += (s.spd / (58 + s.sprint * 20)) * TAU * dt;
 
       // The sim lets survivors overlap: a teammate standing in the camera would fill the
       // view from the inside of their own model. Skip them (the name tag fades there too).
-      if (Math.hypot(p.x - frame.camX, p.y - frame.camY) < 30) { hideGun(p.id); continue; }
-      const inst = bodies[cls];
-      const i = inst.push();
+      const camD = Math.hypot(p.x - frame.camX, p.y - frame.camY);
+      if (camD < 30) { hideGun(p.id); continue; }
+      const model = bodies[cls][camD < 700 ? 0 : 1];
+      const i = pool.push(model);
       if (i < 0) continue;
       const wid = p.state === 'dead' ? null : heldWeapon(p);
       const style = wid ? WEAPONS[wid].sprite.style : 'rifle';
-      const pistolGrip = style === 'pistol' || style === 'revolver' || s.down > 0.5;
-      inst.place(i, p.x, 0, p.y, s.a, 1);
-      poseSoldier(inst, i, p, s, time, pistolGrip, back);
-      inst.color(i, T_SKIN, skinCol[cls], 0);
-      inst.color(i, T_CLOTH, outfitCol[cls]);
-      inst.color(i, T_ACCENT, color);
-      inst.texel(i, T_FX, 0, 0, s.shot < 0.06 ? 0.4 : 0, 1);
-
-      // held gun at the right hand, pointing along the aim
+      const hold = s.down > 0.5 ? 'pistol' : HOLD[style] || 'rifle';
+      poseBody(p, s, time, hold);
+      pose.place(p.x, 0, p.y, s.a, 1);
+      pool.solve(i, model, pose);
       const g = gunFor(p.id, wid);
-      if (wid && g.body) {
-        g.group.visible = true;
-        const hand = P.shoulder - P.uarm - P.farm - 1.2;
-        rigPoint(inst, i, B.FARM_R, [0.6, hand, P.sw], _o);
-        g.group.position.set(_o.x, _o.y, _o.z);
-        const lower = s.sprint * 0.5 + (p.reloading > 0 ? 0.35 : 0);
-        const kick = s.shot < 0.12 ? (1 - s.shot / 0.12) * 0.12 : 0;
-        const dual = g.model && g.model.dual;
-        g.group.rotation.set(0, -s.a - (dual ? 0.12 : 0), -lower + kick + (s.down > 0.5 ? 0.08 : 0));
-        if (p.reloading > 0) g.group.rotation.x = Math.sin(p.reloading * Math.PI) * 0.6;
-        else g.group.rotation.x = 0;
-        // muzzle for tracers
-        g.group.updateMatrixWorld();
-        const mz = g.model.muzzle;
-        _p.set(mz[0], mz[1], mz[2]).applyMatrix4(g.group.matrixWorld);
-        let m = fx.muzzles.get(p.id);
-        if (!m) { m = { x: 0, h: 0, y: 0, now: 0 }; fx.muzzles.set(p.id, m); }
-        m.x = _p.x; m.h = _p.y; m.y = _p.z; m.now = time;
-      } else {
-        g.group.visible = false;
+      if (wid && g.obj && s.dead < 0.5) {
+        placeGun(i, model, p, s, g, hold, time);
+        pool.solve(i, model, pose);
+      } else if (g.obj) {
+        g.obj.visible = false;
+        if (g.left) g.left.visible = false;
       }
+      pool.color(i, T_SKIN, skinCol[cls], 0);
+      pool.color(i, T_CLOTH, outfitCol[cls], 0);
+      pool.color(i, T_CLOTH2, outfitCol[cls], 0.04 + s.down * 0.3);
+      pool.color(i, T_ACCENT, color, 0);
+      pool.color(i, T_HAIR, hairCol, p.id * 7.3);
+      pool.texel(i, T_FX, 0, 0, s.shot < 0.05 ? 0.25 : 0, 1);
+      pool.texel(i, T_FX2, 0, 0, 0, 0);
 
-      // flashlight cone from the head (alive/downed teammates)
-      if (p.state !== 'dead' && nc < CAP) {
-        rigPoint(inst, i, B.HEAD, [4.5, P.neck + 3, 0], _o);
-        const pitchDown = s.down > 0.5 ? 0.08 : 0.16;
-        _e.set(0, -s.a, -pitchDown);
+      // weapon light: from under the barrel, along the gun (alive/downed teammates)
+      if (p.state !== 'dead' && nc < CAP && g.obj && g.obj.visible) {
+        const mz = g.model.front;
+        _p.set(mz[0] + 3, mz[1] - 0.5, mz[2]).applyMatrix4(g.obj.matrixWorld);
+        _e.set(0, g.obj.rotation.y, g.obj.rotation.z * 0.7 - 0.08, 'YXZ');
         _q.setFromEuler(_e);
-        _p.set(_o.x, _o.y, _o.z);
         _m.compose(_p, _q, _s);
         cones.setMatrixAt(nc++, _m);
-        const d2 = (p.x - frame.camX) ** 2 + (p.y - frame.camY) ** 2;
-        nearLights.push(d2, p, s);
+        nearLights.push((p.x - frame.camX) ** 2 + (p.y - frame.camY) ** 2, p, s);
       }
     }
-    for (const cls of CLASS_IDS) bodies[cls].end();
+    pool.end();
     cones.count = nc;
     cones.visible = nc > 0;
     if (nc) cones.instanceMatrix.needsUpdate = true;
@@ -383,68 +388,174 @@ export function createPlayers3D(ctx) {
   function hideGun(pid, remove) {
     const g = guns.get(pid);
     if (!g) return;
-    g.group.visible = false;
-    if (remove) { g.group.removeFromParent(); guns.delete(pid); }
+    if (g.obj) g.obj.visible = false;
+    if (g.left) g.left.visible = false;
+    if (remove) {
+      if (g.obj) { g.obj.removeFromParent(); g.obj.userData.dispose(); }
+      if (g.left) { g.left.removeFromParent(); g.left.userData.dispose(); }
+      guns.delete(pid);
+    }
   }
 
-  function poseSoldier(inst, i, p, s, time, pistolGrip, back) {
-    const amp = Math.min(1.2, s.spd / 150);
+  // ---- body pose ----------------------------------------------------------------------------
+  function poseBody(p, s, time, hold) {
+    pose.reset();
+    const amp = Math.min(1.25, s.spd / 150);
     const sw = Math.sin(s.ph), cw = Math.cos(s.ph);
-    const breathe = Math.sin(time * 2 + p.id) * 0.02;
-    const ml = p.meleeing > 0 ? Math.sin(Math.min(1, p.meleeing) * Math.PI) : 0;
-    const kick = s.shot < 0.1 ? 1 - s.shot / 0.1 : 0;
-    const rl = p.reloading > 0 ? Math.sin(Math.min(1, p.reloading) * Math.PI) : 0;
-    // strafe: twist the hips toward the movement direction
-    const rel = angleDiff(s.a, s.mvA);
-    const twist = amp > 0.1 ? Math.max(-0.5, Math.min(0.5, back > 0 ? rel : angleDiff(s.a + Math.PI, s.mvA))) * 0.6 : 0;
-    let hipsX = 0, hipsY = -twist, hipsZ = 0, rootY = Math.abs(sw) * 1.6 * amp, rootX = 0;
-    let spineX = 0, spineY = twist, spineZ = -0.08 - s.sprint * 0.3 + breathe - kick * 0.05;
-    let headZ = 0.05 + s.sprint * 0.2, headX = 0;
-    let thL = sw * 0.6 * amp, thR = -sw * 0.6 * amp;
-    let shL = -Math.max(0, Math.sin(s.ph + 1.3)) * 0.9 * amp, shR = -Math.max(0, -Math.sin(s.ph + 1.3)) * 0.9 * amp;
-    // arms: aim the gun (rifle hold) / two-hand pistol
-    let uaR, faR, uaRX, uaL, faL, uaLX;
-    if (pistolGrip) {
-      uaR = 1.35 - s.sprint * 0.8; faR = 0.15; uaRX = -0.25;
-      uaL = 1.3 - s.sprint * 0.8; faL = 0.2; uaLX = 0.45;
-    } else {
-      uaR = 0.45 - s.sprint * 0.3 + kick * 0.1; faR = 1.25 + s.sprint * 0.2; uaRX = 0.1;
-      uaL = 1.05 - s.sprint * 0.4 - rl * 0.6; faL = 0.55 + rl * 0.5; uaLX = 0.62;
-    }
-    if (ml > 0) { uaR += ml * 0.6; uaL += ml * 0.8; spineZ -= ml * 0.3; rootX += ml * 3; }
-    // downed: fallen back, propped up on the left elbow, pistol held out at the aim
+    const breathe = Math.sin(time * 2 + p.id) * 0.015;
+    const fwd = s.fwd, side = s.side;
+    const run = s.sprint;
+    // legs: swing along the movement direction (forward/back and sideways for strafing)
+    const stride = 0.55 + run * 0.35;
+    let thL = sw * stride * amp * fwd, thR = -sw * stride * amp * fwd;
+    let thLX = sw * 0.3 * amp * side, thRX = -sw * 0.3 * amp * side;
+    const lift = (0.85 + run * 0.6) * amp;
+    let shL = -Math.max(0, Math.sin(s.ph + 1.3)) * lift - 0.08, shR = -Math.max(0, -Math.sin(s.ph + 1.3)) * lift - 0.08;
+    let ftL = Math.max(0, cw) * 0.3 * amp - 0.05, ftR = Math.max(0, -cw) * 0.3 * amp - 0.05;
+    let rootY = -Math.abs(cw) * (1.4 + run * 1.2) * amp + 0.6 * amp - 0.4, rootX = 0;
+    let hipsX = sw * 0.04 * amp, hipsY = -sw * 0.08 * amp * fwd, hipsZ = 0;
+    // stance: a slight crouch, weight forward, chest turned so the support shoulder leads
+    const rifle = hold === 'rifle';
+    let spineZ = -0.08 - run * 0.28 + breathe, spineY = 0, spineX = -side * 0.08;
+    let chestZ = -0.06 - run * 0.1 + breathe * 0.6, chestY = rifle ? -0.32 * (1 - run * 0.6) : hold === 'hip' ? -0.15 : 0, chestX = 0;
+    let neckY = -chestY * 0.55, headY = -chestY * 0.5, headZ = rifle ? -0.12 : 0.02, headX = rifle ? 0.12 : 0;
+    thL += 0.08; thR += 0.08; shL -= 0.12; shR -= 0.12; rootY -= 0.4;
+    // downed: fallen back, propped on the left elbow
     if (s.down > 0.01) {
       const k = s.down;
-      hipsZ = 1.42 * k; rootY = rootY * (1 - k) - (P.hip - 6) * k; rootX = 14 * k;
-      spineZ = spineZ * (1 - k) - 0.75 * k; spineY = 0; hipsY = 0;
-      headZ = headZ * (1 - k) - 0.55 * k;
-      uaR = uaR * (1 - k) + 0.95 * k; faR = faR * (1 - k) + 0.1 * k; uaRX = -0.1;
-      uaL = uaL * (1 - k) - 0.2 * k; faL = faL * (1 - k) + 0.9 * k; uaLX = -0.6 * k + uaLX * (1 - k);
-      thL = thL * (1 - k) + 0.25 * k + Math.sin(time * 1.5 + p.id) * 0.1 * k; thR = thR * (1 - k) - 0.1 * k;
-      shL = shL * (1 - k) - 0.6 * k; shR = shR * (1 - k) - 0.2 * k;
+      hipsZ = hipsZ * (1 - k) + 1.35 * k;
+      rootY = rootY * (1 - k) - (SP.hip - 6.5) * k; rootX = 13 * k;
+      spineZ = spineZ * (1 - k) - 0.55 * k; chestZ = chestZ * (1 - k) - 0.35 * k; chestY *= 1 - k; neckY *= 1 - k; headY *= 1 - k;
+      headZ = headZ * (1 - k) - 0.3 * k;
+      thL = thL * (1 - k) + (0.2 + Math.sin(time * 1.5 + p.id) * 0.1) * k; thR = thR * (1 - k) - 0.15 * k;
+      shL = shL * (1 - k) - 0.7 * k; shR = shR * (1 - k) - 0.25 * k; thLX *= 1 - k; thRX *= 1 - k;
     }
     // dead: flat on the back, limbs splayed
     if (s.dead > 0.01) {
       const k = s.dead;
-      hipsZ = 1.5 * k; rootY = -(P.hip - 4.5) * k; rootX = 10 * k;
-      spineZ = 0.05 * k; spineY = 0; hipsY = 0; headZ = 0.1 * k; headX = 0.9 * k;
-      uaR = 0.3 * k; faR = 0.2 * k; uaRX = 1.2 * k;
-      uaL = 1.9 * k; faL = 0.5 * k; uaLX = -1.0 * k;
-      thL = 0.1 * k; thR = -0.2 * k; shL = -0.3 * k; shR = -0.1 * k;
+      hipsZ = 1.52 * k; rootY = rootY * (1 - k) - (SP.hip - 4.2) * k; rootX = 10 * k;
+      spineZ = 0.05 * k; chestZ = 0; chestY = 0; spineY = 0; neckY = 0; headY = 0.6 * k; headZ = 0.1 * k; headX = 0.3 * k;
+      thL = 0.1 * k; thR = -0.2 * k; shL = -0.3 * k; shR = -0.1 * k; thLX = 0.1 * k; thRX = -0.15 * k;
+      pose.set(B.UARM_L, 1.1 * k, 0, 0.3 * k); pose.set(B.FARM_L, 0, 0, 0.6 * k);
+      pose.set(B.UARM_R, -1.3 * k, 0, 0.5 * k); pose.set(B.FARM_R, 0, 0, 0.3 * k);
+    } else {
+      // arms start hanging; IK sets them to the gun
+      pose.set(B.UARM_L, 0.1, 0, 0.2); pose.set(B.UARM_R, -0.1, 0, 0.2);
     }
-    inst.bone(i, B.HIPS, hipsX, hipsY, hipsZ);
-    inst.bone(i, B.SPINE, spineX, spineY, spineZ);
-    inst.bone(i, B.HEAD, headX, 0, headZ);
-    inst.bone(i, B.UARM_L, uaLX, 0, uaL);
-    inst.bone(i, B.FARM_L, 0, 0, faL);
-    inst.bone(i, B.UARM_R, uaRX, 0, uaR);
-    inst.bone(i, B.FARM_R, 0, 0, faR);
-    inst.bone(i, B.THIGH_L, 0, 0, thL);
-    inst.bone(i, B.SHIN_L, 0, 0, shL);
-    inst.bone(i, B.THIGH_R, 0, 0, thR);
-    inst.bone(i, B.SHIN_R, 0, 0, shR);
-    inst.texel(i, T_ROOT, rootX, rootY, 0, 0);
+    pose.set(B.HIPS, hipsX, hipsY, hipsZ);
+    pose.set(B.SPINE, spineX, spineY, spineZ);
+    pose.set(B.CHEST, chestX, chestY, chestZ);
+    pose.set(B.NECK, 0, neckY, 0.05);
+    pose.set(B.HEAD, headX, headY, headZ);
+    pose.set(B.THIGH_L, thLX, 0, thL);
+    pose.set(B.SHIN_L, 0, 0, shL);
+    pose.set(B.FOOT_L, 0, 0, ftL);
+    pose.set(B.THIGH_R, thRX, 0, thR);
+    pose.set(B.SHIN_R, 0, 0, shR);
+    pose.set(B.FOOT_R, 0, 0, ftR);
+    pose.root[0] = rootX; pose.root[1] = rootY;
   }
+
+  // gun grip position in body (root) space per hold, before animation offsets
+  const GRIP = {
+    rifle: [13.2, 43.6, 1.9], pistol: [18.5, 45.2, 0.8], dual: [17, 43.4, 4.6], hip: [10.5, 36.5, 4.8], shoulder: [4.5, 45.8, 6.6],
+  };
+  const _g = new THREE.Vector3(), _w = new THREE.Vector3(), _pole = new THREE.Vector3();
+
+  function placeGun(k, model, p, s, g, hold, time) {
+    const obj = g.obj, m = g.model;
+    const a = s.a, ca = Math.cos(a), sa = Math.sin(a);
+    const kick = s.shot < 0.12 ? (1 - s.shot / 0.12) : 0;
+    const rl = p.reloading > 0 ? Math.min(1, p.reloading) : 0;
+    const rlS = rl > 0 ? Math.sin(rl * Math.PI) : 0;
+    const ml = p.meleeing > 0 ? Math.sin(Math.min(1, p.meleeing) * Math.PI) : 0;
+    const run = s.sprint * (1 - s.down);
+    let gx, gy, gz, yaw = 0, pitch = 0, roll = 0;
+    if (s.down > 0.5) {
+      // downed: pistol held out from the chest (chest-relative)
+      pool.boneMatrix(k, B.CHEST, _mc);
+      _g.set(15, SP.chest + 4, 1.5).applyMatrix4(_mc);
+      gx = _g.x; gy = _g.y; gz = _g.z;
+      pitch = 0.12;
+    } else {
+      const G = GRIP[hold] || GRIP.rifle;
+      let lx = G[0], ly = G[1], lz = G[2];
+      // idle sway + walk bob
+      ly += Math.sin(time * 1.9 + p.id) * 0.25 - Math.abs(Math.cos(s.ph)) * 0.6 * Math.min(1, s.spd / 150);
+      lx += Math.sin(time * 1.3 + p.id * 2) * 0.2;
+      // sprint: low ready, muzzle down and across the body
+      lx -= run * 3.5; ly -= run * 5; lz -= run * 1.5; pitch -= run * 0.55; yaw += run * 0.55;
+      // recoil
+      lx -= kick * 1.8; pitch += kick * 0.14;
+      // reload: tilt the gun in toward the chest
+      lx -= rlS * 2; ly -= rlS * 2.2; lz -= rlS * 1.4; roll += rlS * 0.7; pitch -= rlS * 0.25; yaw += rlS * 0.25;
+      // melee: shove forward with the butt/muzzle
+      lx += ml * 6; ly += ml * 1.5; pitch += ml * 0.15; yaw -= ml * 0.3;
+      const bob = pose.root[1];
+      gx = p.x + ca * lx - sa * lz; gz = p.y + sa * lx + ca * lz; gy = ly + bob;
+    }
+    obj.visible = true;
+    obj.position.set(gx, gy, gz);
+    obj.rotation.set(roll, -a + yaw, pitch, 'YXZ');
+    obj.updateMatrixWorld();
+    // IK both arms to the gun
+    pool.boneMatrix(k, B.CHEST, _mc);
+    const R = rotOfMatrix4(_mc, Rc);
+    rotOfMatrix4(obj.matrixWorld, gunRot);
+    // right hand on the grip
+    W.copy(WR_R).applyMatrix4(obj.matrixWorld);
+    _pole.set(-0.4 * ca - 0.8 * -sa, -1, -0.4 * sa + 0.8 * ca);          // elbow down, out to the right, back
+    solveArm(k, model, 1, _pole, gunRot);
+    // support hand
+    if (m.dual && g.left) {
+      g.left.visible = true;
+      _w.set(-2 * lzSign(hold), 0, 0);
+      const lx2 = obj.position.x - (-sa) * 9.2, lz2 = obj.position.z - ca * 9.2;
+      g.left.position.set(lx2, obj.position.y, lz2);
+      g.left.rotation.set(-roll, -a - yaw, pitch, 'YXZ');
+      g.left.updateMatrixWorld();
+      rotOfMatrix4(g.left.matrixWorld, T9);
+      for (let i = 0; i < 9; i++) Rh[i] = T9[i];
+      W.set(WR_R.x, WR_R.y, -WR_R.z).applyMatrix4(g.left.matrixWorld);
+      _pole.set(-0.4 * ca + 0.8 * -sa, -1, -0.4 * sa - 0.8 * ca);
+      const saveRh = Float64Array.from(Rh);
+      solveArm(k, model, -1, _pole, saveRh);
+    } else {
+      if (g.left) g.left.visible = false;
+      let t;
+      if (hold === 'pistol') t = _w.set(-0.3, 0.8, -1.9);                 // cupping the firing hand
+      else t = _w.set(m.front[0] - 0.8, m.front[1] - 1.6, m.front[2] - 1.0);
+      if (rl > 0 && hold !== 'pistol') {
+        // support hand: to the mag well, down to a pouch, back up, onto the foregrip
+        const mag = [2.5, -2.5, -0.9];
+        if (rl < 0.25) t.lerp(_g.set(...mag), rl / 0.25);
+        else if (rl < 0.5) t.set(...mag).lerp(_g.set(-2, -14, -4), (rl - 0.25) / 0.25);
+        else if (rl < 0.75) t.set(-2, -14, -4).lerp(_g.set(...mag), (rl - 0.5) / 0.25);
+        else t.set(...mag).lerp(_g.set(m.front[0] - 0.8, m.front[1] - 1.6, m.front[2] - 1.0), (rl - 0.75) / 0.25);
+      }
+      W.copy(t).applyMatrix4(obj.matrixWorld);
+      // palm up under the handguard: rotate the hand about the barrel axis
+      const rr = hold === 'pistol' ? 0.5 : 1.35;
+      hand90[0] = 1; hand90[1] = 0; hand90[2] = 0;
+      hand90[3] = 0; hand90[4] = Math.cos(rr); hand90[5] = -Math.sin(rr);
+      hand90[6] = 0; hand90[7] = Math.sin(rr); hand90[8] = Math.cos(rr);
+      mulNN(Rh, gunRot, hand90);
+      _pole.set(-0.5 * ca + 0.6 * -sa, -1, -0.5 * sa - 0.6 * ca);          // elbow down, out to the left
+      const saveRh = Float64Array.from(Rh);
+      solveArm(k, model, -1, _pole, saveRh);
+    }
+    void R;
+    // muzzle for tracers
+    const mz = m.muzzle;
+    _p.set(mz[0], mz[1], mz[2]).applyMatrix4(obj.matrixWorld);
+    let mm = fx.muzzles.get(p.id);
+    if (!mm) { mm = { x: 0, h: 0, y: 0, now: 0 }; fx.muzzles.set(p.id, mm); }
+    mm.x = _p.x; mm.h = _p.y; mm.y = _p.z; mm.now = time;
+    // spinning barrels / pump
+    if (obj.userData.animate) obj.userData.animate({ spin: p.spin || 0, dt: 1 / 60, shot: s.shot, time });
+    if (g.left && g.left.visible && g.left.userData.animate) g.left.userData.animate({ spin: 0, dt: 1 / 60, shot: s.shot, time });
+  }
+  const lzSign = () => 1;
 
   function addEvents(events) {
     if (!events) return;
@@ -462,11 +573,14 @@ export function createPlayers3D(ctx) {
     addEvents,
     setQuality(q) {
       high = q !== 'low';
-      for (const cls of CLASS_IDS) bodies[cls].mesh.castShadow = high;
-      for (const g of guns.values()) if (g.body) g.body.castShadow = high;
+      for (const cls of CLASS_IDS) bodies[cls].forEach((m, L) => { m.mesh.castShadow = high; m.mesh.receiveShadow = high && L === 0; });
+      for (const g of guns.values()) for (const o of [g.obj, g.left]) if (o) o.traverse((c) => { if (c.isMesh) c.castShadow = high; });
     },
     dispose() {
-      for (const cls of CLASS_IDS) bodies[cls].dispose();
+      for (const pid of [...guns.keys()]) hideGun(pid, true);
+      pool.dispose();
+      tex.detail.dispose();
+      tex.normal.dispose();
       coneGeo.dispose();
       coneMat.dispose();
       cones.dispose();

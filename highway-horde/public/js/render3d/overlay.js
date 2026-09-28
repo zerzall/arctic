@@ -8,15 +8,18 @@
 // toward off-screen downed teammates and the objective while it is under attack (the
 // compass and radar already show everything else), a pulsing low-hp vignette and a red
 // tint while downed. settings.crosshair === false (a menu covers the view) hides the
-// crosshair and markers.
+// crosshair and markers. Everything is sized by `ui` = settings.uiScale (the UI passes it
+// every frame: ~1.08 at 1080p, 1.44 at 1440p, 2.16 at 4K, 1 on touch; 1 when absent), so
+// on a large PC screen the crosshair, tags and markers keep their on-screen proportions
+// instead of shrinking to hairlines; the canvas is drawn at the device pixel ratio, so
+// they stay crisp.
 
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS, BLEEDOUT_TIME } from '../shared/constants.js';
 import { angleDiff } from './actor-kit.js';
 
 const TAU = Math.PI * 2;
-const FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const FONT_SMALL = '700 10px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const TAG_H = 74;          // name tag height above a standing teammate's feet (world units)
 
 /**
@@ -29,6 +32,17 @@ export function createOverlay3D(ctx) {
   let objHitAt = -99;         // frame.now of the last 'objhit' (the objective pointer shows a while)
   const arcs = [];            // { a (world angle from the player to the source), age, amount }
   let lastLocal = null;
+  // UI scale and fonts for the current viewport (see header)
+  let ui = 1, FONT = '', FONT_SMALL = '', fontFor = 0;
+  function setScale(settings) {
+    const k = Number(settings && settings.uiScale);
+    ui = Number.isFinite(k) && k > 0 ? Math.max(0.5, Math.min(4, k)) : 1;
+    if (ui !== fontFor) {
+      fontFor = ui;
+      FONT = `600 ${Math.round(12 * ui)}px ${FONT_FAMILY}`;
+      FONT_SMALL = `700 ${Math.round(10 * ui)}px ${FONT_FAMILY}`;
+    }
+  }
 
   function size() {
     const c = g.canvas;
@@ -89,6 +103,7 @@ export function createOverlay3D(ctx) {
     const { w: W, h: H } = size();
     if (!(W > 0 && H > 0)) return;
     const settings = frame.settings || {};
+    setScale(settings);
     const yaw = frame.yaw || 0;
     hitT += dt; killT += dt;
     bloom = Math.max(0, bloom - dt * 2.2);
@@ -118,15 +133,15 @@ export function createOverlay3D(ctx) {
     const sprint = local.sprinting ? 1 : 0;
     // The gap follows the gun's real spread, capped: a shotgun's full cone is a ~140 px
     // ring at 1600x900 that frames half the target instead of pointing at it.
-    const gap = Math.min(H * 0.075, Math.max(5, Math.tan(spread) * pxPerRad * 0.9)) + bloom * 14 + sprint * 10;
-    const len = 7;
+    const gap = Math.min(H * 0.075, Math.max(5 * ui, Math.tan(spread) * pxPerRad * 0.9)) + (bloom * 14 + sprint * 10) * ui;
+    const len = 7 * ui;
     const alpha = sprint ? 0.35 : 0.95;
     const reloading = local.reloading > 0;
     g.globalAlpha = alpha;
     // dark outline under a white core so it reads on bright fire and dark sky alike
     for (const pass of [0, 1]) {
       g.strokeStyle = pass ? '#ffffff' : 'rgba(0,0,0,0.75)';
-      g.lineWidth = pass ? 2 : 4;
+      g.lineWidth = (pass ? 2 : 4) * ui;
       g.beginPath();
       if (w && w.category === 'shotgun') {
         // four short arcs: reads as a spread ring without a heavy circle over the target
@@ -144,13 +159,13 @@ export function createOverlay3D(ctx) {
       g.stroke();
     }
     g.fillStyle = '#ffffff';
-    g.fillRect(cx - 1, cy - 1, 2, 2);
+    g.fillRect(cx - ui, cy - ui, 2 * ui, 2 * ui);
     if (reloading) {
-      const r = gap + len + 8;
-      g.lineWidth = 4;
+      const r = gap + len + 8 * ui;
+      g.lineWidth = 4 * ui;
       g.strokeStyle = 'rgba(0,0,0,0.55)';
       g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.stroke();
-      g.lineWidth = 2.5;
+      g.lineWidth = 2.5 * ui;
       g.strokeStyle = '#ffd54f';
       g.beginPath(); g.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, local.reloading)); g.stroke();
     }
@@ -158,16 +173,16 @@ export function createOverlay3D(ctx) {
     // hit marker: white X; kill marker: bigger red X that punches in
     if (hitT < 0.22) {
       const k = 1 - hitT / 0.22;
-      const s = 7 + hitHeavy * 4, o = gap * 0.5 + 5;
+      const s = (7 + hitHeavy * 4) * ui, o = gap * 0.5 + 5 * ui;
       g.globalAlpha = k;
-      xMark(cx, cy, o, s, '#ffffff', 2.2);
+      xMark(cx, cy, o, s, '#ffffff', 2.2 * ui);
       g.globalAlpha = 1;
     }
     if (killT < 0.45) {
       const k = 1 - killT / 0.45;
       const pop = 1 + Math.max(0, 0.12 - killT) * 4;
       g.globalAlpha = Math.min(1, k * 1.4);
-      xMark(cx, cy, (gap * 0.5 + 8) * pop, 11 * pop, '#ff3b30', 3.2);
+      xMark(cx, cy, (gap * 0.5 + 8 * ui) * pop, 11 * ui * pop, '#ff3b30', 3.2 * ui);
       g.globalAlpha = 1;
     }
   }
@@ -175,7 +190,7 @@ export function createOverlay3D(ctx) {
   function xMark(cx, cy, o, s, color, lw) {
     for (const pass of [0, 1]) {
       g.strokeStyle = pass ? color : 'rgba(0,0,0,0.7)';
-      g.lineWidth = pass ? lw : lw + 2;
+      g.lineWidth = pass ? lw : lw + 2 * ui;
       g.beginPath();
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         g.moveTo(cx + sx * o, cy + sy * o);
@@ -216,55 +231,55 @@ export function createOverlay3D(ctx) {
       if (fade <= 0 && !downed) continue;
       g.globalAlpha = downed ? 1 : fade;
       if (settings.showNames !== false) {
-        g.lineWidth = 3;
+        g.lineWidth = 3 * ui;
         g.strokeStyle = 'rgba(0,0,0,0.8)';
-        g.strokeText(name, s.x, s.y - 8);
+        g.strokeText(name, s.x, s.y - 8 * ui);
         g.fillStyle = color;
-        g.fillText(name, s.x, s.y - 8);
+        g.fillText(name, s.x, s.y - 8 * ui);
       }
       // hp bar
-      const bw = 40, bh = 4;
+      const bw = 40 * ui, bh = 4 * ui;
       const f = Math.max(0, Math.min(1, p.hp / (p.maxHp || 100)));
       g.fillStyle = 'rgba(0,0,0,0.65)';
-      g.fillRect(s.x - bw / 2 - 1, s.y - 5, bw + 2, bh + 2);
+      g.fillRect(s.x - bw / 2 - ui, s.y - 5 * ui, bw + 2 * ui, bh + 2 * ui);
       g.fillStyle = f > 0.5 ? '#7dff9a' : f > 0.25 ? '#ffd54f' : '#ff5252';
-      g.fillRect(s.x - bw / 2, s.y - 4, bw * f, bh);
+      g.fillRect(s.x - bw / 2, s.y - 4 * ui, bw * f, bh);
       if (p.armor > 0) {
         g.fillStyle = '#64b5f6';
-        g.fillRect(s.x - bw / 2, s.y, bw * Math.min(1, p.armor / 100), 1.5);
+        g.fillRect(s.x - bw / 2, s.y, bw * Math.min(1, p.armor / 100), 1.5 * ui);
       }
-      if (downed) reviveRing(p, s.x, s.y + 26);
+      if (downed) reviveRing(p, s.x, s.y + 26 * ui);
       g.globalAlpha = 1;
     }
   }
 
   function reviveRing(p, x, y) {
     const pulse = 0.6 + Math.sin(now * 6) * 0.4;
-    const R = 16;
-    g.lineWidth = 4;
+    const R = 16 * ui;
+    g.lineWidth = 4 * ui;
     g.strokeStyle = 'rgba(0,0,0,0.6)';
     g.beginPath(); g.arc(x, y, R, 0, TAU); g.stroke();
     // bleedout drains the red ring; revive progress fills green over it
     const bleed = Math.max(0, Math.min(1, (p.bleedout || 0) / BLEEDOUT_TIME));
     g.strokeStyle = `rgba(255,70,60,${0.5 + pulse * 0.5})`;
-    g.lineWidth = 3;
+    g.lineWidth = 3 * ui;
     g.beginPath(); g.arc(x, y, R, -Math.PI / 2, -Math.PI / 2 + TAU * bleed); g.stroke();
     if (p.revive > 0) {
       g.strokeStyle = '#7dff9a';
-      g.lineWidth = 4;
-      g.beginPath(); g.arc(x, y, R + 5, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, p.revive)); g.stroke();
+      g.lineWidth = 4 * ui;
+      g.beginPath(); g.arc(x, y, R + 5 * ui, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, p.revive)); g.stroke();
     }
     g.fillStyle = '#ff5252';
-    g.fillRect(x - 2, y - 7, 4, 14);
-    g.fillRect(x - 7, y - 2, 14, 4);
+    g.fillRect(x - 2 * ui, y - 7 * ui, 4 * ui, 14 * ui);
+    g.fillRect(x - 7 * ui, y - 2 * ui, 14 * ui, 4 * ui);
     g.font = FONT_SMALL;
     g.textBaseline = 'top';
-    g.lineWidth = 3;
+    g.lineWidth = 3 * ui;
     g.strokeStyle = 'rgba(0,0,0,0.8)';
     const txt = p.revive > 0 ? 'REVIVING' : Math.ceil(p.bleedout || 0) + 's';
-    g.strokeText(txt, x, y + R + 4);
+    g.strokeText(txt, x, y + R + 4 * ui);
     g.fillStyle = p.revive > 0 ? '#7dff9a' : '#ffb4ae';
-    g.fillText(txt, x, y + R + 4);
+    g.fillText(txt, x, y + R + 4 * ui);
     g.font = FONT;
     g.textBaseline = 'bottom';
   }
@@ -289,6 +304,7 @@ export function createOverlay3D(ctx) {
     g.translate(px, py);
     g.rotate(Math.atan2(dy, dx));
     g.globalAlpha = pulse;
+    g.scale(ui, ui);
     g.fillStyle = 'rgba(0,0,0,0.6)';
     g.beginPath(); g.moveTo(14, 0); g.lineTo(-8, -10); g.lineTo(-4, 0); g.lineTo(-8, 10); g.closePath(); g.fill();
     g.fillStyle = color;
@@ -299,8 +315,8 @@ export function createOverlay3D(ctx) {
       g.font = FONT_SMALL;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      const lx = px - dx * 24, ly = py - dy * 20;
-      g.lineWidth = 3;
+      const lx = px - dx * 24 * ui, ly = py - dy * 20 * ui;
+      g.lineWidth = 3 * ui;
       g.strokeStyle = 'rgba(0,0,0,0.8)';
       g.strokeText(label + ' ' + d + 'm', lx, ly);
       g.fillStyle = color;
@@ -343,10 +359,10 @@ export function createOverlay3D(ctx) {
       const span = 0.35 + Math.min(0.4, a.amount / 60);
       const ang = rel - Math.PI / 2;           // screen angle (0 = right, -π/2 = up/ahead)
       g.globalAlpha = k2;
-      g.lineWidth = 10;
+      g.lineWidth = 10 * ui;
       g.strokeStyle = 'rgba(40,0,0,0.5)';
       g.beginPath(); g.arc(cx, cy, R, ang - span, ang + span); g.stroke();
-      g.lineWidth = 6;
+      g.lineWidth = 6 * ui;
       g.strokeStyle = '#ff3b30';
       g.beginPath(); g.arc(cx, cy, R, ang - span, ang + span); g.stroke();
       g.globalAlpha = 1;

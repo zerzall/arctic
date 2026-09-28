@@ -6,9 +6,14 @@
 // the ground: the tiles there are subdivided at the water edges and lowered, with muddy
 // banks (or a vertical drop where a bridge deck crosses).
 //
-// The ground material is a MeshStandardMaterial with a small shader patch: a tiling
-// detail texture adds grain up close, and grey surfaces (asphalt, concrete, lane paint)
-// become glossy and get puddles, so street lamps and the flashlight glint off wet roads.
+// The ground material is a MeshStandardMaterial with a shader patch. A map-wide surface
+// mask (asphalt / concrete / grass / loose ground, plus obstacle footprints in alpha)
+// picks tiling detail layers from the world's detail texture array (world-surf.js):
+// asphalt aggregate, poured slabs with joints, grass and gravel/dirt normals and
+// roughness, each sampled at two scales so the ground stays crisp at the eye on a 4K
+// screen without visible tiling. Hard surfaces are wet: glossy, with dark puddles in a
+// world-space noise mask that mirror the lamps (scene.environment + the light pool), and
+// the lane paint is worn through in places. 'low' uses a plain Lambert with the albedo.
 //
 // Decals (blood, scorch, acid, oil, gore) are painted into the tile canvases; dirty tiles
 // are re-uploaded one per frame, nearest to the camera first. Memory is fixed: the
@@ -34,9 +39,10 @@ const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
  * @param {object} o { scene, map, quality, renderer }
  * @returns {{ meshes, decal, update, waters, heightAt, dispose, stats }}
  */
-export function createGround({ scene, map, quality, renderer }) {
+export function createGround({ scene, map, quality, renderer, detail }) {
   const high = quality !== 'low';
   const ultra = quality === 'ultra';
+  let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
   // texels per world unit: ultra paints the ground at full detail
   const scale = ultra ? 1 : high ? 0.75 : 0.5;
   const maxAniso = renderer ? Math.min(ultra ? 16 : high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
@@ -71,9 +77,14 @@ export function createGround({ scene, map, quality, renderer }) {
   addSkirt(-SKIRT, 0, 0, H);
   addSkirt(W, 0, W + SKIRT, H);
 
-  const detail = makeDetailTexture();
-  detail.anisotropy = maxAniso;
-  const uniforms = { detailMap: { value: detail }, wetness: { value: 1 } };
+  const noiseTex = makeDetailTexture();
+  noiseTex.anisotropy = maxAniso;
+  const mask = buildMask(prep, ext, map, SKIRT);
+  const uniforms = {
+    detailMap: { value: noiseTex }, wetness: { value: 1 }, uDetail: { value: detail || null },
+    uMask: { value: mask.texture }, uMaskRect: { value: new THREE.Vector4(mask.x0, mask.y0, mask.w, mask.h) },
+    uTime: { value: 0 }, uRain: { value: 0 },
+  };
   const meshes = [];
   const group = new THREE.Group();
   group.name = 'ground';
@@ -96,7 +107,7 @@ export function createGround({ scene, map, quality, renderer }) {
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     t.texture = tex;
-    const mat = makeGroundMaterial(tex, uniforms);
+    const mat = tier !== 'low' ? makeGroundMaterial(tex, uniforms) : makeLowMaterial(tex);
     const geo = tileGeometry(t, waters);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
@@ -200,6 +211,7 @@ export function createGround({ scene, map, quality, renderer }) {
 
   /** Upload dirty tiles (rate-limited, nearest to the camera first). */
   function update(frame) {
+    uniforms.uTime.value = (uniforms.uTime.value + Math.min(0.1, (frame && frame.dt) || 0.016)) % 1000;
     if (uploadWait > 0) { uploadWait--; return; }
     _dirty.length = 0;
     for (let i = 0; i < innerCols * innerRows; i++) if (tiles[i].dirty) _dirty.push(tiles[i]);
@@ -226,18 +238,40 @@ export function createGround({ scene, map, quality, renderer }) {
   function dispose() {
     for (const t of tiles) {
       t.mesh.geometry.dispose();
+      if (t.hiMat) t.hiMat.dispose();
+      if (t.lowMat) t.lowMat.dispose();
       t.mesh.material.dispose();
       t.texture.dispose();
       t.canvas.width = 1; t.canvas.height = 1;
     }
-    detail.dispose();
+    noiseTex.dispose();
+    mask.texture.dispose();
     scene.remove(group);
     tiles.length = 0;
   }
 
+  /** 'low' swaps every tile to a plain Lambert (and back); the PBR materials are kept. */
+  function setQuality(q) {
+    const nt = q === 'low' || q === 'ultra' ? q : 'high';
+    if (nt === tier) return;
+    tier = nt;
+    for (const t of tiles) {
+      const cur = t.mesh.material;
+      if (tier === 'low') {
+        if (!cur.isMeshLambertMaterial) { t.hiMat = cur; t.mesh.material = t.lowMat || (t.lowMat = makeLowMaterial(t.texture)); }
+      } else if (cur.isMeshLambertMaterial && uniforms.uDetail.value) {
+        t.lowMat = cur;
+        t.mesh.material = t.hiMat || (t.hiMat = makeGroundMaterial(t.texture, uniforms));
+      }
+    }
+  }
+
   return {
-    meshes, group, decal, update, waters, heightAt, dispose,
-    get stats() { return { tiles: tiles.length, uploads, decals }; },
+    meshes, group, decal, update, waters, heightAt, dispose, setQuality,
+    /** Surface mask: RGBA = asphalt, concrete, grass, free of obstacles; rect in world units. */
+    mask,
+    uniforms,
+    get stats() { return { tiles: tiles.length, uploads, decals, mask: [mask.texture.image.width, mask.texture.image.height] }; },
     /** Wetness 0..1 of hard surfaces (shader uniform). */
     setWetness(v) { uniforms.wetness.value = v; },
   };
@@ -373,40 +407,188 @@ function tileGeometry(t, waters) {
   return g;
 }
 
+// ---- surface mask ---------------------------------------------------------------------------
+
+const MASK_SCALE = 0.2;   // texels per world unit (1 texel = 5 units ≈ 15 cm, blended linearly)
+
+/**
+ * Paint the surface kinds of the (extended) map into an RGBA mask: R asphalt, G concrete,
+ * B grass (grass-coloured base ground included), A = 1 where no obstacle stands (grass is
+ * not grown inside cars and walls). Loose ground (dirt, gravel, sand) is what is left.
+ */
+function buildMask(prep, ext, map, skirt) {
+  const x0 = -skirt, y0 = -skirt, w = map.width + skirt * 2, h = map.height + skirt * 2;
+  const cw = Math.ceil(w * MASK_SCALE), ch = Math.ceil(h * MASK_SCALE);
+  const c = document.createElement('canvas');
+  c.width = cw;
+  c.height = ch;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  const gc = new THREE.Color(map.ground);
+  const grassy = gc.g >= gc.r * 0.95;
+  g.fillStyle = grassy ? 'rgb(0,0,255)' : 'rgb(0,0,0)';
+  g.fillRect(0, 0, cw, ch);
+  g.setTransform(MASK_SCALE, 0, 0, MASK_SCALE, -x0 * MASK_SCALE, -y0 * MASK_SCALE);
+  const col = { asphalt: 'rgb(255,0,0)', concrete: 'rgb(0,255,0)', grass: 'rgb(0,0,255)', dirt: 'rgb(0,0,0)', gravel: 'rgb(0,0,0)', sand: 'rgb(0,0,0)', water: 'rgb(0,0,0)' };
+  for (const A of prep.areas) {
+    g.fillStyle = col[A.def.kind] || 'rgb(0,0,0)';
+    g.fill(A.path);
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const img = g.getImageData(0, 0, cw, ch);
+  c.width = 1; c.height = 1;
+  const data = new Uint8Array(img.data.buffer.slice(0));
+  for (let i = 3; i < data.length; i += 4) data[i] = 255;
+  // obstacle footprints (+ a small margin) → alpha 0
+  const obs = map.obstacles.concat(map.objective ? [map.objective] : []);
+  for (const o of obs) {
+    const ca = Math.cos(o.a || 0), sa = Math.sin(o.a || 0);
+    const hw = o.w / 2 + 3, hh = o.h / 2 + 3;
+    const ex = Math.abs(ca) * hw + Math.abs(sa) * hh, ey = Math.abs(sa) * hw + Math.abs(ca) * hh;
+    const px0 = Math.max(0, Math.floor((o.x - ex - x0) * MASK_SCALE)), px1 = Math.min(cw - 1, Math.ceil((o.x + ex - x0) * MASK_SCALE));
+    const py0 = Math.max(0, Math.floor((o.y - ey - y0) * MASK_SCALE)), py1 = Math.min(ch - 1, Math.ceil((o.y + ey - y0) * MASK_SCALE));
+    for (let py = py0; py <= py1; py++) {
+      for (let px = px0; px <= px1; px++) {
+        const wx = x0 + (px + 0.5) / MASK_SCALE - o.x, wy = y0 + (py + 0.5) / MASK_SCALE - o.y;
+        const lx = wx * ca + wy * sa, ly = -wx * sa + wy * ca;
+        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) data[(py * cw + px) * 4 + 3] = 0;
+      }
+    }
+  }
+  // water (+ its banks) → alpha 0 too: nothing grows on the river
+  for (const a of ext.areas) {
+    if (a.kind !== 'water') continue;
+    const m = WATER.bank + 10;
+    const px0 = Math.max(0, Math.floor((a.x - a.w / 2 - m - x0) * MASK_SCALE)), px1 = Math.min(cw - 1, Math.ceil((a.x + a.w / 2 + m - x0) * MASK_SCALE));
+    const py0 = Math.max(0, Math.floor((a.y - a.h / 2 - m - y0) * MASK_SCALE)), py1 = Math.min(ch - 1, Math.ceil((a.y + a.h / 2 + m - y0) * MASK_SCALE));
+    for (let py = py0; py <= py1; py++) for (let px = px0; px <= px1; px++) data[(py * cw + px) * 4 + 3] = 0;
+  }
+  const tex = new THREE.DataTexture(data, cw, ch, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return { texture: tex, x0, y0, w, h, data, cw, ch };
+}
+
 // ---- material -----------------------------------------------------------------------------
 
-function makeGroundMaterial(tex, uniforms) {
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0 });
+function makeLowMaterial(tex) {
+  const mat = new THREE.MeshLambertMaterial({ map: tex });
+  // the same lift of the dark painted surfaces as the PBR version (else 'low' is murkier)
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.detailMap = uniforms.detailMap;
-    shader.uniforms.wetness = uniforms.wetness;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      diffuseColor.rgb *= mix(1.45, 1.0, smoothstep(0.08, 0.35, dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))));`);
+  };
+  mat.customProgramCacheKey = () => 'hh-ground-low-v1';
+  return mat;
+}
+
+function makeGroundMaterial(tex, uniforms) {
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0, envMapIntensity: 0.7 });
+  mat.onBeforeCompile = (shader) => {
+    for (const k of Object.keys(uniforms)) shader.uniforms[k] = uniforms[k];
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vGroundXZ;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvGroundXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vGroundXZ;\nuniform sampler2D detailMap;\nuniform float wetness;\nfloat gHard;\nfloat gPuddle;\nvec4 gDet;')
+      .replace('#include <common>', `#include <common>
+        varying vec2 vGroundXZ;
+        uniform sampler2D detailMap;
+        uniform highp sampler2DArray uDetail;
+        uniform sampler2D uMask;
+        uniform vec4 uMaskRect;
+        uniform float wetness, uTime, uRain;
+        float gHard, gPuddle, gMip;
+        vec4 gD;
+        // the micro-grain layer for the dominant surface
+        float gHardLayer(float a, float c, float g) {
+          float l = 1.0 - a - c - g;
+          float m = max(max(a, c), max(g, l));
+          // asphalt grain, stucco-fine concrete grain (slab joints would tile at this scale), grass, dirt
+          return m == a ? 16.0 : m == c ? 13.0 : m == g ? 18.0 : 22.0;
+        }
+        // one detail layer at two scales (the second rotated) so it never visibly tiles
+        vec4 gLayer(float layer, float tile, vec2 xz) {
+          vec4 a = texture(uDetail, vec3(xz / tile, layer));
+          vec2 r = vec2(xz.x * 0.8 - xz.y * 0.6, xz.x * 0.6 + xz.y * 0.8);
+          vec4 b = texture(uDetail, vec3(r / (tile * 3.7) + 0.37, layer));
+          return vec4(mix(a.xy, b.xy, 0.3), (a.b + b.b) * 0.5, a.a * 0.7 + b.a * 0.3);
+        }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
-        gDet = texture2D(detailMap, vGroundXZ / 90.0);
-        vec4 gDet2 = texture2D(detailMap, vGroundXZ / 820.0 + vec2(0.37, 0.61));
+        vec2 xz = vGroundXZ;
+        vec4 mk = texture2D(uMask, (xz - uMaskRect.xy) / uMaskRect.zw);
+        float wA = mk.r, wC = mk.g, wG = mk.b, wL = max(0.0, 1.0 - wA - wC - wG);
+        vec4 gN = texture2D(detailMap, xz / 820.0 + vec2(0.37, 0.61));
+        vec4 gF = texture2D(detailMap, xz / 90.0);
+        gD = vec4(0.0);
+        float gW = 0.0;
+        if (wA > 0.02) { gD += gLayer(16.0, 30.0, xz) * wA; gW += wA; }
+        if (wC > 0.02) { gD += gLayer(17.0, 128.0, xz) * wC; gW += wC; }
+        if (wG > 0.02) { gD += gLayer(18.0, 40.0, xz) * wG; gW += wG; }
+        if (wL > 0.02) {
+          // loose ground: dirt, with patches of gravel
+          float gv = smoothstep(0.4, 0.6, gN.r);
+          gD += mix(gLayer(22.0, 44.0, xz), gLayer(19.0, 26.0, xz), gv) * wL;
+          gW += wL;
+        }
+        gD /= max(gW, 1e-3);
+        // minification level of the detail (texels per pixel): far away the averaged normal
+        // map would sparkle on the glossy wet road, so detail fades and roughness rises
+        vec2 gDx = dFdx(xz), gDy = dFdy(xz);
+        gMip = clamp(log2(max(length(gDx), length(gDy)) * 256.0 / 30.0), 0.0, 8.0);
+        {
+          // micro grain at the player's feet (4K: the layers alone were magnified there)
+          float near = 1.0 - smoothstep(60.0, 240.0, length(vViewPosition));
+          if (near > 0.0) {
+            vec4 m = texture(uDetail, vec3(xz / 8.5 + 0.13, gHardLayer(wA, wC, wG)));
+            gD.xy += (m.xy - 0.5) * 0.6 * near;
+            gD.a *= 1.0 + (m.a - 0.5) * 0.3 * near;
+          }
+        }
         float gMax = max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b);
         float gMin = min(min(diffuseColor.r, diffuseColor.g), diffuseColor.b);
         float gSat = (gMax - gMin) / max(gMax, 0.001);
-        // grey = asphalt, concrete, white paint; yellow paint is saturated but bright
-        gHard = (1.0 - smoothstep(0.2, 0.42, gSat)) + smoothstep(0.25, 0.4, gMax) * step(0.42, gSat) * 0.8;
-        gHard = clamp(gHard, 0.0, 1.0);
+        gHard = clamp(wA + wC, 0.0, 1.0);
+        // lane paint: bright, grey or yellow, on a hard surface — worn through in places
+        float gPaint = smoothstep(0.2, 0.34, gMax) * gHard * (1.0 - smoothstep(0.55, 0.8, gSat) * step(gMax, 0.3));
+        float gWear = smoothstep(0.46, 0.64, texture2D(detailMap, xz / 11.0).g * 0.6 + gF.r * 0.4);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.036, 0.04), gPaint * gWear * 0.75);
         // the painted tiles were tuned for a darkness overlay: lift the dark surfaces for
         // real lighting, but leave bright paint and litter as they are (no glare)
         float gLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-        diffuseColor.rgb *= (0.72 + 0.56 * gDet.r) * mix(1.5, 1.0, smoothstep(0.08, 0.35, gLum));
-        diffuseColor.rgb *= 0.86 + 0.28 * gDet2.b;
-        gPuddle = smoothstep(0.56, 0.66, gDet2.g) * gHard * wetness;
-        diffuseColor.rgb *= 1.0 - gPuddle * 0.55 - gHard * wetness * 0.12;`)
+        diffuseColor.rgb *= mix(1.45, 1.0, smoothstep(0.08, 0.35, gLum));
+        diffuseColor.rgb *= (0.8 + 0.4 * gD.a) * (0.9 + 0.2 * gN.b);
+        // puddles: low spots of a broad noise on hard ground (and some on packed dirt)
+        float gP = smoothstep(0.575, 0.66, gN.g * 0.85 + gF.g * 0.15);
+        gPuddle = gP * (wA + wC * 0.6 + wL * 0.08) * wetness * (1.0 - gPaint * 0.5);
+        diffuseColor.rgb *= 1.0 - gPuddle * 0.75 - gHard * wetness * 0.1;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(0.95, 0.42 - 0.12 * gDet.g, gHard * wetness);
-        roughnessFactor = mix(roughnessFactor, 0.05, gPuddle);`);
+        float gR = mix(0.92, 0.5, gHard * wetness) + (gD.b - 0.5) * 0.5;
+        gR = mix(gR, 0.32, gPaint * 0.5);
+        gR = max(gR, clamp(gMip * 0.09 - 0.05, 0.0, 0.3));
+        roughnessFactor = mix(clamp(gR, 0.08, 1.0), 0.06, gPuddle);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          // world-aligned tangent frame: u = +x, v = +z, the flat ground's normal = +y
+          vec2 dn = (gD.xy * 2.0 - 1.0) * (1.0 - gPuddle * 0.97) * 0.9 * (1.0 - clamp(gMip * 0.12 - 0.1, 0.0, 0.55));
+          if (uRain > 0.0) {
+            // rain rings on the puddles
+            vec2 cell = floor(xz / 9.0);
+            vec2 f = fract(xz / 9.0) - 0.5;
+            float ph = fract(uTime * 0.9 + fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453));
+            float rr = length(f) - ph * 0.45;
+            dn += normalize(f + 1e-4) * sin(rr * 40.0) * exp(-abs(rr) * 30.0) * (1.0 - ph) * gPuddle * uRain * 0.6;
+          }
+          vec3 wN = normalize(vec3(dn.x, 1.0, dn.y));
+          vec3 vN = normalize((viewMatrix * vec4(wN, 0.0)).xyz);
+          // sloped banks keep their own orientation: tilt the geometric normal instead
+          normal = normalize(normal + (vN - (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+        }`);
   };
   // every tile uses the same patched program
-  mat.customProgramCacheKey = () => 'hh-ground-v1';
+  mat.customProgramCacheKey = () => 'hh-ground-v2';
   return mat;
 }
 
