@@ -242,7 +242,8 @@ Every gun has a niche at its price:
 * **Mid-price:** the rifle is accurate; the dual SMGs spray hardest; the crossbow, DMR and
   lever-action pierce lines; the sniper rifle kills bosses; the harpoon skewers and pins a
   line; the chainsaw never runs dry but only works up close.
-* **Late:** the LMG and minigun give sustained fire, the auto shotgun is a close-range
+* **Late:** the LMG, the belt-fed HMG (500 rounds, no spin-up) and the minigun give
+  sustained fire, the auto shotgun is a close-range
   shredder, the tesla and flamethrower clear crowds, the cryo blaster stops them, and the
   .50 kills whole lines through cover.
 

@@ -56,7 +56,7 @@ export const GUN_VALUE = {
   pistol: 1, magnum: 3, sawedoff: 3, uzi: 3.5, shotgun: 4, rifle: 6, dual_smg: 6.5, crossbow: 5.5,
   dmr: 7, sniper: 6, auto_shotgun: 8, flamethrower: 7, lmg: 9, grenade_launcher: 2, rocket: 2,
   tesla: 9.5, minigun: 10, railgun: 10.5,
-  flare: 3.2, tommy: 4.5, burst_rifle: 5, lever: 5.8, harpoon: 7, cryo: 6.8, amr: 11,
+  flare: 3.2, tommy: 4.5, burst_rifle: 5, lever: 5.8, harpoon: 7, cryo: 6.8, amr: 11, hmg: 9.8,
   // Bots fight at range and back off from what closes in: they can't use a chainsaw
   // (gunScore rates it 0), so they never buy or pick one up.
   chainsaw: 0,

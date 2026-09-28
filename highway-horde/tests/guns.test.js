@@ -434,8 +434,9 @@ describe('every gun is complete', () => {
   const topdown = src('render/actors.js');
   const KINDS = ['hitscan', 'projectile', 'flame', 'chain', 'rail', 'cryo', 'melee'];
 
-  test('26 guns, the eight new ones included', () => {
-    assert.equal(WEAPON_IDS.length, 26);
+  test('27 guns, the eight new ones and the belt-fed HMG included', () => {
+    assert.equal(WEAPON_IDS.length, 27);
+    assert.ok(WEAPONS.hmg);
     for (const id of NEW_GUNS) assert.ok(WEAPONS[id], id);
   });
 
@@ -476,5 +477,29 @@ describe('every gun is complete', () => {
       assert.ok(WEAPONS[id].price <= WEAPONS.amr.price, id);
       assert.ok(WEAPONS[id].unlockWave <= WEAPONS.amr.unlockWave, id);
     }
+  });
+});
+
+describe('belt-fed heavy MG', () => {
+  test('500-round belt, fires on the first tick (no spin-up) and keeps going', () => {
+    const w = WEAPONS.hmg;
+    assert.equal(w.mag, 500);
+    assert.ok(!w.spinup);
+    assert.equal(WEAPON_IDS[WEAPON_IDS.length - 1], 'hmg', 'appended, so older weapon indices keep their meaning');
+    const g = makeGame();
+    const p = armed(g, 'hmg');
+    const first = run(g, 1, () => ({ 1: { fire: true, angle: 0 } }));
+    assert.equal(eventsOf(first, 'shot').length, 1);
+    const ev = run(g, 60, () => ({ 1: { fire: true, angle: 0 } }));
+    const shots = eventsOf(ev, 'shot').length;
+    assert.ok(Math.abs(shots - w.rate) <= 1, `about ${w.rate} shots a second, got ${shots}`);
+    assert.equal(p.mag[p.slot], 500 - 1 - shots);
+  });
+
+  test('sits between the LMG and the minigun', () => {
+    const dps = (id) => WEAPONS[id].damage * WEAPONS[id].rate;
+    assert.ok(dps('hmg') > dps('lmg') && dps('hmg') < dps('minigun'));
+    assert.ok(WEAPONS.hmg.price > WEAPONS.lmg.price && WEAPONS.hmg.price < WEAPONS.minigun.price);
+    assert.ok(GUN_VALUE.hmg > GUN_VALUE.lmg);
   });
 });

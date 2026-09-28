@@ -34,7 +34,7 @@ const LEN_SCALE = {
   pistol: 0.62, revolver: 0.62, double: 1.0, smg: 0.8, dual: 0.72, shotgun: 0.98, rifle: 0.95,
   crossbow: 0.9, dmr: 0.95, sniper: 0.92, autoshotgun: 0.95, flamethrower: 0.95, lmg: 0.92,
   launcher: 0.9, rocket: 0.95, tesla: 0.95, minigun: 0.85, railgun: 0.9,
-  burst: 0.95, tommy: 1.0, lever: 0.92, flare: 0.62, chainsaw: 0.95, harpoon: 0.95, cryo: 0.95, amr: 0.9,
+  burst: 0.95, tommy: 1.0, lever: 0.92, flare: 0.62, chainsaw: 0.95, harpoon: 0.95, cryo: 0.95, amr: 0.9, hmg: 0.9,
 };
 
 // ---------------------------------------------------------------------------------------
@@ -890,6 +890,58 @@ BUILDERS.minigun = (gb, L, sp, out) => {
   out.eject = [3, -1.4, 1.8];
   out.magwell = [-2.5, -4.4, -4];
   out.heavy = true;
+};
+
+// ---- belt-fed heavy MG (hip-carried, 500-round belt from a backpack) --------------------------
+BUILDERS.hmg = (gb, L, sp, out) => {
+  const col = sp.color, acc = sp.accent;
+  // receiver + hinged feed cover
+  rbox(gb, -1.8, L * 0.36, -0.6, 3.1, -1.4, 1.4, 0.35, { color: col, mat: GM.STEEL });
+  ext(gb, [[-1.2, 3.1], [L * 0.3, 3.1], [L * 0.31, 3.7], [0.4, 4.0], [-1.2, 3.6]], -1.3, 1.3, { color: shadeHex(col, 0.08), mat: GM.STEEL });
+  rbox(gb, L * 0.08, L * 0.12, 3.6, 4.2, -1.0, 1.0, 0.1, { color: DARK });                                     // cover latch
+  for (let k = 0; k < 4; k++) rbox(gb, 0.8 + k * 1.6, 1.6 + k * 1.6, 0.2, 2.6, 1.38, 1.5, 0.08, { color: '#101010', seg: 1 }); // side ribs
+  // perforated barrel jacket, heavy barrel, slotted flash hider
+  cylX(gb, L * 0.36, L * 0.78, 1.6, 0, 1.25, 1.2, { color: '#262824', mat: GM.STEEL, seg: 20 });
+  for (let r = 0; r < 3; r++) {
+    for (let k = 0; k < 7; k++) {
+      const x = L * 0.39 + k * (L * 0.055), a = -0.9 + r * 0.9;
+      cylX(gb, x, x + 0.8, 1.6 + Math.sin(a) * 1.22, Math.cos(a) * 1.22, 0.32, 0.32, { color: '#050505', seg: 8 });
+    }
+  }
+  for (const f of [0.37, 0.77]) torusX(gb, L * f, 1.6, 0, 1.24, 0.14, { color: DARK, seg: 20 });
+  cylX(gb, L * 0.78, L - 2.2, 1.6, 0, 0.62, 0.58, { color: BLUED, seg: 16 });
+  latheX(gb, [[L - 2.4, 0], [L - 2.4, 0.8], [L - 2.1, 0.9], [L, 0.86], [L, 0]], 1.6, 0, { color: DARK, seg: 16 });
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * TAU;
+    rbox(gb, L - 1.9, L - 0.2, -0.1, 0.1, -0.1, 0.1, 0.02, { color: '#020202', at: [0, 1.6 + Math.sin(a) * 0.88, Math.cos(a) * 0.88], seg: 1 });
+  }
+  cylX(gb, L - 0.02, L + 0.02, 1.6, 0, 0.42, 0.42, { color: '#020202', seg: 12 });
+  // top carry handle doubling as the hip-fire support grip
+  tubePath(gb, [[L * 0.3, 3.3, 0], [L * 0.33, 6.0, 0], [L * 0.52, 6.2, 0], [L * 0.56, 3.0, 0]], 0.4, { color: RUBBER, mat: GM.RUBBER, seg: 18 });
+  // under-barrel vertical grip for the support hand
+  ext(gb, [[L * 0.44, 0.5], [L * 0.52, 0.5], [L * 0.51, -3.6], [L * 0.44, -3.7]], -0.65, 0.65, { color: RUBBER, mat: GM.RUBBER, bevel: 0.24 });
+  pistolGrip(gb, -0.4, DARK, { mat: GM.POLY });
+  triggerGroup(gb, -0.1, -0.5, col);
+  // short skeleton butt
+  ext(gb, [[-1.7, 2.6], [-8.6, 2.2], [-8.8, -1.8], [-7.6, -1.9], [-4.4, -0.4], [-1.7, -0.3]], -0.9, 0.9, { color: '#1e1e1a', mat: GM.POLY, holes: [[[-2.8, 1.8], [-7.4, 1.6], [-7.4, -0.6], [-4.8, 0.4]]] });
+  rbox(gb, -9.6, -8.6, -2.0, 2.4, -1.0, 1.0, 0.3, { color: RUBBER, mat: GM.RUBBER });
+  // ammo belt: brass links into the feed tray from a flexible chute that runs down and
+  // back to the backpack (the part the belt change swaps)
+  const M = { part: 'mag' };
+  tubePath(gb, [[1.2, -0.4, -1.8], [0.2, -2.8, -3.2], [-2.6, -4.8, -4.4], [-7.0, -5.6, -5.2]], 0.95, { ...M, color: acc, mat: GM.RUBBER, seg: 24, radial: 12 });
+  for (let k = 0; k < 9; k++) {
+    const t = k / 8;
+    const x = 3.6 - t * 3.0, y = 2.2 - t * 2.8, z = -1.5 - t * 0.9;
+    const g = new THREE.CylinderGeometry(0.24, 0.28, 1.9, 8);
+    gb.add(g, { ...M, at: [x, y, z], rot: [HALF_PI, 0, -0.9 * t], color: BRASS, mat: GM.BRASS, round: true });
+    rbox(gb, x - 0.3, x + 0.3, y - 0.1, y + 0.1, z - 1.0, z + 1.0, 0.04, { ...M, color: '#3a3a36', mat: GM.STEEL, seg: 1 }); // link
+  }
+  out.muzzle = [L, 1.6, 0];
+  out.front = [L * 0.48, -3.2, 0];
+  out.eject = [3.2, 0.6, 1.6];
+  out.magwell = [-1.5, -4.2, -4.2];
+  out.heavy = true;
+  out.travel.bolt = 0;
 };
 
 // ---- railgun ----------------------------------------------------------------------------------

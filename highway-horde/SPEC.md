@@ -63,7 +63,7 @@ highway-horde/
 ```
 
 Data tables already written (read them — they are the source of truth):
-`constants.js` (all tuning numbers), `weapons.js` (26 guns + throwables), `zombies.js`
+`constants.js` (all tuning numbers), `weapons.js` (27 guns + throwables), `zombies.js`
 (8 zombie types, `ZFLAG` bits), `classes.js` (6 survivor classes + perks), `items.js`
 (shop items, pickups, drop tables).
 
@@ -548,8 +548,8 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 4 (3 added the jump state and, separately, the new guns' fields; both
-together are 4): an InputCmd's buttons carry a `jump` bit, and each snapshot player
+u8. PROTOCOL_VERSION 5 (3 added the jump state and, separately, the new guns' fields; both
+together are 4; 5 appends the belt-fed HMG to the weapon table): an InputCmd's buttons carry a `jump` bit, and each snapshot player
 ends with its `jumpT` as a signed byte of whole ticks (`z` is derived from it on decode).
 Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
 Events may be packed as compact JSON (with numbers rounded to 1 decimal) inside the

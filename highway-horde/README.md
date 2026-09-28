@@ -12,10 +12,11 @@ install: one person hosts, everyone else opens the invite link.
 - **Co-op for 1–6 players over the internet**, with a room code or an invite link, plus
   **AI survivors** to fill empty slots (great for playing solo or with one friend).
   Friends can join a game that's already running.
-- **26 guns**: M9 pistol, magnum, sawed-off, micro SMG, pump shotgun, assault rifle, flare
+- **27 guns**: M9 pistol, magnum, sawed-off, micro SMG, pump shotgun, assault rifle, flare
   gun, Tommy gun, burst rifle, twin SMGs, crossbow, battle rifle, lever-action rifle,
   sniper, chainsaw, auto shotgun, flamethrower, harpoon gun, cryo blaster, LMG, grenade
-  launcher, rocket launcher, tesla gun, minigun, railgun and the .50 anti-materiel rifle.
+  launcher, rocket launcher, tesla gun, a belt-fed heavy machine gun carried at the hip with
+  a 500-round belt, minigun, railgun and the .50 anti-materiel rifle.
   Some have tricks: the burst rifle fires 3-round bursts, the lever-action loads one shell
   at a time, flares burn and light up the area where they land, the cryo blaster slows and
   then freezes zombies solid, the chainsaw cuts through everything in front of you, the

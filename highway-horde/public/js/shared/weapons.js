@@ -254,6 +254,16 @@ export const WEAPONS = {
     moveMult: 0.82, recoil: 0.9, sound: 'amr', tracer: '#fff4e0',
     sprite: { len: 56, width: 7, color: '#2c3027', accent: '#1b1c1a', style: 'amr' },
   },
+  // Carried at the hip with a 500-round belt fed from a backpack: no spin-up like the
+  // minigun, a slower but harder-hitting stream, and a long belt change.
+  hmg: {
+    name: 'Belt-Fed Heavy MG', short: 'HMG', category: 'heavy',
+    price: 7400, unlockWave: 8,
+    kind: 'hitscan', damage: 40, rate: 16, mag: 500, reserve: 1000, reload: 6.0,
+    pellets: 1, spread: 0.075, range: 1100, pierce: 2, falloff: 0.75, knockback: 55,
+    moveMult: 0.7, recoil: 0.16, sound: 'hmg', tracer: '#ffb74d',
+    sprite: { len: 46, width: 12, color: '#2b2d27', accent: '#5b5a3c', style: 'hmg' },
+  },
 };
 
 // Stable order — the wire protocol sends weapons as indices into this array.

@@ -252,6 +252,12 @@ export const SOUNDS = {
     punch: { f: 820, q: 1, d: 0.06, g: 0.55 }, thump: { f0: 140, f1: 50, d: 0.11, g: 0.95 },
     mech: [[0.035, 2900, 0.1], [0.05, 5200, 0.06]], tail: { lp: 1500, d: 0.42, g: 0.17 },
     echo: [[0.1, 0.2, 1300]], drive: 2.2 }) },
+  // belt-fed heavy MG: the LMG's report, deeper and with more chest thump
+  hmg: { ...GUN, v: 4, g: 0.62, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.7, crack: { len: 0.007, hp: 1600, g: 0.95 }, body: { f0: 4600, f1: 320, d: 0.13, g: 0.95 },
+    punch: { f: 640, q: 1, d: 0.07, g: 0.6 }, thump: { f0: 115, f1: 42, d: 0.14, g: 1.05 },
+    mech: [[0.04, 2500, 0.11], [0.058, 4600, 0.06]], tail: { lp: 1300, d: 0.5, g: 0.2 },
+    echo: [[0.11, 0.22, 1150]], drive: 2.4 }) },
   minigun: { ...GUN, v: 4, g: 0.5, render: (sr, rng) => miniShot(sr, rng) },
   turret_shot: { ...GUN, v: 4, g: 0.45, prio: 55, lim: [0.03, 4], render: (sr, rng) => gun(sr, rng, {
     dur: 0.3, crack: { len: 0.004, hp: 3000, g: 0.8 }, body: { f0: 5000, f1: 1000, d: 0.05, g: 0.6 },

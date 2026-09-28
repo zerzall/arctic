@@ -99,6 +99,7 @@ function grips(style, len, x0) {
     case 'smg': return [x0 + len * 0.3, x0 + len * 0.62];
     case 'flamethrower': case 'cryo': return [x0 + len * 0.3, x0 + len * 0.62];
     case 'minigun': return [x0 + len * 0.2, x0 + len * 0.38];
+    case 'hmg': return [x0 + len * 0.22, x0 + len * 0.5];
     case 'crossbow': return [x0 + len * 0.22, x0 + len * 0.48];
     case 'flare': return [x0 + 3, x0 + 3];
     case 'tommy': return [x0 + len * 0.25, x0 + len * 0.55];
@@ -219,6 +220,25 @@ export function drawWeapon(g, weaponId, x0, spin = 0) {
       g.moveTo(x0 + L * 0.85, W * 0.3); g.lineTo(x0 + L * 0.75, W * 0.8);
       g.stroke();
       break;
+    case 'hmg': {
+      box(x0 - 6, -W * 0.25, 8, W * 0.5, '#1e1e1a', 2);                 // butt
+      box(x0 + 2, -W * 0.42, L * 0.36, W * 0.84, col, 2);             // receiver
+      box(x0 + L * 0.36, -W * 0.3, L * 0.42, W * 0.6, '#262824');     // perforated jacket
+      g.fillStyle = '#080808';
+      for (let x = x0 + L * 0.4; x < x0 + L * 0.76; x += 3.2) g.fillRect(x, -W * 0.18, 1.4, W * 0.36);
+      box(x0 + L * 0.78, -W * 0.14, L * 0.22, W * 0.28, '#1b1c1e');   // barrel + flash hider
+      box(x0 + L * 0.3, -W * 0.08, L * 0.26, W * 0.16, '#161616');     // carry handle on top
+      // belt chute curling off the left side toward the backpack
+      g.strokeStyle = acc;
+      g.lineWidth = W * 0.32;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(x0 + L * 0.14, -W * 0.45);
+      g.quadraticCurveTo(x0 + L * 0.02, -W * 1.1, x0 - L * 0.16, -W * 0.95);
+      g.stroke();
+      g.lineCap = 'butt';
+      break;
+    }
     case 'launcher':
       box(x0 - 4, -W * 0.25, 10, W * 0.5, acc, 2);
       fillCircle(g, x0 + L * 0.3, 0, W * 0.62, out);

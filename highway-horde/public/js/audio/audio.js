@@ -82,6 +82,7 @@ export const RELOADS = {
   rocket: [['tube', 0.2, 1], ['breach', 0.8, 0.8]],
   tesla: [['mag_out', 0, 0.8], ['charge', 0.45, 1]],
   minigun: BOX,
+  hmg: [['box', 0, 0.8], ['mag_out', 0.2, 0.75], ['mag_in', 0.62, 0.75], ['rack', 0.88, 0.8]],
   railgun: [['mag_out', 0, 0.7], ['charge', 0.35, 0.8], ['mag_in', 0.85, 0.7]],
   flare: [['breach', 0, 1.15], ['shell', 0.45, 0.85], ['breach', 0.85, 1.25]],
   tommy: [['mag_out', 0, 0.85], ['box', 0.5, 1.2], ['mag_in', 0.62, 0.85], ['rack', 0.86, 0.85]],

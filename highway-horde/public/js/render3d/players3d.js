@@ -32,7 +32,7 @@ const GUN_SCALE = 0.84;
 
 // how each weapon style is held
 const HOLD = {
-  pistol: 'pistol', revolver: 'pistol', dual: 'dual', rocket: 'shoulder', minigun: 'hip', lmg: 'hip', flamethrower: 'hip',
+  pistol: 'pistol', revolver: 'pistol', dual: 'dual', rocket: 'shoulder', minigun: 'hip', hmg: 'hip', lmg: 'hip', flamethrower: 'hip',
   flare: 'pistol', chainsaw: 'hip', cryo: 'hip',
 };
 
