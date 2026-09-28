@@ -64,7 +64,7 @@ const UI = {
 // Reload choreography per weapon: [sound, fraction of the reload time, playback rate].
 const MAG = (r) => [['mag_out', 0, r], ['mag_in', 0.6, r], ['rack', 0.86, r]];
 const BOX = [['box', 0, 1], ['box', 0.55, 1.1], ['rack', 0.88, 0.85]];
-const RELOADS = {
+export const RELOADS = {
   pistol: [['mag_out', 0, 1.1], ['mag_in', 0.55, 1.1], ['slide', 0.85, 1]],
   magnum: [['breach', 0, 1.1], ['shell', 0.35, 1], ['shell', 0.5, 1.05], ['shell', 0.65, 0.95], ['breach', 0.88, 1.2]],
   sawedoff: [['breach', 0, 1], ['shell', 0.45, 1], ['shell', 0.6, 1.05], ['breach', 0.88, 1.15]],
@@ -83,7 +83,18 @@ const RELOADS = {
   tesla: [['mag_out', 0, 0.8], ['charge', 0.45, 1]],
   minigun: BOX,
   railgun: [['mag_out', 0, 0.7], ['charge', 0.35, 0.8], ['mag_in', 0.85, 0.7]],
+  flare: [['breach', 0, 1.15], ['shell', 0.45, 0.85], ['breach', 0.85, 1.25]],
+  tommy: [['mag_out', 0, 0.85], ['box', 0.5, 1.2], ['mag_in', 0.62, 0.85], ['rack', 0.86, 0.85]],
+  burst_rifle: MAG(1.08),
+  // one event per round (per-round reload): a round pushed through the loading gate
+  lever: [['shell', 0.4, 1.12]],
+  chainsaw: [['canister', 0, 1.2], ['canister', 0.35, 1.35], ['pullcord', 0.62, 1]],
+  harpoon: [['mag_in', 0.12, 0.7], ['crank', 0.45, 0.85], ['breach', 0.86, 0.8]],
+  cryo: [['canister', 0, 0.9], ['charge', 0.5, 0.6], ['canister', 0.82, 1.15]],
+  amr: [['mag_out', 0, 0.72], ['mag_in', 0.55, 0.68], ['bolt', 0.84, 0.78]],
 };
+/** Guns whose sound is a loop driven from update() (never a one-shot per shot event). */
+const LOOP_GUNS = new Set(['minigun', 'flame', 'cryo', 'chainsaw']);
 
 // Events that still matter when a tab returns from the background with a backlog.
 const STATE_EVENTS = new Set(['wave', 'waveclear', 'bossspawn', 'gameover', 'victory', 'down', 'died', 'revived', 'respawn', 'buy', 'buyfail']);
@@ -653,6 +664,7 @@ class Engine {
         return void this.play(id, { ...pos, gain: clamp((e.r || 150) / 150, 0.75, 1.15), minGain: 0.08 });
       }
       case 'ignite': return void this.play('molotov', pos);
+      case 'freeze': return void this.play('freeze', pos);
       case 'pdamage':
         if (own) {
           this.play('hurt', { local: true, prio: PRIO_OWN, group: 'hurt_me', lim: [0.35, 1] });
@@ -734,8 +746,9 @@ class Engine {
         this.lastShotW.set(e.pid, e.weapon);
       }
       const snd = w.sound;
-      // The minigun and flamethrower are continuous loops driven from update().
-      if (snd !== 'minigun' && snd !== 'flame') {
+      // The minigun, flamethrower, cryo blaster and chainsaw are continuous loops driven
+      // from update().
+      if (!LOOP_GUNS.has(snd)) {
         if (own) this.play(snd, { local: true, prio: PRIO_OWN, delay, lim: null });
         else this.play(snd, { x: e.x, y: e.y, delay, gain: 0.85 });
         if (e.weapon === 'shotgun') {
@@ -744,6 +757,12 @@ class Engine {
       }
     }
     if (flood || !Array.isArray(e.rays)) return;
+    if (w && w.kind === 'melee') {
+      // the chainsaw's rays are the zombies it is cutting: one ripping sound, not a hit each
+      const r = e.rays[0];
+      if (r) this.play('saw_cut', own ? { local: true, prio: PRIO_OWN, delay } : { x: r.x, y: r.y, delay });
+      return;
+    }
     let n = 0;
     for (let i = 0; i < e.rays.length && n < 3; i++) {
       const r = e.rays[i];
@@ -819,7 +838,7 @@ class Engine {
     for (const p of view.players) {
       if (!p || p.state === 'dead' || !Array.isArray(p.slots)) continue;
       const wid = p.slots[p.slot];
-      if (wid !== 'minigun' && wid !== 'flamethrower') continue;
+      if (wid !== 'minigun' && wid !== 'flamethrower' && wid !== 'cryo' && wid !== 'chainsaw') continue;
       const local = p === me;
       const lt = this.lastShotT.get(p.id);
       const firing = !!p.firing || (lt !== undefined && now - lt < 0.15 && this.lastShotW.get(p.id) === wid);
@@ -827,8 +846,15 @@ class Engine {
         const spin = clamp(p.spin || 0, 0, 1);
         if (spin > 0.02) this.wantLoop(want, 'spin' + p.id, 'minigun_spin', p, local, Math.pow(spin, 0.7), 0.45 + 0.55 * spin);
         if (firing && spin > 0.9) this.wantLoop(want, 'mfire' + p.id, 'minigun_fire', p, local, 1, 1);
+      } else if (wid === 'chainsaw') {
+        // the engine idles while it's in hand (a downed survivor holds a pistol), and
+        // screams while cutting; a refuel stalls it
+        if (p.state !== 'alive' || p.reloading > 0) continue;
+        if (firing) this.wantLoop(want, 'saw' + p.id, 'chainsaw_loop', p, local, 1, 1);
+        else this.wantLoop(want, 'sawidle' + p.id, 'chainsaw_idle', p, local, 1, 1);
       } else if (firing) {
-        this.wantLoop(want, 'flame' + p.id, 'flame_loop', p, local, 1, 1);
+        if (wid === 'cryo') this.wantLoop(want, 'cryo' + p.id, 'cryo_loop', p, local, 1, 1);
+        else this.wantLoop(want, 'flame' + p.id, 'flame_loop', p, local, 1, 1);
       }
     }
   }
@@ -1012,7 +1038,8 @@ class Engine {
     src.start(now, Math.random() * buf.duration);
     const L = { key: w.key, id: w.id, src, g, f, pan, wet, seen: now, cg: -1, cp: 9, cl: -1, cw: -1, cr: -1 };
     this.loops.set(w.key, L);
-    if (w.id === 'flame_loop') this.play('flame_start', w.local ? { local: true, prio: PRIO_OWN } : { pan: w.pan, gain: w.g });
+    if (w.id === 'flame_loop' || w.id === 'cryo_loop') this.play('flame_start', w.local ? { local: true, prio: PRIO_OWN } : { pan: w.pan, gain: w.g });
+    else if (w.id === 'chainsaw_loop') this.play('saw_rev', w.local ? { local: true, prio: PRIO_OWN } : { pan: w.pan, gain: w.g });
     return L;
   }
 

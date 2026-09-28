@@ -97,9 +97,12 @@ function grips(style, len, x0) {
     case 'dual': return [x0 + 3, x0 + 3];
     case 'double': return [x0 + len * 0.25, x0 + len * 0.55];
     case 'smg': return [x0 + len * 0.3, x0 + len * 0.62];
-    case 'flamethrower': return [x0 + len * 0.3, x0 + len * 0.62];
+    case 'flamethrower': case 'cryo': return [x0 + len * 0.3, x0 + len * 0.62];
     case 'minigun': return [x0 + len * 0.2, x0 + len * 0.38];
     case 'crossbow': return [x0 + len * 0.22, x0 + len * 0.48];
+    case 'flare': return [x0 + 3, x0 + 3];
+    case 'tommy': return [x0 + len * 0.25, x0 + len * 0.55];
+    case 'chainsaw': return [x0 + len * 0.02, x0 + len * 0.22];
     default: return [x0 + len * 0.28, x0 + len * 0.6];
   }
 }
@@ -273,6 +276,91 @@ export function drawWeapon(g, weaponId, x0, spin = 0) {
       box(x0 + L * 0.3, W * 0.22, L * 0.7, W * 0.28, '#3a3a48');
       g.fillStyle = acc;
       g.fillRect(x0 + L * 0.32, -W * 0.12, L * 0.66, W * 0.24);
+      break;
+    case 'burst':
+      // bullpup: stock and mag behind the grip, long shroud ahead, top optic
+      box(x0 - 9, -W * 0.45, L * 0.45, W * 0.9, col, 2);
+      box(x0 - 5, W * 0.35, 4, W * 0.7, '#1c1c1c');
+      box(x0 + L * 0.36, -W * 0.32, L * 0.4, W * 0.64, shade(col, 0.12));
+      box(x0 + L * 0.76, -W * 0.16, L * 0.24, W * 0.32, '#232427');
+      box(x0 + L * 0.02, -W * 0.22, L * 0.26, W * 0.44, acc, 1);
+      break;
+    case 'tommy':
+      box(x0 - 8, -W * 0.3, 10, W * 0.6, acc, 2);
+      box(x0 + 1, -W * 0.36, L * 0.4, W * 0.72, col);
+      fillCircle(g, x0 + L * 0.28, W * 0.12, W * 0.62, out);
+      fillCircle(g, x0 + L * 0.28, W * 0.12, W * 0.55, '#2d2a26');
+      fillCircle(g, x0 + L * 0.28, W * 0.12, W * 0.2, '#555');
+      box(x0 + L * 0.42, -W * 0.2, L * 0.58, W * 0.4, '#3a3632');
+      g.fillStyle = '#1a1816';
+      for (let x = x0 + L * 0.45; x < x0 + L * 0.8; x += 2.2) g.fillRect(x, -W * 0.26, 1, W * 0.52);
+      box(x0 + L * 0.55, W * 0.18, 3.5, W * 0.55, acc, 1);
+      break;
+    case 'lever':
+      box(x0 - 9, -W * 0.4, 12, W * 0.8, acc, 2);
+      box(x0 + 2, -W * 0.5, L * 0.22, W, col, 1);
+      box(x0 + L * 0.22, -W * 0.3, L * 0.78, W * 0.6, '#2e2a26');
+      box(x0 + L * 0.3, -W * 0.3, L * 0.36, W * 0.6, acc, 1);
+      g.strokeStyle = '#3a3530';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.ellipse(x0 + L * 0.12, W * 0.55, 3.5, 2, 0, 0, TAU);
+      g.stroke();
+      break;
+    case 'flare':
+      box(x0 - 1, -W * 0.3, 5, W * 0.6, acc, 2);
+      box(x0 + 3, -W * 0.45, L * 0.75, W * 0.9, col, 3);
+      fillCircle(g, x0 + L * 0.78 + 1, 0, W * 0.34, '#2a1a12');
+      g.fillStyle = shade(col, 0.25);
+      g.fillRect(x0 + 5, -W * 0.36, L * 0.5, 1.2);
+      break;
+    case 'cryo':
+      box(x0 - 2, -W * 0.3, L * 0.62, W * 0.6, shade(col, -0.25), 2);
+      fillCircle(g, x0 + L * 0.28, W * 0.42, W * 0.5, out);
+      fillCircle(g, x0 + L * 0.28, W * 0.42, W * 0.44, col);
+      fillCircle(g, x0 + L * 0.28, W * 0.42, W * 0.2, acc);
+      box(x0 + L * 0.58, -W * 0.28, L * 0.36, W * 0.56, '#5a6a72', 2);
+      for (let k = 0; k < 3; k++) {
+        g.fillStyle = acc;
+        g.fillRect(x0 + L * (0.62 + k * 0.1), -W * 0.3, 1.4, W * 0.6);
+      }
+      box(x0 + L - 3, -W * 0.36, 4, W * 0.72, '#c9d6dc', 2);
+      break;
+    case 'chainsaw': {
+      // engine block with the top handle, then the long bar with its running chain
+      box(x0 - 6, -W * 0.55, L * 0.36, W * 1.1, col, 3);
+      box(x0 - 2, -W * 0.18, L * 0.22, W * 0.36, acc, 2);
+      box(x0 + L * 0.3, -W * 0.22, L * 0.72, W * 0.44, '#9ea3a8', 4);
+      g.fillStyle = '#2a2a2a';
+      const ph = (spin * 7) % 3;
+      for (let x = x0 + L * 0.32 + ph; x < x0 + L; x += 3) {
+        g.fillRect(x, -W * 0.3, 1.4, 1.2);
+        g.fillRect(x, W * 0.3 - 1.2, 1.4, 1.2);
+      }
+      break;
+    }
+    case 'harpoon':
+      box(x0 - 7, -W * 0.3, 10, W * 0.6, '#262a2c', 2);
+      box(x0 + 1, -W * 0.42, L * 0.5, W * 0.84, col, 2);
+      fillCircle(g, x0 + L * 0.2, W * 0.5, W * 0.34, acc);
+      box(x0 + L * 0.5, -W * 0.22, L * 0.34, W * 0.44, '#4a555c', 1);
+      g.fillStyle = '#c8ced2';
+      g.fillRect(x0 + L * 0.5, -0.7, L * 0.5, 1.4);
+      g.beginPath(); g.moveTo(x0 + L - 1, -W * 0.34); g.lineTo(x0 + L + 5, 0); g.lineTo(x0 + L - 1, W * 0.34); g.fill();
+      break;
+    case 'amr':
+      box(x0 - 9, -W * 0.4, 12, W * 0.8, '#1d1f1b', 2);
+      box(x0 + 2, -W * 0.5, L * 0.36, W, col, 1);
+      box(x0 + L * 0.08, -W * 0.3, L * 0.28, W * 0.6, '#141516', 2);
+      fillCircle(g, x0 + L * 0.37, 0, W * 0.3, '#6fa0c8');
+      box(x0 + L * 0.38, -W * 0.22, L * 0.56, W * 0.44, '#232521');
+      box(x0 + L * 0.92, -W * 0.5, 5, W, '#111', 1);
+      g.strokeStyle = '#1a1a1a';
+      g.lineWidth = 1.2;
+      g.beginPath();
+      g.moveTo(x0 + L * 0.7, -W * 0.25); g.lineTo(x0 + L * 0.62, -W * 0.9);
+      g.moveTo(x0 + L * 0.7, W * 0.25); g.lineTo(x0 + L * 0.62, W * 0.9);
+      g.stroke();
       break;
     default:
       box(x0, -W / 2, L, W, col);
@@ -745,6 +833,23 @@ export function drawFireBase(g, h) {
   g.fillRect(h.x - h.r * 1.1, h.y - h.r * 1.1, h.r * 2.2, h.r * 2.2);
 }
 
+/** A burning road flare lying on the ground (the glow is drawn in the emissive pass). */
+export function drawFlareBase(g, h) {
+  const a = Math.min(1, h.life * 6);
+  const grad = g.createRadialGradient(h.x, h.y, 0, h.x, h.y, h.r * 0.8);
+  grad.addColorStop(0, `rgba(20,8,4,${0.5 * a})`);
+  grad.addColorStop(1, 'rgba(20,8,4,0)');
+  g.fillStyle = grad;
+  g.fillRect(h.x - h.r, h.y - h.r, h.r * 2, h.r * 2);
+  const ang = hash01(h.id) * TAU;
+  g.save();
+  g.translate(h.x, h.y);
+  g.rotate(ang);
+  fillRoundRect(g, -7, -1.8, 10, 3.6, 1.5, '#b3261e');
+  fillRoundRect(g, -8, -1.9, 2.2, 3.8, 0.8, '#2a2a2a');
+  g.restore();
+}
+
 // ---- projectiles --------------------------------------------------------------------------------
 
 /**
@@ -753,6 +858,28 @@ export function drawFireBase(g, h) {
  */
 export function drawProjectileBody(g, p, time) {
   switch (p.kind) {
+    case 'harpoon':
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(p.angle);
+      // the line trails back toward the gun
+      g.strokeStyle = 'rgba(200,205,210,0.55)';
+      g.lineWidth = 0.8;
+      g.beginPath(); g.moveTo(-16, 0); g.lineTo(-70, Math.sin(time * 30 + p.id) * 1.5); g.stroke();
+      g.strokeStyle = '#8a9296';
+      g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(-16, 0); g.lineTo(8, 0); g.stroke();
+      g.fillStyle = '#d8dde0';
+      g.beginPath(); g.moveTo(6, -3.2); g.lineTo(14, 0); g.lineTo(6, 3.2); g.lineTo(8, 0); g.fill();
+      g.fillStyle = '#f2a900';
+      g.fillRect(-16, -1.8, 3, 3.6);
+      g.restore();
+      break;
+    case 'flare':
+      fillCircle(g, p.x, p.y, 3.2, '#3a1a10');
+      break;
+    case 'frost':
+      break;
     case 'bolt':
       g.save();
       g.translate(p.x, p.y);

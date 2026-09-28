@@ -244,3 +244,68 @@ test('predicted rays follow the sim rule: flesh on any hit, pierce budget decide
   assert.equal(miss.hit, 2);
   assert.equal(miss.x, 400);
 });
+
+test('client view: burst fire and round-by-round reloads are predicted like the host runs them', async (t) => {
+  const Game = await realGame();
+  if (typeof Game !== 'function') {
+    t.skip(`shared/sim.js not loadable: ${Game.message}`);
+    return;
+  }
+  const { giveWeapon } = await import('../public/js/shared/sim/players.js');
+  const env = await setup(Game);
+  const a = env.client;
+  await env.frames(20);
+  const p = hostPlayerOf(env);
+  const slot = giveWeapon(env.game(), p, 'burst_rifle');
+  await settle(env);
+  assert.equal(localOf(a).slot, slot);
+  a.drainEvents();
+  // One frame of trigger: the whole burst is predicted (it runs on without the trigger).
+  await env.frames(1, () => input({ fire: true }));
+  await env.frames(30);
+  const predicted = a.drainEvents().filter((e) => e.type === 'shot' && e.predicted);
+  assert.equal(predicted.length, WEAPONS.burst_rifle.burst, 'three predicted rounds');
+  await settle(env);
+  assertMatchesHost(env, 'after a burst');
+  assert.equal(localOf(a).ammo[slot][0], WEAPONS.burst_rifle.mag - WEAPONS.burst_rifle.burst);
+
+  // Lever action: load round by round, stop the reload with a trigger pull, match the host.
+  const ls = giveWeapon(env.game(), p, 'lever');
+  p.mag[ls] = 0;
+  await settle(env);
+  await env.frames(1, () => input({ reload: true }));
+  await env.frames(Math.ceil(WEAPONS.lever.reload * 0.85 * 60 * 2.5));
+  const mid = localOf(a);
+  assert.ok(mid.reloading > 0, 'still loading');
+  assert.ok(mid.ammo[ls][0] >= 2, `rounds in: ${mid.ammo[ls][0]}`);
+  await env.frames(1, () => input({ fire: true }));
+  assert.equal(localOf(a).reloading, 0, 'the pull stopped the predicted reload at once');
+  await settle(env);
+  assertMatchesHost(env, 'after interrupting a round-by-round reload');
+  env.host.leave();
+  await flush(6);
+});
+
+test('predicted rays: the .50 goes through a thin wall, the chainsaw marks what it cuts', async () => {
+  const { ClientSession } = await import('../public/js/net/client-session.js');
+  const { createCollisionWorld } = await import('../public/js/shared/movement.js');
+  const { buildArenaMap } = await import('./fixtures/sim-map.js');
+  const car = { id: 0, kind: 'car', x: 400, y: 900, w: 44, h: 160, a: 0, solid: true, color: '#777', wrecked: false, roof: null };
+  const house = { id: 1, kind: 'building', x: 1000, y: 900, w: 200, h: 200, a: 0, solid: true, color: '#777', wrecked: false, roof: null };
+  const world = createCollisionWorld({ ...buildArenaMap({ objective: false }), obstacles: [car, house] });
+  const self = {
+    world, lastView: { zombies: [{ id: 1, type: 'walker', x: 600, y: 900 }] }, hitScratch: null,
+    penScratch: { n: 0, wall: false, stop: 0, at: new Float64Array(8) },
+  };
+  const trace = ClientSession.prototype._traceRay;
+  const amr = trace.call(self, 200, 900, 0, WEAPONS.amr);
+  assert.equal(amr.hit, 1, 'hit the walker behind the car');
+  assert.ok(Math.abs(amr.x - 900) < 1, `ran on to the building (${amr.x})`);
+  const sniper = trace.call(self, 200, 900, 0, WEAPONS.sniper);
+  assert.equal(sniper.hit, 2);
+  assert.ok(Math.abs(sniper.x - 378) < 1, `stopped at the car (${sniper.x})`);
+  const rays = [];
+  self.lastView = { zombies: [{ id: 1, type: 'walker', x: 250, y: 900 }, { id: 2, type: 'walker', x: 150, y: 900 }] };
+  ClientSession.prototype._sawRays.call(self, 200, 900, 0, WEAPONS.chainsaw, rays);
+  assert.deepEqual(rays, [{ x: 250, y: 900, hit: 1 }]);
+});

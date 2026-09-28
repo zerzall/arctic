@@ -4,11 +4,11 @@
 import {
   DT, PLAYER_RADIUS, THROW_SPEED, TURRET,
 } from '../constants.js';
-import { THROWABLES } from '../weapons.js';
+import { THROWABLES, FROST } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import { DROP_CHANCE, CRATE_DROP_CHANCE } from '../items.js';
 import { angleDiff, turnTowards } from '../math.js';
-import { rayCircle, MASK_SOLID } from '../geom.js';
+import { rayCircle, MASK_SOLID, MASK_OBJECTIVE } from '../geom.js';
 import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS } from './players.js';
 
 /** Largest zombie radius: pad for spatial ray/radius queries. */
@@ -26,6 +26,13 @@ const MOLOTOV_DRAG = 0.8;
 const MOLOTOV_LIFE = 0.9;
 const BURN_AFTER_FIRE = 1.5;
 const MAX_PROJECTILES = 600;
+/** Harpoon: speed kept per impaled zombie, and the stun of zombies it drops mid-air. */
+const HARPOON_DRAG_SLOW = 0.82;
+const HARPOON_DROP_STUN = 0.5;
+/** Flares on the ground at once (oldest burn out first); fire hazards cap the same way. */
+const MAX_FLARES = 24;
+/** Chainsaw ray records per sweep (hit feedback only). */
+const SAW_MAX_RAYS = 6;
 
 // Turret "gun": numbers from TURRET, handling like a rifle.
 const TURRET_GUN = {
@@ -60,6 +67,8 @@ export function knockZombie(z, nx, ny, impulse) {
  */
 export function damageZombie(game, z, amount, by, gib = false) {
   if (z.dead || !(amount > 0)) return false;
+  // Frozen solid: brittle.
+  if (z.frozenT > 0) amount *= FROST.brittle;
   const dealt = amount < z.hp ? amount : Math.max(0, z.hp);
   z.hp -= amount;
   // Stats are final once the game is over (a frag landing late scores nothing).
@@ -82,6 +91,32 @@ export function igniteZombie(z, dps, duration, by) {
   if (z.burnT <= 0 || dps >= z.burnDps) z.burnDps = dps;
   if (duration > z.burnT) z.burnT = duration;
   if (by) z.burnBy = by;
+  // Fire thaws.
+  z.chill = 0;
+  z.frozenT = 0;
+}
+
+/**
+ * Chill a zombie by `amount` (0..1, see FROST): slows it, and at 1 it freezes solid
+ * (emits 'freeze'). Frost puts out fire. Bosses never freeze.
+ * @returns {boolean} true if this froze it
+ */
+export function chillZombie(game, z, amount) {
+  if (z.dead || !(amount > 0)) return false;
+  z.burnT = 0;
+  if (z.frozenT > 0) return false;
+  const gain = z.mass >= 0.9 ? amount * FROST.heavyGain : amount;
+  if (z.boss) {
+    z.chill = Math.min(FROST.bossCap, z.chill + gain);
+    return false;
+  }
+  z.chill = Math.min(1, z.chill + gain);
+  if (z.chill < 1) return false;
+  z.frozenT = FROST.freezeTime;
+  z.swingT = 0;
+  z.swingRef = null;
+  game.emit({ type: 'freeze', id: z.id, x: Math.round(z.x), y: Math.round(z.y) });
+  return true;
 }
 
 /** Kill a zombie: event, kill credit and cash, drops, and the bloater burst. */
@@ -226,12 +261,72 @@ export function fireWeaponShot(game, p, id, w) {
       fireChain(game, p, id, w);
       break;
     case 'flame':
+    case 'cryo':
     case 'projectile':
       fireProjectile(game, p, id, w);
+      break;
+    case 'melee':
+      fireSaw(game, p, id, w);
       break;
     default:
       break;
   }
+}
+
+// ---- penetrating rounds (the .50): the stretch of a ray between shot-blocking walls ----
+
+/** Distance along a unit ray from (ox, oy) (inside or before the box) to where it leaves it. */
+function obbExit(ob, ox, oy, dx, dy) {
+  const rx = ox - ob.x, ry = oy - ob.y;
+  const lx = rx * ob.c + ry * ob.s, ly = -rx * ob.s + ry * ob.c;
+  const ldx = dx * ob.c + dy * ob.s, ldy = -dx * ob.s + dy * ob.c;
+  let tmax = Infinity;
+  if (Math.abs(ldx) > 1e-9) tmax = Math.min(tmax, ((ldx > 0 ? ob.hw : -ob.hw) - lx) / ldx);
+  if (Math.abs(ldy) > 1e-9) tmax = Math.min(tmax, ((ldy > 0 ? ob.hh : -ob.hh) - ly) / ldy);
+  return tmax;
+}
+
+/**
+ * Trace a round through shot-blocking obstacles. Without `pen` it stops at the first one
+ * (like every bullet); with `pen` = { walls, thick } it passes through up to `walls`
+ * obstacles that are at most `thick` px deep along the ray (never the objective).
+ * Writes out.stop (where the round ends), out.wall (true if a wall stopped it) and
+ * out.n + out.at[] (distances where it entered each wall it went through). Shared with
+ * the clients' shot prediction.
+ */
+export function traceRound(world, x, y, dx, dy, range, pen, out) {
+  out.n = 0;
+  out.wall = false;
+  out.stop = range;
+  let t0 = 0;
+  for (let guard = 0; guard < 8; guard++) {
+    const tw = world.raycastSolid(x + dx * t0, y + dy * t0, dx, dy, range - t0);
+    if (tw < 0) return out;
+    const entry = t0 + tw;
+    const ob = world.index.hit.obb;
+    if (pen && out.n < pen.walls && ob && !(ob.mask & MASK_OBJECTIVE)) {
+      const ex = x + dx * entry, ey = y + dy * entry;
+      const depth = obbExit(ob, ex + dx * 0.01, ey + dy * 0.01, dx, dy);
+      if (depth <= pen.thick) {
+        out.at[out.n++] = entry;
+        t0 = entry + depth + 0.5;
+        if (t0 >= range) return out;
+        continue;
+      }
+    }
+    out.stop = entry;
+    out.wall = true;
+    return out;
+  }
+  return out;
+}
+const penOut = { n: 0, wall: false, stop: 0, at: new Float64Array(8) };
+
+/** Walls a round went through before distance t (see traceRound). */
+function wallsBefore(tr, t) {
+  let k = 0;
+  while (k < tr.n && tr.at[k] < t) k++;
+  return k;
 }
 
 function falloffMult(t, w) {
@@ -256,11 +351,19 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
   const ff = !!game.settings.friendlyFire && !!shooter;
   const cand = game.tmpA;
   const pellets = w.pellets || 1;
+  const pen = w.penetrate || null;
+  const gib = !!w.gib;
   for (let k = 0; k < pellets; k++) {
     const a = w.spread > 0 ? angle + rng.range(-w.spread, w.spread) : angle;
     const dx = Math.cos(a), dy = Math.sin(a);
     let maxT = w.range;
-    const tw = world.raycastSolid(x, y, dx, dy, maxT);
+    let tw;
+    if (pen) {
+      traceRound(world, x, y, dx, dy, w.range, pen, penOut);
+      tw = penOut.wall ? penOut.stop : -1;
+    } else {
+      tw = world.raycastSolid(x, y, dx, dy, maxT);
+    }
     if (tw >= 0) maxT = tw;
     const pierce = Math.min(w.pierce || 1, hitT.length);
     let nh = 0;
@@ -281,10 +384,11 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
     }
     for (let i = 0; i < nh; i++) {
       const o = hitO[i];
-      const dmg = w.damage * falloffMult(hitT[i], w) * dmgMult;
+      let dmg = w.damage * falloffMult(hitT[i], w) * dmgMult;
+      if (pen && penOut.n) dmg *= Math.pow(1 - pen.loss, wallsBefore(penOut, hitT[i]));
       if (o.def) {
         knockZombie(o, dx, dy, w.knockback);
-        damageZombie(game, o, dmg, credit, false);
+        damageZombie(game, o, dmg, credit, gib);
       } else {
         damagePlayer(game, o, dmg * FF_MULT, x, y, true);
       }
@@ -410,7 +514,8 @@ function fireProjectile(game, p, id, w) {
   const spec = w.projectile;
   const a = w.spread > 0 ? p.angle + game.rng.range(-w.spread, w.spread) : p.angle;
   game.shotEvent(p.id, p.id, 0, id, p.x + Math.cos(p.angle) * MUZZLE, p.y + Math.sin(p.angle) * MUZZLE, p.angle);
-  const speed = spec.kind === 'flame' ? spec.speed * game.rng.range(0.85, 1.1) : spec.speed;
+  const puff = spec.kind === 'flame' || spec.kind === 'frost';
+  const speed = puff ? spec.speed * game.rng.range(0.85, 1.1) : spec.speed;
   // Spawn at the muzzle unless a wall is closer, so point-blank shots still connect.
   let sx = p.x, sy = p.y;
   const dx = Math.cos(a), dy = Math.sin(a);
@@ -421,11 +526,45 @@ function fireProjectile(game, p, id, w) {
   addProjectile(game, {
     kind: spec.kind, x: sx, y: sy, vx: dx * speed, vy: dy * speed, angle: a,
     life: spec.life, maxLife: spec.life, radius: spec.radius, owner: p.id, weapon: id,
-    damage: w.damage * (spec.kind === 'bolt' ? p.perks.damageMult || 1 : 1),
+    damage: w.damage * (spec.kind === 'bolt' || spec.kind === 'harpoon' || spec.kind === 'flare' ? p.perks.damageMult || 1 : 1),
     pierce: w.pierce || 1, knockback: w.knockback || 0,
     explodeRadius: spec.explodeRadius || 0, explodeDamage: spec.explodeDamage || 0,
-    burn: w.burn || null,
+    burn: w.burn || null, chill: w.chill || 0, flare: spec.flare || null,
+    drag: spec.drag || 0, pin: spec.pin || 0, dragged: null,
   });
+}
+
+/**
+ * Chainsaw sweep: cuts every zombie within `range` of the wielder inside the `arc`
+ * (anything touching the wielder counts whatever the aim), with line of sight. Kills
+ * gib. The 'shot' event carries one ray per zombie cut (hit 1, at the zombie) for hit
+ * feedback, none when it cut air. The melee perk counts half.
+ */
+function fireSaw(game, p, id, w) {
+  const a = p.angle;
+  const ev = game.shotEvent(p.id, p.id, 0, id, p.x + Math.cos(a) * MUZZLE, p.y + Math.sin(a) * MUZZLE, a);
+  const mult = 1 + ((p.perks.meleeMult || 1) - 1) * 0.5;
+  const list = game.tmpB;
+  const n = game.zgrid.queryRadius(p.x, p.y, w.range + MAX_ZOMBIE_RADIUS, list);
+  const half = (w.arc || 1.4) / 2;
+  let rays = 0;
+  for (let i = 0; i < n; i++) {
+    const z = list[i];
+    if (z.dead) continue;
+    const dx = z.x - p.x, dy = z.y - p.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > w.range + z.radius) continue;
+    const close = d < z.radius + PLAYER_RADIUS + 6;
+    if (!close && Math.abs(angleDiff(a, Math.atan2(dy, dx))) > half + Math.atan2(z.radius, d)) continue;
+    if (!close && !game.world.lineOfSight(p.x, p.y, z.x, z.y)) continue;
+    const nx = d > 1e-6 ? dx / d : Math.cos(a), ny = d > 1e-6 ? dy / d : Math.sin(a);
+    knockZombie(z, nx, ny, w.knockback);
+    if (rays < SAW_MAX_RAYS && ev.rays.length < MAX_RAYS_PER_EVENT) {
+      ev.rays.push({ x: Math.round(z.x * 10) / 10, y: Math.round(z.y * 10) / 10, hit: 1 });
+      rays++;
+    }
+    damageZombie(game, z, w.damage * mult, p.id, !!w.gib);
+  }
 }
 
 /** Throw a frag or a molotov from player p toward its aim. */
@@ -490,7 +629,7 @@ export function updateProjectiles(game) {
       case 'frag': stepFrag(game, pr); break;
       case 'molotov': stepMolotov(game, pr); break;
       case 'acid': stepAcid(game, pr); break;
-      case 'flame': stepFlame(game, pr); break;
+      case 'flame': case 'frost': stepFlame(game, pr); break;
       default: stepShot(game, pr); break;
     }
   }
@@ -506,7 +645,64 @@ export function updateProjectiles(game) {
   list.length = w;
 }
 
-/** Bolts, launcher grenades, rockets. */
+/**
+ * A projectile's life is over at (pr.x, pr.y): a flare drops burning there, a harpoon
+ * pins what it carries (`wall`: it struck an obstacle).
+ */
+function landShot(game, pr, wall) {
+  pr.dead = true;
+  if (pr.kind === 'flare' && pr.flare) {
+    let n = 0;
+    for (const h of game.hazards) if (h.kind === 'flare' && h.life > 0) n++;
+    if (n >= MAX_FLARES) {
+      // the oldest flare on the ground burns out
+      let old = null;
+      for (const h of game.hazards) if (h.kind === 'flare' && h.life > 0 && (!old || h.life < old.life)) old = h;
+      if (old) old.life = 0;
+    }
+    addHazard(game, 'flare', pr.x, pr.y, pr.flare.radius, pr.flare.duration, pr.flare.dps, pr.owner);
+  } else if (pr.kind === 'harpoon' && pr.dragged) {
+    for (const z of pr.dragged) {
+      if (z.dead) continue;
+      z.kvx = 0;
+      z.kvy = 0;
+      z.mode = 3;              // MODE_STUN (sim/zombies.js)
+      z.modeT = wall ? pr.pin : HARPOON_DROP_STUN;
+    }
+    pr.dragged = null;
+  }
+}
+
+/**
+ * Carry the zombies impaled on a harpoon along behind its head, sliding along walls
+ * (a zombie that can't follow drops off, stunned).
+ */
+function dragImpaled(game, pr, dx, dy) {
+  const list = pr.dragged;
+  let back = pr.radius + 2;
+  for (let i = 0; i < list.length; i++) {
+    const z = list[i];
+    if (z.dead) continue;
+    back += z.radius;
+    const tx = pr.x - dx * back, ty = pr.y - dy * back;
+    back += z.radius * 0.6;
+    const ox = z.x, oy = z.y;
+    game.world.moveCircle(z, z.body, tx - z.x, ty - z.y, z.mask);
+    z.kvx = 0;
+    z.kvy = 0;
+    // keep it passive while it hangs on the line
+    z.mode = 3;
+    z.modeT = Math.max(z.modeT, 0.1);
+    if (Math.hypot(tx - z.x, ty - z.y) > z.radius * 1.5 && Math.hypot(z.x - ox, z.y - oy) < 1) {
+      z.modeT = HARPOON_DROP_STUN;
+      list[i] = list[list.length - 1];
+      list.pop();
+      i--;
+    }
+  }
+}
+
+/** Bolts, harpoons, flares, launcher grenades, rockets. */
 function stepShot(game, pr) {
   const speed = Math.hypot(pr.vx, pr.vy);
   const dx = pr.vx / speed, dy = pr.vy / speed;
@@ -531,17 +727,36 @@ function stepShot(game, pr) {
   for (let i = 0; i < nh; i++) hitO[i] = null;
   for (let i = 0; i < targets.length; i++) {
     const z = targets[i];
-    if (pr.kind === 'bolt') {
+    if (pr.kind === 'bolt' || pr.kind === 'harpoon') {
       if (!pr.hits) pr.hits = [];
       pr.hits.push(z.id);
       knockZombie(z, dx, dy, pr.knockback);
       damageZombie(game, z, pr.damage, pr.owner, false);
+      if (pr.kind === 'harpoon' && !z.dead && !z.boss && z.mass < 1) {
+        // impaled: carried along on the line, and the harpoon slows down
+        if (!pr.dragged) pr.dragged = [];
+        if (pr.dragged.length < pr.drag) {
+          pr.dragged.push(z);
+          pr.vx *= HARPOON_DRAG_SLOW;
+          pr.vy *= HARPOON_DRAG_SLOW;
+        }
+      }
       if (pr.hits.length >= pr.pierce) {
         pr.x += dx * ts[i];
         pr.y += dy * ts[i];
+        if (pr.kind === 'harpoon') landShot(game, pr, false);
         pr.dead = true;
         return;
       }
+    } else if (pr.kind === 'flare') {
+      // direct hit: sets it alight and the flare drops burning at its feet
+      knockZombie(z, dx, dy, pr.knockback);
+      if (pr.burn) igniteZombie(z, pr.burn.dps, pr.burn.duration, pr.owner);
+      damageZombie(game, z, pr.damage, pr.owner, false);
+      pr.x += dx * Math.max(0, ts[i] - z.radius * 0.5);
+      pr.y += dy * Math.max(0, ts[i] - z.radius * 0.5);
+      landShot(game, pr, false);
+      return;
     } else {
       // Grenade/rocket: direct hit damage, then the blast.
       const t = ts[i];
@@ -556,14 +771,20 @@ function stepShot(game, pr) {
   if (wallT <= step) {
     pr.x += dx * Math.max(0, wallT - 3);
     pr.y += dy * Math.max(0, wallT - 3);
-    pr.dead = true;
+    if (pr.dragged) dragImpaled(game, pr, dx, dy);
+    landShot(game, pr, true);
     if (pr.explodeRadius > 0) explode(game, pr.x, pr.y, pr.explodeRadius, pr.explodeDamage, owner, pr.kind === 'rocket' ? 'rocket' : 'grenade');
     return;
   }
   pr.x += dx * step;
   pr.y += dy * step;
+  if (pr.dragged) dragImpaled(game, pr, dx, dy);
   if (pr.life <= 0 || outOfMap(game, pr)) {
-    pr.dead = true;
+    if (pr.kind === 'flare' && outOfMap(game, pr)) {
+      pr.x = Math.max(4, Math.min(game.map.width - 4, pr.x));
+      pr.y = Math.max(4, Math.min(game.map.height - 4, pr.y));
+    }
+    landShot(game, pr, false);
     if (pr.explodeRadius > 0) explode(game, pr.x, pr.y, pr.explodeRadius, pr.explodeDamage, owner, pr.kind === 'rocket' ? 'rocket' : 'grenade');
   }
 }
@@ -595,6 +816,7 @@ function stepFlame(game, pr) {
     else if (pr.hits.includes(z.id)) continue;
     pr.hits.push(z.id);
     if (pr.burn) igniteZombie(z, pr.burn.dps, pr.burn.duration, pr.owner);
+    if (pr.chill) chillZombie(game, z, pr.chill);
     damageZombie(game, z, pr.damage, pr.owner, false);
   }
   if (game.settings.friendlyFire) {
@@ -740,21 +962,24 @@ function outOfMap(game, pr) {
 // -------------------------------------------------------------------------------------
 // Hazards
 
-/** Create a ground hazard ('fire' or 'acid') of radius r lasting `life` seconds. */
+/** Create a ground hazard ('fire', 'acid' or a burning 'flare') of radius r lasting `life` seconds. */
 export function addHazard(game, kind, x, y, r, life, dps, owner) {
   const h = { id: game.ids.hazard.alloc(), kind, x, y, r, life, maxLife: life, dps, owner, dead: false };
   game.hazards.push(h);
   return h;
 }
 
-/** Tick fire (ignites zombies) and acid (hurts players) pools; drop expired ones. */
+/**
+ * Tick fire and flares (ignite zombies) and acid (hurts players) pools; drop expired
+ * ones. A flare is a small fire that mostly lights the area (renderers).
+ */
 export function updateHazards(game) {
   const list = game.hazards;
   const near = game.tmpA;
   for (const h of list) {
     h.life -= DT;
     if (h.life <= 0) continue;
-    if (h.kind === 'fire') {
+    if (h.kind === 'fire' || h.kind === 'flare') {
       const n = game.zgrid.queryRadius(h.x, h.y, h.r + MAX_ZOMBIE_RADIUS * 0.5, near);
       for (let i = 0; i < n; i++) {
         const z = near[i];

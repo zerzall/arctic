@@ -2,7 +2,7 @@
 // mirrors its rules (phase, supply-station distance, unlock wave, limits, cash) so the
 // cards show why something can't be bought before the player tries.
 
-import { WEAPONS, WEAPON_IDS } from '../shared/weapons.js';
+import { WEAPONS, WEAPON_IDS, effectiveRate } from '../shared/weapons.js';
 import { ITEMS, ITEM_IDS, ammoPrice } from '../shared/items.js';
 import { perksFor } from '../shared/classes.js';
 import {
@@ -13,19 +13,21 @@ import { h, setText, setClass, setAttr, formatCash } from './dom.js';
 const GUN_IDS = WEAPON_IDS.filter((id) => WEAPONS[id].price > 0);
 const REFRESH = 0.1;
 
-const CATEGORY = {
+/** Shop card label per weapons.js `category`. */
+export const CATEGORY = {
   pistol: 'Pistol', smg: 'SMG', shotgun: 'Shotgun', rifle: 'Rifle', sniper: 'Sniper',
-  heavy: 'Heavy', explosive: 'Explosive', special: 'Special',
+  heavy: 'Heavy', explosive: 'Explosive', special: 'Special', melee: 'Melee',
 };
 
 function shotDamage(w) {
   if (w.projectile && w.projectile.explodeDamage) return w.projectile.explodeDamage;
   if (w.kind === 'flame') return w.damage + (w.burn ? w.burn.dps * 0.5 : 0);
+  if (w.burn) return w.damage + w.burn.dps * w.burn.duration * 0.5;
   return w.damage * (w.pellets || 1);
 }
 
 const MAX_DMG = Math.max(...GUN_IDS.map((id) => shotDamage(WEAPONS[id])));
-const MAX_RATE = Math.max(...GUN_IDS.map((id) => WEAPONS[id].rate));
+const MAX_RATE = Math.max(...GUN_IDS.map((id) => effectiveRate(WEAPONS[id])));
 const MAX_MAG = Math.max(...GUN_IDS.map((id) => WEAPONS[id].mag));
 
 /** 0..1 bar values; log scales so a railgun doesn't flatten every other gun. */
@@ -33,7 +35,7 @@ export function gunStats(id) {
   const w = WEAPONS[id];
   return {
     damage: Math.max(0.06, Math.log(1 + shotDamage(w)) / Math.log(1 + MAX_DMG)),
-    rate: Math.max(0.06, Math.sqrt(w.rate / MAX_RATE)),
+    rate: Math.max(0.06, Math.sqrt(effectiveRate(w) / MAX_RATE)),
     mag: Math.max(0.06, Math.log(1 + w.mag) / Math.log(1 + MAX_MAG)),
   };
 }
@@ -42,6 +44,13 @@ function gunTrait(w) {
   if (w.kind === 'rail') return 'Pierces everything';
   if (w.kind === 'chain') return `Arcs to ${w.chains} more`;
   if (w.kind === 'flame') return 'Sets zombies on fire';
+  if (w.kind === 'cryo') return 'Slows, then freezes solid';
+  if (w.kind === 'melee') return 'Cuts everything in reach';
+  if (w.penetrate) return 'Shoots through cover';
+  if (w.projectile && w.projectile.flare) return 'Burning flare lights up';
+  if (w.projectile && w.projectile.drag) return 'Skewers and pins';
+  if (w.burst) return `${w.burst}-round bursts`;
+  if (w.reloadOne) return `Pierces ${w.pierce}, loads by hand`;
   if (w.projectile && w.projectile.explodeRadius) return 'Explosive';
   if (w.spinup) return 'Needs to spin up';
   if (w.pellets > 1) return `${w.pellets} pellets`;

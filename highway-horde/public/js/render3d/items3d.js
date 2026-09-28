@@ -1,12 +1,14 @@
 // Things in the world that are not people (ACTORS, SPEC §7.5): projectiles by kind
 // (crossbow bolt, launcher grenade, rocket with exhaust + smoke trail + light, flame
-// tongues, thrown frag, molotov with a burning rag, acid glob), pickups (floating,
+// tongues, thrown frag, molotov with a burning rag, acid glob, a burning flare that lights
+// the road, frost mist, a harpoon trailing its line), pickups (floating,
 // spinning props — ammo can, medkit, cash bundles, armour plate, grenades — with a
 // glowing icon above and a halo on the ground; weapon crates with the gun itself hovering
 // over them and its short name), sentry turrets (tripod, armoured head with a shield,
 // barrel shroud, ammo box and a sensor lens that glows green / amber / blinking red),
 // barricades (posts, sandbags, a steel sheet and planks that fall off as it takes damage)
-// and hazards (spreading fire patches, bubbling acid). Props share the hard-surface PBR
+// and hazards (spreading fire patches, bubbling acid, road flares burning on the ground
+// with a strong red pool light each). Props share the hard-surface PBR
 // material of the guns (actor-guns.js gunKit); everything is instanced per kind, so the
 // whole lot costs a handful of draw calls.
 
@@ -161,6 +163,27 @@ function projectileModels() {
   m.acid = built((gb) => {
     sphere(gb, 0, 0, 0, 3.4, { glow: true, color: '#a6ff3a', seg: 12 });
     sphere(gb, -2.4, 0.4, 0, 2.2, { glow: true, color: '#7ad020', seg: 10 });
+  });
+  // flare shell in flight: a red paper tube, the burning end glowing white-red
+  m.flare = built((gb) => {
+    cylX(gb, -3.2, 1.2, 0, 0, 0.9, 0.9, { color: '#b3261e', mat: GM.PAINT, seg: 10 });
+    sphere(gb, 1.6, 0, 0, 1.3, { glow: true, color: '#ffd0b8', seg: 10 });
+  });
+  // harpoon: steel shaft, a broad head with flip barbs, the line shackle at the tail
+  m.harpoon = built((gb) => {
+    cylX(gb, -16, 6, 0, 0, 0.32, 0.32, { color: '#b8bec2', mat: GM.STEEL, seg: 8 });
+    latheX(gb, [[5.6, 0], [5.6, 0.7], [6.6, 1.0], [10.4, 0.15], [10.8, 0]], 0, 0, { color: '#d8dde0', mat: GM.STEEL, seg: 4 });
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * TAU + 0.5;
+      rbox(gb, 4.2, 7.0, -0.4, 0.4, -0.07, 0.07, 0.02, { color: '#aab0b4', mat: GM.STEEL, at: [0, Math.sin(a) * 0.65, Math.cos(a) * 0.65], rot: [HALF_PI - a, 0, 0], seg: 1 });
+    }
+    rbox(gb, -16.5, -15.2, -0.6, 0.6, -0.6, 0.6, 0.2, { color: '#f2a900', mat: GM.PAINT });
+  });
+  // a road flare burning on the ground
+  m.flareStick = built((gb) => {
+    cylX(gb, -6, 4, 0, 0, 0.9, 0.9, { color: '#b3261e', mat: GM.PAINT, seg: 10 });
+    cylX(gb, -6.6, -6, 0, 0, 0.95, 0.95, { color: '#2a2a2a', mat: GM.POLY, seg: 10 });
+    sphere(gb, 4.4, 0, 0, 0.9, { glow: true, color: '#fff0e0', seg: 8 });
   });
   return m;
 }
@@ -346,7 +369,8 @@ export function createItems3D(ctx) {
   // projectiles
   const pm = projectileModels();
   const proj = {};
-  for (const k of ['bolt', 'grenade', 'rocket', 'frag', 'molotov', 'acid']) proj[k] = mkPair(pm[k], P_CAP);
+  for (const k of ['bolt', 'grenade', 'rocket', 'frag', 'molotov', 'acid', 'flare', 'harpoon']) proj[k] = mkPair(pm[k], P_CAP);
+  const flareSticks = mkPair(pm.flareStick, H_CAP);
   const projState = new Map();   // id → { t, seen, kind, x, y }
 
   // pickups: a prop per kind + glowing icon billboards
@@ -437,6 +461,7 @@ export function createItems3D(ctx) {
   const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);   // warm base under the fire ramp
   let frameNo = 0;
   const hazardLights = [];
+  const flareLights = [];
 
   function update(view, frame) {
     fx.begin(frame);
@@ -446,7 +471,7 @@ export function createItems3D(ctx) {
     const camX = frame.camX, camY = frame.camY;
 
     // ---- projectiles ----
-    const counts = { bolt: 0, grenade: 0, rocket: 0, frag: 0, molotov: 0, acid: 0 };
+    const counts = { bolt: 0, grenade: 0, rocket: 0, frag: 0, molotov: 0, acid: 0, flare: 0, harpoon: 0 };
     const list = (view && view.projectiles) || [];
     for (let k = 0; k < list.length; k++) {
       const p = list[k];
@@ -528,6 +553,42 @@ export function createItems3D(ctx) {
           if (i < P_CAP) put(proj.acid, i, p.x, Math.max(3, h), p.y, dir, 0, 0, 1 + Math.sin(t * 20) * 0.1);
           fx.glow(p.x, h, p.y, 16, H('#a6ff3a', 1.6), 0.7);
           if (R() < dt * 25) fx.spawn(p.x, h - 2, p.y, 0, -10, 0, 0.5, 1.6, 1, H('#a6ff3a', 2), 1, FR.DROP, F_ADD | F_BOUNCE, 400, 0);
+          break;
+        }
+        case 'flare': {
+          // a burning flare arcing down the road, shedding sparks and red smoke, lighting everything it passes
+          const i = counts.flare++;
+          const h = Math.max(6, 44 + Math.sin(Math.min(1, s.t / 1.05) * Math.PI) * 14 - s.t * 30);
+          if (i < P_CAP) put(proj.flare, i, p.x, h, p.y, dir, t * 20);
+          fx.glow(p.x, h, p.y, 16 + R() * 4, H('#ff5a3a', 2.6), 1);
+          fx.glow(p.x, h, p.y, 5, H('#fff0e0', 3), 1);
+          for (let q = 0; q < (high ? 2 : 1); q++) {
+            const back = a + Math.PI + (R() - 0.5) * 0.9, sp = 80 + R() * 120;
+            fx.spawn(p.x, h, p.y, Math.cos(back) * sp, 20 + R() * 60, Math.sin(back) * sp, 0.3 + R() * 0.3, 1.2, 0.5, H('#ffb080', 3), 1, FR.DOT, F_ADD | F_BOUNCE, 500, 1);
+          }
+          if (R() < dt * (high ? 40 : 15)) fx.spawn(p.x, h, p.y, (R() - 0.5) * 8, 6 + R() * 8, (R() - 0.5) * 8, 1.6 + R(), 4, 18, C('#b0402e'), 0.3, FR.SMOKE3, 0, -3, 0.6);
+          ctx.lights.steady('flarep' + p.id, p.x, p.y, h, '#ff4a2a', 2.0, 380);
+          break;
+        }
+        case 'harpoon': {
+          // the harpoon with its line trailing back toward the gun
+          const i = counts.harpoon++;
+          if (i < P_CAP) put(proj.harpoon, i, p.x, 40, p.y, dir, 0);
+          const L = Math.min(260, 60 + s.t * 1100);
+          const sag = Math.min(8, s.t * 12);
+          const bx = p.x - Math.cos(a) * L, by = p.y - Math.sin(a) * L;
+          fx.beam(bx, 40 - sag, by, p.x - Math.cos(a) * 16, 40, p.y - Math.sin(a) * 16, 0.35, 0.35, C('#8a8478'), 0.5, 0, 0.7, 0);
+          break;
+        }
+        case 'frost': {
+          // cold mist rolling out along the stream, with ice glints
+          if (fx.load() < 0.9 && R() < dt * (high ? 34 : 14)) {
+            const grow = Math.min(1, s.t / 0.55);
+            fx.spawn(p.x + (R() - 0.5) * 8, 30 - grow * 18 + R() * 6, p.y + (R() - 0.5) * 8, Math.cos(a) * 90, 4 + R() * 10, Math.sin(a) * 90,
+              0.35 + R() * 0.2, 10 + grow * 12, 26 + grow * 22, C('#e2f6ff'), 0.26, R() < 0.5 ? FR.SMOKE2 : FR.SMOKE4, 0, -4, 2.5);
+          }
+          if (high && R() < dt * 10) fx.spawn(p.x, 22 + R() * 14, p.y, (R() - 0.5) * 30, 10 + R() * 20, (R() - 0.5) * 30, 0.5, 1.4, 0.5, H('#c8f0ff', 2.2), 1, FR.GLINT, F_ADD | F_FLICKER, 30, 1);
+          if ((p.id & 7) === 0) ctx.lights.steady('frost' + (p.id & 31), p.x, p.y, 28, '#9ae8ff', 0.45, 150);
           break;
         }
         default:
@@ -626,14 +687,36 @@ export function createItems3D(ctx) {
     for (let r = 0; r < 4; r++) finish(barRows[r], rowN[r]);
 
     // ---- hazards ----
-    let np = 0;
+    let np = 0, nf = 0;
     hazardLights.length = 0;
+    flareLights.length = 0;
     const hz = (view && view.hazards) || [];
     for (let k = 0; k < hz.length; k++) {
       const h = hz[k];
       const life = Math.max(0, Math.min(1, h.life));
       const r = h.r || 60;
       const d2 = (h.x - camX) ** 2 + (h.y - camY) ** 2;
+      if (h.kind === 'flare') {
+        // a road flare burning on the asphalt: a hot white-red tip, sparks spitting, red
+        // smoke drifting up — and a strong red light over a wide circle (the point of it)
+        const fade = Math.min(1, life * 6);
+        const flick = 0.82 + 0.18 * Math.sin(t * 29 + h.id * 3) * Math.sin(t * 13 + h.id);
+        const ang = hash01(h.id) * TAU;
+        if (nf < H_CAP) put(flareSticks, nf++, h.x, 1.2, h.y, ang);
+        const tx = h.x + Math.cos(-ang) * 4.4, ty = h.y + Math.sin(-ang) * 4.4;
+        fx.glow(tx, 2, ty, 10 + R() * 3, H('#fff0e0', 3), fade);
+        fx.glow(tx, 3, ty, 24, H('#ff4a2a', 2.2), 0.8 * fade * flick);
+        fx.glow(h.x, 1, h.y, r * 5, C('#ff3a1a'), 0.3 * fade * flick, FR.GLOW, true);
+        if (d2 < 2000 * 2000 && fx.load() < 0.85) {
+          if (R() < dt * (high ? 24 : 8) * fade) {
+            const aa = R() * TAU, sp = 40 + R() * 90;
+            fx.spawn(tx, 3, ty, Math.cos(aa) * sp, 60 + R() * 90, Math.sin(aa) * sp, 0.35 + R() * 0.3, 1.1, 0.4, H('#ffc090', 3), 1, FR.DOT, F_ADD | F_BOUNCE, 600, 1);
+          }
+          if (R() < dt * (high ? 9 : 3) * fade) fx.spawn(tx, 6, ty, (R() - 0.5) * 10, 16 + R() * 10, (R() - 0.5) * 10, 3 + R() * 1.5, 5, 30, C('#b83a2a'), 0.3, R() < 0.5 ? FR.SMOKE : FR.SMOKE3, 0, -2, 0.3);
+        }
+        flareLights.push(d2, h, fade * flick);
+        continue;
+      }
       if (h.kind === 'fire') {
         // flames scattered over the patch, spreading out from the burst over the first second
         const spread = Math.min(1, 0.35 + (1 - life) * 7 / 1.1);
@@ -666,6 +749,17 @@ export function createItems3D(ctx) {
       }
     }
     finish(puddles, np);
+    finish(flareSticks, nf);
+    // flares light the road: the four nearest get a strong red pool light each (they
+    // outscore street lamps in the pool, see lights.js)
+    const forder = [];
+    for (let k = 0; k < flareLights.length; k += 3) forder.push(k);
+    forder.sort((a, b) => flareLights[a] - flareLights[b]);
+    for (let n = 0; n < Math.min(4, forder.length); n++) {
+      const k = forder[n];
+      const h = flareLights[k + 1];
+      ctx.lights.steady('flare' + h.id, h.x, h.y, 26, '#ff3a1a', 2.1 * flareLights[k + 2], 430);
+    }
     // hazard lights: the three nearest
     const order = [];
     for (let k = 0; k < hazardLights.length; k += 5) order.push(k);

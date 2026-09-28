@@ -1717,7 +1717,8 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   animation: fade-in 0.12s ease-out;
 }
 .shop {
-  width: min(78.75rem, 100%);
+  /* 26 guns: wide screens get a 7th column so the list needs 4 rows instead of 5 */
+  width: min(96rem, 100%);
   max-height: 100%;
   display: flex;
   flex-direction: column;

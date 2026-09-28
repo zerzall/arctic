@@ -30,7 +30,7 @@ import {
 import { createBrain, updateBots } from './bots.js';
 
 /** Events that are pure presentation and may be dropped when a snapshot overflows. */
-const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch']);
+const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch', 'freeze']);
 /** Soft cap: cosmetic events beyond this are dropped. */
 const EVENT_SOFT_CAP = 180;
 /** Hard cap on buffered events if snapshot() is never called (headless use). */
@@ -507,6 +507,8 @@ function zombieFlags(z) {
   if (z.mode === 1 || z.mode === 2) f |= 4;
   if (z.buffT > 0) f |= 8;
   if (z.elite) f |= 16;
+  if (z.chill > 0.05 || z.frozenT > 0) f |= 32;
+  if (z.frozenT > 0) f |= 64;
   return f;
 }
 

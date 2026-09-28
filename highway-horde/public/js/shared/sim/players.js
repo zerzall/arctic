@@ -60,7 +60,7 @@ export function createPlayer(game, info) {
     slot: 1, lastSlot: 0,
     slots: [null, null, null], mag: [0, 0, 0], res: [0, 0, 0],
     reloadT: 0, reloadTotal: 0, reloadSlot: -1,
-    cooldown: 0, spin: 0, lastFireTick: -1000, meleeT: 0, meleeCd: 0, throwCd: 0,
+    cooldown: 0, spin: 0, lastFireTick: -1000, meleeT: 0, meleeCd: 0, throwCd: 0, burstLeft: 0, prevFire: false,
     emptyLatch: false, freeMag: WEAPONS.pistol.mag, prevSlot: 1,
     cash: START_CASH, kills: 0, damage: 0, revives: 0, downs: 0, earned: 0,
     frags: perks.startFrags, molotovs: perks.startMolotovs,
@@ -254,6 +254,7 @@ function switchSlot(game, p, s) {
   p.reloadT = 0;
   p.reloadSlot = -1;
   p.spin = 0;
+  p.burstLeft = 0;
   if (p.cooldown < SWITCH_DELAY) p.cooldown = SWITCH_DELAY;
   game.emit({ type: 'switch', pid: p.id, weapon: p.slots[s] });
 }
@@ -267,31 +268,38 @@ function startReload(game, p) {
   const mag = aw.slot < 0 ? p.freeMag : p.mag[aw.slot];
   const res = aw.slot < 0 ? -1 : p.res[aw.slot];
   if (mag >= w.mag || res === 0) return false;
+  // (per-round reloads: this is the time for one round; finishReload starts the next)
   p.reloadTotal = w.reload * (p.perks.reloadMult || 1);
   p.reloadT = p.reloadTotal;
   p.reloadSlot = aw.slot;
+  p.burstLeft = 0;
   game.emit({ type: 'reload', pid: p.id, weapon: aw.id, time: p.reloadTotal });
   return true;
 }
 
-function finishReload(p, aw) {
+function finishReload(game, p, aw) {
   const w = WEAPONS[aw.id];
   if (aw.slot < 0) {
     p.freeMag = w.mag;
   } else {
     const need = w.mag - p.mag[aw.slot];
     const res = p.res[aw.slot];
-    const take = res < 0 ? need : Math.min(need, res);
+    let take = res < 0 ? need : Math.min(need, res);
+    if (w.reloadOne) take = Math.min(take, 1);
     p.mag[aw.slot] += take;
     if (res >= 0) p.res[aw.slot] = res - take;
   }
   p.reloadT = 0;
   p.reloadSlot = -1;
+  // Round by round: keep loading until full (a trigger pull stops it, see handleFire).
+  if (w.reloadOne && aw.slot >= 0) startReload(game, p);
 }
 
 function handleFire(game, p, cmd, aw) {
   if (!aw.id) {
     p.spin = 0;
+    p.burstLeft = 0;
+    p.prevFire = !!cmd.fire;
     return;
   }
   const w = WEAPONS[aw.id];
@@ -301,11 +309,16 @@ function handleFire(game, p, cmd, aw) {
       p.reloadSlot = -1;
     } else {
       p.reloadT -= DT;
-      if (p.reloadT <= 0) finishReload(p, aw);
+      if (p.reloadT <= 0) finishReload(game, p, aw);
     }
   }
   // Game over / victory are terminal: nobody fires any more (client prediction agrees).
-  const fire = cmd.fire && !game.over;
+  const trigger = cmd.fire && !game.over;
+  const pulled = trigger && !p.prevFire;
+  p.prevFire = trigger;
+  if (!w.burst || game.over) p.burstLeft = 0;
+  // A burst, once started, finishes without the trigger.
+  const fire = trigger || p.burstLeft > 0;
   if (w.spinup) {
     if (fire) p.spin = Math.min(1, p.spin + DT / w.spinup);
     else p.spin = Math.max(0, p.spin - DT / (w.spinup * 0.6));
@@ -318,11 +331,19 @@ function handleFire(game, p, cmd, aw) {
     return;
   }
   if (p.reloadT > 0) {
-    if (p.cooldown < 0) p.cooldown = 0;
-    return;
+    // A fresh trigger pull stops a round-by-round reload once a round is in.
+    const loaded = aw.slot < 0 ? p.freeMag : p.mag[aw.slot];
+    if (w.reloadOne && pulled && loaded > 0) {
+      p.reloadT = 0;
+      p.reloadSlot = -1;
+    } else {
+      if (p.cooldown < 0) p.cooldown = 0;
+      return;
+    }
   }
   let mag = aw.slot < 0 ? p.freeMag : p.mag[aw.slot];
   if (mag <= 0) {
+    p.burstLeft = 0;
     if (!p.emptyLatch) {
       p.emptyLatch = true;
       game.emit({ type: 'empty', pid: p.id });
@@ -337,11 +358,20 @@ function handleFire(game, p, cmd, aw) {
   }
   let shots = 0;
   while (p.cooldown <= COOLDOWN_EPS && mag > 0 && shots < 4) {
+    if (w.burst) {
+      // a new burst only on the trigger; `burstDelay` after its last round
+      if (p.burstLeft <= 0) {
+        if (!trigger) break;
+        p.burstLeft = w.burst;
+      }
+      p.burstLeft--;
+    }
     fireWeaponShot(game, p, aw.id, w);
     mag--;
-    p.cooldown += 1 / w.rate;
+    p.cooldown += w.burst && p.burstLeft === 0 ? w.burstDelay : 1 / w.rate;
     shots++;
   }
+  if (mag <= 0) p.burstLeft = 0;
   if (aw.slot < 0) p.freeMag = mag;
   else p.mag[aw.slot] = mag;
   if (shots) p.lastFireTick = game.tick;
@@ -481,6 +511,7 @@ export function downPlayer(game, p) {
   p.reloadT = 0;
   p.reloadSlot = -1;
   p.spin = 0;
+  p.burstLeft = 0;
   p.sprinting = false;
   p.prevSlot = p.slot;
   if (p.slots[0] && WEAPONS[p.slots[0]].category === 'pistol') p.slot = 0;
@@ -814,6 +845,7 @@ export function giveWeapon(game, p, id) {
   p.reloadT = 0;
   p.reloadSlot = -1;
   p.spin = 0;
+  p.burstLeft = 0;
   game.emit({ type: 'switch', pid: p.id, weapon: id });
   return s;
 }

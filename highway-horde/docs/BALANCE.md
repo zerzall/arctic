@@ -155,6 +155,25 @@ Judged on the paper table below plus kills per minute in hand.
 | Minigun | spread 0.10 → 0.07 | 22 kills/min for $8000, below the $4400 LMG. |
 | Railgun | rate 0.7 → 0.85, reload 3.0 → 2.6 | 29 kills/min for $9500, below the tesla. |
 
+### New guns (18 → 26)
+Eight guns were added after this pass, each slotted into a price gap and held to the $/DPS
+curve of its neighbours (paper table below; `effectiveRate()` and `fullReloadTime()` in
+weapons.js give the burst and one-round-reload guns their real rate). A 32-run check
+(average 4p, normal) afterwards: 94% clear 10, 28% finish 15, median 14 — the same as
+before the new guns (92% / 31-38% / 14), so the new guns shifted what teams use, not
+how far they get.
+
+| gun | price, unlock | key numbers | why these numbers |
+|---|---|---|---|
+| Flare Gun | $900, wave 2 | 70 hit + ignite (35 dps × 4 s); lands as a burning flare: 52 px, 30 dps, 8 s, lights the area; 1 round, 1.0 s reload | A cheap crowd tool in the uzi/magnum bracket: 126 sustained DPS on paper, more in practice from the flare on the ground. Too slow to carry a team alone. |
+| Tommy Gun | $1300, wave 2 | 23 dmg, 13/s, 50-round drum, 2.6 s reload, spread 0.12, falloff 0.55 | Between the $900 uzi (163) and the $2100 twin vipers (224): 178 sustained DPS, a long drum paid for with a long reload and wild spread. |
+| Burst Rifle | $1500, wave 2 | 40 dmg, 3-round bursts at 15/s then 0.3 s, 30 rounds, 2.0 s reload | An accurate step to the $1900 rifle: 6.9 shots/s averaged, 189 sustained DPS, $7.9 per DPS. Rate 16 → 15 so a burst lands on whole ticks (the test checks the average rate). |
+| Lever-Action | $1800, wave 3 | 160 dmg, pierce 2, 2/s, 8 rounds loaded one at a time (0.42 s each) | Hits like the magnum's big brother at range. Sustained DPS (174) counts a full 3.4 s reload; topping up between fights makes it better than that. |
+| Chainsaw | $2400, wave 4 | 24 dmg × 10/s to every zombie in a 64 px, 1.5 rad cone (line of sight), knockback 70, 100 fuel (10 s), free 2 s refuel, gibs | Unlimited ammo is the price: it only works in melee, where the zombies are. Players move at 92%. Bots never buy it (their melee range logic would walk them into brutes). |
+| Harpoon Gun | $2800, wave 5 | 250 dmg, pierce 5, drags up to 3 zombies and pins them 1.2 s, 4 rounds, 2.0 s reload | Tuned up from 220 dmg / 3 rounds / $3000 (140 sustained DPS, $21 per DPS). Now 187 DPS at $14.9 per DPS, next to the crossbow and DMR it competes with; bots took 28.6 kills/min with it. |
+| Cryo Blaster | $3200, wave 5 | 9 dmg puffs at 20/s, pierce all, chill 0.07 per hit (slows up to 60%), frozen at full chill for 1.6 s taking ×1.3 damage | Support, not damage: 133 DPS for $3200, but a frozen pack neither moves nor bites, and every other gun hits it 30% harder. Damage 7 → 9 (it was 104 DPS, below the $900 flare gun). Bosses cap at half chill. |
+| .50 AMR | $10000, wave 10 | 1200 dmg, pierce 20, through 2 obstacles ≤ 90 px thick (−25% each), 0.55/s, 5 rounds, 3.4 s reload, gibs | The most expensive gun, one-shot kills on a whole line of anything but the boss. 480 sustained DPS sits just under the railgun (493): it pays for the cover penetration with a slow bolt and 18% slower movement. |
+
 ### Classes (teams of 4 average bots of one class, normal)
 | class | change | why |
 |---|---|---|
@@ -183,7 +202,9 @@ The class descriptions in `classes.js` were updated to match.
 
 ### Guns: paper numbers
 `sustained` includes reloads. Tesla chains, shotgun spread and explosions are not modelled:
-pellets are counted as all hitting, and explosive damage as landing once.
+pellets are counted as all hitting, and explosive damage as landing once. Burst guns use
+their average rate, the flare gun and flamethrower add their burn, and the cryo blaster's
+freeze bonus and the flare left on the ground are not counted.
 
 | gun | price | unlock | burst dps | sustained dps | range | pierce | $ per sust. dps | refill $ | dmg per refill $ | move |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -193,26 +214,37 @@ pellets are counted as all hitting, and explosive damage as landing once.
 | uzi | 900 | 1 | 270 | 163 | 750 | 1 | 5.5 | 250 | 23 | 1 |
 | shotgun | 1100 | 1 | 224 | 150 | 480 | 1 | 7.3 | 300 | 29 | 0.97 |
 | rifle | 1900 | 1 | 360 | 220 | 1100 | 1 | 8.6 | 500 | 22 | 0.95 |
+| flare | 900 | 2 | 315 | 126 | 1000 | 1 | 7.1 | 250 | 26 | 1 |
+| tommy | 1300 | 2 | 299 | 178 | 650 | 1 | 7.3 | 350 | 26 | 0.97 |
+| burst_rifle | 1500 | 2 | 277 | 189 | 1200 | 1 | 7.9 | 400 | 30 | 0.96 |
 | dual_smg | 2100 | 3 | 408 | 224 | 700 | 1 | 9.4 | 550 | 16 | 1 |
 | crossbow | 2400 | 3 | 288 | 188 | 1400 | 8 | 12.8 | 600 | 20 | 1 |
 | dmr | 2800 | 3 | 298 | 215 | 1300 | 3 | 13.0 | 700 | 22 | 0.95 |
+| lever | 1800 | 3 | 320 | 174 | 1400 | 2 | 10.3 | 450 | 26 | 1 |
 | sniper | 3200 | 4 | 405 | 269 | 2400 | 10 | 11.9 | 800 | 25 | 0.9 |
+| chainsaw | 2400 | 4 | 240 | 200 | 64 | all | 12.0 | - | inf | 0.92 |
 | auto_shotgun | 3600 | 5 | 448 | 272 | 450 | 1 | 13.3 | 900 | 16 | 0.93 |
 | flamethrower | 4200 | 5 | 295 | 203 | 330 | all | 20.6 | 1050 | 6 | 0.9 |
+| harpoon | 2800 | 5 | 300 | 187 | 1100 | 5 | 14.9 | 700 | 13 | 0.94 |
+| cryo | 3200 | 5 | 180 | 133 | 300 | all | 24.0 | 800 | 5 | 0.92 |
 | lmg | 4400 | 6 | 432 | 292 | 1100 | 2 | 15.1 | 1100 | 16 | 0.82 |
 | grenade_launcher | 4600 | 6 | 420 | 240 | 900 | 1 | 19.2 | 1150 | 10 | 0.93 |
 | rocket | 6200 | 8 | 648 | 247 | 1600 | 1 | 25.1 | 1550 | 7 | 0.85 |
 | tesla | 6800 | 8 | 270 | 196 | 600 | 1 | 34.6 | 1700 | 6 | 0.95 |
 | minigun | 8000 | 9 | 900 | 600 | 1000 | 1 | 13.3 | 2000 | 14 | 0.62 |
 | railgun | 9500 | 10 | 765 | 493 | 3000 | all | 19.3 | 2400 | 12 | 0.9 |
+| amr | 10000 | 10 | 660 | 480 | 3000 | 20 | 20.8 | 2500 | 17 | 0.82 |
 
 Every gun has a niche at its price:
 * **Close-range bursts:** sawed-off and shotgun.
-* **Cheap all-rounders:** uzi and magnum.
-* **Mid-price:** the rifle is accurate; the dual SMGs spray hardest; the crossbow and DMR
-  pierce lines; the sniper rifle kills bosses.
+* **Cheap all-rounders:** uzi and magnum; the Tommy gun sprays a 50-round drum and the
+  burst rifle is the accurate step up; the flare gun sets a spot on fire and lights it.
+* **Mid-price:** the rifle is accurate; the dual SMGs spray hardest; the crossbow, DMR and
+  lever-action pierce lines; the sniper rifle kills bosses; the harpoon skewers and pins a
+  line; the chainsaw never runs dry but only works up close.
 * **Late:** the LMG and minigun give sustained fire, the auto shotgun is a close-range
-  shredder, and the tesla and flamethrower clear crowds.
+  shredder, the tesla and flamethrower clear crowds, the cryo blaster stops them, and the
+  .50 kills whole lines through cover.
 
 Late guns have the highest DPS but cost 25% of their price to refill, so their damage per
 refill dollar is 2-5× worse than early guns'.
@@ -232,6 +264,12 @@ refill dollar is 2-5× worse than early guns'.
 
 Kills per minute favour late guns (more zombies on screen) and bots barely use shotguns
 (they fight at range), so the shotgun rows understate them.
+
+The new guns in the 32-run check (average 4p, normal; kill share, kills/min in hand):
+harpoon 5%, 28.6; lever-action 4%, 29.8; burst rifle 4%, 25.1; .50 AMR 2%, 28.5; flare gun
+1%, 23.2; cryo blaster 0.5%, 28.3; Tommy gun 0.3%, 12.1 (a stop-gap bots swap out within a
+wave, like the uzi at 14.2). The older guns kept their numbers (LMG 32.8, DMR 33.9, rifle
+25.9, tesla 47.8). The chainsaw is not measured: bots never pick it.
 
 ### Classes
 Per player per wave played, in mixed teams:

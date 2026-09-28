@@ -138,8 +138,8 @@ const ZTYPE_MIX = [
   ['walker', 44], ['runner', 16], ['crawler', 10], ['bloater', 7], ['spitter', 7], ['screamer', 6], ['brute', 4], ['boss', 1],
 ];
 const PLAYER_WEAPONS = [
-  ['rifle', 'dmr', 'minigun'], ['uzi', 'dual_smg', 'tesla'], ['shotgun', 'auto_shotgun', 'flamethrower'],
-  ['magnum', 'sniper', 'railgun'], ['sawedoff', 'grenade_launcher', 'rocket'], ['lmg', 'crossbow', 'pistol'],
+  ['rifle', 'dmr', 'minigun', 'burst_rifle', 'amr'], ['uzi', 'dual_smg', 'tesla', 'tommy'], ['shotgun', 'auto_shotgun', 'flamethrower', 'cryo'],
+  ['magnum', 'sniper', 'railgun', 'lever'], ['grenade_launcher', 'sawedoff', 'flare', 'rocket'], ['harpoon', 'crossbow', 'chainsaw', 'lmg', 'pistol'],
 ];
 
 /**
@@ -204,6 +204,7 @@ export function createFixtureScene(map, opts = {}) {
     nextZid = (nextZid % 65000) + 1;
     placeZombie(z, near);
     if (rng.chance(0.05)) z.flags |= ZFLAG.BURNING;
+    else if (rng.chance(0.06)) z.flags |= ZFLAG.SLOWED | (rng.chance(0.5) ? ZFLAG.FROZEN : 0);
     if (rng.chance(0.08)) z.flags |= ZFLAG.BUFFED;
     if (type !== 'boss' && rng.chance(0.04)) z.flags |= ZFLAG.ELITE;
     z.hp = rng.range(0.3, 1);
@@ -284,10 +285,20 @@ export function createFixtureScene(map, opts = {}) {
       }
       if (pts.length > 1) events.push({ type: 'chain', pid: p.id, points: pts });
       if (target && rng.chance(0.2)) killZombie(target, p.id, false);
-    } else if (w.kind === 'flame') {
+    } else if (w.kind === 'flame' || w.kind === 'cryo') {
       for (let k = 0; k < 2; k++) {
-        projectiles.push({ id: nextPid++, kind: 'flame', x: mx, y: my, angle: ang + (rng.next() - 0.5) * 0.25, _v: 620, _life: 0.5 });
+        projectiles.push({ id: nextPid++, kind: w.projectile.kind, x: mx, y: my, angle: ang + (rng.next() - 0.5) * 0.25, _v: w.projectile.speed, _life: w.projectile.life });
       }
+      if (w.kind === 'cryo' && target && rng.chance(0.3)) {
+        target.flags |= ZFLAG.SLOWED;
+        if (rng.chance(0.3)) {
+          target.flags |= ZFLAG.FROZEN;
+          events.push({ type: 'freeze', id: target.id, x: target.x, y: target.y });
+        }
+      }
+    } else if (w.kind === 'melee') {
+      // the chainsaw: a ray on each zombie in reach
+      if (target && Math.hypot(target.x - p.x, target.y - p.y) < w.range + 30) ev.rays.push({ x: target.x, y: target.y, hit: 1 });
     } else if (w.kind === 'projectile') {
       projectiles.push({ id: nextPid++, kind: w.projectile.kind, x: mx, y: my, angle: ang, _v: w.projectile.speed * 0.6, _life: w.projectile.life });
     }
@@ -307,8 +318,9 @@ export function createFixtureScene(map, opts = {}) {
         p.y = cy + Math.sin(p._home + time * 0.1) * 100;
       }
       // cycle every player through all weapons so every sprite is exercised
-      const wi = Math.floor(time / 5 + p._wi) % 3;
-      const wid = PLAYER_WEAPONS[p._wi][wi];
+      const list = PLAYER_WEAPONS[p._wi];
+      const wi = Math.floor(time / 5 + p._wi) % list.length;
+      const wid = list[wi];
       if (p.slots[1] !== wid) {
         p.slots[1] = wid;
         events.push({ type: 'switch', pid: p.id, weapon: wid });
@@ -472,6 +484,8 @@ export function createFixtureScene(map, opts = {}) {
         hazards.push({ id: nextHid++, kind: 'fire', x: p.x, y: p.y, r: 110, life: 1, _dur: 7 });
       } else if (p.kind === 'acid') {
         hazards.push({ id: nextHid++, kind: 'acid', x: p.x, y: p.y, r: 60, life: 1, _dur: 4 });
+      } else if (p.kind === 'flare') {
+        hazards.push({ id: nextHid++, kind: 'flare', x: p.x, y: p.y, r: 52, life: 1, _dur: 8 });
       }
     }
     for (let i = hazards.length - 1; i >= 0; i--) {
@@ -517,6 +531,12 @@ export function allEventsSample(x, y) {
     { type: 'shot', pid: 0, turret: 1, weapon: 'rifle', x, y, angle: 1, rays: [{ x: x + 100, y: y + 150, hit: 1 }] },
     { type: 'shot', pid: 2, turret: 0, weapon: 'flamethrower', x, y, angle: 2, rays: [] },
     { type: 'shot', pid: 2, turret: 0, weapon: 'rocket', x, y, angle: 2, rays: [] },
+    { type: 'shot', pid: 2, turret: 0, weapon: 'chainsaw', x, y, angle: 0, rays: [{ x: x + 40, y, hit: 1 }] },
+    { type: 'shot', pid: 2, turret: 0, weapon: 'cryo', x, y, angle: 0.5, rays: [] },
+    { type: 'shot', pid: 2, turret: 0, weapon: 'flare', x, y, angle: 1.5, rays: [] },
+    { type: 'shot', pid: 2, turret: 0, weapon: 'harpoon', x, y, angle: 2.5, rays: [] },
+    { type: 'shot', pid: 1, turret: 0, weapon: 'amr', x, y, angle: -0.3, rays: [{ x: x + 1400, y: y - 420, hit: 1 }] },
+    { type: 'freeze', id: 9, x: x + 60, y: y + 20 },
     { type: 'chain', pid: 1, points: [{ x, y }, { x: x + 100, y: y + 20 }, { x: x + 180, y: y + 80 }] },
     { type: 'melee', pid: 1, x, y, angle: 0, hits: 2 },
     { type: 'zdie', id: 5, ztype: 'walker', x: x + 50, y, angle: 0, by: 1, gib: false },

@@ -63,7 +63,7 @@ highway-horde/
 ```
 
 Data tables already written (read them — they are the source of truth):
-`constants.js` (all tuning numbers), `weapons.js` (18 guns + throwables), `zombies.js`
+`constants.js` (all tuning numbers), `weapons.js` (26 guns + throwables), `zombies.js`
 (8 zombie types, `ZFLAG` bits), `classes.js` (6 survivor classes + perks), `items.js`
 (shop items, pickups, drop tables).
 
@@ -277,7 +277,24 @@ needs `spinup` seconds of holding fire first. Hitscan: `pellets` rays with rando
 each ray stops at the first `solid` obstacle, damages up to `pierce` zombies along it
 (sorted by distance), damage × falloff × perks.damageMult, knockback. Friendly fire off
 by default (on: 25% damage to players, never downed by it). `chain`/`rail`/`flame`/
-`projectile` per weapons.js. Explosions: damage falls off linearly to 30% at the edge,
+`projectile` per weapons.js. Weapon extras (all in weapons.js, client prediction mirrors
+the fire timing): `burst` fires that many rounds per trigger pull at `rate`, then waits
+`burstDelay` (a burst finishes even if the trigger is let go; `effectiveRate()` gives the
+average rate); `reloadOne` reloads one round per `reload` seconds and chains until full, and
+a fresh trigger pull with a round loaded interrupts it; `penetrate: {walls, thick, loss}`
+lets a hitscan round pass through up to `walls` obstacles no thicker than `thick` px along
+the ray, losing `loss` of its damage at each (`traceRound()` in combat.js). Kind `cryo`
+throws frost puffs like the flamethrower that add `chill` (0..1) instead of fire: a chilled
+zombie moves and attacks up to `FROST.slow` slower, at 1 it freezes solid for
+`FROST.freezeTime` s (no moving or attacking, takes ×`FROST.brittle` damage), then thaws
+to `FROST.afterThaw` chill; bosses cap at `FROST.bossCap`, heavies chill slower; fire
+thaws and frost puts fire out. Kind `melee` (chainsaw) cuts every zombie in an `arc`
+cone within `range` with line of sight each shot, the magazine is fuel with no reserve
+(it regenerates by reloading, free). Projectile extras: `flare` ignites what it hits and
+lands as a 'flare' hazard (burns like fire, at most 24 alive, lights the area in both
+renderers); `drag`/`pin` (harpoon) carries up to `drag` pierced zombies along, slowed, and
+pins them for `pin` s at the wall or where it stops (bosses are never dragged).
+Explosions: damage falls off linearly to 30% at the edge,
 × perks.explosiveMult, hurt players at 35% (unless selfExplosionImmune and own), blocked
 by solid obstacles (ray from centre). Melee: cone MELEE_ARC/MELEE_RANGE, MELEE_DAMAGE and
 MELEE_KNOCKBACK (× meleeMult), cooldown MELEE_COOLDOWN. Frag (G): thrown at THROW_SPEED
@@ -437,7 +454,7 @@ Snapshot = {
   pickups: [ { id, kind /*PICKUP_KINDS*/, x, y, weapon /*crate gun id or null*/ } ],
   turrets: [ { id, owner, x, y, angle, hp /*0..1*/, ammo /*0..1*/, firing } ],
   barricades: [ { id, owner, x, y, angle, hp /*0..1*/ } ],
-  hazards: [ { id, kind /*'fire'|'acid'*/, x, y, r, life /*0..1 remaining*/ } ],
+  hazards: [ { id, kind /*'fire'|'acid'|'flare'*/, x, y, r, life /*0..1 remaining*/ } ],
   events: [ GameEvent ],
 }
 ```
@@ -450,7 +467,7 @@ All events carry the fields listed; consumers ignore unknown types.
 
 | type | fields | meaning |
 |---|---|---|
-| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer: its last victim once its `pierce` budget is spent, else the first solid obstacle or max range; hit: 1 flesh (it hit at least one target), else 2 obstacle, 0 nothing/max range. Projectile/flame/chain weapons send `rays: []`. |
+| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer: its last victim once its `pierce` budget is spent, else the first solid obstacle or max range; hit: 1 flesh (it hit at least one target), else 2 obstacle, 0 nothing/max range. Projectile/flame/cryo/chain weapons send `rays: []`; the chainsaw (kind 'melee') sends one ray per zombie cut (at most 6, hit 1), or none. |
 | `placefail` | pid, kind | turret/barricade could not be placed (spot blocked) |
 | `chain` | pid, points: [{x, y}] | tesla arc path (muzzle → first zombie → …) |
 | `melee` | pid, x, y, angle, hits | shove swing (hits = zombies struck) |
@@ -462,6 +479,7 @@ All events carry the fields listed; consumers ignore unknown types.
 | `slam` | id, x, y, r | boss ground slam landed |
 | `explosion` | x, y, r, kind | kind: 'frag'|'grenade'|'rocket'|'bloater' |
 | `ignite` | x, y, r | molotov burst into fire |
+| `freeze` | id, x, y | cryo froze a zombie solid (cosmetic) |
 | `pdamage` | pid, amount, x, y | player took damage (x,y = where from) |
 | `down` / `revived` / `died` / `respawn` | pid (+ `by` for revived) | player state changes |
 | `pickup` | pid, kind, x, y, weapon | collected |
@@ -503,7 +521,8 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 3: an InputCmd's buttons carry a `jump` bit, and each snapshot player
+u8. PROTOCOL_VERSION 4 (3 added the jump state and, separately, the new guns' fields; both
+together are 4): an InputCmd's buttons carry a `jump` bit, and each snapshot player
 ends with its `jumpT` as a signed byte of whole ticks (`z` is derived from it on decode).
 Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
 Events may be packed as compact JSON (with numbers rounded to 1 decimal) inside the

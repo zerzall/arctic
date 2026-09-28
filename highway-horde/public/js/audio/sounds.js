@@ -318,6 +318,97 @@ export const SOUNDS = {
     S.drive(out, 2.4);
     return S.echoes(out, sr, [[0.2, 0.3, 900], [0.5, 0.15, 600]]);
   } },
+  burst: { ...GUN, v: 4, g: 0.6, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.6, crack: { len: 0.005, hp: 2400, g: 1 }, body: { f0: 7000, f1: 650, d: 0.1, g: 0.85 },
+    punch: { f: 1150, q: 1.2, d: 0.05, g: 0.5 }, thump: { f0: 175, f1: 62, d: 0.1, g: 0.85 },
+    mech: [[0.028, 4400, 0.1]], tail: { lp: 1800, d: 0.4, g: 0.15 }, echo: [[0.09, 0.2, 1500]], drive: 2 }) },
+  tommy: { ...GUN, v: 4, g: 0.62, render: (sr, rng) => gun(sr, rng, {
+    // .45 ACP: a fat low thump more than a crack, a clattering bolt
+    dur: 0.45, crack: { len: 0.005, hp: 1700, g: 0.7 }, body: { f0: 3600, f1: 480, d: 0.08, g: 0.85 },
+    punch: { f: 680, q: 1, d: 0.06, g: 0.6 }, thump: { f0: 175, f1: 68, d: 0.1, g: 1.05 },
+    mech: [[0.03, 2500, 0.15], [0.052, 3500, 0.09]], tail: { lp: 1400, d: 0.3, g: 0.14 }, drive: 1.9 }) },
+  lever: { ...GUN, v: 3, g: 0.85, render: (sr, rng) => gun(sr, rng, {
+    // a heavy crack, then the lever thrown down and back up (clack ... clack)
+    dur: 1.1, crack: { len: 0.008, hp: 1900, g: 1.1 }, body: { f0: 6500, f1: 400, d: 0.18, g: 1 },
+    punch: { f: 800, q: 1, d: 0.07, g: 0.5 }, thump: { f0: 140, f1: 45, d: 0.18, g: 1, tc: 0.03 },
+    ring: { f: 2300, d: 0.15, g: 0.2, list: [[1, 0.08, 0.15], [1.61, 0.05, 0.1]] },
+    mech: [[0.3, 2700, 0.28], [0.33, 4200, 0.12], [0.43, 3500, 0.3]],
+    tail: { lp: 1400, d: 0.8, g: 0.22 }, echo: [[0.13, 0.25, 1200], [0.32, 0.1, 900]], drive: 2.3 }) },
+  flare: { ...GUN, v: 3, g: 0.7, wet: 0.3, render: (sr, rng) => {
+    // a hollow pop, then the flare fizzing away
+    const out = S.makeBuf(sr, 1.2);
+    S.mix(out, thud(sr, J(rng, 320, 0.08), 110, 0.09, 0.02, 1.6), sr, 0.9);
+    S.mix(out, burst(sr, rng, 'bandpass', J(rng, 1500, 0.1), 0.8, 0.05), sr, 0.8);
+    const tube = S.env(S.noise(sr, 0.15, rng), sr, 0.0005, 0.01);
+    S.comb(tube, sr, J(rng, 240, 0.05), 0.8);
+    S.mix(out, S.env(S.filter(tube, sr, 'lowpass', 2000), sr, 0, 0.12), sr, 0.5);
+    const fizz = S.filter(S.filter(S.noise(sr, 1.1, rng), sr, 'highpass', 2600), sr, 'lowpass', 9000);
+    S.mix(fizz, S.filter(S.crackle(sr, 1.1, rng, { rate: 180 }), sr, 'highpass', 1800), sr, 0.8);
+    S.mix(out, S.shape(S.flutter(fizz, sr, rng, 25, 0.5), sr, S.curve([[0, 0], [0.04, 1], [0.5, 0.45], [1.1, 0]])), sr, 0.45, 0.02);
+    return S.drive(out, 1.4);
+  } },
+  harpoon: { ...GUN, v: 3, g: 0.75, wet: 0.25, render: (sr, rng) => {
+    // compressed-air thunk, the cable paying out, a steel twang
+    const out = S.makeBuf(sr, 0.9);
+    S.mix(out, thud(sr, J(rng, 210, 0.06), 70, 0.13, 0.03, 1.8), sr, 1);
+    S.mix(out, burst(sr, rng, 'lowpass', 900, 0.7, 0.22, 0.002), sr, 0.7);
+    S.mix(out, burst(sr, rng, 'highpass', 2500, 0.7, 0.05, 0.0005), sr, 0.4);
+    S.mix(out, whoosh(sr, rng, 0.6, [[0, 3200], [0.5, 1100]], 2, [[0, 0], [0.03, 1], [0.55, 0]]), sr, 0.3, 0.02);
+    const reel = S.filter(S.crackle(sr, 0.5, rng, { rate: (t) => 400 * Math.exp(-t * 3) }), sr, 'bandpass', 3000, 1.2);
+    S.mix(out, reel, sr, 0.35, 0.04);
+    S.mix(out, S.env(S.pluck(sr, 0.6, J(rng, 170, 0.05), rng, { decay: 0.994, bright: 0.45 }), sr, 0, 0.5), sr, 0.45, 0.01);
+    S.mix(out, click(sr, rng, 3200, 0.01), sr, 0.4);
+    return S.drive(out, 1.5);
+  } },
+  amr: { ...GUN, v: 2, g: 1, range: 1.8, wet: 0.5, prio: 70, render: (sr, rng) => {
+    // .50 BMG through a muzzle brake: a slap of air, a huge low boom, the valley echoing
+    const b = gun(sr, rng, {
+      dur: 2.4, crack: { len: 0.012, hp: 1300, g: 1.3 }, body: { f0: 9000, f1: 220, d: 0.34, g: 1.1 },
+      punch: { f: 480, q: 0.8, d: 0.13, g: 0.65 }, thump: { f0: 90, f1: 26, d: 0.5, g: 1.35, tc: 0.05 },
+      tail: { lp: 1000, d: 1.7, g: 0.36 }, echo: [[0.18, 0.35, 900], [0.44, 0.2, 650], [0.85, 0.12, 450]], drive: 3 });
+    // brake blast: a second sideways slap a hair later
+    S.mix(b, burst(sr, rng, 'bandpass', 900, 0.6, 0.05, 0.0003), sr, 0.5, 0.004);
+    const n = Math.round(sr * 0.0008);
+    for (let i = 0; i < n * 2 && i < b.length; i++) b[i] += i < n ? 0.9 : -0.9;
+    return b;
+  } },
+  saw_cut: { cat: 'impact', v: 3, g: 0.5, prio: 45, wet: 0.08, range: 0.8, lim: [0.08, 2], render: (sr, rng) => {
+    // teeth ripping through meat and bone
+    const out = S.makeBuf(sr, 0.22);
+    const grind = gate(S.filter(S.noise(sr, 0.22, rng), sr, 'bandpass', J(rng, 1300, 0.15), 1.1), sr, rng, 0.004, 0.012, 0.7);
+    S.mix(out, S.env(grind, sr, 0.004, 0.18), sr, 0.9);
+    S.mix(out, thud(sr, J(rng, 140, 0.1), 70, 0.1, 0.02), sr, 0.6);
+    S.mix(out, S.env(S.filter(S.crackle(sr, 0.2, rng, { rate: 300 }), sr, 'bandpass', 2400, 0.8), sr, 0.002, 0.16), sr, 0.5);
+    return S.drive(out, 2);
+  } },
+  saw_rev: { cat: 'weapon', v: 2, g: 0.55, prio: 70, wet: 0.1, render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.5);
+    const eng = S.filter(S.osc(sr, 0.5, 'saw', S.expSweep(55, J(rng, 125, 0.04), 0.35)), sr, 'bandpass', 900, 1.2);
+    S.mix(out, S.shape(eng, sr, S.curve([[0, 0], [0.04, 1], [0.35, 1], [0.5, 0]])), sr, 0.9);
+    S.mix(out, whoosh(sr, rng, 0.5, [[0, 800], [0.35, 3500], [0.5, 2500]], 1.5, [[0, 0], [0.1, 1], [0.5, 0]]), sr, 0.3);
+    return S.drive(out, 2.2);
+  } },
+  pullcord: { cat: 'weapon', v: 2, g: 0.5, prio: 50, wet: 0.08, range: 0.7, render: (sr, rng) => {
+    // a rip of the starter cord, the engine coughing, then catching
+    const out = S.makeBuf(sr, 0.8);
+    S.mix(out, whoosh(sr, rng, 0.25, [[0, 700], [0.2, 3200]], 2.5, [[0, 0], [0.03, 1], [0.24, 0]]), sr, 0.7);
+    for (let i = 0; i < 3; i++) {
+      S.mix(out, thud(sr, J(rng, 90, 0.1), 45, 0.05, 0.01, 2), sr, 0.8 - i * 0.15, 0.26 + i * 0.06);
+      S.mix(out, burst(sr, rng, 'bandpass', 700, 1, 0.03), sr, 0.4, 0.26 + i * 0.06);
+    }
+    const eng = S.filter(S.osc(sr, 0.3, 'saw', S.expSweep(40, 60, 0.3)), sr, 'bandpass', 700, 1.5);
+    return S.mix(out, S.shape(eng, sr, S.curve([[0, 0], [0.05, 1], [0.3, 0]])), sr, 0.6, 0.46);
+  } },
+  freeze: { cat: 'impact', v: 3, g: 0.55, prio: 45, wet: 0.3, range: 0.9, lim: [0.05, 3], render: (sr, rng) => {
+    // ice creaking over a body and locking up with a glassy ring
+    const out = S.makeBuf(sr, 0.8);
+    const cr = S.filter(S.crackle(sr, 0.5, rng, { rate: (t) => 2200 * Math.exp(-t * 6) }), sr, 'highpass', 2200);
+    S.mix(out, cr, sr, 1);
+    const creak = S.filter(S.osc(sr, 0.35, 'saw', S.expSweep(J(rng, 900, 0.1), 300, 0.3)), sr, 'bandpass', 1400, 5);
+    S.mix(out, S.env(S.flutter(creak, sr, rng, 40, 0.7), sr, 0.01, 0.3), sr, 0.35);
+    S.mix(out, S.partials(sr, 0.7, J(rng, 2600, 0.06), [[1, 0.5, 0.5], [1.51, 0.3, 0.35], [2.33, 0.2, 0.25]]), sr, 0.4, 0.05);
+    return S.drive(out, 1.4);
+  } },
   pump: { cat: 'weapon', v: 2, g: 0.45, prio: 40, wet: 0.15, render: (sr, rng) => {
     const out = S.makeBuf(sr, 0.3);
     S.mix(out, burst(sr, rng, 'bandpass', 2400, 1.5, 0.04), sr, 0.8);
@@ -905,6 +996,47 @@ export const SOUNDS = {
     S.mix(out, S.filter(S.brown(sr, len, rng), sr, 'lowpass', 120), sr, 0.6);
     S.mix(out, S.filter(S.crackle(sr, len, rng, { rate: 60 }), sr, 'bandpass', 3000, 0.7), sr, 0.3);
     return S.loopify(out, sr, 0.3);
+  } },
+  cryo_loop: { cat: 'loop', loop: true, v: 1, g: 0.5, wet: 0.2, peak: 0.85, render: (sr, rng) => {
+    // a hard hiss of expanding gas with ice crystals tinkling in it
+    const len = 2.1;
+    const hiss = S.filter(S.filter(S.pink(sr, len, rng), sr, 'highpass', 2200), sr, 'lowpass', 9500);
+    const out = S.flutter(hiss, sr, rng, 18, 0.45);
+    S.mix(out, S.filter(S.brown(sr, len, rng), sr, 'lowpass', 260), sr, 0.7);
+    for (let i = 0; i < 40; i++) {
+      const f = 3800 + rng.next() * 4200;
+      S.mix(out, S.partials(sr, 0.12, f, [[1, 1, 0.06 + rng.next() * 0.05]]), sr, 0.12 + rng.next() * 0.12, rng.next() * (len - 0.15));
+    }
+    return S.loopify(out, sr, 0.3);
+  } },
+  chainsaw_loop: { cat: 'loop', loop: true, v: 1, g: 0.55, wet: 0.12, peak: 0.85, render: (sr, rng) => {
+    // two-stroke at full revs (120 firings a second — whole Hz so it wraps at 1 s), a
+    // buzzing muffler and the chain rattling over the bar
+    const len = 1;
+    const out = S.makeBuf(sr, len);
+    for (let i = 0; i < 120; i++) {
+      const pop = S.env(S.filter(S.noise(sr, 0.012, rng), sr, 'lowpass', 1800), sr, 0.0003, 0.007);
+      S.mixWrap(out, pop, sr, 0.7 + rng.next() * 0.3, i / 120 + (rng.next() - 0.5) * 0.0008);
+    }
+    const muffler = S.filter(S.osc(sr, len, 'saw', 120), sr, 'bandpass', 950, 1.4);
+    S.mix(out, muffler, sr, 0.55);
+    S.mix(out, S.filter(S.osc(sr, len, 'square', 240), sr, 'bandpass', 2400, 2), sr, 0.12);
+    const chain = S.loopify(S.filter(S.noise(sr, len + 0.12, rng), sr, 'bandpass', 4200, 0.9), sr, 0.12);
+    for (let i = 0; i < out.length; i++) out[i] += chain[i % chain.length] * 0.35 * (0.8 + 0.2 * Math.sin(6.2832 * 60 * i / sr));
+    return S.drive(out, 2.4);
+  } },
+  chainsaw_idle: { cat: 'loop', loop: true, v: 1, g: 0.32, wet: 0.1, peak: 0.8, render: (sr, rng) => {
+    // lumpy idle: ~38 firings a second, some missing
+    const len = 1;
+    const out = S.makeBuf(sr, len);
+    for (let i = 0; i < 38; i++) {
+      if (rng.next() < 0.12) continue;
+      const pop = S.env(S.filter(S.noise(sr, 0.03, rng), sr, 'lowpass', 900), sr, 0.0005, 0.018);
+      S.mixWrap(out, pop, sr, 0.6 + rng.next() * 0.4, i / 38 + (rng.next() - 0.5) * 0.003);
+      S.mixWrap(out, thud(sr, 95, 60, 0.02, 0.005, 1.2), sr, 0.5, i / 38);
+    }
+    S.mix(out, S.filter(S.osc(sr, len, 'saw', 38), sr, 'bandpass', 500, 1.5), sr, 0.4);
+    return S.drive(out, 1.8);
   } },
   fire_loop: { srate: 0.5, cat: 'loop', loop: true, v: 1, g: 0.5, wet: 0.2, peak: 0.85, render: (sr, rng) => {
     const len = 4.4;

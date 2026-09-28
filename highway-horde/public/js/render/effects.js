@@ -331,9 +331,29 @@ export function createEffects(opts) {
     } else if (w.kind === 'flame') {
       fire(mx, my, 2, 10, 60, 0.18, 4);
       addLight(mx, my, 160, 0.5, '#ff9a40', 0.08);
+    } else if (w.kind === 'cryo') {
+      const i = spawn(P_SMOKE, mx, my, ca * 90, sa * 90, 0.35, 5);
+      if (i >= 0) { GROW[i] = 24; ALPHA[i] = -0.55; DRAG[i] = 3; COL[i] = 2; }
+      addLight(mx, my, 120, 0.35, '#9ae8ff', 0.08);
+    } else if (w.kind === 'melee') {
+      // chainsaw: sparks and gore where the chain bites, a little exhaust smoke
+      for (const r of rays) {
+        if (r.hit !== 1) continue;
+        anyFlesh = true;
+        blood(r.x, r.y, e.angle, 1.6, heavy() ? 3 : 1, 220);
+      }
+      if (rays.length) sparks(mx, my, e.angle + Math.PI, 1.8, heavy() ? 2 : 1, 200);
+      if (heavy() && R() < 0.3) smoke(e.x - ca * 10, e.y - sa * 10, 1, 5, 0.8, 0.35, 4, 20);
     } else if (w.kind === 'projectile') {
       const kind = w.projectile && w.projectile.kind;
-      if (kind === 'rocket') {
+      if (kind === 'flare') {
+        flash(mx, my, e.angle, 16, 0.07, 0);
+        addLight(mx, my, 240, 1, '#ff5a3a', 0.2);
+        smoke(mx, my, 2, 8, 0.8, 0.4, 6, 30);
+      } else if (kind === 'harpoon') {
+        // compressed air, not powder
+        smoke(mx, my, 3, 10, 0.5, 0.2, 6, 60);
+      } else if (kind === 'rocket') {
         flash(mx, my, e.angle, 26, 0.08, 0);
         addLight(mx, my, 260, 1, '#ffb050', 0.12);
         // back-blast out of the rear of the tube
@@ -415,6 +435,12 @@ export function createEffects(opts) {
         break;
       }
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind, env); break;
+      case 'freeze':
+        // ice crystals burst off a zombie freezing solid
+        zParticles(P_GLASS, C_GLASS, e.x, e.y, 0, TAU, heavy() ? 10 : 4, 120, 120, 1.3, 1);
+        ring(e.x, e.y, 6, 34, 0.35, '#cfeeff', 2, 0.7);
+        addLight(e.x, e.y, 90, 0.5, '#9ae8ff', 0.3);
+        break;
       case 'ignite': {
         const r = e.r || 110;
         fire(e.x, e.y, heavy() ? 40 : 16, 26, r * 2, 0.6, r * 0.5);
@@ -651,6 +677,33 @@ export function createEffects(opts) {
     emitEmbers(x, y, dt, perSec, spread) {
       for (let k = rate(heavy() ? perSec : perSec / 3, dt); k > 0; k--) embers(x, y, 1, 70, spread);
     },
+    /** A flare in flight: sparks shed behind it and a thin red smoke line. */
+    emitFlareTrail(p, dt) {
+      const ca = Math.cos(p.angle), sa = Math.sin(p.angle);
+      for (let k = rate(heavy() ? 50 : 20, dt); k > 0; k--) {
+        const i = spawn(P_SPARK, p.x, p.y, -ca * 80 + (R() - 0.5) * 90, -sa * 80 + (R() - 0.5) * 90, 0.2 + R() * 0.2, 1.2);
+        if (i >= 0) DRAG[i] = 3;
+      }
+      for (let k = rate(heavy() ? 30 : 10, dt); k > 0; k--) {
+        const i = spawn(P_SMOKE, p.x, p.y, (R() - 0.5) * 12, (R() - 0.5) * 12, 1.2, 4);
+        if (i >= 0) { GROW[i] = 12; ALPHA[i] = -0.6; DRAG[i] = 1.2; COL[i] = 1; }
+      }
+    },
+    /** A burning flare on the ground: red smoke drifting off and the odd spark. */
+    emitFlareSmoke(x, y, dt) {
+      for (let k = rate(heavy() ? 14 : 5, dt); k > 0; k--) {
+        const i = spawn(P_SMOKE, x, y, 14 + (R() - 0.5) * 16, -24 - R() * 16, 2.2, 6);
+        if (i >= 0) { GROW[i] = 18; ALPHA[i] = -0.75; DRAG[i] = 0.5; COL[i] = 1; }
+      }
+      for (let k = rate(heavy() ? 12 : 4, dt); k > 0; k--) sparks(x, y, R() * TAU, 1, 1, 90);
+    },
+    /** A frost puff from the cryo blaster: cold white mist. */
+    emitFrost(p, dt) {
+      for (let k = rate(heavy() ? 18 : 7, dt); k > 0; k--) {
+        const i = spawn(P_SMOKE, p.x + (R() - 0.5) * 10, p.y + (R() - 0.5) * 10, Math.cos(p.angle) * 60 + (R() - 0.5) * 30, Math.sin(p.angle) * 60 + (R() - 0.5) * 30, 0.5 + R() * 0.3, 8);
+        if (i >= 0) { GROW[i] = 26; ALPHA[i] = -0.5; DRAG[i] = 2.5; COL[i] = 2; }
+      }
+    },
 
     update(dt, time) {
       hitMarker = Math.max(0, hitMarker - dt * 6);
@@ -724,6 +777,7 @@ export function createEffects(opts) {
       const lightSmoke = tinted(puff, '#8a8a88');
       const bloodMist = tinted(puff, '#7a0a0a');
       const redSmoke = tinted(puff, '#d8402a');
+      const frostMist = tinted(puff, '#cfeeff');
       const kk = k.k;
       for (let i = 0; i < n; i++) {
         const t = TYPE[i];
@@ -735,7 +789,7 @@ export function createEffects(opts) {
         if (t === P_SMOKE || t === P_DUST) {
           let spr, a = ALPHA[i];
           if (t === P_DUST) spr = dustSpr;
-          else if (a < 0) { spr = COL[i] === 1 ? redSmoke : bloodMist; a = -a; }
+          else if (a < 0) { spr = COL[i] === 1 ? redSmoke : COL[i] === 2 ? frostMist : bloodMist; a = -a; }
           else spr = a > 0.6 ? darkSmoke : lightSmoke;
           // fade in quickly, out slowly
           const al = a * Math.min(1, (1 - lf) * 8) * lf;

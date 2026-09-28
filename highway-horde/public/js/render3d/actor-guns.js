@@ -34,6 +34,7 @@ const LEN_SCALE = {
   pistol: 0.62, revolver: 0.62, double: 1.0, smg: 0.8, dual: 0.72, shotgun: 0.98, rifle: 0.95,
   crossbow: 0.9, dmr: 0.95, sniper: 0.92, autoshotgun: 0.95, flamethrower: 0.95, lmg: 0.92,
   launcher: 0.9, rocket: 0.95, tesla: 0.95, minigun: 0.85, railgun: 0.9,
+  burst: 0.95, tommy: 1.0, lever: 0.92, flare: 0.62, chainsaw: 0.95, harpoon: 0.95, cryo: 0.95, amr: 0.9,
 };
 
 // ---------------------------------------------------------------------------------------
@@ -921,6 +922,406 @@ BUILDERS.railgun = (gb, L, sp, out) => {
   out.casing = null;
 };
 
+// ---- burst rifle (bullpup) --------------------------------------------------------------
+BUILDERS.burst = (gb, L, sp, out) => {
+  const col = sp.color, tan = sp.accent;
+  // one-piece polymer shell: the butt behind the grip, the action over the magazine
+  ext(gb, [[-13.3, 2.5], [-8.0, 2.75], [5.6, 2.75], [6.2, 2.2], [6.2, 0.5], [5.4, 0.05], [1.3, 0.05], [0.9, 0.35], [-1.2, 0.35], [-1.6, -0.4],
+    [-7.4, -0.4], [-8.2, -1.2], [-12.6, -2.3], [-13.4, -2.2]], -1.05, 1.05, { color: col, mat: GM.POLY, bevel: 0.32, bevelSeg: 3 });
+  // tan side panels, a cheek riser, the butt pad
+  for (const z of [-1.08, 1.08]) ext(gb, [[-12.4, 1.6], [-8.6, 1.9], [-8.2, -0.8], [-12.0, -1.8]], z - 0.06, z + 0.06, { color: tan, mat: GM.POLY, bevel: 0.03 });
+  rbox(gb, -11.8, -6.4, 2.6, 3.15, -0.7, 0.7, 0.22, { color: shadeHex(col, -0.15), mat: GM.RUBBER });
+  rbox(gb, -14.1, -13.2, -2.3, 2.6, -1.1, 1.1, 0.32, { color: RUBBER, mat: GM.RUBBER });
+  // ejection port by the cheek (either side) with a brass deflector
+  rbox(gb, -5.6, -2.2, 1.5, 2.3, 1.0, 1.12, 0.08, { color: '#070707' });
+  rbox(gb, -2.0, -1.2, 1.3, 2.5, 1.0, 1.35, 0.12, { color: col, mat: GM.POLY });
+  // handguard with vent slots, then the barrel and a three-port compensator
+  rbox(gb, 5.8, L * 0.8, 0.2, 2.35, -0.95, 0.95, 0.4, { color: shadeHex(col, 0.08), mat: GM.POLY });
+  for (let k = 0; k < 5; k++) {
+    const x = 7.0 + k * ((L * 0.8 - 8.2) / 5);
+    for (const z of [-1.0, 1.0]) rbox(gb, x, x + 1.1, 0.9, 1.7, z - 0.07, z + 0.07, 0.1, { color: '#060606', seg: 1 });
+  }
+  rail(gb, 6.0, L * 0.78, 2.35, 0, 0.8, { color: shadeHex(col, -0.25) });
+  cylX(gb, L * 0.8, L - 1.8, 1.3, 0, 0.36, 0.34, { color: BLUED, seg: 14 });
+  latheX(gb, [[L - 2.0, 0], [L - 2.0, 0.5], [L - 0.3, 0.5], [L, 0.42], [L, 0]], 1.3, 0, { color: DARK, seg: 14 });
+  for (let k = 0; k < 3; k++) rbox(gb, L - 1.7 + k * 0.5, L - 1.45 + k * 0.5, 1.55, 1.85, -0.25, 0.25, 0.03, { color: '#030303', seg: 1 });
+  cylX(gb, L - 0.02, L + 0.02, 1.3, 0, 0.24, 0.24, { color: '#020202', seg: 10 });
+  // integrated carry handle with a glowing sight window
+  ext(gb, [[-4.2, 2.7], [5.2, 2.7], [5.4, 4.5], [4.4, 4.9], [-3.6, 4.9], [-4.4, 4.1]], -0.42, 0.42, { color: col, mat: GM.POLY, bevel: 0.1,
+    holes: [[[-2.6, 3.0], [3.8, 3.0], [3.8, 4.1], [-2.6, 4.1]]] });
+  rbox(gb, 3.2, 3.3, 3.95, 4.8, -0.3, 0.3, 0.01, { color: '#223848', mat: GM.LENS, seg: 1 });
+  dot(gb, 3.4, 4.4, 0, 0.07, '#5aff7a');
+  // burst selector with three white dots, charging handle under the carry handle (racks)
+  rbox(gb, -0.8, 0.2, 0.6, 1.2, 1.0, 1.25, 0.12, { color: DARK });
+  for (let k = 0; k < 3; k++) sphere(gb, -0.6 + k * 0.28, 1.35, 1.2, 0.07, { color: '#e8e8e8', mat: GM.PAINT, seg: 6 });
+  rbox(gb, 1.2, 2.6, 2.9, 3.3, -0.35, 0.35, 0.1, { part: 'bolt', color: DARK });
+  triggerGroup(gb, 0.1, 0.05, col, { mat: GM.POLY });
+  pistolGrip(gb, -0.2, shadeHex(col, -0.1), { mat: GM.POLY, h: 3.7, rake: 0.8, top: 0.1 });
+  // curved magazine behind the grip
+  stanag(gb, -6.8, 0.9, '#1e1e1e', 'mag', 5.2);
+  out.muzzle = [L, 1.3, 0];
+  out.front = [L * 0.56, 0.2, 0];
+  out.eject = [-3.8, 2.0, 1.2];
+  out.magwell = [-5.8, -0.9, 0];
+  out.glowColor = '#5aff7a';
+  out.travel.bolt = 1.6;
+};
+
+// ---- Tommy gun (drum-fed) ----------------------------------------------------------------
+BUILDERS.tommy = (gb, L, sp, out) => {
+  const steel = sp.color, wood = mixHex(sp.accent, '#8a5230', 0.4);
+  // receiver: a long steel box with a rounded top
+  ext(gb, [[-2.2, 0.15], [9.4, 0.15], [9.8, 0.8], [9.8, 2.1], [8.9, 2.85], [-1.3, 2.85], [-2.2, 2.2]], -0.95, 0.95, { color: steel, mat: GM.STEEL, bevel: 0.22 });
+  rbox(gb, 3.0, 6.4, 1.3, 2.35, 0.88, 1.0, 0.08, { color: '#070707' });                                   // ejection port
+  rbox(gb, -1.6, -0.4, 2.8, 3.5, -0.4, 0.4, 0.08, { color: DARK });                                         // rear sight
+  rbox(gb, -1.4, -0.6, 3.35, 3.6, -0.12, 0.12, 0.03, { color: '#050505', seg: 1 });
+  for (const z of [-0.98, 0.98]) rbox(gb, 0.4, 1.6, 0.6, 1.2, z - 0.06, z + 0.06, 0.05, { color: DARK });     // selector + safety
+  // cocking knob in the slot on top (racks back on reload)
+  rbox(gb, 1.2, 7.8, 2.8, 2.95, -0.18, 0.18, 0.02, { color: '#050505', seg: 1 });
+  cylX(gb, 5.6, 6.4, 3.05, 0, 0.18, 0.18, { part: 'bolt', color: STEEL, seg: 8 });
+  sphere(gb, 6.0, 3.45, 0, 0.42, { part: 'bolt', color: STEEL, mat: GM.STEEL });
+  // finned barrel, Cutts compensator, front sight
+  cylX(gb, 9.6, L - 2.2, 1.55, 0, 0.42, 0.42, { color: BLUED, seg: 14 });
+  for (let x = 10.0; x < L * 0.64; x += 0.62) cylX(gb, x, x + 0.2, 1.55, 0, 0.82, 0.82, { color: shadeHex(steel, 0.08), mat: GM.STEEL, seg: 16 });
+  latheX(gb, [[L - 2.4, 0], [L - 2.4, 0.62], [L - 0.1, 0.62], [L, 0.55], [L, 0]], 1.55, 0, { color: steel, mat: GM.STEEL, seg: 16 });
+  for (let k = 0; k < 4; k++) rbox(gb, L - 2.0 + k * 0.45, L - 1.8 + k * 0.45, 2.0, 2.2, -0.35, 0.35, 0.03, { color: '#030303', seg: 1 });
+  cylX(gb, L - 0.02, L + 0.02, 1.55, 0, 0.3, 0.3, { color: '#020202', seg: 10 });
+  rbox(gb, L - 2.9, L - 2.6, 2.1, 2.75, -0.1, 0.1, 0.03, { color: DARK });
+  // wooden vertical foregrip with finger grooves
+  const fx = L * 0.43;
+  ext(gb, [[fx, 0.55], [fx + 2.0, 0.55], [fx + 1.9, -0.2], [fx + 2.1, -0.9], [fx + 1.85, -1.6], [fx + 2.05, -2.3], [fx + 1.8, -3.0], [fx + 1.9, -3.7],
+    [fx + 0.3, -3.8], [fx + 0.1, -2.0], [fx + 0.2, -0.3]], -0.72, 0.72, { color: wood, mat: GM.WOOD, bevel: 0.3, bevelSeg: 3 });
+  rbox(gb, fx - 0.3, fx + 2.3, 0.4, 1.2, -0.6, 0.6, 0.15, { color: steel, mat: GM.STEEL });
+  // wooden pistol grip and the classic buttstock
+  pistolGrip(gb, -0.2, wood, { mat: GM.WOOD, h: 3.8, rake: 1.1, top: 0.2, w: 0.7 });
+  triggerGroup(gb, 0.1, 0.1, steel);
+  ext(gb, [[-2.0, 2.5], [-4.2, 2.3], [-11.6, 1.7], [-11.9, -2.7], [-10.6, -2.8], [-6.6, -1.0], [-3.2, -0.2], [-2.0, 0.3]], -0.85, 0.85,
+    { color: wood, mat: GM.WOOD, bevel: 0.35, bevelSeg: 3 });
+  rbox(gb, -12.5, -11.7, -2.8, 1.8, -0.9, 0.9, 0.25, { color: steel, mat: GM.STEEL });
+  // 50-round drum (swapped on reload): the winding key on its face
+  const M = { part: 'mag' };
+  const dx = 3.4, dy = -3.0;
+  const drum = new THREE.CylinderGeometry(3.05, 3.05, 1.7, 30);
+  gb.add(drum, { ...M, at: [dx, dy, 0], rot: [HALF_PI, 0, 0], color: '#2a2724', mat: GM.STEEL, round: true });
+  for (const z of [-0.88, 0.88]) {
+    gb.add(new THREE.TorusGeometry(2.6, 0.12, 6, 30), { ...M, at: [dx, dy, z], color: '#3a3632', mat: GM.STEEL, round: true });
+    gb.add(new THREE.CylinderGeometry(0.55, 0.55, 0.25, 12), { ...M, at: [dx, dy, z * 1.05], rot: [HALF_PI, 0, 0], color: STEEL, mat: GM.STEEL, round: true });
+  }
+  rbox(gb, dx - 0.15, dx + 0.15, dy - 0.2, dy + 1.1, 1.0, 1.25, 0.06, { ...M, color: BRASS, mat: GM.BRASS });           // key
+  rbox(gb, dx - 1.1, dx + 1.1, -0.9, 0.3, -0.7, 0.7, 0.15, { ...M, color: '#2a2724', mat: GM.STEEL });
+  out.muzzle = [L, 1.55, 0];
+  out.front = [fx + 1.0, -2.2, 0];
+  out.eject = [4.6, 2.0, 1.0];
+  out.magwell = [dx, -0.3, 0];
+  out.travel.bolt = 3.2;
+  out.casing = 'pistol';
+};
+
+// ---- lever-action rifle ---------------------------------------------------------------------
+BUILDERS.lever = (gb, L, sp, out) => {
+  const brass = '#8a6c34', wood = mixHex(sp.accent, '#7a4a26', 0.3), steel = mixHex(sp.color, BLUED, 0.6);
+  // gunmetal-bronze receiver (a satin finish: polished brass here blooms into a white
+  // blob under the viewmodel lights) with a loading gate on the right
+  ext(gb, [[-1.8, 0.1], [4.6, 0.1], [4.9, 0.6], [4.9, 2.3], [-0.4, 2.45], [-1.8, 1.9]], -0.8, 0.8, { color: brass, mat: GM.PAINT, bevel: 0.14, wear: 1.4 });
+  // engraved side panels
+  for (const z of [-0.82, 0.82]) ext(gb, [[-0.9, 0.5], [3.9, 0.5], [3.9, 1.95], [-0.2, 2.05], [-0.9, 1.6]], z - 0.03, z + 0.03, { color: shadeHex(brass, 0.18), mat: GM.PAINT, bevel: 0.01, wear: 2 });
+  rbox(gb, 1.6, 3.9, 0.5, 1.25, 0.76, 0.86, 0.06, { color: steel, mat: GM.STEEL });
+  for (const z of [-0.84, 0.84]) sphere(gb, 0.3, 1.5, z, 0.12, { color: STEEL, seg: 6 });
+  rbox(gb, 0.4, 3.6, 2.35, 2.55, -0.35, 0.35, 0.05, { color: '#0a0a0a' });                                   // top ejection
+  // hammer (cocks back when the lever is worked)
+  ext(gb, [[-0.9, 1.6], [-0.5, 2.3], [-1.0, 2.7], [-1.9, 3.1], [-2.1, 2.8], [-1.5, 2.4], [-1.5, 1.7]], -0.24, 0.24, { part: 'hammer', color: steel, bevel: 0.06 });
+  // octagonal barrel over the tube magazine, a barrel band, sights
+  cylX(gb, 4.8, L, 1.75, 0, 0.56, 0.5, { color: steel, mat: GM.STEEL, seg: 8 });
+  cylX(gb, L - 0.03, L + 0.01, 1.75, 0, 0.26, 0.26, { color: '#030303', seg: 8 });
+  cylX(gb, 4.8, L - 2.0, 0.72, 0, 0.42, 0.42, { color: steel, mat: GM.STEEL, seg: 14 });
+  latheX(gb, [[L - 2.1, 0], [L - 2.1, 0.46], [L - 1.6, 0.46], [L - 1.5, 0.3], [L - 1.5, 0]], 0.72, 0, { color: STEEL, seg: 14 });
+  rbox(gb, L - 2.6, L - 2.0, 0.2, 2.35, -0.62, 0.62, 0.12, { color: steel, mat: GM.STEEL });
+  rbox(gb, L - 0.9, L - 0.5, 2.2, 2.75, -0.08, 0.08, 0.03, { color: BRASS, mat: GM.BRASS });
+  ext(gb, [[8.2, 2.2], [9.0, 2.2], [9.0, 2.9], [8.8, 3.1], [8.2, 3.0]], -0.5, 0.5, { color: DARK, bevel: 0.04, holes: [[[8.4, 2.55], [8.8, 2.55], [8.75, 2.9], [8.45, 2.9]]] });
+  // walnut forend round the barrel and tube
+  ext(gb, [[4.9, 0.05], [12.8, 0.15], [13.2, 0.7], [12.9, 2.05], [4.9, 2.15]], -0.9, 0.9, { color: wood, mat: GM.WOOD, bevel: 0.35, bevelSeg: 3 });
+  rbox(gb, 12.9, 13.3, 0.1, 2.2, -0.92, 0.92, 0.12, { color: steel, mat: GM.STEEL });
+  // straight-wrist stock with a slight grip swell, crescent butt plate
+  ext(gb, [[-1.6, 2.0], [-4.0, 1.6], [-12.4, 1.25], [-12.8, -2.6], [-11.6, -2.7], [-6.4, -1.3], [-3.1, -1.1], [-1.6, -3.4], [-0.2, -3.2], [0.2, -0.2]],
+    -0.82, 0.82, { color: wood, mat: GM.WOOD, bevel: 0.32, bevelSeg: 3 });
+  ext(gb, [[-12.6, 1.3], [-13.2, 1.0], [-13.5, -0.8], [-13.3, -2.7], [-12.6, -2.7], [-12.9, -0.8]], -0.84, 0.84, { color: steel, mat: GM.STEEL, bevel: 0.08 });
+  // the lever: a finger loop round the trigger, swinging about its front pin
+  ext(gb, [[-0.2, 0.2], [3.9, 0.2], [3.9, -0.25], [2.6, -1.3], [0.9, -1.8], [-0.8, -2.4], [-2.2, -3.3], [-2.9, -2.9], [-1.4, -1.6], [-0.5, -0.9]], -0.26, 0.26,
+    { part: 'lever', color: steel, mat: GM.STEEL, bevel: 0.07, holes: [[[0.3, -0.2], [3.1, -0.2], [2.2, -1.0], [0.9, -1.35], [0.0, -0.9]]] });
+  rbox(gb, 1.2, 1.5, -0.9, 0.1, -0.12, 0.12, 0.04, { color: STEEL });                                        // trigger
+  out.pivots.lever = [3.6, -0.05, 0];
+  out.pivots.hammer = [-1.2, 1.7, 0];
+  out.muzzle = [L, 1.75, 0];
+  out.front = [9.0, 0.1, 0];
+  out.eject = [2.0, 2.7, 0.3];
+  out.magwell = [2.8, 0.9, 0.9];
+  out.reload = 'single';
+  out.leverAction = true;
+  out.travel.bolt = 0;
+};
+
+// ---- flare pistol (break-open) ---------------------------------------------------------------
+BUILDERS.flare = (gb, L, sp, out) => {
+  const orange = sp.color, dark = mixHex(sp.accent, '#222222', 0.5);
+  // chunky orange polymer frame and grip
+  ext(gb, [[-1.6, 0.1], [3.4, 0.1], [3.6, 0.8], [3.2, 1.35], [-1.3, 1.35], [-1.8, 0.9]], -0.72, 0.72, { color: orange, mat: GM.POLY, bevel: 0.18 });
+  pistolGrip(gb, -0.1, orange, { mat: GM.POLY, h: 4.3, rake: 0.7, w: 0.76, top: 0.3 });
+  for (const z of [-0.8, 0.8]) rbox(gb, -1.5, 0.4, -3.6, -0.5, z - 0.07, z + 0.07, 0.12, { color: dark, mat: GM.RUBBER });
+  triggerGroup(gb, 0.1, 0.2, orange, { mat: GM.POLY });
+  rbox(gb, 2.6, 3.4, 0.9, 1.5, 0.7, 0.9, 0.08, { color: dark });                                             // break lever
+  // standing breech: closes the back of the barrel, the firing pin in its face
+  ext(gb, [[-1.4, 1.1], [0.15, 1.1], [0.15, 3.3], [-0.2, 3.75], [-1.0, 3.7], [-1.5, 2.6]], -0.95, 0.95, { color: orange, mat: GM.POLY, bevel: 0.22, bevelSeg: 3 });
+  rbox(gb, -1.1, -0.3, 3.55, 3.95, -0.3, 0.3, 0.08, { color: dark });                                          // rear sight notch
+  cylX(gb, 0.12, 0.2, 2.35, 0, 0.18, 0.18, { color: STEEL, seg: 8 });
+  // spur hammer
+  ext(gb, [[-1.2, 1.2], [-0.8, 1.9], [-1.4, 2.3], [-2.3, 2.6], [-2.4, 2.25], [-1.8, 1.8], [-1.7, 1.2]], -0.26, 0.26, { part: 'hammer', color: dark, bevel: 0.06 });
+  // the fat 26 mm barrel: breaks open about the hinge at the front of the frame
+  const Bk = { part: 'barrels' };
+  latheX(gb, [[0.25, 0], [0.25, 1.05], [0.5, 1.18], [L - 0.9, 1.12], [L - 0.7, 1.3], [L, 1.3], [L, 0]], 2.35, 0, { ...Bk, color: orange, mat: GM.POLY, seg: 24 });
+  for (const f of [0.35, 0.6]) torusX(gb, L * f, 2.35, 0, 1.15, 0.07, { ...Bk, color: shadeHex(orange, -0.2), mat: GM.POLY, seg: 20 });
+  cylX(gb, L - 0.03, L + 0.01, 2.35, 0, 0.95, 0.95, { ...Bk, color: '#0a0503', seg: 18 });
+  torusX(gb, 0.27, 2.35, 0, 0.98, 0.1, { ...Bk, color: BRASS, mat: GM.BRASS, seg: 18 });
+  cylX(gb, 0.2, 0.3, 2.35, 0, 0.9, 0.9, { ...Bk, color: '#c62828', mat: GM.PAINT, seg: 16 });                // the loaded flare (seen when open)
+  rbox(gb, 1.0, L - 1.0, 3.4, 3.7, -0.2, 0.2, 0.06, { ...Bk, color: dark });                                 // sight rib
+  rbox(gb, L - 1.5, L - 1.1, 3.6, 4.0, -0.12, 0.12, 0.04, { ...Bk, color: '#fff2c0', mat: GM.PAINT });
+  rbox(gb, 2.6, 3.5, 1.2, 2.4, -0.55, 0.55, 0.15, { ...Bk, color: dark, mat: GM.POLY });                   // hinge lug
+  out.pivots.barrels = [3.1, 1.3, 0];
+  out.pivots.hammer = [-1.4, 1.25, 0];
+  out.muzzle = [L, 2.35, 0];
+  out.front = [0.2, -2.2, -1.2];
+  out.twoHanded = false;
+  out.reload = 'break';
+  out.breakShells = 1;
+  out.casing = null;
+  out.glowColor = '#ff5a3a';
+};
+
+// ---- chainsaw -----------------------------------------------------------------------------------
+BUILDERS.chainsaw = (gb, L, sp, out) => {
+  const orange = sp.color, dark = mixHex(sp.accent, '#1a1a1a', 0.4), bar = '#9ea3a8';
+  // engine housing: orange shell over a dark crankcase, fins on the cylinder cover
+  rbox(gb, 0.8, 9.6, -1.4, 3.8, -2.0, 2.0, 0.9, { color: orange, mat: GM.PAINT });
+  rbox(gb, 1.2, 9.2, -1.9, -0.6, -1.9, 1.9, 0.4, { color: dark, mat: GM.POLY });
+  rbox(gb, 3.0, 8.4, 3.3, 4.6, -1.55, 1.55, 0.5, { color: dark, mat: GM.POLY });
+  for (let k = 0; k < 6; k++) rbox(gb, 3.4 + k * 0.85, 3.8 + k * 0.85, 4.4, 4.8, -1.2, 1.2, 0.08, { color: '#101010', seg: 1 });
+  // brand stripe, vents, fuel and oil caps
+  for (const z of [-2.02, 2.02]) rbox(gb, 1.6, 8.4, 1.4, 1.9, z - 0.04, z + 0.04, 0.05, { color: '#f2f2f2', mat: GM.PAINT });
+  for (let k = 0; k < 4; k++) rbox(gb, 6.2 + k * 0.6, 6.5 + k * 0.6, -0.2, 1.2, 1.98, 2.08, 0.05, { color: '#050505', seg: 1 });
+  gb.add(new THREE.CylinderGeometry(0.55, 0.55, 0.5, 12), { at: [1.6, 3.9, -1.0], color: '#f2c200', mat: GM.PAINT, round: true });
+  gb.add(new THREE.CylinderGeometry(0.45, 0.45, 0.45, 12), { at: [1.6, 3.9, 1.0], color: dark, mat: GM.POLY, round: true });
+  // recoil starter on the left with the pull-cord handle
+  gb.add(new THREE.CylinderGeometry(2.0, 2.0, 0.45, 24), { at: [4.6, 1.2, -2.2], rot: [HALF_PI, 0, 0], color: dark, mat: GM.POLY, round: true });
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU;
+    rbox(gb, -0.12, 0.12, -0.9, 0.9, -0.03, 0.03, 0.02, { color: '#050505', at: [4.6 + Math.cos(a) * 0.9, 1.2 + Math.sin(a) * 0.9, -2.44], rot: [0, 0, a], seg: 1 });
+  }
+  rbox(gb, 3.8, 5.4, 3.6, 4.2, -2.9, -2.3, 0.2, { color: '#111111', mat: GM.RUBBER });
+  tubePath(gb, [[4.6, 3.6, -2.5], [4.6, 2.4, -2.45]], 0.07, { color: '#d8d0c0', mat: GM.RUBBER, radial: 4 });
+  // muffler on the front right
+  rbox(gb, 8.6, 10.4, -0.9, 1.9, 1.8, 2.6, 0.3, { color: '#5c5f62', mat: GM.STEEL });
+  for (let k = 0; k < 3; k++) rbox(gb, 9.9, 10.45, -0.4 + k * 0.7, -0.1 + k * 0.7, 1.95, 2.45, 0.05, { color: '#050505', seg: 1 });
+  // rear handle (the trigger) closed in a loop, and the wrap-around top handle
+  pistolGrip(gb, -0.2, dark, { mat: GM.RUBBER, h: 3.6, rake: 0.6, top: 0.3, w: 0.66 });
+  triggerGroup(gb, 0.1, 0.3, dark, { mat: GM.POLY });
+  tubePath(gb, [[-1.9, -3.2, 0], [-3.4, -1.8, 0], [-3.3, 1.6, 0], [-1.2, 3.3, 0], [1.2, 3.6, 0]], 0.46, { color: dark, mat: GM.POLY, seg: 20 });
+  tubePath(gb, [[1.8, 3.9, 1.1], [3.0, 5.4, 0.6], [5.2, 5.75, -0.2], [6.9, 5.1, -1.5], [7.6, 2.4, -2.6], [7.4, -1.2, -2.3]], 0.5, { color: dark, mat: GM.RUBBER, seg: 30 });
+  // chain brake guard in front of the top handle
+  ext(gb, [[8.9, 3.3], [9.6, 3.3], [10.2, 5.8], [9.7, 6.2], [9.1, 5.5]], -1.6, 1.6, { color: '#151515', mat: GM.POLY, bevel: 0.12 });
+  // guide bar: a thin steel plate with a rounded nose and a sprocket, running through the side cover
+  const by = 0.8, bh = 1.25;
+  const nose = L - bh;
+  const barShape = [[8.6, by + bh], [nose, by + bh * 0.9], [nose + bh * 0.95, by + bh * 0.9, L, by, L, by], [L, by, nose + bh * 0.95, by - bh * 0.9, nose, by - bh * 0.9], [8.6, by - bh]];
+  ext(gb, barShape, 0.42, 0.78, { color: bar, mat: GM.STEEL, bevel: 0.06, wear: 1.6 });
+  rbox(gb, 10.5, nose - 0.5, by - 0.08, by + 0.08, 0.76, 0.8, 0.02, { color: '#2a2c2e', seg: 1 });
+  gb.add(new THREE.CylinderGeometry(0.4, 0.4, 0.5, 10), { at: [nose, by, 0.6], rot: [HALF_PI, 0, 0], color: '#6a6e72', mat: GM.STEEL, round: true });
+  rbox(gb, 8.2, 11.4, -0.8, 2.4, 0.3, 1.25, 0.35, { color: orange, mat: GM.PAINT });                        // side cover
+  for (const x of [9.0, 10.2]) gb.add(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8), { at: [x, by, 1.3], rot: [HALF_PI, 0, 0], color: STEEL, mat: GM.STEEL, round: true });
+  // the chain: cutter teeth along the top and bottom edges (each half runs its own way)
+  const pitch = 0.62;
+  for (const [part, y, dir] of [['chainA', by + bh * 0.95, 1], ['chainB', by - bh * 0.95, -1]]) {
+    for (let x = 11.2; x < nose - 0.2; x += pitch) {
+      rbox(gb, x, x + 0.34, y - 0.12, y + 0.12, 0.36, 0.84, 0.03, { part, color: '#2e3134', mat: GM.STEEL, seg: 1 });
+      rbox(gb, x + 0.1, x + 0.3, y + dir * 0.12, y + dir * 0.3, 0.4, 0.8, 0.03, { part, color: '#c8ccd0', mat: GM.STEEL, seg: 1, detail: true });
+    }
+  }
+  for (let k = 0; k <= 6; k++) {
+    const a = -HALF_PI + (k / 6) * Math.PI;
+    rbox(gb, -0.17, 0.17, -0.14, 0.14, 0.36, 0.84, 0.03, { color: '#2e3134', mat: GM.STEEL, at: [nose + Math.cos(a) * bh * 0.97, by + Math.sin(a) * bh * 0.97, 0], rot: [0, 0, a], seg: 1 });
+  }
+  out.muzzle = [L - 0.3, by, 0.6];
+  out.front = [5.0, 5.7, 0];
+  out.magwell = [1.6, 3.6, -1.0];
+  out.eject = [2, 2, 1];
+  out.heavy = true;
+  out.reload = 'pull';
+  out.casing = null;
+  out.chain = { pitch, y: by };
+  out.glowColor = null;
+};
+
+// ---- harpoon gun ----------------------------------------------------------------------------------
+BUILDERS.harpoon = (gb, L, sp, out) => {
+  const body = sp.color, yellow = sp.accent;
+  // skeleton stock, receiver and trigger
+  ext(gb, [[-0.6, 2.2], [-8.6, 1.9], [-8.9, -1.9], [-7.8, -2.0], [-7.2, 0.1], [-1.6, 0.5], [-0.6, 0.2]], -0.6, 0.6,
+    { color: '#23282b', mat: GM.POLY, bevel: 0.2, holes: [[[-2.2, 1.5], [-6.9, 1.3], [-6.7, 0.8], [-2.4, 0.95]]] });
+  rbox(gb, -9.5, -8.6, -2.0, 2.2, -0.8, 0.8, 0.28, { color: RUBBER, mat: GM.RUBBER });
+  rbox(gb, -1.2, 5.6, 0.2, 3.0, -1.05, 1.05, 0.4, { color: body, mat: GM.ALLOY });
+  pistolGrip(gb, -0.2, DARK, { mat: GM.RUBBER, top: 0.3 });
+  triggerGroup(gb, 0.1, 0.25, body, { mat: GM.ALLOY });
+  // fat launch tube with a slot along the top, reinforcing bands, a flared muzzle bell
+  cylX(gb, 5.4, L - 1.6, 1.6, 0, 1.15, 1.1, { color: body, mat: GM.ALLOY, seg: 24 });
+  rbox(gb, 6.0, L - 2.0, 2.62, 2.8, -0.24, 0.24, 0.04, { color: '#050505', seg: 1 });
+  for (const f of [0.42, 0.62, 0.8]) torusX(gb, L * f, 1.6, 0, 1.15, 0.14, { color: DARK, mat: GM.STEEL, seg: 24 });
+  latheX(gb, [[L - 1.8, 0], [L - 1.8, 1.25], [L - 0.5, 1.45], [L, 1.7], [L, 1.15], [L - 0.35, 1.0], [L - 0.35, 0]], 1.6, 0, { color: DARK, mat: GM.STEEL, seg: 24 });
+  torusX(gb, L - 0.9, -0.2, 0, 0.35, 0.1, { color: STEEL, seg: 12 });
+  // pressure gauge on top where the eye sees it
+  gb.add(new THREE.CylinderGeometry(0.72, 0.72, 0.4, 18), { at: [9.6, 2.95, 0], color: STEEL, mat: GM.STEEL, round: true });
+  gb.add(new THREE.CircleGeometry(0.6, 18), { at: [9.6, 3.16, 0], rot: [-HALF_PI, 0, 0], color: '#e8e4d0', mat: GM.PAINT });
+  rbox(gb, 9.58, 9.62, 3.17, 3.21, -0.05, 0.5, 0.01, { color: '#c62828', mat: GM.PAINT, rot: [0, 0.7, 0], seg: 1 });
+  // compressed-air reservoir (painted yellow) with a pressure gauge
+  latheX(gb, [[1.0, 0], [1.2, 0.9], [1.8, 1.2], [15.0, 1.2], [15.6, 0.9], [15.8, 0]], -0.75, 0, { color: yellow, mat: GM.PAINT, seg: 22 });
+  for (const f of [4.0, 12.0]) torusX(gb, f, -0.75, 0, 1.22, 0.1, { color: '#3a3a3a', mat: GM.STEEL, seg: 22 });
+  cylX(gb, 0.4, 1.1, -0.75, 0, 0.35, 0.35, { color: STEEL, seg: 10 });
+  // cable reel on the left (spins as the line pays out)
+  const Rl = { part: 'reel' };
+  const rx = 5.6, ry = 1.5, rz = -2.2;
+  gb.add(new THREE.CylinderGeometry(1.45, 1.45, 1.1, 24), { ...Rl, at: [rx, ry, rz], rot: [HALF_PI, 0, 0], color: '#2a2e30', mat: GM.ALLOY, round: true });
+  for (let k = 0; k < 5; k++) gb.add(new THREE.TorusGeometry(1.0, 0.1, 6, 22), { ...Rl, at: [rx, ry, rz + 0.44 - k * 0.22], color: '#d8d0b8', mat: GM.RUBBER, round: true });
+  for (let k = 0; k < 4; k++) rbox(gb, -0.13, 0.13, -1.4, 1.4, -0.04, 0.04, 0.02, { ...Rl, color: yellow, mat: GM.PAINT, at: [rx, ry, rz - 0.6], rot: [0, 0, (k / 4) * Math.PI], seg: 1 });
+  rbox(gb, rx - 0.5, rx + 0.5, ry - 0.5, ry + 0.5, -1.7, -1.05, 0.15, { color: DARK, mat: GM.STEEL });
+  tubePath(gb, [[rx, ry + 1.0, rz], [14, 0.9, -1.8], [L - 1.4, -0.2, -0.6], [L - 0.9, -0.2, 0]], 0.07, { color: '#d8d0b8', mat: GM.RUBBER, radial: 4, seg: 16 });
+  // vertical foregrip
+  ext(gb, [[L * 0.52, 0.6], [L * 0.59, 0.6], [L * 0.58, -3.2], [L * 0.52, -3.3]], -0.62, 0.62, { color: RUBBER, mat: GM.RUBBER, bevel: 0.22 });
+  // the loaded harpoon: steel shaft out of the muzzle, a broad head and flip barbs
+  const T = { part: 'tip' };
+  const hx = L + 5.5;
+  cylX(gb, 4.0, hx + 0.4, 1.6, 0, 0.34, 0.34, { ...T, color: '#b8bec2', mat: GM.STEEL, seg: 10 });
+  torusX(gb, hx - 0.3, 1.6, 0, 0.42, 0.16, { ...T, color: '#d84315', mat: GM.PAINT, seg: 12 });
+  latheX(gb, [[hx, 0], [hx, 0.75], [hx + 1.0, 1.35], [hx + 5.2, 0.14], [hx + 5.6, 0]], 1.6, 0, { ...T, color: '#eef1f3', mat: GM.STEEL, seg: 4, wear: 1.8 });
+  for (let k = 0; k < 3; k++) {
+    // flip barbs lying back along the shaft, spread round it
+    const a = (k / 3) * TAU + 0.5;
+    rbox(gb, hx - 1.9, hx + 0.9, -0.42, 0.42, -0.07, 0.07, 0.02, { ...T, color: '#b4babe', mat: GM.STEEL,
+      at: [0, 1.6 + Math.sin(a) * 0.7, Math.cos(a) * 0.7], rot: [HALF_PI - a, 0, 0], seg: 1 });
+  }
+  dot(gb, hx + 1.2, 2.4, -0.5, 0.12, '#ffffff', 'tip');
+  rbox(gb, L + 1.0, L + 1.6, 1.15, 2.05, -0.42, 0.42, 0.12, { ...T, color: yellow, mat: GM.PAINT });           // line shackle
+  out.pivots.reel = [rx, ry, rz];
+  out.muzzle = [L + 1.0, 1.6, 0];
+  out.front = [L * 0.555, -2.4, 0];
+  out.magwell = [3, -1.2, 0];
+  out.heavy = true;
+  out.reload = 'rocket';
+  out.casing = null;
+  out.glowColor = null;
+};
+
+// ---- cryo blaster -------------------------------------------------------------------------------
+BUILDERS.cryo = (gb, L, sp, out) => {
+  const shell = mixHex(sp.color, '#8a9aa4', 0.35), glow = sp.accent, frame = '#3a4650';
+  // padded stock and a sculpted white shell over a dark frame
+  ext(gb, [[-0.4, 2.3], [-7.6, 2.0], [-7.9, -1.8], [-6.8, -1.9], [-6.2, 0.2], [-1.6, 0.5], [-0.4, 0.2]], -0.62, 0.62,
+    { color: frame, mat: GM.POLY, bevel: 0.2, holes: [[[-2.2, 1.6], [-6.0, 1.4], [-5.8, 0.9], [-2.4, 1.0]]] });
+  rbox(gb, -8.6, -7.7, -1.9, 2.3, -0.9, 0.9, 0.35, { color: RUBBER, mat: GM.RUBBER });
+  ext(gb, [[-1.3, 0.3], [L * 0.6, 0.4], [L * 0.66, 1.2], [L * 0.6, 3.4], [1.6, 3.6], [-1.3, 3.0]], -1.3, 1.3, { color: shell, mat: GM.PAINT, bevel: 0.4, bevelSeg: 3 });
+  for (const z of [-1.33, 1.33]) {
+    ext(gb, [[1.0, 1.2], [L * 0.5, 1.3], [L * 0.54, 2.2], [1.4, 2.6]], z - 0.05, z + 0.05, { color: frame, mat: GM.POLY, bevel: 0.03 });
+    rbox(gb, 2.0, L * 0.48, 1.85, 1.98, z - 0.08, z + 0.08, 0.04, { glow: true, color: glow });
+  }
+  // frost gauge, a dark spine with panel seams and a blue warning stripe on top
+  gb.add(new THREE.CylinderGeometry(0.7, 0.7, 0.4, 18), { at: [3.4, 3.8, 0], color: STEEL, mat: GM.STEEL, round: true });
+  gb.add(new THREE.CircleGeometry(0.58, 18), { at: [3.4, 4.01, 0], rot: [-HALF_PI, 0, 0], color: '#d8f4ff', mat: GM.PAINT });
+  rbox(gb, 3.38, 3.42, 4.02, 4.06, -0.05, 0.5, 0.01, { color: '#1565c0', mat: GM.PAINT, seg: 1 });
+  rbox(gb, 5.0, L * 0.58, 3.35, 3.72, -0.55, 0.55, 0.12, { color: frame, mat: GM.POLY });
+  rbox(gb, 6.0, 9.0, 3.68, 3.8, -0.4, 0.4, 0.04, { color: '#1e88e5', mat: GM.PAINT });
+  for (const x of [5.2, 9.6, 14.0]) rbox(gb, x, x + 0.08, 0.5, 3.4, -1.36, 1.36, 0.02, { color: '#20282e', seg: 1 });
+  // condenser coils round the emitter, heat-sink fins frosted white
+  cylX(gb, L * 0.6, L - 1.8, 1.9, 0, 0.55, 0.5, { color: '#5c6a72', mat: GM.ALLOY, seg: 14 });
+  for (let k = 0; k < 6; k++) torusX(gb, L * 0.64 + k * 0.95, 1.9, 0, 0.95 - k * 0.03, 0.18, { color: '#8fb4c8', mat: GM.ALLOY, seg: 20 });
+  for (let k = 0; k < 5; k++) torusX(gb, L * 0.64 + k * 0.95 + 0.48, 1.9, 0, 0.72, 0.08, { glow: true, color: glow, seg: 16 });
+  for (let k = 0; k < 4; k++) rbox(gb, L * 0.62 + k * 0.7, L * 0.62 + k * 0.7 + 0.2, 0.2, 3.5, -1.5, 1.5, 0.06, { color: '#e8f4fa', mat: GM.PAINT, seg: 1 });
+  // flared nozzle with an icy glow in its throat
+  latheX(gb, [[L - 2.0, 0], [L - 2.0, 0.62], [L - 0.8, 0.7], [L, 1.15], [L + 0.25, 1.2], [L + 0.25, 0.95], [L - 0.6, 0.5], [L - 0.6, 0]], 1.9, 0, { color: '#6d7e88', mat: GM.STEEL, seg: 20 });
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU;
+    rbox(gb, L - 0.7, L + 0.1, -0.06, 0.06, -0.06, 0.06, 0.02, { color: '#0b1a24', at: [0, 1.9 + Math.sin(a) * 0.95, Math.cos(a) * 0.95], seg: 1 });
+  }
+  sphere(gb, L - 0.5, 1.9, 0, 0.42, { glow: true, color: '#d8f8ff', seg: 10 });
+  // coolant lines from the canister to the emitter
+  for (const z of [-0.7, 0.7]) tubePath(gb, [[5.4, -0.2, z * 1.2], [8.0, 0.2, z * 1.6], [L * 0.6, 1.0, z * 1.1], [L * 0.66, 1.5, z * 0.6]], 0.16, { color: '#2a3036', mat: GM.RUBBER, seg: 16 });
+  pistolGrip(gb, -0.3, DARK, { mat: GM.RUBBER, top: 0.3 });
+  triggerGroup(gb, 0.1, 0.25, frame, { mat: GM.POLY });
+  ext(gb, [[L * 0.42, 0.4], [L * 0.49, 0.4], [L * 0.48, -3.1], [L * 0.42, -3.2]], -0.6, 0.6, { color: DARK, mat: GM.RUBBER, bevel: 0.22 });
+  // coolant canister (swapped on reload) clamped along the left side where the eye sees
+  // it: frosted, with glowing level windows, a hose into the receiver
+  const M = { part: 'mag' };
+  const cy = 1.7, cz = -2.1;
+  latheX(gb, [[2.4, 0], [2.5, 0.7], [3.0, 0.92], [10.8, 0.92], [11.3, 0.7], [11.4, 0]], cy, cz, { ...M, color: '#e6eef2', mat: GM.PAINT, seg: 22 });
+  for (const f of [4.2, 6.6, 9.0]) torusX(gb, f, cy, cz, 0.94, 0.08, { ...M, glow: true, color: glow, seg: 22 });
+  for (const f of [3.2, 10.2]) torusX(gb, f, cy, cz, 0.95, 0.12, { ...M, color: '#5c6a72', mat: GM.STEEL, seg: 22 });
+  cylX(gb, 11.3, 11.9, cy, cz, 0.36, 0.36, { ...M, color: STEEL, seg: 12 });
+  tubePath(gb, [[11.9, cy, cz], [12.8, cy, cz + 0.2], [13.4, cy, -1.2]], 0.16, { ...M, color: '#2a3036', mat: GM.RUBBER, seg: 10 });
+  for (const x of [4.0, 9.6]) rbox(gb, x, x + 0.7, cy - 0.3, cy + 0.3, -1.45, -1.25, 0.08, { color: frame, mat: GM.STEEL });
+  out.muzzle = [L + 0.4, 1.9, 0];
+  out.front = [L * 0.455, -2.8, 0];
+  out.magwell = [7.0, cy - 0.4, cz];
+  out.glowColor = glow;
+  out.heavy = true;
+  out.casing = null;
+};
+
+// ---- .50 anti-materiel rifle ----------------------------------------------------------------------
+BUILDERS.amr = (gb, L, sp, out) => {
+  const col = sp.color, dark = mixHex(sp.accent, '#1b1c1a', 0.5);
+  // stamped upper receiver running out over the barrel, with lightening holes
+  ext(gb, [[-3.4, 1.0], [26.5, 1.0], [27.2, 1.6], [27.2, 3.2], [26.4, 3.6], [-2.6, 3.6], [-3.4, 3.0]], -1.2, 1.2, { color: col, mat: GM.PAINT, bevel: 0.2 });
+  for (let k = 0; k < 7; k++) {
+    const x = 16.2 + k * 1.45;
+    for (const z of [-1.22, 1.22]) cylX(gb, 0, 0.02, 0, 0, 0.42, 0.42, { color: '#050505', seg: 10, at: [x, 2.3, z], rot: [0, HALF_PI, 0] });
+    rbox(gb, x - 0.35, x + 0.35, 3.55, 3.62, -0.5, 0.5, 0.02, { color: '#050505', seg: 1 });
+  }
+  rail(gb, -2.4, 14.6, 3.6, 0, 1.1);
+  // lower receiver, mag well, trigger group
+  ext(gb, [[-2.8, 1.05], [8.6, 1.05], [8.6, 0.1], [7.6, -0.6], [3.2, -0.6], [2.8, 0.0], [-2.8, 0.0]], -1.05, 1.05, { color: shadeHex(col, -0.08), mat: GM.PAINT });
+  triggerGroup(gb, -0.2, 0.0, dark, { mat: GM.STEEL });
+  pistolGrip(gb, -0.3, dark, { mat: GM.POLY, h: 3.9, rake: 1.1, top: 0.1, w: 0.7 });
+  // charging handle (racks on reload)
+  rbox(gb, 8.4, 9.6, 2.0, 2.7, 1.2, 2.2, 0.15, { part: 'bolt', color: STEEL, mat: GM.STEEL });
+  sphere(gb, 9.0, 2.35, 2.35, 0.32, { part: 'bolt', color: DARK });
+  // heavy fluted barrel and the huge double-baffle arrowhead brake
+  cylX(gb, 27.0, L - 4.6, 2.1, 0, 0.72, 0.66, { color: BLUED, mat: GM.STEEL, seg: 18 });
+  for (let k = 0; k < 6; k++) rbox(gb, 27.6, L - 5.2, -0.05, 0.05, -0.05, 0.05, 0.01, { color: '#080808', at: [0, 2.1 + Math.sin(k * 1.047) * 0.68, Math.cos(k * 1.047) * 0.68], seg: 1 });
+  ext(gb, [[L - 4.8, 0.7], [L - 0.9, 0.5], [L, 2.1], [L - 0.9, 3.7], [L - 4.8, 3.5]], -1.35, 1.35, { color: dark, mat: GM.STEEL, bevel: 0.18 });
+  for (const x of [L - 4.1, L - 2.3]) rbox(gb, x, x + 1.2, 1.1, 3.1, -1.4, 1.4, 0.12, { color: '#050505', seg: 1 });
+  cylX(gb, L - 0.05, L + 0.02, 2.1, 0, 0.36, 0.36, { color: '#020202', seg: 10 });
+  // folding carry handle and a big scope
+  ext(gb, [[9.6, 3.6], [15.6, 3.6], [15.2, 5.4], [10.0, 5.4]], -0.28, 0.28, { color: dark, bevel: 0.06, holes: [[[10.4, 3.9], [14.8, 3.9], [14.5, 5.0], [10.6, 5.0]]] });
+  scope(gb, -2.2, 12.8, 5.9, 1.12);
+  // bipod folded forward under the receiver
+  rbox(gb, 24.8, 26.2, 0.4, 1.1, -0.9, 0.9, 0.15, { color: dark });
+  for (const z of [-0.7, 0.7]) cylX(gb, 26.0, 35.0, 0.35, z, 0.2, 0.18, { color: dark, seg: 8 });
+  for (const z of [-0.7, 0.7]) rbox(gb, 34.6, 35.8, 0.0, 0.7, z - 0.35, z + 0.35, 0.15, { color: RUBBER, mat: GM.RUBBER });
+  // stock: a thick recoil pad, cheek piece and a rear monopod
+  ext(gb, [[-2.8, 3.4], [-12.8, 3.1], [-13.3, -2.4], [-11.8, -2.6], [-9.8, -0.6], [-4.6, 0.2], [-2.8, 0.2]], -1.0, 1.0, { color: col, mat: GM.PAINT, bevel: 0.3,
+    holes: [[[-5.0, 1.0], [-9.2, 1.0], [-9.5, -0.2], [-5.4, 0.5]]] });
+  rbox(gb, -14.6, -13.1, -2.6, 3.3, -1.1, 1.1, 0.4, { color: RUBBER, mat: GM.RUBBER });
+  rbox(gb, -11.8, -5.2, 3.2, 3.9, -0.8, 0.8, 0.25, { color: shadeHex(col, -0.2), mat: GM.POLY });
+  cylX(gb, -11.2, -11.0, -1.6, 0, 0.3, 0.3, { color: dark, seg: 8 });
+  // ten-round box magazine of big .50 rounds
+  const M = { part: 'mag' };
+  rbox(gb, 3.4, 7.2, -4.9, -0.4, -0.95, 0.95, 0.25, { ...M, color: '#23251f', mat: GM.STEEL });
+  rbox(gb, 3.2, 7.4, -5.3, -4.8, -1.0, 1.0, 0.2, { ...M, color: dark, mat: GM.STEEL });
+  cylX(gb, 3.7, 6.9, -0.25, 0, 0.36, 0.3, { ...M, color: BRASS, mat: GM.BRASS, seg: 12 });
+  out.muzzle = [L, 2.1, 0];
+  out.front = [22.0, 0.2, 0];
+  out.eject = [6.5, 2.6, 1.3];
+  out.magwell = [5.3, -1.0, 0];
+  out.glowColor = '#9ad8ff';
+  out.heavy = true;
+  out.travel.bolt = 3.0;
+};
+
 // ---------------------------------------------------------------------------------------
 // materials + objects
 
@@ -1085,13 +1486,24 @@ export function gunObject(weaponId, o = {}) {
       glowMeshes.push(g);
     }
   }
-  let spinA = 0;
+  let spinA = 0, chainA = 0;
   group.userData = {
     model, parts, glowMeshes,
-    /** Cheap animation for third-person guns: minigun spin, pump on shots. */
+    /**
+     * Cheap animation for third-person guns: minigun spin, pump on shots, the chainsaw's
+     * running chain (st.firing), the harpoon reel paying out, the lever thrown.
+     */
     animate(st) {
-      if (parts.spin) { spinA += (st.spin || 0) * (st.dt || 0.016) * 38; parts.spin.rotation.x = spinA; }
+      const dt = st.dt || 0.016;
+      if (parts.spin) { spinA += (st.spin || 0) * dt * 38; parts.spin.rotation.x = spinA; }
       if (parts.pump) { const k = st.shot > 0.1 && st.shot < 0.4 ? Math.sin(((st.shot - 0.1) / 0.3) * Math.PI) : 0; parts.pump.position.x = -k * 3; }
+      if (parts.chainA && model.chain) {
+        chainA = (chainA + (st.firing ? 1 : 0.1) * dt * 26) % model.chain.pitch;
+        parts.chainA.position.x = chainA;
+        if (parts.chainB) parts.chainB.position.x = -chainA;
+      }
+      if (parts.reel) parts.reel.rotation.z -= st.shot < 0.8 ? dt * 18 * (1 - st.shot / 0.8) : 0;
+      if (parts.lever) { const k = st.shot > 0.12 && st.shot < 0.5 ? Math.sin(((st.shot - 0.12) / 0.38) * Math.PI) : 0; parts.lever.rotation.z = k * 0.9; }
     },
     dispose() { group.removeFromParent(); },
   };

@@ -18,7 +18,7 @@ export const IMPORTANT_EVENTS = new Set([
  */
 export const PERISHABLE_EVENTS = new Set([
   'shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch',
-  'explosion', 'ignite', 'throw', 'scream', 'charge', 'slam',
+  'explosion', 'ignite', 'throw', 'scream', 'charge', 'slam', 'freeze',
 ]);
 
 /** Seconds after which a perishable event is no longer presented. */
