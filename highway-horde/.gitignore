@@ -2,3 +2,4 @@ node_modules/
 test-results/
 e2e-output/
 *.log
+dist/

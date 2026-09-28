@@ -48,6 +48,22 @@ install: one person hosts, everyone else opens the invite link.
   buys guns and gear between waves, or mid-wave at the supply station. The game supports
   keyboard and mouse, gamepads, and touch screens.
 
+## Playing from a file on your computer
+
+Browsers won't run `public/index.html` opened straight from a folder (they block the game's
+module scripts on `file://` pages). Build the one-file version instead:
+
+```bash
+cd highway-horde
+npm install
+npm run standalone   # → dist/Highway-Horde.html
+```
+
+Double-click `Highway-Horde.html` to play. Online games work from it too: the host clicks
+**Host Online Game** and reads out the room code, and friends (each with their own copy of
+the file, or the website) use **Join Game** with that code. Invite links point at the
+host's own disk, so use the code.
+
 ## Playing with friends
 
 The host's browser runs the game and everyone else connects to it. There are three ways to

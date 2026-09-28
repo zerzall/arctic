@@ -420,15 +420,20 @@
   </div>
   <script>
     // If the game modules never boot (very old browser, blocked script), say so instead of
-    // leaving a dimmed menu that does nothing.
+    // leaving a dimmed menu that does nothing. Opened straight from a folder (file://), the
+    // browser blocks the modules for sure: point at the one-file build instead.
+    var fromDisk = location.protocol === 'file:';
     setTimeout(function () {
       var app = document.getElementById('app');
       var status = document.getElementById('server-status');
       if (app && app.classList.contains('booting') && status) {
-        status.textContent = 'The game failed to load. Please reload the page in an up-to-date browser.';
+        status.textContent = fromDisk
+          ? 'Browsers can\'t run this copy of the game from a folder on your computer. Open Highway-Horde.html (the one-file version) instead, or put this folder on a website such as Netlify.'
+          : 'The game failed to load. Please reload the page in an up-to-date browser.';
         status.style.color = '#ff5b4f';
+        status.style.fontSize = '1.1rem';
       }
-    }, 12000);
+    }, fromDisk ? 1500 : 12000);
   </script>
 </body>
 </html>
