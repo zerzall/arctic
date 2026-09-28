@@ -21,8 +21,9 @@ import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildA
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
 import {
   jersey, sandbags, guardrail, fence, wall, hesco, container, pump, pillar, buildCanopies, tent, booth, rock,
-  lampPost, cone, tires, rubble, debris, roadSign, grassTuft,
+  lampPost, cone, tires, rubble, debris, roadSign, grassTuft, trafficSignal, pricePylon,
 } from './world-props.js';
+import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField } from './world-veg.js';
 import {
   createFxUniforms, makeSky, makeFlames, makeEmbers, makeSmoke, makeHalos, makeShafts, makePools, makeMarker, makeRain,
@@ -65,6 +66,9 @@ export function obstacleHeight(kind, o) {
     case 'rock': return o ? Math.max(16, Math.min(30, 10 + Math.min(o.w, o.h) * 0.4)) : 22;
     case 'tree': return 70;
     case 'pillar': return 150;
+    // overpass columns reach the pier cap; ramp pieces are as tall as their high end
+    case 'pier': return o && Number.isFinite(o.top) ? o.top : 138;
+    case 'ramp': return o && Number.isFinite(o.top) ? o.top : 100;
     case 'building': return o ? buildingHeight(o) : 180;
     default: return 40;
   }
@@ -93,6 +97,14 @@ function pointInOb(o, x, y, pad = 0) {
  * small fire on open ground, else on the ground.
  */
 export function fireBaseHeight(map, x, y) {
+  // up on an overpass: on the wreck burning there, else on the deck
+  const deck = deckHeightAt(map, x, y);
+  if (deck > 0) {
+    for (const v of map.overpass.vehicles) {
+      if (pointInOb(v, x, y, 2)) return Math.round(deck + obstacleHeight(v.kind, v) * (v.kind === 'car' ? 0.62 : 0.55));
+    }
+    return Math.round(deck);
+  }
   for (const o of map.obstacles) {
     if (VEHICLE.has(o.kind) && pointInOb(o, x, y, 2)) return Math.round(obstacleHeight(o.kind, o) * (o.kind === 'car' ? 0.62 : 0.55));
   }
@@ -138,10 +150,13 @@ export function createWorld(ctx, deps) {
   const chainTex = track(makeChainLinkTexture());
   const leafTex = track(makeLeafTexture(Math.min(4, maxAniso)));
   const mats = createWorldMaterials({ detail: detailTex, atlas: atlasTex, chain: chainTex, leaves: leafTex });
+  // a long map (the highway) cuts its heavy buckets finer: looking down the road, the
+  // frustum and the fog then drop most of the pileup behind and beside the camera
+  const fine = map.width > 6000 ? 1000 : undefined;
   const B = createGeoBuilder({
     cell: 1600,
     buckets: {
-      std: { det: true }, paint: { det: true }, glass: { det: true }, decal: { uv: true },
+      std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
       glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
       fence: { uv: true }, leaves: { uv: true, ao: false },
     },
@@ -163,12 +178,18 @@ export function createWorld(ctx, deps) {
     B.obj(o.x, o.y, o.a || 0, o.id * 31 + (map.seed | 0));
     B.setJitter(0.06);
     try {
-      buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null);
+      buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass);
     } catch (err) {
       console.warn('world: obstacle model failed', o.kind, err);
     }
   }
   const canopies = buildCanopies(B, map);
+  // the overpass: decks, bents, ramps, deck lamps and signs, wrecks up top
+  try {
+    buildOverpass(B, map, { halos });
+  } catch (err) {
+    console.warn('world: overpass model failed', err);
+  }
   const tObsMs = performance.now() - tObs;
   const tDec = performance.now();
 
@@ -301,7 +322,9 @@ export function createWorld(ctx, deps) {
     const src = deps.lights.mapSources[i];
     const fire = l.flicker >= 0.5;
     const lampish = src && src.h > 150;
-    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: fire ? 0.28 : lampish ? 0.34 : 0.2, base: 0 };
+    // a fire up on an overpass deck lights the deck, not the ground under it: no fake pool
+    const aloft = !Number.isFinite(l.h) && deckHeightAt(map, l.x, l.y) > 0;
+    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2, base: 0 };
   });
   // the canopies' fluorescent strips light the forecourt under them
   for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: 0 });
@@ -323,6 +346,7 @@ export function createWorld(ctx, deps) {
     const on = tier === 'ultra';
     if (on && !rain) {
       rain = makeRain(fx, 5000);
+      rain.setRoofs(deckRoofs(map));
       root.add(rain.mesh);
       disposables.push(rain.mesh.geometry, rain.mesh.material);
     }
@@ -415,12 +439,28 @@ export function createWorld(ctx, deps) {
   let time = 0;
   const neonBase = new THREE.Color(1, 1, 1);
 
+  // Static meshes and ground tiles wholly past the fog are skipped: every world material
+  // fogs, and beyond this range the fog lets through < 0.2 % of a surface (a long map
+  // looking down its road would otherwise draw every cell to the horizon).
+  const cullDist = Math.sqrt(-Math.log(0.002)) / Math.max(1e-5, amb.fogDensity);
+  const culled = staticMeshes.concat(ground.meshes);
+  function cullFar(cam) {
+    const cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
+    for (const m of culled) {
+      const s = m.geometry.boundingSphere;
+      if (!s) continue;
+      const dx = s.center.x - cx, dy = s.center.y - cy, dz = s.center.z - cz;
+      m.visible = Math.sqrt(dx * dx + dy * dy + dz * dz) - s.radius < cullDist;
+    }
+  }
+
   function update(view, frame) {
     const dt = Math.min(0.1, frame.dt || 0.016);
     time += dt;
     fx.uTime.value = time;
     mats.uniforms.uTime.value = time;
     const cam = ctx.camera;
+    cullFar(cam);
     sky.position.copy(cam.position);
     sky.userData.updateGlow(cam.position.x, cam.position.z);
     // points sizing: drawing-buffer pixels per world unit at distance 1
@@ -553,9 +593,12 @@ function makeFlagMesh(list) {
 
 // ---- obstacles ------------------------------------------------------------------------------
 
-function buildObstacle(B, o, sign) {
+function buildObstacle(B, o, sign, overpass) {
   const L = o.w, W = o.h;
   switch (o.kind) {
+    // overpass piers and ramp embankments are built with their decks (world-overpass.js)
+    case 'pier': if (!overpass) B.rblock('std', 0, 0, 0, L, obstacleHeight('pier', o), W, 4, o.color || '#8e8a82', null, { surf: [DET.concrete, 0.9, 0] }); break;
+    case 'ramp': if (!overpass) B.block('std', 0, 0, 0, L, obstacleHeight('ramp', o), W, o.color || '#8a867d', null, { surf: [DET.concrete, 0.9, 0] }); break;
     case 'car': case 'suv': case 'pickup': case 'van': case 'truck': buildVehicle(B, o); break;
     case 'semi': if (L <= 100) buildSemiCab(B, o); else buildTrailer(B, o); break;
     case 'bus': buildBus(B, o, false); break;
@@ -662,6 +705,8 @@ function buildDecor(B, d, i, light, halos, shafts, flags) {
       break;
     }
     case 'sign': roadSign(B, d, i); break;
+    case 'signal': trafficSignal(B, d, i, halos); break;
+    case 'pylon': pricePylon(B, d); break;
     case 'grass_tuft': grassTuft(B, d, i); break;
     case 'flag': {
       B.cyl('std', 0, 0, 0, 1.4, 130 * s, '#8a8e92', 8, 1, null, { surf: [DET.rust, 0.45, 0.85] });

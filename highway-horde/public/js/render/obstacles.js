@@ -51,6 +51,8 @@ export function drawObstacle(g, o, seed = 0) {
     case 'booth': drawBooth(g, L, W, o.color, o.roof, rng); break;
     case 'guardrail': drawGuardrail(g, L, W, o.color); break;
     case 'pillar': drawPillar(g, L, W, o.color); break;
+    case 'pier': drawPier(g, L, W, o.color); break;
+    case 'ramp': drawRamp(g, L, W, o.color, o.solid); break;
     default:
       fillRoundRect(g, -L / 2, -W / 2, L, W, 3, o.color || '#777');
   }
@@ -598,6 +600,41 @@ function drawPillar(g, L, W, color) {
   grad.addColorStop(1, shade(color, -0.35));
   g.fillStyle = grad;
   g.fillRect(-L / 2, -W / 2, L, W);
+  g.strokeStyle = 'rgba(0,0,0,0.5)';
+  g.lineWidth = 1;
+  g.strokeRect(-L / 2, -W / 2, L, W);
+}
+
+/** Overpass column seen from above: a square concrete shaft (the deck is drawn over it). */
+function drawPier(g, L, W, color) {
+  const grad = g.createLinearGradient(-L / 2, -W / 2, L / 2, W / 2);
+  grad.addColorStop(0, shade(color, 0.3));
+  grad.addColorStop(1, shade(color, -0.4));
+  fillRoundRect(g, -L / 2, -W / 2, L, W, 5, grad);
+  g.strokeStyle = 'rgba(0,0,0,0.55)';
+  g.lineWidth = 1.2;
+  g.beginPath();
+  roundRectPath(g, -L / 2, -W / 2, L, W, 5);
+  g.stroke();
+  // yellow-black hazard band on the faces the traffic sees
+  g.fillStyle = '#d8b43a';
+  for (const s of [-1, 1]) g.fillRect(s > 0 ? L / 2 - 3 : -L / 2, -W / 2 + 4, 3, W - 8);
+}
+
+/**
+ * A piece of ramp embankment (+x climbs toward the deck): the ramp's road surface between
+ * its retaining walls, lighter as it rises, with the parapets along both edges.
+ */
+function drawRamp(g, L, W, color, solid) {
+  const grad = g.createLinearGradient(-L / 2, 0, L / 2, 0);
+  grad.addColorStop(0, solid ? '#34363a' : '#2e3033');
+  grad.addColorStop(1, solid ? '#3e4044' : '#34363a');
+  g.fillStyle = grad;
+  g.fillRect(-L / 2, -W / 2, L, W);
+  g.fillStyle = shade(color, 0.12);
+  for (const s of [-1, 1]) g.fillRect(-L / 2, s > 0 ? W / 2 - 8 : -W / 2, L, 8);
+  g.fillStyle = 'rgba(225,225,212,0.6)';
+  for (const s of [-1, 1]) g.fillRect(-L / 2, s * (W / 2 - 20) - 1.5, L, 3);
   g.strokeStyle = 'rgba(0,0,0,0.5)';
   g.lineWidth = 1;
   g.strokeRect(-L / 2, -W / 2, L, W);

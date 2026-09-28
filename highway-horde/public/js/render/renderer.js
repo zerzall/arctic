@@ -11,7 +11,7 @@ import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/math.js';
 import { makeCanvas, releaseCanvas, mix, rgba, hash01, fillCircle, fillEllipse } from './util.js';
 import { tintedGlow, fireSprite } from './textures.js';
-import { prepareMap, paintGround, createGroundLayer, createOverheadLayer, createWaterLayer } from './maplayer.js';
+import { prepareMap, paintGround, createGroundLayer, createOverheadLayer, createWaterLayer, overpassQuads } from './maplayer.js';
 import {
   drawObstacle, obstaclePad, drawObjectiveBase, drawObjectiveLive, objectivePad, drawSupplyBase, drawSupplyFlag,
 } from './obstacles.js';
@@ -1027,6 +1027,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     setWorld();
     overhead.drawLampsAndFlags(ctx, viewRect, time);
     overhead.drawCanopies(ctx, viewRect, players, dt, spriteScale, K);
+    setWorld();
+    overhead.drawOverpass(ctx, viewRect, players, dt);
     mark('particles');
 
     drawLighting(V || NO_VIEW, lightingOn);
@@ -1139,15 +1141,20 @@ export function renderMapPreview(canvas, map) {
   g.fillStyle = '#0c0e11';
   g.fillRect(0, 0, W, H);
   if (!map) return;
-  const s = Math.min(W / map.width, H / map.height);
-  const ox = (W - map.width * s) / 2, oy = (H - map.height * s) / 2;
+  // A very long map (the highway) shows the stretch around its objective at a readable
+  // scale instead of a thin strip; every other map shows whole.
+  const vw = Math.min(map.width, Math.max(map.height * (W / H), map.height * 2.8));
+  const ob0 = map.objective;
+  const vx0 = vw < map.width ? Math.max(0, Math.min(map.width - vw, (ob0 ? ob0.x : map.width / 2) - vw / 2)) : 0;
+  const s = Math.min(W / vw, H / map.height);
+  const ox = (W - vw * s) / 2, oy = (H - map.height * s) / 2;
   g.save();
   g.beginPath();
-  g.rect(ox, oy, map.width * s, map.height * s);
+  g.rect(ox, oy, vw * s, map.height * s);
   g.clip();
-  g.setTransform(s, 0, 0, s, ox, oy);
+  g.setTransform(s, 0, 0, s, ox - vx0 * s, oy);
   const prep = prepareMap(map);
-  paintGround(g, prep, { x0: 0, y0: 0, x1: map.width, y1: map.height }, 0);
+  paintGround(g, prep, { x0: vx0, y0: 0, x1: vx0 + vw, y1: map.height }, 0);
   for (const o of map.obstacles) {
     g.save();
     g.translate(o.x, o.y);
@@ -1161,13 +1168,41 @@ export function renderMapPreview(canvas, map) {
     fillCircle(g, d.x, d.y, r, '#1f3318');
     fillCircle(g, d.x - r * 0.2, d.y - r * 0.2, r * 0.6, '#2f4a24');
   }
+  // overpass decks over the ground, the wrecks up on them
+  for (const q of overpassQuads(map)) {
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    g.beginPath();
+    q.pts.forEach(([x, y], i) => (i ? g.lineTo(x + 20, y + 28) : g.moveTo(x + 20, y + 28)));
+    g.fill();
+    g.fillStyle = '#4a4c50';
+    g.beginPath();
+    q.pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.fill();
+    g.strokeStyle = '#b9b4a8';
+    g.lineWidth = 12;
+    for (const sd of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(q.x0 + q.nx * sd * (q.hw - 6), q.y0 + q.ny * sd * (q.hw - 6));
+      g.lineTo(q.x1 + q.nx * sd * (q.hw - 6), q.y1 + q.ny * sd * (q.hw - 6));
+      g.stroke();
+    }
+  }
+  if (map.overpass) {
+    map.overpass.vehicles.forEach((v, i) => {
+      g.save();
+      g.translate(v.x, v.y);
+      g.rotate(v.a || 0);
+      drawObstacle(g, { ...v, id: 5000 + i }, map.seed | 0);
+      g.restore();
+    });
+  }
   // spawn zones
   g.fillStyle = 'rgba(200,30,30,0.22)';
   for (const z of map.zombieSpawns || []) g.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
   // night tint
   const amb = map.ambient || { darkness: 0.6, tint: '#223344' };
   g.fillStyle = rgba(mix(amb.tint, '#02030a', 0.7), clamp(amb.darkness * 0.45, 0, 0.5));
-  g.fillRect(0, 0, map.width, map.height);
+  g.fillRect(vx0, 0, vw, map.height);
   // lights
   g.globalCompositeOperation = 'lighter';
   for (const L of map.lights) {

@@ -114,7 +114,11 @@ function pickType(game, w) {
   return 'walker';
 }
 
-/** A spawn rectangle, preferring ones farther than 700 px from every living player. */
+/**
+ * A spawn rectangle, preferring ones farther than 700 px from every living player. Rects
+ * may carry a `weight` (a long map makes its near rects likelier than its far ends, so a
+ * wave doesn't trickle in from miles away); without weights the pick is uniform.
+ */
 export function pickSpawnRect(game) {
   const rects = game.map.zombieSpawns;
   const far = [];
@@ -129,7 +133,16 @@ export function pickSpawnRect(game) {
     }
     if (ok) far.push(r);
   }
-  return game.rng.pick(far.length ? far : rects);
+  const list = far.length ? far : rects;
+  if (list[0].weight === undefined) return game.rng.pick(list);
+  let total = 0;
+  for (const r of list) total += r.weight;
+  let k = game.rng.next() * total;
+  for (const r of list) {
+    k -= r.weight;
+    if (k < 0) return r;
+  }
+  return list[list.length - 1];
 }
 
 function spawnPoint(game, rect, r, mask = MASK_MOVE) {

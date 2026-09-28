@@ -30,9 +30,11 @@ install: one person hosts, everyone else opens the invite link.
   | Boom | Demolitions | Bigger explosions and extra grenades |
   | Tank | Heavy | 150 health and a vest |
 
-- **4 maps**, each built around something to defend: a school bus in a forty-car pileup,
-  a diner full of survivors, an APC broken down in the middle of a bridge, and a radio
-  tower at a crossroads checkpoint.
+- **4 maps**, each built around something to defend: a school bus in a pileup that
+  stretches for miles down Highway 9 (two crossroads with dead traffic lights, a gas
+  station and a motel, and the I-44 overpass crossing overhead on its piers, with the horde
+  coming down the ramps), a diner full of survivors, an APC broken down in the middle of a
+  bridge, and a radio tower at a crossroads checkpoint.
 - **First person, in 3D.** You see the road over your own gun: your flashlight
   cutting through the dark, the horde coming out of the fog, teammates fighting beside
   you with their name tags overhead. A compass strip points to the objective and the supply station, a

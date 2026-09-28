@@ -549,6 +549,7 @@ export function makeMarker(obj, fx) {
 // ---- rain ---------------------------------------------------------------------------------------
 
 const RAIN_LIGHTS = 12;
+const RAIN_ROOFS = 4;
 
 /**
  * Light rain ('ultra'): streaks in a box that wraps around the camera (world-anchored
@@ -581,8 +582,13 @@ export function makeRain(fx, count = 5000) {
     uFlash: { value: new THREE.Vector4(0, 0, -1, 0) },
     uFlashPos: { value: new THREE.Vector3() },
     uStrength: { value: 1 },
+    // up to RAIN_ROOFS overpass decks: no rain under them (centre xz, cos, sin | half length, half width, underside)
+    uRoofA: { value: Array.from({ length: RAIN_ROOFS }, () => new THREE.Vector4(0, 0, 1, 0)) },
+    uRoofB: { value: Array.from({ length: RAIN_ROOFS }, () => new THREE.Vector4(0, 0, -1e5, 0)) },
   };
   const mat = additive(uniforms, COMMON + `
+    uniform vec4 uRoofA[${RAIN_ROOFS}];
+    uniform vec4 uRoofB[${RAIN_ROOFS}];
     uniform vec3 uBox;
     uniform vec4 uLightPos[${RAIN_LIGHTS}];
     uniform vec3 uLightCol[${RAIN_LIGHTS}];
@@ -621,6 +627,11 @@ export function makeRain(fx, count = 5000) {
       float dist = -mv.z;
       vCol = L * 0.16;
       vA = smoothstep(6.0, 22.0, dist) * (1.0 - smoothstep(uBox.x * 0.3, uBox.x * 0.5, dist)) * fogVis(dist);
+      for (int i = 0; i < ${RAIN_ROOFS}; i++) {
+        vec2 rd = base.xz - uRoofA[i].xy;
+        float lx = dot(rd, uRoofA[i].zw), lz = dot(rd, vec2(-uRoofA[i].w, uRoofA[i].z));
+        if (abs(lx) < uRoofB[i].x && abs(lz) < uRoofB[i].y && base.y < uRoofB[i].z) vA = 0.0;
+      }
       vX = aCorner.x;
       gl_Position = projectionMatrix * mv;
     }`, `
@@ -656,5 +667,13 @@ export function makeRain(fx, count = 5000) {
       uniforms.uFlashPos.value.copy(flash ? flash.position : camera.position);
     },
     setStrength(v) { uniforms.uStrength.value = v; },
+    /** Decks that keep the rain off the ground under them: [{ x, y, a, hl, hw, z }]. */
+    setRoofs(list) {
+      const A = uniforms.uRoofA.value, Bv = uniforms.uRoofB.value;
+      for (let i = 0; i < RAIN_ROOFS; i++) {
+        const r = list && list[i];
+        if (r) { A[i].set(r.x, r.y, Math.cos(r.a), Math.sin(r.a)); Bv[i].set(r.hl, r.hw, r.z, 0); } else { A[i].set(0, 0, 1, 0); Bv[i].set(0, 0, -1e5, 0); }
+      }
+    },
   };
 }

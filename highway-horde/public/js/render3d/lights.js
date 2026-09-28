@@ -104,7 +104,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   // map lights; a lamp_post decor at the same spot sets the height of the light
   const lamps = map.decor.filter((d) => d.kind === 'lamp_post');
   const mapSources = map.lights.map((l, i) => {
-    let h = 70, isLamp = false;
+    // a light with its own height (fixtures under an overpass) shines down like a lamp
+    let h = Number.isFinite(l.h) ? l.h : 70, isLamp = Number.isFinite(l.h);
     for (const d of lamps) {
       if (Math.abs(d.x - l.x) < 4 && Math.abs(d.y - l.y) < 4) { h = LAMP_H * (d.s || 1); isLamp = true; break; }
     }

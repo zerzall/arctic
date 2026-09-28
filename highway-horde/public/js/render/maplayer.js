@@ -9,6 +9,7 @@ import {
   fillRoundRect, hash01,
 } from './util.js';
 import { groundTile, AREA_COLORS, waterShimmerTile, bloodSplats } from './textures.js';
+import { drawObstacle } from './obstacles.js';
 
 const CHUNK = 512;
 const NATURAL = new Set(['grass', 'dirt', 'gravel', 'sand']);
@@ -16,7 +17,7 @@ const NATURAL = new Set(['grass', 'dirt', 'gravel', 'sand']);
 const SHADOW = {
   building: 16, booth: 10, container: 9, tent: 8, semi: 9, bus: 9, tanker: 9, truck: 8, van: 8,
   suv: 7, pickup: 6, car: 6, hesco: 6, pump: 6, rock: 4, pillar: 12, barrier: 3, sandbags: 3,
-  guardrail: 2, wall: 3, tree: 0,
+  guardrail: 2, wall: 3, tree: 0, pier: 12, ramp: 10,
 };
 const SUN_X = 0.55, SUN_Y = 0.8;   // moonlight comes from the top-left
 
@@ -509,6 +510,13 @@ function paintDecor(g, d, rng) {
       fillCircle(g, 0, 0, 3, '#2a2a2a');
       break;
     }
+    case 'signal': case 'pylon': {
+      // pole feet; the mast arm / sign board overhang is drawn live above entities
+      fillCircle(g, 1.5, 2, 5, 'rgba(0,0,0,0.35)');
+      if (d.kind === 'pylon') for (const x of [-14 * s, 14 * s]) fillCircle(g, x, 0, 2.6, '#5a5e62');
+      else { fillCircle(g, 0, 0, 5, '#2a2c2e'); fillCircle(g, 0, 0, 3.2, '#6e757b'); }
+      break;
+    }
     case 'rubble': {
       const R = 22 * s;
       fillEllipse(g, 2, 3, R, R * 0.8, 'rgba(0,0,0,0.25)');
@@ -646,14 +654,57 @@ function canopySprite(variant, spriteScale) {
 }
 
 /**
+ * State of a traffic signal (map 'signal' decor #i) — the same hash as the 3D view's:
+ * 'dark' | 'amber' (flashing) | 'red' (flashing) | 'failing' (flickering red).
+ */
+export function signalMode(i) {
+  const roll = hash01(i * 7 + 3);
+  return roll < 0.3 ? 'dark' : roll < 0.65 ? 'amber' : roll < 0.85 ? 'red' : 'failing';
+}
+
+/** Overpass deck segments as quads for 2D drawing (the overhead layer, previews, minimap). */
+export function overpassQuads(map) {
+  const out = [];
+  const ov = map.overpass;
+  if (!ov) return out;
+  for (const d of ov.decks) {
+    for (let i = 0; i + 1 < d.pts.length; i++) {
+      const [x0, y0, z0] = d.pts[i], [x1, y1, z1] = d.pts[i + 1];
+      const L = Math.hypot(x1 - x0, y1 - y0);
+      if (!(L > 0)) continue;
+      const ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, hw = d.w / 2;
+      out.push({
+        ramp: d.kind === 'ramp', x0, y0, x1, y1, z0, z1, ux, uy, nx, ny, hw, L, alpha: 0.92,
+        pts: [[x0 + nx * hw, y0 + ny * hw], [x1 + nx * hw, y1 + ny * hw], [x1 - nx * hw, y1 - ny * hw], [x0 - nx * hw, y0 - ny * hw]],
+        minX: Math.min(x0, x1) - hw, maxX: Math.max(x0, x1) + hw, minY: Math.min(y0, y1) - hw, maxY: Math.max(y0, y1) + hw,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Live overhead layer: tree canopies (fading when a player walks under them), lamp arms,
- * waving flags.
+ * waving flags, traffic signal arms, and the overpass decks (see-through, fading further
+ * while a player stands under them) with the wrecks up on them.
  */
 export function createOverheadLayer(map) {
   const canopies = [];
   const lamps = [];
   const flags = [];
+  const signals = [];
+  const pylons = [];
+  const decks = overpassQuads(map);
+  const deckCars = (map.overpass && map.overpass.vehicles) || [];
   map.decor.forEach((d, i) => {
+    if (d.kind === 'signal') {
+      const len = 150 * (d.s || 1), heads = Math.max(1, Math.round(len / 72));
+      const hx = [];
+      for (let k = 0; k < heads; k++) hx.push(len * (heads === 1 ? 0.8 : 0.42 + (0.55 * k) / (heads - 1)));
+      signals.push({ x: d.x, y: d.y, a: d.a || 0, len, hx, mode: signalMode(i), ph: hash01(i * 13 + 1) });
+    } else if (d.kind === 'pylon') {
+      pylons.push({ x: d.x, y: d.y, a: d.a || 0, s: d.s || 1 });
+    }
     if (d.kind === 'tree_canopy') {
       canopies.push({ x: d.x, y: d.y, a: d.a || 0, R: canopyRadius(d), variant: Math.floor(hash01(i * 13 + 7) * 6), alpha: 0.96 });
     } else if (d.kind === 'lamp_post') {
@@ -693,6 +744,45 @@ export function createOverheadLayer(map) {
       ctx.globalAlpha = 1;
     },
     drawLampsAndFlags(ctx, view, time) {
+      for (const sg of signals) {
+        if (sg.x + sg.len < view.x0 || sg.x - sg.len > view.x1 || sg.y + sg.len < view.y0 || sg.y - sg.len > view.y1) continue;
+        ctx.save();
+        ctx.translate(sg.x, sg.y);
+        ctx.rotate(sg.a);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(2, 3);
+        ctx.lineTo(sg.len + 2, 3);
+        ctx.stroke();
+        ctx.strokeStyle = '#6e757b';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(sg.len, 0);
+        ctx.stroke();
+        fillCircle(ctx, 0, 0, 4, '#50565a');
+        const on = sg.mode === 'failing' ? Math.sin(time * 23 + sg.ph * 9) > -0.3 : ((time * 0.9 + sg.ph) % 1) < 0.5;
+        const lit = sg.mode === 'dark' ? null : sg.mode === 'amber' ? '#ffae1a' : '#ff2a1a';
+        for (const x of sg.hx) {
+          fillRoundRect(ctx, x - 6.5, -5.5, 13, 11, 2, '#c8b23a');
+          fillRoundRect(ctx, x - 5.5, -4.5, 11, 9, 2, '#22251f');
+          fillRoundRect(ctx, x - 4, -6.5, 8, 2.5, 1, lit && on ? lit : '#3a3c36');
+        }
+        ctx.restore();
+      }
+      for (const p of pylons) {
+        if (p.x + 40 < view.x0 || p.x - 40 > view.x1 || p.y + 40 < view.y0 || p.y - 40 > view.y1) continue;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.a);
+        fillRoundRect(ctx, -25 * p.s, -5, 50 * p.s, 10, 2, '#2c2f33');
+        ctx.fillStyle = '#c62828';
+        ctx.fillRect(-23 * p.s, -3.5, 46 * p.s, 3);
+        ctx.fillStyle = '#ff7a3a';
+        ctx.fillRect(-12 * p.s, 1, 24 * p.s, 2);
+        ctx.restore();
+      }
       for (const l of lamps) {
         if (l.x + 40 < view.x0 || l.x - 40 > view.x1 || l.y + 40 < view.y0 || l.y - 40 > view.y1) continue;
         ctx.save();
@@ -732,6 +822,92 @@ export function createOverheadLayer(map) {
         fillCircle(ctx, 0, 0, 2.5, '#aaa');
         ctx.restore();
       }
+    },
+    /**
+     * The overpass decks over everything on the ground: a soft moon shadow, the deck see-
+     * through enough that players and zombies under it stay visible (more so while a player
+     * stands under it), lane paint, parapets and the wrecks up on it.
+     * @param {Array} players snapshot players (a deck fades further when one is under it)
+     */
+    drawOverpass(ctx, view, players, dt) {
+      if (!decks.length) return;
+      const damp = 1 - Math.exp(-8 * dt);
+      const path = (q, ox = 0, oy = 0) => {
+        ctx.beginPath();
+        q.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x + ox, y + oy) : ctx.moveTo(x + ox, y + oy)));
+        ctx.closePath();
+      };
+      const along = (q, off, s0 = 0, s1 = q.L) => {
+        ctx.beginPath();
+        ctx.moveTo(q.x0 + q.ux * s0 + q.nx * off, q.y0 + q.uy * s0 + q.ny * off);
+        ctx.lineTo(q.x0 + q.ux * s1 + q.nx * off, q.y0 + q.uy * s1 + q.ny * off);
+        ctx.stroke();
+      };
+      ctx.save();
+      for (const q of decks) {
+        if (q.maxX + 40 < view.x0 || q.minX - 40 > view.x1 || q.maxY + 40 < view.y0 || q.minY - 40 > view.y1) {
+          continue;
+        }
+        let under = false;
+        if (!q.ramp && players) {
+          for (let i = 0; i < players.length && !under; i++) {
+            const p = players[i];
+            if (p.state === 'dead') continue;
+            const dx = p.x - q.x0, dy = p.y - q.y0;
+            const s = dx * q.ux + dy * q.uy, o = dx * q.nx + dy * q.ny;
+            under = s > -20 && s < q.L + 20 && Math.abs(o) < q.hw + 20;
+          }
+        }
+        q.alpha += ((under ? 0.55 : 0.92) - q.alpha) * damp;
+        const A = q.alpha;
+        if (!q.ramp) {
+          ctx.globalAlpha = 0.3 * A;
+          ctx.fillStyle = '#000';
+          path(q, SUN_X * 34, SUN_Y * 34);
+          ctx.fill();
+        }
+        ctx.globalAlpha = A * (q.ramp ? 1 : 0.88);
+        ctx.fillStyle = '#46484c';
+        path(q);
+        ctx.fill();
+        ctx.lineCap = 'butt';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(225,225,212,0.7)';
+        ctx.setLineDash([]);
+        along(q, q.hw - 22);
+        along(q, -(q.hw - 22));
+        if (!q.ramp) {
+          ctx.setLineDash([40, 52]);
+          along(q, q.hw / 2 - 2);
+          along(q, -(q.hw / 2 - 2));
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(222,170,40,0.75)';
+          along(q, 3.5);
+          along(q, -3.5);
+        }
+        ctx.strokeStyle = '#a9a498';
+        ctx.lineWidth = 8;
+        along(q, q.hw - 4);
+        along(q, -(q.hw - 4));
+      }
+      ctx.setLineDash([]);
+      for (let i = 0; i < deckCars.length; i++) {
+        const v = deckCars[i];
+        if (v.x + 140 < view.x0 || v.x - 140 > view.x1 || v.y + 140 < view.y0 || v.y - 140 > view.y1) continue;
+        let A = 0.9;
+        for (const q of decks) {
+          const dx = v.x - q.x0, dy = v.y - q.y0, s = dx * q.ux + dy * q.uy;
+          if (s >= 0 && s <= q.L && Math.abs(dx * q.nx + dy * q.ny) <= q.hw + 10) A = q.alpha;
+        }
+        ctx.globalAlpha = A;
+        ctx.save();
+        ctx.translate(v.x, v.y);
+        ctx.rotate(v.a);
+        drawObstacle(ctx, { ...v, id: 5000 + i }, map.seed | 0);
+        ctx.restore();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
     },
   };
 }

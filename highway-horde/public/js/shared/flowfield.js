@@ -92,6 +92,30 @@ class BucketQueue {
   }
 }
 
+// The static walk graph (blocked cells, edges, wall costs, escape map) depends only on the
+// colliders and the grid options, and it is never written after it is built: fields built
+// for the same map share it. A host starting the next game on the same map (and the tests,
+// which build hundreds of games) skip the costliest part of the setup. Entries are compared
+// on every collider's exact numbers, never on a hash alone.
+const STATIC_CACHE = [];
+const STATIC_CACHE_MAX = 6;
+
+function staticSignature(obbs, width, height, cell, pad, inflate, mask) {
+  const sig = new Float64Array(6 + obbs.length * 7);
+  sig.set([width, height, cell, pad, inflate, mask]);
+  let k = 6;
+  for (const o of obbs) {
+    sig[k++] = o.x; sig[k++] = o.y; sig[k++] = o.hw; sig[k++] = o.hh; sig[k++] = o.c; sig[k++] = o.s; sig[k++] = o.mask;
+  }
+  return sig;
+}
+
+function sameSignature(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** Grid flow field toward a set of targets; see the file comment. */
 export class FlowField {
   /**
@@ -119,19 +143,21 @@ export class FlowField {
     const obbs = colliders || mapColliders(map);
     this.index = new StaticIndex(obbs, map.width, map.height, { cellSize: 128, margin: Math.max(24, pad + inflate + 2) });
 
-    /** 1 where the cell centre lies inside a collider. */
-    this.blocked = new Uint8Array(n);
-    /** Bit k set when the edge to neighbour k is walkable. */
-    this.edges = new Uint8Array(n);
-    this.baseCost = new Float64Array(n);
+    const sig = staticSignature(obbs, map.width, map.height, cell, pad, inflate, mask);
+    const hit = STATIC_CACHE.find((e) => sameSignature(e.sig, sig));
+    /** 1 where the cell centre lies inside a collider. (Static: shared, never written.) */
+    this.blocked = hit ? hit.blocked : new Uint8Array(n);
+    /** Bit k set when the edge to neighbour k is walkable. (Static: shared, never written.) */
+    this.edges = hit ? hit.edges : new Uint8Array(n);
+    this.baseCost = hit ? hit.baseCost : new Float64Array(n);
     this.cost = new Float64Array(n);
     this.dist = new Float64Array(n);
     /** Direction index toward the next cell on the path; 8 = seed (use seedX/seedY), 255 = none. */
     this.dirK = new Uint8Array(n);
     this.seedX = new Float32Array(n);
     this.seedY = new Float32Array(n);
-    /** For blocked cells: the nearest open cell (-1 if none). */
-    this.escape = new Int32Array(n);
+    /** For blocked cells: the nearest open cell (-1 if none). (Static: shared, never written.) */
+    this.escape = hit ? hit.escape : new Int32Array(n);
     /** After update(): for every cell, the nearest cell that can reach a target (-1 if none). */
     this.reach = new Int32Array(n).fill(-1);
     this._queue = new Int32Array(n);
@@ -139,7 +165,11 @@ export class FlowField {
     this.hasPath = false;
     this.queue = new BucketQueue(n * 2 + 64);
     this.version = 0;
-    this._buildStatic(inflate);
+    if (!hit) {
+      this._buildStatic(inflate);
+      STATIC_CACHE.push({ sig, blocked: this.blocked, edges: this.edges, baseCost: this.baseCost, escape: this.escape });
+      if (STATIC_CACHE.length > STATIC_CACHE_MAX) STATIC_CACHE.shift();
+    }
     this.cost.set(this.baseCost);
     this.dist.fill(UNREACHED);
     this.dirK.fill(255);
