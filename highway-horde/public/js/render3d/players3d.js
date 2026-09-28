@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
-import { angleDiff, damp, hash01 } from './actor-kit.js';
+import { angleDiff, damp, hash01, capLuma } from './actor-kit.js';
 import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2 } from './actor-rig.js';
 import { buildSoldier, soldierSkeleton, SP } from './actor-smodels.js';
 import { geometryFromArrays } from './actor-shape.js';
@@ -122,16 +122,23 @@ export function createPlayers3D(ctx) {
   const bodies = {};
   for (const cls of CLASS_IDS) {
     bodies[cls] = [0, 1].map((L) => {
-      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L)), sk, { rim: '#b8d0ff', rimStrength: 0.42, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
+      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L)), sk, { rim: '#b8d0ff', rimStrength: 0.34, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
       root.add(m.mesh);
       return m;
     });
   }
   pool.warm();
+  // Shader warm-up: the renderer compiles what is visible right after creation. Teammates'
+  // guns are plain (non-instanced) meshes with a solid, a glow and a shadow depth variant
+  // that nothing else in the scene uses, so without this stand-in they compiled on the
+  // first frame a player showed up. Removed on the first update.
+  let warmGun = gunObject('pistol', { shadow: high, lite: true });
+  warmGun.position.set(0, -500, 0);
+  root.add(warmGun);
   const skinCol = {}, outfitCol = {};
   for (const cls of CLASS_IDS) {
-    skinCol[cls] = new THREE.Color(SKIN[cls] || '#c68e6a');
-    outfitCol[cls] = new THREE.Color(CLASSES[cls].look.outfit);
+    skinCol[cls] = capLuma(new THREE.Color(SKIN[cls] || '#c68e6a'), 0.4);
+    outfitCol[cls] = capLuma(new THREE.Color(CLASSES[cls].look.outfit), 0.34);
   }
   const pcol = PLAYER_COLORS.map((c) => new THREE.Color(c));
   const hairCol = new THREE.Color('#2a1d14');
@@ -209,7 +216,7 @@ export function createPlayers3D(ctx) {
   const eul = [0, 0, 0];
   const S = new THREE.Vector3(), E = new THREE.Vector3(), W = new THREE.Vector3(), dir = new THREE.Vector3(), perp = new THREE.Vector3();
   const u = new THREE.Vector3(), f = new THREE.Vector3(), uL = new THREE.Vector3(), fL = new THREE.Vector3(), X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3();
-  const gunRot = new Float64Array(9);
+  const gunRot = new Float64Array(9), handBuf = new Float64Array(9);
   const armLen = [SP.uarm, SP.farm];
 
   function rotOfMatrix4(m4, out) {
@@ -283,7 +290,15 @@ export function createPlayers3D(ctx) {
   const WR_R = new THREE.Vector3(-0.6, 2.2, 0.35);
   const hand90 = new Float64Array(9);
 
+  function dropWarmGun() {
+    if (!warmGun) return;
+    warmGun.removeFromParent();
+    warmGun.userData.dispose();
+    warmGun = null;
+  }
+
   function update(view, frame) {
+    dropWarmGun();
     fx.begin(frame);
     frameNo++;
     const dt = Math.min(0.1, frame.dt || 0);
@@ -500,7 +515,7 @@ export function createPlayers3D(ctx) {
     obj.updateMatrixWorld();
     // IK both arms to the gun
     pool.boneMatrix(k, B.CHEST, _mc);
-    const R = rotOfMatrix4(_mc, Rc);
+    rotOfMatrix4(_mc, Rc);
     rotOfMatrix4(obj.matrixWorld, gunRot);
     // right hand on the grip
     W.copy(WR_R).applyMatrix4(obj.matrixWorld);
@@ -509,17 +524,14 @@ export function createPlayers3D(ctx) {
     // support hand
     if (m.dual && g.left) {
       g.left.visible = true;
-      _w.set(-2 * lzSign(hold), 0, 0);
       const lx2 = obj.position.x - (-sa) * 9.2, lz2 = obj.position.z - ca * 9.2;
       g.left.position.set(lx2, obj.position.y, lz2);
       g.left.rotation.set(-roll, -a - yaw, pitch, 'YXZ');
       g.left.updateMatrixWorld();
-      rotOfMatrix4(g.left.matrixWorld, T9);
-      for (let i = 0; i < 9; i++) Rh[i] = T9[i];
+      rotOfMatrix4(g.left.matrixWorld, handBuf);
       W.set(WR_R.x, WR_R.y, -WR_R.z).applyMatrix4(g.left.matrixWorld);
       _pole.set(-0.4 * ca + 0.8 * -sa, -1, -0.4 * sa - 0.8 * ca);
-      const saveRh = Float64Array.from(Rh);
-      solveArm(k, model, -1, _pole, saveRh);
+      solveArm(k, model, -1, _pole, handBuf);
     } else {
       if (g.left) g.left.visible = false;
       let t;
@@ -539,12 +551,10 @@ export function createPlayers3D(ctx) {
       hand90[0] = 1; hand90[1] = 0; hand90[2] = 0;
       hand90[3] = 0; hand90[4] = Math.cos(rr); hand90[5] = -Math.sin(rr);
       hand90[6] = 0; hand90[7] = Math.sin(rr); hand90[8] = Math.cos(rr);
-      mulNN(Rh, gunRot, hand90);
+      mulNN(handBuf, gunRot, hand90);
       _pole.set(-0.5 * ca + 0.6 * -sa, -1, -0.5 * sa - 0.6 * ca);          // elbow down, out to the left
-      const saveRh = Float64Array.from(Rh);
-      solveArm(k, model, -1, _pole, saveRh);
+      solveArm(k, model, -1, _pole, handBuf);
     }
-    void R;
     // muzzle for tracers
     const mz = m.muzzle;
     _p.set(mz[0], mz[1], mz[2]).applyMatrix4(obj.matrixWorld);
@@ -555,7 +565,6 @@ export function createPlayers3D(ctx) {
     if (obj.userData.animate) obj.userData.animate({ spin: p.spin || 0, dt: 1 / 60, shot: s.shot, time });
     if (g.left && g.left.visible && g.left.userData.animate) g.left.userData.animate({ spin: 0, dt: 1 / 60, shot: s.shot, time });
   }
-  const lzSign = () => 1;
 
   function addEvents(events) {
     if (!events) return;
@@ -577,6 +586,7 @@ export function createPlayers3D(ctx) {
       for (const g of guns.values()) for (const o of [g.obj, g.left]) if (o) o.traverse((c) => { if (c.isMesh) c.castShadow = high; });
     },
     dispose() {
+      dropWarmGun();
       for (const pid of [...guns.keys()]) hideGun(pid, true);
       pool.dispose();
       tex.detail.dispose();

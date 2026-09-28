@@ -176,12 +176,13 @@ function genActorDetail() {
       const vn = smooth(0.93, 0.985, 1 - Math.abs(F_6_3_101(u, v) * 2 - 1)) + smooth(0.95, 0.99, 1 - Math.abs(F_12_2_103(u, v) * 2 - 1)) * 0.6;
       const rot = clamp01(0.5 + (m - 0.5) * 2.1 - blot * 0.38 + speck * 0.18 - vn * 0.3);
       // G: woven fabric (plain weave over/under) with fibre fuzz
-      const wu = u * 96, wv = v * 96;
+      const wu = u * 256, wv = v * 256;
       const over = ((Math.floor(wu) + Math.floor(wv)) & 1) === 0;
       const tu = wu - Math.floor(wu), tv = wv - Math.floor(wv);
       const thread = over ? Math.sin(tu * Math.PI) : Math.sin(tv * Math.PI);
       const fibre = F_128_2_41(u, v);
-      const weave = clamp01(0.25 + thread * 0.55 + (fibre - 0.5) * 0.5);
+      const slub = F_16_2_81(u, v);            // uneven, worn fabric
+      const weave = clamp01(0.3 + thread * 0.35 + (fibre - 0.5) * 0.5 + (slub - 0.5) * 0.35);
       // B: grime — soft dirty patches
       const grime = smooth(0.38, 0.78, F_3_5_57(u + 0.37, v + 0.11));
       // A: splatter — blobs with drips and speckles (blood / tear masks)
@@ -198,12 +199,12 @@ function genActorDetail() {
       const pores = smooth(0.05, 0.45, worley(u, v, 56, 97));
       const vein = smooth(0.9, 0.99, 1 - Math.abs(F_5_3_101(u, v) * 2 - 1));
       hSkin[i] = ridge * ridge * 0.55 + pores * 0.22 + vein * 0.35 + m * 0.4;
-      hCloth[i] = thread * 0.8 + fibre * 0.35;
+      hCloth[i] = thread * 0.35 + fibre * 0.45 + slub * 0.6;
     }
   }
   const nrm = new Uint8Array(S * S * 4);
   heightToNormal(hSkin, S, S, 3.2, nrm, 0, 4);
-  heightToNormal(hCloth, S, S, 4.5, nrm, 2, 4);
+  heightToNormal(hCloth, S, S, 3.0, nrm, 2, 4);
   return { detail: px, normal: nrm, size: S };
 }
 

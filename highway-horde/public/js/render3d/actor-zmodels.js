@@ -110,8 +110,8 @@ export function buildZombie(type, L) {
     [0.4, P.waist + 3.2, 4.3, 6.3, bw(B.SPINE, B.CHEST, 0.5)],
     [0.3, P.chest + 0.6, 4.65, 7.1, B.CHEST],
     [0.15, P.chest + 3.4, 4.75, 7.6, B.CHEST],
-    [-0.2, P.sY - 0.9, 4.25, 7.7, B.CHEST],
-    [-0.35, P.sY + 0.8, 3.3, 6.5, B.CHEST],
+    [-0.2, P.sY - 0.9, 4.25, 7.8, B.CHEST],
+    [-0.35, P.sY + 0.7, 3.4, 7.1, B.CHEST],
     [0.1, P.neck + 0.3, 2.2, 3.1, bw(B.CHEST, B.NECK, 0.3)],
   ];
   const belly = type === 'bloater' ? 0 : 1;
@@ -336,8 +336,8 @@ function arm(sb, P, L, side, type) {
   const r = P.armR * k * (type === 'bloater' ? 1.1 : 1);
   const seg = L === 0 ? 12 : L === 1 ? 6 : 5;
   const rings = [
-    { c: [-0.2, top + 0.9, z * 0.9], r: r * 0.92, bone: [B.CHEST, UA, 0.55] },
-    { c: [0.1, top - 1.4, z * 1.0], rx: r * 1.08, rz: r * 1.0, bone: UA },
+    { c: [-0.2, top - 0.1, z * 0.9], r: r * 0.85, bone: [B.CHEST, UA, 0.55] },
+    { c: [0.1, top - 1.6, z * 1.0], rx: r * 1.05, rz: r * 0.98, bone: UA },
     { c: [0.0, top - (elbow - top) * -0.45, z], rx: r * 0.95, rz: r * 0.9, bone: UA },
     { c: [-0.2, elbow + 1.2, z], rx: r * 0.8, rz: r * 0.78, bone: [UA, FA, 0.25] },
     { c: [-0.3, elbow, z], rx: r * 0.8, rz: r * 0.76, bone: [UA, FA, 0.5] },

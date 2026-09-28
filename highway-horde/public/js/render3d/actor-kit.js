@@ -189,3 +189,15 @@ export function angleDiff(a, b) {
 export function damp(rate, dt) {
   return 1 - Math.exp(-rate * dt);
 }
+
+/**
+ * Cap a colour's luminance (linear, Rec.709) at `max` by scaling it down. Near-white
+ * cloth under the flashlight otherwise reads as a glowing silhouette and blooms; the
+ * bloom convention keeps ordinary surfaces below ~0.8.
+ * @param {THREE.Color} c linear colour (mutated)
+ */
+export function capLuma(c, max = 0.42) {
+  const l = c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+  if (l > max) c.multiplyScalar(max / l);
+  return c;
+}

@@ -15,7 +15,7 @@
 
 import * as THREE from 'three';
 import { ZOMBIES, ZOMBIE_IDS, ZFLAG } from '../shared/zombies.js';
-import { col, mixHex, shadeHex, hash01, angleDiff, damp } from './actor-kit.js';
+import { col, mixHex, shadeHex, hash01, angleDiff, damp, capLuma } from './actor-kit.js';
 import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, TEX_W } from './actor-rig.js';
 import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
@@ -39,7 +39,7 @@ const EYE = { walker: '#ffc84a', runner: '#ffd070', crawler: '#ffb84a', bloater:
 const PANTS = ['#34405a', '#2a2b30', '#5e5540', '#453526', '#4d5058', '#39466a'];
 const HAIR = ['#1a120c', '#3a2616', '#262626', '#4a3a2c', '#5c4a36', '#6b6b66'];
 // LOD distances (units) per quality; scaled by the zombie's size
-const LOD_DIST = { ultra: [440, 1100], high: [290, 760], low: [160, 460] };
+const LOD_DIST = { ultra: [380, 1000], high: [290, 760], low: [160, 460] };
 
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();
@@ -82,7 +82,7 @@ export function createZombies3D(ctx) {
     const lods = [];
     for (let L = 0; L < 3; L++) {
       const m = pool.addModel(instancedGeometry(modelArrays(t, L)), sk, {
-        rim, rimStrength: 0.38, castShadow: high && L === 0, receiveShadow: high && L === 0, name: 'z-' + t + L,
+        rim, rimStrength: 0.3, castShadow: high && L === 0, receiveShadow: high && L === 0, name: 'z-' + t + L,
       });
       root.add(m.mesh);
       lods.push(m);
@@ -95,8 +95,8 @@ export function createZombies3D(ctx) {
   const skinCols = {}, clothCols = {}, eyeCols = {};
   for (const t of ZOMBIE_IDS) {
     const look = ZOMBIES[t].look;
-    skinCols[t] = [0, 1, 2, 3].map((k) => new THREE.Color(mixHex(shadeHex(look.skin, 0.06 - k * 0.04), ['#a8a880', '#6a8a5a', '#8a7a8a', '#9a9a70'][k], 0.14 + k * 0.04)));
-    clothCols[t] = look.clothes.map((c) => new THREE.Color(shadeHex(mixHex(c, '#4a463c', 0.25), -0.04)));
+    skinCols[t] = [0, 1, 2, 3].map((k) => capLuma(new THREE.Color(mixHex(shadeHex(look.skin, 0.06 - k * 0.04), ['#a8a880', '#6a8a5a', '#8a7a8a', '#9a9a70'][k], 0.14 + k * 0.04)), 0.4));
+    clothCols[t] = look.clothes.map((c) => capLuma(new THREE.Color(shadeHex(mixHex(c, '#4a463c', 0.25), -0.04)), 0.3));
     eyeCols[t] = new THREE.Color(EYE[t] || '#ffcf66');
   }
   const pantsCols = PANTS.map((c) => new THREE.Color(c));

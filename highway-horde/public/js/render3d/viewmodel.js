@@ -26,7 +26,7 @@ import { WEAPONS } from '../shared/weapons.js';
 import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { gunObject, gunModel, gunMaterials, createGunMaterial } from './actor-guns.js';
-import { makeCanvas, damp, angleDiff, shadeHex } from './actor-kit.js';
+import { makeCanvas, damp, angleDiff, shadeHex, capLuma } from './actor-kit.js';
 import { ShapeBuilder, SLOT, MAT, lineRings } from './actor-shape.js';
 import { actorTextures, viewmodelEnvTexture } from './actor-tex.js';
 import { acquireFx, releaseFx } from './fx-core.js';
@@ -183,7 +183,9 @@ export function createViewmodel(ctx) {
     const cls = r && CLASSES[r.cls] ? r.cls : 'soldier';
     const look = CLASSES[cls].look;
     const pc = PLAYER_COLORS[(r && r.color) || 0] || PLAYER_COLORS[0];
-    return { outfit: look.outfit, vest: look.vest, band: pc, key: cls + pc };
+    // near-white outfits (the medic) are toned down so the sleeves don't glow under lights
+    const outfit = '#' + capLuma(new THREE.Color(look.outfit), 0.34).getHexString();
+    return { outfit, vest: look.vest, band: pc, key: cls + pc };
   }
 
   function clearGun() {
@@ -293,7 +295,7 @@ export function createViewmodel(ctx) {
     c.m.material = kind === 'shell' ? shellMat : brassMat;
     // camera space: a casing flying at the lens looks fist-sized, so keep them small and
     // throw them sideways and slightly away rather than toward the camera
-    c.m.scale.setScalar(VM_SIZE * 0.95 * (kind === 'shell' ? 1.1 : 1));
+    c.m.scale.setScalar(VM_SIZE * (kind === 'shell' ? 0.72 : 0.85));
     const side = left ? -1 : 1;
     c.v.set(side * (12 + Math.random() * 6), 10 + Math.random() * 7, -2 - Math.random() * 3);
     c.spin.set(Math.random() * 18, Math.random() * 18, 8 + Math.random() * 18);
@@ -408,14 +410,19 @@ export function createViewmodel(ctx) {
     const bobA = st.bobAmt * (1 + st.sprint * 0.8);
     const bobX = Math.sin(st.bobPh) * 0.45 * bobA, bobY = -Math.abs(Math.cos(st.bobPh)) * 0.4 * bobA;
     const heavyK = model.heavy ? 0.75 : 1;
-    const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 0.6;
-    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 - rlTilt * 1.0 - thK * 2.5 - st.down * 2.5;
-    const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 + rlTilt * 0.8;
+    // reload: the gun comes up a little toward the middle, canted clockwise so the mag
+    // well / loading port / chambers face the camera and the support hand's work shows.
+    // Kept small: a yawed rifle shows its whole length and reads twice its size, and
+    // pushed a touch away so the canted gun keeps its on-screen size.
+    const rlUp = model.reload === 'rocket' ? 0.4 : 1;
+    const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 1.3 * rlUp;
+    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5;
+    const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8;
     holder.position.set(x, y, z);
     holder.rotation.set(
-      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.28 - sw * 0.6 + st.swayY * 0.02,
-      -0.04 + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.22,
-      st.recoilRoll + rlTilt * (model.reload === 'shells' ? 0.75 : 0.5) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
+      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02,
+      -0.04 + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp,
+      st.recoilRoll - rlTilt * (model.reload === 'shells' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');
     holder.scale.setScalar(P[3] * VM_SIZE);
     leftHolder.scale.setScalar(P[3] * VM_SIZE);
@@ -423,7 +430,7 @@ export function createViewmodel(ctx) {
       leftHolder.visible = true;
       const kL = st.dualSide === 0 ? rc * 0.3 : rc;
       leftHolder.position.set(-P[0] - VM_SHIFT_X - idleX + bobX + st.swayX * 0.6 + st.sprint * 1.2, y + (st.dualSide ? 0 : 0.2), P[2] + kL * 2.2 + rlTilt * 0.8);
-      leftHolder.rotation.set(kL * 0.16 - st.sprint * 0.35 + rlTilt * 0.28 - sw * 0.6, 0.04 + st.swayX * 0.03 - st.sprint * 0.7 - rlTilt * 0.22, -st.recoilRoll - rlTilt * 0.5, 'YXZ');
+      leftHolder.rotation.set(kL * 0.16 - st.sprint * 0.35 + rlTilt * 0.18 - sw * 0.6, 0.04 + st.swayX * 0.03 - st.sprint * 0.7 - rlTilt * 0.35, -st.recoilRoll + rlTilt * 0.7, 'YXZ');
     }
 
     animateParts(dt, local, w, rl);

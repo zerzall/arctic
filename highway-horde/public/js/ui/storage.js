@@ -99,11 +99,13 @@ export function defaultQuality() {
 }
 
 /**
- * Desktops start on dynamic resolution ('auto' holds 60 fps); phones and tablets on full
- * resolution — the owner wants them at maximum quality and accepts that they run hot.
+ * Every device starts on dynamic resolution ('auto' holds 60 fps). Phones still get the
+ * full Ultra preset (the owner wants them at maximum and accepts that they run hot), but
+ * Ultra at a fixed 3x pixel ratio with the detailed world drops most phones to single-digit
+ * frame rates, so the resolution adapts instead; 100% stays one tap away in Settings.
  */
 export function defaultRenderScale() {
-  return isCoarsePointer() ? 1 : DEFAULT_CLIENT_SETTINGS.renderScale;
+  return DEFAULT_CLIENT_SETTINGS.renderScale;
 }
 
 /** Default client settings for this device (a fresh copy). */

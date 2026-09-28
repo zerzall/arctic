@@ -115,11 +115,10 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); the
 other actions have on-screen buttons. Gamepads and touch get a light aim assist.
-Every device starts on the **Ultra** graphics preset. Desktops use **Auto** resolution,
-which lowers the render resolution only when a big fight would drop below 60 fps. Phones
-and tablets render at full screen resolution: it looks its best but makes the phone run
-warm and drains the battery faster; pick High or Low, or a lower resolution, in Settings
-if it stutters.
+Every device starts on the **Ultra** graphics preset with **Auto** resolution, which
+lowers the render resolution only when a big fight would drop below 60 fps. On phones and
+tablets Ultra makes the device run warm and drains the battery faster; set the resolution
+to 100% in Settings for the sharpest picture, or pick High or Low if it stutters.
 
 **Settings** (title screen or pause menu → Settings) has four tabs:
 

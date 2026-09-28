@@ -102,8 +102,8 @@ export function buildSoldier(cls, L) {
   } else if (cls === 'medic') {
     // white cross on the chest and back
     for (const x of [5.3, -5.3]) {
-      roundBox(sb, [x, P.chest + 1.5, 0], [0.4, 4.2, 1.3], '#f2f2f2', B.CHEST, MAT.CLOTH);
-      roundBox(sb, [x, P.chest + 1.5, 0], [0.4, 1.3, 4.2], '#f2f2f2', B.CHEST, MAT.CLOTH);
+      roundBox(sb, [x, P.chest + 1.5, 0], [0.4, 4.2, 1.3], '#dadad6', B.CHEST, MAT.CLOTH);
+      roundBox(sb, [x, P.chest + 1.5, 0], [0.4, 1.3, 4.2], '#dadad6', B.CHEST, MAT.CLOTH);
     }
     front(P.waist + 5, 3.2, [1.4, 2.6, 2.4], '#e0e0e0');
   } else if (cls === 'engineer') {
@@ -228,7 +228,7 @@ export function roundBox(sb, c, size, color, bone, mat = MAT.LEATHER, slot = SLO
 function backpack(sb, P, cls, vest, outfit, L) {
   const x0 = -5.2;
   if (cls === 'medic') {
-    roundBox(sb, [x0 - 2.2, P.chest + 1, 0], [4.2, 10, 8.6], '#e8e8e8', B.CHEST, MAT.CLOTH);
+    roundBox(sb, [x0 - 2.2, P.chest + 1, 0], [4.2, 10, 8.6], '#c8c8c4', B.CHEST, MAT.CLOTH);
     roundBox(sb, [x0 - 4.35, P.chest + 1.5, 0], [0.3, 3.6, 1.1], '#c62828', B.CHEST, MAT.CLOTH);
     roundBox(sb, [x0 - 4.35, P.chest + 1.5, 0], [0.3, 1.1, 3.6], '#c62828', B.CHEST, MAT.CLOTH);
   } else if (cls === 'engineer') {
@@ -331,7 +331,7 @@ function headgear(sb, P, hat, look, L) {
       for (const s of [-1, 1]) sb.tube(lineRings([c[0] - 0.4, c[1] + 0.4, s * r[2] * 1.12], [c[0] + 1.8, c[1] - 4.2, s * r[2] * 0.7], 0.22, 0.22, 3), { seg: 4, slot: SLOT.FIXED, mat: MAT.LEATHER, color: STRAP, bone: B.HEAD });
     }
   } else if (hat === 'cap') {
-    cap(0.9, 1.08, '#f0f0f0', MAT.CLOTH);
+    cap(0.9, 1.08, '#d4d4d0', MAT.CLOTH);
     sb.ellipsoid([c[0] + r[0] * 1.15, c[1] + 1.1, 0], [2.6, 0.3, 3.0], { segW: 12, segH: 3, rot: [0, 0, -0.12], slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828', bone: B.HEAD,
       deform: (p) => { if (p.x < 0) p.x *= 0.3; } });
     sb.tube(lineRings([c[0] - 0.2, c[1] + 3.0, 0], [c[0] - 0.2, c[1] + 3.8, 0], 1, 1, 2, (q) => { q.rx = r[0] * 0.95; q.rz = r[2] * 0.95; }), { seg: segW, slot: SLOT.ACCENT, mat: MAT.CLOTH, color: '#ffffff', bone: B.HEAD });

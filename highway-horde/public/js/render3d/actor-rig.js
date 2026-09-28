@@ -243,7 +243,7 @@ function makeMaterials(shared, opts = {}) {
   }
   if (hhM == 0) {
     vec3 rotTint = mix(vec3(1.0), vec3(0.8, 0.76, 0.6), rot);
-    diffuseColor.rgb *= mix(vec3(1.0), (0.66 + hhD.r * 0.62) * rotTint, 0.3 + rot * 0.6);
+    diffuseColor.rgb *= mix(vec3(0.9), (0.52 + hhD.r * 0.6) * rotTint, 0.3 + rot * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 0.36, 0.44), smoothstep(0.5, 0.92, hhD.b) * rot * 0.75);
   } else if (hhM == 1 || hhM == 2) {
     diffuseColor.rgb *= 0.74 + hhD.g * 0.42;
@@ -255,7 +255,7 @@ function makeMaterials(shared, opts = {}) {
     diffuseColor.rgb *= 0.82 + hhD.r * 0.25;
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.22, 0.12), hhD.b * 0.35);
   } else if (hhM == 5) {
-    diffuseColor.rgb *= 0.6 + hhD.g * 0.7;
+    diffuseColor.rgb *= 0.55 + hhD.r * 0.5;
   } else if (hhM == 6) {
     diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
     hhWet = max(hhWet, 0.75);
@@ -281,7 +281,7 @@ function makeMaterials(shared, opts = {}) {
   else if (hhM == 1 || hhM == 2) roughnessFactor = 0.93;
   else if (hhM == 3) roughnessFactor = 0.48 + hhD.b * 0.3;
   else if (hhM == 4) roughnessFactor = 0.42;
-  else if (hhM == 5) roughnessFactor = 0.62;
+  else if (hhM == 5) roughnessFactor = 0.75;
   else if (hhM == 6) roughnessFactor = 0.3;
   else if (hhM == 7) roughnessFactor = 0.12;
   else if (hhM == 9) roughnessFactor = 0.3 + hhD.b * 0.35;
@@ -293,7 +293,8 @@ function makeMaterials(shared, opts = {}) {
   {
     vec4 nn = texture2D(uNrm, vDUv);
     vec2 nxy;
-    if (hhM == 1 || hhM == 2 || hhM == 5) nxy = (nn.ba * 2.0 - 1.0) * 0.9;
+    if (hhM == 1 || hhM == 2) nxy = (nn.ba * 2.0 - 1.0) * 0.7;
+    else if (hhM == 5) nxy = (nn.rg * 2.0 - 1.0) * 0.25;
     else if (hhM == 0) nxy = (nn.rg * 2.0 - 1.0);
     else if (hhM == 6 || hhM == 3 || hhM == 10) nxy = (nn.rg * 2.0 - 1.0) * 0.6;
     else if (hhM == 7 || hhM == 8) nxy = vec2(0.0);
@@ -302,7 +303,9 @@ function makeMaterials(shared, opts = {}) {
   }`)
       .replace('#include <emissivemap_fragment>', /* glsl */`
   #include <emissivemap_fragment>
-  totalEmissiveRadiance += vGlowCol + vec3(1.0, 0.55, 0.4) * vFx.z * 0.5;
+  // hit flash: lit surfaces here are ~0.02-0.1 linear (night), and ACES runs at exposure
+  // 1.15 / 0.6, so 0.5 read as a white glow and a teammate's per-shot 0.25 turned him pale
+  totalEmissiveRadiance += vGlowCol + vec3(1.0, 0.55, 0.4) * vFx.z * 0.16;
   if (vFx2.x > 0.001) {
     // embers glowing in the char cracks while it burns
     float flick = 0.65 + 0.35 * sin(uTime * 17.0 + vDUv.x * 40.0 + vDUv.y * 23.0);

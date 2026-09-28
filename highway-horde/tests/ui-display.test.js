@@ -62,7 +62,7 @@ test('graphics defaults: ultra everywhere, auto resolution on desktops, 1 on pho
     assert.equal(s.rawMouse, true);
   }
   assert.equal(desk.renderScale, 'auto');
-  assert.equal(phone.renderScale, 1);
+  assert.equal(phone.renderScale, 'auto', 'phones: Ultra with dynamic resolution so it stays playable');
   // Node has no matchMedia: the desktop defaults, which is what DEFAULT_CLIENT_SETTINGS holds.
   assert.deepEqual(defaultClientSettings(), DEFAULT_CLIENT_SETTINGS);
   assert.equal(FOV_MAX, 120, 'ultrawide players get up to 120°');
@@ -90,7 +90,7 @@ test('graphics prefs: every stored value is validated, garbage falls back to the
   assert.equal(validateSettings({ renderScale: 0.2 }).renderScale, 'auto');
   assert.equal(validateSettings({ renderScale: Number.NaN }).renderScale, 'auto');
   assert.equal(validateSettings({ uiScale: 0.5 }).uiScale, 'auto');
-  assert.equal(withCoarse(true, () => validateSettings({ renderScale: 'max' })).renderScale, 1, 'a phone falls back to its own default');
+  assert.equal(withCoarse(true, () => validateSettings({ renderScale: 'max' })).renderScale, 'auto', 'a phone falls back to its own default');
   // Every value the UI offers survives a save/load.
   for (const v of RENDER_SCALES) assert.equal(validateSettings({ renderScale: v }).renderScale, v);
   for (const v of UI_SCALES) assert.equal(validateSettings({ uiScale: v }).uiScale, v);

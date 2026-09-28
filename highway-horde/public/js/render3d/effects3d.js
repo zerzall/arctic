@@ -66,6 +66,9 @@ export function createEffects3D(ctx) {
 
   const C = (hex) => col(hex);
   const WHITE = new THREE.Color(1, 1, 1);
+  // flame tongues: the fire ramp times a warm base, so the dense overlap of a jet adds up to
+  // orange instead of saturating to a white blob
+  const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);
   const HOT_SPARK = hdr('#ffc070', 3.2), HOT_CORE = hdr('#fff2d8', 3.2), FIRE_TINT = new THREE.Color(1, 1, 1);
   const BLOOD = C('#5a0606'), BLOOD2 = C('#7a0a0a'), MIST = C('#4a0505');
 
@@ -204,6 +207,7 @@ export function createEffects3D(ctx) {
     const w = WEAPONS[e.weapon];
     if (!w) return;
     const isLocal = !!e.pid && e.pid === localId;
+    const lk = e.turret ? -e.turret : e.pid || 0;   // light-gate key: this shooter
     const org = shotOrigin(e, isLocal);
     const ox = org.x, oh = org.h, oy = org.y;
     const rays = e.rays || [];
@@ -256,10 +260,10 @@ export function createEffects3D(ctx) {
       }
       if (!isLocal) {
         const size = shotgun ? 1.5 : big ? 1.6 : w.category === 'heavy' ? 1.25 : w.category === 'pistol' ? 0.8 : 1.0;
-        muzzleFlash(ox, oh, oy, e.angle, size, '#ffc070');
+        muzzleFlash(ox, oh, oy, e.angle, size, '#ffc070', lk);
       } else {
         // the viewmodel draws its own flash; the world still gets the light
-        ctx.lights.flash(ox, oy, oh, '#ffc070', 2.4, 260, 0.06);
+        gatedFlash(lk, 0.06, ox, oy, oh, '#ffc070', 1.2, 180, 0.07);
         if (high && R() < 0.5) smoke(ox + ca * 6, oh, oy + sa * 6, 1, 4, 0.6, C('#8a8a8a'), 0.16, 15, 2);
       }
       return;
@@ -267,12 +271,12 @@ export function createEffects3D(ctx) {
     if (w.kind === 'flame') {
       // the jet near the nozzle; flame projectiles (items3d) carry it further
       for (let k = 0; k < (high ? 3 : 2); k++) {
-        const a = e.angle + (R() - 0.5) * 0.18, s = 480 + R() * 160;
+        const a = e.angle + (R() - 0.5) * 0.18, s = 380 + R() * 140;
         const start = isLocal ? 6 : 2;
-        const i = fx.spawn(ox + ca * start, oh - 1, oy + sa * start, Math.cos(a) * s, 14 + R() * 20, Math.sin(a) * s, 0.28 + R() * 0.12, 3, 26 + R() * 14, WHITE, 0.9, k ? FR.FLAME : FR.FLAME2, F_ADD | F_FIRE | F_FLICKER, -30, 2.5);
+        const i = fx.spawn(ox + ca * start, oh - 1, oy + sa * start, Math.cos(a) * s, 14 + R() * 20, Math.sin(a) * s, 0.28 + R() * 0.12, 7, 26 + R() * 14, FLAME_BASE, 0.75, k ? FR.FLAME : FR.FLAME2, F_ADD | F_FIRE | F_FLICKER, -30, 2.5);
         fx.stretchLast(i, 1);
       }
-      if (R() < 0.3) ctx.lights.flash(ox + ca * 60, oy + sa * 60, oh, '#ff9a40', 1.6, 220, 0.12);
+      gatedFlash(lk, 0.12, ox + ca * 90, oy + sa * 90, oh, '#ff9a40', 0.9, 240, 0.16);
       return;
     }
     if (w.kind === 'projectile') {
@@ -295,18 +299,34 @@ export function createEffects3D(ctx) {
       return;
     }
     if (w.kind === 'chain') {
-      if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 0.9, '#80d8ff');
+      if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 0.9, '#80d8ff', lk);
     }
   }
 
-  function muzzleFlash(x, h, y, a, size, color) {
-    const c = hdr(color, 2.5);
+  // One muzzle light per shooter at a time: a minigun or a flamethrower fires 20-30 times a
+  // second, and a pool light per shot stacked into an overexposed white wash on everything
+  // near the shooter (teammates went pale pink under ACES).
+  const lightGate = new Map();
+  function gatedFlash(key, gap, x, y, h, color, intensity, radius, life) {
+    const last = lightGate.get(key);
+    if (last !== undefined && now >= last && now - last < gap) return;
+    lightGate.set(key, now);
+    ctx.lights.flash(x, y, h, color, intensity, radius, life);
+  }
+
+  function muzzleFlash(x, h, y, a, size, color, key = null) {
+    const c = hdr(color, 1.8);
     // a star facing the camera plus a side-on tongue along the barrel, white-hot core
-    glowPuff(x, h, y, 9 * size, 0.06, c, 1);
-    fx.spawn(x, h, y, 0, 0, 0, 0.05, 14 * size, 12 * size, hdr('#fff2c0', 3), 1, FR.STAR, F_ADD, 0, 0);
-    const i = fx.spawn(x + Math.cos(a) * 7 * size, h, y + Math.sin(a) * 7 * size, 0, 0, 0, 0.05, 8 * size, 8 * size, c, 0.9, FR.FLASH, F_ADD, 0, 0);
+    glowPuff(x, h, y, 7 * size, 0.05, c, 0.8);
+    fx.spawn(x, h, y, 0, 0, 0, 0.045, 10 * size, 9 * size, hdr('#fff2c0', 2.2), 1, FR.STAR, F_ADD, 0, 0);
+    const i = fx.spawn(x + Math.cos(a) * 6 * size, h, y + Math.sin(a) * 6 * size, 0, 0, 0, 0.045, 7 * size, 7 * size, c, 0.9, FR.FLASH, F_ADD, 0, 0);
     fx.stretchLast(i, 0.6);
-    ctx.lights.flash(x, y, h, color, 2.2 * Math.min(1.4, size), 200 + 60 * size, 0.07);
+    // Pool lights have no distance decay (WORLD: decay 0, only a range window), so a flash
+    // lights everything inside its radius equally: at 1.5 over 220 units a teammate beside a
+    // firing gun went white under the night exposure. Smaller and dimmer reads as a flash.
+    const li = 0.9 * Math.min(1.4, size), lr = 110 + 40 * size;
+    if (key === null) ctx.lights.flash(x, y, h, color, li, lr, 0.06);
+    else gatedFlash(key, 0.06, x, y, h, color, li, lr, 0.07);
   }
 
   function explosion(x, y, r, kind) {

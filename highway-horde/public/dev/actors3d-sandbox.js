@@ -521,22 +521,29 @@ async function main() {
   requestAnimationFrame(loop);
 }
 
-/** Per-sub-system update time (rolling average ms) → window.__SB.subMs. */
-const subMs = {};
+/** Per-sub-system update time (median of the last 60 frames, ms) → stats.subMs. */
+const subSamples = {};
 function wrapTiming(list) {
   for (const k in list) {
     const s = list[k];
     if (!s || typeof s.update !== 'function' || s.__timed) continue;
     const u = s.update;
     s.__timed = true;
-    subMs[k] = 0;
+    subSamples[k] = [];
     s.update = function timed(view, frame) {
       const t0 = performance.now();
       const r = u.call(this, view, frame);
-      subMs[k] += (performance.now() - t0 - subMs[k]) * 0.1;
+      const a = subSamples[k];
+      a.push(performance.now() - t0);
+      if (a.length > 60) a.shift();
       return r;
     };
   }
+}
+function median(a) {
+  if (!a.length) return 0;
+  const b = a.slice().sort((x, y) => x - y);
+  return b[b.length >> 1];
 }
 
 function setMode(m) {
@@ -599,6 +606,7 @@ function loop(t) {
   loc.spin = wid === 'minigun' ? 1 : 0;
   const events = res.events.slice();
   if (!paused && (mode === 'guns' || keys.has('f'))) fakeOwnShot(events, loc, wid, step);
+  if (!paused) stepOwnProjectiles(res.view, step);
   if (!paused && mode === 'fx') fxShowcase(events, loc, step);
   if (events.length) R.addEvents(events, { localId: scene.localId });
   const r = R.render(res.view, {
@@ -613,7 +621,7 @@ function loop(t) {
   if (subs.zombies && subs.zombies.stats) Object.assign(s, subs.zombies.stats);
   if (window.__SB) {
     s.subMs = {};
-    for (const k in subMs) s.subMs[k] = +subMs[k].toFixed(2);
+    for (const k in subSamples) s.subMs[k] = +median(subSamples[k]).toFixed(2);
     window.__SB.stats = s; window.__SB.frames++; window.__SB.raw = r.raw;
   }
   statsEl.textContent = `${mode} · ${s.fps} fps · js ${s.jsMs} ms · ${s.calls} calls · ${s.tris} tris · ${s.zombies} zombies${R.stub ? ' · stub ctx' : ''}`;
@@ -623,6 +631,20 @@ let lastView = null;
 
 // own shots: a predicted shot event every weapon cooldown (like the client session)
 let ownCool = 0, ownSeq = 0;
+// own projectiles (flame tongues, rockets, grenades, bolts): the server would put them in
+// the snapshot; without them the flamethrower showed only its nozzle jet
+const ownProj = [];
+let ownProjId = 900000;
+function stepOwnProjectiles(view, dt) {
+  for (let i = ownProj.length - 1; i >= 0; i--) {
+    const p = ownProj[i];
+    p._life -= dt;
+    p.x += Math.cos(p.angle) * p._v * dt;
+    p.y += Math.sin(p.angle) * p._v * dt;
+    if (p._life <= 0) ownProj.splice(i, 1);
+  }
+  if (ownProj.length) view.projectiles = (view.projectiles || []).concat(ownProj);
+}
 function fakeOwnShot(events, loc, wid, dt) {
   const w = WEAPONS[wid];
   ownCool -= dt;
@@ -648,6 +670,13 @@ function fakeOwnShot(events, loc, wid, dt) {
       const a = yaw + (Math.random() - 0.5) * 2 * w.spread;
       const d = w.kind === 'rail' ? 1400 : 300 + Math.random() * 500;
       ev.rays.push({ x: mx + Math.cos(a) * d, y: my + Math.sin(a) * d, hit: Math.random() < 0.4 ? 1 : 2 });
+    }
+  } else if ((w.kind === 'flame' || w.kind === 'projectile') && w.projectile) {
+    // the cooldown is capped at 14/s: emit the rest of a fast weapon's projectiles here
+    const n = Math.max(1, Math.round(w.rate / Math.min(w.rate, 14)));
+    for (let k = 0; k < n; k++) {
+      ownProj.push({ id: ownProjId++, kind: w.projectile.kind, x: mx, y: my, angle: yaw + (Math.random() - 0.5) * 2 * w.spread,
+        _v: w.projectile.speed * (w.kind === 'flame' ? 1 : 0.6), _life: w.projectile.life || 1 });
     }
   } else if (w.kind === 'chain') {
     const pts = [{ x: mx, y: my }];

@@ -434,6 +434,7 @@ export function createItems3D(ctx) {
     return c;
   };
   const WHITE = new THREE.Color(1, 1, 1);
+  const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);   // warm base under the fire ramp
   let frameNo = 0;
   const hazardLights = [];
 
@@ -474,8 +475,10 @@ export function createItems3D(ctx) {
           const roll = t * 8 + p.id;
           if (i < P_CAP) put(proj.rocket, i, p.x, 40, p.y, dir, roll);
           const bx = p.x - Math.cos(a) * 10, by = p.y - Math.sin(a) * 10;
-          fx.glow(bx, 40, by, 16 + R() * 5, H('#ffb050', 2.5), 1);
-          fx.glow(bx, 40, by, 7, H('#ffffff', 4), 1);
+          // motor glow: small and hot (it blooms); several rockets in the air at once
+          // at the old size/level washed the whole view out
+          fx.glow(bx, 40, by, 11 + R() * 4, H('#ffb050', 2.2), 0.9);
+          fx.glow(bx, 40, by, 4.5, H('#ffffff', 3), 1);
           // exhaust fire + a thick lingering smoke trail
           const n = high ? 3 : 1;
           for (let q = 0; q < n; q++) {
@@ -483,20 +486,23 @@ export function createItems3D(ctx) {
             fx.spawn(bx, 40, by, Math.cos(back) * 160, (R() - 0.5) * 20, Math.sin(back) * 160, 0.12, 5, 2, WHITE, 1, FR.FLAME, F_ADD | F_FIRE, 0, 2);
           }
           if (R() < dt * (high ? 60 : 25)) {
-            fx.spawn(bx - Math.cos(a) * 8, 40, by - Math.sin(a) * 8, (R() - 0.5) * 10, 4 + R() * 6, (R() - 0.5) * 10, 1.8 + R(), 5, 22, C('#8a8680'), 0.4, R() < 0.5 ? FR.SMOKE : FR.SMOKE4, F_HOT, -3, 0.6);
+            // plain grey: a glowing (F_HOT) trail summed into an orange cloud behind every rocket
+            fx.spawn(bx - Math.cos(a) * 8, 40, by - Math.sin(a) * 8, (R() - 0.5) * 10, 4 + R() * 6, (R() - 0.5) * 10, 1.8 + R(), 5, 22, C('#77746e'), 0.32, R() < 0.5 ? FR.SMOKE : FR.SMOKE4, 0, -3, 0.6);
           }
-          ctx.lights.steady('rocket' + p.id, bx, by, 40, '#ffa040', 2.2, 260);
+          ctx.lights.steady('rocket' + p.id, bx, by, 40, '#ffa040', 1.3, 200);
           break;
         }
         case 'flame': {
           // a rolling tongue of fire along the flame's path
-          if (fx.load() < 0.9 && R() < (high ? 1 : 0.5)) {
+          // A flamethrower keeps ~15 of these alive: a tongue per projectile per frame at full
+          // alpha summed into a white blob, so emit at a fixed rate, dimmer and warmer.
+          if (fx.load() < 0.9 && R() < dt * (high ? 36 : 18)) {
             const grow = Math.min(1, s.t / 0.5);
             const i = fx.spawn(p.x + (R() - 0.5) * 6, 34 - grow * 16 + R() * 6, p.y + (R() - 0.5) * 6,
-              Math.cos(a) * 120, 18 + R() * 20, Math.sin(a) * 120, 0.22 + R() * 0.12, 10 + grow * 16, 22 + grow * 22, WHITE, 0.8, R() < 0.5 ? FR.FLAME : FR.FIREBALL, F_ADD | F_FIRE | F_FLICKER, -30, 3);
+              Math.cos(a) * 120, 18 + R() * 20, Math.sin(a) * 120, 0.22 + R() * 0.12, 10 + grow * 16, 22 + grow * 22, FLAME_BASE, 0.34, R() < 0.5 ? FR.FLAME : FR.FIREBALL, F_ADD | F_FIRE | F_FLICKER, -30, 3);
             fx.stretchLast(i, 1.2);
           }
-          if ((p.id & 7) === 0) ctx.lights.steady('flame' + (p.id & 31), p.x, p.y, 30, '#ff8a33', 1.2, 180);
+          if ((p.id & 7) === 0) ctx.lights.steady('flame' + (p.id & 31), p.x, p.y, 30, '#ff8a33', 0.8, 180);
           break;
         }
         case 'frag': {

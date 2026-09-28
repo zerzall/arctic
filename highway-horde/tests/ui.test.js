@@ -376,7 +376,7 @@ test('every device starts on ultra; desktops on dynamic resolution, phones at fu
     withStorage(store, () => {
       const p = loadPrefs();
       assert.equal(p.settings.quality, 'ultra');
-      assert.equal(p.settings.renderScale, 1, 'phones: native resolution, the owner accepts they run hot');
+      assert.equal(p.settings.renderScale, 'auto', 'phones: Ultra with dynamic resolution');
       for (const k of ['bloom', 'ao', 'filmGrain', 'vignette']) assert.equal(p.settings[k], true, k);
       assert.equal(p.settings.antialias, 'smaa');
       p.settings.quality = 'low';

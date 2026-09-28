@@ -687,6 +687,15 @@ below them. Their heights vary, so `hud.js` measures the boxes (5×/s) and publi
 `--hud-col-top`, `--touch-util-top` and `--touch-gear-top` on `#screen-game`; the CSS
 falls back to fixed offsets without them. No HUD panel or touch button may overlap
 another at phone sizes (checked by the e2e phone scenario, portrait and landscape).
+Large screens: the stylesheet is in rem and `<html>` font-size is 16px × `--ui-scale`
+(`ui/uiscale.js`: clamp(min(h/1000, w/1200), 1, 3), always 1 on touch; × the "UI size"
+setting 75–150 %), so the HUD and menus keep their proportions from 720p to 4K; with
+`hudSafeArea: '16:9'` (default) the HUD sits in a centred 16:9 box on ultrawide screens.
+Settings dialog tabs: Graphics (preset, resolution, Advanced effect toggles — §7.5),
+Display & HUD (UI size, safe area, view, fov, name tags, stats, minimap), Controls
+(sensitivity, invert, raw mouse, aim assist), Audio. Fullscreen buttons on the title,
+pause menu and settings (`ui/fullscreen.js`; in Chromium the game claims Esc while
+fullscreen so Esc only releases the mouse); `fullscreenOnStart` (off by default).
 
 ### 7.4 Audio — `audio/audio.js`
 ```js
@@ -824,7 +833,7 @@ losing it (Esc, alt-tab) opens the pause menu ("Click to resume"). The initial y
 local player's snapshot angle. Settings (stored in prefs): view 'fps' | 'topdown'
 (default 'fps'; a match runs top-down when WebGL 2 is unavailable or the 3D module failed
 to load, without changing the stored choice; a change applies from the next game), fov
-60–110 (80, see settings.fov above), mouse sensitivity 0.2–3 (default 1.0 ≈ 0.0022 rad/px),
+60–120 (80, see settings.fov above), mouse sensitivity 0.2–3 (default 1.0 ≈ 0.0022 rad/px),
 padLook 0.2–3 (right stick and touch look), invert Y, aim assist for gamepad/touch (light
 yaw magnetism toward the zombie nearest the crosshair, `look.js` AIM_ASSIST), minimapRotate
 (default true). `ui/main.js` imports render3d (three.js, ~1.3 MB) in the background after
@@ -834,8 +843,10 @@ the title screen is up; a game that starts before it arrives waits for it (`app.
 `map.ambient`, dim moonlight + hemisphere light, the local flashlight (SpotLight from the
 camera; shadows only on 'high'), teammates' flashlights as cheap additive cones, map
 lights/fires/muzzle flashes/explosions through the fixed light pool (never add/remove
-lights at runtime — shader recompiles). Everything procedural and low-poly (no model or
-texture files). Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
+lights at runtime — shader recompiles). Everything procedural (no model or texture files):
+PBR materials with generated detail textures (wet asphalt with reflective puddles,
+concrete, grass, brick), rounded vehicles with clearcoat paint and glass, buildings with
+lit windows, alpha-tested foliage, instanced grass, sculpted zombies/survivors with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
 gloved hands in the class outfit colour, idle sway, walk/sprint bob, recoil kick on each
 own `shot` (predicted shots included; `echo` shots ignored), reload dip over
 `reloading`, weapon switch lower/raise, melee swing, throw motion, minigun barrel spin,
@@ -846,9 +857,25 @@ walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 1080p with 250 zombies on a mid laptop at 'high'; 'low' = no shadows, 4 pool lights,
 fewer particles, render scale 0.75; 'ultra' = native resolution (pixel ratio up to 3),
 12 pool lights, 2048² flashlight shadows, full-density ground textures, 16x anisotropy,
-more particles. Phones and tablets (coarse pointer) default to 'ultra' at the owner's
-request — they run hot; desktops default to 'high'. Sub-systems treat any quality other
-than 'low' as high. `r.stats` exposes draw calls, triangles, frame ms.
+more particles, denser grass, light rain. Every device defaults to 'ultra' with
+renderScale 'auto' (phones included, at the owner's request — they run hot; 'auto' keeps
+them playable). Sub-systems treat any quality other than 'low' as high.
+
+**Post-processing & graphics settings** (`render3d/post.js`). The world renders into a
+linear half-float target: world → GTAO at half resolution (high/ultra, `ao`) → viewmodel
+(depth cleared) → bloom (threshold 1.2, soft knee from ~0.75: glowing things use values
+2–6) → grade (ACES + sRGB, contrast/saturation/lift-gamma-gain, `vignette`, `filmGrain`,
+dither) → SMAA or FXAA (`antialias` 'smaa' | 'fxaa' | 'off'; low forces FXAA unless off)
+→ upscale + sharpen when the internal resolution is below 1. `settings.renderScale` is
+'auto' (dynamic resolution in 0.05 steps holding 58–60 fps, with hysteresis) or a fixed
+0.5–1 fraction of the tier's pixel-ratio cap (ultra min(dpr, 3), high min(dpr, 2), low
+0.75 × min(dpr, 1)); the canvas keeps its size and only the internal targets scale. All
+settings apply live; an unchanged settings object costs a few comparisons; `render()`
+never throws (a failing chain falls back to a direct render, and is dropped after 3
+failures). `settings.uiScale` (from the UI) scales the overlay. `r.stats` exposes
+drawCalls/triangles (post passes included), sceneCalls/sceneTriangles, fps, renderScale,
+pixelRatio and gpuMs (with EXT_disjoint_timer_query_webgl2). UI presets: Ultra (all
+effects), High (AO off), Low (no bloom/AO/grain, FXAA); prefs validate every field.
 Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
 235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms.
 The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).
