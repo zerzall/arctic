@@ -528,6 +528,32 @@ export const SOUNDS = {
     const sw = S.filter(S.noise(sr, 0.6, rng), sr, 'highpass', 3000);
     return S.mix(out, S.shape(sw, sr, S.curve([[0, 0], [0.5, 1], [0.6, 0]])), sr, 0.2);
   } },
+  // Jumping (played by audio.js when a survivor's `z` leaves / returns to the ground).
+  jump: { cat: 'player', v: 4, g: 0.34, prio: 55, wet: 0.06, range: 0.7, lim: [0.12, 3], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.26);
+    // boots scuffing off the asphalt
+    S.mix(out, burst(sr, rng, 'bandpass', J(rng, 1700, 0.2), 1.1, 0.07, 0.004), sr, 0.55);
+    S.mix(out, burst(sr, rng, 'highpass', 3200, 0.8, 0.03), sr, 0.25, 0.01);
+    S.mix(out, thud(sr, 150, 90, 0.05, 0.01, 1.2), sr, 0.35);
+    // a short effort "hup"
+    const f = J(rng, 150, 0.12), dur = 0.13 + rng.next() * 0.04;
+    S.mix(out, vocal(sr, rng, { dur, f0: [[0, f], [0.04, f * 1.2], [dur, f * 1.05]], vowels: rng.next() < 0.5 ? ['uh', 'a'] : ['uh', 'ae'],
+      shift: 1.05, breath: 0.6, fry: 0.15, jitter: 0.5, a: 0.008, d: dur * 0.85, drive: 1.6 }), sr, 0.5, 0.02);
+    // webbing and kit shifting
+    return S.mix(out, gate(burst(sr, rng, 'bandpass', 2600, 1.5, 0.09), sr, rng, 0.006, 0.02, 0.6), sr, 0.2, 0.03);
+  } },
+  land: { cat: 'player', v: 3, g: 0.5, prio: 55, wet: 0.08, range: 0.7, lim: [0.1, 3], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.32);
+    // both boots hit: a low thump, the second foot a hair later
+    S.mix(out, thud(sr, J(rng, 120, 0.1), 50, 0.14, 0.02, 1.8), sr, 0.9);
+    S.mix(out, thud(sr, J(rng, 105, 0.1), 48, 0.1, 0.02, 1.6), sr, 0.45, 0.022 + rng.next() * 0.012);
+    // grit crunching under the soles
+    S.mix(out, burst(sr, rng, 'bandpass', J(rng, 900, 0.2), 0.9, 0.09, 0.002), sr, 0.5);
+    S.mix(out, burst(sr, rng, 'bandpass', 2400, 1.4, 0.05), sr, 0.25, 0.012);
+    // gear rattle
+    S.mix(out, click(sr, rng, 3200, 0.01, 3), sr, 0.25, 0.035);
+    return S.mix(out, click(sr, rng, 4100, 0.008, 3), sr, 0.18, 0.06);
+  } },
   heartbeat: { cat: 'player', v: 2, g: 0.8, prio: 95, wet: 0, render: (sr) => {
     const out = S.makeBuf(sr, 0.6);
     S.mix(out, thud(sr, 70, 40, 0.14, 0.03, 1.5), sr, 1);

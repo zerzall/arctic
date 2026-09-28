@@ -510,7 +510,9 @@ function zombieFlags(z) {
   return f;
 }
 
-const EDGE_KEYS = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon'];
+// `jump` is held (hold to keep hopping), but a repeated cmd must not jump again and a
+// dropped one must not lose a tap, so the queue treats it like the one-shot presses.
+const EDGE_KEYS = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'jump'];
 
 /** Defensive copy of an InputCmd with every field normalised. */
 export function copyCmd(c) {
@@ -529,7 +531,7 @@ export function copyCmd(c) {
     fire: !!c.fire, melee: !!c.melee, sprint: !!c.sprint, interact: !!c.interact,
     reload: !!c.reload, frag: !!c.frag, molotov: !!c.molotov, turret: !!c.turret,
     barricade: !!c.barricade, lastWeapon: !!c.lastWeapon,
-    slot, cycle,
+    slot, cycle, jump: !!c.jump,
   };
 }
 

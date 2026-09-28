@@ -12,7 +12,7 @@ import { WEAPONS, crateWeaponPool } from '../weapons.js';
 import { CLASSES, perksFor } from '../classes.js';
 import { ITEMS, isBuyable, isWeaponId, isItemId, ammoPrice, DROP_TABLE } from '../items.js';
 import { angleDiff } from '../math.js';
-import { makeObb, circleOverlapsObb } from '../geom.js';
+import { makeObb, circleOverlapsObb, MASK_MOVE } from '../geom.js';
 import { stepPlayerMovement } from '../movement.js';
 import { clearEdges, mergeEdges } from './core.js';
 import {
@@ -39,7 +39,7 @@ export const COOLDOWN_EPS = 1e-6;
 const DEFAULT_CMD = {
   seq: 0, moveX: 0, moveY: 0, angle: 0, fire: false, melee: false, sprint: false, interact: false,
   reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
-  slot: -1, cycle: 0,
+  slot: -1, cycle: 0, jump: false,
 };
 
 /** Build a fresh player record for { id, name, color, cls }. */
@@ -55,7 +55,7 @@ export function createPlayer(game, info) {
     x: 0, y: 0, angle: 0, vx: 0, vy: 0, kbx: 0, kby: 0,
     state: 'alive',
     hp: perks.maxHp, maxHp: perks.maxHp, armor: perks.startArmor,
-    stamina: STAMINA_MAX, sprintLock: false, sprinting: false,
+    stamina: STAMINA_MAX, sprintLock: false, sprinting: false, jumpT: 0, z: 0,
     speedMult: perks.speedMult, moveMult: 1, staminaMult: perks.staminaMult,
     slot: 1, lastSlot: 0,
     slots: [null, null, null], mag: [0, 0, 0], res: [0, 0, 0],
@@ -194,7 +194,7 @@ export function updatePlayers(game) {
     stepPlayerMovement(p, cmd, DT, game.world);
     // Knockback impulses (brute charge, boss slam) are applied after normal movement.
     if (p.kbx !== 0 || p.kby !== 0) {
-      game.world.moveCircle(p, PLAYER_RADIUS, p.kbx * DT, p.kby * DT);
+      game.world.moveCircle(p, PLAYER_RADIUS, p.kbx * DT, p.kby * DT, MASK_MOVE, p.z);
       const k = Math.exp(-PLAYER_KB_DECAY * DT);
       p.kbx *= k;
       p.kby *= k;
@@ -510,6 +510,8 @@ function killPlayer(game, p) {
   p.reviver = 0;
   p.respawn = true;
   p.sprinting = false;
+  p.jumpT = 0;
+  p.z = 0;
   p.kbx = 0;
   p.kby = 0;
   // The dead lose their loadout; respawn restores the starter guns.
@@ -529,6 +531,8 @@ export function respawnPlayer(game, p, i) {
   p.armor = Math.max(p.armor, p.perks.startArmor);
   p.stamina = STAMINA_MAX;
   p.sprintLock = false;
+  p.jumpT = 0;
+  p.z = 0;
   p.respawn = false;
   p.bleedout = 0;
   p.revive = 0;
@@ -1021,5 +1025,7 @@ export function playerSnapshot(game, p) {
     lastSeq: p.lastSeq,
     sprintLock: p.sprintLock,
     freeMag: p.freeMag,     // the downed player's free pistol (so clients predict it exactly)
+    z: p.z,                 // feet height while jumping (0 on the ground)
+    jumpT: p.jumpT,         // jump state (shared/jump.js) — for exact prediction
   };
 }

@@ -61,6 +61,9 @@ function checkPlayer(d, s) {
   assert.equal(d.respawn, s.respawn);
   assert.equal(d.ready, s.ready);
   assert.equal(d.sprintLock, !!s.sprintLock, `${w} sprintLock`);
+  // jump state: whole ticks, exactly; z follows from it
+  near(d.jumpT, s.jumpT || 0, 1e-9, `${w} jumpT`);
+  near(d.z, s.z || 0, 1e-6, `${w} z`);
 }
 
 function checkEvent(d, s) {
@@ -331,12 +334,12 @@ function cmd(seq, over = {}) {
   return {
     seq, moveX: 0.6, moveY: -0.8, angle: 2.5, fire: true, melee: false, sprint: true, interact: false,
     reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
-    slot: -1, cycle: 0, ...over,
+    slot: -1, cycle: 0, jump: false, ...over,
   };
 }
 
 test('inputs round-trip every InputCmd field', () => {
-  const edges = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'fire', 'melee', 'sprint', 'interact'];
+  const edges = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'fire', 'melee', 'sprint', 'interact', 'jump'];
   const cmds = edges.map((e, i) => {
     const c = cmd(1000 + i, { fire: false, sprint: false, slot: i % 4 - 1, cycle: (i % 3) - 1, moveX: -1 + i * 0.2, moveY: 0.1 * i - 0.5, angle: -3 + i * 0.6 });
     c[e] = true;

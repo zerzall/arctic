@@ -7,7 +7,8 @@
 // reach for it with two-bone IK (firing hand on the grip, support hand on the foregrip),
 // so the hands stay on the gun through walk/strafe/run cycles, recoil, the reload (support
 // hand to the mag well, down to a pouch and back), the sprint low-ready and the melee
-// butt-stroke. Downed: propped on an elbow, pistol up. Dead: a corpse on its back. Each
+// butt-stroke. Jumping: lifted by the snapshot's `z` with the legs tucked. Downed:
+// propped on an elbow, pistol up. Dead: a corpse on its back. Each
 // has a weapon-light beam (cheap additive cone); the two nearest also get a real light.
 // Publishes each teammate's muzzle position in fx.muzzles for tracers (effects3d).
 
@@ -171,7 +172,7 @@ export function createPlayers3D(ctx) {
   function getState(p) {
     let s = state.get(p.id);
     if (!s) {
-      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, seen: 0, sprint: 0, down: 0, dead: 0, fwd: 1, side: 0 };
+      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, seen: 0, sprint: 0, down: 0, dead: 0, fwd: 1, side: 0, air: 0 };
       state.set(p.id, s);
     }
     return s;
@@ -332,6 +333,9 @@ export function createPlayers3D(ctx) {
       s.sprint += ((p.sprinting ? 1 : 0) - s.sprint) * damp(6, dt);
       s.down += ((p.state === 'downed' ? 1 : 0) - s.down) * damp(5, dt);
       s.dead += ((p.state === 'dead' ? 1 : 0) - s.dead) * damp(4, dt);
+      // jump: tuck in quickly after take-off, stretch out again for the landing
+      const jz = p.state !== 'dead' && p.z > 0 ? p.z : 0;
+      s.air += ((jz > 6 ? 1 : 0) - s.air) * damp(jz > 6 ? 14 : 18, dt);
       // movement relative to the aim: forward/back and strafe components (smoothed)
       const rel = angleDiff(s.a, s.mvA);
       const mv = Math.min(1, s.spd / 40);
@@ -350,11 +354,11 @@ export function createPlayers3D(ctx) {
       const style = wid ? WEAPONS[wid].sprite.style : 'rifle';
       const hold = s.down > 0.5 ? 'pistol' : HOLD[style] || 'rifle';
       poseBody(p, s, time, hold);
-      pose.place(p.x, 0, p.y, s.a, 1);
+      pose.place(p.x, jz, p.y, s.a, 1);
       pool.solve(i, model, pose);
       const g = gunFor(p.id, wid);
       if (wid && g.obj && s.dead < 0.5) {
-        placeGun(i, model, p, s, g, hold, time);
+        placeGun(i, model, p, s, g, hold, time, jz);
         pool.solve(i, model, pose);
       } else if (g.obj) {
         g.obj.visible = false;
@@ -435,6 +439,15 @@ export function createPlayers3D(ctx) {
     let chestZ = -0.06 - run * 0.1 + breathe * 0.6, chestY = rifle ? -0.32 * (1 - run * 0.6) : hold === 'hip' ? -0.15 : 0, chestX = 0;
     let neckY = -chestY * 0.55, headY = -chestY * 0.5, headZ = rifle ? -0.12 : 0.02, headX = rifle ? 0.12 : 0;
     thL += 0.08; thR += 0.08; shL -= 0.12; shR -= 0.12; rootY -= 0.4;
+    // airborne: knees pulled up (one a little higher), feet pointed, a slight lean in
+    if (s.air > 0.01) {
+      const k = s.air * (1 - s.down), n = 1 - k;
+      thL = thL * n + 0.95 * k; thR = thR * n + 0.6 * k;
+      shL = shL * n - 1.45 * k; shR = shR * n - 1.1 * k;
+      ftL = ftL * n + 0.3 * k; ftR = ftR * n + 0.25 * k;
+      thLX *= n; thRX *= n;
+      spineZ -= 0.1 * k;
+    }
     // downed: fallen back, propped on the left elbow
     if (s.down > 0.01) {
       const k = s.down;
@@ -477,7 +490,7 @@ export function createPlayers3D(ctx) {
   };
   const _g = new THREE.Vector3(), _w = new THREE.Vector3(), _pole = new THREE.Vector3();
 
-  function placeGun(k, model, p, s, g, hold, time) {
+  function placeGun(k, model, p, s, g, hold, time, lift = 0) {
     const obj = g.obj, m = g.model;
     const a = s.a, ca = Math.cos(a), sa = Math.sin(a);
     const kick = s.shot < 0.12 ? (1 - s.shot / 0.12) : 0;
@@ -507,7 +520,7 @@ export function createPlayers3D(ctx) {
       // melee: shove forward with the butt/muzzle
       lx += ml * 6; ly += ml * 1.5; pitch += ml * 0.15; yaw -= ml * 0.3;
       const bob = pose.root[1];
-      gx = p.x + ca * lx - sa * lz; gz = p.y + sa * lx + ca * lz; gy = ly + bob;
+      gx = p.x + ca * lx - sa * lz; gz = p.y + sa * lx + ca * lz; gy = ly + bob + lift;
     }
     obj.visible = true;
     obj.position.set(gx, gy, gz);

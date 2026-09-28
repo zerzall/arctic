@@ -888,6 +888,8 @@ export class ClientSession extends Emitter {
     p.stamina = sp.stamina;
     p.sprinting = sp.sprinting;
     p.sprintLock = !!sp.sprintLock;
+    p.jumpT = Number.isFinite(sp.jumpT) ? sp.jumpT : 0;
+    p.z = sp.z || 0;
     p.speedMult = perks.speedMult;
     p.staminaMult = perks.staminaMult;
     this.predSlot = sp.slot;
@@ -924,6 +926,8 @@ export class ClientSession extends Emitter {
         angle: this.builder.angle,
         stamina: this.pred.stamina,
         sprinting: this.pred.sprinting,
+        z: this.pred.z || 0,
+        jumpT: this.pred.jumpT || 0,
         spin: this.wpn.spin,
         firing: this.clock() - this.wpn.lastFireAt <= FIRING_HOLD,
       };

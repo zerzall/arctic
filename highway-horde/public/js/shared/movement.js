@@ -11,6 +11,7 @@ import {
   StaticIndex, makeObb, setObbPose, circleObbPush, circleOverlapsObb, mapColliders, obbOverlap,
   MASK_MOVE, MASK_SOLID, MASK_WATER, MASK_BARRICADE, MASK_BULKY,
 } from './geom.js';
+import { stepJump, JUMP_CLEAR_MAX } from './jump.js';
 
 /**
  * Collision mask for heavies (bloater, brute, boss): they crash over crushable low
@@ -20,6 +21,15 @@ import {
 export const MASK_HEAVY = MASK_BULKY | MASK_WATER;
 
 const RESOLVE_ITERATIONS = 4;
+/**
+ * Where a landing may search for room (a player coming down on top of low cover wedged
+ * against a wall, water or a barricade): rings every UNSTICK_STEP px up to UNSTICK_MAX,
+ * in 8 fixed directions (exact constants, so every JS engine picks the same spot).
+ */
+const UNSTICK_STEP = 4;
+const UNSTICK_MAX = 96;
+const R2 = Math.SQRT1_2;
+const UNSTICK_DIRS = [1, 0, R2, R2, 0, 1, -R2, R2, -1, 0, -R2, -R2, 0, -1, R2, -R2];
 
 /**
  * Build the static collision world for a map: obstacles (solid or low cover), water,
@@ -76,9 +86,11 @@ export class CollisionWorld {
    * @param {object} pos
    * @param {number} r radius
    * @param {number} [mask] which static colliders count (MASK_MOVE, or MASK_HEAVY)
+   * @param {number} [z] feet height of a jumping player: static colliders it clears
+   *   (hop ≤ z, see jump.js) are ignored
    * @returns {number} MASK_* bits of what was touched (0 if nothing)
    */
-  resolveCircle(pos, r, mask = MASK_MOVE) {
+  resolveCircle(pos, r, mask = MASK_MOVE, z = 0) {
     let touched = 0;
     this.touchedBarricade = -1;
     this.pushNX = 0;
@@ -89,6 +101,7 @@ export class CollisionWorld {
       let moved = false;
       const n = this.index.query(pos.x - r, pos.y - r, pos.x + r, pos.y + r, mask, near);
       for (let i = 0; i < n; i++) {
+        if (z >= near[i].hop) continue;
         if (circleObbPush(near[i], pos.x, pos.y, r, push)) {
           pos.x += push.nx * push.depth;
           pos.y += push.ny * push.depth;
@@ -134,9 +147,10 @@ export class CollisionWorld {
    * Move a circle by (dx, dy) with sliding, sub-stepping so fast movers never tunnel
    * through thin walls. `pos` is mutated.
    * @param {number} [mask] as for resolveCircle
+   * @param {number} [z] as for resolveCircle
    * @returns {number} MASK_* bits touched during the move
    */
-  moveCircle(pos, r, dx, dy, mask = MASK_MOVE) {
+  moveCircle(pos, r, dx, dy, mask = MASK_MOVE, z = 0) {
     const d = Math.hypot(dx, dy);
     const maxStep = Math.max(2, r * 0.5);
     const steps = d > maxStep ? Math.ceil(d / maxStep) : 1;
@@ -146,7 +160,7 @@ export class CollisionWorld {
     for (let i = 0; i < steps; i++) {
       pos.x += sx;
       pos.y += sy;
-      const t = this.resolveCircle(pos, r, mask);
+      const t = this.resolveCircle(pos, r, mask, z);
       if (t) {
         touched |= t;
         pnx = this.pushNX;
@@ -168,6 +182,41 @@ export class CollisionWorld {
       for (const b of this.barricades) if (circleOverlapsObb(b, x, y, r)) return false;
     }
     return true;
+  }
+
+  /**
+   * True if a circle whose feet are `z` high overlaps a walk-blocking collider it doesn't
+   * clear (static ones with hop > z, any barricade) or pokes out of the map.
+   */
+  circleBlockedAt(x, y, r, z = 0) {
+    if (x < r || y < r || x > this.width - r || y > this.height - r) return true;
+    const near = this._near;
+    const n = this.index.query(x - r, y - r, x + r, y + r, MASK_MOVE, near);
+    for (let i = 0; i < n; i++) {
+      if (z < near[i].hop && circleOverlapsObb(near[i], x, y, r)) return true;
+    }
+    for (const b of this.barricades) if (circleOverlapsObb(b, x, y, r)) return true;
+    return false;
+  }
+
+  /**
+   * Move a circle stuck inside colliders (circleBlockedAt) to the nearest free spot within
+   * UNSTICK_MAX px; stays put when there is none. `pos` is mutated.
+   * @returns {boolean} true if it was moved
+   */
+  unstick(pos, r, z = 0) {
+    if (!this.circleBlockedAt(pos.x, pos.y, r, z)) return false;
+    for (let d = UNSTICK_STEP; d <= UNSTICK_MAX; d += UNSTICK_STEP) {
+      for (let k = 0; k < UNSTICK_DIRS.length; k += 2) {
+        const x = pos.x + UNSTICK_DIRS[k] * d, y = pos.y + UNSTICK_DIRS[k + 1] * d;
+        if (!this.circleBlockedAt(x, y, r, z)) {
+          pos.x = x;
+          pos.y = y;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** True if a box overlaps no walk-blocking collider or barricade and lies inside bounds. */
@@ -240,21 +289,28 @@ function segmentHitsBox(b, x, y, dx, dy, len, pad) {
 
 /**
  * Advance one player by one input command (SPEC §3.2). Mutates p.x, p.y, p.stamina,
- * p.sprintLock and p.sprinting. Players collide with obstacles, water, the objective,
- * barricades and the map bounds, never with zombies or other players.
+ * p.sprintLock, p.sprinting, p.jumpT and p.z. Players collide with obstacles, water, the
+ * objective, barricades and the map bounds, never with zombies or other players. While
+ * jumping (jump.js) they pass over low cover their feet clear (JUMP_CLEAR); a landing
+ * that leaves them inside something moves them to the nearest free spot.
  *
  * @param {object} p { x, y, state, stamina, sprintLock, speedMult, moveMult,
- *   staminaMult? } — staminaMult (default 1) is the class stamina perk: it slows the
- *   drain and speeds up regeneration while STAMINA_MAX stays the HUD's scale.
- * @param {object} cmd InputCmd (moveX, moveY, sprint are read)
+ *   staminaMult?, jumpT? } — staminaMult (default 1) is the class stamina perk: it slows
+ *   the drain and speeds up regeneration while STAMINA_MAX stays the HUD's scale.
+ * @param {object} cmd InputCmd (moveX, moveY, sprint, jump are read)
  * @param {number} dt seconds
  * @param {CollisionWorld} world
+ * @returns {number} 1 = took off this tick, -1 = landed, 0 otherwise
  */
 export function stepPlayerMovement(p, cmd, dt, world) {
   if (p.state === 'dead') {
     p.sprinting = false;
-    return;
+    p.jumpT = 0;
+    p.z = 0;
+    return 0;
   }
+  const jump = stepJump(p, cmd, dt);
+  const z = p.z;
   let mx = cmd && Number.isFinite(cmd.moveX) ? cmd.moveX : 0;
   let my = cmd && Number.isFinite(cmd.moveY) ? cmd.moveY : 0;
   const len = Math.hypot(mx, my);
@@ -284,11 +340,15 @@ export function stepPlayerMovement(p, cmd, dt, world) {
   p.sprinting = sprinting;
   if (!moving) {
     // Still resolve so a barricade placed on top of someone pushes them out.
-    world.resolveCircle(p, PLAYER_RADIUS);
-    return;
+    world.resolveCircle(p, PLAYER_RADIUS, MASK_MOVE, z);
+  } else {
+    const speed = downed
+      ? DOWNED_SPEED
+      : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1);
+    world.moveCircle(p, PLAYER_RADIUS, mx * speed * dt, my * speed * dt, MASK_MOVE, z);
   }
-  const speed = downed
-    ? DOWNED_SPEED
-    : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1);
-  world.moveCircle(p, PLAYER_RADIUS, mx * speed * dt, my * speed * dt);
+  // Coming down onto low cover wedged against something else can leave no way out by the
+  // shortest push: walk out to the nearest free spot instead of staying stuck inside.
+  if (jump < 0 || (p.jumpT > 0 && z < JUMP_CLEAR_MAX)) world.unstick(p, PLAYER_RADIUS, z);
+  return jump;
 }

@@ -31,6 +31,10 @@ import { createPost, createDynRes, createGpuTimer, normPostSettings } from './po
 
 const EYE = 52;
 const EYE_DOWNED = 16;
+// Jump landing dip: a damped spring (units, 1/s², 1/s) kicked downward on touch-down.
+const LAND_KICK = 85;
+const LAND_K = 170;
+const LAND_C = 19;
 const NEAR = 2;
 const MAX_LOGS = 5;
 
@@ -200,6 +204,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     x: camera.position.x, y: camera.position.z, eye: EYE, yaw: 0, pitch: 0, roll: 0,
     lastX: NaN, lastY: NaN, speed: 0, bob: 0, kick: 0, mode: 'fps', chaseId: 0,
     cx: camera.position.x, cy: EYE, cz: camera.position.z, orbit: 0, time: 0,
+    lastZ: 0, air: 0, land: 0, landV: 0,
   };
   let lastSettings = { screenShake: true, fov: 80 };
   let localId = 0;
@@ -215,8 +220,19 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     const alive = local && local.state !== 'dead';
     if (alive) {
       // --- first person ---
-      if (rig.mode !== 'fps') { rig.lastX = NaN; rig.mode = 'fps'; }
+      if (rig.mode !== 'fps') { rig.lastX = NaN; rig.mode = 'fps'; rig.lastZ = 0; rig.land = rig.landV = 0; }
       const downed = local.state === 'downed';
+      // jump: the eye rides the feet height; touch-down kicks a short dip, walk bob fades in the air
+      const z = local.z > 0 ? local.z : 0;
+      if (rig.lastZ > 0 && z === 0) rig.landV -= LAND_KICK;
+      rig.lastZ = z;
+      rig.air += ((z > 0 ? 1 : 0) - rig.air) * (1 - Math.exp(-dt * 12));
+      for (let left = Math.min(dt, 0.1); left > 1e-6;) {
+        const h = Math.min(left, 1 / 120);
+        rig.landV += (-LAND_K * rig.land - LAND_C * rig.landV) * h;
+        rig.land += rig.landV * h;
+        left -= h;
+      }
       const dx = local.x - rig.lastX, dy = local.y - rig.lastY;
       const moved = Number.isFinite(dx) ? Math.hypot(dx, dy) : 0;
       rig.lastX = local.x; rig.lastY = local.y;
@@ -226,12 +242,12 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       rig.bob += dt * rig.speed * (local.sprinting ? 0.05 : 0.056);
       const targetEye = downed ? EYE_DOWNED : EYE;
       rig.eye += (targetEye - rig.eye) * (1 - Math.exp(-dt * 6));
-      const amp = downed ? 0.6 : (local.sprinting ? 2.3 : 1.4) * Math.min(1, sp);
+      const amp = (downed ? 0.6 : (local.sprinting ? 2.3 : 1.4) * Math.min(1, sp)) * (1 - rig.air);
       const bobY = Math.abs(Math.sin(rig.bob)) * amp - amp * 0.5;
       const bobX = Math.cos(rig.bob) * amp * 0.45;
       const yaw = look.yaw, pitch = look.pitch;
       const rx = Math.cos(yaw + Math.PI / 2), ry = Math.sin(yaw + Math.PI / 2);
-      camera.position.set(local.x + rx * bobX, rig.eye + bobY, local.y + ry * bobX);
+      camera.position.set(local.x + rx * bobX, rig.eye + bobY + z + rig.land, local.y + ry * bobX);
       const rollT = downed ? 0.22 + Math.sin(rig.time * 0.7) * 0.03 : Math.cos(rig.bob) * 0.006 * sp;
       rig.roll += (rollT - rig.roll) * (1 - Math.exp(-dt * 5));
       camera.rotation.set(pitch + rig.kick, -yaw - Math.PI / 2, rig.roll);
@@ -247,8 +263,9 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
         if (rig.mode !== 'chase' || rig.chaseId !== target.id) rig.mode = 'chase';
         rig.chaseId = target.id;
         const a = target.angle || 0;
-        tx = target.x - Math.cos(a) * 150; ty = target.y - Math.sin(a) * 150; th = 96;
-        lx = target.x + Math.cos(a) * 60; ly = target.y + Math.sin(a) * 60; lh = 40;
+        const tz = target.z > 0 ? target.z : 0;
+        tx = target.x - Math.cos(a) * 150; ty = target.y - Math.sin(a) * 150; th = 96 + tz * 0.5;
+        lx = target.x + Math.cos(a) * 60; ly = target.y + Math.sin(a) * 60; lh = 40 + tz;
       } else {
         rig.mode = 'orbit';
         rig.orbit += dt * 0.08;

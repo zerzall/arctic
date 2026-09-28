@@ -62,7 +62,7 @@ test('input: edge fields are true for exactly one sample', () => {
   key(win, 'keydown', 'KeyR');
   key(win, 'keydown', 'KeyG');
   key(win, 'keydown', 'KeyB');
-  key(win, 'keydown', 'Space');
+  key(win, 'keydown', 'KeyN');
   key(win, 'keydown', 'Escape');
   key(win, 'keydown', 'Enter');
   const a = input.sample();
@@ -78,6 +78,70 @@ test('input: edge fields are true for exactly one sample', () => {
   key(win, 'keydown', 'KeyR', { repeat: true });
   assert.equal(input.sample().reload, false);
   input.destroy();
+});
+
+test('input: Space jumps (held, and a tap between samples still counts once); N readies up', () => {
+  const { win, canvas } = fakeDom();
+  const input = createInput(canvas);
+  key(win, 'keydown', 'Space');
+  let s = input.sample();
+  assert.equal(s.jump, true);
+  assert.equal(s.ready, false, 'Space no longer readies up');
+  assert.equal(input.sample().jump, true, 'jump stays set while Space is held');
+  key(win, 'keydown', 'Space', { repeat: true });
+  assert.equal(input.sample().jump, true);
+  key(win, 'keyup', 'Space');
+  assert.equal(input.sample().jump, false);
+  // a tap entirely between two samples
+  key(win, 'keydown', 'Space');
+  key(win, 'keyup', 'Space');
+  assert.equal(input.sample().jump, true, 'a quick tap is not lost');
+  assert.equal(input.sample().jump, false, '… and counts once');
+  key(win, 'keydown', 'KeyN');
+  s = input.sample();
+  assert.equal(s.ready, true);
+  assert.equal(s.jump, false);
+  // menus: no jumping, and a press made meanwhile does not fire afterwards
+  input.setEnabled(false);
+  key(win, 'keydown', 'Space');
+  key(win, 'keyup', 'Space');
+  assert.equal(input.sample().jump, false);
+  input.setEnabled(true);
+  assert.equal(input.sample().jump, false);
+  input.destroy();
+});
+
+test('input: gamepad A jumps, RB interacts, LT shoves', () => {
+  const { canvas } = fakeDom();
+  const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+  const pad = { index: 0, connected: true, buttons, axes: [0, 0, 0, 0] };
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const nav = { getGamepads: () => [pad] };
+  Object.defineProperty(globalThis, 'navigator', { value: nav, configurable: true, writable: true });
+  try {
+    const input = createInput(canvas);
+    buttons[0].pressed = true; // A
+    let s = input.sample();
+    assert.equal(s.jump, true);
+    assert.equal(s.interact, false, 'A no longer interacts');
+    assert.ok(s.nav && s.nav.accept, 'A still accepts in menus');
+    buttons[0].pressed = false;
+    buttons[5].pressed = true; // RB
+    s = input.sample();
+    assert.equal(s.jump, false);
+    assert.equal(s.interact, true);
+    assert.equal(s.melee, false, 'RB no longer shoves');
+    buttons[5].pressed = false;
+    buttons[6].pressed = true; // LT
+    buttons[6].value = 1;
+    s = input.sample();
+    assert.equal(s.melee, true);
+    assert.equal(s.interact, false);
+    input.destroy();
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'navigator', had);
+    else delete globalThis.navigator;
+  }
 });
 
 test('input: WASD and arrows both move, diagonals are normalised', () => {

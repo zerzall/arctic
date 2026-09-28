@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hostGame, joinGame } from '../public/js/net/session.js';
 import { createLocalHub } from '../public/js/net/transport-local.js';
-import { GAME_VERSION, PROTOCOL_VERSION, DT, CHAT_MAX_LENGTH } from '../public/js/shared/constants.js';
+import { GAME_VERSION, PROTOCOL_VERSION, DT, CHAT_MAX_LENGTH, JUMP_TIME } from '../public/js/shared/constants.js';
 import { createRng } from '../public/js/shared/rng.js';
 import { FakeGame } from './fixtures/net-fake-game.js';
 
@@ -891,6 +891,42 @@ test('prediction takes the sprint lock from the snapshot (host-side exhaustion c
   const pred = a.getPredictedLocal();
   assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
   assert.equal(a.pred.sprintLock, hp.sprintLock);
+});
+
+test('jump: the client sees its own jump at once, matches the host tick for tick, and the host sees it too', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  const [a] = env.clients;
+  env.host.start();
+  await flush();
+  await frames(env, 10);
+  const localZ = () => a.getView().players.find((p) => p.id === a.localId).z;
+  assert.equal(localZ(), 0);
+  // One frame with jump pressed: airborne before any snapshot could say so.
+  env.clock.advance(1 / 60);
+  a.update(1 / 60, input({ jump: true, moveX: 1 }), 0);
+  assert.ok(localZ() > 0, 'predicted take-off');
+  const hp = hostPlayer(env, a.localId);
+  let hostSawIt = false, predAir = 0, hostAir = 0;
+  await frames(env, 60, (s) => {
+    if (s !== a) {
+      const mine = env.host.getView().players.find((p) => p.id === a.localId);
+      if (mine && mine.z > 0) hostSawIt = true;
+      if (hp.z > 0) hostAir++;
+      return null;
+    }
+    if (localZ() > 0) predAir++;
+    return input({ moveX: 1 });
+  });
+  assert.ok(hostSawIt, 'the host view shows the client in the air');
+  // one cmd per frame and one tick per frame: the same arc, tick for tick
+  assert.equal(predAir, Math.round(JUMP_TIME / DT) - 1, 'predicted airborne ticks');
+  assert.equal(hostAir, predAir, 'host airborne ticks');
+  await frames(env, 30);
+  assert.equal(localZ(), 0, 'landed');
+  assert.equal(hp.z, 0);
+  assert.equal(a.pred.jumpT, hp.jumpT);
+  const pred = a.getPredictedLocal();
+  assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
 });
 
 test('client watchdog: a slow 3D world build after start is not "Connection lost", real silence still is', async () => {

@@ -14,6 +14,8 @@ import { ZOMBIE_IDS, ZFLAG, ZOMBIES } from '../js/shared/zombies.js';
 import { WEAPONS, WEAPON_IDS } from '../js/shared/weapons.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
 import { PICKUP_KINDS } from '../js/shared/items.js';
+import { jumpHeight } from '../js/shared/jump.js';
+import { JUMP_TIME } from '../js/shared/constants.js';
 
 const qs = new URLSearchParams(location.search);
 const canvas = document.getElementById('game');
@@ -363,6 +365,8 @@ function teamScene() {
         p.angle = (k % 2 ? -Math.PI / 2 : Math.PI / 2) + Math.sin(time * 0.5 + k) * 0.3;
         p.state = k === 4 ? 'downed' : k === 5 && (time % 8) > 4 ? 'dead' : 'alive';
         p.sprinting = k === 2;
+        // the sprinter hops (jump height + tucked legs), with a short pause on the ground
+        p.z = k === 2 ? jumpHeight(time % (JUMP_TIME + 0.25)) : 0;
         p.reloading = k === 3 ? (time % 2) / 2 : 0;
         p.bleedout = k === 4 ? 30 - (time % 30) : 0;
         p.revive = k === 4 ? (time % 3) / 3 : 0;

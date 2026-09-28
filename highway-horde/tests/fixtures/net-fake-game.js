@@ -11,10 +11,11 @@ import { ZOMBIE_IDS } from '../../public/js/shared/zombies.js';
 import { PICKUP_KINDS } from '../../public/js/shared/items.js';
 import { CLASSES, perksFor } from '../../public/js/shared/classes.js';
 import { STAMINA_MAX, DEFAULT_SETTINGS } from '../../public/js/shared/constants.js';
+import { jumpHeight } from '../../public/js/shared/jump.js';
 
 const DT = 1 / 60;
 const MAX_QUEUE = 6;
-const EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon'];
+const EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'jump'];
 
 /** One sample of every GameEvent type in SPEC §4.1 (plus the sim's 'placefail'). */
 export function sampleEvents(rng = createRng(7)) {
@@ -83,7 +84,13 @@ export function samplePlayer(id, rng = createRng(id)) {
     frags: rng.int(0, 8), molotovs: rng.int(0, 3), turrets: rng.int(0, 2), barricades: rng.int(0, 4),
     selfRevive: rng.chance(0.5), bleedout: rng.range(0, 30), revive: rng.range(0, 1), reviver: rng.int(0, 6),
     respawn: rng.chance(0.3), ready: rng.chance(0.5), lastSeq: rng.int(0, 1e6), sprintLock: rng.chance(0.3),
+    // jump state: whole ticks, airborne (> 0) or landing cooldown (< 0); z follows from it
+    ...jumpState(rng.int(-6, 35) / 60),
   };
+}
+
+function jumpState(jumpT) {
+  return { jumpT, z: jumpHeight(jumpT) };
 }
 
 /**
@@ -281,7 +288,7 @@ export class FakeGame {
         ammo: [[12, -1], [30, 270], [0, 0]], reloading: 0, spin: 0, firing: false, meleeing: 0,
         cash: p.cash, kills: 0, damage: 0, revives: 0, downs: 0, frags: 0, molotovs: 0, turrets: 0,
         barricades: 0, selfRevive: false, bleedout: 0, revive: 0, reviver: 0, respawn: p.state === 'dead',
-        ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock,
+        ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock, z: p.z || 0, jumpT: p.jumpT || 0,
       })),
       zombies,
       projectiles: [{ id: 1, kind: 'rocket', x: cx + (t * 300) % 800, y: cy, angle: 0 }],

@@ -4,7 +4,8 @@
 // Starts server/relay-server.js (static files + WebSocket relay) and a local PeerJS
 // signalling server, then drives headless Chromium through whole games:
 //
-//   a  solo         title → class → Play Solo → Start → a scripted player fights wave 1
+//   a  solo         title → class → Play Solo → Start → N readies up, Space jumps, a
+//                   scripted player fights wave 1
 //   b  relay-mp     3 players over the relay: invite link, roster, chat, settings, start,
 //                   movement replication + prediction, shots/kills, a player leaving,
 //                   back to the lobby and a second game (teardown / no doubled loops)
@@ -15,10 +16,12 @@
 //   f  bots         solo lobby + Add Bot (BOT tags, ✕ removes one), the human readies,
 //                   the bots ready up after them, fight wave 1 and score kills
 //   g  fps-solo     first-person view (three.js): pointer lock, W walks along the view,
-//                   losing the lock opens the pause menu, turn toward the nearest zombie
-//                   with the view data and kill it, End Game + a second game (no leaks)
+//                   Space jumps (the camera rises and comes back down), losing the lock
+//                   opens the pause menu, turn toward the nearest zombie with the view data
+//                   and kill it, End Game + a second game (no leaks)
 //   h  fps-relay    2 players over the relay in first person: each one's camera sees the
-//                   other, and the client's W moves it along ITS yaw on the host
+//                   other, the client's W moves it along ITS yaw on the host, and the host
+//                   sees the client jump
 //
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
 // localStorage before every page load); g and h play first person at quality 'low'.
@@ -498,6 +501,42 @@ function expectedWalk(pl, from, dir, ticks) {
   }, { from, dir, ticks });
 }
 
+/**
+ * Hold Space until the local player is seen in the air (and, with `camera`, the 3D camera
+ * above the eye height), then let go and wait for the landing. The height comes from the
+ * session's own view (fresh on every call); software WebGL draws only a few frames per
+ * second, so the camera is sampled whenever one was drawn while Space is held (holding it
+ * hops again after each landing, so nearly every frame is in the air).
+ * @returns {Promise<{ z: number, cam: number }>} the highest z / camera height seen
+ */
+async function jump(pl, { camera = false } = {}) {
+  await pl.page.evaluate(() => {
+    window.__e2eJump = { z: 0, cam: 0 };
+  });
+  await pl.page.keyboard.down('Space');
+  let top;
+  try {
+    top = await waitFor(pl, (cam) => {
+      const H = window.__HH;
+      const v = H.session.getView();
+      const me = v && v.players.find((p) => p.id === H.session.localId);
+      const J = window.__e2eJump;
+      if (me) J.z = Math.max(J.z, me.z || 0);
+      if (cam && H.renderer && H.renderer.debug) J.cam = Math.max(J.cam, H.renderer.debug.camera.position.y);
+      return J.z > 20 && (!cam || J.cam > 52 + 20) ? J : false;
+    }, camera, camera ? 'Space to lift the player and the camera' : 'Space to lift the player', 30e3);
+  } finally {
+    await pl.page.keyboard.up('Space');
+  }
+  await waitFor(pl, () => {
+    const H = window.__HH;
+    const v = H.session.getView();
+    const me = v && v.players.find((p) => p.id === H.session.localId);
+    return me && me.z === 0;
+  }, null, 'the landing after the jump', 15e3);
+  return top;
+}
+
 // ---- scenarios -------------------------------------------------------------------------------
 
 /** a. Solo game with a scripted player. */
@@ -520,8 +559,11 @@ async function scenarioSolo(sc) {
   const cash0 = first.me.cash;
   pl.home = { x: first.me.x, y: first.me.y };
 
-  await pl.page.keyboard.press('Space'); // ready: skip the prep timer
-  await waitFor(pl, () => window.__HH.getView() && window.__HH.getView().phase === 'wave', null, 'phase prep → wave after Space', 5000);
+  await pl.page.keyboard.press('KeyN'); // ready: skip the prep timer
+  await waitFor(pl, () => window.__HH.getView() && window.__HH.getView().phase === 'wave', null, 'phase prep → wave after N (ready)', 5000);
+  // Space jumps (it used to ready up): up in the air, then back on the ground.
+  const hop = await jump(pl);
+  log(`    solo jump: peak ${hop.z.toFixed(1)} units, landed`);
   const phases = new Set(['prep']);
   let maxZombies = 0, kills = 0, cash = cash0, st = null;
   const t0 = Date.now();
@@ -569,7 +611,7 @@ async function scenarioBots(sc) {
   expect(new Set(roster.map((r) => r.color)).size === 3 && new Set(roster.map((r) => r.cls)).size === 3, `bots should take free colours and classes: ${JSON.stringify(roster)}`);
   await pl.page.click('#btn-start');
   await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH.getView() && window.__HH.getView().players.length === 3, null, 'the game with three survivors');
-  await pl.page.keyboard.press('Space'); // the human readies; the bots follow
+  await pl.page.keyboard.press('KeyN'); // the human readies; the bots follow
   await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'the wave (bots ready after the human)', 8000);
   // The human stands still; the squad has to do the killing.
   const kills = await waitFor(pl, (ids) => {
@@ -721,7 +763,7 @@ async function scenarioRelay(sc) {
 
   // clients fight wave 1; the host sees their shots and kills
   await hookHostEvents(host);
-  for (const pl of all) await pl.page.keyboard.press('Space');
+  for (const pl of all) await pl.page.keyboard.press('KeyN');
   await waitFor(host, () => window.__HH.getView().phase === 'wave', null, 'wave 1 after everyone pressed ready', 8000);
   for (const pl of [c1, c2]) pl.home = (await readState(pl)).me;
   const creditOk = async () => host.page.evaluate((i) => {
@@ -816,8 +858,8 @@ async function scenarioLateJoin(sc) {
   expect(await visible(early, '#hud'), 'the prep joiner has no HUD');
   await waitFor(host, () => window.__HH.getView().players.length === 2, null, 'the host to see the prep joiner');
 
-  await host.page.keyboard.press('Space');
-  await early.page.keyboard.press('Space');
+  await host.page.keyboard.press('KeyN');
+  await early.page.keyboard.press('KeyN');
   await waitFor(host, () => window.__HH.getView().phase === 'wave', null, 'wave 1', 8000);
   const late = await joinByLink(sc, 'wavejoin', invite);
   await waitInGame(late, 3, 'the mid-wave joiner in the game screen');
@@ -1095,12 +1137,21 @@ async function scenarioFpsSolo(sc) {
 
   // Pointer lock: the Start click may already have captured the mouse; else click the game.
   const { width, height } = FPS_VIEWPORT;
-  if (!(await pl.page.evaluate(() => window.__HH.getLook().locked))) await pl.page.mouse.click(width / 2, height / 2);
-  await waitFor(pl, () => window.__HH.getLook().locked, null, 'pointer lock after clicking the game', 8000);
+  // (a busy page may answer the raw-input lock request only after the click's user
+  // activation expired, so the fallback lock is refused: like a player, click again)
+  for (let attempt = 0; ; attempt++) {
+    if (!(await pl.page.evaluate(() => window.__HH.getLook().locked))) await pl.page.mouse.click(width / 2, height / 2);
+    try {
+      await waitFor(pl, () => window.__HH.getLook().locked, null, 'pointer lock after clicking the game', 8000);
+      break;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+    }
+  }
   await sc.screenshots('-start', FPS_SHOT_MS);
   // Ready now: wave 1 spawns far out and walks in while we test walking and the pause menu.
-  await pl.page.keyboard.press('Space');
-  await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'wave 1 after Space', 10e3);
+  await pl.page.keyboard.press('KeyN');
+  await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'wave 1 after N (ready)', 10e3);
 
   // W walks along the facing direction (turned to the most open heading first).
   const free = await freeHeading(pl, 150);
@@ -1110,6 +1161,11 @@ async function scenarioFpsSolo(sc) {
   log(`    fps walk: yaw ${w.yaw.toFixed(2)}, moved ${w.d.toFixed(1)} px, along the view ${(w.along * 100).toFixed(1)} %`);
   expect(w.d > 90, `W barely moved the player (${w.d.toFixed(1)} px)`);
   expect(w.along > 0.95, `W moved the player off the view direction (cos ${w.along.toFixed(3)})`);
+
+  // Space jumps: the local player leaves the ground and the first-person camera rises with it.
+  const jumpT0 = Date.now();
+  const hop = await jump(pl, { camera: true });
+  log(`    fps jump: peak ${hop.z.toFixed(1)} units, camera up to ${hop.cam.toFixed(1)} (eye 52), landed (${((Date.now() - jumpT0) / 1000).toFixed(1)} s)`);
 
   // Losing the pointer lock (Esc, alt-tab) opens the pause menu; resuming captures it again.
   await pl.page.evaluate(() => document.exitPointerLock());
@@ -1248,6 +1304,21 @@ async function scenarioFpsRelay(sc) {
   expect(w.along > 0.95, `the client's W moved it off its own view direction on the host (cos ${w.along.toFixed(3)})`);
   expect(Math.hypot(pred.x - w.b.x, pred.y - w.b.y) < 4, 'client prediction disagrees with the host after the walk');
   await sc.screenshots('-walked', FPS_SHOT_MS);
+
+  // The client jumps: its own view shows it at once, the host's view of it follows.
+  await host.page.evaluate(() => {
+    window.__e2eMateZ = 0;
+    window.__e2eMateTimer = setInterval(() => {
+      // the host's own session view (fresh on every call; the page may draw only a few frames a second)
+      const H = window.__HH;
+      const v = H.session && H.session.getView();
+      for (const p of (v ? v.players : [])) if (p.id !== H.session.localId) window.__e2eMateZ = Math.max(window.__e2eMateZ, p.z || 0);
+    }, 16);
+  });
+  const hop = await jump(client);
+  const seen = await waitFor(host, () => (window.__e2eMateZ > 10 ? window.__e2eMateZ : false), null, 'the host to see the client jump', 10e3);
+  await host.page.evaluate(() => clearInterval(window.__e2eMateTimer));
+  log(`    fps relay jump: client peak ${hop.z.toFixed(1)}, the host saw it ${seen.toFixed(1)} units up`);
 }
 
 const SCENARIOS = [
@@ -1257,7 +1328,7 @@ const SCENARIOS = [
   ['d', 'p2p', scenarioP2P],
   ['e', 'phone', scenarioPhone],
   ['f', 'bots', scenarioBots],
-  ['g', 'fps-solo', scenarioFpsSolo, 200e3],
+  ['g', 'fps-solo', scenarioFpsSolo, 240e3],
   ['h', 'fps-relay', scenarioFpsRelay, 200e3],
 ];
 

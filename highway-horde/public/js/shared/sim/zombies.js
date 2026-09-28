@@ -3,7 +3,7 @@
 // spitter acid, screamer buff, brute charge, boss slam).
 
 import {
-  DT, PLAYER_RADIUS, TURRET, HP_GROWTH_PER_WAVE, SPEED_GROWTH_PER_WAVE, SPEED_GROWTH_CAP,
+  DT, PLAYER_RADIUS, CRAWLER_REACH_Z, TURRET, HP_GROWTH_PER_WAVE, SPEED_GROWTH_PER_WAVE, SPEED_GROWTH_CAP,
   WAVE_ZOMBIES, SPAWN_PACING, OBJECTIVE_DAMAGE_MULT,
 } from '../constants.js';
 import { ZOMBIES, ZOMBIE_IDS } from '../zombies.js';
@@ -580,6 +580,8 @@ function resolveSwing(game, z) {
   z.swingRef = null;
   switch (z.swingKind) {
     case TK_PLAYER:
+      // A crawler's swipe goes under a survivor who is jumping (SPEC §3.4).
+      if (z.type === 'crawler' && ref.z > CRAWLER_REACH_Z) break;
       if (ref.state !== 'dead' && Math.hypot(ref.x - z.x, ref.y - z.y) - z.radius - PLAYER_RADIUS <= reach) {
         damagePlayer(game, ref, z.damage, z.x, z.y);
       }

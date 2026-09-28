@@ -12,16 +12,18 @@
 //   event positions               i16, 0.5 px (tracer end points may lie off the map)
 //   player / turret / event angles u16; zombie / projectile angles u8
 //   0..1 values                   u8 (reloading/meleeing never round a non-zero to 0)
+//   player jump state (jumpT)     i8 whole ticks (exact, see jump.js); z is derived from it
 //   kinds and ids of data tables  u8 indices into WEAPON_IDS, ZOMBIE_IDS, ...
 // Events use a per-type binary schema; an event this file does not know (or one whose
 // values do not fit its schema) is sent as JSON instead, so nothing is dropped unless
 // that JSON is over MAX_JSON_EVENT_BYTES.
 
-import { PROTOCOL_VERSION } from './constants.js';
+import { PROTOCOL_VERSION, DT } from './constants.js';
 import { TAU, wrapAngle } from './math.js';
 import { WEAPON_IDS, PROJECTILE_KINDS } from './weapons.js';
 import { ZOMBIE_IDS } from './zombies.js';
 import { PICKUP_KINDS } from './items.js';
+import { jumpHeight } from './jump.js';
 
 /** Message type tags (first byte of every binary message). */
 export const MSG = {
@@ -556,6 +558,8 @@ function writePlayer(w, p) {
   w.u32(qInt(p.lastSeq, 0xffffffff));
   // The free pistol's mag (SPEC §4): NONE when the sender does not publish it.
   w.u8(Number.isInteger(p.freeMag) && p.freeMag >= 0 && p.freeMag < NONE ? p.freeMag : NONE);
+  // Jump state in whole ticks (> 0 airborne, < 0 landing cooldown); z follows from it.
+  w.i8(qSmall(num(p.jumpT) / DT, -128, 127));
 }
 
 function readPlayer(r) {
@@ -609,6 +613,8 @@ function readPlayer(r) {
   };
   const freeMag = r.u8();
   if (freeMag !== NONE) rec.freeMag = freeMag;
+  rec.jumpT = r.i8() * DT;
+  rec.z = jumpHeight(rec.jumpT);
   return rec;
 }
 
@@ -879,7 +885,7 @@ export function decodeSnapshot(buf) {
 // ---- inputs
 
 const B_FIRE = 1, B_MELEE = 2, B_SPRINT = 4, B_INTERACT = 8, B_RELOAD = 16, B_FRAG = 32,
-  B_MOLOTOV = 64, B_TURRET = 128, B_BARRICADE = 256, B_LAST_WEAPON = 512;
+  B_MOLOTOV = 64, B_TURRET = 128, B_BARRICADE = 256, B_LAST_WEAPON = 512, B_JUMP = 1024;
 
 const inputWriter = new Writer(256);
 
@@ -915,7 +921,7 @@ export function encodeInputs(cmds) {
     w.u16((c.fire ? B_FIRE : 0) | (c.melee ? B_MELEE : 0) | (c.sprint ? B_SPRINT : 0)
       | (c.interact ? B_INTERACT : 0) | (c.reload ? B_RELOAD : 0) | (c.frag ? B_FRAG : 0)
       | (c.molotov ? B_MOLOTOV : 0) | (c.turret ? B_TURRET : 0) | (c.barricade ? B_BARRICADE : 0)
-      | (c.lastWeapon ? B_LAST_WEAPON : 0));
+      | (c.lastWeapon ? B_LAST_WEAPON : 0) | (c.jump ? B_JUMP : 0));
     w.i8(qSmall(c.slot ?? -1, -1, 127));
     w.i8(qSmall(c.cycle, -1, 1));
   }
@@ -954,6 +960,7 @@ export function decodeInputs(buf) {
       lastWeapon: (b & B_LAST_WEAPON) !== 0,
       slot: r.i8(),
       cycle: r.i8(),
+      jump: (b & B_JUMP) !== 0,
     };
   }
   return out;

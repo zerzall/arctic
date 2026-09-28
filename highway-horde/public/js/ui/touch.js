@@ -14,7 +14,8 @@ const FIRE_AT = 0.55;
 
 /**
  * Buttons: [id, label, kind, cluster] — kind 'edge' fires once per tap, 'hold' is held,
- * 'toggle' flips. Clusters are laid out by CSS per orientation.
+ * 'toggle' flips. Clusters are laid out by CSS per orientation. JUMP is held (hold to keep
+ * hopping) and also reports its taps, so a quick one between two samples still jumps.
  */
 const BUTTONS = [
   ['pause', '❚❚', 'edge', 'util'],
@@ -29,6 +30,7 @@ const BUTTONS = [
   ['cycle', 'SWAP', 'edge', 'main'],
   ['reload', 'RELOAD', 'edge', 'main'],
   ['interact', 'USE', 'hold', 'main'],
+  ['jump', 'JUMP', 'hold', 'jump'],
   ['ready', 'READY', 'edge', 'solo'],
   ['fire', 'FIRE', 'hold', 'fire'],
 ];
@@ -63,6 +65,7 @@ export function createTouchControls(root) {
     util: h('div.tc.tc-util'),
     gear: h('div.tc.tc-gear'),
     main: h('div.tc.tc-main'),
+    jump: h('div.tc.tc-jump'),
     solo: h('div.tc.tc-solo'),
     fire: h('div.tc.tc-fire'),
   };
@@ -71,7 +74,7 @@ export function createTouchControls(root) {
   const move = createStick(zoneL, 'left');
   const aim = createStick(zoneR, 'right');
 
-  const held = { interact: false, melee: false, scoreboard: false, fire: false };
+  const held = { interact: false, melee: false, scoreboard: false, fire: false, jump: false };
   // look mode: accumulated drag (CSS px) since the last read(), and the look pointer
   let lookMode = false;
   let lookDX = 0, lookDY = 0;
@@ -110,9 +113,9 @@ export function createTouchControls(root) {
         firePtr.x = e.clientX;
         firePtr.y = e.clientY;
       }
-      if (kind === 'edge') edges[id]++;
-      else if (kind === 'hold') held[id] = true;
-      else held[id] = !held[id];
+      if (kind === 'edge' || id === 'jump') edges[id]++;
+      if (kind === 'hold') held[id] = true;
+      else if (kind === 'toggle') held[id] = !held[id];
       if (kind === 'toggle') b.classList.toggle('on', held[id]);
       if (navigator.vibrate) {
         try {
@@ -265,7 +268,7 @@ export function createTouchControls(root) {
         moveX: move.x, moveY: move.y, moveM: move.m,
         aimX: aim.x, aimY: aim.y, aimM: aim.m,
         fire: lookMode ? held.fire : aim.m > FIRE_AT,
-        interact: held.interact, melee: held.melee, scoreboard: held.scoreboard,
+        interact: held.interact, melee: held.melee, scoreboard: held.scoreboard, jump: held.jump,
         lookDX, lookDY,
         edges: {},
       };
@@ -281,7 +284,7 @@ export function createTouchControls(root) {
     reset() {
       release(move);
       release(aim);
-      held.interact = held.melee = held.fire = false;
+      held.interact = held.melee = held.fire = held.jump = false;
       lookPtr.id = firePtr.id = -1;
       lookDX = lookDY = 0;
       for (const b of Object.values(buttonEls)) b.classList.remove('pressed');
@@ -292,10 +295,11 @@ export function createTouchControls(root) {
       if (!enabled) {
         release(move);
         release(aim);
-        held.interact = held.melee = held.fire = false;
+        held.interact = held.melee = held.fire = held.jump = false;
         lookPtr.id = firePtr.id = -1;
         lookDX = lookDY = 0;
         buttonEls.fire.classList.remove('pressed');
+        buttonEls.jump.classList.remove('pressed');
       }
     },
     /**

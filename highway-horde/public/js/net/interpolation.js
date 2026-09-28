@@ -32,7 +32,7 @@ function blendPos(out, pa, pb, u) {
   out.y = lerp(pa.y, pb.y, u);
 }
 
-function blendList(a, b, key, u, withAngle) {
+function blendList(a, b, key, u, withAngle, withZ = false) {
   const list = b[key];
   const out = new Array(list.length);
   const prev = a ? indexOf(a, key) : null;
@@ -43,6 +43,8 @@ function blendList(a, b, key, u, withAngle) {
     if (ea) {
       blendPos(e, ea, eb, u);
       if (withAngle) e.angle = lerpAngle(ea.angle, eb.angle, u);
+      // jump height (players): extrapolation must not sink anyone into the ground
+      if (withZ && (ea.z > 0 || eb.z > 0)) e.z = Math.max(0, lerp(ea.z || 0, eb.z || 0, u));
     }
     out[i] = e;
   }
@@ -84,7 +86,7 @@ export function interpolateSnapshots(a, b, u) {
     bossHp: b.bossHp,
     objective: b.objective ? { ...b.objective } : null,
     readyCount: b.readyCount,
-    players: blendList(useA, b, 'players', u, true),
+    players: blendList(useA, b, 'players', u, true, true),
     zombies: blendList(useA, b, 'zombies', u, true),
     projectiles: blendList(useA, b, 'projectiles', u, false),
     pickups: b.pickups,

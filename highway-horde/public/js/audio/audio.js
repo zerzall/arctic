@@ -805,6 +805,7 @@ class Engine {
     const want = this.want || (this.want = []);
     want.length = 0;
     this.playerLoops(view, me, now, want);
+    this.jumpSounds(view, me);
     const horde = this.hordeLoops(view, dt, want);
     this.hazardLoops(view, want, horde);
     this.syncLoops(want, now);
@@ -829,6 +830,26 @@ class Engine {
       } else if (firing) {
         this.wantLoop(want, 'flame' + p.id, 'flame_loop', p, local, 1, 1);
       }
+    }
+  }
+
+  /**
+   * Jump / landing sounds from the players' `z` (height while jumping): a survivor leaving
+   * the ground or touching down. Read from the view, so the local player's own jump plays
+   * the instant it is predicted and teammates' when their snapshots show it.
+   */
+  jumpSounds(view, me) {
+    const last = this.jumpZ || (this.jumpZ = new Map());
+    if (view.tick < this.jumpTick) last.clear(); // a new match
+    this.jumpTick = view.tick;
+    for (const p of view.players) {
+      if (!p) continue;
+      const z = p.state !== 'dead' && p.z > 0 ? p.z : 0;
+      const prev = last.get(p.id);
+      last.set(p.id, z);
+      if (prev === undefined || (prev > 0) === (z > 0)) continue;
+      const id = z > 0 ? 'jump' : 'land';
+      this.play(id, p === me ? { local: true, prio: PRIO_OWN } : { x: p.x, y: p.y });
     }
   }
 

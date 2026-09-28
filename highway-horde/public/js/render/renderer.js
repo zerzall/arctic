@@ -5,7 +5,7 @@
 // projectiles & particles → canopies/lamps → darkness (lighting) → emissive pass
 // (additive: flames, flashes, tracers, eyes, glows) → screen overlays.
 
-import { PLAYER_COLORS, PLAYER_SPEED, BARRICADE } from '../shared/constants.js';
+import { PLAYER_COLORS, PLAYER_SPEED, BARRICADE, JUMP_HEIGHT } from '../shared/constants.js';
 import { ZOMBIES, ZOMBIE_IDS, ZFLAG } from '../shared/zombies.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/math.js';
@@ -384,8 +384,16 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         ctx.beginPath();
         ctx.ellipse(0, 0, 21, 21, 0, 0, TAU);
         ctx.stroke();
-        fillEllipse(ctx, 2, 3, 15, 15, 'rgba(0,0,0,0.35)');
+        // jumping: the shadow slides away from the body and fades, the body grows a little
+        const air = p.z > 0 ? Math.min(1, p.z / JUMP_HEIGHT) : 0;
+        if (air > 0) {
+          const sr = 15 * (1 - 0.3 * air);
+          fillEllipse(ctx, 2 + air * 7, 3 + air * 10, sr, sr, `rgba(0,0,0,${(0.35 * (1 - 0.45 * air)).toFixed(3)})`);
+        } else {
+          fillEllipse(ctx, 2, 3, 15, 15, 'rgba(0,0,0,0.35)');
+        }
         ctx.rotate(p.angle);
+        if (air > 0) ctx.scale(1 + 0.16 * air, 1 + 0.16 * air);
         const wid = p.slots ? p.slots[p.slot] : null;
         if (p.state === 'downed') {
           const pistol = p.slots && p.slots[0] && WEAPONS[p.slots[0]] && WEAPONS[p.slots[0]].category === 'pistol' ? p.slots[0] : 'pistol';

@@ -10,7 +10,8 @@
 // cupping a pistol hand; sleeves in the class outfit colour with the player's colour on
 // the armband.
 //
-// Animation: idle sway + look lag, walk/sprint bob (sprint tilts the gun), recoil kick
+// Animation: idle sway + look lag, walk/sprint bob (sprint tilts the gun), a jump dip on
+// take-off and a heavier one on landing (a spring; no bob in the air), recoil kick
 // with the slide/bolt cycling on each own shot (predicted shots count, echo shots never),
 // brass/shell casings, a real reload driven by the local record's `reloading` (magazine
 // drops out, the support hand brings a fresh one and racks the bolt; shotgun shells one
@@ -34,6 +35,12 @@ import { acquireFx, releaseFx } from './fx-core.js';
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
 const VM_FOV = 64;
+// Jump reaction of the held gun: downward kicks (units/s) on take-off and landing and the
+// spring (1/s², 1/s) that brings it back: ~0.5 and ~1 units of dip.
+const JUMP_TAKEOFF_KICK = 11;
+const JUMP_LAND_KICK = 22;
+const JUMP_SPRING_K = 130;
+const JUMP_SPRING_C = 14;
 // Overall size of the held gun on screen. The PLACE scales were tuned in a sandbox at
 // 1280x720; in play at 1600x900 a rifle filled the lower-right third of the view and a
 // pistol looked like a rifle. Scaling about the firing hand keeps the grip where it was
@@ -172,7 +179,7 @@ export function createViewmodel(ctx) {
     switchT: 1, pending: null,
     throwT: 9, throwKind: 'frag', pumpT: 9, lastShot: -9, spin: 0, spinAngle: 0, cylA: 0, cylTarget: 0,
     flashT: 9, dualSide: 0, down: 0, railCharge: 1, rlPrev: 0, ejected: false, boltT: 9,
-    visible: false,
+    visible: false, lastZ: 0, air: 0, jumpY: 0, jumpV: 0,
   };
   let localId = 0;
   let now = 0;
@@ -369,6 +376,19 @@ export function createViewmodel(ctx) {
     st.sprint += (sprinting - st.sprint) * damp(8, dt);
     const downed = local.state === 'downed' ? 1 : 0;
     st.down += (downed - st.down) * damp(5, dt);
+    // jump: the gun lags the body — it dips on take-off and drops harder on landing, then
+    // springs back; in the air it floats a little higher with no walk bob
+    const jz = local.z > 0 ? local.z : 0;
+    if (st.lastZ <= 0 && jz > 0) st.jumpV -= JUMP_TAKEOFF_KICK;
+    else if (st.lastZ > 0 && jz <= 0) st.jumpV -= JUMP_LAND_KICK;
+    st.lastZ = jz;
+    st.air += ((jz > 0 ? 1 : 0) - st.air) * damp(10, dt);
+    for (let left = dt; left > 1e-6;) {
+      const h = Math.min(left, 1 / 120);
+      st.jumpV += (-JUMP_SPRING_K * st.jumpY - JUMP_SPRING_C * st.jumpV) * h;
+      st.jumpY += st.jumpV * h;
+      left -= h;
+    }
 
     // look lag: the gun trails camera rotation a little
     const yaw = frame.yaw || 0, pitch = frame.pitch || 0;
@@ -407,7 +427,7 @@ export function createViewmodel(ctx) {
     const P = PLACE[style] || PLACE.rifle;
     const t = now;
     const idleX = Math.sin(t * 1.1) * 0.12, idleY = Math.sin(t * 1.7) * 0.1;
-    const bobA = st.bobAmt * (1 + st.sprint * 0.8);
+    const bobA = st.bobAmt * (1 + st.sprint * 0.8) * (1 - st.air);
     const bobX = Math.sin(st.bobPh) * 0.45 * bobA, bobY = -Math.abs(Math.cos(st.bobPh)) * 0.4 * bobA;
     const heavyK = model.heavy ? 0.75 : 1;
     // reload: the gun comes up a little toward the middle, canted clockwise so the mag
@@ -416,11 +436,12 @@ export function createViewmodel(ctx) {
     // pushed a touch away so the canted gun keeps its on-screen size.
     const rlUp = model.reload === 'rocket' ? 0.4 : 1;
     const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 1.3 * rlUp;
-    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5;
+    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5
+      + st.jumpY + st.air * 0.35;
     const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8;
     holder.position.set(x, y, z);
     holder.rotation.set(
-      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02,
+      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04,
       -0.04 + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp,
       st.recoilRoll - rlTilt * (model.reload === 'shells' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');

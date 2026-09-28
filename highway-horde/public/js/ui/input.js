@@ -1,7 +1,8 @@
 // Player input (SPEC §7.2): keyboard + mouse, standard-mapping gamepads and touch, merged
 // into one InputState per animation frame.
 //
-// Held fields (fire, melee, sprint, interact, scoreboard) reflect the button right now.
+// Held fields (fire, melee, sprint, interact, scoreboard) reflect the button right now;
+// `jump` is held too, and also true in the one sample after a tap too quick to be seen held.
 // Edge fields (reload, frag, ..., shop, chat, ready, pause) count presses since the last
 // sample() and are true in exactly one sample. Gameplay fields are neutral while the input
 // is disabled (menus, chat, shop), but the UI edges keep working so Esc/B/Tab can close
@@ -27,11 +28,14 @@ const HELD_KEYS = {
   KeyE: 'interact',
   KeyV: 'melee',
   Tab: 'scoreboard',
+  Space: 'jump',
 };
 const EDGE_KEYS = {
   KeyR: 'reload', KeyG: 'frag', KeyF: 'molotov', KeyT: 'turret', KeyC: 'barricade', KeyQ: 'lastWeapon',
-  KeyB: 'shop', Enter: 'chat', NumpadEnter: 'chat', Space: 'ready', Escape: 'pause',
+  KeyB: 'shop', Enter: 'chat', NumpadEnter: 'chat', KeyN: 'ready', Escape: 'pause',
 };
+/** Keys that jump (held; a tap between two samples still counts once). */
+const JUMP_KEYS = ['Space'];
 const SLOT_KEYS = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 };
 /** Keys whose browser default (scrolling, focus moves) must not happen during play. */
 const PREVENT = new Set([
@@ -91,6 +95,9 @@ export function createInput(canvas, opts = {}) {
   const mouse = { left: false, right: false };
   const edges = newEdges([...GAMEPLAY_EDGES, ...UI_EDGES]);
   const nav = newEdges(NAV_EDGES);
+  // jump presses since the last sample (keyboard, pad, touch): a tap shorter than a frame
+  // is never lost
+  let jumpTaps = 0;
   let slot = -1;
   let cycle = 0;
   let wheelAcc = 0;
@@ -154,6 +161,7 @@ export function createInput(canvas, opts = {}) {
     mode = 'kbm';
     keys.add(code);
     if (e.repeat) return;
+    if (JUMP_KEYS.includes(code)) jumpTaps++;
     const edge = EDGE_KEYS[code];
     if (edge) edges[edge]++;
     if (code in SLOT_KEYS) slot = SLOT_KEYS[code];
@@ -386,6 +394,7 @@ export function createInput(canvas, opts = {}) {
     let melee = mouse.right || keys.has('KeyV');
     let sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
     let interact = keys.has('KeyE');
+    let jump = anyKey(JUMP_KEYS);
     let scoreboard = keys.has('Tab');
     let aimX = cursor.x, aimY = cursor.y;
     let aiming = false;
@@ -421,8 +430,10 @@ export function createInput(canvas, opts = {}) {
           aiming = true;
         }
         if (cur[PAD.RT]) fire = true;
-        if (cur[PAD.LT] || cur[PAD.RB]) melee = true;
-        if (cur[PAD.A]) interact = true;
+        if (cur[PAD.LT]) melee = true;
+        if (cur[PAD.RB]) interact = true;
+        if (cur[PAD.A]) jump = true;
+        if (pressed(PAD.A)) jumpTaps++;
         if (cur[PAD.BACK]) scoreboard = true;
         if (pressed(PAD.X)) edges.reload++;
         if (pressed(PAD.Y)) cycle++;
@@ -471,6 +482,8 @@ export function createInput(canvas, opts = {}) {
         if (t.fire) fire = true;
         if (t.melee) melee = true;
         if (t.interact) interact = true;
+        if (t.jump) jump = true;
+        if (t.edges.jump) jumpTaps += t.edges.jump;
         if (t.scoreboard) scoreboard = true;
         for (const k of Object.keys(t.edges)) {
           const n = t.edges[k];
@@ -508,7 +521,7 @@ export function createInput(canvas, opts = {}) {
 
     const out = {
       moveX: 0, moveY: 0, aimScreenX: aimX, aimScreenY: aimY,
-      fire: false, melee: false, sprint: false, interact: false,
+      fire: false, melee: false, sprint: false, interact: false, jump: false,
       reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
       slot: -1, cycle: 0,
       shop: edges.shop > 0, scoreboard, chat: edges.chat > 0, ready: edges.ready > 0, pause: edges.pause > 0,
@@ -525,6 +538,7 @@ export function createInput(canvas, opts = {}) {
       out.melee = melee;
       out.sprint = sprint;
       out.interact = interact;
+      out.jump = jump || jumpTaps > 0;
       for (const e of GAMEPLAY_EDGES) out[e] = edges[e] > 0;
       out.slot = slot;
       out.cycle = Math.sign(cycle);
@@ -538,6 +552,7 @@ export function createInput(canvas, opts = {}) {
     for (const e of GAMEPLAY_EDGES) edges[e] = 0;
     for (const e of UI_EDGES) edges[e] = 0;
     for (const n of NAV_EDGES) nav[n] = 0;
+    jumpTaps = 0;
     slot = -1;
     cycle = 0;
     lookDX = 0;
@@ -554,6 +569,7 @@ export function createInput(canvas, opts = {}) {
       enabled = nb;
       // Presses made while a menu was open must not fire when it closes.
       for (const e of GAMEPLAY_EDGES) edges[e] = 0;
+      jumpTaps = 0;
       slot = -1;
       cycle = 0;
       wheelAcc = 0;

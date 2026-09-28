@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -38,6 +38,18 @@ export const ARMOR_MAX = 100;
 export const ARMOR_ABSORB = 0.6;           // share of incoming damage that armour soaks up
 export const WEAPON_SLOTS = 3;
 export const START_CASH = 500;
+
+// Jumping (shared/jump.js): a fixed parabola, JUMP_HEIGHT world units high at its apex and
+// JUMP_TIME seconds long (a whole number of ticks), then JUMP_COOLDOWN s on the ground
+// before the next one. No double jump, no fall damage. While the feet are above an
+// obstacle's JUMP_CLEAR height (its rendered height, render3d/world.js) the player passes
+// over it; everything not listed (cars, walls, fences, barricades, water, ...) still blocks.
+export const JUMP_HEIGHT = 48;
+export const JUMP_TIME = 36 / 60;
+export const JUMP_COOLDOWN = 6 / 60;
+export const JUMP_CLEAR = { guardrail: 22, barrier: 26, sandbags: 30 };
+// Crawlers bite at ankle height: an airborne player this high (feet) is out of their reach.
+export const CRAWLER_REACH_Z = 14;
 
 export const DOWNED_SPEED = 45;
 export const BLEEDOUT_TIME = 30;           // seconds before a downed player dies

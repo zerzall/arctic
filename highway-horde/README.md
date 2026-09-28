@@ -117,20 +117,21 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 | Look & aim | Mouse (click the game first) | Right stick |
 | Shoot | Left click | RT |
 | Release the mouse / menu | Esc | Start |
-| Shove | Right click or V | LT or RB |
+| Jump (over guard rails, barriers, sandbags) | Space | A |
+| Shove | Right click or V | LT |
 | Sprint | Shift | Click left stick |
 | Reload | R | X |
-| Revive (hold) / take crate | E | A |
+| Revive (hold) / take crate | E | RB |
 | Switch weapon | 1 2 3, wheel, Q for last | Y, D-pad ▶ |
 | Frag / molotov | G / F | LB / B |
 | Turret / barricade | T / C | D-pad ▲ / ▼ |
 | Shop | B | Click right stick |
-| Ready up (skip the break) | Space | D-pad ◀ |
+| Ready up (skip the break) | N | D-pad ◀ |
 | Scoreboard / chat | Tab / Enter | Back / — |
 
 On phones and tablets the left thumb moves, dragging on the right half of the screen
-looks around, and a big FIRE button shoots (drag it to keep turning while you fire); the
-other actions have on-screen buttons. Gamepads and touch get a light aim assist.
+looks around, and a big FIRE button shoots (drag it to keep turning while you fire); JUMP
+sits next to it and the other actions have on-screen buttons. Gamepads and touch get a light aim assist.
 Every device starts on the **Ultra** graphics preset with **Auto** resolution, which
 lowers the render resolution only when a big fight would drop below 60 fps. On phones and
 tablets Ultra makes the device run warm and drains the battery faster; set the resolution
@@ -162,6 +163,9 @@ In the classic top-down view the mouse points where you shoot and nothing is cap
 - Check behind you. The horde comes from every side; listen for groans at your back and
   turn toward the red arcs when something hits you.
 - Revive downed teammates by holding E next to them. They have 30 seconds.
+- Jump (Space) over guard rails, jersey barriers and sandbags to cut corners or get away;
+  sprint first for a longer leap. Cars, fences and barricades are too tall. Crawlers can't
+  reach you while you're in the air.
 - The shop is open between waves. Mid-wave, you can only buy at the supply station.
 - Every fifth wave brings a boss. Save a frag or two for it.
 

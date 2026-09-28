@@ -216,7 +216,7 @@ export function createOverlay3D(ctx) {
       const name = r ? r.name : 'P' + p.id;
       const dist = Math.hypot(p.x - camX, p.y - camY);
       const downed = p.state === 'downed';
-      const s = ctx.project(p.x, p.y, downed ? 30 : TAG_H);
+      const s = ctx.project(p.x, p.y, (downed ? 30 : TAG_H) + (p.z > 0 ? p.z : 0));
       if (!s.visible) {
         // only a downed teammate earns a pointer: the compass and radar show the rest
         if (downed) edgeArrow(p.x, p.y, frame, W, H, yaw, color, '✚ ' + name, true);

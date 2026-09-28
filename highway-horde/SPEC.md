@@ -174,15 +174,34 @@ calls per tick). All randomness from a seeded rng.
 ```js
 export function createCollisionWorld(map);   // static colliders (obstacles, objective, water, bounds)
 world.setBarricades(list)                    // [{x, y, a}] or [{x, y, angle}] dynamic walls (BARRICADE size)
-export function stepPlayerMovement(p, cmd, dt, world);
+export function stepPlayerMovement(p, cmd, dt, world);  // → 1 took off, -1 landed, 0 otherwise
 ```
 `p` needs `{ x, y, state, stamina, sprintLock, speedMult, moveMult }` (+ optional
-`staminaMult`, class perk: drain ÷ it, regen × it) and is mutated
-(x, y, stamina, sprintLock, sprinting). `speedMult` comes from the class perk,
+`staminaMult`, class perk: drain ÷ it, regen × it, and `jumpT`) and is mutated
+(x, y, stamina, sprintLock, sprinting, jumpT, z). `speedMult` comes from the class perk,
 `moveMult` from the held weapon. Players collide with static obstacles (solid or not),
 water, the objective, barricades and the map bounds — **not** with zombies or other
 players (so client prediction can be exact). Downed players move at DOWNED_SPEED and
 cannot sprint. The host sim must use this very function for player movement.
+
+**Jumping** (`shared/jump.js`, numbers in constants.js). `cmd.jump` while standing ready
+takes off; the jump is a fixed parabola JUMP_HEIGHT (48) units high and JUMP_TIME (0.6 s,
+36 ticks) long, then JUMP_COOLDOWN (0.1 s) on the ground before the next one (holding the
+button hops again after it). No double jump, full air control (steering and sprint work as
+on the ground), no fall damage; only 'alive' players take off (a player downed mid-air
+still comes down; the dead are put back on the ground). The whole state is `p.jumpT` (s): > 0 airborne time since take-off,
+< 0 landing cooldown left, 0 ready — always a whole number of ticks, so it travels exactly
+in snapshots; `p.z = jumpHeight(jumpT)` is the feet height. While the feet are at least an
+obstacle's clearance high the player passes over it: every collider has a `hop` height
+(geom.js; `jumpClearance(o)` from JUMP_CLEAR: guardrail 22, barrier 26, sandbags 30 — their
+rendered heights) and `Infinity` for everything else (cars and other vehicles, walls and
+fences, buildings, containers, rocks, water, the objective, player barricades).
+`world.resolveCircle(pos, r, mask, z)` / `moveCircle(pos, r, dx, dy, mask, z)` skip static
+colliders with `hop ≤ z`. A landing (and every airborne tick below the highest clearance)
+checks `world.circleBlockedAt(x, y, r, z)`; a player coming down inside low cover wedged
+against something else is moved by `world.unstick(pos, r, z)` to the nearest free spot
+(rings every 4 px up to 96 px in 8 fixed directions — exact constants, so every engine
+agrees). Knockback moves use the player's `z` too. Bots never jump.
 
 Zombies collide with obstacles/water/objective/barricades/bounds, and are separated from
 each other (soft push) and from players (they stop at attack distance; players are not
@@ -200,11 +219,13 @@ InputCmd = {
   reload, frag, molotov, turret, barricade, lastWeapon,  // edge-triggered (true on one cmd only)
   slot,             // -1 = no change, 0..2 = switch to slot
   cycle,            // 0, +1 (next weapon), -1 (previous)
+  jump,             // jump button held (or tapped since the last cmd); see §3.2
 }
 ```
 Host applies one cmd per player per tick. If a player's queue is empty it repeats the
-last cmd **with edge fields cleared**. The queue holds at most 6: queuing a 7th drops the
-oldest (but keeps any edge flags by OR-ing them into the next cmd). A standing backlog
+last cmd **with edge fields cleared** (`jump` counts as one here: a repeat never jumps).
+The queue holds at most 6: queuing a 7th drops the oldest (but keeps any edge flags,
+`jump` included, by OR-ing them into the next cmd). A standing backlog
 drains: when a player's queue held ≥ 2 cmds at every tick of a 20-tick window, one extra
 cmd is dropped the same way (so a burst of late inputs doesn't add latency for good).
 
@@ -244,7 +265,8 @@ In attack range it attacks at attackRate (damage to player: armour absorbs ARMOR
 of it while armour lasts; to turrets/barricades/objective: raw). A zombie that bumps
 into a barricade attacks the barricade. Specials: see comments in `zombies.js`
 (bloater burst, spitter acid lob + pool, screamer buff, brute charge, boss slam).
-Burning zombies take burn dps and run 15% faster.
+Burning zombies take burn dps and run 15% faster. A crawler's swipe misses a player whose
+feet are higher than CRAWLER_REACH_Z (14) when it lands (jumping over crawlers).
 
 **Players.** Classes from `classes.js` set maxHp, start armour, weapons, perks.
 Slots: 3 (`WEAPON_SLOTS`). Start: slot0 pistol, slot1 class weapon, slot2 empty, cash
@@ -407,6 +429,8 @@ Snapshot = {
     earned,                 // total cash earned this game (end-screen stat)
     sprintLock,             // true while exhausted (must regain STAMINA_MIN_TO_SPRINT) — for exact prediction
     freeMag,                // rounds in the free pistol (fired while downed with no pistol) — for exact prediction
+    z,                      // feet height while jumping (world units), 0 on the ground
+    jumpT,                  // jump state (§3.2): > 0 airborne s, < 0 landing cooldown — for exact prediction
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/ } ],
   projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
@@ -479,7 +503,9 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
+u8. PROTOCOL_VERSION 3: an InputCmd's buttons carry a `jump` bit, and each snapshot player
+ends with its `jumpT` as a signed byte of whole ticks (`z` is derived from it on decode).
+Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
 Events may be packed as compact JSON (with numbers rounded to 1 decimal) inside the
 buffer; an event whose JSON exceeds `MAX_JSON_EVENT_BYTES` (1 KB) is dropped. A 6-player, 250-zombie snapshot with ~60 events must stay under 14 KB. First byte
 of every binary message is a message-type tag so snapshots and inputs can share a channel.
@@ -607,6 +633,8 @@ r.screenToWorld(sx, sy) → {x, y}
 r.worldToScreen(x, y)  → {x, y}
 r.getCamera()          → {x, y}       // world point at the screen centre (read-only copy):
                                       //   the UI passes it to audio as the listener
+   // A jumping player (z > 0) is drawn up to 16 % bigger with its shadow shrunk, faded and
+   // pushed away from the body.
 r.resize()                            // call on window resize (handles devicePixelRatio)
 r.setQuality(q)
 r.destroy()
@@ -630,14 +658,19 @@ export function createInput(canvas)
 input.sample() → InputState      // call once per frame; edges reported once
 input.setEnabled(bool)           // false while typing in chat / in menus
 input.cursor                     // {x, y} screen px
-InputState = { moveX, moveY, aimScreenX, aimScreenY, fire, melee, sprint, interact,
+InputState = { moveX, moveY, aimScreenX, aimScreenY, fire, melee, sprint, interact, jump,
                reload, frag, molotov, turret, barricade, lastWeapon, slot, cycle,
                shop, scoreboard, chat, ready, pause }   // last five are UI edges/helds
 ```
-Keyboard + mouse (WASD/arrows, mouse aim, LMB fire, RMB/V melee, Shift sprint, E
-interact, R reload, 1/2/3 slots, wheel cycle, Q last weapon, G frag, F molotov,
-T turret, C barricade, B shop, Tab scoreboard (held), Enter chat, Space ready, Esc menu),
-gamepad (standard mapping, right stick aim), touch (twin virtual sticks + buttons).
+Keyboard + mouse (WASD/arrows, mouse aim, LMB fire, RMB/V melee, Shift sprint, Space
+jump, E interact, R reload, 1/2/3 slots, wheel cycle, Q last weapon, G frag, F molotov,
+T turret, C barricade, B shop, Tab scoreboard (held), Enter chat, N ready, Esc menu),
+gamepad (standard mapping, right stick aim; A jump, RB interact, LT melee, RT fire, X
+reload, Y next weapon, LB frag, B molotov, D-pad ▲ turret / ▼ barricade / ▶ last weapon /
+◀ ready, L3 sprint toggle, R3 shop, Back scoreboard, Start menu; A also accepts in menus),
+touch (twin virtual sticks + buttons, JUMP next to FIRE in first person). `jump` is held
+like `sprint`, and is also true in the one sample after a press too short to be seen held
+(a tap between frames is never lost); the cmd builder carries such a tap into the next cmd.
 `session.update(dt, input, aimAngle)` receives the InputState plus the aim angle, which
 the UI computes as the angle from `session.getPredictedLocal()` to
 `renderer.screenToWorld(input.aimScreenX, input.aimScreenY)` (top-down) or takes as the
@@ -716,6 +749,8 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
+// update() also plays 'jump' / 'land' (synthesised grunt + scuff, boot thud + grit) when a
+// player's `z` leaves / returns to 0 — the local one from its predicted view at once.
 // First person: pass `yaw` in addEvents/update opts (see §7.5 "Audio orientation";
 // exported helpers orientedPan(dx, dy, yaw) and rearShade(behind, maxLp) are unit-tested).
 // addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
@@ -825,7 +860,10 @@ The renderer creates its overlay canvas as a sibling right after `canvas` (same 
 
 **Camera.** At the local player's rendered position (the view's local record, already
 predicted on clients) at eye height, looking along `look.yaw` / `look.pitch`, with walk
-bob, landing of recoil kicks and screen shake (respect settings.screenShake). Downed:
+bob, landing of recoil kicks and screen shake (respect settings.screenShake). Jumping: the
+eye rides `z` (no walk bob in the air) and a touch-down kicks a ~3-unit spring dip; the
+viewmodel dips a little on take-off and more on landing, then springs back; teammates
+(players3d) are lifted by `z` with their knees tucked. Downed:
 eye 16, slight roll. Dead/spectating: a smooth third-person chase camera behind a living
 teammate (their angle), or a slow orbit over the objective when nobody is alive.
 
@@ -944,11 +982,15 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
   locally. Screenshots go to `e2e-output/` (gitignored). `E2E_ONLY=a,c` runs a subset.
   Scenario f (bots): Play Solo, Add Bot ×3 (BOT tags), ✕ removes one, the human readies,
   the two bots ready after them and both score kills while the human stands still.
-  Scenario g (fps-solo): pointer lock, W walks along the view, losing the lock opens the
+  Scenario a readies up with N and checks that Space lifts the player (Space was 'ready'
+  before jumping existed).
+  Scenario g (fps-solo, 240 s budget): pointer lock (clicking again if a busy page lets
+  the first request lapse), W walks along the view, Space jumps (the view's
+  local z and the camera rise, then land), losing the lock opens the
   pause menu, turn toward the nearest zombie through `__HH.look` and kill it, End Game and
   a second game (no leaked overlay canvases). Scenario h (fps-relay): 2 players over the
-  relay in first person — each camera sees the other, and the client's W moves it along
-  its own yaw on the host. Headless Chromium renders WebGL with SwiftShader (software), so
+  relay in first person — each camera sees the other, the client's W moves it along
+  its own yaw on the host, and the host sees the client jump. Headless Chromium renders WebGL with SwiftShader (software), so
   g/h are written to hold at a few frames per second.
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×

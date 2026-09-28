@@ -4,7 +4,10 @@
 //
 // Every oriented box ("OBB") is a plain object built by makeObb(): centre (x, y),
 // half extents (hw, hh), angle a with its cosine/sine cached, an axis-aligned
-// bounding box, and a `mask` of MASK_* bits describing what it blocks.
+// bounding box, a `mask` of MASK_* bits describing what it blocks, and `hop`: the height
+// a jumping player's feet must reach to pass over it (Infinity = can't be jumped).
+
+import { jumpClearance } from './jump.js';
 
 /** Blocks bullets, beams, projectiles and line of sight. */
 export const MASK_SOLID = 1;
@@ -44,7 +47,7 @@ const EPS = 1e-9;
 export function makeObb(x, y, w, h, a = 0, mask = 0, ref = null) {
   const ob = {
     x, y, hw: w / 2, hh: h / 2, a, c: 1, s: 0, mask, ref,
-    minX: 0, minY: 0, maxX: 0, maxY: 0,
+    minX: 0, minY: 0, maxX: 0, maxY: 0, hop: Infinity,
   };
   setObbPose(ob, x, y, a);
   return ob;
@@ -440,15 +443,17 @@ export class StaticIndex {
 
 /**
  * Build the collision boxes for a MapDef: every obstacle (walk-blocking, shot-blocking
- * when `solid`, heavy-blocking unless crushable), every 'water' area (walk-blocking
- * only) and the objective (blocks everything).
+ * when `solid`, heavy-blocking unless crushable, jumpable per jumpClearance), every
+ * 'water' area (walk-blocking only) and the objective (blocks everything).
  * @returns {object[]} boxes with `ref` pointing at the source object
  */
 export function mapColliders(map) {
   const out = [];
   for (const o of map.obstacles || []) {
     const mask = MASK_MOVE | (o.solid ? MASK_SOLID : 0) | (isCrushable(o) ? 0 : MASK_BULKY);
-    out.push(makeObb(o.x, o.y, o.w, o.h, o.a || 0, mask, o));
+    const box = makeObb(o.x, o.y, o.w, o.h, o.a || 0, mask, o);
+    box.hop = jumpClearance(o);
+    out.push(box);
   }
   for (const ar of map.areas || []) {
     if (ar.kind === 'water') out.push(makeObb(ar.x, ar.y, ar.w, ar.h, ar.a || 0, MASK_MOVE | MASK_WATER, ar));

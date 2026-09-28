@@ -25,9 +25,9 @@ import { activeWeapon } from '../shared/sim/players.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
-  kbm: { interact: 'E', shop: 'B', ready: 'SPACE', frag: 'G', molotov: 'F', turret: 'T', barricade: 'C', reload: 'R', scoreboard: 'TAB' },
-  pad: { interact: 'A', shop: 'R3', ready: '◀', frag: 'LB', molotov: 'B', turret: '▲', barricade: '▼', reload: 'X', scoreboard: 'BACK' },
-  touch: { interact: 'USE', shop: 'SHOP', ready: 'READY', frag: 'FRAG', molotov: 'MOLO', turret: 'TURRET', barricade: 'WALL', reload: 'RELOAD', scoreboard: 'SCORES' },
+  kbm: { interact: 'E', shop: 'B', ready: 'N', jump: 'SPACE', frag: 'G', molotov: 'F', turret: 'T', barricade: 'C', reload: 'R', scoreboard: 'TAB' },
+  pad: { interact: 'RB', shop: 'R3', ready: '◀', jump: 'A', frag: 'LB', molotov: 'B', turret: '▲', barricade: '▼', reload: 'X', scoreboard: 'BACK' },
+  touch: { interact: 'USE', shop: 'SHOP', ready: 'READY', jump: 'JUMP', frag: 'FRAG', molotov: 'MOLO', turret: 'TURRET', barricade: 'WALL', reload: 'RELOAD', scoreboard: 'SCORES' },
 };
 
 const COMMON_ZOMBIES = new Set(['walker', 'runner', 'crawler']);
