@@ -4,8 +4,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAP_LIST, buildMap } from '../public/js/shared/maps.js';
+import fs from 'node:fs';
+import { MAP_LIST, buildMap, OVERPASS } from '../public/js/shared/maps.js';
 import { NAV_CELL } from '../public/js/shared/constants.js';
+import { FlowField } from '../public/js/shared/flowfield.js';
+import { createCollisionWorld } from '../public/js/shared/movement.js';
+import { pickSpawnRect } from '../public/js/shared/sim/zombies.js';
+import { createRng } from '../public/js/shared/rng.js';
 
 const MAP_IDS = ['highway', 'truckstop', 'bridge', 'checkpoint'];
 const SEEDS = [1, 42, 9001];
@@ -15,11 +20,15 @@ const AREA_KINDS = ['asphalt', 'concrete', 'grass', 'dirt', 'gravel', 'sand', 'w
 const LINE_KINDS = ['white', 'white_dashed', 'yellow', 'yellow_double', 'crosswalk', 'parking', 'stop'];
 const OBSTACLE_KINDS = ['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker', 'barrier',
   'sandbags', 'building', 'wall', 'container', 'pump', 'tree', 'rock', 'hesco', 'tent', 'booth',
-  'guardrail', 'pillar'];
+  'guardrail', 'pillar', 'pier', 'ramp'];
 const DECOR_KINDS = ['tree_canopy', 'bush', 'grass_tuft', 'rock', 'cone', 'debris', 'tire', 'crack',
-  'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble'];
+  'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble', 'signal', 'pylon'];
 const OBJECTIVE_KINDS = ['bus', 'diner', 'apc', 'radio'];
 const LOW_COVER = ['guardrail', 'barrier', 'sandbags'];
+/** Obstacle budget per map (the long highway map holds more wrecks and rails). */
+const MAX_OBSTACLES = { highway: 300 };
+/** Headroom under a deck a player walks beneath (eye 52, plus a jump, plus margin). */
+const DECK_CLEARANCE = 150;
 const HEX = /^#[0-9a-f]{6}$/i;
 
 // ---- geometry helpers (oriented rectangles, centre + full size + angle)
@@ -134,6 +143,32 @@ function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/** Ground-level ends of the overpass ramps. */
+function rampToes(m) {
+  if (!m.overpass) return [];
+  return m.overpass.decks.filter((d) => d.kind === 'ramp').map((d) => {
+    const p = d.pts.reduce((a, b) => (b[2] < a[2] ? b : a));
+    return { x: p[0], y: p[1] };
+  });
+}
+
+/** Deck top height over (x, y), 0 off the decks (mirrors render3d's deckHeightAt). */
+function deckAt(m, x, y, pad = 0) {
+  let best = 0;
+  for (const d of (m.overpass && m.overpass.decks) || []) {
+    for (let i = 0; i + 1 < d.pts.length; i++) {
+      const [x0, y0, z0] = d.pts[i], [x1, y1, z1] = d.pts[i + 1];
+      const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy;
+      const t = ((x - x0) * dx + (y - y0) * dy) / L2;
+      if (t < 0 || t > 1) continue;
+      const px = x0 + dx * t, py = y0 + dy * t;
+      if (Math.hypot(x - px, y - py) > d.w / 2 + pad) continue;
+      best = Math.max(best, z0 + (z1 - z0) * t);
+    }
+  }
+  return best;
+}
+
 const cache = new Map();
 function getMap(id, seed) {
   const key = `${id}:${seed}`;
@@ -183,7 +218,7 @@ for (const id of MAP_IDS) {
       assert.equal(m.id, id);
       assert.equal(m.name, MAP_LIST.find((e) => e.id === id).name);
       assert.equal(m.seed, seed);
-      assert.ok(Number.isFinite(m.width) && m.width >= 2400 && m.width <= 4000, 'width');
+      assert.ok(Number.isFinite(m.width) && m.width >= 2400 && m.width <= 8000, 'width');
       assert.ok(Number.isFinite(m.height) && m.height >= 1600 && m.height <= 3000, 'height');
       assert.equal(typeof m.ambient, 'object');
       assert.ok(m.ambient.darkness >= 0.55 && m.ambient.darkness <= 0.75, 'darkness');
@@ -248,7 +283,7 @@ for (const id of MAP_IDS) {
 
     test(`${label}: obstacle budget and world bounds`, () => {
       const m = getMap(id, seed);
-      assert.ok(m.obstacles.length >= 60 && m.obstacles.length <= 160, `obstacles: ${m.obstacles.length}`);
+      assert.ok(m.obstacles.length >= 60 && m.obstacles.length <= (MAX_OBSTACLES[id] || 160), `obstacles: ${m.obstacles.length}`);
       const inside = (x, y, tol = 0.5) => x >= -tol && y >= -tol && x <= m.width + tol && y <= m.height + tol;
       for (const o of m.obstacles) {
         for (const [x, y] of corners(o)) assert.ok(inside(x, y), `obstacle ${o.id} (${o.kind}) out of bounds`);
@@ -276,9 +311,11 @@ for (const id of MAP_IDS) {
       const sd = dist(m.supply, ob);
       assert.ok(sd >= 250 && sd <= 450, `supply ${sd.toFixed(0)} px from objective`);
       for (const p of m.playerSpawns) assert.ok(dist(p, ob) < 400, 'player spawns near the objective');
+      const toes = rampToes(m);
       for (const z of m.zombieSpawns) {
         const edge = Math.min(z.x, z.y, m.width - z.x, m.height - z.y);
-        assert.ok(edge <= 250, 'zombie spawn hugs an edge');
+        const foot = toes.some((t) => Math.hypot(t.x - z.x, t.y - z.y) <= 160);
+        assert.ok(edge <= 250 || foot, 'zombie spawn hugs an edge (or the foot of an overpass ramp)');
         assert.ok(dist(z, ob) >= 800, 'zombie spawn far from the objective');
       }
     });
@@ -405,5 +442,178 @@ test('bridge: the river splits the map and only the bridge crosses it', () => {
   for (let r = 0; r < grid.rows; r++) {
     const y = (r + 0.5) * NAV_CELL;
     if (y < deckTop - WALKER_RADIUS || y > deckBottom + WALKER_RADIUS) assert.equal(grid.blocked[r * grid.cols + col], 1);
+  }
+});
+
+// ---------------------------------------------------------------------------------
+// Navigation on the sim's own flow field, the long highway's layout and its overpass.
+
+for (const id of MAP_IDS) {
+  test(`${id}: the real flow field leads from every zombie spawn and player start to the objective`, () => {
+    const m = getMap(id, 42);
+    const field = new FlowField(m, { pad: 3 });
+    field.update([m.objective]);
+    const out = { x: 0, y: 0 };
+    for (const z of m.zombieSpawns) {
+      for (const [fx, fy] of [[0, 0], [-0.4, -0.4], [0.4, 0.4], [0.4, -0.4], [-0.4, 0.4]]) {
+        const x = z.x + fx * z.w, y = z.y + fy * z.h;
+        assert.ok(field.reachable(x, y), `zombie spawn ${z.x},${z.y} (${x.toFixed(0)},${y.toFixed(0)}) cannot reach the objective`);
+        assert.ok(field.sample(x, y, out) && Math.hypot(out.x, out.y) > 0.5, 'a walking direction');
+      }
+    }
+    for (const p of m.playerSpawns) assert.ok(field.reachable(p.x, p.y), `player start ${p.x},${p.y} cut off`);
+    assert.ok(field.reachable(m.supply.x, m.supply.y), 'supply cut off');
+  });
+}
+
+test('highway: a long highway with two crossroads, an overpass and its ramps', () => {
+  const m = getMap('highway', 1);
+  assert.ok(m.width >= 7000 && m.width <= 8000, `width ${m.width}`);
+  assert.ok(Math.abs(m.objective.x - m.width / 2) < 300, 'the bus stays near the middle');
+  // Crossroads: two asphalt roads running the full height across the highway.
+  const roads = m.areas.filter((a) => a.kind === 'asphalt' && a.h >= m.height - 1 && a.w <= 200);
+  assert.equal(roads.length, 2, 'two crossroads');
+  for (const r of roads) {
+    const signals = m.decor.filter((d) => d.kind === 'signal' && Math.abs(d.x - r.x) < 150);
+    assert.ok(signals.length >= 4, `signals at the junction at x=${r.x}`);
+    const near = (l) => Math.abs((l.x1 + l.x2) / 2 - r.x) < 180;
+    assert.ok(m.lines.filter((l) => l.kind === 'crosswalk' && near(l)).length >= 4, 'crosswalks');
+    assert.ok(m.lines.filter((l) => l.kind === 'stop' && near(l)).length >= 4, 'stop lines');
+    // The median barrier opens so the crossroad goes through.
+    for (const o of m.obstacles) {
+      if (o.kind === 'barrier') assert.ok(Math.abs(o.x - r.x) > r.w / 2 + 20, 'barrier across the junction');
+    }
+    for (const y of [60, m.height - 60]) {
+      assert.ok(m.zombieSpawns.some((z) => Math.abs(z.x - r.x) < 60 && Math.abs(z.y - y) < 60), `horde comes down the crossroad (y=${y})`);
+    }
+  }
+  // Overpass: a viaduct over the highway, past both map edges, and two ramps onto the shoulders.
+  const decks = m.overpass.decks;
+  const viaduct = decks.find((d) => d.kind === 'viaduct');
+  assert.ok(viaduct, 'a viaduct');
+  const ys = viaduct.pts.map((p) => p[1]);
+  assert.ok(Math.min(...ys) < 0 && Math.max(...ys) > m.height, 'the viaduct runs on past the map edges');
+  assert.ok(deckAt(m, viaduct.pts[0][0], 1000) > 150 && deckAt(m, viaduct.pts[0][0], 1250) > 150, 'it crosses the highway');
+  const toes = rampToes(m);
+  assert.ok(toes.length >= 2, 'on/off ramps');
+  for (const t of toes) {
+    assert.ok((t.y > 760 && t.y < 860) || (t.y > 1340 && t.y < 1440), `ramp toe ${t.x},${t.y} lands on a shoulder`);
+    assert.ok(m.zombieSpawns.some((z) => Math.hypot(z.x - t.x, z.y - t.y) < 160), 'zombies come down the ramp');
+  }
+  assert.ok(m.zombieSpawns.some((z) => z.x < 150) && m.zombieSpawns.some((z) => z.x > m.width - 150), 'both ends of the highway');
+  // Up on the deck: vehicles, one of them tipped over the edge.
+  assert.ok(m.overpass.vehicles.length >= 3 && m.overpass.vehicles.some((v) => v.pitch !== 0), 'wrecks up on the deck');
+  for (const v of m.overpass.vehicles) assert.ok(deckAt(m, v.x, v.y, 20) > 150, 'deck vehicles sit on (or teeter over the edge of) the deck');
+});
+
+test('highway: overpass piers block movement and the ground under the deck stays open', () => {
+  const m = getMap('highway', 42);
+  const world = createCollisionWorld(m);
+  const piers = m.obstacles.filter((o) => o.kind === 'pier');
+  assert.ok(piers.length >= 10, `pier columns (${piers.length})`);
+  for (const p of piers) {
+    assert.equal(p.solid, true, 'piers stop bullets');
+    assert.ok(!world.isCircleFree(p.x, p.y, 14, false), 'a pier blocks');
+    const deck = deckAt(m, p.x, p.y);
+    assert.ok(deck > 0, `pier ${p.x},${p.y} stands under a deck`);
+    assert.ok(Math.abs(p.top - (deck - OVERPASS.depth - OVERPASS.cap)) < 1, 'the column reaches the pier cap');
+    // Walking into it from either side stops at its face.
+    for (const s of [-1, 1]) {
+      const pos = { x: p.x + s * 60, y: p.y };
+      if (!world.isCircleFree(pos.x, pos.y, 14, false)) continue;
+      world.moveCircle(pos, 14, -s * 120, 0);
+      assert.ok(Math.abs(pos.x - p.x) >= p.w / 2 + 14 - 0.5, 'walked through a pier');
+    }
+  }
+  // Under the viaduct: open ground between the bents, connected to the rest of the map,
+  // and headroom for the camera everywhere a player can stand.
+  const viaduct = m.overpass.decks.find((d) => d.kind === 'viaduct');
+  const grid = buildGrid(m, WALKER_RADIUS);
+  const comp = labelComponents(grid);
+  const main = comp[cellOf(grid, m.zombieSpawns[0].x, m.zombieSpawns[0].y)];
+  let free = 0, total = 0;
+  for (let y = 40; y < m.height - 40; y += 20) {
+    for (const dx of [-100, 0, 100]) {
+      const x = viaduct.pts[0][0] + dx;
+      total++;
+      const c = cellOf(grid, x, y);
+      if (grid.blocked[c]) continue;
+      free++;
+      assert.equal(comp[c], main, `under the viaduct at ${x},${y} is cut off`);
+    }
+  }
+  assert.ok(free / total > 0.8, `mostly open under the viaduct (${free}/${total})`);
+  for (let x = 20; x < m.width; x += 20) {
+    for (let y = 20; y < m.height; y += 20) {
+      const z = deckAt(m, x, y);
+      if (z <= OVERPASS.walk || !world.isCircleFree(x, y, 14, false)) continue;
+      // standing under a deck: the pier caps (its lowest part) stay far above the eye
+      assert.ok(z - OVERPASS.depth - OVERPASS.cap >= DECK_CLEARANCE - 20, `low deck over walkable ground at ${x},${y} (z ${z.toFixed(0)})`);
+    }
+  }
+});
+
+test('highway: ramp embankments are walls only where the ramp is too tall to step onto', () => {
+  const m = getMap('highway', 9001);
+  const ramps = m.obstacles.filter((o) => o.kind === 'ramp');
+  assert.ok(ramps.length >= 4);
+  for (const o of ramps) {
+    assert.ok(deckAt(m, o.x, o.y) > 0, 'ramp obstacle under a ramp deck');
+    assert.equal(o.solid, o.top > OVERPASS.low, `ramp piece up to ${o.top} is ${o.solid ? 'solid' : 'low cover'}`);
+  }
+  for (const d of m.overpass.decks.filter((dd) => dd.kind === 'ramp')) {
+    const [x0, y0, z0] = d.pts[0], [x1, y1, z1] = d.pts[d.pts.length - 1];
+    const L = Math.hypot(x1 - x0, y1 - y0);
+    for (let s = 0; s <= L; s += 8) {
+      const x = x0 + ((x1 - x0) * s) / L, y = y0 + ((y1 - y0) * s) / L, z = z0 + ((z1 - z0) * s) / L;
+      const inRamp = ramps.some((o) => pointInRect(x, y, o, 0));
+      if (z < OVERPASS.walk - 1) assert.ok(!inRamp, `the ramp's toe is walkable (${x.toFixed(0)},${y.toFixed(0)} z ${z.toFixed(1)})`);
+      else if (z > OVERPASS.walk + 2 && s > 6 && s < L - 12) assert.ok(inRamp, `the ramp at z ${z.toFixed(0)} is a wall (${x.toFixed(0)},${y.toFixed(0)})`);
+    }
+  }
+});
+
+test('highway: spawn weights send most zombies from near the bus, a few from the far ends', () => {
+  const m = getMap('highway', 1);
+  assert.ok(m.zombieSpawns.every((z) => z.weight > 0), 'every rect weighted');
+  const game = { map: m, players: [{ state: 'alive', x: m.objective.x, y: m.objective.y }], rng: createRng(7) };
+  const counts = new Map();
+  const N = 20000;
+  let dist = 0;
+  for (let i = 0; i < N; i++) {
+    const r = pickSpawnRect(game);
+    counts.set(r, (counts.get(r) || 0) + 1);
+    dist += Math.hypot(r.x - m.objective.x, r.y - m.objective.y);
+  }
+  const total = m.zombieSpawns.reduce((s, z) => s + z.weight, 0);
+  for (const z of m.zombieSpawns) {
+    const share = (counts.get(z) || 0) / N;
+    assert.ok(Math.abs(share - z.weight / total) < 0.02, `rect ${z.x},${z.y}: picked ${(share * 100).toFixed(1)} %`);
+  }
+  // on average a group spawns about as far out as on the old, shorter map (~1500 px)
+  assert.ok(dist / N < 1900, `mean spawn distance ${(dist / N).toFixed(0)} px`);
+  assert.ok(counts.get(m.zombieSpawns.find((z) => z.x < 150)) > 0, 'the far ends still send some');
+  // unweighted maps keep a uniform pick
+  const t = getMap('truckstop', 1);
+  assert.ok(t.zombieSpawns.every((z) => z.weight === undefined));
+});
+
+test('the renderers know every obstacle and decor kind the maps use', () => {
+  const src = (p) => fs.readFileSync(new URL(`../public/js/${p}`, import.meta.url), 'utf8');
+  const topdown = src('render/obstacles.js'), world3d = src('render3d/world.js'), flat = src('render/maplayer.js');
+  const modelled = new Set(src('render3d/ground.js').match(/MODELLED_DECOR = new Set\(\[([^\]]*)\]/)[1].match(/'[a-z_]+'/g).map((k) => k.slice(1, -1)));
+  const obstacleKinds = new Set(), decorKinds = new Set();
+  for (const id of MAP_IDS) {
+    const m = getMap(id, 1);
+    for (const o of m.obstacles) obstacleKinds.add(o.kind);
+    for (const d of m.decor) decorKinds.add(d.kind);
+  }
+  for (const k of obstacleKinds) {
+    assert.ok(topdown.includes(`case '${k}'`), `top-down renderer draws '${k}' obstacles`);
+    assert.ok(world3d.includes(`case '${k}'`), `3D world builds '${k}' obstacles`);
+  }
+  for (const k of decorKinds) {
+    if (k !== 'tree_canopy') assert.ok(flat.includes(`case '${k}'`), `top-down paints '${k}' decor`);
+    if (modelled.has(k)) assert.ok(world3d.includes(`case '${k}'`), `3D world models '${k}' decor`);
   }
 });

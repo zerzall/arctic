@@ -41,6 +41,8 @@ const CELLS = {
   pump: [768, 128, 896, 192],
   sign: [0, 256, 256, 320],
   stripe: [256, 256, 384, 320],
+  gantry: [384, 256, 896, 448],
+  gasSign: [896, 256, 1024, 448],
 };
 
 /** UV rect [u0, v0, u1, v1] of an atlas cell (texture uses flipY = true). */
@@ -441,6 +443,54 @@ function paintExtraCells(g, cell, person) {
     g.font = 'bold 16px Arial, sans-serif';
     g.textAlign = 'left';
     g.fillText('▲ NORTH  I-9', 18, 108);
+  });
+  // overpass fascia sign: the crossing interstate and the next exit
+  cell('gantry', (w, h) => {
+    g.fillStyle = '#17563a';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#eeeeee';
+    g.lineWidth = 5;
+    g.strokeRect(8, 8, w - 16, h - 16);
+    // interstate shield
+    g.fillStyle = '#eeeeee';
+    g.beginPath();
+    g.moveTo(40, 30); g.lineTo(120, 30); g.lineTo(124, 70); g.quadraticCurveTo(118, 118, 80, 132); g.quadraticCurveTo(42, 118, 36, 70);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#1d3f8a';
+    g.fillRect(44, 58, 72, 44);
+    g.fillStyle = '#c62828';
+    g.fillRect(44, 36, 72, 18);
+    g.fillStyle = '#eeeeee';
+    g.font = 'bold 34px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('44', 80, 82);
+    g.textAlign = 'left';
+    g.font = 'bold 40px Arial, sans-serif';
+    g.fillText('NORTH ▲', 150, 60);
+    g.font = 'bold 30px Arial, sans-serif';
+    g.fillText('Mill Rd  EXIT 31', 150, 116);
+    g.font = 'bold 24px Arial, sans-serif';
+    g.fillText('½ MILE', 150, 158);
+  });
+  // gas station price pylon
+  cell('gasSign', (w, h) => {
+    g.fillStyle = '#f2efe6';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#c62828';
+    g.fillRect(0, 0, w, 58);
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 34px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('GAS', w / 2, 31);
+    g.fillStyle = '#141414';
+    g.fillRect(8, 68, w - 16, 116);
+    g.fillStyle = '#ff5a2a';
+    g.font = 'bold 30px monospace';
+    g.fillText('3.99', w / 2, 98);
+    g.fillText('4.29', w / 2, 152);
   });
 }
 

@@ -81,7 +81,7 @@ Four maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Tr
 
 ```js
 MapDef = {
-  id, name, width, height,               // world size, 2400..4000 x 1600..3000
+  id, name, width, height,               // world size, 2400..8000 x 1600..3000
   seed,
   ambient: { darkness: 0..1, tint: '#rrggbb' },  // night lighting mood for the renderer
   ground: '#rrggbb',                     // base fill under everything
@@ -94,17 +94,30 @@ MapDef = {
   decor: [ { kind, x, y, a, s } ],       // no collision. kind: 'tree_canopy'|'bush'|'grass_tuft'
                                          // |'rock'|'cone'|'debris'|'tire'|'crack'|'oil'|'blood_old'
                                          // |'paper'|'skid'|'manhole'|'lamp_post'|'sign'|'flag'|'rubble'
-                                         // s = scale (1 = normal)
-  lights: [ { x, y, r, color, flicker } ],// static light sources (street lamps, burning wrecks);
+                                         // |'signal'|'pylon'
+                                         // s = scale (1 = normal). 'signal' = traffic signal pole whose
+                                         // mast arm reaches 150·s px along a, heads facing a − π/2;
+                                         // 'pylon' = roadside price sign on two posts
+  lights: [ { x, y, r, color, flicker, h? } ],// static light sources (street lamps, burning wrecks);
                                          // flicker = 0..1 amplitude (0 = steady). A lit 'lamp_post'
-                                         // decor has a light at exactly the same x, y.
+                                         // decor has a light at exactly the same x, y. h (optional) =
+                                         // height of a fixture that is neither (e.g. under an overpass)
   fires: [ { x, y, r } ],                // permanent burning spots (cosmetic flames + light; no damage)
   playerSpawns: [ {x, y} ],              // >= 6 clear points near the objective
-  zombieSpawns: [ { x, y, w, h } ],      // rectangles near the map edges where zombies appear
-                                         // (x, y = centre, like every other rect in the MapDef)
+  zombieSpawns: [ { x, y, w, h, weight? } ],// rectangles near the map edges where zombies appear
+                                         // (x, y = centre, like every other rect in the MapDef);
+                                         // weight (all of a map's rects or none): pick odds (§3.4)
   objective: { kind, name, x, y, w, h, a, hp },  // thing the team defends; also a collider
                                          // kind: 'bus'|'diner'|'apc'|'radio'
   supply: { x, y },                      // supply station (ammo crates + shop mid-wave)
+  overpass: null | {                     // elevated roads (visual; the sim sees only their piers
+                                         // and ramp walls, which are ordinary obstacles)
+    decks: [ { kind, w, pts: [[x, y, z], ...] } ], // kind 'viaduct'|'ramp'; road surface at height z
+                                         // along the polyline, w wide; may run past the map bounds
+    bents: [ { x, y, a, span, z } ],     // pier bents: two columns span apart along a, cap beam
+    vehicles: [ { kind, x, y, a, w, h, color, wrecked, pitch, roll } ],  // wrecks up on a deck
+    signs: [ { x, y, a, w } ],           // fascia signs on a deck edge, facing a
+  },
 }
 
 Obstacle = {
@@ -112,11 +125,13 @@ Obstacle = {
   kind,                                  // 'car'|'suv'|'pickup'|'van'|'truck'|'semi'|'bus'|'tanker'
                                          // |'barrier'|'sandbags'|'building'|'wall'|'container'
                                          // |'pump'|'tree'|'rock'|'hesco'|'tent'|'booth'|'guardrail'|'pillar'
+                                         // |'pier'|'ramp'
   x, y, w, h, a,                         // oriented rectangle: centre, full width/height, angle
   color,                                 // body colour (vehicles/buildings)
   solid,                                 // true = blocks bullets/beams/projectiles; false = low cover
   wrecked,                               // vehicles: burnt-out look
   roof,                                  // buildings: roof colour
+  top,                                   // 'pier'/'ramp' only: height of the piece (units)
 }
 ```
 
@@ -124,14 +139,22 @@ Kind conventions used by maps.js (renderers rely on them): 'semi' is both the ca
 (length ≤ 100) and the trailer (240 long) of a rig; 'tanker' is the tank body with a
 'semi' cab; 'bus' is also used for RVs (draw with the obstacle colour, not always school-bus
 yellow); 'container' also covers dumpsters, a propane cage and a generator; 'wall' with
-h ≤ 8 is a thin fence (solid:false), thicker is masonry; 'pillar' = canopy posts; 'tree' is
+h ≤ 8 is a thin fence (solid:false), thicker is masonry; 'pillar' = canopy posts ('pier' =
+an overpass column up to its pier cap, `top` high; 'ramp' = a piece of ramp embankment, +x
+climbing toward the deck, solid:false while it is below the eye); 'tree' is
 the trunk with a 'tree_canopy' decor centred on it. Crosswalk lines run across the road
 and `w` is the stripe length. `roof` is null for kinds without a roof. Water areas are
-axis-aligned. Map sizes are within 2400..4000 x 1600..3000 (checkpoint is 3000 x 3000).
+axis-aligned. Map sizes are within 2400..4000 x 1600..3000 (checkpoint is 3000 x 3000),
+except the long highway (7600 x 2200). `OVERPASS` (maps.js) holds the deck structure depths:
+a deck of height z has slab + girders down to z − depth (36) and pier caps down to
+z − depth − cap (62); a ramp embankment blocks walking from `walk` (8) units of rise and
+shots from `low` (44). Walkable ground under a deck keeps ≥ 130 units of headroom.
 
 Rules: every `playerSpawn` and the `supply` point must be reachable from every
 `zombieSpawn` for a 28 px-diameter walker; nothing spawns inside an obstacle or water;
-the objective sits roughly central with open ground around it; 60–160 obstacles per map.
+the objective sits roughly central with open ground around it; 60–160 obstacles per map
+(the long highway: up to 300). Zombie spawn rects hug the map edges or sit at the foot of an
+overpass ramp.
 Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
 
 ---------------------------------------------------------------------------------------
@@ -243,7 +266,9 @@ isn't targeted when settings.objective is false. Game over/victory are terminal.
 `WAVE_ZOMBIES`): `round((base + perWave·w) * (1 + perPlayer * (players - 1)) * difficulty.count)`,
 × `bossWave` on boss waves (the boss is the fight). Spawned in groups (`SPAWN_PACING`) at
 the map's zombieSpawns, preferring spawn rectangles farther than 700 px from every living
-player, never more than `difficulty.maxAlive` alive at once. Type picked by
+player (picked uniformly, or by their `weight` when the map gives them one: the long highway
+favours rects near the bus so a wave's first zombies arrive in good time and its far ends
+send stragglers), never more than `difficulty.maxAlive` alive at once. Type picked by
 `ZOMBIES[type].weight(w)`. 2% of non-boss spawns from wave 4 are ELITE (1.6x hp, +20% speed).
 Every BOSS_EVERY-th wave also spawns `ceil(players / 3)` bosses about 10 s in; they share
 the boss hp multiplier `hpBase + hpPerPlayer × players` and grow by their own `hpGrowth`
@@ -258,7 +283,9 @@ supply station.
 **Zombie AI.** A flow field (grid NAV_CELL, 8-neighbour Dijkstra, rebuilt every
 NAV_REBUILD_INTERVAL) toward all alive + downed players, living turrets, and (if enabled)
 the objective. Obstacle cells impassable; barricade cells cost ×8 (zombies prefer to go
-around but will smash through). Each zombie follows the field; within 200 px of its
+around but will smash through). A field's static walk graph (blocked cells, edges, wall
+costs) depends only on the colliders and grid options and is shared by every later field
+built for identical ones (the next game on the same map skips building it). Each zombie follows the field; within 200 px of its
 current target (nearest of player/turret/objective with line of movement) it steers
 directly at it. Separation via `spatial.js` grid so crowds spread instead of stacking.
 In attack range it attacks at attackRate (damage to player: armour absorbs ARMOR_ABSORB
@@ -669,7 +696,11 @@ station, pickups, barricades, turrets, hazards, zombies (distinct look per type,
 animation, elites glow, burning flames), players (class look + colour + held weapon
 sprite), projectiles, tracers, name tags + hp bars over teammates, revive rings,
 off-screen teammate arrows, crosshair at the cursor (spread + hit marker), damage
-vignette for the local player.
+vignette for the local player. Overhead, above the entities: tree canopies, lamp and
+traffic-signal arms, and the overpass decks (MapDef.overpass) as a see-through layer with
+their shadow, lane paint, parapets and deck wrecks, fading further while a player stands
+under a deck so everyone beneath stays visible. `renderMapPreview` shows a very long map
+(the highway) as the stretch around its objective.
 
 ### 7.2 Input — `ui/input.js`
 ```js
@@ -736,7 +767,8 @@ First-person HUD (`createHud(root, { …, view: 'fps', minimapRotate })`, `#hud[
 no cursor crosshair (the renderer's overlay draws it), a compass strip at the top centre
 (`ui/compass.js`: heading tape, objective ◆ with distance in metres, supply +, teammates,
 edge arrows for markers off the arc), the minimap as a rotating radar (up = facing; redrawn
-at ≤ 30 Hz unless the view turns; settings.minimapRotate false = whole map north-up), the
+at ≤ 30 Hz unless the view turns; settings.minimapRotate false = whole map north-up, or on a
+map more than 2.6× wider than tall a full-height window that follows the player), the
 interaction prompt just under the crosshair and the shop hint at the bottom. `hud.update`
 info adds `yaw` and `camPos`. A "Click to play · Mouse to look · Esc releases the mouse"
 hint shows while playing with keyboard/mouse unlocked; the pause menu's resume button
@@ -805,7 +837,8 @@ Canonical heights (units) — keep visibility consistent with the sim's `solid` 
 eye 52 (downed 16) · car 44 · rock 16–30 · guardrail 22 · barrier 26 · sandbags 30 ·
 fence (thin wall) 40 · pump 52 · suv 56 · pickup 58 (bed 34) · hesco 70 · van 72 ·
 tent 80 · container 84 · wall (thick) 90 · booth 90 · bus 100 · truck 100 · tanker 112 ·
-semi cab 110 / trailer 124 · pillar 150 · building 150–260 · tree trunk 70 + canopy up
+semi cab 110 / trailer 124 · pillar 150 · overpass pier `top` (138 under a 200 deck: deck
+underside 164, parapet top 230) · ramp embankment = its deck · building 150–260 · tree trunk 70 + canopy up
 to 180–300 · lamp post 230 · zombie walker ~56 (scaled by `look.scale`) · player ~56.
 
 **Module layout** (all ES modules under `public/js/render3d/`):
@@ -828,6 +861,10 @@ overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, reviv
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
 world-tex.js    procedural world textures (window/neon atlas, chain-link mask, water normals)
+world-overpass.js  MapDef.overpass: decks (slab, girders, parapets, lane paint, deck lamps),
+                pier bents, ramp embankments, fascia signs, fixtures under the deck, deck wrecks;
+                deckHeightAt(map, x, y) (fires on a deck burn up there), deckRoofs(map) (no rain
+                under a viaduct)
 world-fx.js     one-draw-call GPU-animated world pieces (sky, fires, embers, smoke, halos,
                 light shafts, fake far light pools, objective marker)
 actor-kit.js    PartBuilder (merge primitives into one vertex-coloured geometry), colours
@@ -941,7 +978,13 @@ drawCalls/triangles (post passes included), sceneCalls/sceneTriangles, fps, rend
 pixelRatio and gpuMs (with EXT_disjoint_timer_query_webgl2). UI presets: Ultra (all
 effects), High (AO off), Low (no bloom/AO/grain, FXAA); prefs validate every field.
 Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
-235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms.
+235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms. The world
+splits its static meshes into 1600-unit cells (the heavy 'std'/'paint' buckets into 1000 on
+a map wider than 6000) and skips any cell or ground tile wholly past the fog (where it
+passes < 0.2 % of a surface), so a long map costs about what a short one does: the
+7600-wide highway draws 84–104 calls / 385k–540k triangles on 'ultra' at 1600x900 with no
+zombies (the old 3600-wide one: 85–107 / 510k–540k). Ground canvases keep a texel budget
+per tier (ultra 10 M, high 6 M, low 3 M texels; every other map fits at full density).
 The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).
 
 **GPU rules learned during the build** (every render3d module follows them):

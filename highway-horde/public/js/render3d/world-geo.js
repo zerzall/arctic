@@ -19,6 +19,7 @@ import { DET_TILE } from './world-surf.js';
 const _m = new THREE.Matrix4();
 const _local = new THREE.Matrix4();
 const _obj = new THREE.Matrix4();
+const _tilt = new THREE.Matrix4();
 const _nm = new THREE.Matrix3();
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
@@ -206,27 +207,59 @@ export const T = {
 
 // ---- growable float storage -------------------------------------------------------------
 
+// Writers fill `a` from index `n` after need(k) guaranteed k free floats. A buffer grows by
+// doubling up to BLOCK floats; past that, full blocks are set aside and a fresh one started,
+// so a big map's buckets are never re-copied (or left behind as garbage) while they grow.
+// Buffers that grow in lockstep (position, normal, colour) switch blocks together.
+const BLOCK = 1 << 18;
+
 class FBuf {
-  constructor(n = 4096) { this.a = new Float32Array(n); this.n = 0; }
+  constructor(n = 4096) { this.a = new Float32Array(n); this.n = 0; this.blocks = []; this.done = 0; }
   need(k) {
     if (this.n + k <= this.a.length) return;
-    let len = this.a.length * 2;
-    while (len < this.n + k) len *= 2;
-    const b = new Float32Array(len);
-    b.set(this.a.subarray(0, this.n));
-    this.a = b;
+    if (this.a.length < BLOCK) {
+      let len = this.a.length * 2;
+      while (len < this.n + k && len < BLOCK) len *= 2;
+      if (this.n + k <= len) {
+        const b = new Float32Array(len);
+        b.set(this.a.subarray(0, this.n));
+        this.a = b;
+        return;
+      }
+    }
+    this.blocks.push(this.a.subarray(0, this.n));
+    this.done += this.n;
+    this.a = new Float32Array(Math.max(BLOCK, k));
+    this.n = 0;
   }
-  view() { return this.a.slice(0, this.n); }
+  /** Floats written so far. */
+  get length() { return this.done + this.n; }
+  /** Every block in order, trimmed. */
+  parts() { return this.blocks.length ? this.blocks.concat([this.a.subarray(0, this.n)]) : [this.a.subarray(0, this.n)]; }
+  /** The contents as one exact-size array. */
+  view() {
+    if (!this.blocks.length) return this.a.slice(0, this.n);
+    const out = new Float32Array(this.length);
+    let o = 0;
+    for (const p of this.parts()) { out.set(p, o); o += p.length; }
+    return out;
+  }
 }
 
 function packSigned(buf, Type, max) {
-  const n = buf.n, a = buf.a, out = new Type(n);
-  for (let i = 0; i < n; i++) out[i] = Math.round(Math.max(-1, Math.min(1, a[i])) * max);
+  const out = new Type(buf.length);
+  let o = 0;
+  for (const a of buf.parts()) {
+    for (let i = 0; i < a.length; i++) out[o++] = Math.round(Math.max(-1, Math.min(1, a[i])) * max);
+  }
   return out;
 }
 function packUnsigned(buf, Type, max) {
-  const n = buf.n, a = buf.a, out = new Type(n);
-  for (let i = 0; i < n; i++) out[i] = Math.round(Math.max(0, Math.min(1, a[i])) * max);
+  const out = new Type(buf.length);
+  let o = 0;
+  for (const a of buf.parts()) {
+    for (let i = 0; i < a.length; i++) out[o++] = Math.round(Math.max(0, Math.min(1, a[i])) * max);
+  }
   return out;
 }
 
@@ -234,9 +267,10 @@ function packUnsigned(buf, Type, max) {
 
 /**
  * Create a geometry accumulator.
- * @param {{ cell: number, buckets: Object<string, {uv?: boolean, ao?: boolean, det?: boolean}> }} opts
+ * @param {{ cell: number, buckets: Object<string, {uv?: boolean, ao?: boolean, det?: boolean, cell?: number}> }} opts
  *   cell: spatial cell size (world units) used to split every bucket so off-screen parts
- *   of the map are frustum culled; buckets: which material groups exist.
+ *   of the map are frustum culled; buckets: which material groups exist (a bucket's own
+ *   `cell` overrides the size for it).
  */
 export function createGeoBuilder(opts) {
   const cellSize = opts.cell || 1200;
@@ -244,6 +278,7 @@ export function createGeoBuilder(opts) {
   const store = new Map();   // bucket → Map(cellKey → {pos, nor, col, uv, det, surf})
   for (const b of Object.keys(bucketDefs)) store.set(b, new Map());
   let cellKey = '0,0';
+  let objX = 0, objY = 0;
   let jitter = 0.08;
   let rng = seededRng(1);
   let aoH = 34, aoMin = 0.42;
@@ -256,21 +291,33 @@ export function createGeoBuilder(opts) {
   function target(bucket) {
     const cells = store.get(bucket);
     if (!cells) throw new Error('unknown bucket ' + bucket);
-    let t = cells.get(cellKey);
+    const def0 = bucketDefs[bucket];
+    // a bucket may use its own (finer) cells: the heavy ones on a long map
+    const key = def0.cell && !cellOverride ? Math.floor(objX / def0.cell) + ',' + Math.floor(objY / def0.cell) : cellKey;
+    let t = cells.get(key);
     if (!t) {
       const def = bucketDefs[bucket];
       t = { pos: new FBuf(), nor: new FBuf(), col: new FBuf(), uv: def.uv ? new FBuf() : null, det: def.det ? new FBuf() : null, surf: def.det ? new FBuf() : null };
-      cells.set(cellKey, t);
+      cells.set(key, t);
     }
     return t;
   }
 
   const B = {
-    /** Place the object frame at sim (x, y) with sim angle a; seeds colour jitter. */
-    obj(x, y, a = 0, seed = 0, groundY = 0) {
+    /**
+     * Place the object frame at sim (x, y) with sim angle a; seeds colour jitter. groundY
+     * lifts the frame (things on an overpass deck); tilt = [rx, rz] tips it about its own
+     * x (roll) and z (pitch: +x up) axes first (a sloped ramp, a car over the edge).
+     */
+    obj(x, y, a = 0, seed = 0, groundY = 0, tilt = null) {
       _obj.makeRotationY(-a);
+      if (tilt) {
+        _e.set(tilt[0], 0, tilt[1]);
+        _obj.multiply(_tilt.makeRotationFromEuler(_e));
+      }
       _obj.setPosition(x, groundY, y);
       cellKey = cellOverride || Math.floor(x / cellSize) + ',' + Math.floor(y / cellSize);
+      objX = x; objY = y;
       rng = seededRng((seed * 2654435761) >>> 0);
       sLayer = 0; sRough = -1; sMetal = -1;
       // a per-object texture offset: repeated models never show the same bricks
@@ -366,7 +413,7 @@ export function createGeoBuilder(opts) {
       for (const [bucket, cells] of store) {
         const hdr = bucketDefs[bucket].ao === false;   // emissive buckets carry colours > 1
         for (const t of cells.values()) {
-          if (!t.pos.n) continue;
+          if (!t.pos.length) continue;
           const g = new THREE.BufferGeometry();
           g.setAttribute('position', new THREE.BufferAttribute(t.pos.view(), 3));
           // packed attributes (~37% less vertex memory): normals in bytes, colours in

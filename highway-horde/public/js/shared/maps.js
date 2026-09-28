@@ -19,7 +19,7 @@ export const MAP_LIST = [
   {
     id: 'highway',
     name: 'Highway 9 Pileup',
-    description: 'A school bus full of kids is stuck in a forty-car pileup. The horde pours in from both ends of the highway and across the fields.',
+    description: 'A school bus full of kids is stuck in a pileup that stretches for miles, between two crossroads and under the I-44 overpass. The horde pours in from both ends of the highway, down the crossroads and the ramps, and across the fields.',
   },
   {
     id: 'truckstop',
@@ -110,7 +110,18 @@ const KIND_DEFAULTS = {
   booth: { color: '#5b6150', solid: true, roof: '#44493c' },
   guardrail: { color: '#8f979c', solid: false },
   pillar: { color: '#8d8a82', solid: true },
+  pier: { color: '#8e8a82', solid: true },
+  ramp: { color: '#8a867d', solid: true },
 };
+
+/**
+ * Elevated roads (MapDef.overpass): the structure under a deck of top height z — slab and
+ * girders (`depth`), the pier cap under them (`cap`) — and the parapets on it. A pier column
+ * stands from the ground to z - depth - cap. Ramp embankments block walking from `walk`
+ * units up (below that the ramp is a lip in the road) and block shots from `low` up (lower
+ * than the eye, shots pass over like a car's bonnet).
+ */
+export const OVERPASS = Object.freeze({ depth: 36, cap: 26, parapet: 30, pier: 34, walk: 8, low: 44 });
 const ROOFED = new Set(['building', 'container', 'tent', 'booth']);
 const VEHICLES = new Set(['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker']);
 
@@ -188,12 +199,39 @@ function createBuilder(meta, seed) {
     zombieSpawns: [],
     objective: null,
     supply: null,
+    overpass: null,
   };
   // Two independent streams: layout jitter never shifts because decor changed, and vice versa.
   const rng = createRng(hashString(`${meta.id}:layout:${seed}`));
   const drng = createRng(hashString(`${meta.id}:decor:${seed}`));
   const keepouts = [];   // rects scatter (trees, rocks, decor clutter) must stay out of
   const waters = [];
+  // Obstacles bucketed by the grid cells their bounding box touches: scatter and decor
+  // placement test only the ones nearby (the long highway has hundreds of obstacles).
+  const GRID = 256;
+  const grid = new Map();
+  const gridAdd = (o) => {
+    const c = Math.abs(Math.cos(o.a)), s = Math.abs(Math.sin(o.a));
+    const ex = (o.w * c + o.h * s) / 2, ey = (o.w * s + o.h * c) / 2;
+    for (let gy = Math.floor((o.y - ey) / GRID); gy <= Math.floor((o.y + ey) / GRID); gy++) {
+      for (let gx = Math.floor((o.x - ex) / GRID); gx <= Math.floor((o.x + ex) / GRID); gx++) {
+        const k = gy * 4096 + gx;
+        let l = grid.get(k);
+        if (!l) { l = []; grid.set(k, l); }
+        l.push(o);
+      }
+    }
+  };
+  /** True if `test(o)` holds for an obstacle whose cells overlap [x0, x1] × [y0, y1]. */
+  const anyNear = (x0, y0, x1, y1, test) => {
+    for (let gy = Math.floor(y0 / GRID); gy <= Math.floor(y1 / GRID); gy++) {
+      for (let gx = Math.floor(x0 / GRID); gx <= Math.floor(x1 / GRID); gx++) {
+        const l = grid.get(gy * 4096 + gx);
+        if (l) for (const o of l) if (test(o)) return true;
+      }
+    }
+    return false;
+  };
 
   const B = {
     map,
@@ -256,7 +294,9 @@ function createBuilder(meta, seed) {
         wrecked: VEHICLES.has(kind) ? !!opts.wrecked : false,
         roof: ROOFED.has(kind) ? (opts.roof || d.roof || '#555555') : null,
       };
+      if (opts.top !== undefined) o.top = round1(opts.top);
       map.obstacles.push(o);
+      gridAdd(o);
       return o;
     },
 
@@ -302,14 +342,81 @@ function createBuilder(meta, seed) {
       map.fires.push({ x: round1(x), y: round1(y), r: round1(r) });
       B.light(x, y, 200 + r * 2, FIRE_COLOR, 0.55);
     },
-    light(x, y, r, color, flicker = 0) {
-      map.lights.push({ x: round1(x), y: round1(y), r: round1(r), color, flicker });
+    /** A light source; `h` (optional) is its height when it is neither a lamp post nor a fire. */
+    light(x, y, r, color, flicker = 0, h = undefined) {
+      const l = { x: round1(x), y: round1(y), r: round1(r), color, flicker };
+      if (h !== undefined) l.h = round1(h);
+      map.lights.push(l);
     },
     /** Street lamp: always a post, and a light unless the rng decided the bulb is dead. */
     lamp(x, y, opts = {}) {
       B.decor('lamp_post', x, y, opts.a || 0, 1);
       const dead = opts.dead !== undefined ? opts.dead : drng.chance(opts.deadChance ?? 0.18);
       if (!dead) B.light(x, y, opts.r || 220, opts.color || LAMP_COLOR, drng.chance(0.15) ? 0.2 : 0);
+    },
+
+    /**
+     * Traffic signal: a pole at (x, y) whose mast arm reaches `len` px along `a`; the
+     * signal heads hang from the arm facing a - PI/2 (toward the traffic they control).
+     */
+    signal(x, y, a, len) {
+      return B.decor('signal', x, y, a, round3(len / 150));
+    },
+
+    // ---- elevated roads (MapDef.overpass, SPEC §2) -------------------------------------
+    /** The map's overpass record, created on first use. */
+    overpass() {
+      if (!map.overpass) map.overpass = { decks: [], bents: [], vehicles: [], signs: [] };
+      return map.overpass;
+    },
+    /** A stretch of elevated road through [x, y, z] points (z = deck top), `w` wide. */
+    deck(kind, pts, w) {
+      B.overpass().decks.push({ kind, w, pts: pts.map(([x, y, z]) => [round1(x), round1(y), round1(z)]) });
+    },
+    /**
+     * A pier bent under a deck of height z: two columns `span` apart along angle `a`
+     * (across the deck) with a cap beam. Columns inside the map are solid 'pier' obstacles;
+     * bents past the bounds (holding up the deck in the fog) are visual only.
+     */
+    bent(x, y, a, span, z) {
+      B.overpass().bents.push({ x: round1(x), y: round1(y), a: normAngle(a), span, z });
+      const P = OVERPASS.pier;
+      for (const s of [-1, 1]) {
+        const px = x + Math.cos(a) * s * span / 2, py = y + Math.sin(a) * s * span / 2;
+        if (px < P || py < P || px > B.W - P || py > B.H - P) continue;
+        B.ob('pier', px, py, P, P, a, { top: z - OVERPASS.depth - OVERPASS.cap });
+      }
+    },
+    /**
+     * A ramp from the deck edge (ax, ay) at height az down to its toe (tx, ty) on the road.
+     * The sim sees the embankment under it: nothing for the first few units of rise, low
+     * cover up to eye level, then solid wall pieces up to the deck. Returns the axis.
+     */
+    ramp(ax, ay, az, tx, ty, w) {
+      B.deck('ramp', [[ax, ay, az], [tx, ty, 0]], w);
+      const L = Math.hypot(ax - tx, ay - ty);
+      const ux = (ax - tx) / L, uy = (ay - ty) / L, a = Math.atan2(uy, ux);
+      const s0 = (L * OVERPASS.walk) / az, s1 = (L * OVERPASS.low) / az, end = L - 4;
+      const pieces = [[s0, s1, false]];
+      const n = Math.max(1, Math.ceil((end - s1) / 220));
+      for (let i = 0; i < n; i++) pieces.push([s1 + ((end - s1) * i) / n, s1 + ((end - s1) * (i + 1)) / n, true]);
+      for (const [p, q, solid] of pieces) {
+        B.ob('ramp', tx + (ux * (p + q)) / 2, ty + (uy * (p + q)) / 2, q - p, w, a, { solid, top: (az * q) / L });
+      }
+      return { x: tx, y: ty, ux, uy, a, L };
+    },
+    /** A vehicle up on a deck (visual only); pitch/roll tip it, e.g. over the parapet. */
+    deckVehicle(kind, x, y, a, opts = {}) {
+      const [w, h] = opts.size || (kind === 'semi' ? SEMI_TRAILER : VEHICLE_SIZE[kind]);
+      let color = opts.color || rng.pick(kind === 'semi' ? TRAILER_COLORS : CIVIL_COLORS);
+      if (opts.wrecked) color = mixColor(color, '#221e1b', 0.45);
+      const v = {
+        kind, x: round1(x), y: round1(y), a: normAngle(a), w, h, color, wrecked: !!opts.wrecked,
+        pitch: round3(opts.pitch || 0), roll: round3(opts.roll || 0),
+      };
+      B.overpass().vehicles.push(v);
+      if (opts.burning) B.burning(v);
+      return v;
     },
 
     tree(x, y, s = 1) {
@@ -361,8 +468,9 @@ function createBuilder(meta, seed) {
       map.playerSpawns.push({ x, y });
       B.keep(x, y, 70, 70);
     },
-    zspawn(x, y, w, h) {
-      map.zombieSpawns.push({ x, y, w, h });
+    /** Zombie spawn rect; `weight` (optional, all or none of a map's rects) biases the pick. */
+    zspawn(x, y, w, h, weight = undefined) {
+      map.zombieSpawns.push(weight === undefined ? { x, y, w, h } : { x, y, w, h, weight });
       B.keep(x, y, w + 200, h + 200);
     },
     /** Reserve a rectangle that scatter (trees, rocks, clutter decor) must leave empty. */
@@ -382,7 +490,8 @@ function createBuilder(meta, seed) {
       return false;
     },
     blockedAt(x, y, pad) {
-      for (const o of map.obstacles) if (pointInRect(x, y, o, pad)) return true;
+      const e = pad * Math.SQRT2 + 0.01;   // a rect grown by pad reaches this far past its box
+      if (anyNear(x - e, y - e, x + e, y + e, (o) => pointInRect(x, y, o, pad))) return true;
       const ob = map.objective;
       return !!ob && pointInRect(x, y, ob, pad);
     },
@@ -400,7 +509,8 @@ function createBuilder(meta, seed) {
       if (avoidSurfaces && avoidSurfaces.includes(B.surfaceAt(r.x, r.y))) return false;
       if (B.inWater(r.x, r.y, Math.max(r.w, r.h) / 2 + 30)) return false;
       if (B.kept(r.x, r.y, Math.max(r.w, r.h) / 2)) return false;
-      for (const o of map.obstacles) if (rectsOverlap(r, o, pad)) return false;
+      const e = Math.hypot(r.w / 2 + pad, r.h / 2 + pad) + 0.01;
+      if (anyNear(r.x - e, r.y - e, r.x + e, r.y + e, (o) => rectsOverlap(r, o, pad))) return false;
       const ob = map.objective;
       if (ob && rectsOverlap(r, ob, pad + 40)) return false;
       return true;
@@ -508,7 +618,7 @@ function createBuilder(meta, seed) {
 
 // Per-map world size and mood; kept in one table so the builders stay about layout.
 const MAP_DEFS = {
-  highway: { width: 3600, height: 2200, darkness: 0.68, tint: '#2c4a7a', ground: '#34452a' },
+  highway: { width: 7600, height: 2200, darkness: 0.68, tint: '#2c4a7a', ground: '#34452a' },
   truckstop: { width: 3400, height: 2400, darkness: 0.6, tint: '#a0602a', ground: '#7c6a4c' },
   bridge: { width: 4000, height: 2000, darkness: 0.72, tint: '#2f6b68', ground: '#34442f' },
   checkpoint: { width: 3000, height: 3000, darkness: 0.66, tint: '#56644c', ground: '#434a33' },
@@ -517,147 +627,307 @@ const MAP_DEFS = {
 // ---------------------------------------------------------------------------------
 // 1. Highway 9 Pileup
 //
-// A divided six-lane highway crosses the map west-east. The school bus is stuck in the
-// eastbound lanes just behind a pileup; the westbound lanes hold a jackknifed semi and an
-// overturned tanker. Guard-rail gaps connect the farm fields north and south.
+// A divided six-lane highway crosses the long map west-east. The school bus is stuck in the
+// eastbound lanes in the middle of a pileup that stretches for miles: an overturned tanker
+// and a jackknifed rig in the westbound lanes, the jam queued behind both, wrecks all the
+// way to the map ends. Two local roads cross at grade (Mill Road with a gas station, County
+// Road 12 with a motel and a diner), each with signals, stop lines and crosswalks. The I-44
+// viaduct crosses overhead west of the bus on pier bents (walkable underneath), with two
+// ramps coming down onto the highway shoulders (their embankments are walls). Guard-rail
+// gaps connect the farm fields north and south.
+
+const SPAWN_W = { near: 2.5, mid: 1, far: 0.25 };
 
 function buildHighway(B) {
-  const { W, H, rng } = B;
+  const { W, H, rng, drng } = B;
   const NORTH = [895, 965, 1035];   // westbound lane centres (traffic heading west)
   const SOUTH = [1165, 1235, 1305]; // eastbound lane centres (traffic heading east)
   const WEST = Math.PI, EAST = 0;
+  const XA = 1100, XB = 5700;       // Mill Road and County Road 12 (two lanes, 150 px)
+  const RW = 75;
+  const OX = 2900, DW = 300, DZ = 200;   // I-44 viaduct: centre line, deck width, deck height
+  const DX0 = OX - DW / 2, DX1 = OX + DW / 2;
+  const COL = 110;                  // pier columns stand this far either side of the centre line
+  const BUS = { x: 3800, y: 1235 };
 
   // Objective, supply and spawns first so scatter knows what to keep clear.
-  const BUS = { x: 1800, y: 1235 };
   B.objective('bus', 'School Bus', BUS.x, BUS.y, 250, 62, -0.04, 5000, 130);
-  B.supply(1800, 978);
-  for (const [x, y] of [[1640, 1155], [1760, 1158], [1880, 1158], [1990, 1170],
-    [1600, 1318], [1740, 1322], [1880, 1318], [2000, 1305]]) B.pspawn(x, y);
-  B.zspawn(60, 1100, 100, 520);
-  B.zspawn(W - 60, 1100, 100, 520);
-  B.zspawn(450, 60, 520, 90);
-  B.zspawn(1800, 60, 700, 90);
-  B.zspawn(3120, 60, 520, 90);
-  B.zspawn(620, H - 60, 520, 90);
-  B.zspawn(1800, H - 60, 700, 90);
-  B.zspawn(3000, H - 60, 460, 90);
+  B.supply(3800, 978);
+  for (const [x, y] of [[3640, 1155], [3760, 1158], [3880, 1158], [3990, 1170],
+    [3600, 1318], [3740, 1322], [3880, 1318], [4000, 1305]]) B.pspawn(x, y);
+
+  // ---- the overpass: viaduct bents (in the median and on the shoulders over the highway)
+  // and two ramps descending west onto the shoulders
+  B.deck('viaduct', [[OX, -1500, DZ], [OX, H + 1500, DZ]], DW);
+  for (const y of [-1330, -950, -570, -190, 190, 520, 829, 1100, 1371, 1680, 2010, 2390, 2770, 3150, 3530]) {
+    B.bent(OX, y, 0, COL * 2, DZ);
+  }
+  const rampN = B.ramp(DX0, 600, DZ, 1950, 790, 130);
+  const rampS = B.ramp(DX0, 1600, DZ, 1950, 1410, 130);
+
+  // ---- zombie spawns: both ends of the highway, the crossroads, the fields, under the
+  // viaduct and at the foot of the ramps (as if they came down from the deck). Weighted
+  // toward the middle so waves reach the bus in good time; the far ends still send
+  // stragglers up the highway.
+  B.zspawn(60, 1100, 100, 520, SPAWN_W.far);
+  B.zspawn(W - 60, 1100, 100, 520, SPAWN_W.far);
+  for (const y of [60, H - 60]) {
+    B.zspawn(XA, y, 240, 90, SPAWN_W.far);
+    B.zspawn(2050, y, 360, 90, SPAWN_W.mid);
+    B.zspawn(OX, y, 160, 90, SPAWN_W.near);
+    B.zspawn(3800, y, 600, 90, SPAWN_W.near);
+    B.zspawn(4800, y, 480, 90, SPAWN_W.near);
+    B.zspawn(XB, y, 240, 90, SPAWN_W.mid);
+    B.zspawn(6700, y, 480, 90, SPAWN_W.far);
+  }
+  for (const r of [rampN, rampS]) B.zspawn(Math.round(r.x - r.ux * 70), Math.round(r.y - r.uy * 70), 90, 70, SPAWN_W.mid);
   // Keep the approaches along the carriageway shoulders open for sight lines.
   B.keep(W / 2, 1100, W, 640);
+  B.keep(OX, H / 2, DW + 60, H);
+  B.keep((DX0 + 1950) / 2, 700, DX0 - 1950 + 160, 340);
+  B.keep((DX0 + 1950) / 2, 1500, DX0 - 1950 + 160, 340);
 
   // ---- ground
-  B.patches(['grass', 'grass', 'dirt'], 9, 150, 150, W - 150, 700);
-  B.patches(['grass', 'grass', 'dirt'], 9, 150, 1500, W - 150, H - 150);
-  B.area('dirt', 2980, 1760, 820, 420, 0.03);          // ploughed field by the barn
-  B.box('dirt', 868, 380, 932, 800);                   // farm track north
-  B.area('dirt', 900, 300, 320, 220, 0);                // farmyard
-  B.box('dirt', 2668, 1400, 2732, 1820);               // farm track south
+  B.patches(['grass', 'grass', 'dirt'], 18, 150, 150, W - 150, 700);
+  B.patches(['grass', 'grass', 'dirt'], 18, 150, 1500, W - 150, H - 150);
+  B.area('dirt', 4700, 1760, 820, 420, 0.03);           // ploughed field by the barn
+  B.area('dirt', 6600, 420, 700, 380, -0.02);           // and one north of County Road 12
+  B.box('dirt', 4568, 380, 4632, 800);                  // farm track north
+  B.area('dirt', 4600, 300, 320, 220, 0);                // farmyard
+  B.box('dirt', 4668, 1400, 4732, 1820);                // farm track south
   B.box('gravel', 0, 800, W, 1400);                     // shoulders
+  B.box('gravel', DX0 - 30, 0, DX1 + 30, 800);          // dry ground under the viaduct
+  B.box('gravel', DX0 - 30, 1400, DX1 + 30, H);
+  for (const X of [XA, XB]) B.box('gravel', X - RW - 30, 0, X + RW + 30, H);   // verges
+  B.box('concrete', 690, 470, XA - RW - 30, 790);   // gas station forecourt
+  B.box('concrete', XB + RW + 30, 540, 6190, 790);      // diner lot
+  B.box('asphalt', XB + RW + 30, 1420, 6420, 1545);     // motel parking
+  for (const X of [XA, XB]) B.box('asphalt', X - RW, 0, X + RW, H);
   B.box('asphalt', 0, 858, W, 1072);
   B.box('asphalt', 0, 1128, W, 1342);
   B.box('concrete', 0, 1072, W, 1128);                  // median
+  for (const X of [XA, XB]) B.box('asphalt', X - RW - 20, 1072, X + RW + 20, 1128);   // median crossings
 
-  // ---- paint
-  B.line('white', 0, 864, W, 864, 4);
-  B.line('white', 0, 1336, W, 1336, 4);
-  B.line('yellow', 0, 1067, W, 1067, 4);
-  B.line('yellow', 0, 1133, W, 1133, 4);
-  for (const y of [930, 1000, 1200, 1270]) B.line('white_dashed', 0, y, W, y, 3);
+  // ---- paint: highway lines break at the crossroads; the crossroads get centre lines,
+  // stop lines at the highway, and crosswalks on every side of both junctions
+  const lineX = (kind, y, w, gaps) => { for (const [a, b] of B.spans(0, W, gaps)) B.line(kind, a, y, b, y, w); };
+  const lineY = (kind, x, w, gaps) => { for (const [a, b] of B.spans(0, H, gaps)) B.line(kind, x, a, x, b, w); };
+  const box = (pad) => [[XA - RW - pad, XA + RW + pad], [XB - RW - pad, XB + RW + pad]];
+  lineX('white', 864, 4, box(0));
+  lineX('white', 1336, 4, box(0));
+  lineX('yellow', 1067, 4, box(20));
+  lineX('yellow', 1133, 4, box(20));
+  for (const y of [930, 1000, 1200, 1270]) lineX('white_dashed', y, 3, box(70));
+  for (const X of [XA, XB]) {
+    lineY('yellow_double', X, 3, [[750, 1450]]);
+    lineY('white', X - RW + 5, 3, [[790, 1410]]);
+    lineY('white', X + RW - 5, 3, [[790, 1410]]);
+    B.line('stop', X - RW + 5, 748, X - 4, 748, 6);            // southbound, west lane
+    B.line('stop', X + 4, 1452, X + RW - 5, 1452, 6);          // northbound, east lane
+    B.line('crosswalk', X - RW, 778, X + RW, 778, 30);
+    B.line('crosswalk', X - RW, 1422, X + RW, 1422, 30);
+    B.line('stop', X + RW + 62, 866, X + RW + 62, 1065, 6);    // westbound, east of the junction
+    B.line('stop', X - RW - 62, 1135, X - RW - 62, 1334, 6);   // eastbound, west of the junction
+    for (const cx of [X - RW - 30, X + RW + 30]) {
+      B.line('crosswalk', cx, 866, cx, 1065, 30);
+      B.line('crosswalk', cx, 1135, cx, 1334, 30);
+    }
+  }
+  // gas station bays and motel parking
+  for (let x = 6000; x <= 6400; x += 58) B.line('parking', x, 1430, x, 1500, 3);
 
-  // ---- guard rails with gaps where tracks and fields meet the road
-  B.runX('guardrail', 800, 0, W, [[500, 700], [820, 980], [1460, 1660], [2220, 2420], [2940, 3140]], 8, { maxLen: 480 });
-  B.runX('guardrail', 1400, 0, W, [[380, 580], [1140, 1340], [1860, 2080], [2600, 2800], [3220, 3420]], 8, { maxLen: 480 });
+  // ---- guard rails with gaps where tracks, fields and the crossroads meet the road; the
+  // ramps' own parapets take over where they come down onto the shoulders
+  const cross = box(40);
+  B.runX('guardrail', 800, 0, W, [[300, 480], ...cross, [1500, 1660], [1780, DX1 + 20], [3420, 3580], [3960, 4120],
+    [4540, 4700], [6300, 6460], [7000, 7160]], 8, { maxLen: 480 });
+  B.runX('guardrail', 1400, 0, W, [[420, 600], ...cross, [1480, 1640], [1780, DX1 + 20], [3300, 3460], [4060, 4240],
+    [4620, 4780], [6500, 6660], [7100, 7260]], 8, { maxLen: 480 });
 
-  // ---- median jersey barriers; the crash knocked a section loose
-  B.runX('barrier', 1100, 150, W - 150, [[360, 480], [1060, 1180], [1680, 1920], [2200, 2440], [2560, 2680], [3180, 3300]], 16, { maxLen: 300 });
-  B.ob('barrier', 2262, 1116, 110, 16, 0.38);
-  B.ob('barrier', 2392, 1082, 96, 16, -0.52);
+  // ---- median jersey barriers: open at the crossroads and around the viaduct piers; the
+  // crashes knocked sections loose
+  B.runX('barrier', 1100, 150, W - 150, [...box(40), [2140, 2260], [DX0 - 10, DX1 + 10], [3300, 3420], [3680, 3920],
+    [4200, 4440], [4560, 4680], [5160, 5280], [6300, 6420], [7000, 7120]], 16, { maxLen: 300 });
+  B.ob('barrier', 4262, 1116, 110, 16, 0.38);
+  B.ob('barrier', 4392, 1082, 96, 16, -0.52);
+  B.ob('barrier', 5220, 1085, 100, 16, 0.3);
 
-  // ---- westbound: overturned tanker, jackknifed semi, pileup, then the jam behind it
-  B.ob('tanker', 1235, 975, 230, 60, WEST + 0.42, { color: '#9da2a6', wrecked: true });
-  B.ob('semi', 1070, 912, SEMI_CAB[0], SEMI_CAB[1], WEST + 1.15, { color: mixColor(rng.pick(SEMI_COLORS), '#221e1b', 0.45), wrecked: true });
-  B.fire(1330, 1030, 44);
-  B.fire(1150, 1000, 26);
-  B.vehicle('car', 1440, 915, WEST + 0.5, { wrecked: true, burning: true });
-  B.vehicle('suv', 1505, 1030, WEST - 0.35, { wrecked: true });
-  B.vehicle('car', 1585, 925, 2.0, { wrecked: true });
-  B.vehicle('truck', 1800, 892, WEST + 0.05, { color: '#4b5320', jitter: 0 });   // army supply truck
-  B.vehicle('car', 2035, 1025, WEST - 0.9, { wrecked: true });
-  B.vehicle('pickup', 2110, 905, WEST + 0.3, { wrecked: true, burning: true });
-  B.semi(2365, 972, WEST - 0.5, 1.25, { wrecked: rng.chance(0.5) });
-  B.vehicle('car', 2565, 905, WEST + 0.2);
-  B.vehicle('van', 2645, 1030, WEST - 0.25, { wrecked: true });
-  for (const [kind, x, y] of [['car', 2800, NORTH[0]], ['car', 3020, NORTH[0]], ['suv', 3300, NORTH[0]],
-    ['van', 2860, NORTH[1]], ['car', 3130, NORTH[1]],
-    ['car', 2790, NORTH[2]], ['pickup', 3060, NORTH[2]], ['car', 3330, NORTH[2]]]) {
+  // ---- westbound: the crash west of the bus (tanker, jackknifed cab), the pileup, the
+  // jam behind it back to County Road 12, a T-bone in the junction, and the queue beyond
+  B.ob('tanker', 3235, 975, 230, 60, WEST + 0.42, { color: '#9da2a6', wrecked: true });
+  B.ob('semi', 3085, 912, SEMI_CAB[0], SEMI_CAB[1], WEST + 1.15, { color: mixColor(rng.pick(SEMI_COLORS), '#221e1b', 0.45), wrecked: true });
+  B.fire(3330, 1030, 44);
+  B.fire(3150, 1000, 26);
+  B.vehicle('car', 3440, 915, WEST + 0.5, { wrecked: true, burning: true });
+  B.vehicle('suv', 3505, 1030, WEST - 0.35, { wrecked: true });
+  B.vehicle('car', 3585, 925, 2.0, { wrecked: true });
+  B.vehicle('truck', 3800, 892, WEST + 0.05, { color: '#4b5320', jitter: 0 });   // army supply truck
+  B.vehicle('car', 4035, 1025, WEST - 0.9, { wrecked: true });
+  B.vehicle('pickup', 4110, 905, WEST + 0.3, { wrecked: true, burning: true });
+  B.semi(4365, 972, WEST - 0.5, 1.25, { wrecked: rng.chance(0.5) });
+  B.vehicle('car', 4565, 905, WEST + 0.2);
+  B.vehicle('van', 4645, 1030, WEST - 0.25, { wrecked: true });
+  for (const [kind, x, y] of [['car', 4800, NORTH[0]], ['car', 5020, NORTH[0]], ['suv', 5300, NORTH[0]],
+    ['van', 4860, NORTH[1]], ['car', 5130, NORTH[1]], ['car', 5480, NORTH[1]],
+    ['car', 4790, NORTH[2]], ['pickup', 5060, NORTH[2]], ['car', 5330, NORTH[2]]]) {
     B.vehicle(kind, x, y, WEST, { wrecked: rng.chance(0.15) });
   }
-  // A couple of cars that made it past the crash before it happened.
-  B.vehicle('car', 700, 940, WEST + 0.4, { wrecked: true, burning: rng.chance(0.5) });
-  B.vehicle('suv', 420, 1010, WEST - 0.1);
+  B.vehicle('suv', XB - 10, 990, Math.PI / 2 + 0.45, { wrecked: true, burning: true });   // T-boned in the junction
+  B.vehicle('car', XB + 60, 905, WEST + 0.35, { wrecked: true });
+  for (const [kind, x, y] of [['car', 5930, NORTH[0]], ['van', 6040, NORTH[1]], ['car', 5920, NORTH[2]],
+    ['pickup', 6200, NORTH[2]], ['car', 6260, NORTH[0]], ['suv', 6470, NORTH[1]], ['car', 6640, NORTH[0]],
+    ['car', 6880, NORTH[2]]]) {
+    B.vehicle(kind, x, y, WEST, { wrecked: rng.chance(0.25) });
+  }
+  B.vehicle('truck', 7040, 1030, WEST + 0.6, { color: '#c9c4b6', wrecked: true, burning: true });   // box truck
+  B.semi(7260, 930, WEST - 0.15, -0.9, { wrecked: rng.chance(0.5) });
+  // West of the crash: cars that made it past, an abandoned army convoy, the queue at Mill
+  // Road's light and a few wrecks toward the west end.
+  B.vehicle('car', 2660, 940, WEST + 0.4, { wrecked: true, burning: rng.chance(0.5) });
+  B.vehicle('suv', 2420, 1010, WEST - 0.1);
+  B.vehicle('truck', 1560, 935, WEST + 0.15, { jitter: 0, wrecked: true });
+  B.vehicle('truck', 1730, 1015, WEST - 0.2, { jitter: 0 });
+  B.vehicle('car', 1320, NORTH[1], WEST);
+  B.vehicle('van', 1330, NORTH[2], WEST, { wrecked: rng.chance(0.3) });
+  B.vehicle('car', 760, 900, WEST + 0.5, { wrecked: true, burning: rng.chance(0.5) });
+  B.vehicle('pickup', 420, 1030, WEST - 0.15);
 
-  // ---- eastbound: pileup ahead of the bus, traffic queued behind it
-  B.vehicle('car', 2135, 1178, 0.75, { wrecked: true, burning: true });
-  B.vehicle('suv', 2235, 1292, -0.45, { wrecked: true });
-  B.vehicle('pickup', 2345, 1195, 1.25, { wrecked: true });
-  B.vehicle('car', 2470, 1300, 0.2);
-  B.vehicle('van', 2565, 1180, -0.7, { wrecked: true, burning: rng.chance(0.5) });
-  B.vehicle('car', 2720, 1240, 0.1);
-  B.vehicle('car', 2960, 1175, 0.05);
-  B.vehicle('suv', 3200, 1300, -0.1);
-  for (const [kind, x, y] of [['car', 1420, SOUTH[1]], ['car', 1330, SOUTH[0]], ['van', 1280, SOUTH[2]],
-    ['car', 1100, SOUTH[0]], ['car', 1010, SOUTH[2]], ['car', 860, SOUTH[0]],
-    ['pickup', 740, SOUTH[1]], ['suv', 630, SOUTH[2]], ['car', 540, SOUTH[0]], ['car', 330, SOUTH[1]]]) {
+  // ---- eastbound: the pileup ahead of the bus up to a rig flipped across the lanes before
+  // County Road 12, and the jam behind the bus under the viaduct back to Mill Road
+  B.vehicle('car', 4135, 1178, 0.75, { wrecked: true, burning: true });
+  B.vehicle('suv', 4235, 1292, -0.45, { wrecked: true });
+  B.vehicle('pickup', 4345, 1195, 1.25, { wrecked: true });
+  B.vehicle('car', 4470, 1300, 0.2);
+  B.vehicle('van', 4565, 1180, -0.7, { wrecked: true, burning: rng.chance(0.5) });
+  B.vehicle('car', 4720, 1240, 0.1);
+  B.vehicle('car', 4960, 1175, 0.05);
+  B.vehicle('suv', 5140, 1300, -0.1);
+  B.semi(5360, 1225, EAST + 0.3, -0.7, { wrecked: true, burning: true });
+  for (const [kind, x, y] of [['car', 3420, SOUTH[1]], ['car', 3330, SOUTH[0]], ['van', 3280, SOUTH[2]],
+    ['car', 3120, SOUTH[0]], ['car', 2990, SOUTH[2]], ['car', 2860, SOUTH[0]], ['pickup', 2740, SOUTH[1]],
+    ['suv', 2630, SOUTH[2]], ['car', 2540, SOUTH[0]], ['car', 2330, SOUTH[1]], ['car', 2150, SOUTH[0]],
+    ['van', 2020, SOUTH[1]], ['car', 1830, SOUTH[0]], ['car', 1640, SOUTH[2]], ['suv', 1480, SOUTH[1]],
+    ['car', 1330, SOUTH[0]], ['car', 870, SOUTH[0]], ['car', 880, SOUTH[1]], ['pickup', 700, SOUTH[2]],
+    ['car', 520, SOUTH[1]], ['car', 300, SOUTH[0]]]) {
     B.vehicle(kind, x, y, EAST, { wrecked: rng.chance(0.12) });
   }
+  B.vehicle('truck', 1200, 1250, EAST + 0.12, { color: '#b9bcbf', wrecked: true });   // box truck stalled in Mill Road
+  B.vehicle('car', 6020, 1170, EAST + 0.2, { wrecked: true });
+  B.vehicle('car', 6420, 1300, EAST - 0.1);
+  B.vehicle('van', 6900, 1235, EAST - 0.3, { wrecked: true, burning: true });
+  B.vehicle('car', 7300, 1180, EAST + 0.1, { wrecked: rng.chance(0.5) });
+
+  // ---- up on the viaduct: a burning wreck, a jackknifed rig, a car hanging over the
+  // parapet above the highway, and abandoned cars along the deck (visual only)
+  B.deckVehicle('car', OX + 60, 1520, Math.PI / 2 + 0.2, { wrecked: true, burning: true });
+  B.deckVehicle('car', DX1 + 4, 960, 0.15, { wrecked: true, pitch: -0.55, roll: 0.12 });
+  const rig = B.deckVehicle('semi', OX - 50, 330, -Math.PI / 2 + 0.3, {});
+  const hx = rig.x + Math.cos(rig.a) * 114, hy = rig.y + Math.sin(rig.a) * 114, ca = rig.a - 1.1;
+  B.deckVehicle('semi', hx + Math.cos(ca) * 26, hy + Math.sin(ca) * 26, ca, { size: SEMI_CAB, color: rng.pick(SEMI_COLORS) });
+  B.deckVehicle('suv', OX + 70, 120, Math.PI / 2 - 0.1, { wrecked: rng.chance(0.5) });
+  B.deckVehicle('car', OX - 75, 1880, -Math.PI / 2 + 0.05, {});
+  B.deckVehicle('van', OX + 55, 2150, Math.PI / 2 + 0.3, { wrecked: true });
+  B.overpass().signs.push({ x: DX0, y: 965, a: WEST, w: 170 }, { x: DX1, y: 1235, a: EAST, w: 170 });
+
+  // ---- Mill Road corner: gas station (canopy over the pumps, store, dumpster)
+  B.ob('building', 830, 540, 230, 110, 0, { color: '#b8ad98', roof: '#5b6770' });
+  B.ob('container', 700, 650, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
+  for (const [x, y] of [[800, 670], [960, 670], [800, 760], [960, 760]]) B.ob('pillar', x, y, 18, 18, 0);
+  for (const x of [850, 910]) B.ob('pump', x, 715, 24, 46, 0, { color: rng.pick(['#b53a2e', '#c9c4b6', '#2f5f8a']) });
+  B.vehicle('car', 880, 655, 0.05, { jitter: 0.5, wrecked: rng.chance(0.3) });
+  B.vehicle('pickup', 1010, 520, Math.PI / 2 + 0.1, { wrecked: true });
+  B.decor('pylon', 975, 430, 0, 1);
+  // farm stand and a church across the road
+  B.ob('building', 1350, 560, 140, 90, 0.04, { color: '#9a8f7e', roof: '#6e3b2f' });
+  B.ob('building', 900, 1700, 240, 130, 0, { color: '#c9c2b2', roof: '#4f4a52' });
+  B.vehicle('car', 1250, 1600, Math.PI / 2, { wrecked: rng.chance(0.4) });
+
+  // ---- County Road 12 corner: motel (the neon sign), diner, parked cars
+  B.ob('building', 6180, 1640, 420, 110, 0, { color: '#a58f73', roof: '#6d5a4a' });
+  B.ob('building', 6000, 640, 200, 100, 0, { color: '#b9b2a4', roof: '#7a3b2e' });
+  B.ob('container', 6150, 600, 64, 36, 0, { color: '#2e5d3a', roof: '#294f33' });
+  for (const [kind, x, a] of [['car', 6029, Math.PI / 2], ['van', 6145, Math.PI / 2 - 0.05], ['car', 6319, Math.PI / 2 + 0.08]]) {
+    B.vehicle(kind, x, 1465, a, { wrecked: rng.chance(0.3) });
+  }
+  B.vehicle('car', 5880, 738, 0.1, { wrecked: rng.chance(0.4) });
 
   // ---- farms
-  B.ob('building', 900, 300, 200, 140, 0, { color: '#9a8f7e', roof: '#6e3b2f' });   // farmhouse
-  B.ob('building', 1085, 250, 90, 70, 0.05, { color: '#7a6a55', roof: '#5b5048' }); // shed
-  B.ob('building', 2980, 1900, 200, 150, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // barn
-  B.ob('pickup', 1000, 390, 100, 46, 1.4, { color: '#6d4c3a' });
-  B.runX('wall', 640, 1250, 2300, [[1760, 1880]], 6, { color: '#6b5433', solid: false, maxLen: 280 });
-  B.runX('wall', 1580, 700, 1500, [[1040, 1160]], 6, { color: '#6b5433', solid: false, maxLen: 280 });
-  B.runY('wall', 2560, 1470, 2060, [[1700, 1800]], 6, { color: '#6b5433', solid: false, maxLen: 300 });
+  B.ob('building', 4600, 300, 200, 140, 0, { color: '#9a8f7e', roof: '#6e3b2f' });   // farmhouse
+  B.ob('building', 4785, 250, 90, 70, 0.05, { color: '#7a6a55', roof: '#5b5048' }); // shed
+  B.ob('building', 4700, 1900, 200, 150, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // barn
+  B.ob('building', 6600, 1900, 170, 120, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // second barn
+  B.ob('pickup', 4700, 390, 100, 46, 1.4, { color: '#6d4c3a' });
+  B.runX('wall', 640, 4150, 4300, [], 6, { color: '#6b5433', solid: false, maxLen: 280 });
+  B.runX('wall', 640, 4900, 5300, [], 6, { color: '#6b5433', solid: false, maxLen: 280 });
+  B.runX('wall', 1580, 4400, 5100, [[4640, 4760]], 6, { color: '#6b5433', solid: false, maxLen: 280 });
+  B.runY('wall', 4460, 1640, 2060, [[1760, 1860]], 6, { color: '#6b5433', solid: false, maxLen: 300 });
+  B.runX('wall', 1580, 6450, 6900, [[6560, 6660]], 6, { color: '#6b5433', solid: false, maxLen: 280 });
 
   B.forest(300, 360, 220, 170, 6);
-  B.forest(1520, 330, 250, 150, 5);
-  B.forest(2400, 360, 260, 180, 6);
-  B.forest(3300, 420, 200, 200, 5);
+  B.forest(1900, 330, 260, 150, 5);
+  B.forest(3700, 360, 300, 180, 7);
+  B.forest(5300, 380, 260, 160, 5);
+  B.forest(7200, 420, 220, 200, 6);
   B.forest(420, 1820, 260, 170, 6);
-  B.forest(1400, 1900, 240, 140, 5);
-  B.forest(2160, 1800, 200, 150, 4);
-  B.forest(3380, 1700, 150, 200, 4);
-  B.boulders(100, 150, W - 100, 740, 4);
-  B.boulders(100, 1470, W - 100, H - 150, 4);
+  B.forest(1600, 1900, 240, 140, 5);
+  B.forest(3500, 1850, 300, 160, 6);
+  B.forest(5400, 1800, 220, 150, 4);
+  B.forest(7300, 1760, 180, 220, 5);
+  B.boulders(100, 150, W - 100, 740, 8);
+  B.boulders(100, 1470, W - 100, H - 150, 8);
 
-  // ---- lights: shoulder lamps, bus interior, army work light, farmhouse porch
-  for (const x of [300, 1100, 2700, 3500]) B.lamp(x, 832);
-  for (const x of [700, 1500, 2300, 3100]) B.lamp(x, 1370);
-  B.lamp(1900, 832, { dead: false });
+  // ---- lights: shoulder lamps, fixtures under the viaduct, the bus interior, the army
+  // work light, the gas canopy, the motel neon, farm porches
+  for (const x of [250, 620, 1650, 3300, 4100, 4900, 6300, 7100]) B.lamp(x, 832);
+  for (const x of [700, 1500, 3500, 4300, 5100, 6100, 6900]) B.lamp(x, 1370);
+  B.lamp(3900, 832, { dead: false });
+  for (const [y, fl] of [[829, 0.1], [1100, 0.4], [1371, 0]]) B.light(OX, y, 210, SODIUM_COLOR, fl, DZ - OVERPASS.depth - OVERPASS.cap - 4);
   B.light(BUS.x, BUS.y, 170, '#ffe2a0', 0.05);
-  B.light(1800, 960, 190, FLOOD_COLOR, 0);
-  B.light(900, 390, 150, '#ffcf80', 0.15);
-  B.light(2980, 1990, 130, '#ffcf80', 0.1);
+  B.light(3800, 960, 190, FLOOD_COLOR, 0);
+  B.light(880, 702, 220, '#f4efcf', 0.15);
+  B.light(6180, 1560, 200, '#ff7aa2', 0.25);
+  B.light(6000, 710, 150, '#ffd9a0', 0.1);
+  B.light(4600, 390, 150, '#ffcf80', 0.15);
+  B.light(4700, 1990, 130, '#ffcf80', 0.1);
+  B.light(900, 1790, 130, '#ffcf80', 0.2);
+
+  // ---- traffic signals at both junctions (broken or flickering: see the renderers)
+  for (const X of [XA, XB]) {
+    B.signal(X - RW - 26, 832, Math.PI / 2, 230);    // over the westbound lanes, facing east
+    B.signal(X + RW + 26, 1368, -Math.PI / 2, 230);  // over the eastbound lanes, facing west
+    B.signal(X - RW - 26, 1368, 0, 110);             // over the southbound lane, facing north
+    B.signal(X + RW + 26, 832, Math.PI, 110);        // over the northbound lane, facing south
+  }
 
   // ---- decor
-  B.skids(18, 900, 870, 2500, 1060, WEST);
-  B.skids(14, 1000, 1140, 2600, 1330, EAST);
-  B.cluster('debris', 40, 1850, 1100, 750);
-  B.cluster('debris', 14, 1240, 980, 180);
-  B.cluster('rubble', 8, 2330, 1100, 90);
-  B.cluster('oil', 6, 1260, 1000, 150, { s: [1.2, 2.2] });
-  B.cluster('tire', 8, 2200, 1100, 400);
-  B.cluster('blood_old', 16, 1800, 1150, 700);
-  for (const [x, y] of [[1690, 1040], [1720, 1050], [1900, 1045], [1930, 1036], [1640, 870]]) {
-    B.decor('cone', x + B.drng.centered() * 8, y + B.drng.centered() * 6, B.drng.range(0, TAU), 1);
+  B.skids(26, 2900, 870, 4500, 1060, WEST);
+  B.skids(20, 3000, 1140, 5400, 1330, EAST);
+  B.skids(8, XB - 200, 880, XB + 200, 1330, Math.PI / 2 + 0.4);
+  B.cluster('debris', 50, 3850, 1100, 800);
+  B.cluster('debris', 16, 3240, 980, 180);
+  B.cluster('debris', 14, XB, 1050, 260);
+  B.cluster('debris', 12, OX + 40, 1480, 160);
+  B.cluster('rubble', 8, 4330, 1100, 90);
+  B.cluster('rubble', 6, OX + 40, 1470, 70);
+  B.cluster('oil', 6, 3260, 1000, 150, { s: [1.2, 2.2] });
+  B.cluster('oil', 5, 5360, 1225, 130, { s: [1.2, 2.2] });
+  B.cluster('tire', 10, 4200, 1100, 400);
+  B.cluster('blood_old', 20, 3800, 1150, 800);
+  for (const [x, y] of [[3690, 1040], [3720, 1050], [3900, 1045], [3930, 1036], [3640, 870],
+    [1990, 845], [2010, 870], [1990, 1355], [2015, 1330]]) {
+    B.decor('cone', x + drng.centered() * 8, y + drng.centered() * 6, drng.range(0, TAU), 1);
   }
+  for (const [x, y] of [[XA - 40, 1020], [XA + 40, 1180], [XB + 30, 1170], [OX, 960]]) B.decor('manhole', x, y, 0, 1);
   B.decor('sign', 200, 1382, 0, 1.2);
-  B.decor('sign', 3420, 818, Math.PI, 1.2);
-  B.decor('sign', 1240, 1382, 0, 1);
-  B.decor('flag', 1760, 850, 0, 1, true);
-  B.groundClutter({ cracks: 60, oil: 18, paper: 40, debris: 30, blood: 18, tires: 6, tufts: 260, bushes: 70, rocks: 40 });
-  B.sprinkle('bush', 30, 0, 760, W, 800, { keep: true, s: [0.6, 1.1] });
-  B.sprinkle('bush', 30, 0, 1400, W, 1440, { keep: true, s: [0.6, 1.1] });
+  B.decor('sign', 7420, 818, Math.PI, 1.2);
+  B.decor('sign', 2250, 1382, 0, 1);
+  B.decor('sign', 5000, 818, Math.PI, 1.3);
+  B.decor('sign', XA + RW + 40, 700, Math.PI / 2, 0.9);
+  B.decor('sign', XB - RW - 40, 1500, -Math.PI / 2, 0.9);
+  B.decor('flag', 3760, 850, 0, 1, true);
+  B.groundClutter({ cracks: 120, oil: 36, paper: 80, debris: 60, blood: 36, tires: 12, tufts: 520, bushes: 140, rocks: 80 });
+  B.sprinkle('bush', 60, 0, 760, W, 800, { keep: true, s: [0.6, 1.1] });
+  B.sprinkle('bush', 60, 0, 1400, W, 1440, { keep: true, s: [0.6, 1.1] });
 }
 
 // ---------------------------------------------------------------------------------

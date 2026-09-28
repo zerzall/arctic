@@ -17,7 +17,9 @@ const AREA_COLORS = {
 };
 /** Radar mode: world px from the player to the nearer edge of the window. */
 const RADAR_RANGE = 900;
-const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco']);
+const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco', 'pier', 'ramp']);
+/** North-up mode: maps wider than this (width / height) scroll with the player instead of shrinking to a strip. */
+const SCROLL_ASPECT = 2.6;
 
 function rotRect(g, x, y, w, h, a) {
   g.save();
@@ -38,6 +40,7 @@ export function createMinimap(canvas, map, opts = {}) {
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // markers and labels grow with the rem-sized minimap on big screens.
   let W = 0, H = 0, dpr = 1, u = 1, scale = 1, ox = 0, oy = 0;
+  let scroll = false;   // north-up on a very long map: a full-height window that follows the player
   let base = null;
   let acc = 1;
   let radarYaw = 0;
@@ -46,8 +49,8 @@ export function createMinimap(canvas, map, opts = {}) {
   function paintBase() {
     base = document.createElement('canvas');
     // Radar: the whole map at the zoomed scale (a few hundred px), blitted rotated.
-    base.width = radar ? Math.ceil(map.width * scale + ox * 2) : W;
-    base.height = radar ? Math.ceil(map.height * scale + oy * 2) : H;
+    base.width = radar || scroll ? Math.ceil(map.width * scale + ox * 2) : W;
+    base.height = radar || scroll ? Math.ceil(map.height * scale + oy * 2) : H;
     const b = base.getContext('2d');
     b.fillStyle = '#0a0c0e';
     b.fillRect(0, 0, base.width, base.height);
@@ -63,6 +66,18 @@ export function createMinimap(canvas, map, opts = {}) {
     for (const o of map.obstacles || []) {
       b.fillStyle = TALL.has(o.kind) ? '#6d737b' : o.solid ? '#555a61' : '#44484e';
       rotRect(b, o.x, o.y, Math.max(o.w, 14), Math.max(o.h, 14), o.a);
+    }
+    // overpass decks: a light band over the ground (you can walk under the viaduct)
+    const ov = map.overpass;
+    if (ov) {
+      for (const d of ov.decks) {
+        b.strokeStyle = d.kind === 'ramp' ? 'rgba(150,152,148,0.75)' : 'rgba(150,152,148,0.45)';
+        b.lineWidth = d.w;
+        b.lineCap = 'butt';
+        b.beginPath();
+        d.pts.forEach(([x, y], i) => (i ? b.lineTo(x, y) : b.moveTo(x, y)));
+        b.stroke();
+      }
     }
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
@@ -95,8 +110,12 @@ export function createMinimap(canvas, map, opts = {}) {
     if (nw === W && nh === H && base) return;
     W = canvas.width = nw;
     H = canvas.height = nh;
+    scroll = !radar && map.width / map.height > SCROLL_ASPECT;
     if (radar) {
       scale = Math.min(W, H) / 2 / RADAR_RANGE;
+      ox = oy = 0;
+    } else if (scroll) {
+      scale = H / map.height;
       ox = oy = 0;
     } else {
       scale = Math.min(W / map.width, H / map.height);
@@ -129,7 +148,16 @@ export function createMinimap(canvas, map, opts = {}) {
       drawRadar(view, localId, rosterById, localPos, yaw);
       return;
     }
-    g.drawImage(base, 0, 0);
+    if (scroll) {
+      // follow the local player (else the objective) along the map, clamped to its ends
+      let cx = localPos && Number.isFinite(localPos.x) ? localPos.x : NaN;
+      if (!Number.isFinite(cx) && view) for (const p of view.players || []) if (p.id === localId) cx = p.x;
+      if (!Number.isFinite(cx)) cx = map.objective ? map.objective.x : map.width / 2;
+      ox = Math.round(Math.max(W - map.width * scale, Math.min(0, W / 2 - cx * scale)));
+      g.fillStyle = '#0a0c0e';
+      g.fillRect(0, 0, W, H);
+    }
+    g.drawImage(base, scroll ? ox : 0, 0);
     if (!view) return;
     const k = scale;
     const X = (x) => ox + x * k;

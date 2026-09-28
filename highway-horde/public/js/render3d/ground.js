@@ -28,10 +28,12 @@ const TILE = 1024;              // playable-area tile size (world units): ~10 vi
 const SKIRT = 1300;             // how far the ground continues past the map bounds
 const SKIRT_TILE = 2200;        // max skirt tile length
 const SKIRT_SCALE = 0.16;       // texels per unit beyond the bounds (fog hides it)
+/** Texel budget of the playable ground per tier (every map up to 3000 x 3000 stays under it). */
+const GROUND_TEXELS = { ultra: 10e6, high: 6e6, low: 3e6 };
 /** Water geometry (units): bed depth, surface height, bank width, drop under a bridge. */
 export const WATER = { depth: 70, surface: -16, bank: 46, drop: 2 };
 // Decor the 3D world models itself — not painted flat into the ground.
-const MODELLED_DECOR = new Set(['bush', 'rock', 'cone', 'tire', 'lamp_post', 'sign', 'flag', 'rubble', 'tree_canopy']);
+const MODELLED_DECOR = new Set(['bush', 'rock', 'cone', 'tire', 'lamp_post', 'sign', 'flag', 'rubble', 'tree_canopy', 'signal', 'pylon']);
 const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
 
 /**
@@ -43,8 +45,10 @@ export function createGround({ scene, map, quality, renderer, detail }) {
   const high = quality !== 'low';
   const ultra = quality === 'ultra';
   let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
-  // texels per world unit: ultra paints the ground at full detail
-  const scale = ultra ? 1 : high ? 0.75 : 0.5;
+  // texels per world unit: ultra paints the ground at full detail; a very long map is
+  // painted a little coarser (a texel budget per tier: the detail layers carry the close-up
+  // grain) so its canvases and textures stay near the other maps' memory
+  const scale = Math.min(ultra ? 1 : high ? 0.75 : 0.5, Math.sqrt(GROUND_TEXELS[tier] / (map.width * map.height)));
   const maxAniso = renderer ? Math.min(ultra ? 16 : high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
   const W = map.width, H = map.height;
 

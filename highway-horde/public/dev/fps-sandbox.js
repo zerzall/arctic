@@ -108,7 +108,14 @@ function viewpoints(map) {
     v.push(at('gate', 1500, 700, 1500, 1500));
   }
   if (map.id === 'truckstop') v.push(at('forecourt', 700, 1600, 1000, 1350));
-  if (map.id === 'highway') v.push(at('pileup', 1000, 1080, 1500, 980));
+  if (map.id === 'highway') {
+    v.push(at('pileup', 3000, 1080, 3500, 980));
+    v.push(at('overpass', 3480, 1180, 2900, 1180, 0.12));
+    v.push(at('underpass', 2900, 1000, 2300, 1000, 0.05));
+    v.push(at('ramp', 1800, 1330, 2750, 1150, 0.05));
+    v.push(at('junction', 1330, 1060, 700, 1180, 0.02));
+    v.push(at('longroad', 6200, 1000, 3000, 1000));
+  }
   return v;
 }
 

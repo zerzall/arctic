@@ -189,9 +189,11 @@ export function buildTreeLine(B, map, waters) {
   };
   const gc = lin(map.ground);
   const desert = gc.r > gc.g * 1.05;
+  // one strip per side; a very long side is cut in chunks the fog culling can drop
+  const chunk = W > 6000 ? 2600 : Infinity;
   const place = (x, y, dist) => {
     if (blocked(x, y)) return;
-    B.setCell(y < 0 ? 'tl-n' : y > H ? 'tl-s' : x < 0 ? 'tl-w' : 'tl-e');
+    B.setCell((y < 0 ? 'tl-n' : y > H ? 'tl-s' : x < 0 ? 'tl-w' : 'tl-e') + (y < 0 || y > H ? Math.floor((x + 1000) / chunk) : ''));
     B.obj(x, y, rng.range(0, 6.28), Math.floor(rng.next() * 1e6));
     B.setCell(null);
     if (desert) {

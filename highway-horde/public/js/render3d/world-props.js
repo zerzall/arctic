@@ -8,6 +8,7 @@
 import { T, mixHex, shadeHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
+import { signalMode } from '../render/maplayer.js';
 
 const CONCRETE = '#8a877e';
 const POLE = '#6e757b';    // galvanised steel: a black pole vanished against the night sky
@@ -347,6 +348,73 @@ export function lampPost(B, d, lit, color) {
   }
   B.box('glass', 5.4, H - 6.1, 0, 13, 0.6, 6.4, '#40444a', [0, 0, -0.06]);
   return null;
+}
+
+/**
+ * Traffic signal (the map's 'signal' decor): a galvanised pole with a mast arm reaching
+ * 150 × s along +x, signal heads hanging from it facing local -z. The power is out on this
+ * road: per pole (by `i`) the heads are dark, flash amber, flash red or flicker a failing
+ * red. Glowing lenses get a halo (same blink phase as the 'blink' material).
+ * @param {object} B geo builder (frame at the pole)
+ * @param {object} d decor { x, y, a, s }
+ * @param {number} i decor index (picks the failure)
+ * @param {object[]} halos the world's halo list
+ */
+export function trafficSignal(B, d, i, halos) {
+  const s = d.s || 1;
+  const len = 150 * s;
+  const S = [DET.panel, 0.48, 0.6];
+  const H = 178;
+  B.cyl('std', 0, 0, 0, 3.4, H, POLE, 10, 0.8, null, { surf: S });
+  B.rblock('std', 0, 0, 0, 10, 5, 10, 1, CONCRETE, null, { surf: [DET.concrete, 0.85, 0] });
+  B.cyl('std', 0, H, 0, 3.6, 3, '#50565a', 10, 0.6, null, { surf: S });
+  // mast arm (tapered) and its tie rod
+  B.add('std', T.cyl(8, 0.55), [len / 2, H - 12, 0], [2.6, len, 2.6], [0, 0, -Math.PI / 2], POLE, { surf: S, map: 'cyl' });
+  const brace = Math.hypot(len * 0.45, 20);
+  B.add('std', T.cyl(5), [len * 0.225, H - 2, 0], [0.8, brace, 0.8], [0, 0, Math.atan2(len * 0.45, 20)], POLE, { surf: S, map: 'cyl' });
+  // push-button box and a controller cabinet at the foot
+  B.rbox('std', 3.8, 44, 0, 3, 7, 5, 0.8, '#c8a51c', null, { surf: [DET.panel, 0.5, 0.2] });
+  const mode = signalMode(i);
+  const heads = Math.max(1, Math.round(len / 72));
+  const ca = Math.cos(d.a || 0), sa = Math.sin(d.a || 0);
+  for (let k = 0; k < heads; k++) {
+    const hx = len * (heads === 1 ? 0.8 : 0.42 + (0.55 * k) / (heads - 1));
+    const top = H - 14;
+    const hy = top - 18;   // head centre (the head hangs 32 tall under the arm)
+    B.box('std', hx, top - 1, 0, 1.6, 4, 1.6, '#2a2c2e', null, { surf: S });
+    B.rblock('std', hx, top - 34, 0, 11, 32, 9, 1.4, '#22251f', null, { surf: [DET.plastic, 0.6, 0.1] });
+    // backplate behind the head with a reflective border seen by the traffic (local -z)
+    B.box('std', hx, hy, 5, 17, 38, 1, '#161816', null, { surf: [DET.plastic, 0.7, 0] });
+    B.box('glow', hx, hy, 4.4, 17.4, 38.4, 0.2, '#e8e0a0', null, { emissive: 0.18, uv: atlasUV('white'), noAO: true });
+    const lenses = [['#ff2a1a', 10], ['#ffae1a', 0], ['#2aff8a', -10]];
+    lenses.forEach(([col, dy], j) => {
+      const on = (mode === 'amber' && j === 1) || ((mode === 'red' || mode === 'failing') && j === 0);
+      // visor
+      B.add('std', T.cyl(10, 1, true), [hx, hy + dy + 1.5, -6.5], [4.4, 5, 4.4], [Math.PI / 2, 0, 0], '#1a1c19', { surf: [DET.plastic, 0.6, 0] });
+      if (on) {
+        const bucket = mode === 'failing' ? 'flicker' : 'blink';
+        const o = bucket === 'flicker' ? { emissive: 3.4, uv: atlasUV('white'), noAO: true } : { emissive: 3.4, noAO: true };
+        B.add(bucket, T.cyl(12), [hx, hy + dy, -4.7], [3.6, 0.6, 3.6], [Math.PI / 2, 0, 0], col, o);
+        const wx = d.x + ca * hx + sa * 6, wy = d.y + sa * hx - ca * 6;
+        halos.push({ x: wx, y: wy, h: hy + dy, color: col, size: 46, strength: 0.9, blink: mode === 'failing' ? 0 : 1, flicker: mode === 'failing' ? 1 : 0 });
+      } else {
+        B.add('glass', T.cyl(12), [hx, hy + dy, -4.7], [3.6, 0.6, 3.6], [Math.PI / 2, 0, 0], shadeHex(col, -0.8));
+      }
+    });
+  }
+}
+
+/** Roadside price pylon (the map's 'pylon' decor): two posts and a lit sign box on top. */
+export function pricePylon(B, d) {
+  const s = d.s || 1;
+  const S = [DET.rust, 0.45, 0.85];
+  for (const x of [-14 * s, 14 * s]) B.cyl('std', x, 0, 0, 2.4, 150 * s, '#7a7e82', 8, 1, null, { surf: S });
+  B.rblock('std', 0, 0, 0, 44 * s, 6, 12, 1, CONCRETE, null, { surf: [DET.concrete, 0.85, 0] });
+  const w = 46 * s, h = 70 * s, y0 = 146 * s;
+  B.rblock('std', 0, y0, 0, w + 4, h + 4, 9, 1.5, '#2c2f33', null, { surf: [DET.panel, 0.5, 0.6] });
+  for (const f of [-1, 1]) {
+    B.add('glow', T.plane(), [0, y0 + 2 + h / 2, f * 4.7], [w, h, 1], [0, f > 0 ? 0 : Math.PI, 0], '#ffffff', { emissive: 1.1, uv: atlasUV('gasSign'), noAO: true });
+  }
 }
 
 /** Traffic cone (upright or knocked over) with retro-reflective bands. */
