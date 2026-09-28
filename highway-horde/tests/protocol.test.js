@@ -10,6 +10,7 @@ import {
 } from '../public/js/shared/protocol.js';
 import { PROTOCOL_VERSION } from '../public/js/shared/constants.js';
 import { angleDiff } from '../public/js/shared/math.js';
+import { ZFLAG } from '../public/js/shared/zombies.js';
 import { bigSnapshot, sampleEvents, samplePlayer } from './fixtures/net-fake-game.js';
 
 const SPEC_EVENT_TYPES = ['shot', 'chain', 'melee', 'zdie', 'zattack', 'spit', 'scream', 'charge', 'slam',
@@ -197,6 +198,47 @@ test('reload time is carried compactly to the millisecond', () => {
   // Without a time (older senders) it still arrives, as JSON.
   const old = decodeSnapshot(encodeSnapshot({ ...bigSnapshot(0), events: [{ type: 'reload', pid: 1, weapon: 'pistol' }] }));
   assert.deepEqual(old.events, [{ type: 'reload', pid: 1, weapon: 'pistol' }]);
+});
+
+test('the new guns: weapon ids, frost flags, flare/frost/harpoon projectiles, flare hazards and freeze events', () => {
+  const guns = ['flare', 'tommy', 'burst_rifle', 'lever', 'chainsaw', 'harpoon', 'cryo', 'amr'];
+  const players = guns.map((g, i) => ({ ...samplePlayer(i + 1), slot: 1, slots: ['pistol', g, i % 2 ? 'amr' : null], ammo: [[12, -1], [3, g === 'chainsaw' ? -1 : 40], i % 2 ? [5, 30] : [0, 0]] }));
+  const snap = {
+    ...bigSnapshot(0),
+    players,
+    zombies: [
+      { id: 1, type: 'walker', x: 100, y: 200, angle: 1, hp: 0.5, flags: ZFLAG.SLOWED },
+      { id: 2, type: 'brute', x: 300, y: 200, angle: 2, hp: 1, flags: ZFLAG.SLOWED | ZFLAG.FROZEN | ZFLAG.ELITE },
+    ],
+    projectiles: [
+      { id: 1, kind: 'flare', x: 10, y: 20, angle: 0.5 },
+      { id: 2, kind: 'frost', x: 30, y: 40, angle: 1.5 },
+      { id: 3, kind: 'harpoon', x: 50, y: 60, angle: 2.5 },
+    ],
+    hazards: [{ id: 4, kind: 'flare', x: 400, y: 500, r: 52, life: 0.75 }],
+    pickups: [{ id: 5, kind: 'crate', x: 1, y: 2, weapon: 'chainsaw' }],
+    events: [
+      { type: 'freeze', id: 2, x: 300, y: 200 },
+      { type: 'shot', pid: 1, turret: 0, weapon: 'chainsaw', x: 10, y: 20, angle: Math.PI / 2, rays: [{ x: 40, y: 22, hit: 1 }] },
+      { type: 'shot', pid: 2, turret: 0, weapon: 'amr', x: 10, y: 20, angle: 0, rays: [{ x: 1040, y: 20, hit: 1 }] },
+      { type: 'reload', pid: 3, weapon: 'lever', time: 0.42 },
+      { type: 'switch', pid: 4, weapon: 'burst_rifle' },
+      { type: 'pickup', pid: 5, kind: 'crate', x: 1, y: 2, weapon: 'harpoon' },
+    ],
+  };
+  const base = encodeSnapshot({ ...snap, events: [] }).byteLength;
+  const buf = encodeSnapshot(snap);
+  const d = decodeSnapshot(buf);
+  d.players.forEach((p, i) => checkPlayer(p, players[i]));
+  assert.deepEqual(d.zombies.map((z) => z.flags), [ZFLAG.SLOWED, ZFLAG.SLOWED | ZFLAG.FROZEN | ZFLAG.ELITE]);
+  assert.deepEqual(d.projectiles.map((p) => p.kind), ['flare', 'frost', 'harpoon']);
+  assert.equal(d.hazards[0].kind, 'flare');
+  near(d.hazards[0].r, 52, 0.05, 'flare radius');
+  assert.equal(d.pickups[0].weapon, 'chainsaw');
+  assert.deepEqual(d.events, snap.events);
+  assert.ok(EVENT_TYPES.includes('freeze'));
+  assert.ok(buf.byteLength - base < 80, 'all binary, no JSON');
+  assert.equal(PROTOCOL_VERSION, 3);
 });
 
 test('sprintLock round-trips both ways', () => {

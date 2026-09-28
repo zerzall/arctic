@@ -380,6 +380,37 @@ test('shot prediction: the minigun / flamethrower loops run on predicted shots, 
   assert.ok(eng.loops.has('flame1'));
 });
 
+test('chainsaw idles in hand and screams while cutting; cryo hisses; neither plays per-shot sounds', async () => {
+  const { ctx, audio, eng } = engine();
+  await audio.unlock();
+  const step = (v, dt = 1 / 60) => {
+    ctx.currentTime += dt;
+    audio.update(v, { localId: 1, dt });
+  };
+  const saw = player(1, 0, 0, { slot: 1, slots: ['pistol', 'chainsaw', null], firing: false });
+  step(view({ players: [saw] }));
+  assert.ok(eng.loops.has('sawidle1') && !eng.loops.has('saw1'));
+  for (let i = 0; i < 20; i++) step(view({ players: [{ ...saw, firing: true }] }));
+  assert.ok(eng.loops.has('saw1'));
+  assert.equal(eng.loops.get('saw1').id, 'chainsaw_loop');
+  // refuelling stalls the engine; downed (pistol out) it is silent
+  for (let i = 0; i < 20; i++) step(view({ players: [{ ...saw, reloading: 0.5 }] }));
+  assert.ok(!eng.loops.has('saw1') && !eng.loops.has('sawidle1'));
+  const cryo = player(2, 200, 0, { slots: ['cryo', null, null], firing: true });
+  step(view({ players: [player(1, 0, 0), cryo] }));
+  assert.equal(eng.loops.get('cryo2').id, 'cryo_loop');
+  const before = audio.stats().played;
+  audio.addEvents([
+    { type: 'shot', pid: 2, turret: 0, weapon: 'cryo', x: 200, y: 0, angle: 0, rays: [] },
+    { type: 'shot', pid: 2, turret: 0, weapon: 'chainsaw', x: 200, y: 0, angle: 0, rays: [] },
+  ], { x: 0, y: 0, localId: 1 });
+  assert.equal(audio.stats().played, before, 'loop guns have no one-shot per shot');
+  audio.addEvents([{ type: 'shot', pid: 2, turret: 0, weapon: 'chainsaw', x: 200, y: 0, angle: 0, rays: [{ x: 240, y: 0, hit: 1 }, { x: 230, y: 20, hit: 1 }] }], { x: 0, y: 0, localId: 1 });
+  assert.equal(audio.stats().played, before + 1, 'one cutting sound for the zombies a sweep cut');
+  audio.addEvents([{ type: 'freeze', id: 3, x: 100, y: 0 }], { x: 0, y: 0, localId: 1 });
+  assert.equal(audio.stats().played, before + 2, 'a zombie freezing solid');
+});
+
 test('reload sounds are timed from the event time (perks), else the weapon table', async () => {
   const { ctx, audio, eng } = engine();
   await audio.unlock();

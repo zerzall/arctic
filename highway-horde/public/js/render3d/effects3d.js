@@ -71,6 +71,7 @@ export function createEffects3D(ctx) {
   const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);
   const HOT_SPARK = hdr('#ffc070', 3.2), HOT_CORE = hdr('#fff2d8', 3.2), FIRE_TINT = new THREE.Color(1, 1, 1);
   const BLOOD = C('#5a0606'), BLOOD2 = C('#7a0a0a'), MIST = C('#4a0505');
+  const FROST_MIST = C('#dff4ff'), ICE_GLINT = hdr('#c8f0ff', 2.4), ICE_SHARD = hdr('#bfe8ff', 1.3);
 
   function distCam(x, y) { return Math.hypot(x - camX, y - camY); }
   function shakeAt(x, y, amount, range) {
@@ -236,8 +237,43 @@ export function createEffects3D(ctx) {
       if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.2, '#b388ff');
       return;
     }
+    if (w.kind === 'melee') {
+      // chainsaw: a spray of blood and bone chips where the chain bites, sparks off the bar
+      for (const r of rays) {
+        if (!r || r.hit !== 1) continue;
+        const a = Math.atan2(r.y - oy, r.x - ox);
+        const hx = r.x - Math.cos(a) * 10, hy = r.y - Math.sin(a) * 10;
+        blood(hx, 32, hy, a + (R() - 0.5) * 1.2, 2.2, high ? 5 : 2, 260, true);
+        if (high && R() < 0.4) chips(hx, 32, hy, a + Math.PI * 0.5 * (R() < 0.5 ? 1 : -1), 1, C('#d8d0c0'), 180, 0.7);
+        if (R() < 0.25) ctx.ground.decal('blood', r.x + (R() - 0.5) * 20, r.y + (R() - 0.5) * 20, 4 + R() * 6, R() * TAU, 0.8);
+      }
+      if (rays.length) {
+        sparks(ox, oh - 4, oy, e.angle + Math.PI, 1.6, high ? 3 : 1, 200);
+        if (isLocal) ctx.shake(0.06);
+      }
+      if (high && R() < 0.3) smoke(ox - ca * 30, oh - 10, oy - sa * 30, 1, 3, 0.8, C('#6a6a6a'), 0.14, 12, 2);
+      return;
+    }
+    if (w.kind === 'cryo') {
+      // a cold white jet off the nozzle; the frost puffs (items3d) carry it on
+      for (let k = 0; k < (high ? 3 : 1); k++) {
+        const a = e.angle + (R() - 0.5) * 0.2, s = 300 + R() * 160;
+        const start = isLocal ? 6 : 2;
+        fx.spawn(ox + ca * start, oh - 1, oy + sa * start, Math.cos(a) * s, 6 + R() * 12, Math.sin(a) * s, 0.3 + R() * 0.15, 5, 22 + R() * 12, FROST_MIST, 0.32, SMOKES[(R() * 5) | 0], 0, -6, 3.2);
+      }
+      if (R() < 0.5) fx.spawn(ox + ca * 8, oh, oy + sa * 8, ca * 200 + (R() - 0.5) * 60, 10, sa * 200 + (R() - 0.5) * 60, 0.35, 1.4, 0.6, ICE_GLINT, 1, FR.GLINT, F_ADD | F_FLICKER, 20, 1.5);
+      gatedFlash(lk, 0.12, ox + ca * 60, oy + sa * 60, oh, '#9ae8ff', 0.6, 200, 0.16);
+      return;
+    }
     if (w.kind === 'hitscan') {
       const big = w.category === 'sniper' || e.weapon === 'magnum';
+      if (w.penetrate) {
+        // the .50: a pressure wave kicks up dust round the shooter and slams the air
+        dust(ox - ca * 20, 4, oy - sa * 20, high ? 10 : 4, 22, DUSTC, 160, 0.9, 0.4);
+        ring(ox, oh, oy, 70, 0.18, hdr('#fff0d0', 1.2), 0.35, false, FR.SOFTRING);
+        if (isLocal) ctx.shake(0.45);
+        else shakeAt(ox, oy, 0.25, 700);
+      }
       const shotgun = w.category === 'shotgun';
       const width = big ? 1.8 : shotgun ? 0.75 : 1.1;
       for (let k = 0; k < rays.length; k++) {
@@ -281,7 +317,20 @@ export function createEffects3D(ctx) {
     }
     if (w.kind === 'projectile') {
       const kind = w.projectile && w.projectile.kind;
-      if (kind === 'rocket') {
+      if (kind === 'flare') {
+        if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.0, '#ff5a3a');
+        ctx.lights.flash(ox, oy, oh, '#ff4a2a', 2.4, 320, 0.25);
+        smoke(ox, oh, oy, high ? 4 : 2, 5, 1.2, C('#b0483a'), 0.3, 14, 3);
+        sparks(ox, oh, oy, e.angle, 0.6, high ? 8 : 3, 300, HOT_SPARK);
+      } else if (kind === 'harpoon') {
+        // compressed air: a white puff and a hiss of mist, no flame
+        smoke(ox, oh, oy, high ? 5 : 2, 5, 0.7, C('#d0d4d8'), 0.26, 10, 3);
+        for (let k = 0; k < (high ? 6 : 2); k++) {
+          const a = e.angle + (R() - 0.5) * 1.2, s = 90 + R() * 80;
+          fx.spawn(ox, oh, oy, Math.cos(a) * s, R() * 20, Math.sin(a) * s, 0.4, 3, 12, C('#e0e4e8'), 0.25, SMOKES[k % 5], 0, 0, 4);
+        }
+        if (isLocal) ctx.shake(0.12);
+      } else if (kind === 'rocket') {
         if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.6, '#ffb050');
         ctx.lights.flash(ox, oy, oh, '#ffb050', 3, 300, 0.15);
         // back-blast out of the rear of the tube
@@ -452,6 +501,19 @@ export function createEffects3D(ctx) {
         break;
       }
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind); break;
+      case 'freeze': {
+        // frost races over a zombie and locks it solid: ice shards, a cold flash
+        for (let k = 0; k < (high ? 14 : 6); k++) {
+          const a = R() * TAU, s = 40 + R() * 90;
+          fx.spawn(e.x, 20 + R() * 30, e.y, Math.cos(a) * s, 30 + R() * 80, Math.sin(a) * s, 0.8 + R() * 0.4, 1.8, 1.2, ICE_SHARD, 0.9, FR.SHARD, F_BOUNCE | F_SPIN, 600, 0.5);
+        }
+        sparkles(e.x, e.y, high ? 10 : 4, ICE_GLINT, 26);
+        glowPuff(e.x, 30, e.y, 30, 0.25, hdr('#9ae8ff', 1.6), 0.7);
+        ring(e.x, 2, e.y, 60, 0.4, hdr('#cfeeff', 1.2), 0.6);
+        dust(e.x, 10, e.y, high ? 4 : 2, 14, FROST_MIST, 30, 1.2, 0.3);
+        ctx.lights.flash(e.x, e.y, 30, '#9ae8ff', 1.2, 140, 0.3);
+        break;
+      }
       case 'ignite': {
         const r = e.r || 110;
         fireball(e.x, 6, e.y, high ? 26 : 12, 22, r * 1.8, 0.85, FIRE_TINT, 0.55);

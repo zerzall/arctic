@@ -88,4 +88,6 @@ export const ZFLAG = {
   CHARGING: 4,   // brute charge / boss slam wind-up
   BUFFED: 8,     // screamer speed buff active
   ELITE: 16,     // rare tougher variant (1.6x hp, glowing eyes)
+  SLOWED: 32,    // chilled by frost (cryo blaster): slower, frosted over
+  FROZEN: 64,    // frozen solid: can't move or attack, takes extra damage
 };

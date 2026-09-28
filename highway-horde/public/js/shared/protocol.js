@@ -31,7 +31,7 @@ export const MSG = {
 
 export const PHASES = ['prep', 'wave', 'intermission', 'gameover', 'victory'];
 export const PLAYER_STATES = ['alive', 'downed', 'dead'];
-export const HAZARD_KINDS = ['fire', 'acid'];
+export const HAZARD_KINDS = ['fire', 'acid', 'flare'];
 /** Maximum InputCmds carried by one inputs message. */
 export const MAX_INPUTS_PER_MESSAGE = 8;
 
@@ -47,7 +47,7 @@ const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const JSON_NULL = TEXT_ENCODER.encode('null');
 
-// ---- index lookups (Map beats indexOf for the 18-entry weapon list in hot loops)
+// ---- index lookups (Map beats indexOf for the 26-entry weapon list in hot loops)
 
 function indexMap(list) {
   const m = new Map();
@@ -311,6 +311,7 @@ const EVENT_SCHEMAS = [
   ['drop', [['x', 'pos'], ['y', 'pos']]],
   ['gameover', [['reason', ENUMS.gameover]]],
   ['victory', []],
+  ['freeze', [['id', 'id'], ['x', 'pos'], ['y', 'pos']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */

@@ -14,7 +14,7 @@ import {
   DT, PLAYER_RADIUS, REVIVE_RADIUS, INTERACT_RADIUS, PICKUP_RADIUS, SUPPLY_RADIUS, MELEE_RANGE,
   FRAG_MAX, ARMOR_MAX, TURRET, BARRICADE, BLEEDOUT_TIME, WEAPON_SLOTS,
 } from '../constants.js';
-import { WEAPONS } from '../weapons.js';
+import { WEAPONS, effectiveRate } from '../weapons.js';
 import { ITEMS } from '../items.js';
 import { FlowField, BARRICADE_COST } from '../flowfield.js';
 import { angleDiff, turnTowards, TAU } from '../math.js';
@@ -56,6 +56,10 @@ export const GUN_VALUE = {
   pistol: 1, magnum: 3, sawedoff: 3, uzi: 3.5, shotgun: 4, rifle: 6, dual_smg: 6.5, crossbow: 5.5,
   dmr: 7, sniper: 6, auto_shotgun: 8, flamethrower: 7, lmg: 9, grenade_launcher: 2, rocket: 2,
   tesla: 9.5, minigun: 10, railgun: 10.5,
+  flare: 3.2, tommy: 4.5, burst_rifle: 5, lever: 5.8, harpoon: 7, cryo: 6.8, amr: 11,
+  // Bots fight at range and back off from what closes in: they can't use a chainsaw
+  // (gunScore rates it 0), so they never buy or pick one up.
+  chainsaw: 0,
 };
 const BUY_ORDER = Object.keys(GUN_VALUE).filter((id) => GUN_VALUE[id] >= 3).sort((a, b) => GUN_VALUE[b] - GUN_VALUE[a]);
 
@@ -958,7 +962,7 @@ function kiteRadius(b) {
   const aw = activeWeapon(b.p);
   const w = aw.id ? WEAPONS[aw.id] : null;
   let r = 150;
-  if (w && (w.category === 'shotgun' || w.kind === 'flame')) r = 95;
+  if (w && (w.category === 'shotgun' || w.kind === 'flame' || w.kind === 'cryo')) r = 95;
   else if (w && w.category === 'sniper') r = 210;
   if (b.p.maxHp > 120) r *= 0.8;
   return r * b.prof.kite;
@@ -1029,7 +1033,7 @@ function steer(game, b) {
 function hazardAt(game, x, y) {
   for (const h of game.hazards) {
     if (h.life <= 0) continue;
-    if (h.kind === 'fire' && !game.settings.friendlyFire) continue;
+    if ((h.kind === 'fire' || h.kind === 'flare') && !game.settings.friendlyFire) continue;
     if (Math.hypot(h.x - x, h.y - y) < h.r + PLAYER_RADIUS) return h;
   }
   return null;
@@ -1173,8 +1177,10 @@ function aimAndFire(game, b, cmd) {
   if (Math.abs(angleDiff(b.aim, trueA)) > tol) return;
   if (d > w.range * 0.95) return;
   if (!safeToFire(game, b, w, trueA, d, tx, ty)) return;
+  // Let a round-by-round reload run unless something is getting close.
+  if (w.reloadOne && p.reloadT > 0 && b.nearestAdj > 220) return;
   // Bursts with automatic guns at range; hold the trigger up close (and on spin-up guns).
-  if (w.rate >= 8 && !w.spinup && d > 260) {
+  if (w.rate >= 8 && !w.spinup && !w.burst && d > 260) {
     if (b.burstT > 0) {
       b.burstT -= DT;
       if (b.burstT <= 0) b.pauseT = game.rng.range(0.08, 0.22);
@@ -1238,13 +1244,18 @@ export function gunScore(game, b, i, d) {
   switch (w.kind) {
     // Flames go through the whole pack.
     case 'flame': dps = (w.damage * w.rate * 0.5 + w.burn.dps) * (1 + Math.min(b.crowd, 6) * 0.4); break;
+    // Frost: little damage, but a frozen pack can't reach anyone (and takes more from the team).
+    case 'cryo': dps = (w.damage * w.rate * 0.5 + 70) * (1 + Math.min(b.crowd, 6) * 0.4); break;
+    // Bots keep their distance: a chainsaw is never the gun for the job.
+    case 'melee': return 0;
     case 'chain': dps = w.damage * w.rate * (1 + w.chains * 0.3); break;
     case 'rail': dps = w.damage * w.rate * 2; break;
     default: {
       // In a crowd the pellets that miss the target hit its neighbours.
       const crowd = w.pellets > 1 ? Math.min(0.25, b.crowd * 0.05) : 0;
       const hit = w.pellets > 1 ? Math.min(1, (ang + crowd) / Math.max(0.01, w.spread)) * w.pellets : Math.min(1, ang / Math.max(0.005, w.spread) + 0.3);
-      dps = w.damage * hit * w.rate * falloffAt(w, d) * (1 + Math.min(w.pierce, 4) * 0.15);
+      dps = w.damage * hit * effectiveRate(w) * falloffAt(w, d) * (1 + Math.min(w.pierce, 4) * 0.15);
+      if (w.burn) dps += w.burn.dps;
     }
   }
   if (w.projectile && w.projectile.explodeRadius > 0) {

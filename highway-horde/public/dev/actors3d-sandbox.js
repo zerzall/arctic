@@ -671,7 +671,7 @@ function fakeOwnShot(events, loc, wid, dt) {
       const d = w.kind === 'rail' ? 1400 : 300 + Math.random() * 500;
       ev.rays.push({ x: mx + Math.cos(a) * d, y: my + Math.sin(a) * d, hit: Math.random() < 0.4 ? 1 : 2 });
     }
-  } else if ((w.kind === 'flame' || w.kind === 'projectile') && w.projectile) {
+  } else if ((w.kind === 'flame' || w.kind === 'cryo' || w.kind === 'projectile') && w.projectile) {
     // the cooldown is capped at 14/s: emit the rest of a fast weapon's projectiles here
     const n = Math.max(1, Math.round(w.rate / Math.min(w.rate, 14)));
     for (let k = 0; k < n; k++) {

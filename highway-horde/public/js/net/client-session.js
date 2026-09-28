@@ -8,7 +8,7 @@
 // leave drainEvents() at once; the host's own 'shot' for us later arrives as `echo`.
 
 import {
-  GAME_VERSION, PROTOCOL_VERSION, DT, INTERP_DELAY, DEFAULT_SETTINGS,
+  GAME_VERSION, PROTOCOL_VERSION, DT, INTERP_DELAY, DEFAULT_SETTINGS, PLAYER_RADIUS,
 } from '../shared/constants.js';
 import {
   decodeSnapshot, encodeInputs, quantizeInput, messageType, MSG, MAX_INPUTS_PER_MESSAGE,
@@ -19,9 +19,9 @@ import { WEAPONS } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { rayCircle } from '../shared/geom.js';
-import { round1 } from '../shared/math.js';
+import { round1, angleDiff } from '../shared/math.js';
 import { activeWeapon, SWITCH_DELAY, COOLDOWN_EPS } from '../shared/sim/players.js';
-import { MUZZLE, MAX_RAYS_PER_EVENT } from '../shared/sim/combat.js';
+import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound } from '../shared/sim/combat.js';
 import { Emitter } from './emitter.js';
 import { createTicker } from './ticker.js';
 import { CmdBuilder } from './cmd-builder.js';
@@ -186,8 +186,11 @@ export class ClientSession extends Emitter {
     // snapshot), local fire cooldown/spin, shots predicted per pending cmd seq.
     this.wpn = {
       mag: [0, 0, 0], res: [0, 0, 0], freeMag: WEAPONS.pistol.mag, reloadLeft: 0, reloadTotal: 0, reloadSlot: -1,
-      lastSlot: 0, cooldown: 0, spin: 0, lastFireAt: -Infinity,
+      lastSlot: 0, cooldown: 0, spin: 0, lastFireAt: -Infinity, burstLeft: 0, prevFire: false,
     };
+    /** Trigger state of the newest acknowledged cmd (a replay starts from it). */
+    this.ackFire = false;
+    this.penScratch = { n: 0, wall: false, stop: 0, at: new Float64Array(8) };
     this.shotLog = new Map();
     /** seq → the free pistol's mag before that pending cmd (snapshots do not carry it). */
     this.freeMagLog = new Map();
@@ -619,6 +622,7 @@ export class ClientSession extends Emitter {
         W.reloadSlot = -1;
         if (live) {
           W.spin = 0;
+          W.burstLeft = 0;
           if (W.cooldown < SWITCH_DELAY) W.cooldown = SWITCH_DELAY;
         }
       }
@@ -655,6 +659,7 @@ export class ClientSession extends Emitter {
     if (mag >= w.mag || res === 0) return;
     W.reloadLeft = W.reloadTotal = this._reloadTime(aw.id);
     W.reloadSlot = aw.slot;
+    W.burstLeft = 0;
   }
 
   _finishReload(aw) {
@@ -665,12 +670,15 @@ export class ClientSession extends Emitter {
     } else {
       const need = w.mag - W.mag[aw.slot];
       const res = W.res[aw.slot];
-      const take = res < 0 ? need : Math.min(need, res);
+      let take = res < 0 ? need : Math.min(need, res);
+      if (w.reloadOne) take = Math.min(take, 1);
       W.mag[aw.slot] += take;
       if (res >= 0) W.res[aw.slot] = res - take;
     }
     W.reloadLeft = 0;
     W.reloadSlot = -1;
+    // round by round, like the host: the next round goes in right away
+    if (w.reloadOne && aw.slot >= 0) this._startReload(aw);
   }
 
   /** The host's weapon handling for one cmd (players.js handleFire), minus the damage. */
@@ -688,6 +696,8 @@ export class ClientSession extends Emitter {
     if (cmd.reload && p.state !== 'dead') this._startReload(aw);
     if (!aw.id || !WEAPONS[aw.id]) {
       if (live) W.spin = 0;
+      W.burstLeft = 0;
+      W.prevFire = !!cmd.fire;
       return;
     }
     const w = WEAPONS[aw.id];
@@ -701,25 +711,44 @@ export class ClientSession extends Emitter {
       }
     }
     const phase = this.newest ? this.newest.phase : '';
-    const fire = cmd.fire && phase !== 'gameover' && phase !== 'victory';
+    const trigger = cmd.fire && phase !== 'gameover' && phase !== 'victory';
+    const pulled = trigger && !W.prevFire;
+    W.prevFire = trigger;
+    if (!w.burst) W.burstLeft = 0;
+    // A replayed cmd fired whatever was predicted for it back then (a burst runs on
+    // after the trigger is released); a live one follows the host's burst rule.
+    const logged = live ? 0 : this.shotLog.get(cmd.seq) || 0;
+    const fire = trigger || (live ? W.burstLeft > 0 : logged > 0);
     if (live) {
       if (!w.spinup) W.spin = 0;
       else if (fire) W.spin = Math.min(1, W.spin + DT / w.spinup);
       else W.spin = Math.max(0, W.spin - DT / (w.spinup * 0.6));
     }
-    if (!fire || W.reloadLeft > 0) {
+    if (!fire) {
       if (live && W.cooldown < 0) W.cooldown = 0;
       return;
     }
+    if (W.reloadLeft > 0) {
+      // the host's rule: a fresh pull stops a round-by-round reload with a round in
+      const loaded = aw.slot < 0 ? W.freeMag : W.mag[aw.slot];
+      if (w.reloadOne && pulled && loaded > 0) {
+        W.reloadLeft = 0;
+        W.reloadSlot = -1;
+      } else {
+        if (live && W.cooldown < 0) W.cooldown = 0;
+        return;
+      }
+    }
     let mag = aw.slot < 0 ? W.freeMag : W.mag[aw.slot];
     if (mag <= 0) {
+      W.burstLeft = 0;
       this._startReload(aw);
       if (live && W.cooldown < 0) W.cooldown = 0;
       return;
     }
     if (!live) {
       // Replay: the shots predicted for this cmd back then.
-      const left = Math.max(0, mag - (this.shotLog.get(cmd.seq) || 0));
+      const left = Math.max(0, mag - logged);
       if (aw.slot >= 0) W.mag[aw.slot] = left;
       else W.freeMag = left;
       return;
@@ -730,11 +759,19 @@ export class ClientSession extends Emitter {
     }
     let shots = 0;
     while (W.cooldown <= COOLDOWN_EPS && mag > 0 && shots < 4) {
+      if (w.burst) {
+        if (W.burstLeft <= 0) {
+          if (!trigger) break;
+          W.burstLeft = w.burst;
+        }
+        W.burstLeft--;
+      }
       this._emitShot(aw.id, w, cmd.angle);
       mag--;
-      W.cooldown += 1 / w.rate;
+      W.cooldown += w.burst && W.burstLeft === 0 ? w.burstDelay : 1 / w.rate;
       shots++;
     }
+    if (mag <= 0) W.burstLeft = 0;
     if (aw.slot < 0) W.freeMag = mag;
     else W.mag[aw.slot] = mag;
     if (shots) {
@@ -753,6 +790,8 @@ export class ClientSession extends Emitter {
         const a = w.spread > 0 ? angle + (Math.random() * 2 - 1) * w.spread : angle;
         rays.push(this._traceRay(x, y, a, w));
       }
+    } else if (w.kind === 'melee') {
+      this._sawRays(x, y, angle, w, rays);
     }
     const q = this.predEvents;
     if (q.length >= MAX_PREDICTED_EVENTS) q.shift();
@@ -763,11 +802,38 @@ export class ClientSession extends Emitter {
     });
   }
 
-  /** End point of one ray: first solid obstacle, the `pierce`-th rendered zombie, or range. */
+  /** The host's chainsaw sweep (combat.js fireSaw) against the rendered zombies: a ray per cut. */
+  _sawRays(x, y, a, w, rays) {
+    const view = this.lastView;
+    const zs = view ? view.zombies : null;
+    if (!zs) return;
+    const half = (w.arc || 1.4) / 2;
+    for (let i = 0; i < zs.length && rays.length < 6; i++) {
+      const z = zs[i];
+      const r = ZOMBIES[z.type] ? ZOMBIES[z.type].radius : 14;
+      const dx = z.x - x, dy = z.y - y;
+      const d = Math.hypot(dx, dy);
+      if (d > w.range + r) continue;
+      const close = d < r + PLAYER_RADIUS + 6;
+      if (!close && Math.abs(angleDiff(a, Math.atan2(dy, dx))) > half + Math.atan2(r, d)) continue;
+      rays.push({ x: round1(z.x), y: round1(z.y), hit: 1 });
+    }
+  }
+
+  /**
+   * End point of one ray: first solid obstacle (the .50 goes through thin ones, like the
+   * host's traceRound), the `pierce`-th rendered zombie, or range.
+   */
   _traceRay(x, y, a, w) {
     const dx = Math.cos(a), dy = Math.sin(a);
     let maxT = w.range;
-    const tw = this.world.raycastSolid(x, y, dx, dy, maxT);
+    let tw;
+    if (w.penetrate) {
+      const tr = traceRound(this.world, x, y, dx, dy, w.range, w.penetrate, this.penScratch);
+      tw = tr.wall ? tr.stop : -1;
+    } else {
+      tw = this.world.raycastSolid(x, y, dx, dy, maxT);
+    }
     if (tw >= 0) maxT = tw;
     const pierce = w.pierce || 1;
     const view = this.lastView;
@@ -861,7 +927,10 @@ export class ClientSession extends Emitter {
     const acked = sp ? sp.lastSeq : 0;
     let n = 0;
     while (n < this.pending.length && this.pending[n].seq <= acked) n++;
-    if (n) this.pending.splice(0, n);
+    if (n) {
+      this.ackFire = !!this.pending[n - 1].fire;
+      this.pending.splice(0, n);
+    }
     this._forgetBefore(acked);
     if (sp && sp.state === 'dead') this.ackState = 'dead';
     if (!sp || sp.state === 'dead') {
@@ -904,6 +973,7 @@ export class ClientSession extends Emitter {
     }
 
     this._syncBarricades(snap);
+    this.wpn.prevFire = this.ackFire;
     for (const cmd of this.pending) this._step(cmd, false);
     // Keep showing the player where they were and let the error melt away.
     this.offX = shownX - p.x;

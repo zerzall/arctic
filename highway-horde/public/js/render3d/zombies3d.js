@@ -450,6 +450,12 @@ export function createZombies3D(ctx) {
       const burn = (f & ZFLAG.BURNING) ? 1 : 0;
       s.burn += (burn - s.burn) * damp(burn ? 6 : 2, dt);
       if (burn) s.char = Math.min(1, s.char + dt * 0.22);
+      // frost (cryo): a pale icy crust while chilled, solid white-blue when frozen; a
+      // frozen zombie's idle motion stops dead
+      const frozen = (f & ZFLAG.FROZEN) !== 0;
+      const ice = frozen ? 1 : (f & ZFLAG.SLOWED) ? 0.45 : 0;
+      s.ice = (s.ice || 0) + (ice - (s.ice || 0)) * damp(ice > (s.ice || 0) ? 8 : 1.5, dt);
+      if (!frozen || s.ft === undefined) s.ft = time;
       if (z.type === 'screamer') {
         s.twitch *= 1 - damp(10, dt);
         if (fx.rng() < dt * 1.5) s.twitch = (fx.rng() - 0.5) * 2;
@@ -483,7 +489,7 @@ export function createZombies3D(ctx) {
       if (i < 0) continue;
       drawn++;
       stats.lod[L]++;
-      poseZombie(z, s, T, time);
+      poseZombie(z, s, T, s.ft);
       pose.place(z.x, 0, z.y, s.a, sc);
       pool.solve(i, model, pose);
       writeColors(i, z, s, elite);
@@ -492,7 +498,7 @@ export function createZombies3D(ctx) {
       pool.texel(i, T_FX, buff, s.char, flash, 1);
       const glowK = z.type === 'bloater' ? 0.9 + Math.sin(time * 2.6 + s.seed * 7) * 0.4
         : z.type === 'spitter' ? 0.8 + Math.sin(time * 3.4 + s.seed * 5) * 0.3 + (s.spit < 0.7 ? 1.4 : 0) : 2.2;
-      pool.texel(i, T_FX2, s.burn, glowK, 0, 0);
+      pool.texel(i, T_FX2, s.burn, glowK, 0, s.ice);
       if ((elite || z.type === 'boss') && d2 < 1600 * 1600) eyeGlow(i, z, T, elite);
     }
     stats.zombies = list.length;
@@ -710,7 +716,8 @@ export function createZombies3D(ctx) {
 
   // ---- gibs -------------------------------------------------------------------------------
   const gibCols = ['#6a1418', '#8a1c1c', '#4a0c0c', '#a0786a', '#7a2a2a'];
-  function spawnGibs(x, y, count, size, green) {
+  const iceCols = ['#cfe6f2', '#a8cde0', '#e8f6fc', '#8a2a2a', '#b8dcec'];
+  function spawnGibs(x, y, count, size, green, ice = false) {
     for (let k = 0; k < count; k++) {
       let i;
       if (gn < GIB_CAP) i = gn++;
@@ -721,7 +728,7 @@ export function createZombies3D(ctx) {
       G.rx[i] = fx.rng() * TAU; G.ry[i] = fx.rng() * TAU; G.age[i] = 0;
       G.s[i] = size * (0.6 + fx.rng() * 0.9);
       G.k[i] = k % 4 === 3 ? 1 : 0;
-      const c = col(G.k[i] ? '#d8ccb0' : green && k % 2 ? '#6f8f3a' : gibCols[k % gibCols.length]);
+      const c = col(ice ? iceCols[k % iceCols.length] : G.k[i] ? '#d8ccb0' : green && k % 2 ? '#6f8f3a' : gibCols[k % gibCols.length]);
       G.c[i * 3] = c.r; G.c[i * 3 + 1] = c.g; G.c[i * 3 + 2] = c.b;
     }
   }
@@ -806,6 +813,14 @@ export function createZombies3D(ctx) {
         case 'zdie': {
           const def = ZOMBIES[e.ztype] || ZOMBIES.walker;
           const r = def.radius;
+          const was = state.get(e.id);
+          if (was && (was.fl & ZFLAG.FROZEN) && e.ztype !== 'bloater') {
+            // frozen solid: it shatters into frosted chunks instead of falling
+            spawnGibs(e.x, e.y, (high ? 12 : 6) + Math.round(r / 5), 2.2 * (r / 14) ** 0.5, false, true);
+            ctx.ground.decal('blood', e.x, e.y, r * 0.6, fx.rng() * TAU, 0.5);
+            state.delete(e.id);
+            break;
+          }
           if (e.ztype === 'bloater') {
             ctx.ground.decal('acid', e.x, e.y, r * 1.3, fx.rng() * TAU, 0.8);
             ctx.ground.decal('gore', e.x, e.y, r * 0.8, fx.rng() * TAU, 0.8);

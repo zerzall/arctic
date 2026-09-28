@@ -6,7 +6,7 @@ import {
   ARMOR_ABSORB, HP_GROWTH_PER_WAVE, DIFFICULTIES, SUPPLY_RADIUS, WAVE_ZOMBIES, waveZombieCount, MAX_PLAYERS,
 } from '../public/js/shared/constants.js';
 import { CLASSES } from '../public/js/shared/classes.js';
-import { WEAPONS, WEAPON_IDS, THROWABLES } from '../public/js/shared/weapons.js';
+import { WEAPONS, WEAPON_IDS, THROWABLES, effectiveRate } from '../public/js/shared/weapons.js';
 import { ZOMBIES, ZFLAG } from '../public/js/shared/zombies.js';
 import { ammoPrice, isBuyable } from '../public/js/shared/items.js';
 import { damagePlayer, giveWeapon, spawnPickup } from '../public/js/shared/sim/players.js';
@@ -515,8 +515,9 @@ describe('weapons', () => {
     const p = place(g, pid, 300, 900, 0);
     p.slots = ['pistol', null, null];
     p.slot = giveWeapon(g, p, wid);
-    // Keep the shooter out of their own blast radius.
+    // Keep the shooter out of their own blast radius; a chainsaw has to be up close.
     if (WEAPONS[wid].projectile && WEAPONS[wid].projectile.explodeRadius) dist = Math.max(dist, WEAPONS[wid].projectile.explodeRadius + 150);
+    if (WEAPONS[wid].kind === 'melee') dist = Math.min(dist, 60);
     const z = addZombie(g, target, 300 + dist, 900);
     z.speed = 0;
     z.mass = 1;
@@ -539,6 +540,7 @@ describe('weapons', () => {
         assert.equal(s.weapon, wid);
         const k = WEAPONS[wid].kind;
         if (k === 'hitscan' || k === 'rail') assert.ok(s.rays.length >= 1 && s.rays.every((r) => [0, 1, 2].includes(r.hit)));
+        else if (k === 'melee') assert.ok(s.rays.every((r) => r.hit === 1), 'a chainsaw ray marks each zombie cut');
         else assert.deepEqual(s.rays, []);
       }
       // At most one merged shot event per tick per shooter.
@@ -560,7 +562,8 @@ describe('weapons', () => {
       run(g, 60, () => ({ 1: { fire: true, angle: Math.PI } }));
       const m0 = p.mag[p.slot];
       run(g, 240, () => ({ 1: { fire: true, angle: Math.PI } }));
-      assert.ok(Math.abs((m0 - p.mag[p.slot]) / 4 - w.rate) < 0.26, `${wid}: ${(m0 - p.mag[p.slot]) / 4}/s vs ${w.rate}/s`);
+      const want = effectiveRate(w);
+      assert.ok(Math.abs((m0 - p.mag[p.slot]) / 4 - want) < 0.26, `${wid}: ${(m0 - p.mag[p.slot]) / 4}/s vs ${want}/s`);
     }
   });
 

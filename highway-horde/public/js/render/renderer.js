@@ -17,7 +17,7 @@ import {
 } from './obstacles.js';
 import {
   createZombieSprites, zombieAnimRate, ZFRAMES, drawSurvivor, drawDownedSurvivor, drawDeadSurvivor, drawTurret,
-  drawBarricade, drawPickup, PICKUP_GLOW, drawAcidPuddle, drawFireBase, drawProjectileBody, muzzleOffset,
+  drawBarricade, drawPickup, PICKUP_GLOW, drawAcidPuddle, drawFireBase, drawFlareBase, drawProjectileBody, muzzleOffset,
 } from './actors.js';
 import { createEffects } from './effects.js';
 import { createDecals } from './decals.js';
@@ -42,6 +42,22 @@ const QUALITY = {
 const DEFAULT_SETTINGS = { screenShake: true, showNames: true, lighting: true };
 const EMPTY = [];
 const NO_VIEW = { players: EMPTY, turrets: EMPTY, hazards: EMPTY, zombies: EMPTY, projectiles: EMPTY, pickups: EMPTY, barricades: EMPTY };
+
+/** Frost-tinted copy of a zombie sprite frame (cached per frame canvas). */
+const iceCache = new WeakMap();
+function iceSprite(spr) {
+  let c = iceCache.get(spr);
+  if (!c) {
+    c = makeCanvas(spr.width, spr.height);
+    const g = c.getContext('2d');
+    g.drawImage(spr, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(196,232,255,0.78)';
+    g.fillRect(0, 0, c.width, c.height);
+    iceCache.set(spr, c);
+  }
+  return c;
+}
 
 // Per zombie type tables so the hot loop never touches strings.
 const ZT = ZOMBIE_IDS.map((id) => {
@@ -281,7 +297,9 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       a.walk += Math.min(d, 30) * 0.14;
       a.x = p.x; a.y = p.y;
       a.recoil = p.firing ? Math.min(1, a.recoil + dt * 30) : Math.max(0, a.recoil - dt * 10);
-      a.spin += (p.spin || 0) * dt * 40;
+      // (a chainsaw's chain runs the same way: slow idle, fast while it cuts)
+      const saw = p.slots && p.slots[p.slot] === 'chainsaw' ? (p.firing ? 1 : 0.15) : 0;
+      a.spin += ((p.spin || 0) + saw) * dt * 40;
       a.seen = frameNo;
     }
     if (frameNo % 120 === 0) {
@@ -326,8 +344,9 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         const id = z.id & 0xffff;
         const h = hash01(id);
         const fr = frames(ti, id % T.variants);
-        let ph = time * T.anim + h;
         const flags = z.flags | 0;
+        // frozen solid: the walk cycle stops mid-stride
+        let ph = flags & ZFLAG.FROZEN ? h : time * T.anim + h;
         if (flags & ZFLAG.BUFFED) ph += time * T.anim * 0.4;
         const frame = ((ph - Math.floor(ph)) * ZFRAMES) | 0;
         const spr = fr[frame];
@@ -339,6 +358,12 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         ctx.setTransform(c * kS, s * kS, -s * kS, c * kS, K.tx + x * K.k, K.ty + y * K.k);
         const hw = spr.width / 2;
         ctx.drawImage(spr, -hw, -hw);
+        if (flags & ZFLAG.SLOWED) {
+          // frosted over (cryo): an icy wash over the sprite, near-white when frozen solid
+          ctx.globalAlpha = flags & ZFLAG.FROZEN ? 0.9 : 0.45;
+          ctx.drawImage(iceSprite(spr), -hw, -hw);
+          ctx.globalAlpha = 1;
+        }
         const since = time - zHitAt[id];
         if (since < 0.09) {
           ctx.globalCompositeOperation = 'lighter';
@@ -516,6 +541,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       hazardSeen[hid] = frameNo;
       if (!inView(h.x, h.y, h.r + 20)) continue;
       if (h.kind === 'acid') drawAcidPuddle(ctx, h, time);
+      else if (h.kind === 'flare') drawFlareBase(ctx, h);
       else drawFireBase(ctx, h);
     }
     for (const f of map.fires) {
@@ -531,7 +557,9 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       else if (p.kind === 'grenade') effects.emitSmokeTrail(p, dt, 30, 5, 0.3);
       else if (p.kind === 'acid') effects.emitAcidTrail(p, dt);
       else if (p.kind === 'molotov') effects.emitBurning(p.x, p.y, 4, dt, 0.8);
-      if (p.kind === 'flame' || !inView(p.x, p.y, 30)) continue;
+      else if (p.kind === 'flare') effects.emitFlareTrail(p, dt);
+      else if (p.kind === 'frost') effects.emitFrost(p, dt);
+      if (p.kind === 'flame' || p.kind === 'frost' || !inView(p.x, p.y, 30)) continue;
       drawProjectileBody(ctx, p, time);
     }
   }
@@ -582,6 +610,17 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       flames(h.x, h.y, h.r * 0.85, h.id, h.life, 0.95);
     }
     for (const h of view.hazards) {
+      // burning road flare: a small hot flame and a wide red glow
+      if (h.kind !== 'flare' || !inView(h.x, h.y, h.r * 3)) continue;
+      const fade = Math.min(1, h.life * 6);
+      const flick = 0.85 + 0.15 * Math.sin(time * 31 + h.id * 3);
+      ctx.globalAlpha = 0.35 * fade * flick;
+      ctx.drawImage(tintedGlow('#ff4a2a'), h.x - h.r * 2.4, h.y - h.r * 2.4, h.r * 4.8, h.r * 4.8);
+      flames(h.x, h.y, h.r * 0.35, h.id, h.life, 1);
+      ctx.globalAlpha = fade;
+      ctx.drawImage(tintedGlow('#fff0e0'), h.x - 5, h.y - 5, 10, 10);
+    }
+    for (const h of view.hazards) {
       if (h.kind !== 'acid' || !inView(h.x, h.y, h.r)) continue;
       ctx.globalAlpha = 0.1 * Math.min(1, h.life * 3);
       ctx.drawImage(tintedGlow('#9dff4a'), h.x - h.r, h.y - h.r, h.r * 2, h.r * 2);
@@ -599,6 +638,11 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       const flags = z.flags | 0;
       const c = Math.cos(z.angle), s = Math.sin(z.angle);
       if (flags & ZFLAG.BURNING) flames(z.x, z.y, T.r * 0.9, z.id, 1, 0.9);
+      if (flags & ZFLAG.FROZEN) {
+        // frozen solid: a cold glint
+        ctx.globalAlpha = 0.3 + 0.08 * Math.sin(time * 4 + z.id);
+        ctx.drawImage(tintedGlow('#9ae8ff'), z.x - T.r * 1.5, z.y - T.r * 1.5, T.r * 3, T.r * 3);
+      }
       if (flags & ZFLAG.BUFFED) {
         ctx.globalAlpha = 0.25 + 0.1 * Math.sin(time * 8 + z.id);
         ctx.drawImage(buffGlow, z.x - T.r * 1.6, z.y - T.r * 1.6, T.r * 3.2, T.r * 3.2);
@@ -695,6 +739,19 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
           ctx.globalAlpha = 0.7;
           ctx.drawImage(f3, p.x - 10, p.y - 10, 20, 20);
           break;
+        case 'flare': {
+          const s = 7 + Math.sin(time * 40 + p.id) * 1.5;
+          ctx.globalAlpha = 1;
+          ctx.drawImage(tintedGlow('#ff5a3a'), p.x - s * 2, p.y - s * 2, s * 4, s * 4);
+          ctx.drawImage(tintedGlow('#fff0e0'), p.x - s * 0.5, p.y - s * 0.5, s, s);
+          break;
+        }
+        case 'frost': {
+          const s = 14 + hash01(p.id) * 8;
+          ctx.globalAlpha = 0.28;
+          ctx.drawImage(tintedGlow('#9ae8ff'), p.x - s, p.y - s, s * 2, s * 2);
+          break;
+        }
         case 'bolt':
           ctx.globalAlpha = 0.35;
           ctx.strokeStyle = '#c8e6ff';
@@ -869,6 +926,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     }
     for (const h of view.hazards) {
       if (h.kind === 'fire') lighting.point(h.x, h.y, h.r * 3.2, Math.min(1, h.life * 3) * (0.85 + 0.15 * Math.sin(time * 13 + h.id)), '#ff9a40');
+      // a flare lights a wide circle of road around it
+      else if (h.kind === 'flare') lighting.point(h.x, h.y, 360, Math.min(1, h.life * 6) * (0.9 + 0.1 * Math.sin(time * 23 + h.id)), '#ff5a3a');
       else lighting.point(h.x, h.y, h.r * 1.5, 0.3 * Math.min(1, h.life * 3), '#9dff4a');
     }
     let burning = 0;
@@ -883,6 +942,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     let flameLights = 0;
     for (const p of view.projectiles) {
       if (p.kind === 'rocket' || p.kind === 'molotov') lighting.point(p.x, p.y, 170, 0.9, '#ffb060');
+      else if (p.kind === 'flare') lighting.point(p.x, p.y, 260, 1, '#ff5a3a');
       else if (p.kind === 'flame' && (p.id % 3 === 0) && flameLights++ < 12) lighting.point(p.x, p.y, 130, 0.7, '#ff9a40');
       else if (p.kind === 'acid') lighting.point(p.x, p.y, 50, 0.4, '#9dff4a');
     }
@@ -1013,6 +1073,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       }
       for (const h of V.hazards) {
         if (h.kind === 'fire' && inView(h.x, h.y, h.r)) effects.emitEmbers(h.x, h.y, dt, h.r / 12, h.r);
+        else if (h.kind === 'flare' && inView(h.x, h.y, h.r)) effects.emitFlareSmoke(h.x, h.y, dt);
       }
     } else {
       visCount = 0;

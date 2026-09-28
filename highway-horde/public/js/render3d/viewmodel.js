@@ -15,9 +15,12 @@
 // brass/shell casings, a real reload driven by the local record's `reloading` (magazine
 // drops out, the support hand brings a fresh one and racks the bolt; shotgun shells one
 // by one; the double breaks open; revolver and launcher cylinders swing out; the RPG gets
-// a new warhead; the crossbow is drawn and loaded), weapon switch lower/raise, melee
-// shove, grenade throw with the support arm, minigun spin-up, flamethrower pilot light,
-// glowing tesla coils / rail channel. Muzzle flash: layered star + side tongues + core in
+// a new warhead; the crossbow is drawn and loaded; the lever-action and flare gun load one
+// shell at a time; the chainsaw gets a new fuel can and a pull on the cord), weapon switch
+// lower/raise, melee shove, grenade throw with the support arm, minigun spin-up,
+// flamethrower pilot light, glowing tesla coils / rail channel / cryo coils, the
+// lever-action's lever throw after each shot, the chainsaw's running chain and engine
+// shake, the harpoon's spinning reel and a new harpoon sliding in. Muzzle flash: layered star + side tongues + core in
 // HDR (blooms) with a short light. The muzzle's world position is published to effects3d
 // (fx.localMuzzle) so the local tracers start where the gun visibly is.
 
@@ -42,13 +45,16 @@ const VM_SIZE = 0.74;
 // nudge right/down so the barrel stays clear of the crosshair's lower arm
 const VM_SHIFT_X = 0.7, VM_SHIFT_Y = -0.2;
 
-// gun origin (the firing hand) in camera space per style, + gun scale
+// gun origin (the firing hand) in camera space per style, + gun scale (+ optional yaw in
+// radians turning the muzzle in toward the crosshair)
 const PLACE = {
   pistol: [5.4, -6.4, -13.5, 1.15], revolver: [5.4, -6.4, -13.5, 1.15], double: [6.2, -7.4, -13.5, 1.15],
   smg: [6.0, -7.2, -13.5, 1.15], dual: [7.2, -6.8, -13.5, 1.15], shotgun: [6.2, -7.6, -13, 1.15], autoshotgun: [6.2, -7.7, -13, 1.15],
   rifle: [6.1, -7.7, -13, 1.15], dmr: [6.1, -7.7, -13, 1.15], sniper: [6.1, -7.9, -13, 1.15], crossbow: [5.8, -8.0, -13, 1.15],
   flamethrower: [6.8, -8.2, -12.5, 1.15], lmg: [6.8, -8.6, -12, 1.15], launcher: [6.8, -8.4, -12.5, 1.15], rocket: [8.6, -6.2, -12, 1.1],
   tesla: [6.4, -8.0, -12.5, 1.15], minigun: [7.2, -10.0, -11.5, 1.15], railgun: [6.4, -8.0, -12.5, 1.15],
+  burst: [6.0, -7.6, -13, 1.15], tommy: [6.3, -7.9, -13, 1.15], lever: [6.0, -7.6, -13, 1.15], flare: [5.4, -6.6, -13.5, 1.15],
+  chainsaw: [9.2, -10.8, -13.5, 1.0, 0.12], harpoon: [6.6, -8.2, -12.5, 1.1], cryo: [6.6, -8.2, -12.5, 1.15], amr: [6.4, -8.2, -12, 1.1],
 };
 
 const GLOVE = '#2a241f', GLOVE_PAD = '#3b332b', GLOVE_STRAP = '#1a1714';
@@ -172,6 +178,7 @@ export function createViewmodel(ctx) {
     switchT: 1, pending: null,
     throwT: 9, throwKind: 'frag', pumpT: 9, lastShot: -9, spin: 0, spinAngle: 0, cylA: 0, cylTarget: 0,
     flashT: 9, dualSide: 0, down: 0, railCharge: 1, rlPrev: 0, ejected: false, boltT: 9,
+    leverT: 9, leverEjected: false, chainPh: 0, saw: 0, reelV: 0,
     visible: false,
   };
   let localId = 0;
@@ -273,13 +280,17 @@ export function createViewmodel(ctx) {
     st.railCharge = 0;
     st.slideT = 0;
     st.boltT = 0;
+    st.leverT = 0;
+    st.reelV = 1;
     if (model && model.reload === 'shells') st.pumpT = 0;
     if (model && (model.style === 'revolver' || model.style === 'launcher')) st.cylTarget += TAU / 6;
     if (w.kind === 'hitscan' && model && model.casing && model.style !== 'revolver' && model.style !== 'double') {
-      // bolt-actions eject when the bolt is worked; the pump ejects on the pump stroke
-      if (!model.boltAction && model.reload !== 'shells') ejectCasing(model.casing, model.dual && st.dualSide);
+      // bolt-actions eject when the bolt is worked, a lever gun when the lever is thrown,
+      // the pump on the pump stroke
+      if (!model.boltAction && !model.leverAction && model.reload !== 'shells') ejectCasing(model.casing, model.dual && st.dualSide);
     }
-    if (high && smokes.length) puffSmoke();
+    // powder smoke (not from a chainsaw, frost or a gas-fired harpoon)
+    if (high && smokes.length && w.kind !== 'melee' && w.kind !== 'cryo' && !(model && model.style === 'harpoon')) puffSmoke();
   }
 
   const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _X = new THREE.Vector3(1, 0, 0);
@@ -391,7 +402,9 @@ export function createViewmodel(ctx) {
     // reload (local.reloading 0..1): the whole gun tilts in, parts do the work
     const rl = local.reloading > 0 ? Math.min(1, local.reloading) : 0;
     const rlShape = rl > 0 ? Math.sin(rl * Math.PI) : 0;
-    const rlTilt = rl > 0 ? smoothPulse(rl, 0.04, 0.16, 0.86, 0.97) : 0;
+    // (round by round: the reload restarts for every round, so hold the tilt smoothly)
+    st.single = (st.single || 0) + ((rl > 0 ? 1 : 0) - (st.single || 0)) * damp(9, dt);
+    const rlTilt = model.reload === 'single' ? st.single : rl > 0 ? smoothPulse(rl, 0.04, 0.16, 0.86, 0.97) : 0;
 
     // melee shove
     const ml = local.meleeing > 0 ? Math.sin(Math.min(1, local.meleeing) * Math.PI) : 0;
@@ -415,14 +428,23 @@ export function createViewmodel(ctx) {
     // Kept small: a yawed rifle shows its whole length and reads twice its size, and
     // pushed a touch away so the canted gun keeps its on-screen size.
     const rlUp = model.reload === 'rocket' ? 0.4 : 1;
-    const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 1.3 * rlUp;
-    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5;
+    // a running chainsaw shakes in the hands: a buzz at idle, hard while it cuts
+    let vibX = 0, vibY = 0;
+    if (style === 'chainsaw') {
+      const cut = local.firing ? 1 : 0;
+      st.saw += (cut - st.saw) * damp(10, dt);
+      const amp = rl > 0 ? 0 : 0.05 + st.saw * 0.16;
+      vibX = (Math.random() - 0.5) * amp;
+      vibY = (Math.random() - 0.5) * amp;
+    }
+    const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 1.3 * rlUp + vibX;
+    const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5 + vibY;
     const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8;
     holder.position.set(x, y, z);
     holder.rotation.set(
       rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02,
-      -0.04 + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp,
-      st.recoilRoll - rlTilt * (model.reload === 'shells' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
+      -0.04 + (P[4] || 0) + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp,
+      st.recoilRoll - rlTilt * (model.reload === 'shells' || model.reload === 'single' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');
     holder.scale.setScalar(P[3] * VM_SIZE);
     leftHolder.scale.setScalar(P[3] * VM_SIZE);
@@ -442,16 +464,18 @@ export function createViewmodel(ctx) {
     if (style === 'tesla') gk = 2.2 + Math.sin(t * 14) * 0.35 + (now - st.lastShot < 0.15 ? 2.5 : 0);
     else if (style === 'flamethrower') gk = 2.0 + Math.random() * 1.4;
     else if (style === 'railgun') gk = 0.8 + st.railCharge * 2.4;
+    else if (style === 'cryo') gk = 1.6 + Math.sin(t * 3) * 0.3 + (local.firing ? 1.6 + Math.random() * 0.5 : 0);
     glowMat.color.setScalar(gk);
 
-    // muzzle flash
+    // muzzle flash (none from a chainsaw, frost, a gas-fired harpoon or a crossbow)
     st.flashT += dt;
-    const showFlash = st.flashT < 0.05 && w && w.kind !== 'flame' && w.kind !== 'chain' && w.projectile?.kind !== 'bolt';
+    const showFlash = st.flashT < 0.05 && w && w.kind !== 'flame' && w.kind !== 'chain' && w.kind !== 'cryo' && w.kind !== 'melee'
+      && w.projectile?.kind !== 'bolt' && w.projectile?.kind !== 'harpoon';
     placeFlash(flashR, gunRoot, showFlash && (!model.dual || st.dualSide === 0), w, false);
     placeFlash(flashL, leftRoot, showFlash && model.dual && st.dualSide === 1, w, true);
-    const flameOn = w && w.kind === 'flame' && local.firing;
-    flashLight.intensity = showFlash ? 320 * (model.heavy ? 1.3 : 1) : flameOn ? 110 + Math.random() * 60 : 0;
-    flashLight.color.set(w && w.kind === 'chain' ? '#80d8ff' : style === 'railgun' ? '#b388ff' : '#ffb060');
+    const flameOn = w && (w.kind === 'flame' || w.kind === 'cryo') && local.firing;
+    flashLight.intensity = showFlash ? 320 * (model.heavy ? 1.3 : 1) * (style === 'amr' ? 1.5 : 1) : flameOn ? (w.kind === 'cryo' ? 70 : 110) + Math.random() * 60 : 0;
+    flashLight.color.set(w && w.kind === 'chain' ? '#80d8ff' : w && w.kind === 'cryo' ? '#9ae8ff' : style === 'railgun' ? '#b388ff' : style === 'flare' ? '#ff5a3a' : '#ffb060');
     if (w && w.kind === 'chain' && now - st.lastShot < 0.08) flashLight.intensity = 200;
     if (style === 'railgun' && now - st.lastShot < 0.12) flashLight.intensity = 300;
     if (!showFlash && flameOn) placeLightAtMuzzle();
@@ -541,8 +565,32 @@ export function createViewmodel(ctx) {
     if (parts.barrels) {
       const out = rl > 0 ? smoothPulse(rl, 0.06, 0.2, 0.74, 0.86) : 0;
       parts.barrels.rotation.z = -out * 0.62;
-      if (rl > 0.2 && rl < 0.26 && !st.ejected) { st.ejected = true; ejectCasing('shell', false); ejectCasing('shell', false); }
+      if (rl > 0.2 && rl < 0.26 && !st.ejected) {
+        st.ejected = true;
+        for (let i = 0; i < (m.breakShells || 2); i++) ejectCasing('shell', false);
+      }
       if (rl === 0) st.ejected = false;
+    }
+    // lever action: thrown down and back up after each shot (the case flies out at the
+    // bottom of the stroke), and worked once more as a round-by-round reload finishes
+    if (parts.lever) {
+      st.leverT += dt;
+      let k = st.leverT > 0.1 && st.leverT < 0.46 ? Math.sin(((st.leverT - 0.1) / 0.36) * Math.PI) : 0;
+      if (k > 0.8 && !st.leverEjected) { st.leverEjected = true; ejectCasing('rifle', false); }
+      if (st.leverT > 0.5) st.leverEjected = false;
+      parts.lever.rotation.z = k * 0.95;
+      if (parts.hammer) parts.hammer.rotation.z = k * 0.5;
+    }
+    // chainsaw: the chain runs round the bar (slowly at idle, a blur while cutting)
+    if (parts.chainA && m.chain) {
+      st.chainPh = (st.chainPh + (0.12 + st.saw * 0.88) * dt * 30) % m.chain.pitch;
+      parts.chainA.position.x = st.chainPh;
+      if (parts.chainB) parts.chainB.position.x = -st.chainPh;
+    }
+    // harpoon reel pays out after a shot
+    if (parts.reel) {
+      st.reelV *= 1 - damp(2.5, dt);
+      parts.reel.rotation.z -= st.reelV * dt * 22;
     }
     // magazine: out and falling away, then a fresh one in the support hand, seated
     if (parts.mag && m.reload === 'mag') {
@@ -581,6 +629,11 @@ export function createViewmodel(ctx) {
         const e = 1 - (1 - k) * (1 - k);
         parts.tip.visible = true;
         parts.tip.position.set((1 - e) * 10, -(1 - e) * 9, -(1 - e) * 3);
+      } else if (m.style === 'harpoon' && loaded && rl === 0 && now - st.lastShot < 0.55) {
+        // the next harpoon feeds up the tube after a shot
+        const k = Math.max(0, (now - st.lastShot - 0.2) / 0.35);
+        parts.tip.visible = k > 0;
+        parts.tip.position.set(-(1 - ease(k)) * 7, 0, 0);
       } else {
         parts.tip.visible = loaded || rl >= 0.8;
         parts.tip.position.set(0, 0, 0);
@@ -613,16 +666,32 @@ export function createViewmodel(ctx) {
       if (rl < 0.66) return out.copy(pouch).lerp(well, ease((rl - 0.3) / 0.36));
       if (rl < 0.74) return out.copy(well);
       // rack: charging handle / slide / cocking knob
-      const rack = m.style === 'pistol' || m.style === 'dual' ? [-1, 1.4, -1.2] : m.style === 'smg' ? [m.length * 0.4, 1.9, -1.8] : m.style === 'sniper' ? [-1.2, 1.6, 1.6] : [-2.6, 2.4, -1.4];
+      const rack = m.style === 'pistol' || m.style === 'dual' ? [-1, 1.4, -1.2] : m.style === 'smg' ? [m.length * 0.4, 1.9, -1.8] : m.style === 'sniper' ? [-1.2, 1.6, 1.6]
+        : m.style === 'tommy' ? [6.0, 3.4, -0.7] : m.style === 'burst' ? [1.9, 3.1, -0.7] : m.style === 'amr' ? [9.0, 2.4, 2.4] : m.style === 'cryo' ? [3.4, 4.2, -0.8] : [-2.6, 2.4, -1.4];
       if (rl < 0.8) return out.copy(well).lerp(_t2.set(...rack), ease((rl - 0.74) / 0.06));
       if (rl < 0.9) return out.set(...rack).add(_t2.set(-Math.sin(((rl - 0.8) / 0.1) * Math.PI) * 2, 0, 0));
       return out.set(...rack).lerp(rest, ease((rl - 0.9) / 0.1));
     }
-    if (m.reload === 'shells' || m.reload === 'break' || m.reload === 'cylinder' || m.reload === 'bolt') {
-      // shells into the loading port / chambers, one trip each
-      const port = m.reload === 'shells' ? _t.set(m.magwell[0], m.magwell[1] - 0.8, 0) : m.reload === 'break' ? _t.set(3.6, 1.2, -0.4) : m.reload === 'bolt' ? _t.set(1.5, 2.6, -0.8) : _t.set(m.pivots.cyl ? m.pivots.cyl[0] + 1.4 : 2, 1.2, -2.2);
+    if (m.reload === 'pull') {
+      // chainsaw refuel: a hand to the starter handle on the left, a hard yank, twice
+      const cord = _t.set(4.6, 3.9, -3.0);
+      const yank = _t2.set(1.0, 6.5, -12);
+      if (rl < 0.18) return out.copy(rest).lerp(cord, ease(rl / 0.18));
+      if (rl < 0.88) {
+        const k = ((rl - 0.18) / 0.7) * 2;
+        const f = k - Math.floor(k);
+        const pull = f < 0.4 ? ease(f / 0.4) : 1 - ease((f - 0.4) / 0.6);
+        return out.copy(cord).lerp(yank, pull);
+      }
+      return out.copy(cord).lerp(rest, ease((rl - 0.88) / 0.12));
+    }
+    if (m.reload === 'shells' || m.reload === 'break' || m.reload === 'cylinder' || m.reload === 'bolt' || m.reload === 'single') {
+      // shells into the loading port / chambers, one trip each ('single': a round-by-round
+      // reload runs this once per round)
+      const port = m.reload === 'shells' || m.reload === 'single' ? _t.set(m.magwell[0], m.magwell[1] - 0.8, m.reload === 'single' ? m.magwell[2] : 0)
+        : m.reload === 'break' ? _t.set(3.6, 1.2, -0.4) : m.reload === 'bolt' ? _t.set(1.5, 2.6, -0.8) : _t.set(m.pivots.cyl ? m.pivots.cyl[0] + 1.4 : 2, 1.2, -2.2);
       if (rl < 0.12 || rl > 0.88) return out.copy(rest).lerp(port, rl < 0.12 ? ease(rl / 0.12) : ease((1 - rl) / 0.12));
-      const trips = m.reload === 'shells' ? 3 : m.reload === 'bolt' ? 1 : 2;
+      const trips = m.reload === 'shells' ? 3 : m.reload === 'bolt' || m.reload === 'single' ? 1 : 2;
       const k = ((rl - 0.12) / 0.76) * trips;
       const f = k - Math.floor(k);
       const dip = Math.sin(f * Math.PI);
@@ -674,10 +743,10 @@ export function createViewmodel(ctx) {
       const reach = rl > 0.12 && rl < 0.88 ? 1 : 0;
       leftPivot.rotation.set(-0.5 * reach, 0.2 * reach, 0.3 * reach);
       // something in the hand: a shell / round, or a warhead (the tip part carries itself)
-      if (m.reload === 'shells' || m.reload === 'break' || m.reload === 'cylinder') {
+      if (m.reload === 'shells' || m.reload === 'break' || m.reload === 'cylinder' || m.reload === 'single') {
         carry.visible = true;
-        shellInHand.visible = m.style !== 'revolver';
-        roundInHand.visible = m.style === 'revolver';
+        shellInHand.visible = m.style !== 'revolver' && m.reload !== 'single';
+        roundInHand.visible = m.style === 'revolver' || m.reload === 'single';
         leftPivot.updateWorldMatrix(true, false);
         leftPivot.localToWorld(carry.position.set(0.8, 1.0, 0.8));
         gunRoot.getWorldQuaternion(carry.quaternion);
@@ -705,7 +774,7 @@ export function createViewmodel(ctx) {
     F.g.position.copy(_v);
     _v2.sub(_v).normalize();
     _q.setFromUnitVectors(_X, _v2);
-    const k = w && w.category === 'shotgun' ? 1.45 : w && (w.category === 'pistol' || w.category === 'smg') ? 0.8 : model.heavy ? 1.3 : 1.1;
+    const k = model.style === 'amr' ? 1.9 : w && w.category === 'shotgun' ? 1.45 : w && (w.category === 'pistol' || w.category === 'smg') ? 0.8 : model.heavy ? 1.3 : 1.1;
     const s = (10 + Math.random() * 4) * k * VM_SIZE;
     F.sides.quaternion.copy(_q);
     F.sides.rotateX(Math.random() * Math.PI);

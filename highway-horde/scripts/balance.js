@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Game } from '../public/js/shared/sim.js';
 import { MAP_LIST } from '../public/js/shared/maps.js';
-import { WEAPONS, WEAPON_IDS, THROWABLES } from '../public/js/shared/weapons.js';
+import { WEAPONS, WEAPON_IDS, THROWABLES, effectiveRate, fullReloadTime } from '../public/js/shared/weapons.js';
 import { ZOMBIES } from '../public/js/shared/zombies.js';
 import { ammoPrice, ITEMS } from '../public/js/shared/items.js';
 import { CLASSES, CLASS_IDS } from '../public/js/shared/classes.js';
@@ -287,7 +287,7 @@ function killSource(g, e, shotBy, turretOwners, blasts, meleeBy) {
   if (!by) return e.gib && blasts.includes('bloater') ? 'bloater burst' : 'none';
   const shot = shotBy.get(by);
   if (e.gib) {
-    if (shot === 'railgun') return 'railgun';
+    if (shot === 'railgun' || shot === 'amr' || shot === 'chainsaw') return shot;
     const k = blasts.find((b) => b !== 'bloater') || blasts[0];
     if (k) return EXPLOSION_GUN[k] || k;
   }
@@ -641,8 +641,12 @@ export function gunTable() {
     const exp = w.projectile && w.projectile.explodeDamage ? w.projectile.explodeDamage : 0;
     let hit = w.damage * (w.pellets || 1) + exp;
     if (w.kind === 'flame') hit = w.damage + w.burn.dps / w.rate;
-    const burst = hit * w.rate;
-    const cycle = w.mag / w.rate + w.reload;
+    // a flare's burn: the full fire on a direct hit (the burning flare on the ground not counted)
+    else if (w.burn) hit += w.burn.dps * w.burn.duration;
+    // bursts pause between trigger pulls; round-by-round reloads load the whole mag
+    const rate = effectiveRate(w);
+    const burst = hit * rate;
+    const cycle = w.mag / rate + fullReloadTime(w);
     const sustained = (hit * w.mag) / cycle;
     const refill = ammoPrice(id);
     const shots = w.reserve < 0 ? Infinity : w.mag + w.reserve;

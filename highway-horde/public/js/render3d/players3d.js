@@ -32,6 +32,7 @@ const GUN_SCALE = 0.84;
 // how each weapon style is held
 const HOLD = {
   pistol: 'pistol', revolver: 'pistol', dual: 'dual', rocket: 'shoulder', minigun: 'hip', lmg: 'hip', flamethrower: 'hip',
+  flare: 'pistol', chainsaw: 'hip', cryo: 'hip',
 };
 
 const cache = new Map();
@@ -562,7 +563,7 @@ export function createPlayers3D(ctx) {
     if (!mm) { mm = { x: 0, h: 0, y: 0, now: 0 }; fx.muzzles.set(p.id, mm); }
     mm.x = _p.x; mm.h = _p.y; mm.y = _p.z; mm.now = time;
     // spinning barrels / pump
-    if (obj.userData.animate) obj.userData.animate({ spin: p.spin || 0, dt: 1 / 60, shot: s.shot, time });
+    if (obj.userData.animate) obj.userData.animate({ spin: p.spin || 0, dt: 1 / 60, shot: s.shot, time, firing: !!p.firing });
     if (g.left && g.left.visible && g.left.userData.animate) g.left.userData.animate({ spin: 0, dt: 1 / 60, shot: s.shot, time });
   }
 

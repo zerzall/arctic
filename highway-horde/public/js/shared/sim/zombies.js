@@ -7,6 +7,7 @@ import {
   WAVE_ZOMBIES, SPAWN_PACING, OBJECTIVE_DAMAGE_MULT,
 } from '../constants.js';
 import { ZOMBIES, ZOMBIE_IDS } from '../zombies.js';
+import { FROST } from '../weapons.js';
 import { distToObb, closestPointOnObb, MASK_MOVE } from '../geom.js';
 import { MASK_HEAVY } from '../movement.js';
 import { turnTowards, TAU } from '../math.js';
@@ -176,7 +177,7 @@ export function spawnZombie(game, type, x, y, elite = false) {
     attackCd: rng.range(0, 0.4), swingT: 0, swingKind: 0, swingRef: null,
     tgtKind: TK_NONE, tgt: null, tgtX: x, tgtY: y, tgtGap: Infinity, tgtDist: Infinity, tgtLos: false,
     retargetT: 0,
-    burnT: 0, burnDps: 0, burnBy: 0, buffT: 0,
+    burnT: 0, burnDps: 0, burnBy: 0, buffT: 0, chill: 0, frozenT: 0,
     specialCd: sp && sp.cooldown ? sp.cooldown * rng.range(0.3, 0.8) : 0,
     mode: MODE_NORMAL, modeT: 0, cdx: 0, cdy: 0, chargeHits: [],
     flank: rng.range(-1, 1), phase: rng.range(0, TAU), wobble: rng.range(0.5, 1.3),
@@ -317,7 +318,8 @@ export function updateZombies(game) {
 }
 
 function updateZombie(game, z) {
-  if (z.attackCd > 0) z.attackCd -= DT;
+  // Chilled zombies wind up their attacks more slowly too.
+  if (z.attackCd > 0) z.attackCd -= z.chill > 0 ? DT * (1 - FROST.slow * 0.5 * z.chill) : DT;
   if (z.specialCd > 0) z.specialCd -= DT;
   if (z.buffT > 0) z.buffT -= DT;
   if (z.hurtT > 0) z.hurtT -= DT;
@@ -328,6 +330,25 @@ function updateZombie(game, z) {
     z.burnT -= DT;
     damageZombie(game, z, z.burnDps * DT, z.burnBy, false);
     if (z.dead) return;
+  }
+  if (z.frozenT > 0) {
+    z.frozenT -= DT;
+    if (z.frozenT > 0) {
+      // Frozen solid: no thinking, walking or attacking (a charge or slam is broken
+      // off); it can still be shoved.
+      if (z.mode === MODE_CHARGE || z.mode === MODE_WINDUP) {
+        z.mode = MODE_NORMAL;
+        z.specialCd = Math.max(z.specialCd, 1);
+      }
+      z.swingT = 0;
+      z.swingRef = null;
+      moveZombie(game, z, 0, 0, false);
+      return;
+    }
+    z.frozenT = 0;
+    z.chill = FROST.afterThaw;
+  } else if (z.chill > 0) {
+    z.chill = Math.max(0, z.chill - FROST.thaw * DT);
   }
   z.retargetT -= DT;
   if (z.retargetT <= 0 || !targetValid(game, z)) {
@@ -427,7 +448,8 @@ function stepNormal(game, z) {
     move = 0;
   }
   if (inReach) move = 0;
-  const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1) * move;
+  const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1)
+    * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move;
   moveZombie(game, z, dirX * speed, dirY * speed, true);
 
   // Facing: the target while fighting, else the way we're walking.
@@ -653,7 +675,7 @@ function endCharge(z, stun) {
 
 function stepCharge(game, z) {
   const sp = z.def.special;
-  const v = sp.chargeSpeed * (z.burnT > 0 ? BURN_SPEED : 1);
+  const v = sp.chargeSpeed * (z.burnT > 0 ? BURN_SPEED : 1) * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1);
   moveZombie(game, z, z.cdx * v, z.cdy * v, false);
   z.angle = Math.atan2(z.cdy, z.cdx);
   const dmg = sp.chargeDamage * game.diff.damage;

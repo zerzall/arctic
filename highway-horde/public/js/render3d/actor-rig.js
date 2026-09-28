@@ -35,7 +35,7 @@ export const T_CLOTH2 = 62;   // rgb trousers, w = blood (0 clean .. 1 soaked)
 export const T_ACCENT = 63;   // rgb accent / eye colour, w = eye glow (HDR)
 export const T_HAIR = 64;     // rgb hair, w = pattern seed (offsets the detail textures)
 export const T_FX = 65;       // x buff pulse, y char, z hit flash, w rim strength
-export const T_FX2 = 66;      // x burning, y glow parts (HDR), z wet, w unused
+export const T_FX2 = 66;      // x burning, y glow parts (HDR), z wet, w frost (cryo: 0.45 chilled, 1 frozen)
 export const T_FX3 = 67;      // spare
 
 // ---------------------------------------------------------------------------------------
@@ -142,7 +142,7 @@ const VARYINGS = /* glsl */`
 varying vec2 vDUv;
 varying vec4 vInfo;     // material class, blood mask strength, tear, rot
 varying vec4 vFx;       // buff, char, hit flash, rim
-varying vec4 vFx2;      // burning, glow, wet, _
+varying vec4 vFx2;      // burning, glow, wet, frost
 varying vec3 vGlowCol;  // emissive (eyes, pustules) — HDR, blooms
 varying vec3 vRimCol;
 `;
@@ -274,7 +274,13 @@ function makeMaterials(shared, opts = {}) {
   // charring while/after burning: black, cracked
   float ch = vFx.y;
   hhChar = smoothstep(1.0 - ch, 1.0 - ch + 0.22, hhD.r * 0.55 + hhD.b * 0.45 + ch * 0.25);
-  if (hhM != 7 && hhM != 8) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.022, 0.018, 0.016), hhChar * 0.94);`)
+  if (hhM != 7 && hhM != 8) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.022, 0.018, 0.016), hhChar * 0.94);
+  // frost (cryo, vFx2.w): a pale blue-white crust that creeps over the body, glassy
+  if (vFx2.w > 0.001 && hhM != 7) {
+    float frost = smoothstep(0.2, 0.7, vFx2.w + (hhD.r - 0.5) * 0.6 + (hhD.b - 0.5) * 0.3);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.78, 0.92), frost * 0.88);
+    hhWet = max(hhWet, frost * 0.7);
+  }`)
       .replace('#include <roughnessmap_fragment>', /* glsl */`
   float roughnessFactor = 0.8;
   if (hhM == 0) roughnessFactor = 0.56 + hhD.r * 0.22;
@@ -311,7 +317,9 @@ function makeMaterials(shared, opts = {}) {
     float flick = 0.65 + 0.35 * sin(uTime * 17.0 + vDUv.x * 40.0 + vDUv.y * 23.0);
     float emb = smoothstep(0.58, 0.7, hhD.r) * smoothstep(0.1, 0.6, hhChar);
     totalEmissiveRadiance += vec3(3.2, 0.95, 0.18) * emb * vFx2.x * flick;
-  }`)
+  }
+  // a faint cold glow off the ice so a frozen zombie reads in the dark
+  totalEmissiveRadiance += vec3(0.03, 0.09, 0.15) * vFx2.w;`)
       .replace('#include <fog_fragment>', /* glsl */`
   float rigRim = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
   rigRim = rigRim * rigRim * rigRim;
