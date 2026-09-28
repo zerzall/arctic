@@ -5,7 +5,7 @@ survivor, hold the line on a jammed highway, a desert truck stop, a river bridge
 army checkpoint, and gun down wave after wave of the dead with your friends. Nothing to
 install: one person hosts, everyone else opens the invite link.
 
-![First-person view: survivors holding Highway 9 as the horde comes up the road](docs/screenshot.png)
+![First-person view: survivors holding Highway 9 as the horde comes up the road](docs/screenshot.jpg)
 
 ## What's in it
 
