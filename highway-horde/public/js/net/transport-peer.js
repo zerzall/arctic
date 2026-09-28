@@ -24,7 +24,14 @@ export const DEFAULT_ICE_SERVERS = [
 ];
 
 const HEARTBEAT_MS = 2000;
-const PEER_TIMEOUT_MS = 8000;
+/**
+ * Transport-level backstop only: the sessions' own watchdogs (with a grace period while a
+ * page builds its 3D world after 'start') decide normally, so this must be longer than
+ * their start grace.
+ */
+const PEER_TIMEOUT_MS = 35000;
+/** A heartbeat callback this late means our own page was frozen: don't count it. */
+const STALL_GAP_MS = 1500;
 const OPEN_TIMEOUT_MS = 15000;
 /** Host: both channels of a new client must be open within this long. */
 const HANDSHAKE_MS = 20000;
@@ -259,6 +266,12 @@ export class PeerHostTransport extends HostTransport {
 
   _heartbeat() {
     const t = now();
+    // Our own page was frozen: the remotes' messages are still queued behind this callback.
+    const gap = t - (this.lastBeat || t);
+    this.lastBeat = t;
+    if (gap > HEARTBEAT_MS + STALL_GAP_MS) {
+      for (const r of this.remotes.values()) r.lastSeen = Math.min(t, r.lastSeen + gap);
+    }
     for (const r of [...this.remotes.values()]) {
       if (!r.joined) {
         if (t - r.since > HANDSHAKE_MS) this._drop(r, 'timeout');
@@ -428,8 +441,13 @@ export class PeerClientTransport extends ClientTransport {
     this.peer.on('error', (err) => {
       if (!this.closed) console.warn('[net] peer error:', err && err.type, err && err.message);
     });
+    let lastBeat = now();
     this.hbTimer = setInterval(() => {
-      if (now() - this.lastSeen > PEER_TIMEOUT_MS) {
+      const t = now();
+      // Our own page was frozen: the host's messages are still queued behind this callback.
+      if (t - lastBeat > HEARTBEAT_MS + STALL_GAP_MS) this.lastSeen = Math.min(t, this.lastSeen + (t - lastBeat));
+      lastBeat = t;
+      if (t - this.lastSeen > PEER_TIMEOUT_MS) {
         this._fail('Connection lost');
         return;
       }

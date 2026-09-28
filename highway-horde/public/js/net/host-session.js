@@ -25,6 +25,13 @@ const PING_EVERY = 2;
 const HELLO_TIMEOUT = 10;
 /** A peer silent this long is gone even if the transport has not noticed. */
 const PEER_SILENCE = 15;
+/**
+ * A peer that was just sent 'start' builds the 3D world, which can freeze a slow page
+ * for many seconds: allow this much silence before calling it gone.
+ */
+const START_GRACE = 30;
+/** A gap this long between housekeeping ticks means the host's own page was frozen. */
+const STALL_GAP = 1.5;
 /** Presentation events kept for drainEvents() when the UI is not draining (background). */
 const MAX_LOCAL_EVENTS = 1000;
 /** Snapshots whose IMPORTANT_EVENTS are repeated in the next ones (the `echo`). */
@@ -129,7 +136,8 @@ export class HostSession extends Emitter {
     this.housekeeper = null;
     if (!hooks.manual) {
       // Worker-driven so pings, timeouts and the game keep running in a background tab.
-      this.housekeeper = createTicker(4, () => this._housekeep());
+      this.lastTick = this.clock();
+      this.housekeeper = createTicker(4, () => this._timerTick());
     }
 
     net.onPeerJoin((peerId) => this._onPeerJoin(peerId));
@@ -181,6 +189,8 @@ export class HostSession extends Emitter {
     for (const ev of this.curSnap.events) this.netEvents.push(ev);
     this._pushLocalEvents(this.curSnap.events);
     this._sendAll('ctl', this._startMessage());
+    const graceUntil = this.clock() + START_GRACE;
+    for (const peer of this.peers.values()) peer.graceUntil = graceUntil;
     this.emit('roster', this.roster);
     this.emit('start', { mapId: s.mapId, seed: this.seed, settings: { ...s } });
     if (!this.hooks.manual) this.ticker = createTicker(TICK_RATE, () => this._pump());
@@ -547,6 +557,7 @@ export class HostSession extends Emitter {
       // Game gives someone coming back under the same name what they left with (§3.1).
       this.game.addPlayer({ id: pid, name: entry.name, color: entry.color, cls: entry.cls });
       this._send(peer, this._startMessage());
+      peer.graceUntil = this.clock() + START_GRACE;
     }
     this._rosterChanged();
     this._system(`${entry.name} joined the game`);
@@ -727,6 +738,21 @@ export class HostSession extends Emitter {
     }
   }
 
+  /**
+   * The real housekeeping timer. If the host's own page was frozen (building its 3D world,
+   * a slow frame), the peers' messages from that time are still queued behind this very
+   * callback, so the frozen time must not count as their silence.
+   */
+  _timerTick() {
+    const now = this.clock();
+    const gap = now - this.lastTick;
+    this.lastTick = now;
+    if (gap > STALL_GAP) {
+      for (const peer of this.peers.values()) peer.lastSeen = Math.min(now, peer.lastSeen + gap);
+    }
+    this._housekeep();
+  }
+
   _housekeep() {
     if (this.left) return;
     const now = this.clock();
@@ -736,7 +762,7 @@ export class HostSession extends Emitter {
       if (!peer.pid && now - peer.since > HELLO_TIMEOUT) {
         this.peers.delete(peer.peerId);
         this.net.disconnect(peer.peerId);
-      } else if (peer.pid && now - peer.lastSeen > PEER_SILENCE) {
+      } else if (peer.pid && now - peer.lastSeen > (now < (peer.graceUntil || 0) ? START_GRACE : PEER_SILENCE)) {
         this._removePeer(peer.peerId, 'timeout');
         this.net.disconnect(peer.peerId);
       }

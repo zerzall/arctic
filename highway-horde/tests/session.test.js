@@ -892,3 +892,51 @@ test('prediction takes the sprint lock from the snapshot (host-side exhaustion c
   assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
   assert.equal(a.pred.sprintLock, hp.sprintLock);
 });
+
+test('client watchdog: a slow 3D world build after start is not "Connection lost", real silence still is', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  const [a] = env.clients;
+  const d = collect(a, 'disconnected');
+  env.host.start();
+  await flush();
+  assert.equal(a.inGame, true);
+  // The host page is frozen building its world: 20 s without a word from it.
+  env.clock.advance(20);
+  a.update(0.016, null, 0);
+  assert.deepEqual(d, [], 'within the start grace');
+  env.clock.advance(11);
+  a.update(0.016, null, 0);
+  assert.deepEqual(d, [{ reason: 'Connection lost' }], 'past the grace the host is gone');
+});
+
+test('host watchdog: a client building its 3D world after start keeps its slot for the grace period', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  env.host.start();
+  await flush();
+  env.clock.advance(20);
+  env.host.update(0.016, null, 0);
+  assert.equal(env.host.roster.length, 2, 'silent 20 s right after start: still in');
+  env.clock.advance(11);
+  env.host.update(0.016, null, 0);
+  assert.equal(env.host.roster.length, 1, 'silent past the grace: dropped');
+});
+
+test('watchdogs do not count their own frozen page as the other side\'s silence', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  const [a] = env.clients;
+  const d = collect(a, 'disconnected');
+  // The real timers (4 Hz) see one 12 s gap: our own page was frozen, not the host silent.
+  a.lastTick = env.clock();
+  env.host.lastTick = env.clock();
+  env.clock.advance(12);
+  a._timerTick();
+  env.host._timerTick();
+  assert.deepEqual(d, []);
+  assert.equal(env.host.roster.length, 2);
+  // Ticking normally through 11 s of genuine silence still ends it.
+  for (let i = 0; i < 44; i++) {
+    env.clock.advance(0.25);
+    a._timerTick();
+  }
+  assert.deepEqual(d, [{ reason: 'Connection lost' }]);
+});

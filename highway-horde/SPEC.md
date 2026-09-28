@@ -570,6 +570,13 @@ a control-message budget (20/s, burst 40; pong/bye exempt) — excess is dropped
 that keeps flooding is disconnected ('Disconnected: too many messages'). Roster updates
 from peers' profile changes are coalesced (≤ 10/s). The hello carries a per-tab `token`
 (sessionStorage) so a kick also refuses the same tab under another name.
+**Liveness.** The client gives up after 10 s without any host message, the host drops a
+peer after 15 s of silence; right after 'start' (or a late joiner's 'start') both allow
+30 s, because every page builds its 3D world then and a slow one can freeze for seconds.
+The real (Worker-driven) housekeeping timers credit their own page's freezes (a tick gap
+over 1.5 s) instead of counting them as the other side's silence — the messages from that
+time are still queued behind the timer callback. The p2p transport's heartbeat timeout
+(35 s) is only a backstop behind these watchdogs.
 **Bots** (AI survivors, §3.6): roster entries `{ id, name, color, cls, ready: true, ping: 0,
 host: false, bot: true }` with a name from `BOT_NAMES` (lobby-rules.js; fictional, never real
 people), a free colour and preferably a class no one has. They count toward MAX_PLAYERS,

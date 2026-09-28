@@ -33,6 +33,13 @@ import { IMPORTANT_EVENTS, PERISHABLE_EVENTS, STALE_EVENT_AGE } from './event-ru
 const HELLO_TIMEOUT_MS = 10000;
 /** Nothing at all from the host for this long (it pings every 2 s): give up. */
 const HOST_SILENCE = 10;
+/**
+ * After 'start' the host (and we) build the 3D world, which can freeze a slow page for
+ * many seconds; don't call the host gone until this much silence right after a start.
+ */
+const START_GRACE = 30;
+/** A gap this long between housekeeping ticks means our own page was frozen. */
+const STALL_GAP = 1.5;
 const STALE_INPUT = 0.25;
 /** Cmds sent per message: the new ones, and at least this many for redundancy. */
 const REDUNDANT_CMDS = 4;
@@ -136,6 +143,8 @@ export class ClientSession extends Emitter {
     this.locked = false;
     this.match = -1;
     this.lastHostMsg = this.clock();
+    this.graceUntil = -Infinity;
+    this.lastTick = this.clock();
 
     this.map = null;
     this.world = null;
@@ -150,7 +159,7 @@ export class ClientSession extends Emitter {
     this._welcome = null;
     net.onMessage((channel, data) => this._onMessage(channel, data));
     net.onClose((reason) => this._disconnect(reason || 'Connection lost'));
-    this.housekeeper = hooks.manual ? null : createTicker(4, () => this._housekeep());
+    this.housekeeper = hooks.manual ? null : createTicker(4, () => this._timerTick());
   }
 
   _resetGameState() {
@@ -450,6 +459,8 @@ export class ClientSession extends Emitter {
     if (Array.isArray(msg.roster)) this.roster = msg.roster;
     this.builder.reset();
     this.inGame = true;
+    this.lastHostMsg = this.clock();
+    this.graceUntil = this.clock() + START_GRACE;
     const match = this.match;
     const info = { mapId: msg.mapId, seed: msg.seed, settings: { ...this.settings } };
     // A late joiner gets 'start' right behind 'welcome', before joinGame()'s caller had a
@@ -945,10 +956,23 @@ export class ClientSession extends Emitter {
 
   // ---- lifecycle -----------------------------------------------------------------------
 
+  /**
+   * The real housekeeping timer. If our own page was frozen (building the 3D world, a
+   * slow frame), the host's messages from that time are still queued behind this very
+   * callback, so the frozen time must not count as silence from the host.
+   */
+  _timerTick() {
+    const now = this.clock();
+    const gap = now - this.lastTick;
+    this.lastTick = now;
+    if (gap > STALL_GAP) this.lastHostMsg = Math.min(now, this.lastHostMsg + gap);
+    this._housekeep();
+  }
+
   _housekeep() {
     if (this.left) return;
     const now = this.clock();
-    if (now - this.lastHostMsg > HOST_SILENCE) {
+    if (now - this.lastHostMsg > (now < this.graceUntil ? START_GRACE : HOST_SILENCE)) {
       this._disconnect('Connection lost');
       return;
     }
