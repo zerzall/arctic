@@ -207,7 +207,7 @@ export function createWorld(ctx, deps) {
       B.cyl('std', 0, 29, 0, 11.4, 1.5, '#2b1f16', 16, 1, null, { surf: [DET.char, 0.9, 0.5] });
       B.cyl('glow', 0, 29.6, 0, 10, 0.6, '#ff7a22', 16, 1, null, { emissive: 3.2, uv: atlasUV('white') });
     }
-    halos.push({ x: f.x, y: f.y, h: f.base + f.r * 0.9, color: '#ff7a2a', size: f.r * 5.5, flicker: 0.8, strength: 0.55 });
+    halos.push({ x: f.x, y: f.y, h: f.base + f.r * 0.9, color: '#ff7a2a', size: f.r * 5.5, flicker: 0.8, strength: 0.55, base: f.base });
   });
 
   const tDecMs = performance.now() - tDec;

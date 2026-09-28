@@ -698,7 +698,8 @@ export function buildBus(B, o, objective) {
   const r = B.rng;
   const color = objective ? '#e3a41a' : o.color;
   const school = objective || /^#d9a|^#e3a|^#d8a/i.test(color);
-  const v = objective ? { wrecked: false, color, paintBucket: 'paint', paintSurf: [DET.panel, -1, -1], lightsOn: true, hazards: true, doorOpen: false, cracked: false } : vehicleLook(B, { ...o, color });
+  // the objective bus: weathered enamel, not metallic flake (everyone aims at it with a flashlight)
+  const v = objective ? { wrecked: false, color, paintBucket: 'paint', paintSurf: [DET.panel, 0.55, 0.12], lightsOn: true, hazards: true, doorOpen: false, cracked: false } : vehicleLook(B, { ...o, color });
   const sag = v.wrecked ? -3 : 0;
   const bb = v.paintBucket, ps = v.paintSurf;
   const bc = v.wrecked ? v.color : color;

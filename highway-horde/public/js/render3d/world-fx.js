@@ -331,8 +331,9 @@ export function makeSmoke(fires, fx) {
 
 /**
  * Soft halos around lamp heads and fires (additive points). flicker > 0 follows the fire
- * flicker; blink > 0 blinks (radio mast beacons).
- * @param {Array<{x, y, h, color, size, flicker, blink, strength}>} list
+ * flicker; blink > 0 blinks (radio mast beacons). base (optional): the height the glow sits
+ * on — it fades out above that line instead of being cut there by the ground's depth.
+ * @param {Array<{x, y, h, color, size, flicker, blink, strength, base}>} list
  */
 export function makeHalos(list, fx) {
   const pos = [], col = [], size = [], fl = [];
@@ -342,16 +343,17 @@ export function makeHalos(list, fx) {
     c.set(l.color).multiplyScalar(l.strength ?? 1);
     col.push(c.r, c.g, c.b);
     size.push(l.size);
-    fl.push(l.flicker || 0, l.blink || 0);
+    fl.push(l.flicker || 0, l.blink || 0, Number.isFinite(l.base) ? l.base : -1e5);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
-  g.setAttribute('aFx', new THREE.Float32BufferAttribute(fl, 2));
+  g.setAttribute('aFx', new THREE.Float32BufferAttribute(fl, 3));
   const mat = additive(fx, COMMON + `
-    attribute vec3 aColor; attribute float aSize; attribute vec2 aFx;
+    attribute vec3 aColor; attribute float aSize; attribute vec3 aFx;
     varying vec3 vCol;
+    varying float vCut;
     void main() {
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
       float k = 1.0;
@@ -364,11 +366,24 @@ export function makeHalos(list, fx) {
       gl_PointSize = clamp(uPx * aSize / -mv.z, 0.0, 600.0);
       vCol = aColor * k * fogVis(-mv.z * 0.8);
       gl_Position = projectionMatrix * mv;
+      // A sprite is flat at its centre's depth: the ground in front of a fire's glow cut it
+      // along a hard horizontal line. Where that line falls (in sprite half-sizes below the
+      // centre) lets the fragment fade the glow out just above it.
+      vCut = 1e3;   // no base (lamps): nothing to fade
+      if (aFx.z > -1e4) {
+        vec4 gb = projectionMatrix * modelViewMatrix * vec4(position.x, aFx.z, position.z, 1.0);
+        float halfNdc = gl_PointSize * projectionMatrix[1][1] / max(2.0 * uPx, 1e-3);
+        if (gb.w > 1e-3 && gl_Position.w > 1e-3) vCut = (gl_Position.y / gl_Position.w - gb.y / gb.w) / max(halfNdc, 1e-4);
+      }
     }`, `
     varying vec3 vCol;
+    varying float vCut;
     void main() {
       float r = length(gl_PointCoord - 0.5) * 2.0;
       float a = exp(-r * r * 5.0) * 0.8 + exp(-r * r * 40.0) * 0.9;
+      // sprite y: +1 top, -1 bottom; the base line sits at -vCut
+      float py = 1.0 - gl_PointCoord.y * 2.0;
+      a *= smoothstep(-vCut, -vCut + 0.45, py);
       gl_FragColor = vec4(vCol, a);
     ` + TONE + '}');
   const pts = new THREE.Points(g, mat);

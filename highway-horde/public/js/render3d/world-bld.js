@@ -200,8 +200,10 @@ export function diner(B, L, W, halos, ob) {
   for (let i = 0; i < n; i++) {
     const x = -span / 2 + ((i + 0.5) * span) / n;
     if (i === 2) {
-      // the glass door: the lit room behind, dimmer than the windows
-      B.add('glow', T.plane(), [x, 30, W / 2 + 0.8], [24, 44, 1], null, '#ffe2b0', { emissive: 0.62, uv: atlasUV('dinerWin') });
+      // the glass door: the lit room behind, dimmer than the windows. In front of its chrome
+      // frame (a solid slab behind it): buried behind the slab, the door was a flat mirror
+      // that threw the flashlight straight back into the camera as a huge glare.
+      B.add('glow', T.plane(), [x, 30, W / 2 + 1.05], [24, 44, 1], null, '#ffe2b0', { emissive: 0.62, uv: atlasUV('dinerWin') });
       B.box('std', x, 30, W / 2 + 0.6, 27, 47, 0.8, CHROME, null, { surf: [0, 0.2, 1] });
       continue;
     }

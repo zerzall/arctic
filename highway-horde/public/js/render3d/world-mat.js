@@ -72,7 +72,10 @@ export function patchDetail(mat, shared, key) {
         // floor 0.14: nothing on the map is a mirror under a light carried at the eye
         roughnessFactor = clamp(roughnessFactor + (hhD.b - 0.5) * 0.9, 0.14, 1.0);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-        if (vSurf.y >= 0.0) metalnessFactor = vSurf.y;`)
+        if (vSurf.y >= 0.0) metalnessFactor = vSurf.y;
+        // bare chrome square to the flashlight threw it straight back into the eye as a
+        // blooming glare: polished metal gets a higher floor than paint or glass
+        roughnessFactor = max(roughnessFactor, 0.14 + 0.1 * metalnessFactor);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (vDet.z > 0.5) {
           vec3 dn = vec3((hhD.xy * 2.0 - 1.0) * uDetN, 1.0);
@@ -142,8 +145,9 @@ export function createWorldMaterials(tex) {
     std: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.7 }), shared, 'hh-std-v1')),
     paint: track(patchDetail(new THREE.MeshPhysicalMaterial({
       // the flashlight sits at the eye: its specular peak on a near-mirror coat came straight
-      // back into the camera as a blooming glare, so the coat is glossy, not a mirror
-      vertexColors: true, roughness: 0.42, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.17, envMapIntensity: 1.1,
+      // back into the camera as a blooming glare (a white disc on the bus at the crosshair),
+      // so the coat is glossy, not a mirror
+      vertexColors: true, roughness: 0.42, metalness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.22, envMapIntensity: 1.1,
     }), shared, 'hh-paint-v1')),
     // glass: mostly Fresnel + the probe; low metalness keeps the flashlight's reflection
     // off camera-facing panes from blowing out

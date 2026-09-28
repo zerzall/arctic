@@ -367,18 +367,29 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
     composer.render(dt);
   }
 
-  /** Compile every pass' program now (called at creation, with the world compiled). */
+  /**
+   * Compile every pass' program now (called at creation, with the world compiled). The
+   * last pass draws to the canvas (sRGB output: a program of its own), and which pass is
+   * last depends on the settings, so each candidate is drawn last once: otherwise the
+   * first real frame compiled SMAA's screen variant (a multi-second stall on software GL).
+   */
   function warm() {
-    const saved = [aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled];
-    aoPass.enabled = !!aoPass.gtao;
-    bloomPass.enabled = true;
-    smaaPass.enabled = true;
-    fxaaPass.enabled = true;
-    upscalePass.enabled = true;
+    const saved = [worldPass.enabled, vmPass.enabled, aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled];
     try {
-      composer.render(0);
+      aoPass.enabled = !!aoPass.gtao;
+      bloomPass.enabled = true;
+      // [smaa, fxaa, upscale]: upscale last (both AA passes into targets), SMAA last, FXAA last, grade last
+      let first = true;
+      for (const [sm, fx, up] of [[true, true, true], [true, false, false], [false, true, false], [false, false, false]]) {
+        smaaPass.enabled = sm;
+        fxaaPass.enabled = fx;
+        upscalePass.enabled = up;
+        composer.render(0);
+        // the scene passes only need compiling once
+        if (first) { worldPass.enabled = false; vmPass.enabled = false; aoPass.enabled = false; bloomPass.enabled = false; first = false; }
+      }
     } finally {
-      [aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled] = saved;
+      [worldPass.enabled, vmPass.enabled, aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled] = saved;
     }
   }
 
@@ -429,14 +440,14 @@ export function createDynRes() {
   let probe = null;     // { fps } measured before the last down-step
   let noGain = 0, anchor = 1;
   let lastUp = -1e9, upWait = 3, win = 0;
-  let last = 0;
+  let last = 0, slow = 0;
   const QUANT = 0.05;
   const quant = (v) => Math.max(0.5, Math.min(1, Math.round(v / QUANT) * QUANT));
   return {
     get scale() { return scale; },
     reset(s = scale) {
       scale = quant(s); winMs = 0; winN = 0; winGpu = 0; winGpuN = 0; winDt.length = 0; good = 0; probe = null;
-      noGain = 0; anchor = scale; cooldown = 2; last = 0; upWait = 3; lastUp = -1e9;
+      noGain = 0; anchor = scale; cooldown = 2; last = 0; upWait = 3; lastUp = -1e9; slow = 0;
     },
     /**
      * Feed one frame. Returns the new scale when it changed, else null.
@@ -446,7 +457,19 @@ export function createDynRes() {
     tick(now, gpuMs) {
       const dt = last ? now - last : 0;
       last = now;
-      if (!(dt > 0) || dt > 2000) return null;         // first frame, hidden tab
+      if (!(dt > 0)) return null;                      // first frame
+      if (dt > 2000) {
+        // one long gap is a hidden tab or a hitch; a run of them is a GPU far too slow
+        // for the window logic below (it never fills a window): step down hard
+        if (++slow >= 3 && scale > 0.5) {
+          slow = 0;
+          scale = quant(scale - 0.25);
+          cooldown = 0.6;
+          return scale;
+        }
+        return null;
+      }
+      slow = 0;
       if (cooldown > 0) { cooldown -= dt / 1000; return null; }
       winMs += dt; winN++;
       if (winDt.length < 512) winDt.push(dt);

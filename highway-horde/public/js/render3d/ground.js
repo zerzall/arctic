@@ -565,7 +565,10 @@ function makeGroundMaterial(tex, uniforms) {
         gPuddle = gP * (wA + wC * 0.6 + wL * 0.08) * wetness * (1.0 - gPaint * 0.5);
         diffuseColor.rgb *= 1.0 - gPuddle * 0.75 - gHard * wetness * 0.1;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        float gR = mix(0.92, 0.5, gHard * wetness) + (gD.b - 0.5) * 0.5;
+        // damp concrete stays rougher than wet asphalt: glossier, a fire's reflection on the
+        // forecourt broke into streaks that read as wood grain
+        float gWetR = mix(0.5, 0.64, clamp(wC / max(wA + wC, 1e-3), 0.0, 1.0));
+        float gR = mix(0.92, gWetR, gHard * wetness) + (gD.b - 0.5) * 0.5;
         gR = mix(gR, 0.32, gPaint * 0.5);
         gR = max(gR, clamp(gMip * 0.09 - 0.05, 0.0, 0.3));
         roughnessFactor = mix(clamp(gR, 0.08, 1.0), 0.06, gPuddle);`)
