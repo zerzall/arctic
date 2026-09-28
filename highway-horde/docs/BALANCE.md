@@ -234,6 +234,7 @@ freeze bonus and the flare left on the ground are not counted.
 | minigun | 8000 | 9 | 900 | 600 | 1000 | 1 | 13.3 | 2000 | 14 | 0.62 |
 | railgun | 9500 | 10 | 765 | 493 | 3000 | all | 19.3 | 2400 | 12 | 0.9 |
 | amr | 10000 | 10 | 660 | 480 | 3000 | 20 | 20.8 | 2500 | 17 | 0.82 |
+| hmg | 7400 | 8 | 640 | 537 | 1100 | 2 | 13.8 | 1850 | 32 | 0.7 |
 
 Every gun has a niche at its price:
 * **Close-range bursts:** sawed-off and shotgun.
