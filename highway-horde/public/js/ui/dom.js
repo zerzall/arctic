@@ -192,3 +192,24 @@ export function isTypingTarget(t) {
   const type = (t.type || 'text').toLowerCase();
   return !['button', 'checkbox', 'radio', 'range', 'submit', 'reset', 'color'].includes(type);
 }
+
+/**
+ * Size a canvas's backing store to its CSS box × devicePixelRatio, so portraits and map
+ * previews stay sharp on HiDPI screens and when the UI scale makes the box bigger. A canvas
+ * that isn't laid out (hidden screen) keeps its size. Reads layout: call it when drawing,
+ * not every frame.
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} [maxDpr] cap on the pixel ratio (memory)
+ * @returns {boolean} whether the backing size changed (the drawing was cleared)
+ */
+export function fitCanvas(canvas, maxDpr = 3) {
+  const r = canvas.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return false;
+  const dpr = Math.min(maxDpr, Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
+  const w = Math.max(1, Math.round(r.width * dpr));
+  const hh = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width === w && canvas.height === hh) return false;
+  canvas.width = w;
+  canvas.height = hh;
+  return true;
+}

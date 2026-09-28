@@ -3,11 +3,13 @@
 // (main.js) and the dev sandbox (dev/ui-sandbox.js, with a mock session) share this code.
 
 import { $, createScope } from './dom.js';
-import { loadPrefs, savePrefs, randomName, cleanName } from './storage.js';
+import { loadPrefs, savePrefs, randomName, cleanName, isCoarsePointer } from './storage.js';
 import {
   createModals, createTitle, createJoinDialog, createStatusDialogs, createSettingsDialog, createHowTo,
-  parseJoinInput, flashToast,
+  parseJoinInput, flashToast, bindFullscreenButtons,
 } from './menus.js';
+import { applyUiScale } from './uiscale.js';
+import { probeSoftwareGpu } from './gfx.js';
 import { createLobby } from './lobby.js';
 import { createChatHistory } from './chat.js';
 import { startMatch } from './match.js';
@@ -83,17 +85,44 @@ export function startApp(deps) {
   // Validate what storage says the host picked last time against the current map list.
   if (!deps.MAP_LIST.some((m) => m.id === prefs.lobby.mapId)) prefs.lobby.mapId = deps.MAP_LIST[0].id;
 
+  // ---- display: resolution-aware UI scale ----------------------------------------------------
+
+  const coarse = isCoarsePointer() || !!deps.forceTouch;
+  let layoutRaf = 0;
+  /**
+   * Re-derive the UI scale from the viewport and the UI size setting. When it changed,
+   * the canvases sized by CSS (portraits, map previews, minimap, compass) redraw at the new
+   * size on the next frame, after the new rem sizes are laid out.
+   */
+  function applyDisplay() {
+    const { changed } = applyUiScale(prefs.settings, coarse);
+    // Blurred glass panels over a live 3D scene cost GPU time: the Low preset skips them.
+    document.documentElement.dataset.quality = prefs.settings.quality;
+    if (changed && !layoutRaf) {
+      layoutRaf = requestAnimationFrame(() => {
+        layoutRaf = 0;
+        if (!titleEl.hidden) title.resize();
+        if (lobby.visible) lobby.resize();
+        if (match) match.resize();
+        ctx.settingsDialog.refresh();
+      });
+    }
+  }
+
   function applySettings() {
     const s = prefs.settings;
     audio.setVolume({ master: s.master, sfx: s.sfx, music: s.music });
     audio.setMuted(s.muted);
+    applyDisplay();
     if (match) match.applySettings();
   }
-  applySettings();
 
   // ---- screens ------------------------------------------------------------------------------
 
   const titleEl = $('#screen-title');
+  // Before the screens build: portraits and previews measure their rem-sized boxes.
+  applyUiScale(prefs.settings, coarse);
+  document.documentElement.dataset.quality = prefs.settings.quality;
 
   function showTitle() {
     titleEl.hidden = false;
@@ -300,6 +329,8 @@ export function startApp(deps) {
   });
   const join = createJoinDialog({ ...ctx, onSubmit: doJoin });
   const lobby = createLobby(ctx);
+  applySettings();
+  bindFullscreenButtons();
 
   // Name edits in the lobby go straight to the session.
   const lobbyName = $('#lobby-name');
@@ -335,6 +366,9 @@ export function startApp(deps) {
     audio.ui('hover');
   });
 
+  // Window resizes (and entering/leaving fullscreen) change the automatic UI scale.
+  window.addEventListener('resize', () => applyDisplay());
+
   window.addEventListener('pagehide', () => {
     if (session) {
       try {
@@ -360,6 +394,17 @@ export function startApp(deps) {
 
   $('#app').classList.remove('booting');
   showTitle();
+  // Without a GPU the animated menu backdrop repaints the whole screen on the CPU every
+  // frame: detect it once the title is up and keep the menus still (game.css).
+  setTimeout(() => {
+    document.documentElement.dataset.gpu = probeSoftwareGpu() ? 'software' : 'hardware';
+  }, 0);
+  // Web fonts can shift the layout after boot: refit the portraits once they are in.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      if (!titleEl.hidden) title.resize();
+    }).catch(() => {});
+  }
 
   if (joinParam) {
     const { code } = parseJoinInput(joinParam);

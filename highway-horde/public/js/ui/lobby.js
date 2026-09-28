@@ -6,7 +6,7 @@ import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
-import { $, h, copyText, setText } from './dom.js';
+import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
 
@@ -105,6 +105,9 @@ export function createLobby(ctx) {
   }
 
   function drawPreviews() {
+    // Previews render at their on-screen size × devicePixelRatio (sharp on big and HiDPI
+    // screens); a card whose box changed size (UI scale, window) is drawn again.
+    for (const v of mapBtns.values()) if (fitCanvas(v.canvas)) v.drawn = false;
     // One map per frame: building a map and painting it takes a few ms each.
     const pending = [...mapBtns.entries()].filter(([, v]) => !v.drawn);
     let i = 0;
@@ -112,15 +115,18 @@ export function createLobby(ctx) {
       if (i >= pending.length) return;
       const [id, v] = pending[i++];
       try {
-        let src = previewCache.get(id);
+        const key = `${id}:${v.canvas.width}x${v.canvas.height}`;
+        let src = previewCache.get(key);
         if (!src) {
           src = document.createElement('canvas');
           src.width = v.canvas.width;
           src.height = v.canvas.height;
           deps.renderMapPreview(src, deps.buildMap(id, 1));
-          previewCache.set(id, src);
+          previewCache.set(key, src);
         }
-        v.canvas.getContext('2d').drawImage(src, 0, 0);
+        const g = v.canvas.getContext('2d');
+        g.clearRect(0, 0, v.canvas.width, v.canvas.height);
+        g.drawImage(src, 0, 0);
         v.drawn = true;
       } catch (err) {
         console.warn('[lobby] map preview failed', id, err);
@@ -270,15 +276,6 @@ export function createLobby(ctx) {
         row = { el, canvas, name, cls, ready, ping, bot, crown, you, kick, key: '' };
         rosterRows.set(r.id, row);
       }
-      const key = `${r.cls}:${r.color}`;
-      if (row.key !== key) {
-        row.key = key;
-        try {
-          deps.renderClassPortrait(row.canvas, r.cls, r.color);
-        } catch (err) {
-          console.warn('[lobby] portrait failed', err);
-        }
-      }
       const c = CLASSES[r.cls];
       setText(row.name, r.name);
       row.name.style.color = PLAYER_COLORS[r.color] || '#fff';
@@ -299,6 +296,17 @@ export function createLobby(ctx) {
       row.kick.title = r.bot ? 'Remove bot' : 'Remove from room';
       row.kick.setAttribute('aria-label', `Remove ${r.name}`);
       rosterEl.appendChild(row.el);
+      // Drawn once the row is laid out: the portrait renders at its box × devicePixelRatio.
+      const key = `${r.cls}:${r.color}`;
+      // (not while hidden in game: a layout read there would flush styles mid-frame)
+      if ((!screen.hidden && fitCanvas(row.canvas)) || row.key !== key) {
+        row.key = key;
+        try {
+          deps.renderClassPortrait(row.canvas, r.cls, r.color);
+        } catch (err) {
+          console.warn('[lobby] portrait failed', err);
+        }
+      }
     }
     for (const [id, row] of rosterRows) {
       if (!seen.has(id)) {
@@ -330,7 +338,7 @@ export function createLobby(ctx) {
       b.setAttribute('aria-checked', on ? 'true' : 'false');
       const canvas = b.querySelector('canvas');
       const key = `${b.dataset.cls}:${color}`;
-      if (canvas._key !== key) {
+      if ((!screen.hidden && fitCanvas(canvas)) || canvas._key !== key) {
         canvas._key = key;
         try {
           deps.renderClassPortrait(canvas, b.dataset.cls, color);
@@ -438,6 +446,12 @@ export function createLobby(ctx) {
       chatInput.value = '';
     },
     render,
+    /** The UI scale or the window changed: portraits and previews follow their boxes. */
+    resize() {
+      if (!session) return;
+      render();
+      drawPreviews();
+    },
     get visible() {
       return !screen.hidden;
     },

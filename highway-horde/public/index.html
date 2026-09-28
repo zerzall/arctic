@@ -26,8 +26,10 @@
   <div id="app" class="app booting">
 
     <!-- ================= TITLE ================= -->
+    <!-- Wide screens: logo and main menu down the left, the survivor picker filling the
+         right (a PC main menu); narrower screens stack them (game.css). -->
     <section id="screen-title" class="screen screen-title" aria-labelledby="logo-title">
-      <div class="menu-bg" aria-hidden="true"></div>
+      <div class="menu-bg" aria-hidden="true"><div class="bg-haze"></div><div class="bg-embers"></div></div>
       <div class="title-wrap">
         <header class="logo">
           <div class="logo-kicker"><span class="hazard-chip"></span>First-person co-op zombie survival · 1–6 players<span class="hazard-chip"></span></div>
@@ -35,37 +37,38 @@
           <p class="logo-tag">The road is blocked. The dead are coming. Hold the line together.</p>
         </header>
 
-        <div class="title-grid">
-          <div class="panel profile-panel">
-            <div class="panel-head"><h2>Your Survivor</h2></div>
-            <label class="field" for="name-input">
-              <span class="field-label">Callsign</span>
-              <input id="name-input" class="text-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Your name">
-            </label>
-            <div class="field-label" id="class-label">Class</div>
-            <div id="class-grid" class="class-grid" role="radiogroup" aria-labelledby="class-label"></div>
-            <div id="class-detail" class="class-detail" aria-live="polite"></div>
-            <div class="field-label" id="color-label">Colour</div>
-            <div id="color-swatches" class="swatches" role="radiogroup" aria-labelledby="color-label"></div>
+        <nav class="panel menu-panel" aria-label="Main menu">
+          <button id="btn-solo" class="btn btn-primary btn-big" type="button"><span class="btn-title">Play Solo</span><span class="btn-sub">Just you against the horde (AI squadmates optional)</span></button>
+          <button id="btn-host" class="btn btn-big" type="button"><span class="btn-title">Host Online Game</span><span class="btn-sub">Get a room code for your friends</span></button>
+          <button id="btn-join" class="btn btn-big" type="button"><span class="btn-title">Join Game</span><span class="btn-sub">Enter a code or invite link</span></button>
+          <div class="menu-row">
+            <button id="btn-settings" class="btn" type="button">Settings</button>
+            <button id="btn-howto" class="btn" type="button">How to Play</button>
           </div>
+          <div class="menu-foot">
+            <p id="server-status" class="menu-status">Checking connection options…</p>
+            <button id="btn-fullscreen" class="btn btn-ghost btn-fs" type="button" data-fullscreen hidden title="Fullscreen (Esc gives the mouse back first)"><span class="fs-icon" aria-hidden="true"></span><span class="fs-label">Fullscreen</span></button>
+          </div>
+        </nav>
 
-          <nav class="panel menu-panel" aria-label="Main menu">
-            <button id="btn-solo" class="btn btn-primary btn-big" type="button"><span class="btn-title">Play Solo</span><span class="btn-sub">Just you against the horde</span></button>
-            <button id="btn-host" class="btn btn-big" type="button"><span class="btn-title">Host Online Game</span><span class="btn-sub">Get a room code for your friends</span></button>
-            <button id="btn-join" class="btn btn-big" type="button"><span class="btn-title">Join Game</span><span class="btn-sub">Enter a code or invite link</span></button>
-            <div class="menu-row">
-              <button id="btn-settings" class="btn" type="button">Settings</button>
-              <button id="btn-howto" class="btn" type="button">How to Play</button>
-            </div>
-            <p id="server-status" class="menu-foot">Checking connection options…</p>
-          </nav>
+        <div class="panel profile-panel">
+          <div class="panel-head"><h2>Your Survivor</h2></div>
+          <label class="field" for="name-input">
+            <span class="field-label">Callsign</span>
+            <input id="name-input" class="text-input" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Your name">
+          </label>
+          <div class="field-label" id="class-label">Class</div>
+          <div id="class-grid" class="class-grid" role="radiogroup" aria-labelledby="class-label"></div>
+          <div id="class-detail" class="class-detail" aria-live="polite"></div>
+          <div class="field-label" id="color-label">Colour</div>
+          <div id="color-swatches" class="swatches" role="radiogroup" aria-labelledby="color-label"></div>
         </div>
       </div>
     </section>
 
     <!-- ================= LOBBY ================= -->
     <section id="screen-lobby" class="screen screen-lobby" hidden aria-labelledby="lobby-title">
-      <div class="menu-bg" aria-hidden="true"></div>
+      <div class="menu-bg" aria-hidden="true"><div class="bg-haze"></div><div class="bg-embers"></div></div>
       <div class="lobby-wrap">
         <header class="lobby-head">
           <button id="lobby-leave" class="btn btn-ghost" type="button">‹ Leave</button>
@@ -168,10 +171,15 @@
           </div>
           <div class="pause-btns">
             <button id="pause-resume" class="btn btn-primary btn-big" type="button">Resume</button>
-            <button id="pause-settings" class="btn" type="button">Settings</button>
-            <button id="pause-howto" class="btn" type="button">How to Play</button>
-            <button id="pause-end" class="btn btn-danger" type="button" hidden>End Game</button>
-            <button id="pause-leave" class="btn btn-danger" type="button">Leave Game</button>
+            <div class="pause-grid">
+              <button id="pause-settings" class="btn" type="button">Settings</button>
+              <button id="pause-howto" class="btn" type="button">How to Play</button>
+              <button id="pause-fullscreen" class="btn btn-fs" type="button" data-fullscreen hidden><span class="fs-icon" aria-hidden="true"></span><span class="fs-label">Fullscreen</span></button>
+            </div>
+            <div class="pause-grid pause-danger">
+              <button id="pause-end" class="btn btn-danger" type="button" hidden>End Game</button>
+              <button id="pause-leave" class="btn btn-danger" type="button">Leave Game</button>
+            </div>
           </div>
         </div>
       </div>
@@ -237,49 +245,116 @@
 
     <div id="dlg-settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="panel modal-card settings-card">
-        <h2 id="settings-title" class="modal-title">Settings</h2>
-        <div class="settings-grid">
-          <fieldset class="settings-group settings-wide">
-            <legend>View &amp; controls</legend>
-            <div class="field-label" id="view-label">View</div>
-            <div class="seg seg-view" role="radiogroup" aria-labelledby="view-label" id="set-view">
-              <button type="button" class="seg-btn" role="radio" data-value="fps">First-person</button>
-              <button type="button" class="seg-btn" role="radio" data-value="topdown">Classic top-down</button>
-            </div>
-            <p class="settings-note" id="set-view-note" hidden></p>
-            <div class="settings-cols">
-              <div>
-                <label class="range-row wide-label" title="Horizontal degrees measured on a 4:3 screen — wide screens see more at the sides"><span>Field of view</span><input type="range" min="60" max="110" step="1" data-setting="fov" data-scale="1" data-unit="deg"><output></output></label>
-                <label class="range-row wide-label"><span>Mouse sensitivity</span><input type="range" min="20" max="300" step="5" data-setting="sensitivity" data-unit="x"><output></output></label>
-                <label class="range-row wide-label"><span>Stick &amp; touch look</span><input type="range" min="20" max="300" step="5" data-setting="padLook" data-unit="x"><output></output></label>
-              </div>
-              <div>
-                <label class="check-row"><input type="checkbox" data-setting="invertY"><span>Invert look up/down</span></label>
-                <label class="check-row"><input type="checkbox" data-setting="aimAssist"><span>Aim assist (gamepad &amp; touch)</span></label>
-                <label class="check-row"><input type="checkbox" data-setting="minimapRotate"><span>Minimap turns with the view</span></label>
+        <header class="settings-head">
+          <h2 id="settings-title" class="modal-title">Settings</h2>
+          <div class="set-tabs" role="tablist" aria-label="Settings sections">
+            <button type="button" class="set-tab" role="tab" id="set-tab-graphics" data-tab="graphics" aria-controls="set-pane-graphics" aria-selected="true">Graphics</button>
+            <button type="button" class="set-tab" role="tab" id="set-tab-display" data-tab="display" aria-controls="set-pane-display" aria-selected="false">Display<span class="set-tab-more"> &amp; HUD</span></button>
+            <button type="button" class="set-tab" role="tab" id="set-tab-controls" data-tab="controls" aria-controls="set-pane-controls" aria-selected="false">Controls</button>
+            <button type="button" class="set-tab" role="tab" id="set-tab-audio" data-tab="audio" aria-controls="set-pane-audio" aria-selected="false">Audio</button>
+          </div>
+        </header>
+        <div class="set-panes">
+          <section class="set-pane" id="set-pane-graphics" role="tabpanel" aria-labelledby="set-tab-graphics" data-pane="graphics">
+            <div class="set-row">
+              <div class="set-label" id="quality-label">Preset <span id="set-custom" class="set-badge" hidden>Custom</span></div>
+              <div class="seg seg-preset" role="radiogroup" aria-labelledby="quality-label" id="set-quality">
+                <button type="button" class="seg-btn" role="radio" data-value="ultra"><span class="seg-main">Ultra</span><span class="seg-sub">Every effect</span></button>
+                <button type="button" class="seg-btn" role="radio" data-value="high"><span class="seg-main">High</span><span class="seg-sub">Balanced</span></button>
+                <button type="button" class="seg-btn" role="radio" data-value="low"><span class="seg-main">Low</span><span class="seg-sub">Fastest</span></button>
               </div>
             </div>
-          </fieldset>
-          <fieldset class="settings-group">
-            <legend>Audio</legend>
+            <div class="set-row">
+              <div class="set-label" id="renderscale-label">Resolution</div>
+              <div class="seg" role="radiogroup" aria-labelledby="renderscale-label" id="set-renderscale" data-setting="renderScale">
+                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Lowers the resolution only when needed to hold 60 fps">Auto</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1">100%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="0.85">85%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="0.7">70%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="0.5">50%</button>
+              </div>
+              <p class="set-help">Auto holds 60 fps: it lowers the resolution only when a big fight needs it.</p>
+            </div>
+            <button type="button" class="set-disclosure" id="set-adv-toggle" aria-expanded="false" aria-controls="set-adv">Advanced</button>
+            <div id="set-adv" class="set-adv" hidden>
+              <div class="set-row">
+                <div class="set-label" id="aa-label">Anti-aliasing</div>
+                <div class="seg" role="radiogroup" aria-labelledby="aa-label" id="set-antialias" data-setting="antialias">
+                  <button type="button" class="seg-btn" role="radio" data-value="smaa" title="Sharpest edges">SMAA</button>
+                  <button type="button" class="seg-btn" role="radio" data-value="fxaa" title="Cheaper, a little softer">FXAA</button>
+                  <button type="button" class="seg-btn" role="radio" data-value="off">Off</button>
+                </div>
+              </div>
+              <div class="check-grid">
+                <label class="check-row"><input type="checkbox" data-setting="bloom"><span>Bloom <small>glow around lights and fire</small></span></label>
+                <label class="check-row"><input type="checkbox" data-setting="ao"><span>Ambient occlusion <small>soft contact shadows</small></span></label>
+                <label class="check-row"><input type="checkbox" data-setting="filmGrain"><span>Film grain</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="vignette"><span>Vignette</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="lighting"><span>Night lighting &amp; flashlights</span></label>
+              </div>
+              <button type="button" class="btn btn-small btn-ghost" id="set-preset-reset" hidden>Reset to preset</button>
+            </div>
+            <p class="settings-note" id="set-gfx-note" hidden></p>
+          </section>
+
+          <section class="set-pane" id="set-pane-display" role="tabpanel" aria-labelledby="set-tab-display" data-pane="display" hidden>
+            <div class="set-row set-row-inline" id="set-fs-row">
+              <div class="set-label">Fullscreen</div>
+              <button type="button" class="btn btn-small btn-fs" id="set-fullscreen" data-fullscreen><span class="fs-icon" aria-hidden="true"></span><span class="fs-label">Fullscreen</span></button>
+              <label class="check-row"><input type="checkbox" data-setting="fullscreenOnStart"><span>Start games in fullscreen</span></label>
+            </div>
+            <div class="set-row">
+              <div class="set-label" id="uiscale-label">UI size <span class="set-value" id="set-uiscale-now"></span></div>
+              <div class="seg" role="radiogroup" aria-labelledby="uiscale-label" id="set-uiscale" data-setting="uiScale">
+                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Scales with your screen resolution">Auto</button>
+                <button type="button" class="seg-btn" role="radio" data-value="0.75">75%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="0.9">90%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1.1">110%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1.25">125%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1.5">150%</button>
+              </div>
+            </div>
+            <div class="set-row">
+              <div class="set-label" id="hudsafe-label">HUD safe area</div>
+              <div class="seg" role="radiogroup" aria-labelledby="hudsafe-label" id="set-hudsafe" data-setting="hudSafeArea">
+                <button type="button" class="seg-btn" role="radio" data-value="full">Full width</button>
+                <button type="button" class="seg-btn" role="radio" data-value="16:9">16:9 centre</button>
+              </div>
+              <p class="set-help">Ultrawide monitors: 16:9 keeps the HUD corners in the middle of the screen, where your eyes are.</p>
+            </div>
+            <div class="check-grid">
+              <label class="check-row"><input type="checkbox" data-setting="showStats"><span>Show FPS, resolution &amp; ping</span></label>
+              <label class="check-row"><input type="checkbox" data-setting="showNames"><span>Name tags over teammates</span></label>
+              <label class="check-row"><input type="checkbox" data-setting="minimapRotate"><span>Minimap turns with the view</span></label>
+              <label class="check-row"><input type="checkbox" data-setting="screenShake"><span>Screen shake</span></label>
+            </div>
+          </section>
+
+          <section class="set-pane" id="set-pane-controls" role="tabpanel" aria-labelledby="set-tab-controls" data-pane="controls" hidden>
+            <div class="set-row">
+              <div class="set-label" id="view-label">View</div>
+              <div class="seg seg-view" role="radiogroup" aria-labelledby="view-label" id="set-view">
+                <button type="button" class="seg-btn" role="radio" data-value="fps">First-person</button>
+                <button type="button" class="seg-btn" role="radio" data-value="topdown">Classic top-down</button>
+              </div>
+              <p class="settings-note" id="set-view-note" hidden></p>
+            </div>
+            <label class="range-row wide-label" title="Horizontal degrees measured on a 4:3 screen — wide screens see more at the sides"><span>Field of view</span><input type="range" min="60" max="120" step="1" data-setting="fov" data-scale="1" data-unit="deg"><output></output></label>
+            <label class="range-row wide-label"><span>Mouse sensitivity</span><input type="range" min="20" max="300" step="5" data-setting="sensitivity" data-unit="x"><output></output></label>
+            <label class="range-row wide-label"><span>Stick &amp; touch look</span><input type="range" min="20" max="300" step="5" data-setting="padLook" data-unit="x"><output></output></label>
+            <div class="check-grid">
+              <label class="check-row"><input type="checkbox" data-setting="invertY"><span>Invert look up/down</span></label>
+              <label class="check-row"><input type="checkbox" data-setting="aimAssist"><span>Aim assist (gamepad &amp; touch)</span></label>
+              <label class="check-row" id="set-raw-row"><input type="checkbox" data-setting="rawMouse"><span>Raw mouse input <small>skips the OS pointer acceleration where supported</small></span></label>
+            </div>
+          </section>
+
+          <section class="set-pane" id="set-pane-audio" role="tabpanel" aria-labelledby="set-tab-audio" data-pane="audio" hidden>
             <label class="range-row"><span>Master</span><input type="range" min="0" max="100" step="1" data-setting="master"><output></output></label>
             <label class="range-row"><span>Effects</span><input type="range" min="0" max="100" step="1" data-setting="sfx"><output></output></label>
             <label class="range-row"><span>Music</span><input type="range" min="0" max="100" step="1" data-setting="music"><output></output></label>
             <label class="check-row"><input type="checkbox" data-setting="muted"><span>Mute all sound</span></label>
-          </fieldset>
-          <fieldset class="settings-group">
-            <legend>Graphics</legend>
-            <div class="field-label" id="quality-label">Quality</div>
-            <div class="seg" role="radiogroup" aria-labelledby="quality-label" id="set-quality">
-              <button type="button" class="seg-btn" role="radio" data-value="ultra">Ultra</button>
-              <button type="button" class="seg-btn" role="radio" data-value="high">High</button>
-              <button type="button" class="seg-btn" role="radio" data-value="low">Low (faster)</button>
-            </div>
-            <label class="check-row"><input type="checkbox" data-setting="lighting"><span>Night lighting &amp; flashlights</span></label>
-            <label class="check-row"><input type="checkbox" data-setting="screenShake"><span>Screen shake</span></label>
-            <label class="check-row"><input type="checkbox" data-setting="showNames"><span>Name tags over teammates</span></label>
-            <label class="check-row"><input type="checkbox" data-setting="showStats"><span>Show ping &amp; FPS</span></label>
-          </fieldset>
+          </section>
         </div>
         <div class="btn-row"><button type="button" class="btn btn-primary" data-close>Done</button></div>
       </div>
@@ -292,7 +367,8 @@
           <section class="howto-goal">
             <h3>The goal</h3>
             <p>Waves of zombies pour in from the edges of the map. <strong>Defend the objective</strong> in the middle — the school bus, the diner, the APC or the radio tower — and <strong>survive every wave</strong>. If the objective is destroyed, or nobody is left standing, the horde wins.</p>
-            <p><strong>First person:</strong> click the game to capture the mouse, move the mouse to look, <kbd>Esc</kbd> gives the mouse back. The compass at the top points to the objective (◆) and the supply station (+). Prefer the old bird's-eye view? Pick <em>Classic top-down</em> in Settings.</p>
+            <p><strong>First person:</strong> click the game to capture the mouse, move the mouse to look, <kbd>Esc</kbd> gives the mouse back. The compass at the top points to the objective (◆) and the supply station (+). Prefer the old bird's-eye view? Pick <em>Classic top-down</em> in Settings → Controls.</p>
+            <p><strong>Big screen:</strong> hit <em>Fullscreen</em> on the title screen, in the pause menu or in Settings. <kbd>Esc</kbd> gives the mouse back and opens the menu; in Chrome and Edge fullscreen stays on (hold <kbd>Esc</kbd> to leave it). Settings → Graphics picks the quality preset, Display &amp; HUD the UI size.</p>
           </section>
           <section>
             <h3>Controls</h3>

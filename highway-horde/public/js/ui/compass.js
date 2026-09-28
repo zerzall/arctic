@@ -8,6 +8,7 @@
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { angleDelta, headingDeg } from './look.js';
+import { currentUiScale } from './uiscale.js';
 
 /** Half of the visible arc (radians): the strip spans ±75°. */
 const HALF_ARC = (75 * Math.PI) / 180;
@@ -21,13 +22,16 @@ const PX_PER_M = 32;
  */
 export function createCompass(canvas, map) {
   const g = canvas.getContext('2d');
-  let W = 0, H = 0, dpr = 1;
+  // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
+  // labels grow with the rem-sized strip on big screens.
+  let W = 0, H = 0, dpr = 1, u = 1;
   let lastKey = '';
   let pulse = 0;
 
   function resize() {
     const r = canvas.getBoundingClientRect();
     dpr = Math.min(2, window.devicePixelRatio || 1);
+    u = dpr * currentUiScale();
     const w = Math.max(60, Math.round(r.width * dpr)), h = Math.max(20, Math.round(r.height * dpr));
     if (w !== W || h !== H) {
       W = canvas.width = w;
@@ -38,7 +42,7 @@ export function createCompass(canvas, map) {
 
   /** x on the strip for a bearing offset (radians off the facing direction). */
   function xOf(delta) {
-    return W / 2 + (delta / HALF_ARC) * (W / 2 - 10 * dpr);
+    return W / 2 + (delta / HALF_ARC) * (W / 2 - 10 * u);
   }
 
   function marker(x, y, draw) {
@@ -49,7 +53,6 @@ export function createCompass(canvas, map) {
   }
 
   function edgeArrow(x, dir, color) {
-    const u = dpr;
     g.fillStyle = color;
     g.beginPath();
     const y = H * 0.36;
@@ -97,7 +100,6 @@ export function createCompass(canvas, map) {
     if (key === lastKey) return;
     lastKey = key;
 
-    const u = dpr;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, W, H);
     // ticks every 5°, taller every 15°, labels every 45°

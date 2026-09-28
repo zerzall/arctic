@@ -15,7 +15,8 @@ import { WEAPONS } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { PICKUPS } from '../shared/items.js';
-import { h, setText, setStyle, setClass, setShown, formatCash } from './dom.js';
+import { h, setText, setStyle, setClass, setShown, formatCash, fitCanvas } from './dom.js';
+import { statsLine } from './gfx.js';
 import { createMinimap } from './minimap.js';
 import { createCompass } from './compass.js';
 import { createScoreboard } from './scoreboard.js';
@@ -205,6 +206,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   let keys = KEY_LABELS.kbm;
   let keyMode = '';
   let touchLayoutT = 0;
+  let statsAcc = 0;
   const touchVars = {};
 
   function nameOf(pid) {
@@ -428,6 +430,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       const key = `${r.cls}:${r.color}`;
       if (row.key !== key) {
         row.key = key;
+        // Sized to its box × devicePixelRatio once laid out (resize() redraws it).
+        if (row.el.isConnected) fitCanvas(row.pc);
         try {
           renderClassPortrait(row.pc, r.cls, r.color);
         } catch (err) {
@@ -485,7 +489,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   /**
    * @param {object|null} view Snapshot from session.getView()
    * @param {object} info { dt, mode, stats: {ping, fps, ...}, showStats, localPos, shopOpen, isHost,
-   *   yaw (first person: camera facing), camPos ({x, y} camera position) }
+   *   yaw (first person: camera facing), camPos ({x, y} camera position),
+   *   renderStats (first person: renderer.stats — renderScale, gpuMs when reported) }
    */
   function update(view, info) {
     const dt = info.dt || 0;
@@ -584,12 +589,18 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     if (me) updateLocal(v, me, info);
     updatePrompt(v, me, info);
 
-    // net stats
+    // performance / net readout (FPS, the renderer's resolution scale and GPU time, ping)
     setShown(netStats, !!info.showStats);
-    if (info.showStats && info.stats) {
-      const s = info.stats;
-      const ping = info.isHost ? 'HOST' : `${Math.round(s.ping || 0)} ms`;
-      setText(netStats, `PING ${ping} · ${Math.round(info.fps || 0)} FPS${s.snapshotsPerSec ? ` · ${Math.round(s.snapshotsPerSec)} snap/s` : ''}`);
+    if (info.showStats) {
+      statsAcc -= dt;
+      if (statsAcc <= 0) {
+        // 4×/s: a number that changes every frame can't be read anyway.
+        statsAcc = 0.25;
+        const s = info.stats || {};
+        setText(netStats, statsLine({
+          fps: info.fps, renderStats: info.renderStats, isHost: info.isHost, ping: s.ping || 0, snapshotsPerSec: s.snapshotsPerSec,
+        }));
+      }
     }
 
     // Same wave number as the wave panel (prep counts toward wave 1, not "wave 0").
@@ -613,6 +624,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const pk = r ? `${r.cls}:${r.color}` : '';
     if (pk && pk !== portraitKey) {
       portraitKey = pk;
+      fitCanvas(portrait);
       try {
         renderClassPortrait(portrait, r.cls, r.color);
       } catch (err) {
@@ -827,6 +839,10 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     minimap.resize();
     if (compass) compass.resize();
     touchLayoutT = 0;
+    // Portraits follow their (rem-sized) boxes: redraw on the next roster/update pass.
+    if (fitCanvas(portrait)) portraitKey = '';
+    for (const row of teamRows.values()) if (fitCanvas(row.pc)) row.key = '';
+    setRoster(roster, localId);
   }
 
   return {

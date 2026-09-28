@@ -258,7 +258,7 @@ test('prefs round-trip through localStorage and garbage is ignored', () => {
     assert.equal(r.cls, CLASS_IDS[0]);
     assert.equal(r.color, 0);
     assert.equal(r.settings.master, 1);
-    assert.equal(r.settings.quality, 'high');
+    assert.equal(r.settings.quality, 'ultra');
     assert.equal(r.lobby.waves, 15);
     mem.set([...mem.keys()][0], '{not json');
     assert.equal(loadPrefs().name, '');
@@ -366,7 +366,7 @@ test('every class has readable perk lines', () => {
   for (const id of CLASS_IDS) assert.ok(perkLines(id).length >= 2, id);
 });
 
-test('phones start on ultra quality until the player picks one; desktops on high', () => {
+test('every device starts on ultra; desktops on dynamic resolution, phones at full resolution', () => {
   const mem = new Map();
   const store = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)) };
   const hadMM = 'matchMedia' in globalThis;
@@ -376,13 +376,20 @@ test('phones start on ultra quality until the player picks one; desktops on high
     withStorage(store, () => {
       const p = loadPrefs();
       assert.equal(p.settings.quality, 'ultra');
+      assert.equal(p.settings.renderScale, 1, 'phones: native resolution, the owner accepts they run hot');
+      for (const k of ['bloom', 'ao', 'filmGrain', 'vignette']) assert.equal(p.settings[k], true, k);
+      assert.equal(p.settings.antialias, 'smaa');
       p.settings.quality = 'low';
       savePrefs(p);
       assert.equal(loadPrefs().settings.quality, 'low', 'an explicit choice sticks');
     });
     globalThis.matchMedia = () => ({ matches: false });
     mem.clear();
-    withStorage(store, () => assert.equal(loadPrefs().settings.quality, 'high'));
+    withStorage(store, () => {
+      const p = loadPrefs();
+      assert.equal(p.settings.quality, 'ultra');
+      assert.equal(p.settings.renderScale, 'auto', 'desktops: dynamic resolution holding 60 fps');
+    });
   } finally {
     if (hadMM) globalThis.matchMedia = oldMM;
     else delete globalThis.matchMedia;

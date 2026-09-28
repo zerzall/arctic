@@ -79,6 +79,7 @@ function newEdges(names) {
  * @param {boolean} [opts.forceTouch] show touch controls regardless of the device
  * @param {'fps'|'topdown'} [opts.view] 'fps' = first-person look (default 'topdown')
  * @param {Function} [opts.onLockChange] (locked: boolean) after pointer lock is gained/lost
+ * @param {boolean} [opts.rawMouse] ask for raw (unaccelerated) locked movement (default true)
  * @returns {{ sample: Function, setEnabled: Function, setAnchor: Function, cursor: {x: number, y: number},
  *   mode: string, destroy: Function, releaseAll: Function, touch: object|null, view: string,
  *   locked: boolean, requestLock: Function, exitLock: Function, addLook: Function }}
@@ -114,7 +115,10 @@ export function createInput(canvas, opts = {}) {
   let lookDX = 0, lookDY = 0;
   let locked = false;
   let skipLookMove = false;
-  let unadjusted = true;   // try raw mouse input first; dropped once the platform refuses
+  // Raw mouse input (pointer lock without OS acceleration): the rawMouse setting asks for
+  // it, and it is dropped for good once the platform refuses (e.g. Linux, Firefox).
+  let rawWanted = opts.rawMouse !== false;
+  let unadjusted = true;
   const padLook = { dx: 0, dy: 0 };
 
   const listeners = [];
@@ -227,7 +231,7 @@ export function createInput(canvas, opts = {}) {
         // no user activation / not allowed right now: the next click tries again
       }
     };
-    if (!unadjusted) {
+    if (!unadjusted || !rawWanted) {
       plain();
       return;
     }
@@ -594,6 +598,14 @@ export function createInput(canvas, opts = {}) {
     },
     /** Ask for pointer lock (needs a recent user gesture; failures are silent). */
     requestLock,
+    /** Raw (unaccelerated) mouse input on the next lock, where the platform offers it. */
+    setRawMouse(b) {
+      rawWanted = b !== false;
+    },
+    /** False once the platform refused raw mouse input. */
+    get rawMouseSupported() {
+      return unadjusted;
+    },
     exitLock,
     /**
      * Feed a look delta as if the mouse moved (CSS px). Test/debug hook behind

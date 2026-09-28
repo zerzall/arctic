@@ -5,8 +5,11 @@
 import { CLASSES, CLASS_IDS, perksFor } from '../shared/classes.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS, PLAYER_COLOR_NAMES, ROOM_CODE_LENGTH, ROOM_CODE_ALPHABET } from '../shared/constants.js';
-import { $, $$, h } from './dom.js';
-import { cleanName } from './storage.js';
+import { $, $$, h, fitCanvas } from './dom.js';
+import { cleanName, isCoarsePointer } from './storage.js';
+import { applyPreset, presetMatches, PRESET_KEYS } from './gfx.js';
+import { currentUiScale } from './uiscale.js';
+import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 
 // ---- modal stack ------------------------------------------------------------------------
 
@@ -145,6 +148,8 @@ export function createTitle(ctx) {
   });
 
   function drawPortrait(canvas, cls) {
+    // Backing store = CSS box × devicePixelRatio: sharp at any UI scale and on HiDPI.
+    fitCanvas(canvas);
     try {
       deps.renderClassPortrait(canvas, cls, prefs.color);
     } catch (err) {
@@ -258,6 +263,11 @@ export function createTitle(ctx) {
       nameInput.value = prefs.name;
       selectColor(prefs.color);
       selectClass(prefs.cls);
+    },
+    /** The UI scale or the window changed: redraw portraits whose box changed size. */
+    resize() {
+      for (const [cid, c] of cards) if (fitCanvas(c.canvas)) drawPortrait(c.canvas, cid);
+      if (fitCanvas(detailCanvas)) drawPortrait(detailCanvas, prefs.cls);
     },
     setServerStatus(text) {
       $('#server-status').textContent = text;
@@ -411,7 +421,19 @@ export function rangeLabel(unit, raw) {
   return `${raw}%`;
 }
 
+/** A segmented control's data-value as a setting value: 'auto', a number, or the string. */
+export function segValue(raw) {
+  if (raw === 'auto') return raw;
+  if (/^-?\d*\.?\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+const SETTINGS_TABS = ['graphics', 'display', 'controls', 'audio'];
+
 /**
+ * Settings dialog: tabs for Graphics (preset, resolution, Advanced effects), Display & HUD
+ * (fullscreen, UI size, HUD safe area, readouts), Controls and Audio. Every control writes
+ * prefs.settings straight away, applies it (ctx.applySettings) and saves.
  * @param {object} ctx { prefs, savePrefs, modals, audio, applySettings(), deps, webgl, match }
  */
 export function createSettingsDialog(ctx) {
@@ -419,11 +441,27 @@ export function createSettingsDialog(ctx) {
   const s = ctx.prefs.settings;
   const ranges = $$('input[type=range][data-setting]', dlg);
   const checks = $$('input[type=checkbox][data-setting]', dlg);
+  const segs = $$('.seg[data-setting]', dlg);
   const quality = $$('#set-quality .seg-btn', dlg);
   const views = $$('#set-view .seg-btn', dlg);
   const viewNote = $('#set-view-note', dlg);
+  const tabs = $$('.set-tab', dlg);
+  const panes = $$('.set-pane', dlg);
+  const advToggle = $('#set-adv-toggle', dlg);
+  const adv = $('#set-adv', dlg);
+  const customBadge = $('#set-custom', dlg);
+  const resetBtn = $('#set-preset-reset', dlg);
+  const uiNow = $('#set-uiscale-now', dlg);
+  const gfxNote = $('#set-gfx-note', dlg);
+  let tab = SETTINGS_TABS[0];
   // Sliders store value / data-scale (default 100: 0..100 % ↦ 0..1).
   const scaleOf = (r) => Number(r.dataset.scale) || 100;
+
+  // Fullscreen needs the Fullscreen API (not on iPhone); raw mouse input only means
+  // something with a mouse and pointer lock.
+  $('#set-fs-row', dlg).hidden = !fullscreenSupported();
+  const lockable = typeof Element !== 'undefined' && typeof Element.prototype.requestPointerLock === 'function';
+  $('#set-raw-row', dlg).hidden = !lockable || isCoarsePointer();
 
   /** Whether the first-person view can run here: unknown (null) until the 3D module loads. */
   function webglState() {
@@ -450,6 +488,21 @@ export function createSettingsDialog(ctx) {
     else if (ctx.match && ctx.match.view && ctx.match.view !== s.view) note = 'The new view starts with the next game.';
     viewNote.textContent = note;
     viewNote.hidden = !note;
+    // The effects belong to the first-person renderer; say so where they wouldn't show.
+    const classic = gl === false || s.view === 'topdown';
+    gfxNote.textContent = classic ? 'Resolution and the Advanced effects apply to the first-person view. The classic view uses the preset\'s detail level.' : '';
+    gfxNote.hidden = !classic;
+  }
+
+  function syncGraphics() {
+    for (const b of quality) b.setAttribute('aria-checked', b.dataset.value === s.quality ? 'true' : 'false');
+    const custom = !presetMatches(s);
+    customBadge.hidden = !custom;
+    resetBtn.hidden = !custom;
+  }
+
+  function syncUiScale() {
+    uiNow.textContent = `· ${Math.round(currentUiScale() * 100)}% now`;
   }
 
   function sync() {
@@ -459,16 +512,53 @@ export function createSettingsDialog(ctx) {
       r.nextElementSibling.textContent = rangeLabel(r.dataset.unit, Number(r.value));
     }
     for (const c of checks) c.checked = !!s[c.dataset.setting];
-    for (const b of quality) b.setAttribute('aria-checked', b.dataset.value === s.quality ? 'true' : 'false');
+    for (const g of segs) {
+      const key = g.dataset.setting;
+      for (const b of $$('.seg-btn', g)) b.setAttribute('aria-checked', segValue(b.dataset.value) === s[key] ? 'true' : 'false');
+    }
+    syncGraphics();
     syncView();
+    syncUiScale();
   }
+
+  function changed() {
+    ctx.applySettings();
+    ctx.savePrefs();
+  }
+
+  function selectTab(name, focus = false) {
+    tab = SETTINGS_TABS.includes(name) ? name : SETTINGS_TABS[0];
+    for (const t of tabs) {
+      const on = t.dataset.tab === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    }
+    for (const p of panes) p.hidden = p.dataset.pane !== tab;
+  }
+
+  for (const t of tabs) {
+    t.addEventListener('click', () => {
+      if (t.dataset.tab !== tab) ctx.audio.ui('click');
+      selectTab(t.dataset.tab);
+    });
+  }
+  // Arrow keys move along the tab strip, like a native tablist.
+  $('.set-tabs', dlg).addEventListener('keydown', (e) => {
+    const i = SETTINGS_TABS.indexOf(tab);
+    let j = -1;
+    if (e.key === 'ArrowRight') j = (i + 1) % SETTINGS_TABS.length;
+    else if (e.key === 'ArrowLeft') j = (i - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    if (j < 0) return;
+    e.preventDefault();
+    selectTab(SETTINGS_TABS[j], true);
+  });
 
   for (const r of ranges) {
     r.addEventListener('input', () => {
       s[r.dataset.setting] = Number(r.value) / scaleOf(r);
       r.nextElementSibling.textContent = rangeLabel(r.dataset.unit, Number(r.value));
-      ctx.applySettings();
-      ctx.savePrefs();
+      changed();
     });
     r.addEventListener('change', () => ctx.audio.ui('click'));
   }
@@ -476,19 +566,40 @@ export function createSettingsDialog(ctx) {
     c.addEventListener('change', () => {
       s[c.dataset.setting] = c.checked;
       ctx.audio.ui('click');
-      ctx.applySettings();
-      ctx.savePrefs();
+      if (PRESET_KEYS.includes(c.dataset.setting)) syncGraphics();
+      changed();
     });
+  }
+  for (const g of segs) {
+    for (const b of $$('.seg-btn', g)) {
+      b.addEventListener('click', () => {
+        s[g.dataset.setting] = segValue(b.dataset.value);
+        ctx.audio.ui('click');
+        changed();
+        sync();
+      });
+    }
   }
   for (const b of quality) {
     b.addEventListener('click', () => {
-      s.quality = b.dataset.value;
+      applyPreset(s, b.dataset.value);
       ctx.audio.ui('click');
       sync();
-      ctx.applySettings();
-      ctx.savePrefs();
+      changed();
     });
   }
+  resetBtn.addEventListener('click', () => {
+    applyPreset(s, s.quality);
+    ctx.audio.ui('click');
+    sync();
+    changed();
+  });
+  advToggle.addEventListener('click', () => {
+    const open = advToggle.getAttribute('aria-expanded') !== 'true';
+    advToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    adv.hidden = !open;
+    ctx.audio.ui('click');
+  });
   for (const b of views) {
     b.addEventListener('click', () => {
       if (b.disabled) return;
@@ -502,9 +613,55 @@ export function createSettingsDialog(ctx) {
   return {
     open(onClose) {
       sync();
+      selectTab(tab);
       ctx.modals.open(dlg, { onClose });
+      // The modal focuses its first button (the first tab); start on the open tab instead.
+      requestAnimationFrame(() => {
+        const t = tabs.find((b) => b.dataset.tab === tab);
+        if (t && !dlg.hidden) t.focus({ preventScroll: true });
+      });
+    },
+    /** The effective UI scale changed (window resize, UI size): refresh the readout. */
+    refresh() {
+      if (!dlg.hidden) syncUiScale();
+    },
+    /** 'graphics' | 'display' | 'controls' | 'audio' */
+    selectTab,
+    /** Next (+1) / previous (-1) tab: gamepad bumpers. */
+    cycleTab(dir) {
+      const i = SETTINGS_TABS.indexOf(tab);
+      selectTab(SETTINGS_TABS[(i + (dir < 0 ? -1 : 1) + SETTINGS_TABS.length) % SETTINGS_TABS.length], true);
+      ctx.audio.ui('click');
     },
   };
+}
+
+// ---- fullscreen buttons -------------------------------------------------------------------
+
+/**
+ * Wire every [data-fullscreen] button (title screen, pause menu, settings): toggles
+ * fullscreen, labels itself "Fullscreen" / "Exit Fullscreen", hidden where the Fullscreen
+ * API is missing. Delegated, so buttons added later work too.
+ */
+export function bindFullscreenButtons() {
+  const supported = fullscreenSupported();
+  function sync() {
+    const on = isFullscreen();
+    for (const b of $$('[data-fullscreen]')) {
+      if (b.id !== 'set-fullscreen') b.hidden = !supported;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const label = b.querySelector('.fs-label');
+      if (label) label.textContent = on ? 'Exit Fullscreen' : 'Fullscreen';
+    }
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-fullscreen]');
+    if (!b || !supported) return;
+    toggleFullscreen().then(sync);
+  });
+  onFullscreenChange(sync);
+  sync();
+  return { sync };
 }
 
 export function createHowTo(ctx) {

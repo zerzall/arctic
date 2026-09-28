@@ -14,11 +14,23 @@ export const DEFAULT_CLIENT_SETTINGS = {
   sfx: 1,
   music: 0.6,
   muted: false,
-  quality: 'high',
+  // Graphics. quality goes to renderer.setQuality(); the rest rides along in the settings
+  // object of every renderer.render() call (see gfx.js rendererSettings).
+  quality: 'ultra',
+  renderScale: 'auto', // 'auto' (dynamic resolution holding 60 fps) | 0.5..1 (phones: 1)
+  bloom: true,
+  ao: true,            // ambient occlusion
+  antialias: 'smaa',   // 'smaa' | 'fxaa' | 'off'
+  filmGrain: true,
+  vignette: true,
   lighting: true,
   screenShake: true,
   showNames: true,
   showStats: false,
+  // Display: menus and HUD scale with the screen (uiscale.js); fullscreen is opt-in.
+  uiScale: 'auto',     // 'auto' | 0.75..1.5 (× the automatic, resolution-aware size)
+  hudSafeArea: '16:9', // 'full' | '16:9' (ultrawide: HUD corners inside a centred 16:9 box)
+  fullscreenOnStart: false,
   // First-person view (SPEC §7.5). 'fps' | 'topdown'; match.js falls back to top-down when
   // WebGL is unavailable, without touching the stored choice.
   view: 'fps',
@@ -28,11 +40,32 @@ export const DEFAULT_CLIENT_SETTINGS = {
   invertY: false,
   aimAssist: true,    // gamepad/touch only
   minimapRotate: true, // first person: the minimap turns so up = where you look
+  rawMouse: true,     // pointer lock with unadjustedMovement (no OS acceleration) where supported
 };
 
-/** Field-of-view range offered in the settings (degrees). */
+/** Field-of-view range offered in the settings (degrees; 120 for ultrawide players). */
 export const FOV_MIN = 60;
-export const FOV_MAX = 110;
+export const FOV_MAX = 120;
+/** Fixed render scales offered next to 'auto' (fraction of the native resolution). */
+export const RENDER_SCALES = [1, 0.85, 0.7, 0.5];
+export const RENDER_SCALE_MIN = 0.5;
+/** "UI size" multipliers offered next to 'auto'. */
+export const UI_SCALES = [0.75, 0.9, 1.1, 1.25, 1.5];
+export const UI_SCALE_MIN = 0.75;
+export const UI_SCALE_MAX = 1.5;
+export const ANTIALIAS_MODES = ['smaa', 'fxaa', 'off'];
+export const QUALITIES = ['ultra', 'high', 'low'];
+
+/**
+ * The effect toggles each graphics preset sets (the preset's name is the quality). Also the
+ * fallback for effects missing from stored prefs: someone who picked Low before the panel
+ * existed keeps a light Low setup instead of waking up with every effect on.
+ */
+export const GRAPHICS_PRESETS = {
+  ultra: { bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true },
+  high: { bloom: true, ao: false, antialias: 'smaa', filmGrain: true, vignette: true },
+  low: { bloom: false, ao: false, antialias: 'fxaa', filmGrain: false, vignette: true },
+};
 
 const NAME_POOL = [
   'Ranger', 'Dusty', 'Maverick', 'Boone', 'Ripley', 'Hollis', 'Rook', 'Nova', 'Jinx', 'Tex',
@@ -50,18 +83,32 @@ export function cleanName(name) {
   return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, NAME_MAX_LENGTH);
 }
 
-/**
- * Phones and tablets start on 'ultra' (native resolution, every effect; they will run
- * hot) until the player picks a quality in Settings; desktops start on
- * DEFAULT_CLIENT_SETTINGS.quality.
- */
-export function defaultQuality() {
+/** Phones and tablets: a coarse primary pointer (false where matchMedia is missing). */
+export function isCoarsePointer() {
   try {
-    if (globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches) return 'ultra';
+    return !!(globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches);
   } catch {
-    // no matchMedia (Node tests, old browsers): use the desktop default
+    // no matchMedia (Node tests, old browsers): treat as a desktop
+    return false;
   }
+}
+
+/** Every device starts on 'ultra' until the player picks a quality in Settings. */
+export function defaultQuality() {
   return DEFAULT_CLIENT_SETTINGS.quality;
+}
+
+/**
+ * Desktops start on dynamic resolution ('auto' holds 60 fps); phones and tablets on full
+ * resolution — the owner wants them at maximum quality and accepts that they run hot.
+ */
+export function defaultRenderScale() {
+  return isCoarsePointer() ? 1 : DEFAULT_CLIENT_SETTINGS.renderScale;
+}
+
+/** Default client settings for this device (a fresh copy). */
+export function defaultClientSettings() {
+  return { ...DEFAULT_CLIENT_SETTINGS, quality: defaultQuality(), renderScale: defaultRenderScale() };
 }
 
 function defaults() {
@@ -69,7 +116,7 @@ function defaults() {
     name: '',
     cls: CLASS_IDS[0],
     color: 0,
-    settings: { ...DEFAULT_CLIENT_SETTINGS, quality: defaultQuality() },
+    settings: defaultClientSettings(),
     lobby: { ...DEFAULT_SETTINGS },
     seenHowTo: false,
   };
@@ -96,6 +143,62 @@ function bool(v, fallback) {
   return typeof v === 'boolean' ? v : fallback;
 }
 
+function oneOf(v, list, fallback) {
+  return list.includes(v) ? v : fallback;
+}
+
+/** 'auto' or a finite number inside [lo, hi] (rounded to 0.01); anything else → fallback. */
+function autoOrNum(v, lo, hi, fallback) {
+  if (v === 'auto') return v;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < lo - 1e-9 || v > hi + 1e-9) return fallback;
+  return Math.round(Math.min(hi, Math.max(lo, v)) * 100) / 100;
+}
+
+/**
+ * Validate a stored settings object field by field (garbage → this device's default).
+ * @param {object} s raw settings (possibly from an older build or edited by hand)
+ * @returns {object} a complete, valid settings object
+ */
+export function validateSettings(s) {
+  if (!s || typeof s !== 'object') s = {};
+  const ds = defaultClientSettings();
+  let quality = oneOf(s.quality, QUALITIES, ds.quality);
+  // Builds before the graphics panel saved the old desktop default ('high') with every
+  // profile, whether or not the player chose it; those prefs have no renderScale. Treat
+  // that 'high' as unpicked so desktops move up to the new default.
+  if (s.renderScale === undefined && s.quality === 'high') quality = ds.quality;
+  // Missing or broken effect toggles follow the preset of the quality in use.
+  const fx = GRAPHICS_PRESETS[quality];
+  return {
+    master: num01(s.master, ds.master),
+    sfx: num01(s.sfx, ds.sfx),
+    music: num01(s.music, ds.music),
+    muted: bool(s.muted, ds.muted),
+    quality,
+    renderScale: autoOrNum(s.renderScale, RENDER_SCALE_MIN, 1, ds.renderScale),
+    bloom: bool(s.bloom, fx.bloom),
+    ao: bool(s.ao, fx.ao),
+    antialias: oneOf(s.antialias, ANTIALIAS_MODES, fx.antialias),
+    filmGrain: bool(s.filmGrain, fx.filmGrain),
+    vignette: bool(s.vignette, fx.vignette),
+    lighting: bool(s.lighting, ds.lighting),
+    screenShake: bool(s.screenShake, ds.screenShake),
+    showNames: bool(s.showNames, ds.showNames),
+    showStats: bool(s.showStats, ds.showStats),
+    uiScale: autoOrNum(s.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, ds.uiScale),
+    hudSafeArea: oneOf(s.hudSafeArea, ['full', '16:9'], ds.hudSafeArea),
+    fullscreenOnStart: bool(s.fullscreenOnStart, ds.fullscreenOnStart),
+    view: oneOf(s.view, ['fps', 'topdown'], ds.view),
+    fov: Math.round(numIn(s.fov, FOV_MIN, FOV_MAX, ds.fov)),
+    sensitivity: numIn(s.sensitivity, SENS_MIN, SENS_MAX, ds.sensitivity),
+    padLook: numIn(s.padLook, SENS_MIN, SENS_MAX, ds.padLook),
+    invertY: bool(s.invertY, ds.invertY),
+    aimAssist: bool(s.aimAssist, ds.aimAssist),
+    minimapRotate: bool(s.minimapRotate, ds.minimapRotate),
+    rawMouse: bool(s.rawMouse, ds.rawMouse),
+  };
+}
+
 /**
  * Load preferences, validating every field (storage may hold data from an older build
  * or something a player edited by hand).
@@ -110,26 +213,7 @@ export function loadPrefs() {
   if (CLASS_IDS.includes(raw.cls)) out.cls = raw.cls;
   if (Number.isInteger(raw.color) && raw.color >= 0 && raw.color < 6) out.color = raw.color;
   out.seenHowTo = bool(raw.seenHowTo, false);
-  const s = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
-  const ds = DEFAULT_CLIENT_SETTINGS;
-  out.settings = {
-    master: num01(s.master, ds.master),
-    sfx: num01(s.sfx, ds.sfx),
-    music: num01(s.music, ds.music),
-    muted: bool(s.muted, ds.muted),
-    quality: s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra' ? s.quality : defaultQuality(),
-    lighting: bool(s.lighting, ds.lighting),
-    screenShake: bool(s.screenShake, ds.screenShake),
-    showNames: bool(s.showNames, ds.showNames),
-    showStats: bool(s.showStats, ds.showStats),
-    view: s.view === 'fps' || s.view === 'topdown' ? s.view : ds.view,
-    fov: Math.round(numIn(s.fov, FOV_MIN, FOV_MAX, ds.fov)),
-    sensitivity: numIn(s.sensitivity, SENS_MIN, SENS_MAX, ds.sensitivity),
-    padLook: numIn(s.padLook, SENS_MIN, SENS_MAX, ds.padLook),
-    invertY: bool(s.invertY, ds.invertY),
-    aimAssist: bool(s.aimAssist, ds.aimAssist),
-    minimapRotate: bool(s.minimapRotate, ds.minimapRotate),
-  };
+  out.settings = validateSettings(raw.settings);
   const l = raw.lobby && typeof raw.lobby === 'object' ? raw.lobby : {};
   out.lobby = {
     mapId: typeof l.mapId === 'string' ? l.mapId : DEFAULT_SETTINGS.mapId,

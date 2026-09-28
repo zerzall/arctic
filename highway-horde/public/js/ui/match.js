@@ -24,6 +24,9 @@ import { fillStatsTable, statRows } from './scoreboard.js';
 import { padNavigate } from './padnav.js';
 import { flashToast } from './menus.js';
 import { applyLook, moveToWorld, aimAssist, sensitivityOf, wrapAngle } from './look.js';
+import { rendererSettings } from './gfx.js';
+import { currentUiScale } from './uiscale.js';
+import { enterFullscreen, fullscreenSupported, isFullscreen } from './fullscreen.js';
 
 const END_DELAY = 2.6;
 /**
@@ -134,7 +137,7 @@ export function startMatch(ctx, session) {
   screen.classList.toggle('view-fps', fps);
   const input = createInput(canvas, {
     touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch, view: fps ? 'fps' : 'topdown',
-    onLockChange: (locked) => onLockChange(locked),
+    onLockChange: (locked) => onLockChange(locked), rawMouse: prefs.settings.rawMouse,
   });
   const hud = createHud(hudEl, {
     map, renderClassPortrait: deps.renderClassPortrait, audio, invite,
@@ -177,10 +180,14 @@ export function startMatch(ctx, session) {
   let fpsAcc = 0;
   let fpsN = 0;
   let lastLocal = null;
-  // fov is read by the first-person renderer, ignored by the top-down one. `crosshair` tells
-  // it whether a menu covers the view (not in SPEC §7.5 yet: an overlay may ignore it).
-  const renderSettings = { screenShake: true, showNames: true, lighting: true, fov: 80, crosshair: true };
+  // Handed to every render call (gfx.js rendererSettings: fov, resolution scale and the
+  // post effects are read by the first-person renderer, ignored by the top-down one).
+  // `crosshair` tells it whether a menu covers the view.
+  const renderSettings = rendererSettings(prefs.settings, { crosshair: true });
   const renderLook = { yaw: 0, pitch: 0 };
+  // The quality the renderer was created with: setQuality() only runs when it changes
+  // (it can rebuild lights, shadow maps and textures).
+  let appliedQuality = prefs.settings.quality;
 
   const shop = createShop($('#shop-root'), { session, audio, map, onClose: () => refreshEnabled() });
   const chat = createGameChat(hudEl, {
@@ -193,18 +200,35 @@ export function startMatch(ctx, session) {
 
   function applySettings() {
     const s = prefs.settings;
-    renderSettings.screenShake = s.screenShake;
-    renderSettings.showNames = s.showNames;
-    renderSettings.lighting = s.lighting;
-    renderSettings.fov = Number.isFinite(s.fov) ? s.fov : 80;
+    rendererSettings(s, renderSettings);
+    // Extra hint (not required by the render contract): the menus/HUD scale factor, for an
+    // overlay that wants its crosshair and markers to grow with the HUD on big screens.
+    renderSettings.uiScale = currentUiScale();
     hud.setMinimapRotate(s.minimapRotate);
-    try {
-      renderer.setQuality(s.quality);
-    } catch (err) {
-      console.warn('[game] setQuality failed', err);
+    input.setRawMouse(s.rawMouse);
+    if (s.quality !== appliedQuality) {
+      appliedQuality = s.quality;
+      try {
+        renderer.setQuality(s.quality);
+      } catch (err) {
+        console.warn('[game] setQuality failed', err);
+      }
     }
   }
   applySettings();
+
+  // "Start games in fullscreen": right away when this start came from a click (Play Solo,
+  // Start Game); otherwise (a client whose host started) on the first click into the game.
+  let wantFullscreen = !!prefs.settings.fullscreenOnStart && fullscreenSupported() && !isFullscreen();
+  function goFullscreen() {
+    if (!wantFullscreen || stopped) return;
+    wantFullscreen = false;
+    enterFullscreen().then((ok) => {
+      // First person: in fullscreen the next click captures the mouse (Click to play).
+      if (!ok) console.info('[game] fullscreen was refused');
+    });
+  }
+  if (wantFullscreen && hasUserActivation()) goFullscreen();
 
   function overlayOpen() {
     return pauseOpen || endShown || chat.isOpen || shop.isOpen || ctx.modals.count > 0;
@@ -413,6 +437,7 @@ export function startMatch(ctx, session) {
       } else if (ctx.modals.count > 0) {
         const top = ctx.modals.top();
         if (inp.nav.back) ctx.modals.close(top, 'pad');
+        else if ((inp.nav.tabPrev || inp.nav.tabNext) && top && top.id === 'dlg-settings') ctx.settingsDialog.cycleTab(inp.nav.tabNext ? 1 : -1);
         else padNavigate(top, inp.nav);
       } else if (pauseOpen) {
         if (inp.nav.back) closePause();
@@ -534,6 +559,7 @@ export function startMatch(ctx, session) {
     const cam = listenerPos();
     hud.update(view, {
       dt, mode: input.mode, stats: session.stats, fps: fpsRate, showStats: prefs.settings.showStats, isHost: session.isHost,
+      renderStats: fps ? renderer.stats : null,
       localPos: local, shopOpen: shop.isOpen,
       yaw: fps ? (Number.isFinite(cam.yaw) ? cam.yaw : look.yaw) : undefined, camPos: fps ? cam : undefined,
     });
@@ -579,10 +605,12 @@ export function startMatch(ctx, session) {
     }
   }
 
-  scope.on(window, 'resize', () => {
+  function resize() {
+    if (stopped) return;
     renderer.resize();
     hud.resize();
-  });
+  }
+  scope.on(window, 'resize', resize);
   scope.on(window, 'orientationchange', () => setTimeout(() => {
     if (!stopped) {
       renderer.resize();
@@ -592,7 +620,9 @@ export function startMatch(ctx, session) {
   // Keep keyboard focus on the game after clicking it, so keys never land in a stale field.
   scope.on(canvas, 'mousedown', () => {
     if (document.activeElement && document.activeElement !== document.body && !chat.isOpen) document.activeElement.blur();
+    goFullscreen();
   });
+  scope.on(screen, 'touchend', () => goFullscreen());
 
   refreshEnabled();
   raf = requestAnimationFrame(frame);
@@ -620,6 +650,12 @@ export function startMatch(ctx, session) {
       hud.notice(text);
     },
     applySettings,
+    /** The UI scale changed: HUD canvases (minimap, compass, portraits) follow their boxes. */
+    resize() {
+      if (stopped) return;
+      renderSettings.uiScale = currentUiScale();
+      hud.resize();
+    },
     /** 'fps' | 'topdown': the view this match actually runs. */
     get view() {
       return fps ? 'fps' : 'topdown';

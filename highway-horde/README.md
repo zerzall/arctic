@@ -91,7 +91,9 @@ Run `npm start` and have everyone open `http://<your computer's IP>:8080`.
 **Click the game to capture the mouse**, then move the mouse to look around; your aim is
 wherever the crosshair is. **Esc** gives the mouse back and opens the menu (the game
 keeps running, your survivor just stands still); the menu's **Click to Resume** button
-captures it again.
+captures it again. On a PC, hit **Fullscreen** on the title screen, in the pause menu or
+in Settings (or tick *Start games in fullscreen*). In Chrome and Edge, Esc then only
+releases the mouse and opens the menu; hold Esc to leave fullscreen.
 
 | Action | Keyboard & mouse | Gamepad |
 |---|---|---|
@@ -113,15 +115,30 @@ captures it again.
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); the
 other actions have on-screen buttons. Gamepads and touch get a light aim assist.
-Phones and tablets start on the **Ultra** graphics preset (full screen resolution, extra
-lights, sharp shadows): it looks its best but makes the phone run warm and drains the
-battery faster; pick High or Low in Settings if it stutters.
+Every device starts on the **Ultra** graphics preset. Desktops use **Auto** resolution,
+which lowers the render resolution only when a big fight would drop below 60 fps. Phones
+and tablets render at full screen resolution: it looks its best but makes the phone run
+warm and drains the battery faster; pick High or Low, or a lower resolution, in Settings
+if it stutters.
 
-**Settings** (menu → Settings) has graphics quality (Ultra, High, Low), the view (**First-person** or **Classic top-down**; a
-change applies from the next game), field of view (horizontal degrees on a 4:3 screen,
-80 by default; wider screens see more at the sides), mouse sensitivity, stick and touch
-look speed, invert Y, aim assist, and whether the minimap turns with your view. In the
-classic top-down view the mouse points where you shoot and nothing is captured.
+**Settings** (title screen or pause menu → Settings) has four tabs:
+
+- **Graphics**: a preset (Ultra, High, Low), the resolution (Auto, 100%, 85%, 70% or 50%)
+  and, under *Advanced*, anti-aliasing (SMAA, FXAA, off), bloom, ambient occlusion, film
+  grain, vignette and night lighting. Tweaking an effect marks the preset *Custom*.
+- **Display & HUD**: fullscreen, *Start games in fullscreen*, the UI size (Auto scales
+  the menus and HUD with your screen, from 720p up to 4K; 75% to 150% on top of that), the
+  HUD safe area (on ultrawide monitors *16:9* keeps the HUD near the middle of the
+  screen), the FPS / resolution / ping readout, name tags, the rotating minimap and screen
+  shake.
+- **Controls**: the view (**First-person** or **Classic top-down**; a change applies
+  from the next game), field of view (60–120 horizontal degrees on a 4:3 screen, 80 by
+  default; wider screens see more at the sides), mouse sensitivity, stick and touch look
+  speed, invert Y, aim assist and raw mouse input (skips the OS pointer acceleration where
+  the browser supports it).
+- **Audio**: master, effects and music volume, and mute.
+
+In the classic top-down view the mouse points where you shoot and nothing is captured.
 
 ## Tips
 

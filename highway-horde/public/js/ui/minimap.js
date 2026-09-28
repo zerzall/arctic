@@ -8,6 +8,7 @@
 // you can always turn toward them.
 
 import { PLAYER_COLORS } from '../shared/constants.js';
+import { currentUiScale } from './uiscale.js';
 
 const MINIMAP_HZ = 20;
 const AREA_COLORS = {
@@ -34,7 +35,9 @@ function rotRect(g, x, y, w, h, a) {
 export function createMinimap(canvas, map, opts = {}) {
   const g = canvas.getContext('2d');
   let radar = !!opts.radar;
-  let W = 0, H = 0, dpr = 1, scale = 1, ox = 0, oy = 0;
+  // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
+  // markers and labels grow with the rem-sized minimap on big screens.
+  let W = 0, H = 0, dpr = 1, u = 1, scale = 1, ox = 0, oy = 0;
   let base = null;
   let acc = 1;
   let radarYaw = 0;
@@ -69,7 +72,7 @@ export function createMinimap(canvas, map, opts = {}) {
       b.fillStyle = 'rgba(255,196,0,0.35)';
       rotRect(b, ob.x, ob.y, ob.w, ob.h, ob.a);
       b.strokeStyle = '#ffc400';
-      b.lineWidth = 2 / scale * dpr;
+      b.lineWidth = 2 / scale * u;
       b.save();
       b.translate(ob.x, ob.y);
       if (ob.a) b.rotate(ob.a);
@@ -79,7 +82,7 @@ export function createMinimap(canvas, map, opts = {}) {
     b.restore();
     // map border
     b.strokeStyle = 'rgba(255,255,255,0.18)';
-    b.lineWidth = dpr;
+    b.lineWidth = u;
     b.strokeRect(ox + 0.5, oy + 0.5, map.width * scale - 1, map.height * scale - 1);
   }
 
@@ -87,6 +90,7 @@ export function createMinimap(canvas, map, opts = {}) {
     const r = canvas.getBoundingClientRect();
     const cw = Math.max(40, Math.round(r.width)), ch = Math.max(30, Math.round(r.height));
     dpr = Math.min(2, window.devicePixelRatio || 1);
+    u = dpr * currentUiScale();
     const nw = Math.round(cw * dpr), nh = Math.round(ch * dpr);
     if (nw === W && nh === H && base) return;
     W = canvas.width = nw;
@@ -130,7 +134,6 @@ export function createMinimap(canvas, map, opts = {}) {
     const k = scale;
     const X = (x) => ox + x * k;
     const Y = (y) => oy + y * k;
-    const u = dpr;
 
     // supply station
     const s = map.supply;
@@ -222,7 +225,6 @@ export function createMinimap(canvas, map, opts = {}) {
   // ---- radar (first person) ----------------------------------------------------------------
 
   function drawRadar(view, localId, rosterById, localPos, yaw) {
-    const u = dpr;
     const k = scale;
     const cx = W / 2, cy = H / 2;
     g.fillStyle = '#0a0c0e';

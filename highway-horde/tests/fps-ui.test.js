@@ -317,6 +317,27 @@ test('fps input: a refused raw-input lock retries plain; destroy releases the lo
   assert.equal(dom.listeners(), before);
 });
 
+test('fps input: the raw mouse setting picks unadjustedMovement or a plain lock', () => {
+  const dom = fakeDom();
+  const opts = [];
+  dom.canvas.requestPointerLock = (o) => {
+    opts.push(o);
+    return Promise.resolve();
+  };
+  const off = createInput(dom.canvas, { view: 'fps', rawMouse: false });
+  off.requestLock();
+  assert.deepEqual(opts, [undefined], 'raw input off: plain lock');
+  off.setRawMouse(true);
+  off.requestLock();
+  assert.deepEqual(opts[1], { unadjustedMovement: true }, 'switched on from the settings');
+  assert.equal(off.rawMouseSupported, true);
+  off.destroy();
+  const on = createInput(dom.canvas, { view: 'fps' });
+  on.requestLock();
+  assert.deepEqual(opts[2], { unadjustedMovement: true }, 'raw input is the default');
+  on.destroy();
+});
+
 test('fps input: the gamepad right stick turns the camera (per-frame delta), not the aim point', async () => {
   const nav = globalThis.navigator;
   if (!nav) return;
