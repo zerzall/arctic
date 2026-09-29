@@ -810,8 +810,25 @@ audio.setMap(map)                            // permanent map fires crackle when
 // (audio dedupes overlaps anyway).
 ```
 All sound synthesised with WebAudio (no files). Voice limiting (max ~24 concurrent,
-per-sound rate limits) so a minigun into a horde doesn't clip. Music: optional
-procedural low drone/percussion that intensifies during waves and boss fights.
+per-sound rate limits) so a minigun into a horde doesn't clip.
+
+**Music** (`audio/music.js`, orchestra in `audio/instruments.js`): an original, heroic
+Nordic-fantasy orchestral score in D minor / D Dorian (low male choir on "aah"/"ooh",
+string ensemble, horns, harp, wooden flute, taiko war drums, timpani, cymbal swells),
+played by a small sequencer from baked instrument samples (one seamless loop or one-shot
+per sample root, transposed by at most ±2 semitones; sustained notes are the loop with an
+attack/release envelope). States follow the game: `menu` and `calm` (prep/intermission,
+70 bpm 3/4: harp, strings, choir, a flute or horn melody, the main theme), `tension` (last
+seconds before a wave, 112 bpm), `battle` (112 bpm 4/4 string ostinatos and drums; horns,
+choir, a chant and high strings join as the horde grows, gated by the smoothed intensity),
+`boss` (6/8, galloping drums, full choir), and the cues `waveclear` (VI–VII–I into D
+major, then calm), `victory` (fanfare, then `glory`, a calm loop in D major) and `gameover`
+(sombre, then a slow `lament`). Each looping state has 60–120 s of phrases played in a
+seeded random order (`createAudio({ musicSeed })`, random by default); changes land on the
+next beat (urgent) or bar and fade the outgoing phrase. The score has its own long hall
+reverb, sits under the effects and ducks up to ~3 dB under heavy fire; the music volume
+applies as usual. `audio.stats().musicState` reports the state. The menu's instruments
+bake first (`early`), the rest of the orchestra after the effects.
 
 ### 7.5 First-person 3D view — `render3d/*` (the default view)
 

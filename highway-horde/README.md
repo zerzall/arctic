@@ -161,7 +161,10 @@ to 100% in Settings for the sharpest picture, or pick High or Low if it stutters
   default; wider screens see more at the sides), mouse sensitivity, stick and touch look
   speed, invert Y, aim assist and raw mouse input (skips the OS pointer acceleration where
   the browser supports it).
-- **Audio**: master, effects and music volume, and mute.
+- **Audio**: master, effects and music volume, and mute. The soundtrack is an adaptive
+  orchestral score (choir, strings, horns, harp, war drums) synthesised in the browser:
+  calm while you shop and get ready, building as the wave comes, full battle music as
+  the horde grows, heavier for bosses, a short fanfare when a wave is cleared.
 
 In the classic top-down view the mouse points where you shoot and nothing is captured.
 

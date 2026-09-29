@@ -287,26 +287,36 @@ test('loops follow the snapshot: minigun spin/fire, flamethrower, horde, fire, h
   assert.ok(eng.loops.size <= 12);
 });
 
-test('music follows the phase: calm → wave → boss → game over', async () => {
+test('music follows the phase: calm → tension → battle → boss → game over', async () => {
   const { ctx, audio, eng } = engine();
   await audio.unlock();
-  const run = (v, secs) => {
+  const run = (v, secs, events) => {
     for (let t = 0; t < secs; t += 0.05) {
       ctx.currentTime += 0.05;
+      if (events && t === 0) audio.addEvents(events, { x: 0, y: 0, localId: 1 });
       audio.update(v, { localId: 1, dt: 0.05 });
     }
   };
   run(view({ phase: 'intermission', timer: 20 }), 3);
+  assert.equal(eng.music.state, 'calm');
   const calm = eng.music.intensity;
+  run(view({ phase: 'intermission', timer: 4 }), 3);
+  assert.equal(eng.music.state, 'tension', 'the last seconds before a wave build up');
   const zombies = [];
   for (let i = 0; i < 50; i++) zombies.push({ id: i, type: 'walker', x: 200, y: i, angle: 0, hp: 1, flags: 0 });
-  run(view({ zombies }), 4);
+  run(view({ zombies }), 4, [{ type: 'wave', wave: 3, boss: false }]);
+  assert.equal(eng.music.state, 'battle');
   assert.ok(eng.music.intensity > calm + 0.3, 'ramps up in a wave');
   run(view({ zombies, bossHp: 0.8 }), 3);
   assert.equal(eng.musicBoss, true);
-  run(view({ phase: 'gameover' }), 1);
+  assert.equal(eng.music.state, 'boss');
+  run(view({ phase: 'gameover' }), 2, [{ type: 'gameover' }]);
   assert.equal(eng.musicMode, 'gameover');
-  assert.ok(ctx.nodes.oscillator >= 5, 'drone running');
+  assert.equal(eng.music.state, 'gameover');
+  assert.equal(audio.stats().musicState, 'gameover');
+  // The score is played from the baked orchestra, not from free-running oscillators.
+  assert.equal(ctx.nodes.oscillator || 0, 0, 'no drone oscillators');
+  assert.ok(ctx.sources.filter((s) => s.loop).length > 10, 'sustained notes loop their samples');
 });
 
 test('volume and mute apply squared gains to the buses', async () => {

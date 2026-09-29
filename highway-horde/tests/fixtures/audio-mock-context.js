@@ -6,22 +6,28 @@ class Param {
   constructor(v) {
     this.value = v;
     this.events = 0;
+    /** Automation as scheduled: [kind, value, time, timeConstant?] (for offline mixdowns in tests). */
+    this.log = [];
   }
-  setValueAtTime(v) {
+  setValueAtTime(v, t) {
     this.value = v;
     this.events++;
+    this.log.push(['set', v, t]);
   }
-  linearRampToValueAtTime(v) {
+  linearRampToValueAtTime(v, t) {
     this.value = v;
     this.events++;
+    this.log.push(['lin', v, t]);
   }
-  exponentialRampToValueAtTime(v) {
+  exponentialRampToValueAtTime(v, t) {
     this.value = v;
     this.events++;
+    this.log.push(['exp', v, t]);
   }
-  setTargetAtTime(v) {
+  setTargetAtTime(v, t, tc) {
     this.value = v;
     this.events++;
+    this.log.push(['target', v, t, tc]);
   }
   cancelScheduledValues() {}
 }
@@ -51,12 +57,14 @@ class Source extends Node {
     this.loop = false;
     this.buffer = null;
     this.started = null;
+    this.offset = 0;
     this.stopped = null;
     this.onended = null;
   }
-  start(t = 0) {
+  start(t = 0, offset = 0) {
     if (this.started !== null) throw new Error('InvalidStateError: start twice');
     this.started = t;
+    this.offset = offset;
     this.ctx.sources.push(this);
   }
   stop(t = 0) {

@@ -6,8 +6,8 @@
 //   24 voice slots ─┬─ dry ─► sfxDry ─► muffle ─┐
 //   loop voices ────┘                           │
 //        └─ wet sends ─► sfxWet ─► reverb ──────┤
-//   music ─► musicDry ──────────────────────────┤
-//        └─ musicWet ─► reverb                  ▼
+//   music (own hall reverb, duck) ─► musicDry ──┤
+//                                               ▼
 //                     master ─► compressor ─► limiter ─► soft clip (ceiling 0.98) ─► out
 //
 // Voices are fixed slots with persistent gain/filter/pan nodes; a new sound only costs a
@@ -53,6 +53,8 @@ const LOW_HP = 0.3;
 const LOOP_GRACE = 0.15;
 
 const DEFAULT_VOLUME = { master: 0.8, sfx: 1, music: 0.5 };
+/** Deepest music duck under heavy fire (fraction of the music level). */
+const MUSIC_DUCK = 0.3;
 
 const EXPLOSIONS = { frag: 'expl_frag', grenade: 'expl_grenade', rocket: 'expl_rocket', bloater: 'expl_bloater' };
 const PICKUPS = { ammo: 'pick_ammo', health: 'pick_health', cash: 'pick_cash', armor: 'pick_armor', frag: 'pick_frag', crate: 'pick_crate' };
@@ -255,7 +257,7 @@ class Engine {
     this.manual = this.offline || !!this.opts.manual;
     this.buildGraph();
     this.bank = createBank(this.ctx, { sync: this.offline || !!this.opts.syncBake });
-    this.music = createMusic(this.ctx, { out: this.musicDry, wet: this.musicWet, bank: this.bank });
+    this.music = createMusic(this.ctx, { out: this.musicDry, bank: this.bank, seed: this.opts.musicSeed });
     this.ready = true;
     this.applyVolume();
     if (!this.offline) {
@@ -358,8 +360,6 @@ class Engine {
     this.sfxWet.connect(this.reverb);
     this.musicDry = g();
     this.musicDry.connect(this.master);
-    this.musicWet = g();
-    this.musicWet.connect(this.reverb);
 
     this.hasPanner = typeof ctx.createStereoPanner === 'function';
     // Filter cutoffs above Nyquist get clamped with a console warning on low-rate devices.
@@ -393,7 +393,6 @@ class Engine {
     this.sfxDry.gain.setTargetAtTime(sq(this.vol.sfx), t, 0.03);
     this.sfxWet.gain.setTargetAtTime(sq(this.vol.sfx), t, 0.03);
     this.musicDry.gain.setTargetAtTime(sq(this.vol.music), t, 0.1);
-    this.musicWet.gain.setTargetAtTime(sq(this.vol.music), t, 0.1);
   }
 
   setVolume(v) {
@@ -711,7 +710,10 @@ class Engine {
         this.musicTarget = Math.max(this.musicTarget, 0.45);
         return;
       case 'bossspawn': return void this.play('boss_spawn', { ...pos, minGain: 0.55, prio: PRIO_UI });
-      case 'waveclear': return void this.play('waveclear', { local: true, prio: PRIO_UI });
+      case 'waveclear':
+        this.play('waveclear', { local: true, prio: PRIO_UI });
+        if (this.music) this.music.cue('waveclear');
+        return;
       case 'drop':
         // The crate has just landed: join the flyover near its loudest point.
         this.play('plane', { local: true, prio: 70, offset: 1.2, pan: clamp(this.panOf((e.x ?? this.lx) - this.lx, (e.y ?? this.ly) - this.ly) / PAN_MAX, -1, 1) * 0.5 });
@@ -832,6 +834,7 @@ class Engine {
     this.heartbeat(me, dt);
     this.setMuffle(me, now);
     this.setMusic(view, me, horde.count);
+    this.duckMusic(now);
     if (this.manual) this.musicTick();
   }
 
@@ -1139,6 +1142,15 @@ class Engine {
     }
   }
 
+  /** The score steps back (up to ~3 dB) while many loud sounds play, so gunfire stays on top. */
+  duckMusic(now) {
+    if (!this.music) return;
+    let load = 0;
+    for (const s of this.slots) if (s.end > now && s.start <= now) load += s.gainVal;
+    load += 0.25 * this.loops.size;
+    this.music.duck(1 - MUSIC_DUCK * clamp((load - 0.8) / 3.5, 0, 1), now);
+  }
+
   musicTick() {
     if (!this.ready || !this.music) return;
     if (!this.offline && this.ctx.state !== 'running') return;
@@ -1170,6 +1182,7 @@ class Engine {
       total: bank.total,
       music: this.music ? Math.round(this.music.intensity * 100) / 100 : 0,
       musicMode: this.musicMode,
+      musicState: this.music ? this.music.state : null,
     };
   }
 }
@@ -1182,6 +1195,7 @@ class Engine {
  * @param {object} [options]  testing/offline hooks: { context: BaseAudioContext to render
  *   into, clock: () => seconds used for scheduling, manual: drive music from update(),
  *   syncBake: bake the bank synchronously, destination: AudioNode to connect to,
+ *   musicSeed: seed of the score's phrase order (random by default),
  *   dynamics: false to bypass compressor/limiter (level measurements only) }
  */
 export function createAudio(options = {}) {

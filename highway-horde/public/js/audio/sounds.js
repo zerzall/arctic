@@ -19,6 +19,7 @@
 
 import { createRng, hashString } from '../shared/rng.js';
 import * as S from './synth.js';
+import { MUSIC_SOUNDS } from './instruments.js';
 
 // ---- building blocks -------------------------------------------------------------------
 
@@ -869,11 +870,19 @@ export const SOUNDS = {
     return S.echoes(out, sr, [[0.25, 0.3, 1500], [0.55, 0.18, 1000]]);
   } },
   horn: { srate: 0.25, cat: 'stinger', v: 1, g: 0.6, prio: 100, wet: 0.5, render: (sr, rng) => {
-    const dur = 2.6;
-    const out = chord(sr, dur, [73.42, 110, 146.83], 0, 0.004);
-    // Re-filter with a swell so the horn blooms then darkens.
-    const b = S.filter(S.flutter(out, sr, rng, 25, 0.15), sr, 'lowpass', S.curve([[0, 300], [0.5, 1800], [2.6, 600]]), 0.9);
-    return S.env(S.drive(b, 1.5), sr, 0.2, 1, 1.4);
+    // War horn (boss wave): two calls on an open fifth (D2 + A2), each scooping up into pitch.
+    const out = S.makeBuf(sr, 3);
+    for (const [at, len] of [[0, 1.05], [1.25, 1.6]]) {
+      const b = S.makeBuf(sr, len + 0.1);
+      for (const [f, gg] of [[73.42, 1], [110, 0.6], [146.83, 0.35]]) {
+        const scoop = (t) => f * (0.94 + 0.06 * Math.min(1, t / 0.14));
+        S.mix(b, S.osc(sr, len + 0.1, 'saw', scoop), sr, 0.3 * gg);
+        S.mix(b, S.osc(sr, len + 0.1, 'saw', (t) => scoop(t) * 1.004, { phase: 0.4 }), sr, 0.3 * gg);
+      }
+      S.filter(S.flutter(b, sr, rng, 20, 0.1), sr, 'lowpass', S.curve([[0, 250], [0.25, 1400], [len, 700]]), 0.8);
+      S.mix(out, S.env(S.drive(b, 1.4), sr, 0.12, 0.5, len - 0.3), sr, 1, at);
+    }
+    return out;
   } },
   boss_spawn: { srate: 0.5, cat: 'stinger', v: 1, g: 0.95, prio: 100, wet: 0.55, range: 4, render: (sr, rng) => {
     const out = S.makeBuf(sr, 3.5);
@@ -886,11 +895,11 @@ export const SOUNDS = {
     return S.mix(out, S.env(S.filter(S.brown(sr, 3.2, rng), sr, 'lowpass', 90), sr, 0.1, 3), sr, 0.6);
   } },
   waveclear: { srate: 0.5, cat: 'stinger', v: 1, g: 0.55, prio: 100, wet: 0.5, group: 'st_waveclear', lim: [2, 1], render: (sr) => {
-    const out = S.makeBuf(sr, 2.2);
-    const pad = S.filter(chord(sr, 2.1, [146.83, 185, 220, 293.66], 0), sr, 'lowpass', S.curve([[0, 400], [0.4, 2500], [2, 800]]));
-    S.mix(out, S.env(pad, sr, 0.06, 1.4, 0.45), sr, 1);
-    S.mix(out, S.fmBell(sr, 2, 587.33, { ratio: 2, index: 2, decay: 1.8 }), sr, 0.4, 0.05);
-    return S.mix(out, thud(sr, 90, 45, 0.5, 0.05), sr, 0.45);
+    // Brass swell on D major over a timpani stroke: the score's wave-clear cue starts on it.
+    const out = S.makeBuf(sr, 2.4);
+    const pad = S.filter(chord(sr, 2.3, [146.83, 185, 220, 293.66], 0, 0.004), sr, 'lowpass', S.curve([[0, 350], [0.35, 2600], [2.2, 900]]), 0.7);
+    S.mix(out, S.env(pad, sr, 0.08, 1.3, 0.5), sr, 1);
+    return S.mix(out, thud(sr, 80, 73, 1.4, 0.05, 1.2), sr, 0.6);
   } },
   plane: { srate: 0.25, cat: 'stinger', v: 1, g: 0.45, prio: 70, wet: 0.4, render: (sr, rng) => {
     const dur = 4;
@@ -912,33 +921,25 @@ export const SOUNDS = {
     return S.mix(out, S.env(S.filter(S.pink(sr, 0.8, rng), sr, 'highpass', 2000), sr, 0.05, 0.6), sr, 0.15);
   } },
   gameover: { srate: 0.5, cat: 'stinger', v: 1, g: 0.6, prio: 100, wet: 0.55, group: 'st_gameover', lim: [3, 1], render: (sr) => {
+    // Sombre, not scary: low horns swell on D minor over a soft timpani stroke (no bends, no bells).
     const dur = 4;
     const out = S.makeBuf(sr, dur);
-    const fall = (f) => (t) => f * (1 - 0.03 * Math.min(1, t / 3));
-    const pad = S.makeBuf(sr, dur);
-    for (const f of [73.42, 87.31, 110, 146.83]) {
-      S.mix(pad, S.osc(sr, dur, 'saw', fall(f * 1.004)), sr, 0.25);
-      S.mix(pad, S.osc(sr, dur, 'saw', fall(f * 0.996)), sr, 0.25);
-    }
-    S.filter(pad, sr, 'lowpass', S.expSweep(900, 250, 3), 0.8);
-    S.mix(out, S.env(pad, sr, 0.05, 3.5), sr, 0.7);
-    S.mix(out, S.fmBell(sr, 3, 110, { ratio: 1.4, index: 4, decay: 3 }), sr, 0.5);
-    S.mix(out, S.fmBell(sr, 2.5, 110, { ratio: 1.4, index: 4, decay: 2.5 }), sr, 0.4, 1.5);
-    return S.mix(out, thud(sr, 50, 25, 2, 0.1, 1.6), sr, 0.7);
+    const pad = chord(sr, dur, [73.42, 110, 146.83, 174.61], 0, 0.004);
+    S.filter(pad, sr, 'lowpass', S.curve([[0, 250], [0.9, 1300], [3.8, 450]]), 0.7);
+    S.mix(out, S.env(pad, sr, 0.5, 2.6, 0.6), sr, 0.8);
+    return S.mix(out, thud(sr, 80, 73, 2, 0.06, 1.1), sr, 0.5);
   } },
-  victory: { srate: 0.5, cat: 'stinger', v: 1, g: 0.55, prio: 100, wet: 0.5, group: 'st_victory', lim: [3, 1], render: (sr) => {
+  victory: { srate: 0.5, cat: 'stinger', v: 1, g: 0.55, prio: 100, wet: 0.5, group: 'st_victory', lim: [3, 1], render: (sr, rng) => {
+    // Fanfare: two short calls and a held D major, with timpani and a cymbal on the arrival.
     const out = S.makeBuf(sr, 3.6);
-    const steps = [
-      [0, [146.83, 185, 220], 0.35], [0.35, [196, 246.94, 293.66], 0.35], [0.7, [220, 277.18, 329.63], 0.4],
-      [1.1, [146.83, 220, 293.66, 369.99], 2.4],
-    ];
+    const steps = [[0, [146.83, 220, 293.66], 0.16], [0.22, [146.83, 220, 293.66], 0.16], [0.45, [146.83, 185, 220, 293.66, 369.99], 2.6]];
     for (const [at, fs, len] of steps) {
-      const c = chord(sr, len + 0.1, fs, 0);
-      S.filter(c, sr, 'lowpass', S.curve([[0, 400], [0.08, 3000], [len, 1200]]), 0.8);
-      S.mix(out, S.env(c, sr, 0.02, len, len * 0.3), sr, 0.6, at);
-      S.mix(out, thud(sr, 110, 80, 0.5, 0.05), sr, 0.5, at);
+      const c = chord(sr, len + 0.1, fs, 0, 0.004);
+      S.filter(c, sr, 'lowpass', S.curve([[0, 500], [0.06, 3000], [len, 1300]]), 0.7);
+      S.mix(out, S.env(c, sr, 0.015, len * 0.8, len * 0.3), sr, 0.6, at);
+      S.mix(out, thud(sr, 82, 73, 0.9, 0.05, 1.2), sr, 0.45, at);
     }
-    return out;
+    return S.mix(out, S.env(S.filter(S.noise(sr, 2.2, rng), sr, 'highpass', 3500, 0.7), sr, 0.004, 2), sr, 0.12, 0.45);
   } },
 
   // UI. --------------------------------------------------------------------------------------
@@ -1080,28 +1081,8 @@ export const SOUNDS = {
     return S.filter(out, sr, 'lowpass', 3500, 0.6);
   } },
 
-  // Music percussion & colour (music.js). ----------------------------------------------------
-  m_taiko: { srate: 0.5, cat: 'music', v: 2, g: 1, wet: 0.4, render: (sr, rng) => {
-    const out = thud(sr, 110, 58, 0.7, 0.05, 1.3);
-    S.mix(out, burst(sr, rng, 'bandpass', 220, 1, 0.12), sr, 0.5);
-    return S.mix(out, click(sr, rng, 1200, 0.01, 1.5), sr, 0.2);
-  } },
-  m_kick: { cat: 'music', v: 1, g: 1, wet: 0.1, render: (sr, rng) =>
-    S.mix(thud(sr, 140, 48, 0.3, 0.03, 1.5), click(sr, rng, 3000, 0.004, 1), sr, 0.3) },
-  m_hat: { cat: 'music', v: 2, g: 1, wet: 0.1, render: (sr, rng) => burst(sr, rng, 'highpass', 7000, 0.7, 0.03) },
-  m_tick: { cat: 'music', v: 1, g: 1, wet: 0.2, render: (sr, rng) =>
-    S.mix(S.mix(S.makeBuf(sr, 0.05), burst(sr, rng, 'bandpass', 1800, 4, 0.02), sr), S.env(S.osc(sr, 0.03, 'sine', 900), sr, 0.001, 0.02), sr, 0.4) },
-  m_boom: { srate: 0.25, cat: 'music', v: 1, g: 1, wet: 0.5, render: (sr, rng) => {
-    const out = thud(sr, 60, 30, 1.8, 0.1, 1.6);
-    S.mix(out, S.env(S.filter(S.brown(sr, 1.6, rng), sr, 'lowpass', 200), sr, 0.01, 1.5), sr, 0.5);
-    return S.mix(out, burst(sr, rng, 'lowpass', 3000, 0.7, 0.05), sr, 0.3);
-  } },
-  m_bell: { srate: 0.5, cat: 'music', v: 1, g: 1, wet: 0.7, render: (sr) =>
-    S.echoes(S.fmBell(sr, 3.5, 587.33, { ratio: 1.41, index: 2.5, decay: 3, idxDecay: 1.5 }), sr, [[0.37, 0.3, 2000], [0.74, 0.15, 1500]]) },
-  m_swell: { srate: 0.5, cat: 'music', v: 1, g: 1, wet: 0.5, render: (sr, rng) => {
-    const b = S.filter(S.noise(sr, 2, rng), sr, 'bandpass', S.expSweep(300, 2400, 1.9), 2);
-    return S.shape(b, sr, (t) => (t < 1.9 ? Math.pow(t / 1.9, 2.5) : Math.max(0, 1 - (t - 1.9) * 10)));
-  } },
+  // The score's orchestra (music.js): choir, strings, horns, flute, harp and drums.
+  ...MUSIC_SOUNDS,
 };
 
 function gain(buf, g) {

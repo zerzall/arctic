@@ -611,7 +611,7 @@ function showStats() {
   $('voicebar').firstElementChild.style.width = `${clamp(s.voices / s.maxVoices, 0, 1) * 100}%`;
   for (const k of ['loops', 'played', 'stolen', 'dropped', 'limited', 'errors']) $(k).textContent = s[k] ?? 0;
   $('baked').textContent = `${s.baked}/${s.total}`;
-  $('music').textContent = `${s.musicMode} ${s.music}`;
+  $('music').textContent = `${s.musicMode}/${s.musicState ?? '-'} ${s.music}`;
   $('hordeN').textContent = world.zombies.length;
 }
 

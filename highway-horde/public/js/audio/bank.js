@@ -5,20 +5,29 @@
 
 import { SOUNDS, SOUND_IDS, renderSound, soundRate } from './sounds.js';
 
-// Sounds needed first: the player hears guns and hits within seconds of starting.
-const CAT_ORDER = ['gun', 'impact', 'ui', 'weapon', 'zombie', 'player', 'explosion', 'pickup', 'loop', 'deploy', 'music', 'stinger'];
+// Sounds needed first: the player hears guns and hits within seconds of starting. The
+// menu music's instruments (`early`) come right after guns, hits and the interface, so
+// the score starts within a second or two of unlocking; the rest of the orchestra bakes last.
+const CAT_ORDER = ['gun', 'impact', 'ui', 'early', 'weapon', 'zombie', 'player', 'explosion', 'pickup', 'loop', 'deploy', 'stinger', 'music'];
 // Categories cheap enough to render synchronously on first use if their bake hasn't landed.
 const SYNC_OK = new Set(['gun', 'impact', 'weapon', 'ui', 'pickup']);
 const SLICE_MS = 6;
 
 const CACHE = new Map();   // sampleRate → Map(id → AudioBuffer[] (sparse by variant))
 
+const catOf = (id) => (SOUNDS[id].early ? 'early' : SOUNDS[id].cat);
+// Music instruments use their variants as sample roots: a note needs the whole set.
+const allVariants = (id) => SOUNDS[id].cat === 'music';
+
 function bakeOrder() {
   const jobs = [];
-  const ids = SOUND_IDS.slice().sort((a, b) => CAT_ORDER.indexOf(SOUNDS[a].cat) - CAT_ORDER.indexOf(SOUNDS[b].cat));
+  const ids = SOUND_IDS.slice().sort((a, b) => CAT_ORDER.indexOf(catOf(a)) - CAT_ORDER.indexOf(catOf(b)));
   // Variant 0 of everything first, then the extra variants: every sound is playable early.
-  for (const id of ids) jobs.push([id, 0]);
-  for (const id of ids) for (let v = 1; v < (SOUNDS[id].v || 1); v++) jobs.push([id, v]);
+  for (const id of ids) {
+    const n = allVariants(id) ? SOUNDS[id].v || 1 : 1;
+    for (let v = 0; v < n; v++) jobs.push([id, v]);
+  }
+  for (const id of ids) if (!allVariants(id)) for (let v = 1; v < (SOUNDS[id].v || 1); v++) jobs.push([id, v]);
   return jobs;
 }
 
@@ -47,6 +56,7 @@ export function createBank(ctx, { sync = false } = {}) {
   let queue = [];
   let worker = null;
   let timer = 0;
+  let idle = 0;
   let closed = false;
 
   const has = (id, v) => !!(store.get(id) && store.get(id)[v]);
@@ -67,20 +77,28 @@ export function createBank(ctx, { sync = false } = {}) {
     return n;
   }
 
-  // Main-thread fallback: a few milliseconds per slice so the game keeps its frame rate.
-  function slice() {
+  // Main-thread fallback (e.g. the one-file build): a few milliseconds per slice so the
+  // game keeps its frame rate, preferably in the browser's idle time between frames.
+  function slice(deadline) {
     timer = 0;
-    if (closed) return;
+    idle = 0;
+    if (closed || !queue.length) return;
     const t0 = Date.now();
-    while (queue.length && Date.now() - t0 < SLICE_MS) {
+    const more = () => (deadline && !deadline.didTimeout ? deadline.timeRemaining() > 4 : Date.now() - t0 < SLICE_MS);
+    do {
       const [id, v] = queue.shift();
       try {
         renderNow(id, v);
       } catch {
         // A broken recipe must not stop the rest of the bank from baking.
       }
+    } while (queue.length && more());
+    if (!queue.length) return;
+    if (typeof requestIdleCallback === 'function') {
+      idle = requestIdleCallback(slice, { timeout: 120 });
+    } else {
+      timer = setTimeout(slice, 16);
     }
-    if (queue.length) timer = setTimeout(slice, 16);
   }
 
   function startWorker() {
@@ -137,6 +155,11 @@ export function createBank(ctx, { sync = false } = {}) {
       renderNow(id, 0);
       return store.get(id)[0];
     },
+    /** Baked variant `v` of `id` exactly (music sample roots), or null while it is still baking. */
+    variant(id, v) {
+      const arr = store.get(id);
+      return (arr && arr[v]) || null;
+    },
     has(id) {
       const arr = store.get(id);
       return !!(arr && arr.some(Boolean));
@@ -147,6 +170,7 @@ export function createBank(ctx, { sync = false } = {}) {
     close() {
       closed = true;
       if (timer) clearTimeout(timer);
+      if (idle && typeof cancelIdleCallback === 'function') cancelIdleCallback(idle);
       if (worker) worker.terminate();
       worker = null;
     },
