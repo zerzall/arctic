@@ -1,0 +1,18 @@
+{
+  "name": "arctic-bomberman",
+  "version": "1.0.0",
+  "description": "Blast Party: a Bomberman-style battle game for up to 8 players (and bots) that you play in the browser, online, with a room code.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/",
+    "share": "node scripts/share.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
