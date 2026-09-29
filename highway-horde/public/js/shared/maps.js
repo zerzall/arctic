@@ -13,6 +13,7 @@
 
 import { createRng, hashString } from './rng.js';
 import { TAU, round1 } from './math.js';
+import { buildHarlan } from './maps-harlan.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -36,6 +37,12 @@ export const MAP_LIST = [
     name: 'Checkpoint Delta',
     description: 'A fortified crossroads checkpoint. Keep the radio tower alive while the horde comes down all four roads and through the breaches.',
   },
+  {
+    id: 'harlan',
+    name: 'Harlan County',
+    description: 'Miles of farm country for the Evac Run: Main Street, the Gas-N-Go, Haskell Farm, St. Jude\'s graveyard, the field hospital, the I-70 interchange, the quarry, Radio Hill, Shady Pines and the lake. The safe zone moves every wave.',
+    modes: ['zone'],
+  },
 ];
 
 const BUILDERS = {
@@ -43,6 +50,7 @@ const BUILDERS = {
   truckstop: buildTruckStop,
   bridge: buildBridge,
   checkpoint: buildCheckpoint,
+  harlan: buildHarlan,
 };
 
 /**
@@ -112,6 +120,9 @@ const KIND_DEFAULTS = {
   pillar: { color: '#8d8a82', solid: true },
   pier: { color: '#8e8a82', solid: true },
   ramp: { color: '#8a867d', solid: true },
+  // Harlan County: grain silos (round, solid) and graveyard headstones (knee-high cover)
+  silo: { color: '#b8bcbf', solid: true },
+  grave: { color: '#8e8c86', solid: false },
 };
 
 /**
@@ -200,7 +211,10 @@ function createBuilder(meta, seed) {
     objective: null,
     supply: null,
     overpass: null,
+    pois: [],
   };
+  // Modes the map plays (absent = every mode, shared/zone.js mapModes).
+  if (meta.modes) map.modes = meta.modes.slice();
   // Two independent streams: layout jitter never shifts because decor changed, and vice versa.
   const rng = createRng(hashString(`${meta.id}:layout:${seed}`));
   const drng = createRng(hashString(`${meta.id}:decor:${seed}`));
@@ -239,6 +253,8 @@ function createBuilder(meta, seed) {
     drng,
     W: def.width,
     H: def.height,
+    /** Palettes and helpers for builders that live in their own files. */
+    lib: { SEMI_CAB, SEMI_COLORS, CONTAINER_COLORS, CIVIL_COLORS, mixColor, LAMP_COLOR, SODIUM_COLOR, FLOOD_COLOR },
 
     area(kind, x, y, w, h, a = 0) {
       const r = { kind, x: round1(x), y: round1(y), w: round1(w), h: round1(h), a: normAngle(a) };
@@ -468,6 +484,13 @@ function createBuilder(meta, seed) {
       map.playerSpawns.push({ x, y });
       B.keep(x, y, 70, 70);
     },
+    /**
+     * A point of interest: a safe-zone centre for the Evac Run mode (SPEC §3.7), with the
+     * zone's radius and the name the HUD announces.
+     */
+    poi(name, x, y, r) {
+      map.pois.push({ name, x, y, r });
+    },
     /** Zombie spawn rect; `weight` (optional, all or none of a map's rects) biases the pick. */
     zspawn(x, y, w, h, weight = undefined) {
       map.zombieSpawns.push(weight === undefined ? { x, y, w, h } : { x, y, w, h, weight });
@@ -622,6 +645,7 @@ const MAP_DEFS = {
   truckstop: { width: 3400, height: 2400, darkness: 0.6, tint: '#a0602a', ground: '#7c6a4c' },
   bridge: { width: 4000, height: 2000, darkness: 0.72, tint: '#2f6b68', ground: '#34442f' },
   checkpoint: { width: 3000, height: 3000, darkness: 0.66, tint: '#56644c', ground: '#434a33' },
+  harlan: { width: 7200, height: 7200, darkness: 0.66, tint: '#3a5470', ground: '#384a2c' },
 };
 
 // ---------------------------------------------------------------------------------
@@ -928,6 +952,10 @@ function buildHighway(B) {
   B.groundClutter({ cracks: 120, oil: 36, paper: 80, debris: 60, blood: 36, tires: 12, tufts: 520, bushes: 140, rocks: 80 });
   B.sprinkle('bush', 60, 0, 760, W, 800, { keep: true, s: [0.6, 1.1] });
   B.sprinkle('bush', 60, 0, 1400, W, 1440, { keep: true, s: [0.6, 1.1] });
+  // Evac Run zones (SPEC §3.7)
+  for (const [name, x, y] of [['Mill Road Gas', 1100, 620], ['The Bus', 3800, 1100], ['I-44 Overpass', 2900, 1650],
+    ['Farmyard', 4620, 480], ['Red Barn', 4700, 1730], ['County Road 12', 5960, 760], ['Motel', 6180, 1480],
+    ['Old Church', 1000, 1560], ['West End', 450, 1100]]) B.poi(name, x, y, 520);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1101,6 +1129,8 @@ function buildTruckStop(B) {
   B.decor('sign', 1180, 1700, 0, 1.2);
   B.decor('flag', 1110, 960, 0, 1);
   B.groundClutter({ cracks: 70, oil: 16, paper: 40, debris: 50, blood: 18, tires: 8, tufts: 170, bushes: 60, rocks: 70, tuftOn: ['sand', 'dirt', 'ground'] });
+  for (const [name, x, y] of [['The Diner', 1700, 1320], ['Fuel Pumps', 900, 1600], ['Truck Lot', 2680, 1250],
+    ['Motel', 760, 660], ['Junkyard', 2560, 650], ['Desert Road', 2300, 2000]]) B.poi(name, x, y, 440);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1241,6 +1271,8 @@ function buildBridge(B) {
   B.sprinkle('bush', 40, 1420, 0, 1500, H, { keep: true, s: [0.6, 1.1] });
   B.sprinkle('bush', 40, 2500, 0, 2600, H, { keep: true, s: [0.6, 1.1] });
   B.groundClutter({ cracks: 80, oil: 14, paper: 30, debris: 30, blood: 16, tires: 6, tufts: 300, bushes: 70, rocks: 30 });
+  for (const [name, x, y] of [['The Bridge', 2000, 1000], ['Boat Shack', 1320, 690], ['West Road', 650, 1000],
+    ['Roadblock', 3250, 1000], ['Bait Shop', 2920, 1640], ['River Road', 2700, 420]]) B.poi(name, x, y, 440);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1432,4 +1464,6 @@ function buildCheckpoint(B) {
   B.decor('sign', W - 300, R0 - 40, 0, 1.3);
   B.groundClutter({ cracks: 80, oil: 18, paper: 30, debris: 40, blood: 20, tires: 8, tufts: 280, bushes: 70, rocks: 40 });
   B.sprinkle('rubble', 16, K0 - 60, K0 - 60, K1 + 60, K1 + 60, { off: ['asphalt'], s: [0.5, 0.9] });
+  for (const [name, x, y] of [['The Compound', C, C + 250], ['Farmhouse', C + 950, C - 780], ['Gas Station Ruin', C - 940, C + 1120],
+    ['The Houses', C + 1080, C + 1030], ['North Road', C, 300], ['West Woods', C - 950, C - 700]]) B.poi(name, x, y, 440);
 }

@@ -165,6 +165,12 @@ export class FlowField {
     this.hasPath = false;
     this.queue = new BucketQueue(n * 2 + 64);
     this.version = 0;
+    /**
+     * Path distance (px) past which update() stops expanding (Infinity = the whole map).
+     * Cells beyond it stay unreached and lead to the nearest reached cell (sample()), which
+     * keeps a very big map's rebuilds proportional to the area around the targets.
+     */
+    this.maxDist = Infinity;
     if (!hit) {
       this._buildStatic(inflate);
       STATIC_CACHE.push({ sig, blocked: this.blocked, edges: this.edges, baseCost: this.baseCost, escape: this.escape });
@@ -323,12 +329,14 @@ export class FlowField {
     }
     const step = this._step;
     const cellOf = queue.cellOf, keyOf = queue.keyOf;
+    const maxDist = this.maxDist;
     for (;;) {
       const ent = queue.pop();
       if (ent < 0) break;
       const c = cellOf[ent];
       const d = keyOf[ent];
       if (d > dist[c]) continue;
+      if (d > maxDist) break;
       const e = edges[c];
       if (!e) continue;
       for (let k = 0; k < 8; k++) {

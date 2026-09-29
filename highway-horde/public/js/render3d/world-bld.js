@@ -17,6 +17,8 @@ const CHROME = '#c9ced3';
 
 /** Canonical height of a building obstacle (150–260). */
 export function buildingHeight(o) {
+  // an explicit height (a church tower)
+  if (Number.isFinite(o.top)) return o.top;
   const small = Math.max(o.w, o.h) < 170;
   if (small) return 150 + Math.round(hash01(o.id * 7 + 1) * 20);
   const area = Math.min(1, (o.w * o.h) / 60000);

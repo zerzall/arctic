@@ -22,9 +22,14 @@
 //   h  fps-relay    2 players over the relay in first person: each one's camera sees the
 //                   other, the client's W moves it along ITS yaw on the host, and the host
 //                   sees the client jump
+//   i  zone         Evac Run: the lobby's Mode row and the Evac Run-only Harlan County
+//                   card keep map and mode compatible, two bots; the zone is announced
+//                   (panel), the player walks toward it, and once the wave locks the circle
+//                   the player outside gets the warning and loses health to the blight
+//                   (top-down); then a first-person game shows the zone wall, compass, panel
 //
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
-// localStorage before every page load); g and h play first person at quality 'low'.
+// localStorage before every page load); g and h play first person at quality 'low', i both.
 // First-person test hooks (window.__HH, set by ui/match.js):
 //   __HH.look(dx, dy)  turn the camera as if the mouse moved dx/dy CSS px under pointer
 //                      lock (headless Chromium can lock the pointer but its synthetic mouse
@@ -1321,6 +1326,165 @@ async function scenarioFpsRelay(sc) {
   log(`    fps relay jump: client peak ${hop.z.toFixed(1)}, the host saw it ${seen.toFixed(1)} units up`);
 }
 
+/**
+ * i. Evac Run. Top-down (software WebGL draws the big map at well under a frame per second
+ * here, and a host that renders that rarely feeds its own survivor idle input): the lobby's
+ * Mode row and the Evac Run-only Harlan County card, two bots, the announcement (zone panel,
+ * banner), the player walks toward the zone, and once the wave locks the circle the player
+ * outside gets the warning and loses health to the blight. Then a first-person game on
+ * Harlan County checks the 3D zone wall, the compass and the zone panel.
+ */
+async function scenarioZone(sc) {
+  const pl = await sc.player('zone');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Runner', cls: 'scout' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
+  // The Mode row: Evac Run plays on the highway too; Harlan County only plays Evac Run.
+  expect((await settings()).mode === 'defend', 'the lobby should start in Defend');
+  await pl.page.click('#opt-mode .seg-btn[data-value="zone"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'zone', null, 'Evac Run picked');
+  expect((await settings()).mapId === 'highway', 'Evac Run should keep the highway');
+  const objDisabled = await pl.page.$$eval('#opt-objective .seg-btn', (bs) => bs.every((b) => b.getAttribute('aria-disabled') === 'true'));
+  expect(objDisabled, 'the objective toggle should be disabled in Evac Run');
+  await pl.page.click('#opt-mode .seg-btn[data-value="defend"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'defend', null, 'Defend picked again');
+  await pl.page.click('.map-card[data-map="harlan"]');
+  await waitFor(pl, () => window.__HH.session.settings.mapId === 'harlan', null, 'Harlan County picked');
+  expect((await settings()).mode === 'zone', 'picking Harlan County should switch to Evac Run');
+  const tag = await pl.page.textContent('.map-card[data-map="harlan"] .map-modes');
+  expect(/evac run only/i.test(tag), `the Harlan County card should say it is Evac Run only ("${tag}")`);
+  await pl.page.click('#opt-mode .seg-btn[data-value="defend"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'defend', null, 'Defend on Harlan County');
+  expect((await settings()).mapId !== 'harlan', 'Defend should leave Harlan County for a defend map');
+  await pl.page.click('.map-card[data-map="harlan"]');
+  await waitFor(pl, () => window.__HH.session.settings.mapId === 'harlan' && window.__HH.session.settings.mode === 'zone', null, 'Harlan County in Evac Run');
+  for (let i = 0; i < 2; i++) await pl.page.click('#btn-add-bot');
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 3, null, 'three roster rows');
+  await sc.screenshots('-lobby');
+  await pl.page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH.getView() && window.__HH.getView().players.length === 3, null, 'the Evac Run', 60e3);
+
+  // The announcement: a zone in the snapshot, the zone panel naming it.
+  const z0 = await pl.page.evaluate(() => {
+    const H = window.__HH;
+    const v = H.getView();
+    return { zone: v.zone, name: v.zone ? H.session.getMap().pois[v.zone.poi].name : '', phase: v.phase, objective: v.objective };
+  });
+  expect(z0.zone && z0.zone.stage === 0 && z0.phase === 'prep', `a zone should be announced in prep: ${JSON.stringify(z0.zone)}`);
+  expect(z0.objective === null, 'Evac Run has no objective to defend');
+  const panel = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-zone');
+    return el && !el.hidden && el.textContent.length > 10 ? el.textContent : false;
+  }, null, 'the zone panel', 20e3);
+  expect(panel.toUpperCase().includes(z0.name.toUpperCase()), `the zone panel should name ${z0.name}: "${panel}"`);
+  expect(/MOVE TO/i.test(panel) && /LOCKS IN/i.test(panel), `the zone panel should say where to go and when: "${panel}"`);
+  log(`    zone: announced ${z0.name} (r ${z0.zone.r}), panel "${panel.replace(/\s+/g, ' ').trim()}"`);
+  // Keep the bots alive for the rest of the test (the host runs the sim in this page).
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game;
+    window.__e2eGod = setInterval(() => { for (const p of g.players) if (p.bot) p.hp = p.maxHp; }, 200);
+  });
+
+  // Walk toward the zone: the WASD combination that gets closest in 10 s of walking
+  // (simulated with the shared movement code), held down.
+  const edge = () => pl.page.evaluate(() => {
+    const H = window.__HH;
+    const z = H.getView().zone;
+    const me = H.session.getPredictedLocal() || H.getView().players.find((p) => p.id === H.session.localId);
+    return Math.hypot(me.x - z.x, me.y - z.y) - z.r;
+  });
+  const combos = [['d'], ['d', 's'], ['s'], ['a', 's'], ['a'], ['a', 'w'], ['w'], ['d', 'w']];
+  const best = await pl.page.evaluate(async ({ combos, n }) => {
+    const [{ createCollisionWorld, stepPlayerMovement }, { DT }] = await Promise.all([
+      import('/js/shared/movement.js'), import('/js/shared/constants.js'),
+    ]);
+    const H = window.__HH;
+    const z = H.getView().zone;
+    const from = H.session.getPredictedLocal();
+    const world = createCollisionWorld(H.session.getMap());
+    let pick = null;
+    combos.forEach((keys, i) => {
+      const mx = (keys.includes('d') ? 1 : 0) - (keys.includes('a') ? 1 : 0), my = (keys.includes('s') ? 1 : 0) - (keys.includes('w') ? 1 : 0);
+      const l = Math.hypot(mx, my);
+      const p = { x: from.x, y: from.y, state: 'alive', stamina: 100, sprintLock: false, speedMult: 1, moveMult: 1 };
+      const cmd = { moveX: mx / l, moveY: my / l, sprint: false };
+      for (let t = 0; t < n; t++) stepPlayerMovement(p, cmd, DT, world);
+      const gain = Math.hypot(from.x - z.x, from.y - z.y) - Math.hypot(p.x - z.x, p.y - z.y);
+      if (!pick || gain > pick.gain) pick = { i, gain };
+    });
+    return pick;
+  }, { combos, n: 600 });
+  expect(best.gain > 250, `test setup: no way toward the zone from the start (${best.gain.toFixed(0)} px)`);
+  const e0 = await edge();
+  await setKeys(pl, new Set(combos[best.i]));
+  const tw = Date.now();
+  let e1 = e0;
+  while (Date.now() - tw < 25e3) {
+    e1 = await edge();
+    if (e0 - e1 > 300) break;
+    await sleep(150);
+  }
+  await releaseAll(pl);
+  log(`    zone walk (${combos[best.i].join('+')}): ${e0.toFixed(0)} → ${e1.toFixed(0)} px from the zone's edge`);
+  expect(e0 - e1 > 200, `walking toward the zone barely closed in (${e0.toFixed(0)} → ${e1.toFixed(0)} px)`);
+  await sc.screenshots('-move');
+
+  // The wave locks the circle: the player, still outside, is warned and hurt by the blight.
+  await pl.page.evaluate(() => { window.__HH.session.game.timer = 0; });
+  await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    return v.phase === 'wave' && v.zone && v.zone.stage >= 1;
+  }, null, 'the wave to lock the zone', 20e3);
+  const hurt = await waitFor(pl, () => {
+    const H = window.__HH;
+    const g = H.session.game;
+    const warn = document.querySelector('#hud .zone-warn');
+    const me = g.getPlayer(H.session.localId);
+    return warn && !warn.hidden && g.zone.stats.fog > 3 ? { fog: g.zone.stats.fog, hp: me.hp, state: me.state, text: warn.textContent } : false;
+  }, null, 'the outside warning and blight damage', 30e3);
+  log(`    zone blight: ${hurt.fog.toFixed(1)} hp taken outside, hp ${Math.round(hurt.hp)} (${hurt.state}), warning "${hurt.text.replace(/\s+/g, ' ').trim()}"`);
+  expect(/OUTSIDE THE SAFE ZONE/i.test(hurt.text), `the warning should say so: "${hurt.text}"`);
+  await sc.screenshots('-blight');
+  await pl.page.evaluate(() => clearInterval(window.__e2eGod));
+  await sc.close(pl);
+
+  // First person on Harlan County: the zone wall in the scene, the compass, the panel.
+  const fp = await sc.player('zone-fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  fp.url = sc.env.relay.url;
+  await titleSetup(fp, { name: 'Pointman', cls: 'soldier' });
+  await fp.page.click('#btn-solo');
+  await waitFor(fp, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  await fp.page.click('.map-card[data-map="harlan"]');
+  await waitFor(fp, () => window.__HH.session.settings.mode === 'zone', null, 'Harlan County in Evac Run');
+  // (building the big map's 3D world blocks the page for a while: don't wait on the click)
+  await fp.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
+  await waitFor(fp, () => {
+    const H = window.__HH;
+    const L = H.getLook && H.getLook();
+    return !document.querySelector('#screen-game').hidden && !!(H.getView && H.getView()) && !!L && L.ready && L.frames >= 3;
+  }, null, 'the first-person Evac Run', 180e3);
+  const fps = await fp.page.evaluate(() => {
+    const H = window.__HH;
+    const scene = H.renderer.debug && H.renderer.debug.scene;
+    const wall = scene && scene.getObjectByName('zone-wall');
+    const zone = scene && scene.getObjectByName('zone');
+    const panelEl = document.querySelector('#hud .hud-zone');
+    return {
+      view: H.view, wall: !!wall, shown: !!zone && zone.visible, r: wall ? wall.scale.x : 0, zoneR: H.getView().zone.r,
+      compass: !!document.querySelector('.hud-compass') && !document.querySelector('.hud-compass').hidden,
+      panel: panelEl && !panelEl.hidden ? panelEl.textContent : '', calls: H.renderer.stats.drawCalls,
+    };
+  });
+  log(`    zone fps: wall ${fps.wall} (r ${fps.r}), ${fps.calls} draw calls, panel "${fps.panel.replace(/\s+/g, ' ').trim()}"`);
+  expect(fps.view === 'fps', `expected the first-person view, got ${fps.view}`);
+  expect(fps.wall && fps.shown && Math.abs(fps.r - fps.zoneR) < 1, `the zone wall should stand on the announced circle: ${JSON.stringify(fps)}`);
+  expect(fps.compass, 'no compass in the first-person HUD');
+  expect(/MOVE TO/i.test(fps.panel), `the first-person zone panel: "${fps.panel}"`);
+  await sc.screenshots('-fps', FPS_SHOT_MS);
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -1330,6 +1494,7 @@ const SCENARIOS = [
   ['f', 'bots', scenarioBots],
   ['g', 'fps-solo', scenarioFpsSolo, 240e3],
   ['h', 'fps-relay', scenarioFpsRelay, 200e3],
+  ['i', 'zone', scenarioZone, 360e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

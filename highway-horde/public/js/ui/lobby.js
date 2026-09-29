@@ -6,6 +6,7 @@ import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
+import { MODE_LIST, mapModes } from '../shared/zone.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
@@ -34,6 +35,8 @@ export function createLobby(ctx) {
   const codeBtn = $('#room-code');
   const rosterEl = $('#roster');
   const mapCards = $('#map-cards');
+  const segMode = $('#opt-mode');
+  const modeDesc = $('#mode-desc');
   const segDiff = $('#opt-difficulty');
   const segWaves = $('#opt-waves');
   const segObj = $('#opt-objective');
@@ -80,10 +83,13 @@ export function createLobby(ctx) {
   function change(partial) {
     if (!session || !session.isHost) return;
     session.setSettings(partial);
-    Object.assign(prefs.lobby, partial);
+    // (the session may have changed the other half of an incompatible map/mode pick)
+    const s = session.settings;
+    Object.assign(prefs.lobby, partial, { mapId: s.mapId, mode: s.mode });
     ctx.savePrefs();
   }
 
+  seg(segMode, MODE_LIST.map((m) => ({ value: m.id, label: m.name, title: m.short })), (v) => change({ mode: v }));
   seg(segDiff, DIFFICULTY_IDS.map((id) => ({ value: id, label: DIFFICULTIES[id].name, title: DIFF_HINT[id] })), (v) => change({ difficulty: v }));
   seg(segWaves, WAVE_OPTIONS.map((n) => ({ value: n, label: n === 0 ? 'Endless' : String(n) })), (v) => change({ waves: v }));
   seg(segObj, [{ value: true, label: 'On' }, { value: false, label: 'Off', title: 'No objective: just survive' }], (v) => change({ objective: v }));
@@ -93,7 +99,14 @@ export function createLobby(ctx) {
     const canvas = h('canvas.map-preview', { width: 320, height: 180, 'aria-hidden': 'true' });
     const btn = h('button.map-card', { type: 'button', role: 'radio', 'aria-checked': 'false', dataset: { map: m.id } }, [
       h('div.map-preview-wrap', null, [canvas, h('span.map-check', { text: '✓', 'aria-hidden': 'true' })]),
-      h('div.map-info', null, [h('span.map-name', { text: m.name }), h('span.map-desc', { text: m.description })]),
+      h('div.map-info', null, [
+        h('span.map-name', { text: m.name }),
+        h('span.map-desc', { text: m.description }),
+        // maps that only play some modes say so (picking one switches the mode)
+        mapModes(m).length < MODE_LIST.length
+          ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
+          : null,
+      ].filter(Boolean)),
     ]);
     btn.addEventListener('click', () => {
       if (btn.getAttribute('aria-disabled') === 'true') return;
@@ -363,9 +376,16 @@ export function createLobby(ctx) {
       v.btn.setAttribute('aria-disabled', editable ? 'false' : 'true');
       v.btn.tabIndex = editable ? 0 : id === s.mapId ? 0 : -1;
     }
+    const zone = s.mode === 'zone';
+    setSeg(segMode, s.mode || 'defend', editable);
+    const md = MODE_LIST.find((m) => m.id === (s.mode || 'defend'));
+    setText(modeDesc, md ? md.description : '');
+    for (const [id, v] of mapBtns) v.btn.classList.toggle('mode-other', !mapModes(id).includes(s.mode || 'defend'));
     setSeg(segDiff, s.difficulty, editable);
     setSeg(segWaves, s.waves, editable);
-    setSeg(segObj, s.objective, editable);
+    // Evac Run has no objective to defend
+    setSeg(segObj, zone ? false : s.objective, editable && !zone);
+    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : '';
     setSeg(segFF, s.friendlyFire, editable);
     setText($('#settings-owner'), editable ? 'You pick the mission' : 'The host picks the mission');
     screen.classList.toggle('readonly', !editable);

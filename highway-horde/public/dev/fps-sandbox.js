@@ -2,7 +2,7 @@
 // map with AI bot teammates and renders it with createRenderer3D. You play slot 1 with
 // keyboard + mouse (pointer lock), or watch a scripted flythrough (?tour=1).
 //
-// URL params: map (highway|truckstop|bridge|checkpoint), seed, quality=ultra|high|low, bots=N (0..5),
+// URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=ultra|high|low, bots=N (0..5),
 // tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
 // graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0.

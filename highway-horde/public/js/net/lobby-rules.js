@@ -7,6 +7,7 @@ import {
 } from '../shared/constants.js';
 import { CLASS_IDS } from '../shared/classes.js';
 import { MAP_LIST } from '../shared/maps.js';
+import { MODE_IDS, fixModeCombo } from '../shared/zone.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { ITEMS } from '../shared/items.js';
 
@@ -152,7 +153,15 @@ export function sanitizeChat(text) {
 export function mergeSettings(current, patch) {
   const out = { ...DEFAULT_SETTINGS, ...current };
   if (!patch || typeof patch !== 'object') return out;
-  if (MAP_LIST.some((m) => m.id === patch.mapId)) out.mapId = patch.mapId;
+  const mapPicked = MAP_LIST.some((m) => m.id === patch.mapId);
+  const modePicked = MODE_IDS.includes(patch.mode);
+  if (mapPicked) out.mapId = patch.mapId;
+  if (modePicked) out.mode = patch.mode;
+  // A map that doesn't play the mode (Harlan County is Evac Run only): the pick wins, the
+  // other setting follows it.
+  const fixed = fixModeCombo(out.mapId, out.mode, modePicked && !mapPicked ? 'mode' : 'map');
+  out.mapId = fixed.mapId;
+  out.mode = fixed.mode;
   if (DIFFICULTY_IDS.includes(patch.difficulty)) out.difficulty = patch.difficulty;
   if (Number.isInteger(patch.waves) && patch.waves >= 0 && patch.waves <= MAX_WAVES) out.waves = patch.waves;
   if (typeof patch.objective === 'boolean') out.objective = patch.objective;

@@ -471,7 +471,8 @@ describe('determinism and cost', () => {
 
 // -------------------------------------------------------------------------------------
 describe('every map with an idle human and three bots', { skip: !Game && 'shared/maps.js not available' }, () => {
-  for (const { id } of MAP_LIST) {
+  // (Evac Run maps: tests/zone.test.js runs a bot team through the moving zones.)
+  for (const { id } of MAP_LIST.filter((m) => !m.modes || m.modes.includes('defend'))) {
     test(`${id}: clears waves 1-3 on normal, and no bot gets stuck`, () => {
       const g = new Game({
         mapId: id, seed: 77, settings: { difficulty: 'normal', waves: 3, objective: true },

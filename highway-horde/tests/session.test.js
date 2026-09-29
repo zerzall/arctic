@@ -136,7 +136,7 @@ test('settings: host only, validated, broadcast', async () => {
   assert.equal(env.host.setSettings({ mapId: 'bridge', difficulty: 'hard', waves: 20, objective: 'yes', friendlyFire: true, evil: 1 }), true);
   assert.equal(env.host.setSettings({ mapId: 'moon', difficulty: 'godlike', waves: -3 }), true);
   await flush();
-  const want = { mapId: 'bridge', difficulty: 'hard', waves: 20, objective: true, friendlyFire: true };
+  const want = { mapId: 'bridge', mode: 'defend', difficulty: 'hard', waves: 20, objective: true, friendlyFire: true };
   assert.deepEqual(env.host.settings, want);
   assert.deepEqual(c.settings, want);
   assert.deepEqual(seen[seen.length - 1], want);

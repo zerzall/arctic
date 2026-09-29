@@ -21,6 +21,12 @@
 //
 // Profiles: 'skilled' = the lobby bots (botSkill 1); 'average' = BOT_SKILL.AVERAGE, a
 // stand-in for an average human (slower reactions, worse aim, plain shopping).
+//
+// --mode defend|zone (default: defend, and 'zone' on maps that only play the Evac Run):
+// zone runs add per-wave columns for the move before each wave (its length, when the
+// whole team was in the circle, harasser kills and damage taken on the way) and the
+// blight damage taken during the wave.
+//   node scripts/balance.js --mode zone --maps harlan --diffs normal --sizes 1,4 --seeds 3
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
@@ -36,6 +42,7 @@ import {
   DIFFICULTIES, DIFFICULTY_IDS, TICK_RATE, BOSS_EVERY, WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE,
 } from '../public/js/shared/constants.js';
 import { BOT_SKILL } from '../public/js/shared/sim/bots.js';
+import { mapModes } from '../public/js/shared/zone.js';
 
 const PROFILES = { skilled: BOT_SKILL.SKILLED, average: BOT_SKILL.AVERAGE };
 /** A wave that runs longer than this (sim seconds) is a stall: the run stops there. */
@@ -58,9 +65,12 @@ export function runMatch(job) {
   }));
   const g = new Game({
     mapId: job.map, seed: job.seed,
-    settings: { difficulty: job.diff, waves: job.waves, objective: true, friendlyFire: false },
+    settings: { difficulty: job.diff, waves: job.waves, objective: true, friendlyFire: false, mode: job.mode || 'defend' },
     players,
   });
+  // Evac Run: the move before each wave (length, arrival, fights on the way) and the blight.
+  const zone = g.zone;
+  let breakStart = 0, arrive = -1, moveKills = 0, moveDmg = 0, fog0 = 0, harassed0 = 0;
   const n = players.length;
   const waves = [];
   const buys = {};
@@ -153,10 +163,26 @@ export function runMatch(job) {
             objStart: g.objective ? g.objective.hp / g.objective.maxHp : 1,
             bossSpawn: -1, bossDead: -1, bossesLeft: 0, kills: 0,
           };
+          if (zone) {
+            cur.move = (g.tick - breakStart) / TICK_RATE;
+            cur.arrive = arrive >= 0 ? (arrive - breakStart) / TICK_RATE : cur.move;
+            cur.moveKills = moveKills;
+            cur.moveDmg = moveDmg / n;
+            cur.harassed = zone.stats.harassed - harassed0;
+            fog0 = zone.stats.fog;
+          }
           break;
         }
         case 'waveclear':
+          if (cur && zone) cur.fog = (zone.stats.fog - fog0) / n;
           closeWave(true);
+          if (zone) {
+            breakStart = g.tick;
+            arrive = -1;
+            moveKills = 0;
+            moveDmg = 0;
+            harassed0 = zone.stats.harassed;
+          }
           {
             const m = teamMoney();
             lastEarned = m.earned;
@@ -164,6 +190,7 @@ export function runMatch(job) {
           }
           break;
         case 'pdamage':
+          if (!cur && zone) moveDmg += e.amount;
           if (cur) {
             const p = g.getPlayer(e.pid);
             if (p && (p.state === 'alive' || downNow.has(e.pid))) {
@@ -191,6 +218,7 @@ export function runMatch(job) {
           }
           break;
         case 'zdie': {
+          if (!cur && zone) moveKills++;
           if (cur) {
             cur.kills++;
             if (e.ztype === 'boss' && --cur.bossesLeft <= 0) cur.bossDead = g.tick;
@@ -216,6 +244,7 @@ export function runMatch(job) {
       }
     }
     evs.length = 0;
+    if (zone && g.phase !== 'wave' && arrive < 0 && zone.everyoneIn()) arrive = g.tick;
     if (g.phase === 'wave') {
       for (const p of g.players) {
         if (p.state !== 'alive') continue;
@@ -231,6 +260,7 @@ export function runMatch(job) {
       if (g.tick - cur.start > WAVE_CAP_S * TICK_RATE) over = 'stall';
     }
   }
+  if (cur && zone) cur.fog = (zone.stats.fog - fog0) / n;
   closeWave(false);
   const cleared = waves.filter((w) => w.cleared).length;
   const perPlayer = g.players.map((p) => ({
@@ -247,6 +277,10 @@ export function runMatch(job) {
       objStart: round2(w.objStart), objEnd: round2(w.objEnd), bank: Math.round(w.bank),
       earned: Math.round(w.earned), spent: Math.round(w.spent + w.spentBreak), kills: w.kills,
       bossDur: w.bossSpawn >= 0 && w.bossDead >= 0 ? round2((w.bossDead - w.bossSpawn) / TICK_RATE) : w.bossSpawn >= 0 ? -1 : null,
+      ...(zone ? {
+        move: round2(w.move), arrive: round2(w.arrive), moveKills: w.moveKills, moveDmg: round2(w.moveDmg),
+        harassed: w.harassed, fog: round2(w.fog || 0),
+      } : {}),
     })),
     buys, crates, kills, objBy, hurtBy, inHand, players: perPlayer, rays, hits,
     ticks: g.tick, ms: Date.now() - t0,
@@ -265,7 +299,12 @@ function hurtSource(g, e, blastAt) {
       best = z;
     }
   }
-  return best ? best.type : 'acid glob / other';
+  if (best) return best.type;
+  // Evac Run: a survivor outside the circle mid-wave is hurt by the blight
+  const zc = g.zone && g.phase === 'wave' && g.zone.stage > 0 ? g.zone.circle : null;
+  const p = zc && g.getPlayer(e.pid);
+  if (p && Math.hypot(p.x - zc.x, p.y - zc.y) > zc.r) return 'blight';
+  return 'acid glob / other';
 }
 
 /** Split an objective hp loss over the zombies attacking it (by their hit damage). */
@@ -372,7 +411,9 @@ export function buildJobs(opt) {
   const waves = Number(opt.waves) || 15;
   const seeds = Number(opt.seeds) || (quick ? 1 : 3);
   const jobs = [];
-  const add = (j) => jobs.push({ waves, ...j });
+  // Evac Run on request; maps that only play it always run it
+  const modeOf = (map) => (typeof opt.mode === 'string' && mapModes(map).includes(opt.mode) ? opt.mode : mapModes(map).includes('defend') ? 'defend' : 'zone');
+  const add = (j) => jobs.push({ waves, mode: modeOf(j.map), ...j });
   if (quick && !opt.diffs && !opt.sizes && !opt.profiles) {
     // Normal for every team size and both profiles, and 4 average players elsewhere.
     for (const map of maps) {
@@ -489,6 +530,7 @@ function summaryTable(results) {
     const [pa, da, sa] = a.split('|'), [pb, db, sb] = b.split('|');
     return pa.localeCompare(pb) || DIFF_ORDER[da] - DIFF_ORDER[db] || sa - sb;
   });
+  // (mixed maps/modes land in one row: filter with --maps/--mode for clean numbers)
   const rows = keys.map((k) => {
     const rs = g.get(k);
     const [profile, diff, size] = k.split('|');
@@ -529,8 +571,20 @@ function waveTable(rs) {
       boss.length ? `${f0(mean(bossDone.map((x) => x.bossDur)))}${bossDone.length < boss.length ? ` (${boss.length - bossDone.length} unk.)` : ''}` : '',
     ]);
   }
-  return table(['wave', 'reached', 'cleared', 'time s', 'dmg taken/pl', 'downs/pl', 'deaths/pl', 'revives/pl',
-    'bank/pl $', 'earned/pl $', 'spent/pl $', 'obj hp end', 'obj min', 'peak alive', 'boss s'], rows);
+  const head = ['wave', 'reached', 'cleared', 'time s', 'dmg taken/pl', 'downs/pl', 'deaths/pl', 'revives/pl',
+    'bank/pl $', 'earned/pl $', 'spent/pl $', 'obj hp end', 'obj min', 'peak alive', 'boss s'];
+  if (rs[0].job.mode !== 'zone') return table(head, rows);
+  // Evac Run: the move before the wave and the blight during it (no objective columns)
+  for (let w = 1; w <= maxW; w++) {
+    const ws = rs.map((r) => r.waves.find((x) => x.wave === w)).filter(Boolean);
+    const row = rows[w - 1];
+    row.splice(11, 2);
+    row.push(f0(mean(ws.map((x) => x.move))), f0(mean(ws.map((x) => x.arrive))), f1(mean(ws.map((x) => x.harassed))),
+      f1(mean(ws.map((x) => x.moveKills))), f1(mean(ws.map((x) => x.moveDmg))), f1(mean(ws.map((x) => x.fog))));
+  }
+  head.splice(11, 2);
+  head.push('move s', 'all in s', 'harassers', 'move kills', 'move dmg/pl', 'blight dmg/pl');
+  return table(head, rows);
 }
 
 function weaponUseTable(results) {
@@ -678,7 +732,8 @@ function report(results, opt) {
     });
     for (const k of keys) {
       const [profile, diff, size] = k.split('|');
-      parts.push(`## Per wave: ${profile}, ${diff}, ${size} player${size === '1' ? '' : 's'} (${g.get(k).length} runs)\n\n` + waveTable(g.get(k)));
+      const zoneRuns = g.get(k)[0].job.mode === 'zone' ? `Evac Run on ${[...new Set(g.get(k).map((r) => r.job.map))].join('/')}, ` : '';
+      parts.push(`## Per wave: ${zoneRuns}${profile}, ${diff}, ${size} player${size === '1' ? '' : 's'} (${g.get(k).length} runs)\n\n` + waveTable(g.get(k)));
     }
   }
   parts.push('## Guns (all runs)\n\n' + weaponUseTable(ok));

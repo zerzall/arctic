@@ -645,8 +645,15 @@ function strategy(game, b, index) {
   }
   b.reviveRef = null;
   const brk = phase === 'prep' || phase === 'intermission';
-  if (brk && !b.shopDone && game.map.supply) {
+  // Evac Run: the shop is open everywhere between waves, so nobody walks to the station;
+  // the break is for getting to the next zone.
+  if (brk && !b.shopDone && game.map.supply && !game.zone) {
     setGoal(b, 'shop', game.map.supply.x, game.map.supply.y, SUPPLY_RADIUS * 0.55);
+    return;
+  }
+  if (game.zone && brk && evacUrgent(game, b)) {
+    chooseSpot(game, b, index);
+    setGoal(b, 'evac', b.spotX, b.spotY, 40);
     return;
   }
   if (b.nearestAdj > 240) {
@@ -659,12 +666,17 @@ function strategy(game, b, index) {
     }
   }
   b.pickRef = null;
-  if (phase === 'wave' && game.map.supply && needsResupply(p) && p.cash >= ITEMS.ammo.price && b.nearestAdj > 200
-    && Math.hypot(game.map.supply.x - p.x, game.map.supply.y - p.y) < 900) {
-    setGoal(b, 'resupply', game.map.supply.x, game.map.supply.y, SUPPLY_RADIUS * 0.6);
+  const sup = supplyFor(game, p);
+  if (phase === 'wave' && sup && needsResupply(p) && p.cash >= ITEMS.ammo.price && b.nearestAdj > 200
+    && Math.hypot(sup.x - p.x, sup.y - p.y) < 900) {
+    setGoal(b, 'resupply', sup.x, sup.y, SUPPLY_RADIUS * 0.6);
     return;
   }
   chooseSpot(game, b, index);
+  if (game.zone && brk) {
+    setGoal(b, 'evac', b.spotX, b.spotY, 40);
+    return;
+  }
   if (phase === 'wave' && game.time - b.lastSeenT > HUNT_AFTER) {
     const z = huntTarget(game, b);
     if (z) {
@@ -674,6 +686,27 @@ function strategy(game, b, index) {
   }
   setGoal(b, 'defend', b.spotX, b.spotY, 26);
   if (p.state === 'alive') planDeploy(game, b);
+}
+
+/**
+ * The supply point a bot resupplies at mid-wave: the map's station, or in an Evac Run the
+ * zone's supply drop when it is closer (and inside the circle).
+ */
+function supplyFor(game, p) {
+  const s = game.map.supply;
+  const z = game.zone;
+  if (!z) return s || null;
+  const d = z.supply;
+  const inCircle = Math.hypot(d.x - z.circle.x, d.y - z.circle.y) <= z.circle.r;
+  if (!s || (inCircle && Math.hypot(d.x - p.x, d.y - p.y) < Math.hypot(s.x - p.x, s.y - p.y))) return inCircle ? d : null;
+  return Math.hypot(s.x - z.circle.x, s.y - z.circle.y) <= z.circle.r ? s : null;
+}
+
+/** Evac Run move phase: true when the walk to the next zone can't wait for errands. */
+function evacUrgent(game, b) {
+  const z = game.zone, p = b.p;
+  const d = Math.hypot(z.circle.x - p.x, z.circle.y - p.y) - z.circle.r * 0.5;
+  return d > 0 && z.t < d / 160 + 8;
 }
 
 function setGoal(b, mode, x, y, r) {
@@ -690,6 +723,10 @@ function setGoal(b, mode, x, y, r) {
  * which also keeps its far side from being chewed on unseen.
  */
 function anchor(game, b, index) {
+  if (game.zone) {
+    zoneAnchor(game, b, index);
+    return;
+  }
   const o = game.map.objective;
   let n = 0;
   for (const q of game.players) if (!q.bot && q.state === 'alive') n++;
@@ -711,6 +748,34 @@ function anchor(game, b, index) {
   b.anchorHuman = false;
 }
 
+/**
+ * Evac Run anchor: the circle the team must be in (the announced zone while moving, the
+ * shrink target once it shrinks), or a living human standing well inside it.
+ */
+function zoneAnchor(game, b, index) {
+  const z = game.zone;
+  const c = z.stage >= 2 ? z.target : z.circle;
+  b.zoneR = c.r;
+  let n = 0;
+  for (const q of game.players) if (!q.bot && q.state === 'alive' && Math.hypot(q.x - c.x, q.y - c.y) < c.r - 120) n++;
+  if (n > 0) {
+    let k = index % n;
+    for (const q of game.players) {
+      if (q.bot || q.state !== 'alive' || !(Math.hypot(q.x - c.x, q.y - c.y) < c.r - 120)) continue;
+      if (k-- === 0) {
+        b.ax = q.x;
+        b.ay = q.y;
+        break;
+      }
+    }
+    b.anchorHuman = true;
+    return;
+  }
+  b.ax = c.x;
+  b.ay = c.y;
+  b.anchorHuman = false;
+}
+
 /** A free spot near the anchor on this bot's own bearing, spaced from teammates. */
 function chooseSpot(game, b, index) {
   const moved = !(Math.hypot(b.ax - b.spotAX, b.ay - b.spotAY) < 90);
@@ -722,7 +787,7 @@ function chooseSpot(game, b, index) {
   const o = game.map.objective;
   const nb = game.bots.length;
   const bearing = ((index + 0.5) / Math.max(1, nb)) * TAU + (b.anchorHuman ? 0.8 : 0.3);
-  const r0 = b.anchorHuman ? 115 : o ? Math.max(o.w, o.h) / 2 + 70 : 150;
+  const r0 = b.anchorHuman ? 115 : game.zone ? Math.min(170, (b.zoneR || 400) * 0.3) : o ? Math.max(o.w, o.h) / 2 + 70 : 150;
   let best = -Infinity, bx = b.ax, by = b.ay;
   for (let ri = 0; ri < 2; ri++) {
     const r = r0 + ri * 55;
@@ -762,6 +827,8 @@ function pickRevive(game, b) {
     if (q.reviver && q.reviver !== p.id) continue;
     const d = Math.hypot(q.x - p.x, q.y - p.y);
     if (d > 1600 || d >= bd) continue;
+    const z = game.zone;
+    if (z && game.phase === 'wave' && Math.hypot(q.x - z.circle.x, q.y - z.circle.y) > z.circle.r + 400) continue;
     // Only the closest standing bot goes; the others cover.
     let mine = true;
     for (const o of game.bots) {
@@ -849,6 +916,8 @@ function pickPickup(game, b) {
     }
     if (!pri) continue;
     if (d > (k.kind === 'crate' ? 700 : 400)) continue;
+    // Evac Run: loot outside the circle waits (mid-wave the blight, between waves the clock).
+    if (game.zone && Math.hypot(k.x - game.zone.circle.x, k.y - game.zone.circle.y) > game.zone.circle.r) continue;
     // Leave first aid to a hurt human who is closer to it.
     if (k.kind === 'health') {
       let yours = false;
@@ -883,6 +952,9 @@ function huntTarget(game, b) {
   if (!best) return null;
   // Stay with the team while plenty are still coming; chase down stragglers.
   if (bd > 950 && alive + game.spawnQueue > 8) return null;
+  // Evac Run: never chase one out into the blight.
+  const z = game.zone;
+  if (z && Math.hypot(best.x - z.circle.x, best.y - z.circle.y) > z.circle.r + 150) return null;
   return best;
 }
 
@@ -1003,6 +1075,33 @@ function steer(game, b) {
         dy += (gy / gd) * w;
       }
       b.sprint = b.nearestAdj < kr * 0.5 && p.stamina > 25 && !p.sprintLock;
+      // Evac Run: backing off must not take us out into the blight. Near the edge, slide
+      // along it (circle-kite) instead of backing out; outside, head back in.
+      const zc = zoneCircle(game);
+      if (zc) {
+        const cx = zc.x - p.x, cy = zc.y - p.y, cd = Math.hypot(cx, cy) || 1;
+        const room = zc.r - cd;
+        if (room < 140) {
+          const ux = cx / cd, uy = cy / cd;
+          const l0 = Math.hypot(dx, dy) || 1;
+          dx /= l0;
+          dy /= l0;
+          const inward = dx * ux + dy * uy;
+          if (inward < 0) {
+            const k = 1 + Math.min(1, (140 - room) / 140);
+            dx -= ux * inward * k;
+            dy -= uy * inward * k;
+            const ts = dx * -uy + dy * ux >= 0 ? 1 : -1;
+            dx += -uy * ts * 0.8;
+            dy += ux * ts * 0.8;
+          }
+          if (room < 40) {
+            const w = Math.min(2.5, (40 - room) / 60);
+            dx += ux * w;
+            dy += uy * w;
+          }
+        }
+      }
     }
   }
   if (!kiting) {
@@ -1010,14 +1109,14 @@ function steer(game, b) {
     if (hz) {
       dx = p.x - hz.x;
       dy = p.y - hz.y;
-    } else if (b.mode === 'defend' && b.target && gd < 320) {
+    } else if (b.mode === 'defend' && b.target && gd < 320 && !outsideZone(game, p)) {
       b.hold = true;
     } else if (gd <= b.goalR) {
       b.hold = true;
     } else if (pathDir(game, b)) {
       dx = b._dx;
       dy = b._dy;
-      const errand = b.mode === 'revive' || b.mode === 'shop' || b.mode === 'resupply' || b.mode === 'crate';
+      const errand = b.mode === 'revive' || b.mode === 'shop' || b.mode === 'resupply' || b.mode === 'crate' || b.mode === 'evac';
       b.sprint = !downed && errand && gd > 350 && b.nearestAdj > 300 && p.stamina > 45 && !p.sprintLock;
     }
   }
@@ -1028,6 +1127,22 @@ function steer(game, b) {
     return;
   }
   avoid(game, b, dx / l, dy / l, kiting);
+}
+
+/**
+ * Evac Run, mid-wave: the circle a bot must stay inside (the shrink target once the circle
+ * shrinks, so it gets there in time), else null.
+ */
+function zoneCircle(game) {
+  const z = game.zone;
+  if (!z || game.phase !== 'wave' || z.stage === 0) return null;
+  return z.stage >= 2 ? z.target : z.circle;
+}
+
+/** Evac Run, mid-wave: true when p stands in the blight. */
+function outsideZone(game, p) {
+  const z = game.zone;
+  return !!z && game.phase === 'wave' && Math.hypot(p.x - z.circle.x, p.y - z.circle.y) > z.circle.r - 20;
 }
 
 function hazardAt(game, x, y) {
@@ -1059,6 +1174,10 @@ function pathDir(game, b) {
   if (b.pathLen === 0) return dirTo(b, gx - p.x, gy - p.y);
   const path = b.path;
   while (b.pathI < b.pathLen - 1 && Math.hypot(nav.cellX(path[b.pathI]) - p.x, nav.cellY(path[b.pathI]) - p.y) < 20) b.pathI++;
+  // The end of a partial path (a long walk runs out of search budget): plan the next leg.
+  const last = path[b.pathLen - 1];
+  if (b.pathI >= b.pathLen - 1 && Math.hypot(nav.cellX(last) - p.x, nav.cellY(last) - p.y) < 24
+    && Math.hypot(gx - p.x, gy - p.y) > 64) b.pathT = -100;
   for (let j = Math.min(b.pathLen - 1, b.pathI + 3); j > b.pathI; j -= 2) {
     if (world.lineOfMovement(p.x, p.y, nav.cellX(path[j]), nav.cellY(path[j]), WALK_PAD)) {
       b.pathI = j;
@@ -1100,6 +1219,12 @@ function avoid(game, b, dx, dy, kiting) {
       score -= danger(b, p.x + ux * 50, p.y + uy * 50) * 1.5;
     }
     if (hazardAt(game, p.x + ux * 40, p.y + uy * 40)) score -= 1.5;
+    // Evac Run: steps that lead out of the circle cost (the blight hurts more than a scratch)
+    const zc = zoneCircle(game);
+    if (zc) {
+      const out = Math.hypot(p.x + ux * 60 - zc.x, p.y + uy * 60 - zc.y) - zc.r;
+      if (out > -30) score -= Math.min(2.5, (out + 30) / 40);
+    }
     if (score > best) {
       best = score;
       bx = ux;
@@ -1437,8 +1562,9 @@ function shopAndReady(game, b, cmd) {
     }
     return;
   }
-  const supply = game.map.supply;
-  const atStation = !!supply && Math.hypot(supply.x - p.x, supply.y - p.y) <= SUPPLY_RADIUS * 0.9;
+  const supply = game.phase === 'wave' ? supplyFor(game, p) : game.map.supply;
+  // (Evac Run: the break's shop is open wherever the bot is; it shops on the way.)
+  const atStation = (!!game.zone && phase !== 'wave') || (!!supply && Math.hypot(supply.x - p.x, supply.y - p.y) <= SUPPLY_RADIUS * 0.9);
   if (b.mode === 'resupply' && phase === 'wave') {
     if (atStation && game.time >= b.buyT) {
       game.command(p.id, { type: 'buy', item: 'ammo' });

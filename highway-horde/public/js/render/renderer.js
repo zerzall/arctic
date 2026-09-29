@@ -23,6 +23,7 @@ import { createEffects } from './effects.js';
 import { createDecals } from './decals.js';
 import { createCamera, zoomFor } from './camera.js';
 import { createLighting, nightFor } from './lighting.js';
+import { createZone2D, drawPoiRings } from './zone2d.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
@@ -121,6 +122,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
   const night = nightFor(amb0.tint || '#223344', amb0.darkness ?? 0.6);
   let lowTint = null, lowTintKey = 0;
   const overlay = createOverlay();
+  // Evac Run: the safe circle, the blight, the supply drop, the edge arrow (zone2d.js)
+  const zone2d = createZone2D(map);
 
   // obstacle sprites (lazy)
   const obSprites = new Array(map.obstacles.length).fill(null);
@@ -815,7 +818,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
 
     // objective marker + beacons
     const ob = map.objective;
-    if (ob && inView(ob.x, ob.y, Math.max(ob.w, ob.h) + 60)) drawObjectiveGlow(ob, view);
+    if (ob && !view.zone && inView(ob.x, ob.y, Math.max(ob.w, ob.h) + 60)) drawObjectiveGlow(ob, view);
     // lamp bulbs
     for (const l of overhead.lamps) {
       if (!l.light || !inView(l.x, l.y, 40)) continue;
@@ -958,6 +961,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     const ob = map.objective;
     if (ob) lighting.point(ob.x, ob.y, Math.max(ob.w, ob.h) * 0.8 + 60, 0.35, '#ffe0b0');
     if (map.supply) lighting.point(map.supply.x, map.supply.y, 160, 0.55, '#ffd9a0');
+    const zn = view.zone;
+    if (zn && inView(zn.sx, zn.sy, 200)) lighting.point(zn.sx, zn.sy, 190, 0.7, '#c8ffd8');
     lighting.end(ctx, W, H, true);
   }
 
@@ -1104,6 +1109,10 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
     mark('lighting');
     drawEmissive(V || NO_VIEW, lightingOn);
     effects.drawEmissive(ctx, K, viewRect, time);
+    if (V && V.zone) {
+      setWorld();
+      zone2d.drawWorld(ctx, V, viewRect, time, K.k);
+    }
     mark('emissive');
 
     // ---- screen overlays ----
@@ -1122,6 +1131,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
       zombieBars: bars, objective: map.objective,
       hitMarker: effects.hitMarker, killMarker: effects.killMarker, damagePulse: effects.damagePulse, bloom: effects.bloom,
     });
+    if (V && V.zone) zone2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
     mark('overlay');
     if (hasPerf) timings.total += (performance.now() - tStart - timings.total) * 0.1;
   }
@@ -1265,9 +1275,10 @@ export function renderMapPreview(canvas, map) {
       g.restore();
     });
   }
-  // spawn zones
+  // spawn zones (an Evac Run map shows its points of interest instead)
+  const zoneOnly = !!(map.modes && !map.modes.includes('defend'));
   g.fillStyle = 'rgba(200,30,30,0.22)';
-  for (const z of map.zombieSpawns || []) g.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
+  if (!zoneOnly) for (const z of map.zombieSpawns || []) g.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
   // night tint
   const amb = map.ambient || { darkness: 0.6, tint: '#223344' };
   g.fillStyle = rgba(mix(amb.tint, '#02030a', 0.7), clamp(amb.darkness * 0.45, 0, 0.5));
@@ -1282,12 +1293,15 @@ export function renderMapPreview(canvas, map) {
   g.globalCompositeOperation = 'source-over';
   // objective + marker
   const ob = map.objective;
+  if (zoneOnly) drawPoiRings(g, map, s);
   if (ob) {
     g.save();
     g.translate(ob.x, ob.y);
     g.rotate(ob.a || 0);
     drawObjectiveBase(g, ob, map.seed | 0);
     g.restore();
+  }
+  if (ob && !zoneOnly) {
     g.strokeStyle = '#ffc84a';
     g.lineWidth = Math.max(3, 2 / s);
     g.beginPath();

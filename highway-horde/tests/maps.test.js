@@ -12,7 +12,9 @@ import { createCollisionWorld } from '../public/js/shared/movement.js';
 import { pickSpawnRect } from '../public/js/shared/sim/zombies.js';
 import { createRng } from '../public/js/shared/rng.js';
 
-const MAP_IDS = ['highway', 'truckstop', 'bridge', 'checkpoint'];
+const MAP_IDS = ['highway', 'truckstop', 'bridge', 'checkpoint', 'harlan'];
+/** Maps built for the Evac Run only (SPEC §3.7): big, no central objective to defend. */
+const ZONE_ONLY = new Set(['harlan']);
 const SEEDS = [1, 42, 9001];
 const WALKER_RADIUS = 14;
 
@@ -20,13 +22,13 @@ const AREA_KINDS = ['asphalt', 'concrete', 'grass', 'dirt', 'gravel', 'sand', 'w
 const LINE_KINDS = ['white', 'white_dashed', 'yellow', 'yellow_double', 'crosswalk', 'parking', 'stop'];
 const OBSTACLE_KINDS = ['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker', 'barrier',
   'sandbags', 'building', 'wall', 'container', 'pump', 'tree', 'rock', 'hesco', 'tent', 'booth',
-  'guardrail', 'pillar', 'pier', 'ramp'];
+  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave'];
 const DECOR_KINDS = ['tree_canopy', 'bush', 'grass_tuft', 'rock', 'cone', 'debris', 'tire', 'crack',
   'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble', 'signal', 'pylon'];
 const OBJECTIVE_KINDS = ['bus', 'diner', 'apc', 'radio'];
-const LOW_COVER = ['guardrail', 'barrier', 'sandbags'];
-/** Obstacle budget per map (the long highway map holds more wrecks and rails). */
-const MAX_OBSTACLES = { highway: 300 };
+const LOW_COVER = ['guardrail', 'barrier', 'sandbags', 'grave'];
+/** Obstacle budget per map (the long highway map holds more wrecks and rails, Harlan County its woods). */
+const MAX_OBSTACLES = { highway: 300, harlan: 900 };
 /** Headroom under a deck a player walks beneath (eye 52, plus a jump, plus margin). */
 const DECK_CLEARANCE = 150;
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -178,7 +180,7 @@ function getMap(id, seed) {
 
 // ---------------------------------------------------------------------------------
 
-test('MAP_LIST lists the four maps in lobby order', () => {
+test('MAP_LIST lists the five maps in lobby order', () => {
   assert.deepEqual(MAP_LIST.map((m) => m.id), MAP_IDS);
   for (const m of MAP_LIST) {
     assert.equal(typeof m.name, 'string');
@@ -187,7 +189,7 @@ test('MAP_LIST lists the four maps in lobby order', () => {
     assert.ok(m.description.length > 10);
   }
   assert.deepEqual(MAP_LIST.map((m) => m.name),
-    ['Highway 9 Pileup', 'Last Chance Truck Stop', 'Blackwater Bridge', 'Checkpoint Delta']);
+    ['Highway 9 Pileup', 'Last Chance Truck Stop', 'Blackwater Bridge', 'Checkpoint Delta', 'Harlan County']);
 });
 
 test('buildMap throws on an unknown id', () => {
@@ -202,6 +204,7 @@ test('objectives match the spec', () => {
     truckstop: ['diner', 'The Diner'],
     bridge: ['apc', 'Army APC'],
     checkpoint: ['radio', 'Radio Tower'],
+    harlan: ['radio', 'Radio Tower'],
   };
   for (const id of MAP_IDS) {
     const m = getMap(id, 1);
@@ -219,7 +222,7 @@ for (const id of MAP_IDS) {
       assert.equal(m.name, MAP_LIST.find((e) => e.id === id).name);
       assert.equal(m.seed, seed);
       assert.ok(Number.isFinite(m.width) && m.width >= 2400 && m.width <= 8000, 'width');
-      assert.ok(Number.isFinite(m.height) && m.height >= 1600 && m.height <= 3000, 'height');
+      assert.ok(Number.isFinite(m.height) && m.height >= 1600 && m.height <= (ZONE_ONLY.has(id) ? 8000 : 3000), 'height');
       assert.equal(typeof m.ambient, 'object');
       assert.ok(m.ambient.darkness >= 0.55 && m.ambient.darkness <= 0.75, 'darkness');
       assert.match(m.ambient.tint, HEX);
@@ -303,7 +306,7 @@ for (const id of MAP_IDS) {
       }
     });
 
-    test(`${label}: layout rules (objective central, supply distance, spawns near edges)`, () => {
+    test(`${label}: layout rules (objective central, supply distance, spawns near edges)`, { skip: ZONE_ONLY.has(id) && 'an Evac Run map: its own layout test below' }, () => {
       const m = getMap(id, seed);
       const ob = m.objective;
       assert.ok(Math.abs(ob.x - m.width / 2) < m.width * 0.2, 'objective roughly central (x)');
@@ -409,7 +412,7 @@ for (const id of MAP_IDS) {
     }
     const waterA = a.areas.filter((w) => w.kind === 'water');
     assert.deepEqual(waterA, c.areas.filter((w) => w.kind === 'water'), 'water is fixed');
-    assert.equal(waterA.length > 0, id === 'bridge');
+    assert.equal(waterA.length > 0, id === 'bridge' || id === 'harlan');
     // Hand-placed structure stays put; only vehicles and scatter jitter.
     const fixedKinds = ['building', 'hesco', 'guardrail', 'barrier', 'sandbags', 'booth', 'tent', 'wall', 'pump'];
     const fixed = (m) => m.obstacles.filter((o) => fixedKinds.includes(o.kind)).map((o) => [o.kind, o.x, o.y, o.w, o.h, o.a]);
@@ -616,4 +619,21 @@ test('the renderers know every obstacle and decor kind the maps use', () => {
     if (k !== 'tree_canopy') assert.ok(flat.includes(`case '${k}'`), `top-down paints '${k}' decor`);
     if (modelled.has(k)) assert.ok(world3d.includes(`case '${k}'`), `3D world models '${k}' decor`);
   }
+});
+
+test('harlan: a zone map — spawns on the edges, the start and the station in town, the lake has a dock', () => {
+  const m = getMap('harlan', 1);
+  for (const z of m.zombieSpawns) {
+    assert.ok(Math.min(z.x, z.y, m.width - z.x, m.height - z.y) <= 250, 'zombie spawn hugs an edge');
+  }
+  const town = m.pois.find((p) => p.name === 'Main Street');
+  for (const p of m.playerSpawns) assert.ok(dist(p, town) < 400, 'the team starts on Main Street');
+  assert.ok(dist(m.supply, town) < 450, 'the supply station is in town');
+  // the dock: walkable ground reaching out between two water areas
+  const grid = buildGrid(m, WALKER_RADIUS);
+  const comp = labelComponents(grid);
+  const main = comp[cellOf(grid, m.playerSpawns[0].x, m.playerSpawns[0].y)];
+  const lake = m.pois.find((p) => p.name === 'Lake Harlan Marina');
+  assert.equal(comp[cellOf(grid, lake.x, 6800)], main, 'out on the dock');
+  assert.equal(grid.blocked[cellOf(grid, lake.x - 300, 6800)], 1, 'water beside the dock');
 });

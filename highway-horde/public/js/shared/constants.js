@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -137,6 +137,7 @@ export const WAVE_OPTIONS = [10, 15, 20, 0];  // 0 = endless
 // Default lobby settings chosen by the host.
 export const DEFAULT_SETTINGS = {
   mapId: 'highway',
+  mode: 'defend',                          // 'defend' | 'zone' (Evac Run, shared/zone.js)
   difficulty: 'normal',
   waves: 15,
   objective: true,

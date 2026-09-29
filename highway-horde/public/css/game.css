@@ -798,7 +798,7 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .mini-class:hover { border-color: rgba(255, 196, 0, 0.5); color: var(--text); }
 .mini-class[aria-checked='true'] { border-color: var(--hazard); color: var(--hazard); background: #1d1a0e; }
 
-.map-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.625rem; margin-bottom: 1rem; }
+.map-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.625rem; margin-bottom: 1rem; }
 .map-card {
   display: flex;
   flex-direction: column;
@@ -845,6 +845,24 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 }
 .opt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1.125rem; }
 .opt .field-label { margin-bottom: 0.3125rem; }
+.opt-mode { grid-column: 1 / -1; }
+.opt-hint { margin-top: 0.3125rem; font-size: 0.7813rem; line-height: 1.35; color: var(--text-mute); min-height: 1.1em; }
+.map-modes {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.0625rem 0.375rem;
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #111;
+  background: #6fd3c4;
+  border-radius: 0.125rem;
+}
+/* a map that plays only another mode: picking it switches the mode */
+.map-card.mode-other:not([aria-checked='true']) .map-preview { opacity: 0.55; }
+.opt [aria-disabled='true'][title] { cursor: help; }
 
 .chat-panel { display: flex; flex-direction: column; }
 .screen-lobby.solo .chat-panel { display: none; }
@@ -1101,6 +1119,7 @@ input[type='range'] { accent-color: var(--hazard); width: 100%; height: 1.625rem
 .controls-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
 .tips { margin: 0; padding-left: 1.25rem; color: var(--text-dim); display: grid; gap: 0.4375rem; }
 .txt-supply { color: var(--supply); font-weight: 700; }
+.txt-zone { color: #4fe3d0; font-weight: 700; }
 
 .toast-root {
   position: fixed;
@@ -1418,6 +1437,60 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 .toast.minor { font-size: 0.9375rem; font-weight: 600; color: var(--text-dim); }
 .toast.out { opacity: 0; transform: translateY(-0.375rem); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.5rem) scale(0.96); } }
+
+/* ---- Evac Run: the zone panel, the outside warning, the blight edge (ui/zonehud.js) ---- */
+.hud-zone {
+  min-width: min(24rem, 100%);
+  padding: 0.3125rem 1rem 0.4375rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(6, 22, 24, 0.82), rgba(6, 16, 18, 0.62));
+  border: 1px solid rgba(79, 227, 208, 0.45);
+  border-radius: 0.1875rem;
+  box-shadow: 0 0 1.25rem rgba(79, 227, 208, 0.12);
+}
+.zone-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: #8ff3e6;
+  text-shadow: 0 0 0.875rem rgba(79, 227, 208, 0.45), 0 0.125rem 0 #000;
+  white-space: nowrap;
+}
+.zone-sub { margin-top: 0.125rem; font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.05em; color: #e6fbf7; }
+.zone-bar { height: 0.25rem; margin-top: 0.3125rem; background: rgba(255, 255, 255, 0.08); border-radius: 0.125rem; overflow: hidden; }
+.zone-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #1fa99a, #4fe3d0); transition: width 0.25s linear; }
+.hud-zone.inside { border-color: rgba(127, 220, 90, 0.6); }
+.hud-zone.inside .zone-title { color: #c4ffb0; text-shadow: 0 0 0.875rem rgba(127, 220, 90, 0.4), 0 0.125rem 0 #000; }
+.hud-zone.urgent:not(.inside) { border-color: rgba(255, 196, 0, 0.8); animation: breathe 0.8s ease-in-out infinite; }
+.hud-zone.urgent:not(.inside) .zone-bar > i { background: linear-gradient(90deg, #d98a00, var(--hazard)); }
+.zone-warn {
+  padding: 0.375rem 1.125rem 0.4375rem;
+  text-align: center;
+  background: rgba(60, 8, 44, 0.8);
+  border: 1px solid rgba(255, 110, 170, 0.75);
+  border-radius: 0.1875rem;
+  animation: breathe 0.7s ease-in-out infinite;
+}
+.zone-warn-title { font-family: var(--font-display); font-size: 1.5rem; letter-spacing: 0.1em; color: #ff9cc4; text-shadow: 0 0 1rem rgba(255, 60, 140, 0.55), 0 0.125rem 0 #000; white-space: nowrap; }
+.zone-warn-sub { font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.06em; color: #ffe3ee; }
+/* the blight at the screen edges while you stand in it */
+.zone-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(90, 20, 80, 0) 45%, rgba(130, 30, 110, 0.5) 100%);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+.hud-banner.zone .banner-title { color: #8ff3e6; text-shadow: 0 0 1.625rem rgba(79, 227, 208, 0.45), 0 0.25rem 0 #000; }
+.hud-banner.zone::before, .hud-banner.zone::after { background: repeating-linear-gradient(-45deg, #4fe3d0 0 0.625rem, #0d1a1c 0.625rem 1.25rem); background-size: 0.75rem 0.75rem; }
+.toast.zone { border-color: rgba(79, 227, 208, 0.6); color: #d8fff9; }
+@media (max-width: 760px), (max-height: 520px) {
+  .zone-title { font-size: 1.0625rem; }
+  .zone-sub, .zone-warn-sub { font-size: 0.8125rem; }
+  .zone-warn-title { font-size: 1.125rem; }
+  .hud-zone { min-width: 0; padding: 0.25rem 0.625rem 0.3125rem; }
+}
 
 .hud-top-right {
   position: absolute;

@@ -277,6 +277,7 @@ const ENUMS = {
   deployable: ['turret', 'barricade'],
   gameover: ['wiped', 'objective'],
   buyfail: ['cash', 'closed', 'max', 'invalid', 'owned'],
+  zone: ['next', 'lock', 'shrink'],
 };
 
 const EVENT_SCHEMAS = [
@@ -314,6 +315,8 @@ const EVENT_SCHEMAS = [
   ['gameover', [['reason', ENUMS.gameover]]],
   ['victory', []],
   ['freeze', [['id', 'id'], ['x', 'pos'], ['y', 'pos']]],
+  // Evac Run (SPEC §3.7): a zone was announced / locked / started to shrink; time in whole s
+  ['zone', [['stage', ENUMS.zone], ['poi', 'u16'], ['x', 'pos'], ['y', 'pos'], ['r', 'rad'], ['time', 'u16']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */
@@ -495,7 +498,7 @@ function readEvents(r) {
 // ---- snapshot
 
 const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32;
-const H_OBJECTIVE = 1, H_ECHO = 2;
+const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4;
 
 const snapWriter = new Writer(32 * 1024);
 
@@ -620,6 +623,37 @@ function readPlayer(r) {
 }
 
 /**
+ * Evac Run zone state (SPEC §4 `zone`, 25 bytes): stage, POI indices, the live circle and
+ * the circle it heads for (0.25 px), the stage timer and its length (0.01 s) and the
+ * supply drop.
+ */
+function writeZone(w, z) {
+  w.u8(qInt(z.stage, 255));
+  w.u8(qInt(z.poi, 255));
+  w.u8(qInt(z.from, 255));
+  w.u16(qPos(z.x));
+  w.u16(qPos(z.y));
+  w.u16(qFixed(z.r, 4, 65535));
+  w.u16(qPos(z.nx));
+  w.u16(qPos(z.ny));
+  w.u16(qFixed(z.nr, 4, 65535));
+  w.u16(qFixed(z.t, 100, 65535));
+  w.u16(qFixed(z.total, 100, 65535));
+  w.u16(qPos(z.sx));
+  w.u16(qPos(z.sy));
+}
+
+function readZone(r) {
+  return {
+    stage: r.u8(), poi: r.u8(), from: r.u8(),
+    x: dqPos(r.u16()), y: dqPos(r.u16()), r: r.u16() / 4,
+    nx: dqPos(r.u16()), ny: dqPos(r.u16()), nr: r.u16() / 4,
+    t: r.u16() / 100, total: r.u16() / 100,
+    sx: dqPos(r.u16()), sy: dqPos(r.u16()),
+  };
+}
+
+/**
  * Encode a Snapshot (SPEC §4) into a fresh ArrayBuffer.
  *
  * Besides the SPEC fields it carries two netcode extras: `match` (u8 game counter, so a
@@ -635,7 +669,8 @@ export function encodeSnapshot(snap) {
   header(w, MSG.SNAPSHOT);
   const echo = arr(snap.echo);
   const obj = snap.objective;
-  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0));
+  const zone = snap.zone && typeof snap.zone === 'object' ? snap.zone : null;
+  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0));
   w.u8(qInt(snap.match, 255));
   w.u32(qInt(snap.tick, 0xffffffff));
   w.u8(kindIndex(PHASE_INDEX, snap.phase));
@@ -649,6 +684,7 @@ export function encodeSnapshot(snap) {
     w.f32(num(obj.maxHp));
   }
   w.u8(qInt(snap.readyCount, 255));
+  if (zone) writeZone(w, zone);
 
   const players = arr(snap.players);
   const np = Math.min(players.length, 255);
@@ -769,6 +805,7 @@ export function decodeSnapshot(buf) {
     bossHp: 0,
     objective: null,
     readyCount: 0,
+    zone: null,
     players: null,
     zombies: null,
     projectiles: null,
@@ -782,6 +819,7 @@ export function decodeSnapshot(buf) {
   snap.bossHp = boss === 0xffff ? -1 : boss / 65534;
   if (flags & H_OBJECTIVE) snap.objective = { hp: r.f32(), maxHp: r.f32() };
   snap.readyCount = r.u8();
+  snap.zone = flags & H_ZONE ? readZone(r) : null;
 
   const np = r.u8();
   const players = new Array(np);

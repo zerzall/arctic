@@ -113,6 +113,11 @@
               <div class="panel-head"><h2>Mission</h2><span id="settings-owner" class="panel-meta"></span></div>
               <div id="map-cards" class="map-cards" role="radiogroup" aria-label="Map"></div>
               <div class="opt-grid">
+                <div class="opt opt-mode">
+                  <div class="field-label" id="mode-label">Mode</div>
+                  <div id="opt-mode" class="seg" role="radiogroup" aria-labelledby="mode-label"></div>
+                  <div id="mode-desc" class="opt-hint"></div>
+                </div>
                 <div class="opt">
                   <div class="field-label" id="diff-label">Difficulty</div>
                   <div id="opt-difficulty" class="seg" role="radiogroup" aria-labelledby="diff-label"></div>
@@ -367,6 +372,7 @@
           <section class="howto-goal">
             <h3>The goal</h3>
             <p>Waves of zombies pour in from the edges of the map. <strong>Defend the objective</strong> in the middle — the school bus, the diner, the APC or the radio tower — and <strong>survive every wave</strong>. If the objective is destroyed, or nobody is left standing, the horde wins.</p>
+            <p><strong>Evac Run</strong> (pick it under <em>Mode</em> in the lobby; the big <em>Harlan County</em> map is made for it): every wave the <span class="txt-zone">safe zone</span> moves to a new spot on the map. A countdown tells you where and how long you have — follow the teal ring on the compass and the minimap, grab the supply drop waiting inside, fight off the stragglers on the way. When the wave starts the circle locks, later it shrinks to a smaller one; outside it the blight eats your health faster and faster (armour doesn't help), so stay inside. Press <kbd>N</kbd> once you're in the zone to start the wave early.</p>
             <p><strong>First person:</strong> click the game to capture the mouse, move the mouse to look, <kbd>Esc</kbd> gives the mouse back. The compass at the top points to the objective (◆) and the supply station (+). Prefer the old bird's-eye view? Pick <em>Classic top-down</em> in Settings → Controls.</p>
             <p><strong>Big screen:</strong> hit <em>Fullscreen</em> on the title screen, in the pause menu or in Settings. <kbd>Esc</kbd> gives the mouse back and opens the menu; in Chrome and Edge fullscreen stays on (hold <kbd>Esc</kbd> to leave it). Settings → Graphics picks the quality preset, Display &amp; HUD the UI size.</p>
           </section>
@@ -403,7 +409,8 @@
             <h3>Survival tips</h3>
             <ul class="tips">
               <li><strong>Revive your friends.</strong> A downed player bleeds out in 30 seconds. Stand next to them and hold <kbd>E</kbd> — you earn cash for every revive. Dead players come back when the wave is cleared.</li>
-              <li><strong>Spend your cash.</strong> Kills pay. Between waves the shop is open everywhere; during a wave only at the <span class="txt-supply">supply station</span> (green + on the minimap and the compass).</li>
+              <li><strong>Spend your cash.</strong> Kills pay. Between waves the shop is open everywhere; during a wave only at the <span class="txt-supply">supply station</span> (green + on the minimap and the compass) — in an Evac Run also at the zone's supply drop.</li>
+              <li><strong>Evac Run: move early.</strong> Leave for the next zone right away: the stragglers only get thicker, and the circle doesn't wait. Stay near its middle when it shrinks.</li>
               <li><strong>Watch your back.</strong> The horde comes from every side: turn when you hear groans behind you (they sound muffled), and follow the red arcs that show where a hit came from.</li>
               <li><strong>Bosses every 5 waves.</strong> The Abomination slams the ground around it — keep your distance and focus fire.</li>
               <li><strong>Know the specials.</strong> Bloaters burst when they die, spitters lob acid, screamers speed up the horde, brutes charge.</li>
