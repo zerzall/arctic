@@ -355,7 +355,7 @@ export function bloodSplats(tone = 'red') {
   let arr = bloodSprites.get(tone);
   if (arr) return arr;
   arr = [];
-  const col = tone === 'green' ? ['#3f5a12', '#5d7a1c', '#2e420b'] : tone === 'dark' ? ['#3a0606', '#4a0909', '#2a0404'] : ['#6e0b0b', '#8a1010', '#520707'];
+  const col = tone === 'green' ? ['#3f5a12', '#5d7a1c', '#2e420b'] : tone === 'ash' ? ['#2c2c31', '#3c3c42', '#212125'] : tone === 'dark' ? ['#3a0606', '#4a0909', '#2a0404'] : ['#6e0b0b', '#8a1010', '#520707'];
   for (let v = 0; v < 6; v++) {
     const c = makeCanvas(96, 96);
     const g = c.getContext('2d');

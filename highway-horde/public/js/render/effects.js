@@ -29,6 +29,12 @@ const PAL = ['#c9a23a', '#b3261e', '#6e0b0b', '#8a1010', '#5d5f61', '#7a766e', '
 const C_BRASS = 0, C_SHELL = 1, C_BLOOD = 2, C_BLOOD2 = 3, C_METAL = 4, C_CONCRETE = 5, C_DARK = 6,
   C_WOOD = 7, C_GLASS = 8, C_ACID = 9, C_MAG = 10, C_DUSTC = 11, C_FLESH = 12, C_BONE = 13;
 
+// gore setting ('on' | 'low' | 'off'): off turns blood into dark ash and nobody is blown apart
+let goreMode = 'on', redTone = 'red';
+const PAL_RED = PAL.slice();
+const ASH_PAL = { 2: '#2a2a2e', 3: '#3a3a40', 12: '#46464c' };
+let dropRed = true;
+
 let dropSpr = null, gibSprs = null;
 /** Soft round blood drop (16 px, dark red). */
 function dropSprite() {
@@ -36,9 +42,9 @@ function dropSprite() {
     dropSpr = makeCanvas(16, 16);
     const g = dropSpr.getContext('2d');
     const grad = g.createRadialGradient(7, 7, 0, 8, 8, 8);
-    grad.addColorStop(0, '#a01414');
-    grad.addColorStop(0.6, '#6e0b0b');
-    grad.addColorStop(1, 'rgba(90,5,5,0)');
+    grad.addColorStop(0, dropRed ? '#a01414' : '#5a5a60');
+    grad.addColorStop(0.6, dropRed ? '#6e0b0b' : '#34343a');
+    grad.addColorStop(1, dropRed ? 'rgba(90,5,5,0)' : 'rgba(50,50,56,0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 16, 16);
   }
@@ -467,7 +473,7 @@ export function createEffects(opts) {
         const p = env.player(e.pid);
         if (p) {
           blood(p.x, p.y, 0, TAU, 14, 120, true);
-          decals.stamp(bloodSplats('red')[(R() * 6) | 0], p.x, p.y, R() * TAU, 70, 0.9);
+          decals.stamp(bloodSplats(redTone)[(R() * 6) | 0], p.x, p.y, R() * TAU, 70, 0.9);
         }
         break;
       }
@@ -566,11 +572,11 @@ export function createEffects(opts) {
       decals.stamp(bloodSplats('green')[(R() * 6) | 0], e.x, e.y, R() * TAU, r * 4, 0.9);
       return;
     }
-    if (e.gib) {
+    if (e.gib && goreMode !== 'off') {
       zParticles(P_GIB, C_FLESH, e.x, e.y, 0, TAU, heavy() ? 7 + (r / 6 | 0) : 4, 260, 260, 2.8 * (r / 14), 4);
       zParticles(P_GIB, C_BONE, e.x, e.y, 0, TAU, heavy() ? 3 : 1, 220, 240, 2, 4);
       blood(e.x, e.y, 0, TAU, heavy() ? 16 : 6, 240, true);
-      const spr = bloodSplats('red');
+      const spr = bloodSplats(redTone);
       decals.stamp(spr[(R() * spr.length) | 0], e.x, e.y, R() * TAU, r * 5, 0.95);
       return;
     }
@@ -579,7 +585,7 @@ export function createEffects(opts) {
     const img = zsprites.corpse(ztype, variant);
     const size = img.width / zsprites.spriteScale;
     const fall = a + (hash01(zid) - 0.5) * 0.8;
-    decals.stamp(bloodSplats('red')[(zid * 7) % 6], e.x - Math.cos(fall) * r * 0.2, e.y - Math.sin(fall) * r * 0.2, R() * TAU, r * 3.4, 0.85);
+    decals.stamp(bloodSplats(redTone)[(zid * 7) % 6], e.x - Math.cos(fall) * r * 0.2, e.y - Math.sin(fall) * r * 0.2, R() * TAU, r * 3.4, 0.85);
     decals.addCorpse(img, e.x, e.y, fall, size, env.time);
     blood(e.x, e.y, a + Math.PI, 1.6, heavy() ? 6 : 2, 120);
     if (e.by && e.by === env.localId) killMarker = 1;
@@ -607,6 +613,16 @@ export function createEffects(opts) {
     lights,
     setQuality(q, newCap) { quality = q; cap = Math.min(MAXP, newCap); if (n > cap) n = cap; },
     setDecals(d) { decals = d; },
+    /** 'on' | 'low' | 'off' (dark ash instead of red, no gibs). */
+    setGore(mode) {
+      const m = mode === 'off' || mode === 'low' ? mode : 'on';
+      if (m === goreMode) return;
+      goreMode = m;
+      redTone = m === 'off' ? 'ash' : 'red';
+      dropRed = m !== 'off';
+      dropSpr = null;
+      for (const k in ASH_PAL) PAL[k] = m === 'off' ? ASH_PAL[k] : PAL_RED[k];
+    },
     setZombieSprites(z) { zsprites = z; },
 
     addEvents(events, env) {
@@ -730,13 +746,13 @@ export function createEffects(opts) {
           if (Z[i] <= 0) {
             Z[i] = 0;
             if (t === P_BLOOD || t === P_ACID) {
-              const spr = bloodSplats(t === P_ACID ? 'green' : 'red');
+              const spr = bloodSplats(t === P_ACID ? 'green' : redTone);
               decals.stamp(spr[(i + (time * 10 | 0)) % spr.length], X[i], Y[i], ROT[i], SIZE[i] * 5, 0.7);
               kill(i);
               continue;
             }
             if (t === P_GIB) {
-              decals.stamp(bloodSplats('red')[i % 6], X[i], Y[i], ROT[i], SIZE[i] * 7, 0.6);
+              decals.stamp(bloodSplats(redTone)[i % 6], X[i], Y[i], ROT[i], SIZE[i] * 7, 0.6);
             }
             if (VZ[i] < -60 && t !== P_GIB) {
               VZ[i] = -VZ[i] * 0.35;

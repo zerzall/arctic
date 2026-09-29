@@ -1,12 +1,16 @@
 // Event-driven effects in the first-person view (ACTORS, SPEC §7.5): glowing tracers from
-// every shot ray (HDR, they bloom), muzzle flashes, impacts (sparks, dust, chips and a
-// bullet hole on the obstacle, oriented by its surface), blood spurts and mist on flesh
-// hits, explosions (a white-hot core flash, a rolling fireball, a shockwave ring, debris,
-// a dust ring and a smoke column that glows while it is hot), molotov bursts, branching
-// tesla arcs, rail beams with a smoke trail, acid spit, screams, boss slams, brute charge
-// dust, pickup sparkle, place/destroy puffs, the supply crate drop and damage feedback.
-// Everything is drawn through the shared pools in fx-core.js (four draw calls for all of
-// it) plus the renderer's light pool (lights.flash) and ground decals (ctx.ground).
+// every shot ray (HDR, they bloom), muzzle flashes per weapon class, impacts by surface
+// (concrete chips and dust, metal sparks and ricochet streaks, wood splinters, glass shards,
+// dirt and sand puffs, water splashes, each with a lingering hole / chip decal), blood
+// spurts, exit-wound sprays and mist on flesh hits (blood3.js puts the splatter on the wall,
+// car or ground behind), pools, drag marks and gibs when a zombie dies (gore3d.js: severed
+// limbs that tumble and smear), ejected shell casings (casings3d.js), multi-stage
+// explosions (a white-hot flash, fireball, shockwave ring and screen distortion, debris, a
+// smoke column, crater / scorch decals, embers that linger), molotov bursts, branching tesla
+// arcs, rail beams with a smoke trail, acid spit, screams, boss slams, brute charge dust,
+// pickup sparkle, place/destroy puffs, the supply crate drop and damage feedback.
+// Everything is drawn through the shared pools in fx-core.js / fx-decals.js (five draw calls
+// for all of it) plus the renderer's light pool (lights.flash) and ground decals (ctx.ground).
 //
 // Shot rules (SPEC §4.1): `echo` shots are never drawn again; the local player's shots
 // (predicted on clients) start at the viewmodel muzzle, which viewmodel.js publishes in
@@ -14,7 +18,12 @@
 
 import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
-import { acquireFx, releaseFx, F_ADD, F_FLAT, F_STREAK, F_BOUNCE, F_FIRE, F_FLICKER, F_SPIN, F_VSTRETCH, F_HOT, FR } from './fx-core.js';
+import { ZOMBIES } from '../shared/zombies.js';
+import { acquireFx, releaseFx, F_ADD, F_FLAT, F_STREAK, F_BOUNCE, F_FIRE, F_FLICKER, F_SPIN, F_VSTRETCH, F_HOT, FR, DC, DK } from './fx-core.js';
+import { surfaceIndex, groundIndex, MAT } from './surfaces.js';
+import { createBlood } from './blood3d.js';
+import { createGore3D } from './gore3d.js';
+import { createCasings3D } from './casings3d.js';
 import { col } from './actor-kit.js';
 import { crateGeometry } from './items3d.js';
 import { gunMaterials } from './actor-guns.js';
@@ -63,6 +72,20 @@ export function createEffects3D(ctx) {
   let camX = 0, camY = 0, camH = EYE, pitch = 0;
   const R = fx.rng;
   const surf = surfaceIndex(ctx);
+  const gm = groundIndex(ctx);
+  // blood decals, severed limbs and casings work in absolute heights (they look up the ground themselves)
+  const env = { G, surf, gm, high, ultra, blood: null };
+  const blood3 = createBlood(ctx, fx0, env);
+  env.blood = blood3;
+  const gore3 = createGore3D(ctx, fx0, env);
+  const casings = createCasings3D(ctx, fx0, env);
+  // ground blood painted by the other sub-systems (zombies3d) goes through the same decals (renderer3d routes it here)
+  fx0.groundBlood = (kind, x, y, r, angle, alpha) => blood3.legacy(kind, x, y, r, angle, alpha);
+  const stages = [];       // delayed explosion stages { at, kind, x, y, r }
+  // recent heavy hits on flesh { x, y, t, ang, power } (a kill soon after tears a limb off): a fixed ring, no allocation
+  const HEAVY_N = 10;
+  const heavyHits = Array.from({ length: HEAVY_N }, () => ({ x: 0, y: 0, t: -99, ang: 0, power: 0 }));
+  let heavyHead = 0;
 
   const tracers = [];      // { ax, ah, ay, bx, bh, by, len, age, color, w, trail }
   const arcs = [];         // { pts, age, life, seed }
@@ -88,7 +111,6 @@ export function createEffects3D(ctx) {
   // orange instead of saturating to a white blob
   const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);
   const HOT_SPARK = hdr('#ffc070', 3.2), HOT_CORE = hdr('#fff2d8', 3.2), FIRE_TINT = new THREE.Color(1, 1, 1);
-  const BLOOD = C('#5a0606'), BLOOD2 = C('#7a0a0a'), MIST = C('#4a0505');
   const FROST_MIST = C('#dff4ff'), ICE_GLINT = hdr('#c8f0ff', 2.4), ICE_SHARD = hdr('#bfe8ff', 1.3);
 
   function distCam(x, y) { return Math.hypot(x - camX, y - camY); }
@@ -123,15 +145,43 @@ export function createEffects3D(ctx) {
     }
   }
   function blood(x, h, y, dirA, spread, count, speed, big = false) {
-    // droplets stretched along their flight, a fine mist, a splat on the ground
+    // droplets stretched along their flight, a fine mist, a puff; palette and amount follow
+    // the gore setting (ash grey when off, thinner when low)
+    const P = fx.gore;
+    if (P.mode === 'low') count = Math.ceil(count * 0.6);
     for (let k = 0; k < count; k++) {
       const a = dirA + (R() - 0.5) * spread, s = speed * (0.3 + R() * 0.9);
-      const i = fx.spawn(x, h + (R() - 0.5) * 4, y, Math.cos(a) * s, 20 + R() * 120, Math.sin(a) * s, 0.4 + R() * 0.4, (big ? 1.6 : 1.1) + R() * 0.8, 0.9, k % 2 ? BLOOD : BLOOD2, 0.95, FR.DROP, F_BOUNCE | F_VSTRETCH, 650, 0.6);
+      const i = fx.spawn(x, h + (R() - 0.5) * 4, y, Math.cos(a) * s, 20 + R() * 120, Math.sin(a) * s, 0.4 + R() * 0.4, (big ? 1.6 : 1.1) + R() * 0.8, 0.9, k % 2 ? P.blood : P.blood2, 0.95, FR.DROP, F_BOUNCE | F_VSTRETCH, 650, 0.6);
       fx.velStretch(i, 0.02);
     }
-    fx.spawn(x, h, y, Math.cos(dirA) * 25, 8, Math.sin(dirA) * 25, 0.4 + R() * 0.2, big ? 7 : 4, big ? 22 : 13, MIST, 0.6, FR.MIST, 0, 0, 3);
-    if (high) fx.spawn(x, h, y, Math.cos(dirA) * 40, 4, Math.sin(dirA) * 40, 0.3, big ? 5 : 3, big ? 16 : 10, BLOOD, 0.35, FR.SMOKE5, 0, 0, 3);
+    fx.spawn(x, h, y, Math.cos(dirA) * 25, 8, Math.sin(dirA) * 25, 0.4 + R() * 0.2, big ? 7 : 4, big ? 22 : 13, P.mist, 0.6, FR.MIST, 0, 0, 3);
+    if (high) fx.spawn(x, h, y, Math.cos(dirA) * 40, 4, Math.sin(dirA) * 40, 0.3, big ? 5 : 3, big ? 16 : 10, P.blood, 0.35, FR.SMOKE5, 0, 0, 3);
   }
+  // how hard each weapon class hits flesh (0..1): sets the reach of the exit-wound spray
+  const CLASS_K = { pistol: 0.28, smg: 0.26, rifle: 0.42, shotgun: 0.34, heavy: 0.58, sniper: 1, special: 0.5, explosive: 0.8, melee: 0.45 };
+  function slopeOf(r, ox, oy, oh, bh) { return (bh - oh) / Math.max(1, Math.hypot(r.x - ox, r.y - oy)); }
+  /** A ray went through flesh at r: exit spray behind it, and (heavy hits) a record for dismemberment. */
+  function fleshHit(r, ang, bh, slope, k, heavy) {
+    blood3.exitSpray(r.x + Math.cos(ang) * 8, bh, r.y + Math.sin(ang) * 8, ang, Math.min(1, k || 0.3), slope);
+    if (heavy) {
+      const q = heavyHits[heavyHead];
+      heavyHead = (heavyHead + 1) % HEAVY_N;
+      q.x = r.x; q.y = r.y; q.t = now; q.ang = ang; q.power = Math.min(1, k || 0.5);
+    }
+  }
+
+  // shell casings: brass for pistols / SMGs / rifles, red hulls for shotguns, long brass for the heavy guns
+  const ejGate = new Map();
+  function ejectCasing(key, isLocal, org, aim, w) {
+    const cat = w.category;
+    if (cat === 'melee' || cat === 'special' || cat === 'explosive') return;
+    const last = ejGate.get(key);
+    if (last !== undefined && now >= last && now - last < 0.045) return;
+    ejGate.set(key, now);
+    const kind = cat === 'shotgun' ? 1 : cat === 'sniper' || cat === 'heavy' ? 2 : 0;
+    casings.eject(org.x - Math.cos(aim) * 12, org.h - 2, org.y - Math.sin(aim) * 12, aim, kind);
+  }
+
   function fireball(x, h, y, count, size, speed, life = 0.6, color = FIRE_TINT, alpha = 0.55) {
     for (let k = 0; k < count; k++) {
       const a = R() * TAU, up = R() * 0.9, s = speed * (0.3 + R() * 0.7);
@@ -203,20 +253,119 @@ export function createEffects3D(ctx) {
   }
 
   // ---- impacts ----------------------------------------------------------------------------
-  const _s = { nx: 0, ny: 0, top: 0, kind: '' };
-  const HOLE = C('#141210'), SCORCH = C('#0e0c0b'), DUSTC = C('#6a655c');
+  const _s = { nx: 0, ny: 0, top: 0, kind: '', d: 0, s0: 0, s1: 0, mat: 0, o: null };
+  const HOLE = C('#100e0d'), SCORCH = C('#0e0c0b'), DUSTC = C('#6a655c');
+  const DUST_CONC = C('#7a766c'), DUST_DIRT = C('#5e4c38'), DUST_SAND = C('#a89468'), DUST_WOOD = C('#8a7350');
+  const WOOD_C = C('#9a7548'), WOOD_D = C('#5f4126'), CHIP_PALE = C('#8d897e'), CHIP_DARK = C('#54514a'), GRAIN = C('#b09a6a');
+  const GLASS_HDR = hdr('#d6efff', 1.5), GLASS_PALE = C('#b8c8d0'), WATER_C = C('#dbe8ee'), METAL_SPARK = hdr('#ffd9a0', 3.6);
+  const VEHICLE = new Set(['car', 'suv', 'pickup', 'van', 'bus', 'truck', 'semi', 'tanker']);
+
+  /** Put a mark (hole, chip patch, scorch...) on the surface an impact landed on. */
+  function mark(x, h, y, nx, ny, wall, s, size, cell, kind, color, alpha, life) {
+    const D = fx0.decals;
+    if (wall) {
+      const o = D.opt;
+      o.top = s.top; o.s0 = s.s0; o.s1 = s.s1; o.floor = G(x, y) + 0.4;
+      D.add(1, x - nx * s.d, h, y - ny * s.d, nx, 0, ny, size, cell, kind, color.r, color.g, color.b, alpha, life);
+    } else {
+      D.add(1, x, G(x, y), y, 0, 1, 0, size, cell, kind, color.r, color.g, color.b, alpha, life);
+    }
+  }
+
+  /**
+   * A bullet hit terrain or an obstacle at (x, h, y) travelling along sim angle `a`.
+   * The look depends on what it hit: concrete / stone (chips, dust), metal (sparks, ricochet
+   * streaks; a car window shatters), wood (splinters), dirt / sand (puffs), water (splash).
+   */
   function impact(x, h, y, a, big) {
-    // the bullet's back-direction, or the obstacle's face when we can find it
-    let nx = -Math.cos(a), ny = -Math.sin(a), nh = 0;
+    let nx = -Math.cos(a), ny = -Math.sin(a);
     const s = surf(x, y, _s);
-    let onSurface = false;
-    if (s && h < s.top - 1) { nx = s.nx; ny = s.ny; onSurface = true; } else if (h < G(x, y) + 1.5) { nx = 0; ny = 0; nh = 1; onSurface = true; }
-    const out = Math.atan2(ny, nx);
-    sparks(x, h, y, out, 2.0, high ? (big ? 10 : 6) : 3, big ? 420 : 320);
-    glowPuff(x, h, y, big ? 9 : 6, 0.06, hdr('#ffcf80', 2.2), 0.9);
-    if (high || R() < 0.5) dust(x + nx * 2, h, y + ny * 2, big ? 3 : 1, big ? 9 : 7, DUSTC, 25, 0.7, 0.35, out, 1.2);
-    if (high) chips(x, h, y, out, big ? 5 : 2, C(s && s.kind === 'tree' ? '#5a3a22' : '#4a4640'), 140, 0.9);
-    if (onSurface) fx.decal(x, h, y, nx, nh, ny, big ? 3.6 : 2.4, FR.HOLE, HOLE, 0.9, 45);
+    let wall = false, ground = false, mat = MAT.CONCRETE, kind = '';
+    if (s && h < s.top - 1) { nx = s.nx; ny = s.ny; wall = true; mat = s.mat; kind = s.kind; }
+    else if (h < G(x, y) + 2.5) { nx = 0; ny = 0; ground = true; mat = gm(x, y); }
+    else if (s) { mat = s.mat; kind = s.kind; }        // over the top of it: no mark, the effect only
+    const out = ground ? a + Math.PI : Math.atan2(ny, nx);
+    const onSurface = wall || ground;
+    const dcos = Math.cos(a), dsin = Math.sin(a);
+    const bx = x + nx * 2, by = y + ny * 2;
+    const hi = high ? 1 : 0.5;
+    if (mat === MAT.WATER) {
+      // a splash column, a ring and droplets
+      fx.spawn(x, 4, y, 0, 50, 0, 0.45, 8, 20, WATER_C, 0.6, FR.SPLASH, 0, -40, 2.5);
+      for (let k = 0; k < (high ? 9 : 4); k++) {
+        const aa = R() * TAU, sp = 25 + R() * 60;
+        fx.spawn(x, 3, y, Math.cos(aa) * sp * 0.4, 120 + R() * 130, Math.sin(aa) * sp * 0.4, 0.55 + R() * 0.3, 1.6, 0.8, WATER_C, 0.85, FR.DROP, 0, 600, 0.8);
+      }
+      ring(x, 1.2, y, big ? 40 : 26, 0.5, hdr('#cfe6f0', 0.7), 0.45);
+      return;
+    }
+    if (mat === MAT.METAL) {
+      const glass = wall && VEHICLE.has(kind) && h > (kind === 'van' || kind === 'bus' || kind === 'truck' || kind === 'semi' ? 46 : 30) && h < s.top - 3 && R() < 0.55;
+      if (glass) {
+        // the window goes: bright shards, glints, a crack star
+        for (let k = 0; k < (high ? 11 : 5); k++) {
+          const aa = out + (R() - 0.5) * 2.2, sp = 60 + R() * 170;
+          fx.spawn(bx, h, by, Math.cos(aa) * sp, 50 + R() * 120, Math.sin(aa) * sp, 0.7 + R() * 0.6, 1.3 + R() * 1.4, 1, GLASS_HDR, 0.95, FR.SHARD, F_ADD | F_BOUNCE | F_SPIN, 800, 0.4);
+        }
+        for (let k = 0; k < (high ? 4 : 2); k++) fx.spawn(bx + (R() - 0.5) * 8, h + (R() - 0.5) * 6, by + (R() - 0.5) * 8, (R() - 0.5) * 30, 10 + R() * 20, (R() - 0.5) * 30, 0.3 + R() * 0.25, 4, 1, GLASS_HDR, 1, FR.GLINT, F_ADD | F_FLICKER, 0, 2);
+        dust(bx, h, by, 1, 8, C('#9aa4a8'), 20, 0.5, 0.25, out, 1.2);
+        if (wall) mark(x, h, y, nx, ny, true, s, 14 + (big ? 6 : 0), DC.HOLE_GLASS, DK.PALE, GLASS_PALE, 0.7, 120);
+        return;
+      }
+      sparks(x, h, y, out, 2.3, high ? (big ? 14 : 9) : 4, big ? 480 : 360);
+      glowPuff(x, h, y, big ? 11 : 7, 0.07, hdr('#ffcf80', 2.4), 0.95);
+      // ricochet: thin bright streaks off the surface (the whine you can see)
+      if (onSurface && (high || R() < 0.5)) {
+        const dot = dcos * nx + dsin * ny;
+        const ra = Math.atan2(dsin - 2 * dot * ny, dcos - 2 * dot * nx);
+        for (let k = 0; k < (big ? 3 : 2); k++) {
+          const aa = ra + (R() - 0.5) * 0.5;
+          const i = fx.spawn(x, h, y, Math.cos(aa) * 950, (R() - 0.3) * 300, Math.sin(aa) * 950, 0.09 + R() * 0.08, 0.9, 0.3, METAL_SPARK, 1, FR.DOT, F_ADD | F_STREAK, 500, 0.3);
+          fx.stretchLast(i, 2.6 + R() * 2.4);
+        }
+      }
+      if (high) chips(x, h, y, out, big ? 3 : 1, C('#3c3f43'), 130, 0.8);
+      if (onSurface) {
+        mark(x, h, y, nx, ny, wall, s, 9, DC.DENT, DK.DARK, HOLE, 0.4, 130);
+        mark(x, h, y, nx, ny, wall, s, big ? 6.4 : 4.4, DC.HOLE_METAL, DK.HOLE, HOLE, 0.95, 140);
+      }
+      return;
+    }
+    if (mat === MAT.WOOD) {
+      for (let k = 0; k < (high ? 7 : 3); k++) {
+        const aa = out + (R() - 0.5) * 1.9, sp = 60 + R() * 170;
+        fx.spawn(bx, h, by, Math.cos(aa) * sp, 40 + R() * 110, Math.sin(aa) * sp, 0.6 + R() * 0.5, 0.8 + R() * 0.9, 1.6 + R() * 1.6, k % 3 ? WOOD_C : WOOD_D, 1, FR.SHARD, F_BOUNCE | F_SPIN, 800, 0.4);
+      }
+      dust(bx, h, by, big ? 3 : 2, 8, DUST_WOOD, 28, 0.8, 0.3, out, 1.3);
+      sparks(x, h, y, out, 2.2, high ? 2 : 1, 200);
+      if (onSurface) mark(x, h, y, nx, ny, wall, s, big ? 8 : 5.6, DC.HOLE_WOOD, DK.HOLE, HOLE, 0.9, 130);
+      return;
+    }
+    if (mat === MAT.DIRT || mat === MAT.SAND) {
+      const sand = mat === MAT.SAND;
+      dust(bx, h + 1, by, big ? 4 : 2, big ? 14 : 10, sand ? DUST_SAND : DUST_DIRT, 34, 1, 0.45, out, 1.5);
+      for (let k = 0; k < (high ? 6 : 2); k++) {
+        const aa = out + (R() - 0.5) * 2.2, sp = 60 + R() * 130;
+        fx.spawn(bx, h + 1, by, Math.cos(aa) * sp, 70 + R() * 130, Math.sin(aa) * sp, 0.5 + R() * 0.4, sand ? 0.9 : 1.4, sand ? 0.7 : 1, sand ? GRAIN : DUST_DIRT, 1, sand ? FR.DOT : FR.CHUNK, F_BOUNCE | F_SPIN, 800, 0.5);
+      }
+      if (onSurface && ground) mark(x, h, y, 0, 0, false, s, 6.5, DC.DENT, DK.DARK, sand ? C('#5a4c34') : C('#2c2218'), 0.5, 70);
+      else if (onSurface) mark(x, h, y, nx, ny, wall, s, 4.4, DC.HOLE + ((R() * DC.HOLE_N) | 0), DK.HOLE, HOLE, 0.8, 120);
+      return;
+    }
+    if (mat === MAT.CLOTH) {
+      dust(bx, h, by, 2, 8, C('#8a8478'), 20, 0.8, 0.25, out, 1.4);
+      if (onSurface) mark(x, h, y, nx, ny, wall, s, 3.6, DC.HOLE + ((R() * DC.HOLE_N) | 0), DK.HOLE, HOLE, 0.75, 120);
+      return;
+    }
+    // concrete, stone, asphalt: sparks off the aggregate, a dust puff, a spray of chips, a pale spalled patch and a hole
+    sparks(x, h, y, out, 2.0, high ? (big ? 6 : 3) : 2, big ? 360 : 260);
+    glowPuff(x, h, y, big ? 8 : 5, 0.06, hdr('#ffcf80', 1.8), 0.8);
+    dust(bx, h, by, Math.ceil((big ? 4 : 2) * hi), big ? 12 : 9, mat === MAT.STONE ? DUST_CONC : DUSTC, 26, 0.9, 0.38, out, 1.3);
+    if (high) chips(x, h, y, out, big ? 6 : 3, kind === 'tree' ? WOOD_D : R() < 0.5 ? CHIP_PALE : CHIP_DARK, 150, 1.0);
+    if (onSurface) {
+      mark(x, h, y, nx, ny, wall, s, big ? 16 : 10.5, DC.CHIP + ((R() * DC.CHIP_N) | 0), DK.PALE, CHIP_PALE, 0.8, 150);
+      mark(x, h, y, nx, ny, wall, s, big ? 5.6 : 3.8, DC.HOLE + ((R() * DC.HOLE_N) | 0), DK.HOLE, HOLE, 0.95, 160);
+    }
   }
 
   // ---- event handlers -------------------------------------------------------------------------
@@ -252,7 +401,7 @@ export function createEffects3D(ctx) {
         fx.spawn(px + nx * off, ph + Math.sin(ang) * 4, py + ny * off, nx * off * 3, Math.sin(ang) * 12, ny * off * 3, 0.5 + R() * 0.3, 2.2, 0.4, hdr('#c8a8ff', 2.5), 0.9, FR.DOT, F_ADD, 0, 1);
         if (high && k % 3 === 0) fx.spawn(px, ph, py, (R() - 0.5) * 6, 6 + R() * 6, (R() - 0.5) * 6, 1.6 + R(), 3, 12, C('#8a86a0'), 0.18, SMOKES[k % 5], 0, -3, 0.6);
       }
-      for (const r of rays) if (r.hit === 1) blood(r.x, 34, r.y, e.angle, 1.2, high ? 10 : 5, 220, true);
+      for (const r of rays) if (r.hit === 1) { blood(r.x, 34, r.y, e.angle, 1.2, high ? 10 : 5, 220, true); fleshHit(r, e.angle, 34, 0, 1, true); }
       if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.2, '#b388ff');
       return;
     }
@@ -263,6 +412,7 @@ export function createEffects3D(ctx) {
         const a = Math.atan2(r.y - oy, r.x - ox);
         const hx = r.x - Math.cos(a) * 10, hy = r.y - Math.sin(a) * 10;
         blood(hx, 32, hy, a + (R() - 0.5) * 1.2, 2.2, high ? 5 : 2, 260, true);
+        if (R() < 0.5) fleshHit({ x: hx, y: hy }, a, 32, 0, 0.45, true);
         if (high && R() < 0.4) chips(hx, 32, hy, a + Math.PI * 0.5 * (R() < 0.5 ? 1 : -1), 1, C('#d8d0c0'), 180, 0.7);
         if (R() < 0.25) ctx.ground.decal('blood', r.x + (R() - 0.5) * 20, r.y + (R() - 0.5) * 20, 4 + R() * 6, R() * TAU, 0.8);
       }
@@ -309,17 +459,19 @@ export function createEffects3D(ctx) {
         if (r.hit === 1) {
           blood(r.x, bh, r.y, e.angle, 1.3, high ? (isLocal ? 7 : 4) : 2, 170, big);
           if (R() < (big ? 0.8 : 0.25)) ctx.ground.decal('blood', r.x + ca * 12, r.y + sa * 12, 4 + R() * 5, R() * TAU, 0.7);
+          fleshHit(r, e.angle, bh, slopeOf(r, ox, oy, oh, bh), CLASS_K[w.category] * (e.weapon === 'magnum' ? 2.2 : 1), big || w.category === 'heavy' || (shotgun && Math.hypot(r.x - ox, r.y - oy) < 220), e.weapon);
         } else if (r.hit === 2) {
           if (!shotgun || k % 2 === 0 || high) impact(r.x, bh, r.y, e.angle, big);
         }
       }
+      ejectCasing(lk, isLocal, org, e.angle, w);
       if (!isLocal) {
         const size = shotgun ? 1.5 : big ? 1.6 : w.category === 'heavy' ? 1.25 : w.category === 'pistol' ? 0.8 : 1.0;
-        muzzleFlash(ox, oh, oy, e.angle, size, '#ffc070', lk);
+        muzzleFlash(ox, oh, oy, e.angle, size, '#ffc070', lk, e.weapon === 'magnum' ? 'magnum' : w.category);
       } else {
         // the viewmodel draws its own flash; the world still gets the light
         gatedFlash(lk, 0.06, ox, oy, oh, '#ffc070', 1.2, 180, 0.07);
-        if (high && R() < 0.5) smoke(ox + ca * 6, oh, oy + sa * 6, 1, 4, 0.6, C('#8a8a8a'), 0.16, 15, 2);
+        if (high && R() < (shotgun ? 0.9 : w.category === 'heavy' ? 0.3 : 0.5)) smoke(ox + ca * 6, oh, oy + sa * 6, shotgun ? 2 : 1, shotgun ? 7 : 4, shotgun ? 1.1 : 0.6, C('#8a8a8a'), shotgun ? 0.22 : 0.16, 15, 2);
       }
       return;
     }
@@ -382,13 +534,41 @@ export function createEffects3D(ctx) {
     lights.flash(x, y, h, color, intensity, radius, life);
   }
 
-  function muzzleFlash(x, h, y, a, size, color, key = null) {
+  // angle of a world direction on the screen (billboards: 0 = quad x axis to the right)
+  function screenAngle(dx, dz) {
+    const e = ctx.camera.matrixWorld.elements;
+    return Math.atan2(dx * e[4] + dz * e[6], dx * e[0] + dz * e[2]);
+  }
+  // per weapon class: star size, tongue length / width, fan (side tongues), gas sparks, glow, life
+  const FLASH_STYLE = {
+    pistol: { star: 6, len: 9, wid: 3.4, fan: 0, sparks: 1, glow: 0.8, life: 0.04 },
+    magnum: { star: 11, len: 16, wid: 6, fan: 0, sparks: 4, glow: 1.2, life: 0.06, ring: true },
+    smg: { star: 6.5, len: 11, wid: 3.6, fan: 0, sparks: 1, glow: 0.8, life: 0.035 },
+    rifle: { star: 8, len: 16, wid: 4.4, fan: 1, sparks: 2, glow: 1, life: 0.045 },
+    shotgun: { star: 13, len: 25, wid: 10, fan: 1, sparks: 5, glow: 1.5, life: 0.06 },
+    heavy: { star: 10, len: 23, wid: 6, fan: 1, sparks: 2, glow: 1.3, life: 0.04 },
+    sniper: { star: 14, len: 36, wid: 6, fan: 0, sparks: 6, glow: 1.6, life: 0.07, ring: true },
+    generic: { star: 8, len: 14, wid: 5, fan: 0, sparks: 2, glow: 1, life: 0.045 },
+  };
+  function muzzleFlash(x, h, y, a, size, color, key = null, cat = 'generic') {
     const c = hdr(color, 1.8);
-    // a star facing the camera plus a side-on tongue along the barrel, white-hot core
-    glowPuff(x, h, y, 7 * size, 0.05, c, 0.8);
-    fx.spawn(x, h, y, 0, 0, 0, 0.045, 10 * size, 9 * size, hdr('#fff2c0', 2.2), 1, FR.STAR, F_ADD, 0, 0);
-    const i = fx.spawn(x + Math.cos(a) * 6 * size, h, y + Math.sin(a) * 6 * size, 0, 0, 0, 0.045, 7 * size, 7 * size, c, 0.9, FR.FLASH, F_ADD, 0, 0);
-    fx.stretchLast(i, 0.6);
+    const P = FLASH_STYLE[cat] || FLASH_STYLE.generic;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    // a star facing the camera, a hot core and side-on tongues along the barrel (a fan for the big guns)
+    glowPuff(x, h, y, 7 * size * P.glow, P.life + 0.01, c, 0.8);
+    fx.spawn(x, h, y, 0, 0, 0, P.life, P.star * size, P.star * size * 0.9, hdr('#fff2c0', 2.2), 1, FR.STAR, F_ADD, 0, 0);
+    const n = 1 + P.fan * 2;
+    for (let k = 0; k < n; k++) {
+      const off = (k - P.fan) * 0.4 * (R() < 0.5 ? 1 : -1) * (k === P.fan ? 0 : 1);
+      const L = P.len * size * (off === 0 ? 1 : 0.55) * (0.85 + R() * 0.3);
+      const aa = a + off;
+      const cx = x + Math.cos(aa) * L * 0.45, cy = y + Math.sin(aa) * L * 0.45;
+      const i = fx.spawn(cx, h, cy, 0, 0, 0, P.life, L, L, off === 0 ? c : hdr(color, 1.3), off === 0 ? 0.95 : 0.7, FR.FLASH, F_ADD, 0, 0);
+      fx.stretchLast(i, (P.wid * size) / L * (off === 0 ? 1 : 0.8));
+      fx.rotLast(i, screenAngle(Math.cos(aa), Math.sin(aa)));
+    }
+    if (P.sparks && high) sparks(x + ca * 4, h, y + sa * 4, a, 0.7, P.sparks, 420, HOT_SPARK);
+    if (P.ring) ring(x + ca * 8, h, y + sa * 8, 26 * size, 0.09, hdr('#fff0d0', 1.4), 0.4, false, FR.SOFTRING);
     // Pool lights have no distance decay (WORLD: decay 0, only a range window), so a flash
     // lights everything inside its radius equally: at 1.5 over 220 units a teammate beside a
     // firing gun went white under the night exposure. Smaller and dimmer reads as a flash.
@@ -416,6 +596,9 @@ export function createEffects3D(ctx) {
       blood(x, 26, y, 0, TAU, high ? 22 : 10, 260, true);
       ring(x, 2, y, r * 2, 0.35, hdr('#a8e060', 1.6), 0.6);
       ctx.ground.decal('acid', x, y, r * 0.45, R() * TAU, 0.8);
+      // acid on the ground and on whatever stands near
+      fx0.decals.opt.wet = 1;
+      fx0.decals.add(0, x, G(x, y), y, 0, 1, 0, r * 1.5, DC.ACID, DK.ACID, 0.3, 0.75, 0.1, 0.85, 200);
       shakeAt(x, y, 0.45, 1000);
       return;
     }
@@ -425,10 +608,17 @@ export function createEffects3D(ctx) {
     fx.spawn(x, 26, y, 0, 0, 0, 0.1, r * 0.35, r * 0.9, HOT_CORE, 1, FR.GLOW, F_ADD, 0, 0);
     fx.spawn(x, 26, y, 0, 0, 0, 0.08, r * 0.5, r * 0.9, hdr('#fff0d0', 2), 0.7, FR.STAR, F_ADD, 0, 0);
     fireball(x, 18, y, high ? (ultra ? 26 : 20) : 10, r * 0.3, r * 1.5, 0.8, FIRE_TINT, 0.5);
-    // shockwave: a hot ring racing over the ground and a soft vertical one
+    // shockwave: a hot ring racing over the ground, a soft vertical one, and a ripple in the air
     ring(x, 3, y, r * 2.8, 0.42, hdr('#ffd8a0', 1.8), 0.9, true, FR.SHOCK);
     ring(x, 30, y, r * 2.2, 0.3, hdr('#ffe8c0', 1.2), 0.4, false, FR.SOFTRING);
+    fx0.distort(x, 26, y, r * 1.9, 1, 0.6, 1);
     sparks(x, 20, y, 0, TAU, high ? 30 : 12, 650, HOT_SPARK);
+    // shrapnel: long fast streaks that fly out and skip along the ground
+    for (let k = 0; k < (high ? 14 : 5); k++) {
+      const a = R() * TAU, sp = 700 + R() * 700;
+      const i = fx.spawn(x, 14 + R() * 20, y, Math.cos(a) * sp, 40 + R() * 260, Math.sin(a) * sp, 0.3 + R() * 0.35, 1.1, 0.4, METAL_SPARK, 1, FR.DOT, F_ADD | F_STREAK | F_BOUNCE, 700, 0.6);
+      fx.stretchLast(i, 2.5);
+    }
     debris(x, 10, y, high ? 16 : 6, C('#2a2622'), 260, 3);
     // dust ring rolling outward, then a smoke column that glows while it is hot
     for (let k = 0; k < (high ? 16 : 7); k++) {
@@ -438,15 +628,83 @@ export function createEffects3D(ctx) {
     smoke(x, 20, y, high ? 16 : 6, r * 0.22, 3.4, C('#2a2826'), 0.55, 45, r * 0.3, true);
     smoke(x, 10, y, high ? 6 : 3, r * 0.3, 1.8, C('#6a5040'), 0.35, 20, r * 0.4, true);
     ctx.ground.decal('scorch', x, y, r * 0.42, R() * TAU, 0.95);
-    // scorch marks on nearby walls
-    for (let k = 0; k < (high ? 4 : 2); k++) {
-      const a = R() * TAU, dd = r * (0.4 + R() * 0.5);
+    // a crater and blast streaks on the ground, soot on nearby walls
+    const D = fx0.decals;
+    D.add(1, x, G(x, y), y, 0, 1, 0, r * 0.95, DC.CRATER, DK.DARK, 0.03, 0.028, 0.026, 0.85, 400);
+    D.add(1, x, G(x, y), y, 0, 1, 0, r * 1.9, DC.SCORCH + ((R() * DC.SCORCH_N) | 0), DK.DARK, 0.02, 0.019, 0.018, 0.7, 400);
+    for (let k = 0; k < (high ? 5 : 2); k++) {
+      const a = R() * TAU, dd = r * (0.4 + R() * 0.6);
       const sx = x + Math.cos(a) * dd, sy = y + Math.sin(a) * dd;
       const s = surf(sx, sy, _s);
-      if (s) fx.decal(sx, 6 + R() * 20, sy, s.nx, 0, s.ny, r * 0.35, FR.SCORCH, SCORCH, 0.8, 60);
+      if (s) {
+        const hh = 6 + R() * 30;
+        mark(sx, hh, sy, s.nx, s.ny, true, s, r * 0.5, DC.SCORCH + ((R() * DC.SCORCH_N) | 0), DK.DARK, SCORCH, 0.85, 400);
+        mark(sx, hh + r * 0.2, sy, s.nx, s.ny, true, s, r * 0.4, DC.SOOT, DK.DARK, SCORCH, 0.5, 400);
+      }
     }
+    // stages: a second fireball, the smoke column, the cap; then embers and a smoulder that linger
+    stages.push({ at: now + 0.09, kind: 1, x, y, r }, { at: now + 0.22, kind: 2, x, y, r }, { at: now + 0.5, kind: 3, x, y, r });
+    emitters.push({ kind: 'embers', x, y, age: 0, life: 5 + r / 60, acc: 0, r });
+    if (r >= 90) emitters.push({ kind: 'smolder', x, y, age: 0, life: 7 + r / 40, acc: 0, r });
     shakeAt(x, y, Math.min(1, (r / 160) * 0.95), 1400);
     if (d < r) ctx.shake(1);
+  }
+
+  function explosionStage(st) {
+    const { x, y, r } = st;
+    if (st.kind === 1) {
+      // the fire rolls up and out
+      fireball(x, 40, y, high ? 14 : 6, r * 0.28, r * 0.9, 0.7, FIRE_TINT, 0.42);
+      glowPuff(x, 46, y, r * 0.8, 0.22, hdr('#ff9a40', 1.6), 0.8);
+      fx0.distort(x, 40, y, r * 1.2, 0.6, 2.6, 0);
+    } else if (st.kind === 2) {
+      // a black plume climbs
+      smoke(x, 40, y, high ? 12 : 5, r * 0.26, 4.2, C('#1c1a19'), 0.6, 70, r * 0.2, true);
+      smoke(x, 70, y, high ? 6 : 3, r * 0.34, 4.6, C('#26231f'), 0.5, 55, r * 0.25, false);
+    } else {
+      // the cap: smoke spreads out at the top of the column
+      for (let k = 0; k < (high ? 10 : 4); k++) {
+        const a = (k / (high ? 10 : 4)) * TAU + R() * 0.5;
+        fx.spawn(x, 110 + r * 0.25, y, Math.cos(a) * r * 0.45, 8, Math.sin(a) * r * 0.45, 3.4 + R(), r * 0.3, r * 0.75, C('#33302c'), 0.42, SMOKES[k % 5], 0, -1, 0.9);
+      }
+    }
+  }
+
+  function zdie(e) {
+    if (e.ztype === 'bloater') return;               // its explosion event carries the show
+    const def = ZOMBIES[e.ztype] || ZOMBIES.walker;
+    const r = def.radius || 14;
+    const P = fx.gore;
+    // was it finished by a heavy hit? (a recent one close to the body)
+    let hh = null;
+    for (let k = 0; k < HEAVY_N; k++) {
+      const q = heavyHits[k];
+      if (now - q.t < 0.45 && (q.x - e.x) * (q.x - e.x) + (q.y - e.y) * (q.y - e.y) < 60 * 60) { hh = q; break; }
+    }
+    if (e.gib) {
+      // blown apart: limbs, a torso chunk and the head fly; blood on everything near
+      const power = hh ? 0.55 + hh.power * 0.45 : 0.7;
+      gore3.burst(e.x, e.y, hh ? hh.ang : NaN, power, r, e.id);
+      blood(e.x, 30, e.y, 0, TAU, high ? 18 : 8, 250, true);
+      fx.spawn(e.x, 34, e.y, 0, 12, 0, 0.7, r * 0.8, r * 3, P.mist, 0.55, FR.MIST, 0, 0, 2);
+      blood3.burstAround(e.x, e.y, r, power);
+      blood3.notePool(e.x, e.y, r * 1.8);
+      return;
+    }
+    const a = e.angle || 0;
+    blood(e.x, 26, e.y, a + Math.PI, 1.8, high ? 7 : 3, 130);
+    blood3.pool(e.x - Math.cos(a) * r * 0.25, e.y - Math.sin(a) * r * 0.25, r * (1.1 + R() * 0.3));
+    blood3.notePool(e.x, e.y, r * 1.2);
+    if (R() < 0.6) blood3.groundSplat(e.x + (R() - 0.5) * r * 3, e.y + (R() - 0.5) * r * 3, 7 + R() * 9, 0.75);
+    // a drag smear where it was moving when it fell
+    const mv = blood3.lastMove(e.id, e.x, e.y);
+    if (Number.isFinite(mv)) blood3.smear(e.x - Math.cos(mv) * (36 + R() * 34), e.y - Math.sin(mv) * (36 + R() * 34), e.x, e.y, r * 0.7, 0.8);
+    // a heavy finishing hit tears a limb off
+    if (hh && hh.power >= 0.5 && P.k > 0 && R() < 0.6) {
+      gore3.limb(e.x, e.y, hh.ang, hh.power, e.id);
+      blood(e.x, 32, e.y, hh.ang, 1.2, high ? 10 : 4, 280, true);
+      blood3.exitSpray(e.x, 30, e.y, hh.ang, hh.power, 0);
+    }
   }
 
   function handle(e) {
@@ -476,6 +734,11 @@ export function createEffects3D(ctx) {
         for (let k = 1; k < pts.length; k++) {
           const g = G(pts[k].x, pts[k].y);
           sparks(pts[k].x, 36 + g, pts[k].y, 0, TAU, high ? 8 : 3, 280, hdr('#a0e8ff', 3));
+          // crackling sparks skip along the ground and leave a small burn
+          if (high) {
+            sparks(pts[k].x, 6, pts[k].y, R() * TAU, TAU, 5, 240, hdr('#b8f0ff', 2.6));
+            if (R() < 0.5) fx0.decals.add(1, pts[k].x, g, pts[k].y, 0, 1, 0, 8 + R() * 6, DC.SCORCH + ((R() * DC.SCORCH_N) | 0), DK.DARK, 0.02, 0.02, 0.02, 0.4, 80);
+          }
           glowPuff(pts[k].x, 36 + g, pts[k].y, 18, 0.15, hdr('#80d8ff', 2), 0.8);
         }
         lights.flash(pts[0].x, pts[0].y, 40 + G(pts[0].x, pts[0].y), '#80d8ff', 2.6, 260, 0.12);
@@ -527,6 +790,7 @@ export function createEffects3D(ctx) {
         break;
       }
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind); break;
+      case 'zdie': zdie(e); break;
       case 'freeze': {
         // frost races over a zombie and locks it solid: ice shards, a cold flash
         for (let k = 0; k < (high ? 14 : 6); k++) {
@@ -534,6 +798,11 @@ export function createEffects3D(ctx) {
           fx.spawn(e.x, 20 + R() * 30, e.y, Math.cos(a) * s, 30 + R() * 80, Math.sin(a) * s, 0.8 + R() * 0.4, 1.8, 1.2, ICE_SHARD, 0.9, FR.SHARD, F_BOUNCE | F_SPIN, 600, 0.5);
         }
         sparkles(e.x, e.y, high ? 10 : 4, ICE_GLINT, 26);
+        for (let k = 0; k < (high ? 6 : 2); k++) {
+          const a = R() * TAU, sp = 15 + R() * 40;
+          fx.spawn(e.x + Math.cos(a) * 6, 16 + R() * 34, e.y + Math.sin(a) * 6, Math.cos(a) * sp, 8 + R() * 30, Math.sin(a) * sp, 1.1 + R() * 0.8, 6 + R() * 5, 3, ICE_GLINT, 0.9, FR.CRYSTAL, F_ADD | F_FLICKER | F_SPIN, 60, 1);
+        }
+        fx0.decals.add(1, e.x, G(e.x, e.y), e.y, 0, 1, 0, 60, DC.ASH, DK.PALE, 0.55, 0.75, 0.85, 0.5, 30);
         glowPuff(e.x, 30, e.y, 30, 0.25, hdr('#9ae8ff', 1.6), 0.7);
         ring(e.x, 2, e.y, 60, 0.4, hdr('#cfeeff', 1.2), 0.6);
         dust(e.x, 10, e.y, high ? 4 : 2, 14, FROST_MIST, 30, 1.2, 0.3);
@@ -551,6 +820,8 @@ export function createEffects3D(ctx) {
         smoke(e.x, 20, e.y, high ? 8 : 3, 16, 2.4, C('#241f1b'), 0.45, 40, r * 0.4, true);
         lights.flash(e.x, e.y, 30, '#ff9a40', 3, r * 3, 0.6);
         ctx.ground.decal('scorch', e.x, e.y, r * 0.55, R() * TAU, 0.6);
+        fx0.decals.add(1, e.x, G(e.x, e.y), e.y, 0, 1, 0, r * 1.7, DC.SCORCH + ((R() * DC.SCORCH_N) | 0), DK.DARK, 0.02, 0.018, 0.016, 0.7, 300);
+        emitters.push({ kind: 'smolder', x: e.x, y: e.y, age: 0, life: 8, acc: 0, r: r * 0.7 });
         shakeAt(e.x, e.y, 0.18, 900);
         break;
       }
@@ -569,6 +840,8 @@ export function createEffects3D(ctx) {
         if (p) {
           blood(p.x, 20, p.y, 0, TAU, high ? 14 : 6, 120, true);
           ctx.ground.decal('blood', p.x, p.y, 22, R() * TAU, 0.9);
+          blood3.pool(p.x, p.y, 20, 0.95);
+          blood3.notePool(p.x, p.y, 22);
         }
         break;
       }
@@ -647,6 +920,20 @@ export function createEffects3D(ctx) {
     tracerBudget = high ? 48 : 20;
     players.clear();
     if (view && view.players) for (const p of view.players) players.set(p.id, p);
+
+    // gore setting, blood on the ground, body parts, casings, delayed explosion stages
+    if (fx.setGore(frame.settings && frame.settings.gore) && fx.gore.k <= 0) gore3.clear();
+    blood3.update(view, frame);
+    gore3.step(dt);
+    casings.step(dt);
+    for (let k = stages.length - 1; k >= 0; k--) {
+      const st = stages[k];
+      if (now < st.at) continue;
+      stages.splice(k, 1);
+      gOff = rough ? G(st.x, st.y) : 0;
+      explosionStage(st);
+      gOff = 0;
+    }
 
     // tracers: a bright head running from the muzzle to the hit point, trailing a tail
     let w = 0;
@@ -727,6 +1014,36 @@ export function createEffects3D(ctx) {
         }
         fx.glow(em.x, 5, em.y, 14 + Math.sin(now * 30) * 2, hdr('#ff5a3a', 3), 1);
         lights.steady('flare' + k, em.x, em.y, 12, '#ff4a2a', 1.4 * Math.min(1, (em.life - em.age) / 1.5), 220);
+        // a hot flare glow that pulses, with a soft star
+        fx.glow(em.x, 12, em.y, 34 + Math.sin(now * 21) * 4, hdr('#ff3a20', 1.3), 0.5);
+        gOff = 0;
+      } else if (em.kind === 'embers') {
+        // glowing sparks that drift up from the blast site, and flakes of ash
+        gOff = rough ? G(em.x, em.y) : 0;
+        const fade = 1 - em.age / em.life;
+        em.acc += dt * (ultra ? 15 : high ? 8 : 3) * fade;
+        while (em.acc >= 1 && fx.load() < 0.9) {
+          em.acc -= 1;
+          const a = R() * TAU, rr = Math.sqrt(R()) * em.r * 0.5;
+          const px = em.x + Math.cos(a) * rr, py = em.y + Math.sin(a) * rr;
+          if (R() < 0.7) fx.spawn(px, 3 + R() * 10, py, (R() - 0.3) * 26, 40 + R() * 70, (R() - 0.5) * 26, 1.1 + R() * 1.3, 1.5 + R() * 1.2, 0.5, hdr('#ffab50', 3), 1, FR.EMBER, F_ADD | F_FLICKER, -14, 0.6);
+          else fx.spawn(px, 6 + R() * 12, py, (R() - 0.3) * 30, 30 + R() * 40, (R() - 0.5) * 30, 2 + R() * 1.5, 1.6, 1.2, C('#3a3733'), 0.7, FR.DOT, 0, -6, 0.8);
+        }
+        gOff = 0;
+      } else if (em.kind === 'smolder') {
+        // the wreckage keeps burning low for a while: small flames, black smoke, an orange glow
+        gOff = rough ? G(em.x, em.y) : 0;
+        const fade = Math.min(1, (em.life - em.age) / 2);
+        em.acc += dt * (ultra ? 7 : high ? 4 : 1.5) * fade;
+        while (em.acc >= 1 && fx.load() < 0.85) {
+          em.acc -= 1;
+          const a = R() * TAU, rr = Math.sqrt(R()) * em.r * 0.45;
+          const i = fx.spawn(em.x + Math.cos(a) * rr, 2, em.y + Math.sin(a) * rr, (R() - 0.5) * 8, 30 + R() * 30, (R() - 0.5) * 8, 0.5 + R() * 0.4, 6 + R() * 5, 3, WHITE, 0.8, R() < 0.5 ? FR.FLAME : FR.FLAME2, F_ADD | F_FIRE | F_FLICKER, -30, 1);
+          fx.stretchLast(i, 1.5);
+          if (R() < 0.5) fx.spawn(em.x + Math.cos(a) * rr, 16, em.y + Math.sin(a) * rr, (R() - 0.5) * 8, 30, (R() - 0.5) * 8, 2.6, 10, 34, C('#1c1a19'), 0.4, SMOKES[(R() * 5) | 0], F_HOT, -6, 0.4);
+        }
+        fx.glow(em.x, 2, em.y, em.r * 1.6, hdr('#ff7a2a', 1.4), 0.22 * fade, FR.GLOW, true);
+        lights.steady('smolder' + k, em.x, em.y, 24, '#ff8a33', 0.9 * fade, em.r * 2.4);
         gOff = 0;
       }
     }
@@ -769,15 +1086,24 @@ export function createEffects3D(ctx) {
     setQuality(q) {
       high = q !== 'low';
       ultra = q === 'ultra';
+      env.high = high;
+      env.ultra = ultra;
       fx.setQuality(q);
+      gore3.setQuality(q);
+      casings.setQuality(q);
+      blood3.setQuality(q);
     },
     dispose() {
       for (const m of crateMeshes) m.removeFromParent();
       crateGeo.dispose();
+      gore3.dispose();
+      casings.dispose();
       releaseFx(ctx);
     },
     /** Test hook: live effect counts. */
-    get stats() { return { tracers: tracers.length, arcs: arcs.length, rails: rails.length, ...fx.stats }; },
+    get stats() { return { tracers: tracers.length, arcs: arcs.length, rails: rails.length, pieces: gore3.count, casings: casings.count, ...fx.stats }; },
+    /** Test hook: the shared fx pools (decal ring buffers, palette). */
+    get fx() { return fx0; },
   };
 }
 
@@ -799,63 +1125,6 @@ function jagged(out, x0, h0, y0, x1, h1, y1, L, seg, seed, sideK, upK) {
 function hashf(n) {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
-}
-
-/**
- * Surface lookup over the map's obstacles (oriented rectangles): for a point on or next
- * to one, its outward face normal (sim axes) and height. A uniform grid keeps it cheap.
- */
-function surfaceIndex(ctx) {
-  const ground = ctx.groundY || (() => 0);
-  const obs = (ctx.map && ctx.map.obstacles) || [];
-  const CELL = 128;
-  const grid = new Map();
-  for (let i = 0; i < obs.length; i++) {
-    const o = obs[i];
-    const r = Math.hypot(o.w, o.h) / 2 + 4;
-    for (let gx = Math.floor((o.x - r) / CELL); gx <= Math.floor((o.x + r) / CELL); gx++) {
-      for (let gy = Math.floor((o.y - r) / CELL); gy <= Math.floor((o.y + r) / CELL); gy++) {
-        const k = gx * 4096 + gy;
-        let l = grid.get(k);
-        if (!l) { l = []; grid.set(k, l); }
-        l.push(o);
-      }
-    }
-  }
-  const heights = new Map();
-  const heightOf = (o) => {
-    let h = heights.get(o);
-    if (h === undefined) {
-      try { h = ctx.heightOf ? ctx.heightOf(o.kind, o) : 40; } catch { h = 40; }
-      if (!Number.isFinite(h)) h = 40;
-      heights.set(o, h);
-    }
-    return h;
-  };
-  return (x, y, out) => {
-    const l = grid.get(Math.floor(x / CELL) * 4096 + Math.floor(y / CELL));
-    if (!l) return null;
-    let best = null, bd = 4;
-    for (const o of l) {
-      const c = Math.cos(o.a || 0), s = Math.sin(o.a || 0);
-      const dx = x - o.x, dy = y - o.y;
-      const lx = dx * c + dy * s, ly = -dx * s + dy * c;
-      const ex = Math.abs(lx) - o.w / 2, ey = Math.abs(ly) - o.h / 2;
-      const d = Math.max(ex, ey);
-      if (d > bd || d < -6) continue;
-      bd = d;
-      best = o;
-      // face normal in local space → world
-      let nlx = 0, nly = 0;
-      if (ex > ey) nlx = Math.sign(lx) || 1; else nly = Math.sign(ly) || 1;
-      out.nx = nlx * c - nly * s;
-      out.ny = nlx * s + nly * c;
-    }
-    if (!best) return null;
-    out.top = heightOf(best) + ground(best.x, best.y);
-    out.kind = best.kind;
-    return out;
-  };
 }
 
 export { createEffects3D as createEffects };

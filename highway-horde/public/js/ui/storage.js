@@ -27,6 +27,7 @@ export const DEFAULT_CLIENT_SETTINGS = {
   vignette: true,
   volumetrics: true,   // ground mist + lamps / fires glowing in the air ('high'/'ultra')
   reflections: true,   // wet-ground and water reflections ('high'/'ultra')
+  gore: 'on',          // 'on' | 'low' (less blood, no limbs) | 'off' (dark ash instead of red, no gibs)
   lighting: true,
   screenShake: true,
   showNames: true,
@@ -59,6 +60,8 @@ export const UI_SCALE_MIN = 0.75;
 export const UI_SCALE_MAX = 1.5;
 export const ANTIALIAS_MODES = ['smaa', 'fxaa', 'off'];
 export const QUALITIES = ['ultra', 'high', 'low'];
+/** Gore levels: 'off' replaces blood with dark ash and nobody is blown apart. */
+export const GORE_MODES = ['on', 'low', 'off'];
 
 /**
  * The effect toggles each graphics preset sets (the preset's name is the quality). Also the
@@ -189,6 +192,7 @@ export function validateSettings(s) {
     vignette: bool(s.vignette, fx.vignette),
     volumetrics: bool(s.volumetrics, fx.volumetrics),
     reflections: bool(s.reflections, fx.reflections),
+    gore: oneOf(s.gore, GORE_MODES, ds.gore),
     lighting: bool(s.lighting, ds.lighting),
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),

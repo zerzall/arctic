@@ -12,7 +12,9 @@
 // every frame: ~1.08 at 1080p, 1.44 at 1440p, 2.16 at 4K, 1 on touch; 1 when absent), so
 // on a large PC screen the crosshair, tags and markers keep their on-screen proportions
 // instead of shrinking to hairlines; the canvas is drawn at the device pixel ratio, so
-// they stay crisp.
+// they stay crisp. Blood on the lens: hits on the local player and kills at arm's length
+// splatter the screen (a small fixed pool of splats that hang, run down and fade; dark ash
+// with the gore setting off, none on 'low' gore).
 
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS, BLEEDOUT_TIME } from '../shared/constants.js';
@@ -21,6 +23,42 @@ import { angleDiff } from './actor-kit.js';
 const TAU = Math.PI * 2;
 const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const TAG_H = 74;          // name tag height above a standing teammate's feet (world units)
+const LENS_CAP = 10;
+
+/** A few blood splat sprites (white on transparent, tinted when drawn): centre blob, arms, droplets. */
+function makeSplats(n, color) {
+  const out = [];
+  let seed = 977;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let v = 0; v < n; v++) {
+    const S = 128, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    g.translate(S / 2, S / 2);
+    // a darker heart fading to a lighter, thinner rim, so it reads as a wet film and not a sticker
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, S * 0.5);
+    gr.addColorStop(0, color[0]);
+    gr.addColorStop(0.55, color[1]);
+    gr.addColorStop(1, color[2]);
+    g.fillStyle = gr;
+    g.beginPath();
+    for (let k = 0; k < 14; k++) {
+      const a = (k / 14) * TAU, r = S * (0.13 + rnd() * 0.06);
+      if (k) g.lineTo(Math.cos(a) * r, Math.sin(a) * r); else g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    g.closePath(); g.fill();
+    for (let k = 0; k < 10; k++) {
+      const a = rnd() * TAU, L = S * (0.22 + rnd() * 0.22), w = S * (0.018 + rnd() * 0.03);
+      g.beginPath(); g.moveTo(Math.cos(a + 1.57) * w, Math.sin(a + 1.57) * w); g.lineTo(Math.cos(a) * L, Math.sin(a) * L); g.lineTo(Math.cos(a - 1.57) * w, Math.sin(a - 1.57) * w); g.fill();
+      g.beginPath(); g.arc(Math.cos(a) * (L + w * 1.4), Math.sin(a) * (L + w * 1.4), w * 1.3, 0, TAU); g.fill();
+    }
+    for (let k = 0; k < 18; k++) { const a = rnd() * TAU, d = S * (0.3 + rnd() * 0.18); g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, S * (0.006 + rnd() * 0.014), 0, TAU); g.fill(); }
+    out.push(c);
+  }
+  return out;
+}
+let lensSplats = null;    // { red: [canvas...], ash: [canvas...] }
+const LENS = Array.from({ length: LENS_CAP }, () => ({ x: 0, y: 0, size: 0, age: 99, life: 4, rot: 0, v: 0, k: 0, tone: 0 }));
 
 /**
  * @param {object} ctx renderer ctx (SPEC §7.5)
@@ -31,6 +69,23 @@ export function createOverlay3D(ctx) {
   let hitT = 9, killT = 9, hitHeavy = 0, bloom = 0, dmgPulse = 0, now = 0;
   let objHitAt = -99;         // frame.now of the last 'objhit' (the objective pointer shows a while)
   const arcs = [];            // { a (world angle from the player to the source), age, amount }
+  let goreMode = 'on';
+  let lensHead = 0;
+  function lensSplat(k, near) {
+    if (goreMode === 'low' && Math.random() < 0.5) return;
+    if (!lensSplats) lensSplats = { red: makeSplats(4, ['#4a0606', '#700b0b', '#8c1414']), ash: makeSplats(4, ['#222226', '#303036', '#3c3c42']) };
+    const { w: W, h: H } = size();
+    const n = near ? 1 : 1 + ((Math.random() * 2) | 0);
+    for (let i = 0; i < n; i++) {
+      const L = LENS[lensHead];
+      lensHead = (lensHead + 1) % LENS_CAP;
+      // biased toward the edges, where it hangs longest
+      const a = Math.random() * TAU, r = 0.28 + Math.random() * 0.24;
+      L.x = W * (0.5 + Math.cos(a) * r * 1.1); L.y = H * (0.5 + Math.sin(a) * r);
+      L.size = Math.min(W, H) * (near ? 0.16 + Math.random() * 0.18 : 0.1 + k * 0.1 + Math.random() * 0.08);
+      L.age = 0; L.life = 3.2 + Math.random() * 2.4; L.rot = Math.random() * TAU; L.v = 4 + Math.random() * 10; L.k = 0.55 + k * 0.4; L.tone = (Math.random() * 4) | 0;
+    }
+  }
   let lastLocal = null;
   // UI scale and fonts for the current viewport (see header)
   let ui = 1, FONT = '', FONT_SMALL = '', fontFor = 0;
@@ -75,14 +130,21 @@ export function createOverlay3D(ctx) {
         case 'melee':
           if (e.pid === localId && e.hits > 0) { hitT = 0; hitHeavy = 0.6; }
           break;
-        case 'zdie':
-          if (e.by && e.by === localId) killT = 0;
+        case 'zdie': {
+          if (e.by && e.by === localId) {
+            killT = 0;
+            // a kill at arm's length spatters the lens
+            const lp = lastLocal;
+            if (lp && lp.state !== 'dead' && Math.hypot(e.x - lp.x, e.y - lp.y) < 90) lensSplat(0.8, true);
+          }
           break;
+        }
         case 'objhit':
           objHitAt = now;
           break;
         case 'pdamage':
           if (e.pid === localId) {
+            lensSplat(Math.min(1, (e.amount || 10) / 40), false);
             arcs.push({ x: e.x, y: e.y, age: 0, amount: e.amount || 10 });
             if (arcs.length > 8) arcs.shift();
             dmgPulse = Math.min(1, dmgPulse + 0.3 + (e.amount || 0) / 50);
@@ -104,6 +166,7 @@ export function createOverlay3D(ctx) {
     if (!(W > 0 && H > 0)) return;
     const settings = frame.settings || {};
     setScale(settings);
+    goreMode = settings.gore === 'off' || settings.gore === 'low' ? settings.gore : 'on';
     const yaw = frame.yaw || 0;
     hitT += dt; killT += dt;
     bloom = Math.max(0, bloom - dt * 2.2);
@@ -113,6 +176,7 @@ export function createOverlay3D(ctx) {
     g.lineJoin = 'round';
 
     screenTint(local, W, H);
+    lensBlood(dt, W, H);
     teammates(view, frame, W, H, settings, yaw);
     objectiveArrow(view, frame, W, H, yaw);
     damageArcs(local, dt, W, H, yaw);
@@ -432,6 +496,33 @@ export function createOverlay3D(ctx) {
     arcs.length = w;
   }
 
+  /** Blood (or, with gore off, dark ash) on the lens: splats that hang, creep down and fade. */
+  function lensBlood(dt, W, H) {
+    if (!lensSplats) return;
+    const ash = goreMode === 'off';
+    for (let i = 0; i < LENS_CAP; i++) {
+      const L = LENS[i];
+      if (L.age >= L.life) continue;
+      L.age += dt;
+      const t = L.age / L.life;
+      L.y += L.v * dt * (1 - t);
+      const fade = t < 0.06 ? t / 0.06 : 1 - Math.pow(Math.max(0, (t - 0.35) / 0.65), 1.6);
+      if (fade <= 0.01) continue;
+      g.globalAlpha = Math.min(0.9, fade * L.k);
+      const sp = (ash ? lensSplats.ash : lensSplats.red)[L.tone];
+      const sz = L.size * (0.85 + 0.15 * Math.min(1, L.age * 6));
+      g.save();
+      g.translate(L.x, L.y);
+      g.rotate(L.rot);
+      g.drawImage(sp, -sz / 2, -sz / 2, sz, sz);
+      // a streak running down from it
+      g.restore();
+      g.fillStyle = ash ? 'rgba(50,50,56,0.5)' : 'rgba(110,8,8,0.55)';
+      const runLen = Math.min(H * 0.12, L.age * L.v * 1.2);
+      g.fillRect(L.x - sz * 0.02, L.y, sz * 0.04, runLen);
+    }
+    g.globalAlpha = 1;
+  }
   function screenTint(local, W, H) {
     if (!local || local.state === 'dead') return;
     const hp = Math.max(0, Math.min(1, local.hp / (local.maxHp || 100)));

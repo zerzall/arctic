@@ -46,6 +46,37 @@ if (THREE.ShaderChunk.lights_pars_begin.includes(SPOT_ATT) && THREE.ShaderChunk.
     .replace(SPOT_DIST, 'light.color *= getDistanceAttenuation( max( lightDistance, 64.0 ), spotLight.distance, spotLight.decay );');
 }
 
+/** The torch's lens cookie: a soft hot centre, faint ring artefacts, a little dust. */
+function makeFlashCookie() {
+  const S = 128, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(S / 2 + 3, S / 2 - 2, 0, S / 2, S / 2, S / 2);
+  gr.addColorStop(0, '#ffffff');
+  gr.addColorStop(0.45, '#f2ece0');
+  gr.addColorStop(0.8, '#cfc8bc');
+  gr.addColorStop(1, '#a8a196');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, S, S);
+  g.strokeStyle = 'rgba(70,60,50,0.10)';
+  for (const r of [0.34, 0.58, 0.8]) { g.lineWidth = 2.5; g.beginPath(); g.arc(S / 2, S / 2, r * S / 2, 0, Math.PI * 2); g.stroke(); }
+  // filament: a brighter warm smear off-centre
+  g.fillStyle = 'rgba(255,240,205,0.22)';
+  g.beginPath(); g.ellipse(S / 2 + 4, S / 2 - 3, 7, 14, 0.5, 0, Math.PI * 2); g.fill();
+  let seed = 31;
+  for (let i = 0; i < 26; i++) {
+    seed = (seed * 16807) % 2147483647;
+    const a = (seed / 2147483647) * Math.PI * 2;
+    seed = (seed * 16807) % 2147483647;
+    const d = Math.sqrt(seed / 2147483647) * S * 0.46;
+    g.fillStyle = 'rgba(40,36,30,0.13)';
+    g.beginPath(); g.arc(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, 0.8 + (i % 4) * 0.7, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /**
  * @param {object} o { scene, camera, map, quality, heightAt?(x, y) base height of fires, time: 'night'|'day' }
  *   By day the "moon" is the sun (same directional light and shadow map, warm and strong),
@@ -75,12 +106,18 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.5, 0.72, 1.12);
   flash.target = new THREE.Object3D();
   group.add(flash, flash.target);
+  // The lens of a torch is not clean: a cookie (three.js applies a spot light's map only while
+  // it casts shadows, so 'high' / 'ultra') gives the beam a faint filament hot spot, a ring
+  // or two from the reflector and specks of dust; it also stays soft, never a hard disc.
+  const cookie = makeFlashCookie();
+  flash.map = null;
   let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
   let high = tier !== 'low';
   const POOL = { ultra: 12, high: 8, low: 4 };
   const setShadows = () => {
     // (no flashlight by day: its shadow pass over the actors would draw nothing)
     flash.castShadow = high && !day;
+    flash.map = flash.castShadow ? cookie : null;
     const size = tier === 'ultra' ? 2048 : 1024;
     if (flash.shadow.mapSize.x !== size && flash.shadow.map) {
       flash.shadow.map.dispose();
@@ -209,12 +246,18 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     // Off = zero intensity, never visible = false: hiding the light changes the scene's
     // spot-light count, which recompiled every lit material (a hitch of ~12 programs) the
     // moment the player died and again on respawn.
-    flash.intensity = on ? FLASH_I : 0;
+    // a torch is never perfectly steady: a slight flutter, and now and then a brief dip
+    const dipPh = time % 13.7;
+    const dip = dipPh < 0.16 ? 0.14 * Math.pow(Math.sin(dipPh / 0.16 * Math.PI * 3), 2) : 0;
+    const flick = 0.985 + 0.015 * Math.sin(time * 31.7 + 1) * Math.sin(time * 11.3) - dip;
+    flash.intensity = on ? FLASH_I * flick : 0;
     const cp = camera.position;
     const rx = -_fwd.z, rz = _fwd.x;   // right = forward × up
     const rl = Math.hypot(rx, rz) || 1;
     flash.position.set(cp.x + (rx / rl) * 7, cp.y - 7, cp.z + (rz / rl) * 7);
-    flash.target.position.set(cp.x + _fwd.x * 200, cp.y + _fwd.y * 200 - 4, cp.z + _fwd.z * 200);
+    // the hand holding it sways a little (the beam drifts a few units at 200 out)
+    const swx = Math.sin(time * 1.3) * 1.7 + Math.sin(time * 2.9) * 0.6, swy = Math.cos(time * 1.7) * 1.1 + Math.sin(time * 3.7) * 0.4;
+    flash.target.position.set(cp.x + _fwd.x * 200 + (rx / rl) * swx, cp.y + _fwd.y * 200 - 4 + swy, cp.z + _fwd.z * 200 + (rz / rl) * swx);
     flash.target.updateMatrixWorld();
 
     const boost = f.lightingBoost || 1;
@@ -412,6 +455,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
     dispose() {
       flash.shadow.map?.dispose();
+      cookie.dispose();
       moon.shadow.map?.dispose();
       blindRT?.dispose();
       shadowScene.clear();

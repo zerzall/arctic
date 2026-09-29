@@ -18,7 +18,7 @@ import { PICKUP_KINDS } from '../shared/items.js';
 import { BARRICADE, PLAYER_COLORS } from '../shared/constants.js';
 import { col, makeCanvas, canvasTexture, hash01 } from './actor-kit.js';
 import { gunObject, gunMaterials, gunKit } from './actor-guns.js';
-import { acquireFx, releaseFx, F_ADD, F_FIRE, F_FLICKER, F_BOUNCE, F_HOT, FR } from './fx-core.js';
+import { acquireFx, releaseFx, F_ADD, F_FIRE, F_FLICKER, F_BOUNCE, F_HOT, FR, DC, DK } from './fx-core.js';
 
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
@@ -472,6 +472,7 @@ export function createItems3D(ctx) {
   const WHITE = new THREE.Color(1, 1, 1);
   const FLAME_BASE = new THREE.Color(1, 0.78, 0.55);   // warm base under the fire ramp
   let frameNo = 0;
+  const burnt = new Set();          // fire hazards that already scorched the ground
   const hazardLights = [];
   const flareLights = [];
 
@@ -739,6 +740,14 @@ export function createItems3D(ctx) {
         continue;
       }
       if (h.kind === 'fire') {
+        // the ground under it chars: an oily black pool, then soot round the edge
+        if (!burnt.has(h.id)) {
+          if (burnt.size > 300) burnt.clear();
+          burnt.add(h.id);
+          const D = fx0.decals;
+          D.add(1, h.x, G(h.x, h.y), h.y, 0, 1, 0, r * 2.1, DC.POOL + ((R() * DC.POOL_N) | 0), DK.DARK, 0.03, 0.026, 0.022, 0.55, 260);
+          D.add(1, h.x, G(h.x, h.y), h.y, 0, 1, 0, r * 2.6, DC.SCORCH + ((R() * DC.SCORCH_N) | 0), DK.DARK, 0.02, 0.018, 0.016, 0.5, 260);
+        }
         // flames scattered over the patch, spreading out from the burst over the first second
         const spread = Math.min(1, 0.35 + (1 - life) * 7 / 1.1);
         const rr0 = r * spread;

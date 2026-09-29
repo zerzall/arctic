@@ -33,6 +33,8 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { AtmosPass } from './post-atmos.js';
 
+const DIST_N = 4;
+
 /** Settings the chain understands, with their defaults (SPEC §7.5 graphics settings). */
 export const POST_DEFAULTS = Object.freeze({
   renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
@@ -62,6 +64,24 @@ export function normPostSettings(s) {
     volumetrics: o.volumetrics !== false,
     reflections: o.reflections !== false,
   };
+}
+
+/**
+ * The night colour grade per map (the day grade lives in daylight.js): the default night look
+ * (cool shadows, warm highlights) nudged toward each place's light — the truck stop's sodium
+ * lamps, the bridge's cold mist, the checkpoint's sickly floodlights, Harlan's amber dusk.
+ */
+export function nightGradeFor(map) {
+  const base = { contrast: 1.08, saturation: 0.92, lift: [0.006, 0.010, 0.020], gamma: [1, 1, 1.02], gain: [1.02, 1.0, 0.97], vignette: 0.32, grain: 0.038, bloom: 0.5, bloomThreshold: 1.2 };
+  const id = map && map.id;
+  const tweak = {
+    highway: { saturation: 0.95, lift: [0.005, 0.009, 0.022], gain: [1.03, 1.0, 0.96] },
+    truckstop: { saturation: 0.98, lift: [0.010, 0.010, 0.016], gain: [1.05, 1.0, 0.93], gamma: [1, 1, 1.0] },
+    bridge: { saturation: 0.86, contrast: 1.1, lift: [0.004, 0.011, 0.026], gain: [0.99, 1.0, 1.02], vignette: 0.36 },
+    checkpoint: { saturation: 0.9, lift: [0.006, 0.014, 0.014], gain: [1.0, 1.03, 0.96], gamma: [1, 1.01, 1.0] },
+    harlan: { saturation: 1.0, contrast: 1.06, lift: [0.010, 0.008, 0.014], gain: [1.06, 1.0, 0.92], gamma: [1.0, 1.0, 1.0], vignette: 0.3 },
+  }[id];
+  return tweak ? { ...base, ...tweak } : base;
 }
 
 // ---- passes -------------------------------------------------------------------------
@@ -102,9 +122,10 @@ class DepthAOPass extends Pass {
   configure(q) {
     const ultra = q === 'ultra';
     // units: 1 world unit ≈ 3 cm, so radius 20 ≈ 0.6 m of contact shadow
-    this.gtao.updateGtaoMaterial({ radius: 20, distanceExponent: 1.6, thickness: 12, scale: 1.15, samples: ultra ? 16 : 10, distanceFallOff: 1 });
+    // (contact shadow polish: a touch tighter and stronger where two surfaces meet, ultra a little more)
+    this.gtao.updateGtaoMaterial({ radius: ultra ? 18 : 20, distanceExponent: 1.7, thickness: 12, scale: ultra ? 1.28 : 1.18, samples: ultra ? 16 : 10, distanceFallOff: 1 });
     this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: ultra ? 8 : 6, rings: 2, samples: ultra ? 12 : 8 });
-    this.blend.uniforms.intensity.value = 0.85;
+    this.blend.uniforms.intensity.value = ultra ? 0.92 : 0.85;
   }
 
   setSize(w, h) {
@@ -185,6 +206,13 @@ const GRADE_SHADER = {
     uGain: { value: new THREE.Vector3(1.02, 1.0, 0.97) },
     uAspect: { value: 16 / 9 },
     uHurt: { value: 0 },
+    // heat shimmer / shockwave sources (screen uv + radius in heights + strength | kind, age 0..1)
+    uDist: { value: Array.from({ length: DIST_N }, () => new THREE.Vector4()) },
+    uDistB: { value: Array.from({ length: DIST_N }, () => new THREE.Vector4()) },
+    uDistN: { value: 0 },
+    // lens flare: the sun / moon in screen uv, strength (0 = off), tint
+    uFlare: { value: new THREE.Vector3(0.5, 0.5, 0) },
+    uFlareCol: { value: new THREE.Vector3(1, 0.9, 0.7) },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -193,6 +221,10 @@ const GRADE_SHADER = {
     uniform sampler2D tDiffuse;
     uniform float uTime, uGrain, uVignette, uContrast, uSaturation, uAspect, uHurt;
     uniform vec3 uLift, uGamma, uGain;
+    uniform vec4 uDist[${DIST_N}];
+    uniform vec4 uDistB[${DIST_N}];
+    uniform int uDistN;
+    uniform vec3 uFlare, uFlareCol;
     // the material is toneMapped: false, so three's prefix never adds these (it always
     // adds colorspace_pars_fragment, whose sRGBTransferOETF is used below)
     #include <tonemapping_pars_fragment>
@@ -202,18 +234,68 @@ const GRADE_SHADER = {
       p3 += dot(p3, p3.yzx + 33.33);
       return fract((p3.x + p3.y) * p3.z);
     }
+    float maxc(vec3 v) { return max(v.r, max(v.g, v.b)); }
+    // heat shimmer (kind 0: a slow wobble over a fire) and shockwaves (kind 1: a ring of
+    // refraction racing outward), as a uv offset
+    vec2 distortion(vec2 uv) {
+      vec2 off = vec2(0.0);
+      for (int i = 0; i < ${DIST_N}; i++) {
+        if (i >= uDistN) break;
+        vec4 d = uDist[i];
+        vec4 b = uDistB[i];
+        vec2 v = (uv - d.xy) * vec2(uAspect, 1.0);
+        float l = length(v);
+        if (b.x < 0.5) {
+          float f = smoothstep(d.z, d.z * 0.15, l) * d.w;
+          off += vec2(sin(uv.y * 70.0 + uTime * 9.0) + 0.6 * sin(uv.y * 130.0 - uTime * 13.0), cos(uv.x * 60.0 + uTime * 7.0)) * 0.0028 * f;
+        } else {
+          float rr = d.z * b.y;
+          float w = d.z * 0.16 + 0.006;
+          float band = exp(-pow((l - rr) / w, 2.0));
+          off += (v / max(l, 1e-4)) * band * d.w * 0.03 * (1.0 - b.y) / vec2(uAspect, 1.0);
+        }
+      }
+      return off;
+    }
+    // lens flare of the sun / moon: streak, halo ring and ghosts along the line through the
+    // screen centre; visible only where the HDR disc itself is (a wall or a cloud in front hides it)
+    vec3 lensFlare(vec2 uv) {
+      vec2 sp = uFlare.xy;
+      vec2 o = vec2(0.005 / uAspect, 0.005);
+      float lum = (maxc(texture2D(tDiffuse, sp).rgb) + maxc(texture2D(tDiffuse, sp + o).rgb) + maxc(texture2D(tDiffuse, sp - o).rgb)
+        + maxc(texture2D(tDiffuse, sp + vec2(o.x, -o.y)).rgb) + maxc(texture2D(tDiffuse, sp + vec2(-o.x, o.y)).rgb)) * 0.2;
+      float vis = smoothstep(1.6, 6.0, lum);
+      float edge = smoothstep(0.0, 0.14, min(min(sp.x, 1.0 - sp.x), min(sp.y, 1.0 - sp.y)));
+      vec2 dd = (uv - sp) * vec2(uAspect, 1.0);
+      vec3 fl = uFlareCol * exp(-abs(dd.y) * 110.0) * exp(-abs(dd.x) * 3.2) * 0.55;
+      fl += uFlareCol * exp(-pow((length(dd) - 0.2) / 0.022, 2.0)) * 0.22;
+      vec2 axis = vec2(0.5) - sp;
+      for (int k = 1; k <= 4; k++) {
+        vec2 gp = sp + axis * (float(k) * 0.55 - 0.1);
+        vec2 gd = (uv - gp) * vec2(uAspect, 1.0);
+        float r = 0.02 + 0.011 * float(k);
+        float g = length(gd);
+        vec3 tint = mix(uFlareCol, vec3(0.5, 0.8, 1.0), float(k) * 0.2);
+        fl += tint * (smoothstep(r, r * 0.2, g) * 0.16 + exp(-pow((g - r) / (r * 0.3), 2.0)) * 0.4) * (0.7 / float(k));
+      }
+      return fl * uFlare.z * vis * edge;
+    }
     void main() {
-      vec4 src = texture2D(tDiffuse, vUv);
+      vec2 uv = vUv;
+      if (uDistN > 0) uv += distortion(vUv);
+      vec4 src = texture2D(tDiffuse, uv);
       vec3 c = max(src.rgb, 0.0);
+      if (uFlare.z > 0.001) c += lensFlare(vUv);
       // hurt: the edges of the view split into colour fringes and drain of colour (only
       // while the local player is hurt: a uniform branch, free otherwise)
       float hurtDesat = 0.0;
       if (uHurt > 0.002) {
         vec2 dc = vUv - 0.5;
         vec2 off = dc * dot(dc, dc) * uHurt * 0.05;
-        c.r = max(texture2D(tDiffuse, vUv + off).r, 0.0);
-        c.b = max(texture2D(tDiffuse, vUv - off).b, 0.0);
-        hurtDesat = uHurt * 0.35 * smoothstep(0.05, 0.5, length(dc));
+        c.r = max(texture2D(tDiffuse, uv + off).r, 0.0);
+        c.b = max(texture2D(tDiffuse, uv - off).b, 0.0);
+        // the colour drains from the whole view as health runs out, most at the edges
+        hurtDesat = uHurt * (0.14 + 0.28 * smoothstep(0.05, 0.5, length(dc)));
       }
       c = ACESFilmicToneMapping(c);
       c = sRGBTransferOETF(vec4(c, 1.0)).rgb;
@@ -273,7 +355,7 @@ const UPSCALE_SHADER = {
  *   internal targets at prInner), configure(settings, quality), warm(), target (the world
  *   render target), readBuffer, passes, sceneInfo (world pass calls / triangles), dispose() }
  */
-export function createPost(renderer, { scene, camera, getViewmodel, quality, getAtmos, look }) {
+export function createPost(renderer, { scene, camera, getViewmodel, quality, getAtmos, look, getFx, flareDir, flareStrength, flareColor }) {
   const ext = renderer.extensions;
   // HDR needs a renderable float target; without one (rare mobile GPUs) fall back to 8-bit
   // and lower the bloom threshold so lights still glow
@@ -319,6 +401,12 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
     }`;
   bloomPass.materialHighPassFilter.needsUpdate = true;
   bloomPass.highPassUniforms.smoothWidth.value = 0.45;
+  // Bloom shaping: a tight bright core with a wide soft skirt whose outer mips lean warm by day
+  // and cool at night (the stock weights [1, .8, .6, .4, .2] all tint white)
+  bloomPass.compositeMaterial.uniforms.bloomFactors.value = [1.0, 0.86, 0.66, 0.5, 0.3];
+  const warmSkirt = look && look.saturation > 1;
+  bloomPass.bloomTintColors[3].set(...(warmSkirt ? [1.0, 0.93, 0.84] : [0.86, 0.93, 1.0]));
+  bloomPass.bloomTintColors[4].set(...(warmSkirt ? [1.0, 0.9, 0.78] : [0.78, 0.88, 1.0]));
   bloomPass.baseSetSize = bloomPass.setSize;
   bloomPass.lowRes = false;
   // 'low' starts the bloom mips at quarter instead of half resolution: 4x fewer pixels
@@ -403,10 +491,55 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
     return Math.min(1, low * 0.7 + hurtPulse * 0.8);
   }
 
+  // heat / shockwave sources and the sun's flare, projected to the screen each frame
+  const _v = new THREE.Vector3();
+  const _fwd = new THREE.Vector3();
+  function updateScreenFx() {
+    const gu = gradePass.uniforms;
+    let n = 0;
+    const fx = getFx ? getFx() : null;
+    if (fx && fx.distortions && fx.distortions.length) {
+      const fov = Math.tan(camera.fov * Math.PI / 360);
+      const list = fx.distortions;
+      camera.getWorldDirection(_fwd);
+      for (let i = 0; i < list.length && n < DIST_N; i++) {
+        const e = list[i];
+        _v.set(e.x, e.h, e.y).sub(camera.position);
+        const depth = _v.dot(_fwd);
+        if (depth < 20 || depth > 3000) continue;
+        const rUv = e.r / (2 * depth * fov);
+        if (rUv < 0.01) continue;
+        _v.set(e.x, e.h, e.y).project(camera);
+        if (Math.abs(_v.x) > 1.6 || Math.abs(_v.y) > 1.6) continue;
+        const age = e.age / e.life;
+        const fade = e.kind ? 1 : Math.min(1, age * 6) * Math.min(1, (1 - age) * 3);
+        gu.uDist.value[n].set(_v.x * 0.5 + 0.5, _v.y * 0.5 + 0.5, Math.min(0.9, rUv), e.k * fade);
+        gu.uDistB.value[n].set(e.kind, age, 0, 0);
+        n++;
+      }
+    }
+    gu.uDistN.value = n;
+    // lens flare
+    let fs = 0;
+    if (flareDir && flareStrength > 0 && q !== 'low') {
+      camera.getWorldDirection(_fwd);
+      if (_fwd.dot(flareDir) > 0.05) {
+        _v.copy(flareDir).multiplyScalar(2000).add(camera.position).project(camera);
+        if (_v.z < 1 && Math.abs(_v.x) < 1.3 && Math.abs(_v.y) < 1.3) {
+          gu.uFlare.value.set(_v.x * 0.5 + 0.5, _v.y * 0.5 + 0.5, flareStrength);
+          if (flareColor) gu.uFlareCol.value.set(flareColor[0], flareColor[1], flareColor[2]);
+          fs = flareStrength;
+        }
+      }
+    }
+    if (fs === 0) gu.uFlare.value.z = 0;
+  }
+
   function render(dt, frame) {
     time += dt || 0;
     gradePass.uniforms.uTime.value = time % 1000;
     gradePass.uniforms.uHurt.value = hurtLevel(dt, frame && frame.local);
+    updateScreenFx();
     gradePass.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
     vmPass.frame = frame;
     composer.render(dt);

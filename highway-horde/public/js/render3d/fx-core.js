@@ -15,6 +15,9 @@
 
 import * as THREE from 'three';
 import { makeCanvas } from './actor-kit.js';
+import { createDecalLayer, releaseDecalAtlas, DC, DK } from './fx-decals.js';
+
+export { DC, DK };
 
 // particle flags
 export const F_ADD = 1, F_FLAT = 2, F_STREAK = 4, F_BOUNCE = 8, F_FIRE = 16, F_FLICKER = 32, F_SHRINK = 64, F_SPIN = 128,
@@ -25,13 +28,14 @@ export const FR = {
   FLASH: 8, MIST: 9, SQUARE: 10, SHARD: 11, SOFTRING: 12, BOLT: 13, CROSS: 14, BUBBLE: 15,
   SMOKE3: 16, SMOKE4: 17, FLAME2: 18, SPARK: 19, DROP: 20, SPLAT: 21, HOLE: 22, SCORCH: 23,
   DUST: 24, FIREBALL: 25, EMBER: 26, SHOCK: 27, GLINT: 28, CRACK: 29, BLOB: 30, SMOKE5: 31,
+  LEAF: 32, PAPER: 33, MOTE: 34, BIRD1: 35, BIRD2: 36, CRYSTAL: 37, STREAK: 38, PETAL: 39, FIREFLY: 40, SPLASH: 41, WISP: 42,
 };
 const GRID = 8;
 
 const QUALITY = {
-  ultra: { particles: 4200, beams: 480, decals: 220 },
-  high: { particles: 2600, beams: 320, decals: 150 },
-  low: { particles: 900, beams: 140, decals: 50 },
+  ultra: { particles: 4200, beams: 480, gore: 1600, marks: 700 },
+  high: { particles: 2600, beams: 320, gore: 800, marks: 360 },
+  low: { particles: 900, beams: 140, gore: 160, marks: 80 },
 };
 
 const registry = new WeakMap();
@@ -48,6 +52,11 @@ export function acquireFx(ctx) {
   }
   fx.refs++;
   return fx;
+}
+
+/** The pools of this ctx if a sub-system has created them, else null (never creates). */
+export function peekFx(ctx) {
+  return registry.get(ctx) || null;
 }
 
 /** Drop one reference; the pools are disposed with the last one. */
@@ -69,6 +78,7 @@ let atlasCanvas = null;
 /** Free the shared sprite atlas' GPU copies (renderer3d.destroy; it re-uploads on reuse). */
 export function releaseFxAtlas() {
   if (atlasTex) atlasTex.dispose();
+  releaseDecalAtlas();
 }
 
 function atlas() {
@@ -283,6 +293,54 @@ function paintAtlas() {
   { const nz = makeNoise(701); pixels(FR.SCORCH, (u, v) => { const d = Math.hypot(u, v); const n = nz(u * 3 + 2, v * 3 + 9, 4); return (1 - sm(0.2, 1.0, d + (n - 0.5) * 0.8)) * (0.6 + n * 0.4); }); }
   { const nz = makeNoise(801); pixels(FR.CRACK, (u, v) => { const d = Math.hypot(u, v), a = Math.atan2(v, u); let m = 0; for (let k = 0; k < 7; k++) { const ak = k * 0.9 + 0.3; const da = Math.abs(((a - ak + Math.PI * 3) % (Math.PI * 2)) - Math.PI); m = Math.max(m, sm(0.06, 0.0, da * d + (nz(d * 6, k, 2) - 0.5) * 0.05)); } return m * (1 - sm(0.7, 1, d)) * 0.9; }); }
   cell(FR.EMBER, (r) => radial(r * 0.5, [[0, 1], [0.4, 0.8], [1, 0]]));
+  // ambient life / new effects
+  cell(FR.LEAF, (r) => {
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(-r * 0.8, 0); g.quadraticCurveTo(-r * 0.1, -r * 0.55, r * 0.8, 0); g.quadraticCurveTo(-r * 0.1, r * 0.55, -r * 0.8, 0); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-r * 0.7, 0); g.lineTo(r * 0.7, 0); g.stroke(); g.globalCompositeOperation = 'source-over';
+  });
+  cell(FR.PAPER, (r) => {
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(-r * 0.55, -r * 0.7); g.lineTo(r * 0.5, -r * 0.62); g.lineTo(r * 0.58, r * 0.7); g.lineTo(-r * 0.5, r * 0.6); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let k = 0; k < 6; k++) g.fillRect(-r * 0.4, -r * 0.5 + k * r * 0.17, r * (0.5 + rnd() * 0.4), r * 0.04);
+  });
+  cell(FR.MOTE, (r) => radial(r * 0.5, [[0, 1], [0.3, 0.55], [1, 0]]));
+  // birds: two wing poses seen from below/behind (a dark cross with swept wings)
+  [FR.BIRD1, FR.BIRD2].forEach((fr, k) => cell(fr, (r) => {
+    g.fillStyle = '#fff';
+    const up = k ? -0.55 : 0.4;
+    g.beginPath(); g.moveTo(0, -r * 0.12); g.quadraticCurveTo(-r * 0.5, up * r, -r * 0.95, up * r * 0.6 + r * 0.05); g.quadraticCurveTo(-r * 0.5, up * r * 0.5 + r * 0.14, 0, r * 0.14); g.fill();
+    g.beginPath(); g.moveTo(0, -r * 0.12); g.quadraticCurveTo(r * 0.5, up * r, r * 0.95, up * r * 0.6 + r * 0.05); g.quadraticCurveTo(r * 0.5, up * r * 0.5 + r * 0.14, 0, r * 0.14); g.fill();
+    g.beginPath(); g.ellipse(0, 0, r * 0.11, r * 0.24, 0, 0, Math.PI * 2); g.fill();
+  }));
+  cell(FR.CRYSTAL, (r) => {
+    g.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < 6; k++) {
+      g.save(); g.rotate((k / 6) * Math.PI * 2);
+      const gr = g.createLinearGradient(0, 0, r * 0.95, 0); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0.1)');
+      g.fillStyle = gr; g.beginPath(); g.moveTo(0, -r * 0.05); g.lineTo(r * 0.9, 0); g.lineTo(0, r * 0.05); g.fill();
+      g.beginPath(); g.moveTo(r * 0.45, 0); g.lineTo(r * 0.62, -r * 0.16); g.lineTo(r * 0.5, 0); g.lineTo(r * 0.62, r * 0.16); g.fill();
+      g.restore();
+    }
+    radial(r * 0.25, [[0, 1], [1, 0]]);
+  });
+  cell(FR.STREAK, (r) => {
+    const gr = g.createLinearGradient(-r, 0, r, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,1)');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(-r, 0); g.lineTo(r * 0.9, -r * 0.05); g.quadraticCurveTo(r, 0, r * 0.9, r * 0.05); g.closePath(); g.fill();
+  });
+  cell(FR.PETAL, (r) => { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(0, 0, r * 0.5, r * 0.28, 0, 0, Math.PI * 2); g.fill(); });
+  cell(FR.FIREFLY, (r) => radial(r, [[0, 1], [0.12, 0.9], [0.3, 0.25], [1, 0]]));
+  cell(FR.SPLASH, (r) => {
+    g.fillStyle = '#fff';
+    for (let k = 0; k < 7; k++) {
+      const a = -Math.PI / 2 + (k - 3) * 0.32, L = r * (0.55 + (k % 2) * 0.25) * (1 - Math.abs(k - 3) * 0.1);
+      g.beginPath(); g.moveTo(Math.cos(a) * 3 - 3, 0); g.quadraticCurveTo(Math.cos(a) * L * 0.5, Math.sin(a) * L * 0.5, Math.cos(a) * L, Math.sin(a) * L); g.quadraticCurveTo(Math.cos(a) * L * 0.5 + 4, Math.sin(a) * L * 0.5, Math.cos(a) * 3 + 3, 0); g.fill();
+      g.beginPath(); g.arc(Math.cos(a) * L, Math.sin(a) * L, 2.5, 0, Math.PI * 2); g.fill();
+    }
+  });
+  cell(FR.WISP, (r) => { const nz = makeNoise(977); const S2 = 64; void nz; void S2; radial(r, [[0, 0.5], [0.4, 0.25], [1, 0]]); });
   { const nz = makeNoise(901); pixels(FR.BLOB, (u, v) => { const d = Math.hypot(u, v); const n = nz(u * 2.5 + 4, v * 2.5 + 1, 3); return 1 - sm(0.55, 0.8, d + (n - 0.5) * 0.4); }); }
   return c;
 }
@@ -313,6 +371,8 @@ varying vec2 vUv;
 varying vec4 vCol;
 varying float vLocalY;
 varying float vDepth;
+varying float vWY;
+uniform float uSoft;
 #include <fog_pars_vertex>
 void main() {
   vec2 c = position.xy;          // -0.5..0.5 quad corner
@@ -335,6 +395,10 @@ void main() {
     }
     mvPosition.xy += q;
   }
+  // world height of this corner (soft ground contact: smoke / fire fade out toward the ground
+  // instead of being sliced by it)
+  float softD = max(0.6, min(uSoft, 0.7 * iSize.y));
+  vWY = (mod(fl, 2.0) > 0.5) ? 9.0 : (iPos.y + viewMatrix[1][0] * q.x + viewMatrix[1][1] * q.y + 0.5) / softD;
   gl_Position = projectionMatrix * mvPosition;
   float fr = iSize.z;
   vUv = (vec2(mod(fr, ${GRID}.0), ${GRID - 1}.0 - floor(fr / ${GRID}.0)) + (c + 0.5)) / ${GRID}.0;
@@ -348,16 +412,20 @@ void main() {
 const PART_FRAG = /* glsl */`
 uniform sampler2D uMap;
 uniform float uAdditive;
+uniform float uSoft;
 varying vec2 vUv;
 varying vec4 vCol;
 varying float vLocalY;
 varying float vDepth;
+varying float vWY;
 #include <fog_pars_fragment>
 ${FOG_FACTOR}
 void main() {
   float a = texture2D(uMap, vUv).a * vCol.a;
   // right in front of the lens a puff would fill the screen: fade it away
   a *= smoothstep(3.0, 20.0, vDepth);
+  // and where it meets the ground: a soft contact instead of a hard slice
+  a *= smoothstep(0.0, 1.0, vWY);
   if (a < 0.003) discard;
   float f = hhFog();
   vec3 rgb = vCol.rgb;
@@ -429,49 +497,6 @@ void main() {
 }
 `;
 
-const DECAL_VERT = /* glsl */`
-attribute vec4 iPos;    // xyz, rotation
-attribute vec4 iNrm;    // normal xyz, size
-attribute vec4 iCol;    // rgb, alpha
-attribute vec4 iInfo;   // frame
-varying vec2 vUv;
-varying vec4 vCol;
-#include <fog_pars_vertex>
-void main() {
-  vec3 n = normalize(iNrm.xyz);
-  vec3 t = normalize(abs(n.y) > 0.9 ? cross(vec3(1.0, 0.0, 0.0), n) : cross(vec3(0.0, 1.0, 0.0), n));
-  vec3 b = cross(n, t);
-  vec2 c = position.xy;
-  float cr = cos(iPos.w), sr = sin(iPos.w);
-  vec2 q = vec2(c.x * cr - c.y * sr, c.x * sr + c.y * cr) * iNrm.w;
-  vec4 mvPosition = modelViewMatrix * vec4(iPos.xyz + n * 0.25 + t * q.x + b * q.y, 1.0);
-  gl_Position = projectionMatrix * mvPosition;
-  float fr = iInfo.x;
-  vUv = (vec2(mod(fr, ${GRID}.0), ${GRID - 1}.0 - floor(fr / ${GRID}.0)) + (c + 0.5)) / ${GRID}.0;
-  vCol = iCol;
-  #include <fog_vertex>
-}
-`;
-
-const DECAL_FRAG = /* glsl */`
-uniform sampler2D uMap;
-varying vec2 vUv;
-varying vec4 vCol;
-#include <fog_pars_fragment>
-${FOG_FACTOR}
-void main() {
-  float a = texture2D(uMap, vUv).a * vCol.a;
-  if (a < 0.01) discard;
-  vec3 rgb = vCol.rgb;
-  #ifdef USE_FOG
-    rgb = mix(rgb, fogColor, hhFog());
-  #endif
-  gl_FragColor = vec4(rgb, a);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}
-`;
-
 function quadGeometry(count, attrs) {
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
@@ -506,8 +531,8 @@ function fxMaterial(vert, frag, additive, extra = {}) {
 function createFx(ctx) {
   const q = QUALITY[ctx.quality] || QUALITY.high;
   // Buffers sized for the biggest tier so setQuality can switch without reallocating.
-  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams, DCAP = QUALITY.ultra.decals;
-  let cap = q.particles, bcap = q.beams, dcap = q.decals;
+  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams;
+  let cap = q.particles, bcap = q.beams;
   const R = ctx.rng || Math.random;
 
   // ---- particle state (structure of arrays, swap-remove compaction) ----
@@ -526,42 +551,37 @@ function createFx(ctx) {
   let gn = 0;
   const bm = new Float32Array(BCAP * 16);
   let bn = 0;
-  // decals (ring buffer)
-  const dPos = new Float32Array(DCAP * 4), dNrm = new Float32Array(DCAP * 4), dCol = new Float32Array(DCAP * 4), dInfo = new Float32Array(DCAP * 4), dAge = new Float32Array(DCAP), dLife = new Float32Array(DCAP);
-  let dn = 0, dHead = 0, dDirty = true;
+  // decals: two ring buffers on the GPU (fx-decals.js)
+  const decals = createDecalLayer(ctx.scene, { gore: q.gore, marks: q.marks }, { gore: QUALITY.ultra.gore, marks: QUALITY.ultra.marks });
+  // heat / shockwave distortion sources (post.js projects them): { x, h, y, r, k, life, age, kind }
+  const DIST_CAP = 6;
+  const dist = [];
+  let clock = 0;
 
   // ---- GPU side ----
   const map = atlas();
   const addQ = quadGeometry(CAP + G_CAP, ['iPos', 'iCol', 'iSize', 'iVel']);
   const nrmQ = quadGeometry(CAP, ['iPos', 'iCol', 'iSize', 'iVel']);
   const beamQ = quadGeometry(BCAP, ['iA', 'iB', 'iCol', 'iParam']);
-  const decQ = quadGeometry(DCAP, ['iPos', 'iNrm', 'iCol', 'iInfo']);
-  const addMat = fxMaterial(PART_VERT, PART_FRAG, true, { uMap: { value: map }, uAdditive: { value: 1 } });
-  const nrmMat = fxMaterial(PART_VERT, PART_FRAG, false, { uMap: { value: map }, uAdditive: { value: 0 } });
+  const addMat = fxMaterial(PART_VERT, PART_FRAG, true, { uMap: { value: map }, uAdditive: { value: 1 }, uSoft: { value: 3.5 } });
+  const nrmMat = fxMaterial(PART_VERT, PART_FRAG, false, { uMap: { value: map }, uAdditive: { value: 0 }, uSoft: { value: 9 } });
   const beamMat = fxMaterial(BEAM_VERT, BEAM_FRAG, true);
-  const decMat = fxMaterial(DECAL_VERT, DECAL_FRAG, false, { uMap: { value: map } });
-  decMat.polygonOffset = true;
-  decMat.polygonOffsetFactor = -2;
-  decMat.polygonOffsetUnits = -4;
   addMat.uniforms.uMap.value = map;
   nrmMat.uniforms.uMap.value = map;
-  decMat.uniforms.uMap.value = map;
   const addMesh = new THREE.Mesh(addQ.geometry, addMat);
   const nrmMesh = new THREE.Mesh(nrmQ.geometry, nrmMat);
   const beamMesh = new THREE.Mesh(beamQ.geometry, beamMat);
-  const decMesh = new THREE.Mesh(decQ.geometry, decMat);
-  for (const m of [addMesh, nrmMesh, beamMesh, decMesh]) {
+  for (const m of [addMesh, nrmMesh, beamMesh]) {
     m.frustumCulled = false;
     m.matrixAutoUpdate = false;
   }
   // decals first, then smoke, then additive light on top of it
-  decMesh.renderOrder = 8;
   nrmMesh.renderOrder = 10;
   addMesh.renderOrder = 11;
   beamMesh.renderOrder = 12;
   const root = new THREE.LOD();
   root.name = 'fx-core';
-  root.add(decMesh, nrmMesh, addMesh, beamMesh);
+  root.add(nrmMesh, addMesh, beamMesh);
   root.update = () => flush();     // called by three.js while projecting the scene
   ctx.scene.add(root);
 
@@ -622,13 +642,18 @@ function createFx(ctx) {
       }
       i++;
     }
-    // decals age (fade in the last 20 % of their life)
-    for (let d = 0; d < dn; d++) dAge[d] += dt;
+    clock += dt;
+    for (let d = dist.length - 1; d >= 0; d--) {
+      const e = dist[d];
+      e.age += dt;
+      if (e.age >= e.life) dist.splice(d, 1);
+    }
   }
 
   function flush() {
     if (flushedNow === lastNow) return;
     flushedNow = lastNow;
+    const pendingDt0 = pendingDt;
     if (pendingDt > 0) step(pendingDt);
     pendingDt = 0;
     const aP = addQ.attrs.iPos.array, aC = addQ.attrs.iCol.array, aS = addQ.attrs.iSize.array, aV = addQ.attrs.iVel.array;
@@ -691,38 +716,15 @@ function createFx(ctx) {
     upload(addQ, na);
     upload(nrmQ, nn);
     upload(beamQ, bn);
-    flushDecals();
+    decals.flush(pendingDt0);
     // children are projected after this hook, so hiding empty pools saves their draw
     addMesh.visible = na > 0;
     nrmMesh.visible = nn > 0;
     beamMesh.visible = bn > 0;
-    decMesh.visible = dn > 0;
     stats.particles = n;
     stats.beams = bn;
-    stats.decals = dn;
+    stats.decals = decals.stats.total;
     bn = 0;
-  }
-
-  function flushDecals() {
-    // alpha fades only in the last part of a decal's life: re-upload while any is fading
-    let fading = false;
-    const C = decQ.attrs.iCol.array;
-    for (let d = 0; d < dn; d++) {
-      const k = dAge[d] / dLife[d];
-      if (k > 0.8) {
-        fading = true;
-        C[d * 4 + 3] = dCol[d * 4 + 3] * Math.max(0, (1 - k) / 0.2);
-      }
-    }
-    if (!dDirty && !fading) return;
-    if (dDirty) {
-      decQ.attrs.iPos.array.set(dPos.subarray(0, dn * 4));
-      decQ.attrs.iNrm.array.set(dNrm.subarray(0, dn * 4));
-      decQ.attrs.iInfo.array.set(dInfo.subarray(0, dn * 4));
-      for (let d = 0; d < dn * 4; d++) if ((d & 3) !== 3 || dAge[d >> 2] / dLife[d >> 2] <= 0.8) C[d] = dCol[d];
-    }
-    upload(decQ, dn);
-    dDirty = false;
   }
 
   function upload(qd, count) {
@@ -760,24 +762,56 @@ function createFx(ctx) {
   }
 
   /**
-   * A decal on a surface: sim point (x, y) at height h, surface normal (nx, nh, ny) in
-   * three.js axes, `size` across. Oldest decals are recycled first.
+   * A mark on a surface (bullet hole, scorch...): sim point (x, y) at height h, surface normal
+   * (nx, nh, ny) in three.js axes, `size` across. Oldest marks are recycled first. `fr` is a
+   * particle-atlas frame (HOLE / SCORCH / CRACK); the decal atlas has its own richer cells.
    */
   function decal(x, h, y, nx, nh, ny, size, fr, color, alpha, lifeS = 40) {
-    if (dcap <= 0) return;
-    let d;
-    if (dn < dcap) d = dn++;
-    else { d = dHead; dHead = (dHead + 1) % dcap; }
-    const o = d * 4;
-    dPos[o] = x; dPos[o + 1] = h; dPos[o + 2] = y; dPos[o + 3] = R() * Math.PI * 2;
-    dNrm[o] = nx; dNrm[o + 1] = nh; dNrm[o + 2] = ny; dNrm[o + 3] = size;
-    dCol[o] = color.r; dCol[o + 1] = color.g; dCol[o + 2] = color.b; dCol[o + 3] = alpha;
-    dInfo[o] = fr;
-    dAge[d] = 0; dLife[d] = lifeS;
-    dDirty = true;
+    const cell = fr === FR.SCORCH ? DC.SCORCH + ((R() * DC.SCORCH_N) | 0) : fr === FR.HOLE ? DC.HOLE + ((R() * DC.HOLE_N) | 0) : DC.CRATER;
+    decals.add(1, x, h, y, nx, nh, ny, size, cell, DK.DARK, color.r, color.g, color.b, alpha, lifeS);
+  }
+
+  /** A heat shimmer that lasts while it is re-registered every frame under the same key. */
+  function distortSteady(key, x, h, y, r, k) {
+    for (let i = 0; i < dist.length; i++) {
+      const e = dist[i];
+      if (e.key === key) { e.x = x; e.h = h; e.y = y; e.r = r; e.k = k; e.age = 0; e.life = 0.15; return; }
+    }
+    if (dist.length >= DIST_CAP) dist.shift();
+    dist.push({ key, x, h, y, r, k, life: 0.15, age: 0, kind: 0 });
+  }
+
+  /** Register a heat / shockwave distortion source (kind 0 heat shimmer, 1 expanding shock ring). */
+  function distort(x, h, y, r, k, life, kind = 0) {
+    if (dist.length >= DIST_CAP) dist.shift();
+    dist.push({ x, h, y, r, k, life, age: 0, kind });
   }
 
   const stats = { particles: 0, beams: 0, decals: 0 };
+
+  // ---- gore setting ('on' | 'low' | 'off'): the palette every blood effect draws with ----
+  // 'off' replaces red with dark ash for sensitive players; 'low' keeps red but thins it out.
+  const gore = {
+    mode: 'on',
+    /** 1 = full, 0.5 = low, 0 = off: scales the counts of gory particles / decals / gibs. */
+    k: 1,
+    blood: new THREE.Color('#5a0606'), blood2: new THREE.Color('#7a0a0a'), mist: new THREE.Color('#4a0505'),
+    splat: new THREE.Color('#5e0808'), pool: new THREE.Color('#4a0606'), flesh: new THREE.Color('#7a1a1a'),
+  };
+  function setGore(mode) {
+    const m = mode === 'off' || mode === 'low' ? mode : 'on';
+    if (m === gore.mode) return false;
+    gore.mode = m;
+    gore.k = m === 'on' ? 1 : m === 'low' ? 0.5 : 0;
+    if (m === 'off') {
+      gore.blood.set('#26262a'); gore.blood2.set('#34343a'); gore.mist.set('#2a2a2e');
+      gore.splat.set('#4a4a50'); gore.pool.set('#3a3a3e'); gore.flesh.set('#48484c');
+    } else {
+      gore.blood.set('#5a0606'); gore.blood2.set('#7a0a0a'); gore.mist.set('#4a0505');
+      gore.splat.set('#5e0808'); gore.pool.set('#4a0606'); gore.flesh.set('#7a1a1a');
+    }
+    return true;
+  }
 
   return {
     refs: 0,
@@ -787,6 +821,13 @@ function createFx(ctx) {
     glow,
     beam,
     decal,
+    gore,
+    setGore,
+    decals,
+    distort,
+    distortSteady,
+    distortions: dist,
+    get clock() { return clock; },
     rng: R,
     /** Fraction of the particle pool in use (ambient emitters back off when high). */
     load: () => n / cap,
@@ -795,6 +836,8 @@ function createFx(ctx) {
     get camHeight() { return camH; },
     /** Multiply the last spawned particle's height by `k` (stretched sprites: flames). */
     stretchLast: (i, k) => { if (i >= 0) stretch[i] = k; },
+    /** Set the rotation (radians in the view plane) / spin of particle i (billboards: 0 = quad x axis to the right). */
+    rotLast: (i, r, w = 0) => { if (i >= 0) { rot[i] = r; vrot[i] = w; } },
     /** Seconds of velocity a F_VSTRETCH particle is stretched by (default 0.03). */
     velStretch: (i, k) => { if (i >= 0) vstr[i] = k; },
     get quality() { return cap >= QUALITY.ultra.particles ? 'ultra' : cap <= QUALITY.low.particles ? 'low' : 'high'; },
@@ -803,13 +846,13 @@ function createFx(ctx) {
       cap = qq.particles;
       bcap = qq.beams;
       if (n > cap) n = cap;
-      if (qq.decals < dcap) { dn = Math.min(dn, qq.decals); dHead = 0; dDirty = true; }
-      dcap = qq.decals;
+      decals.setCaps(qq);
     },
     dispose() {
       root.removeFromParent();
-      addQ.geometry.dispose(); nrmQ.geometry.dispose(); beamQ.geometry.dispose(); decQ.geometry.dispose();
-      addMat.dispose(); nrmMat.dispose(); beamMat.dispose(); decMat.dispose();
+      addQ.geometry.dispose(); nrmQ.geometry.dispose(); beamQ.geometry.dispose();
+      addMat.dispose(); nrmMat.dispose(); beamMat.dispose();
+      decals.dispose();
     },
   };
 }
