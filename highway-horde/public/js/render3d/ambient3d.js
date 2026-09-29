@@ -289,7 +289,10 @@ export function createAmbient3D(ctx) {
         const pulse = Math.max(0, Math.sin(f.ph * 1.3 + i * 2.1));
         const glow = 0.15 + pulse * pulse * 0.85;
         const c = FLY_C[i % 3];
-        fx.glow(f.x, f.h, f.y, 2.2 + glow * 2.4, tmpC.copy(c).multiplyScalar(2.6 * glow), 0.9, FR.FIREFLY);
+        // (kept small on screen: a firefly a few paces away must not become a lamp)
+        const dc = Math.sqrt(d2);
+        const near = Math.min(1, Math.max(0, (dc - 50) / 90));
+        if (near > 0) fx.glow(f.x, f.h, f.y, Math.min(2.2 + glow * 2.4, 0.011 * dc + 0.5), tmpC.copy(c).multiplyScalar(1.9 * glow), 0.9 * near, FR.FIREFLY);
       }
     }
 
