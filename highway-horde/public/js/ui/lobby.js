@@ -6,7 +6,7 @@ import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
-import { MODE_LIST, mapModes } from '../shared/zone.js';
+import { MODE_LIST, STANDARD_MODES, mapModes } from '../shared/zone.js';
 import { TIME_LIST, mapTimes, resolveTime } from '../shared/timeofday.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
@@ -107,7 +107,7 @@ export function createLobby(ctx) {
         h('span.map-name', { text: m.name }),
         h('span.map-desc', { text: m.description }),
         // maps that only play some modes say so (picking one switches the mode)
-        mapModes(m).length < MODE_LIST.length
+        !STANDARD_MODES.every((id) => mapModes(m).includes(id))
           ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
           : null,
         // maps that only play some times of day say so (picking one switches the time)
@@ -121,8 +121,10 @@ export function createLobby(ctx) {
       audio.ui('click');
       change({ mapId: m.id });
     });
+    // maps with a campaign extension carry a badge (the extension is picked with the mode)
+    if (mapModes(m).includes('campaign')) btn.querySelector('.map-preview-wrap').appendChild(h('span.map-badge', { text: 'CAMPAIGN', title: 'Has the Campaign mode: hilltop, tower, zip line' }));
     mapCards.appendChild(btn);
-    mapBtns.set(m.id, { btn, canvas, drawn: false });
+    mapBtns.set(m.id, { btn, canvas, drawn: false, campaign: false });
   }
 
   function drawPreviews() {
@@ -136,15 +138,17 @@ export function createLobby(ctx) {
       if (i >= pending.length) return;
       const [id, v] = pending[i++];
       try {
+        // the Campaign mode previews the campaign variant (hill, tower) of a map that has one
         // (by day the preview gets the daylight tint instead of the night's)
-        const t = session ? resolveTime(id, session.settings.time) : 'night';
-        const key = `${id}:${t}:${v.canvas.width}x${v.canvas.height}`;
+        const camp = v.campaign && mapModes(id).includes('campaign');
+        const t = camp ? 'day' : session ? resolveTime(id, session.settings.time) : 'night';
+        const key = `${id}${camp ? ':campaign' : ''}:${t}:${v.canvas.width}x${v.canvas.height}`;
         let src = previewCache.get(key);
         if (!src) {
           src = document.createElement('canvas');
           src.width = v.canvas.width;
           src.height = v.canvas.height;
-          const pm = deps.buildMap(id, 1);
+          const pm = camp ? deps.buildMap(id, 1, { mode: 'campaign' }) : deps.buildMap(id, 1);
           if (t === 'day') pm.time = 'day';
           deps.renderMapPreview(src, pm);
           previewCache.set(key, src);
@@ -389,10 +393,16 @@ export function createLobby(ctx) {
       v.btn.tabIndex = editable ? 0 : id === s.mapId ? 0 : -1;
     }
     const zone = s.mode === 'zone';
+    const campaign = s.mode === 'campaign';
     setSeg(segMode, s.mode || 'defend', editable);
+    if (campaign !== !!mapBtns.values().next().value.campaign) {
+      for (const v of mapBtns.values()) { v.campaign = campaign; v.drawn = false; }
+      drawPreviews();
+    }
     const md = MODE_LIST.find((m) => m.id === (s.mode || 'defend'));
     setText(modeDesc, md ? md.description : '');
-    setSeg(segTime, s.time || 'night', editable);
+    setSeg(segTime, campaign ? 'day' : s.time || 'night', editable && !campaign);
+    segTime.title = campaign ? 'The Campaign is played by day' : '';
     if (previewTime !== (s.time || 'night')) {
       // the map cards show the map by night or by day
       const first = previewTime === null;
@@ -408,8 +418,8 @@ export function createLobby(ctx) {
     setSeg(segDiff, s.difficulty, editable);
     setSeg(segWaves, s.waves, editable);
     // Evac Run has no objective to defend
-    setSeg(segObj, zone ? false : s.objective, editable && !zone);
-    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : '';
+    setSeg(segObj, zone || campaign ? false : s.objective, editable && !zone && !campaign);
+    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : campaign ? 'No objective in the Campaign: the goal changes every stage' : '';
     setSeg(segFF, s.friendlyFire, editable);
     setText($('#settings-owner'), editable ? 'You pick the mission' : 'The host picks the mission');
     screen.classList.toggle('readonly', !editable);

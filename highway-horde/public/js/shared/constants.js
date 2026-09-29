@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -60,6 +60,8 @@ export const CLIMB_TOP = {
   barrier: 26, sandbags: 30, rock: 0,
   car: 40, suv: 54, pickup: 52, van: 70, hesco: 70, container: [62, 84],
   truck: 100, bus: 100, tanker: 110, semi: [108, 124],
+  // campaign: office desks and reception counters (vaulted), roof units and the parapet (climbed)
+  desk: 30, counter: 40, hvac: 56, parapet: 44,
 };
 // Mantle: jumping (or falling) while moving into something standable whose top is at most
 // MANTLE_REACH above the feet pulls the player up onto it in MANTLE_TICKS (0.4 s). From the
@@ -168,8 +170,8 @@ export const WAVE_OPTIONS = [10, 15, 20, 0];  // 0 = endless
 // Default lobby settings chosen by the host.
 export const DEFAULT_SETTINGS = {
   mapId: 'highway',
-  mode: 'defend',                          // 'defend' | 'zone' (Evac Run, shared/zone.js)
-  time: 'night',                           // 'night' | 'day' (shared/timeofday.js)
+  mode: 'defend',                          // 'defend' | 'zone' (Evac Run) | 'campaign' (shared/zone.js, shared/campaign.js)
+  time: 'night',                           // 'night' | 'day' (shared/timeofday.js; the campaign is always day)
   difficulty: 'normal',
   waves: 15,
   objective: true,

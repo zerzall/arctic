@@ -25,6 +25,7 @@ import { createCamera, zoomFor } from './camera.js';
 import { createLighting, nightFor } from './lighting.js';
 import { resolveTime } from '../shared/timeofday.js';
 import { createZone2D, drawPoiRings } from './zone2d.js';
+import { createCampaign2D, drawCampaignPreview } from './campaign2d.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
@@ -127,6 +128,8 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   const overlay = createOverlay();
   // Evac Run: the safe circle, the blight, the supply drop, the edge arrow (zone2d.js)
   const zone2d = createZone2D(map);
+  // The Campaign: terrain shading, the stage circle, the horde front, the zip cable (campaign2d.js)
+  const campaign2d = createCampaign2D(map);
 
   // obstacle sprites (lazy)
   const obSprites = new Array(map.obstacles.length).fill(null);
@@ -826,7 +829,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
 
     // objective marker + beacons
     const ob = map.objective;
-    if (ob && !view.zone && inView(ob.x, ob.y, Math.max(ob.w, ob.h) + 60)) drawObjectiveGlow(ob, view);
+    if (ob && !view.zone && !view.campaign && inView(ob.x, ob.y, Math.max(ob.w, ob.h) + 60)) drawObjectiveGlow(ob, view);
     // lamp bulbs
     for (const l of overhead.lamps) {
       if (!l.light || !inView(l.x, l.y, 40)) continue;
@@ -1069,6 +1072,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     ctx.fillRect(0, 0, W, H);
     setWorld();
     ground.draw(ctx, viewRect.x0, viewRect.y0, viewRect.x1, viewRect.y1);
+    campaign2d.drawTerrain(ctx, viewRect);
     ground.bakeIdle(camera.x, camera.y);
     water.draw(ctx, viewRect, time);
     decals.drawLayer(ctx, viewRect.x0, viewRect.y0, viewRect.x1, viewRect.y1);
@@ -1126,6 +1130,10 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       setWorld();
       zone2d.drawWorld(ctx, V, viewRect, time, K.k);
     }
+    if (V && V.campaign) {
+      setWorld();
+      campaign2d.drawWorld(ctx, V, viewRect, time, K.k);
+    }
     mark('emissive');
 
     // ---- screen overlays ----
@@ -1145,6 +1153,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       hitMarker: effects.hitMarker, killMarker: effects.killMarker, damagePulse: effects.damagePulse, bloom: effects.bloom,
     });
     if (V && V.zone) zone2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
+    if (V && V.campaign) campaign2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
     mark('overlay');
     if (hasPerf) timings.total += (performance.now() - tStart - timings.total) * 0.1;
   }
@@ -1237,7 +1246,8 @@ export function renderMapPreview(canvas, map) {
   // A very long map (the highway) shows the stretch around its objective at a readable
   // scale instead of a thin strip; every other map shows whole.
   const vw = Math.min(map.width, Math.max(map.height * (W / H), map.height * 2.8));
-  const ob0 = map.objective;
+  // (a campaign map is framed on the stretch between its hill and its tower)
+  const ob0 = map.campaign ? { x: (map.campaign.hill.x + map.campaign.tower.x) / 2 } : map.objective;
   const vx0 = vw < map.width ? Math.max(0, Math.min(map.width - vw, (ob0 ? ob0.x : map.width / 2) - vw / 2)) : 0;
   const s = Math.min(W / vw, H / map.height);
   const ox = (W - vw * s) / 2, oy = (H - map.height * s) / 2;
@@ -1248,6 +1258,7 @@ export function renderMapPreview(canvas, map) {
   g.setTransform(s, 0, 0, s, ox - vx0 * s, oy);
   const prep = prepareMap(map);
   paintGround(g, prep, { x0: vx0, y0: 0, x1: vx0 + vw, y1: map.height }, 0);
+  if (map.campaign) createCampaign2D(map).drawTerrain(g, { x0: vx0, y0: 0, x1: vx0 + vw, y1: map.height });
   for (const o of map.obstacles) {
     g.save();
     g.translate(o.x, o.y);
@@ -1316,7 +1327,7 @@ export function renderMapPreview(canvas, map) {
     drawObjectiveBase(g, ob, map.seed | 0);
     g.restore();
   }
-  if (ob && !zoneOnly) {
+  if (ob && !zoneOnly && !map.campaign) {
     g.strokeStyle = '#ffc84a';
     g.lineWidth = Math.max(3, 2 / s);
     g.beginPath();
@@ -1336,6 +1347,7 @@ export function renderMapPreview(canvas, map) {
     g.restore();
     fillCircle(g, map.supply.x, map.supply.y, Math.max(10, 4 / s), 'rgba(90,220,120,0.35)');
   }
+  if (map.campaign) drawCampaignPreview(g, map, s);
   g.fillStyle = '#7dff9a';
   for (const p of map.playerSpawns || []) fillCircle(g, p.x, p.y, Math.max(5, 2.5 / s));
   g.restore();

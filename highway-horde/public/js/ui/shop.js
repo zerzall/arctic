@@ -98,10 +98,11 @@ export function shopState(view, me, map) {
   if (me.state === 'dead') return { open: false, text: 'You can shop again after you respawn', mid: false };
   if (view.phase === 'prep') return { open: true, text: 'Stock up before the first wave', mid: false };
   if (view.phase === 'intermission') return { open: true, text: 'Between waves — everything is on sale', mid: false };
-  const near = nearSupply(map, view.zone, me.x, me.y, SUPPLY_RADIUS);
-  const where = view.zone ? 'the supply drop in the zone' : 'the supply station';
+  const drop = view.zone || view.campaign;        // Evac Run's drop / the campaign's supply point
+  const near = nearSupply(map, drop, me.x, me.y, SUPPLY_RADIUS);
+  const where = view.zone ? 'the supply drop in the zone' : view.campaign ? 'the supply point (green + on the minimap)' : 'the supply station';
   return near
-    ? { open: true, text: `${view.zone ? 'Supply drop' : 'Supply station'} — shopping mid-wave. Watch your back!`, mid: true }
+    ? { open: true, text: `${drop ? 'Supply drop' : 'Supply station'} — shopping mid-wave. Watch your back!`, mid: true }
     : { open: false, text: `Wave in progress — go to ${where} (green + on the minimap) to shop`, mid: true };
 }
 

@@ -864,6 +864,22 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 }
 /* a map that plays only another time of day: same badge, a warm colour */
 .map-times { background: #f0c060; }
+/* the Campaign badge over a map's preview (maps with a campaign extension) */
+.map-badge {
+  position: absolute;
+  left: 0.375rem;
+  top: 0.375rem;
+  padding: 0.0625rem 0.4375rem;
+  font-family: var(--font-cond);
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: #1a1206;
+  background: var(--hazard, #f2b632);
+  border-radius: 0.125rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
 /* a map that plays only another mode: picking it switches the mode */
 .map-card.mode-other:not([aria-checked='true']) .map-preview { opacity: 0.55; }
 .opt [aria-disabled='true'][title] { cursor: help; }
@@ -1124,6 +1140,7 @@ input[type='range'] { accent-color: var(--hazard); width: 100%; height: 1.625rem
 .tips { margin: 0; padding-left: 1.25rem; color: var(--text-dim); display: grid; gap: 0.4375rem; }
 .txt-supply { color: var(--supply); font-weight: 700; }
 .txt-zone { color: #4fe3d0; font-weight: 700; }
+.txt-camp { color: var(--hazard); font-weight: 700; }
 
 .toast-root {
   position: fixed;
@@ -1494,6 +1511,93 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   .zone-sub, .zone-warn-sub { font-size: 0.8125rem; }
   .zone-warn-title { font-size: 1.125rem; }
   .hud-zone { min-width: 0; padding: 0.25rem 0.625rem 0.3125rem; }
+}
+
+/* ---- Campaign: the stage panel, the horde warning, the title card (ui/campaignhud.js) ---- */
+.hud-camp {
+  min-width: min(24rem, 100%);
+  padding: 0.3125rem 1rem 0.4375rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(28, 20, 6, 0.84), rgba(20, 14, 4, 0.64));
+  border: 1px solid rgba(255, 196, 0, 0.45);
+  border-radius: 0.1875rem;
+  box-shadow: 0 0 1.25rem rgba(255, 196, 0, 0.1);
+}
+.camp-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: var(--hazard);
+  text-shadow: 0 0 0.875rem rgba(255, 196, 0, 0.4), 0 0.125rem 0 #000;
+  white-space: nowrap;
+}
+.camp-sub { margin-top: 0.125rem; font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.05em; color: #fff3d6; }
+.camp-bar { height: 0.25rem; margin-top: 0.3125rem; background: rgba(255, 255, 255, 0.08); border-radius: 0.125rem; overflow: hidden; }
+.camp-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #c98a00, var(--hazard)); transition: width 0.25s linear; }
+.hud-camp.good { border-color: rgba(127, 220, 90, 0.6); }
+.hud-camp.good .camp-title { color: #c4ffb0; text-shadow: 0 0 0.875rem rgba(127, 220, 90, 0.4), 0 0.125rem 0 #000; }
+.hud-camp.good .camp-bar > i { background: linear-gradient(90deg, #3f9a2a, #7fdc5a); }
+.hud-camp.urgent { border-color: rgba(224, 52, 44, 0.85); animation: breathe 0.8s ease-in-out infinite; }
+.hud-camp.urgent .camp-bar > i { background: linear-gradient(90deg, #a8201a, var(--blood-hi)); }
+.camp-warn {
+  padding: 0.375rem 1.125rem 0.4375rem;
+  text-align: center;
+  background: rgba(60, 10, 8, 0.82);
+  border: 1px solid rgba(255, 90, 70, 0.8);
+  border-radius: 0.1875rem;
+  animation: breathe 0.7s ease-in-out infinite;
+}
+.camp-warn-title { font-family: var(--font-display); font-size: 1.5rem; letter-spacing: 0.1em; color: #ff8f7a; text-shadow: 0 0 1rem rgba(255, 60, 40, 0.55), 0 0.125rem 0 #000; white-space: nowrap; }
+.camp-warn-sub { font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.06em; color: #ffe1da; }
+/* the horde at the screen edges while you are behind its front */
+.camp-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(120, 20, 10, 0) 45%, rgba(170, 30, 15, 0.5) 100%);
+  animation: breathe 1.2s ease-in-out infinite;
+}
+/* the title card between floors, over a short fade to black */
+.camp-fade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  z-index: 8;
+}
+.camp-fade.go { animation: camp-fade 3s ease-in-out both; }
+@keyframes camp-fade { 0% { opacity: 0; } 14% { opacity: 0.94; } 62% { opacity: 0.94; } 100% { opacity: 0; } }
+.camp-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  z-index: 9;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+}
+.camp-card.show { animation: camp-card 3s ease-out both; }
+@keyframes camp-card { 0% { opacity: 0; transform: scale(1.1); } 16% { opacity: 1; transform: none; } 72% { opacity: 1; } 100% { opacity: 0; } }
+.camp-card-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 7vw, 5rem);
+  letter-spacing: 0.12em;
+  color: var(--hazard);
+  text-shadow: 0 0 2rem rgba(255, 196, 0, 0.4), 0 0.25rem 0 #000;
+}
+.camp-card-sub { margin-top: 0.375rem; font-family: var(--font-cond); font-weight: 700; font-size: 1.375rem; letter-spacing: 0.16em; text-transform: uppercase; color: #efe9dc; }
+@media (max-width: 760px), (max-height: 520px) {
+  .camp-title { font-size: 1.0625rem; }
+  .camp-sub, .camp-warn-sub { font-size: 0.8125rem; }
+  .camp-warn-title { font-size: 1.125rem; }
+  .hud-camp { min-width: 0; padding: 0.25rem 0.625rem 0.3125rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .camp-fade.go, .camp-card.show { animation-duration: 3s; }
+  .hud-camp.urgent, .camp-warn, .camp-edge { animation: none; }
 }
 
 .hud-top-right {

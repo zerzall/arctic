@@ -9,7 +9,7 @@
 export const IMPORTANT_EVENTS = new Set([
   'wave', 'waveclear', 'gameover', 'victory', 'buy', 'buyfail', 'down', 'revived', 'died', 'respawn',
   'pickup', 'place', 'placefail', 'destroyed', 'bossspawn', 'drop', 'throw', 'zdie', 'explosion', 'ignite',
-  'zone',
+  'zone', 'campaign',
 ]);
 
 /**

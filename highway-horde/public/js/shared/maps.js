@@ -14,13 +14,15 @@
 import { createRng, hashString } from './rng.js';
 import { TAU, round1 } from './math.js';
 import { buildHarlan } from './maps-harlan.js';
+import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
   {
     id: 'highway',
     name: 'Highway 9 Pileup',
-    description: 'A school bus full of kids is stuck in a pileup that stretches for miles, between two crossroads and under the I-44 overpass. The horde pours in from both ends of the highway, down the crossroads and the ramps, and across the fields.',
+    description: 'A school bus full of kids is stuck in a pileup that stretches for miles, between two crossroads and under the I-44 overpass. The horde pours in from both ends of the highway, down the crossroads and the ramps, and across the fields. Campaign: hold the hill east of the pileup, then fight west along the highway to the tower.',
+    modes: ['defend', 'zone', 'campaign'],
   },
   {
     id: 'truckstop',
@@ -35,13 +37,14 @@ export const MAP_LIST = [
   {
     id: 'checkpoint',
     name: 'Checkpoint Delta',
-    description: 'A fortified crossroads checkpoint. Keep the radio tower alive while the horde comes down all four roads and through the breaches.',
+    description: 'A fortified crossroads checkpoint. Keep the radio tower alive while the horde comes down all four roads and through the breaches. Campaign: hold the hill east of the checkpoint, then fight west along the road to the tower.',
+    modes: ['defend', 'zone', 'campaign'],
   },
   {
     id: 'harlan',
     name: 'Harlan County',
-    description: 'Miles of farm country for the Evac Run: Main Street, the Gas-N-Go, Haskell Farm, St. Jude\'s graveyard, the field hospital, the I-70 interchange, the quarry, Radio Hill, Shady Pines and the lake. The safe zone moves every wave.',
-    modes: ['zone'],
+    description: 'Miles of farm country for the Evac Run: Main Street, the Gas-N-Go, Haskell Farm, St. Jude\'s graveyard, the field hospital, the I-70 interchange, the quarry, Radio Hill, Shady Pines and the lake. The safe zone moves every wave. Campaign: hold Radio Hill, then break out across the county to the tower on Main Street.',
+    modes: ['zone', 'campaign'],
   },
 ];
 
@@ -57,15 +60,18 @@ const BUILDERS = {
  * Build the full map definition for `id`. Deterministic for a given (id, seed).
  * @param {string} id one of the MAP_LIST ids
  * @param {number} seed any integer; the same seed always yields the same map
+ * @param {{ mode?: string }} [opts] mode 'campaign' builds the campaign variant of a map that has one
  * @returns {object} MapDef (see SPEC §2)
  */
-export function buildMap(id, seed) {
+export function buildMap(id, seed, opts = null) {
   const build = Object.prototype.hasOwnProperty.call(BUILDERS, id) ? BUILDERS[id] : null;
   if (!build) throw new Error(`Unknown map id: ${id}`);
   const meta = MAP_LIST.find((m) => m.id === id);
   const s = Number.isFinite(seed) ? seed : 0;
   const B = createBuilder(meta, s);
   build(B);
+  // Campaign mode (SPEC §3.8): the map is enlarged with the hill, the tower and its floors.
+  if (opts && opts.mode === 'campaign' && Object.prototype.hasOwnProperty.call(CAMPAIGN_SITES, id)) buildCampaign(B, id);
   return B.finish();
 }
 
@@ -123,6 +129,20 @@ const KIND_DEFAULTS = {
   // Harlan County: grain silos (round, solid) and graveyard headstones (knee-high cover)
   silo: { color: '#b8bcbf', solid: true },
   grave: { color: '#8e8c86', solid: false },
+  // Campaign (maps-campaign.js): hilltop fortifications, the tall tower and the floors inside it
+  palisade: { color: '#6b4a2c', solid: true },
+  watchtower: { color: '#5b4a36', solid: true },
+  tower: { color: '#7d8794', solid: true },
+  iwall: { color: '#cfc9bd', solid: true },
+  desk: { color: '#8a6b4a', solid: false },
+  cabinet: { color: '#7d8489', solid: true },
+  counter: { color: '#a9a08e', solid: false },
+  ipillar: { color: '#bdb8ac', solid: true },
+  stairs: { color: '#8d8a82', solid: true },
+  hvac: { color: '#8e9294', solid: true },
+  parapet: { color: '#a49f95', solid: false },
+  rim: { color: '#000000', solid: true },
+  mast: { color: '#8a8e92', solid: true },
 };
 
 /**
@@ -632,6 +652,59 @@ function createBuilder(meta, seed) {
       B.sprinkle('grass_tuft', opts.tufts, 0, 0, W, H, { on: opts.tuftOn || ['grass', 'ground'], s: [0.6, 1.4] });
       B.sprinkle('bush', opts.bushes, 0, 0, W, H, { on: opts.tuftOn || ['grass', 'ground'], s: [0.6, 1.3], keep: true });
       B.sprinkle('rock', opts.rocks, 0, 0, W, H, { off: paved.concat(['water']), s: [0.5, 1.1] });
+    },
+
+    // ---- campaign extension helpers (maps-campaign.js) ---------------------------------------
+    /**
+     * Make the world bigger: new width/height (the coordinates of everything already built
+     * are kept; the new ground lies to the right and below).
+     */
+    resize(w, h) {
+      map.width = w;
+      map.height = h;
+      B.W = w;
+      B.H = h;
+    },
+    /**
+     * Remove everything static inside a circle: obstacles (a box counts by its centre plus
+     * most of its half size), decor, lights, fires and painted lines (cut where they cross
+     * the circle). The objective, water and the overpass piers stay. Ids are renumbered.
+     */
+    clearCircle(cx, cy, r) {
+      const inside = (x, y, pad = 0) => Math.hypot(x - cx, y - cy) < r + pad;
+      map.obstacles = map.obstacles.filter((o) => o.kind === 'pier' || o.kind === 'ramp' || !inside(o.x, o.y, Math.max(o.w, o.h) * 0.35));
+      map.obstacles.forEach((o, i) => { o.id = i; });
+      grid.clear();
+      for (const o of map.obstacles) gridAdd(o);
+      map.decor = map.decor.filter((d) => !inside(d.x, d.y));
+      map.lights = map.lights.filter((l) => !inside(l.x, l.y));
+      map.fires = map.fires.filter((f) => !inside(f.x, f.y));
+      const lines = [];
+      for (const l of map.lines) {
+        const dx = l.x2 - l.x1, dy = l.y2 - l.y1;
+        const len2 = dx * dx + dy * dy || 1;
+        const fx = l.x1 - cx, fy = l.y1 - cy;
+        const bq = (fx * dx + fy * dy) / len2, cq = (fx * fx + fy * fy - r * r) / len2;
+        const disc = bq * bq - cq;
+        if (disc <= 0) { lines.push(l); continue; }
+        const sq = Math.sqrt(disc), t0 = -bq - sq, t1 = -bq + sq;
+        if (t1 <= 0 || t0 >= 1) { lines.push(l); continue; }
+        if (t0 > 0.001) lines.push({ ...l, x2: round1(l.x1 + dx * t0), y2: round1(l.y1 + dy * t0) });
+        if (t1 < 0.999) lines.push({ ...l, x1: round1(l.x1 + dx * t1), y1: round1(l.y1 + dy * t1) });
+      }
+      map.lines = lines;
+    },
+    /** Same for an oriented rectangle (centre, size, angle): everything whose centre is inside it. */
+    clearRect(x, y, w, h, a = 0, pad = 0) {
+      const rect = { x, y, w, h, a };
+      const inside = (px, py, p2 = 0) => pointInRect(px, py, rect, pad + p2);
+      map.obstacles = map.obstacles.filter((o) => o.kind === 'pier' || o.kind === 'ramp' || !inside(o.x, o.y, Math.max(o.w, o.h) * 0.25));
+      map.obstacles.forEach((o, i) => { o.id = i; });
+      grid.clear();
+      for (const o of map.obstacles) gridAdd(o);
+      map.decor = map.decor.filter((d) => !inside(d.x, d.y));
+      map.lights = map.lights.filter((l) => !inside(l.x, l.y));
+      map.fires = map.fires.filter((f) => !inside(f.x, f.y));
     },
 
     finish() {

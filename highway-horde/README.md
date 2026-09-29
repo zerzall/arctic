@@ -38,7 +38,7 @@ else opens the invite link.
   | Boom | Demolitions | Bigger explosions and extra grenades |
   | Tank | Heavy | 150 health and a vest |
 
-- **2 game modes**:
+- **3 game modes**:
   - **Defend** (the classic): hold one spot against every wave, guarding the objective
     (or just surviving with it switched off).
   - **Evac Run**: every wave the safe zone moves to a new place on the map, a bit like a
@@ -49,6 +49,15 @@ else opens the invite link.
     shrinks to a smaller one inside it. Outside it the blight takes more and more health
     every second (armour doesn't help, downed survivors bleed out faster), and late in the
     wave zombies walk out of it. Clear the wave and the next zone is announced.
+  - **Campaign** (Highway 9 Pileup, Checkpoint Delta and Harlan County, in daylight): four
+    stages in one game. **Hilltop stand**: hold a fortified hill; the flank slows the horde
+    and they take extra damage, and you deal a bonus from the high ground. **Breakout**: the
+    hill is overrun; fight down the street to the tall tower while a red horde front walks
+    behind you (anyone it catches takes escalating damage). **The ascent**: clear the lobby,
+    the offices and the atrium floor by floor; the stairs open when a floor is clear.
+    **Rooftop**: kill the quota (it grows with the team), then ride the zip line down to the
+    landing pad. The game is won when every survivor still standing has escaped. It is an
+    extension of those three maps: their default game is unchanged.
 - **Night or day.** The lobby's **Time** row (next to Mode) sets Night (the original moonlit,
   flashlight-and-fire-light look, the default) or Day: a bright sunny variant of every map with a
   gradient sky, sun and drifting clouds, long soft shadows, haze in the distance, the lamps off and
@@ -201,6 +210,9 @@ In the classic top-down view the mouse points where you shoot and nothing is cap
   objective when nobody is around. The ◆ on the compass always points to it.
 - Check behind you. The horde comes from every side; listen for groans at your back and
   turn toward the red arcs when something hits you.
+- Campaign: stay on the high ground on the hill; on the breakout keep ahead of the red
+  front and don't stop to fight; on the roof spread the kills, revive fast and ride together
+  (E at the gantry once the quota is met).
 - Revive downed teammates by holding E next to them. They have 30 seconds.
 - Jump (Space) over guard rails, jersey barriers, sandbags and fences to cut corners or get
   away; sprint first for a longer leap. Crawlers can't reach you while you're in the air.
@@ -225,9 +237,10 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 ```bash
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
-                            #   first-person solo, first-person 2-player relay and an Evac Run
+                            #   first-person solo, first-person 2-player relay, an Evac Run and the Campaign
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
+node scripts/balance.js --mode campaign             # ... of the whole Campaign
 ```
 
 The simulation is 2D and deterministic (a flat ground plane, like classic Doom-style

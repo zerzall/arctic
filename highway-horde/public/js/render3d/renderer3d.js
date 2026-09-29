@@ -30,7 +30,9 @@ import * as effectsMod from './effects3d.js';
 import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
 import * as zoneMod from './zone3d.js';
+import * as campaignMod from './campaign3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
+import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas } from './fx-core.js';
 import { createPost, createDynRes, createGpuTimer, normPostSettings } from './post.js';
 
@@ -98,6 +100,7 @@ function normQuality(v) {
  *   time 'day' renders the sunny variant of the map (SPEC §7.5.1; default: the map's own time, else night)
  */
 export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend', time } = {}) {
+  if (map && map.campaign) mode = 'campaign';
   const tCreate = performance.now();
   let q = normQuality(quality);
   // No MSAA on the canvas: the world is drawn into the post chain's HDR target and only a
@@ -164,8 +167,13 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   rng.chance = (p) => Math.random() < p;
   rng.pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+  // campaign maps have terrain (shared/terrain.js): the same height field the simulation walks on
+  const terrain = terrainOf(map);
   const ctx = {
     THREE, scene, camera, map, quality: q, mode, time: tod, amb,
+    terrain,
+    /** Ground height (world units) under a sim point: 0 on a map without terrain. */
+    groundY: terrain.flat ? () => 0 : (x, y) => terrain.height(x, y),
     overlay,
     lights: { flash: lights.flash, steady: lights.steady },
     ground: { decal() {} },
@@ -194,7 +202,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {
@@ -215,7 +223,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     x: camera.position.x, y: camera.position.z, eye: EYE, yaw: 0, pitch: 0, roll: 0,
     lastX: NaN, lastY: NaN, speed: 0, bob: 0, kick: 0, mode: 'fps', chaseId: 0,
     cx: camera.position.x, cy: EYE, cz: camera.position.z, orbit: 0, time: 0,
-    lastZ: 0, lastAir: false, air: 0, land: 0, landV: 0, climb: 0,
+    lastZ: 0, lastAir: false, air: 0, land: 0, landV: 0, climb: 0, ride: 0,
   };
   let lastSettings = { screenShake: true, fov: 80 };
   let localId = 0;
@@ -305,7 +313,14 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       camera.rotation.y += t2 * 0.035 * (Math.sin(t * 0.9 + 2) * 0.6 + Math.sin(t * 2.1) * 0.4);
       camera.rotation.z += t2 * 0.02 * Math.sin(t * 1.7 + 4);
     }
-    const f = verticalFov(settings.fov, camera.aspect);
+    // zip line ride (campaign): the wind pulls the view wide and sways it on the trolley
+    const riding = local && local.ride > 0 ? 1 : 0;
+    rig.ride += (riding - rig.ride) * (1 - Math.exp(-dt * (riding ? 5 : 3)));
+    if (rig.ride > 0.01 && shakeOn) {
+      camera.rotation.z += Math.sin(rig.time * 2.1) * 0.05 * rig.ride;
+      camera.rotation.x += Math.sin(rig.time * 3.3 + 1) * 0.01 * rig.ride;
+    }
+    const f = verticalFov(settings.fov, camera.aspect) + rig.ride * 12;
     if (f !== fov || camera.fov !== f) { fov = f; camera.fov = f; camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
   }
@@ -428,7 +443,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
 
       const frame = {
         dt, now: Number(opts.now) || 0, localId, roster: opts.roster || [], local,
-        camX: camera.position.x, camY: camera.position.z, yaw: rig.yaw, pitch: rig.pitch, settings,
+        camX: camera.position.x, camY: camera.position.z, camH: camera.position.y, yaw: rig.yaw, pitch: rig.pitch, settings,
       };
       if (view) {
         for (const s of subs) {

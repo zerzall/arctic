@@ -265,19 +265,20 @@ test('prediction: a client replaying from any snapshot (mid-mantle, on the roof,
   assert.ok(midClimb > 3 && onTop > 3, `acks mid-climb (${midClimb}) and on a roof (${onTop})`);
 });
 
-test('protocol: zombie heights round-trip in a byte, only for zombies off the ground', () => {
+test('protocol: zombie heights round-trip in a u16 (the campaign floors go past 255), only for zombies off the ground', () => {
   const base = bigSnapshot(0);
   const zombies = [
     { id: 1, type: 'walker', x: 100, y: 100, angle: 0, hp: 1, flags: 1, z: 0 },
     { id: 2, type: 'runner', x: 200, y: 100, angle: 0, hp: 1, flags: 64, z: 84 },
     { id: 3, type: 'walker', x: 300, y: 100, angle: 0, hp: 1, flags: 0, z: 123.6 },
     { id: 4, type: 'walker', x: 300, y: 100, angle: 0, hp: 1, flags: 0 },
+    { id: 5, type: 'walker', x: 300, y: 100, angle: 0, hp: 1, flags: 0, z: 437 },
   ];
   const d = decodeSnapshot(encodeSnapshot({ ...base, zombies })).zombies;
-  assert.deepEqual(d.map((z) => z.z), [0, 84, 124, 0]);
-  assert.deepEqual(d.map((z) => z.flags), [1, 64, 0, 0], 'flags untouched');
+  assert.deepEqual(d.map((z) => z.z), [0, 84, 124, 0, 437]);
+  assert.deepEqual(d.map((z) => z.flags), [1, 64, 0, 0, 0], 'flags untouched');
   const flat = encodeSnapshot({ ...base, zombies: zombies.map((z) => ({ ...z, z: 0 })) }).byteLength;
-  assert.equal(encodeSnapshot({ ...base, zombies }).byteLength - flat, 2, 'one byte per zombie up high');
+  assert.equal(encodeSnapshot({ ...base, zombies }).byteLength - flat, 6, 'two bytes per zombie up high');
 });
 
 // ---- zombies vs perched survivors -------------------------------------------------------------

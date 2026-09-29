@@ -275,6 +275,43 @@ test('real maps: previews and full renders of every map', { skip: !maps && 'shar
   }
 });
 
+test('the campaign variants: previews and the top-down renderer through every stage', { skip: !maps && 'shared/maps.js missing' }, async () => {
+  const { Game } = await import('../public/js/shared/sim.js');
+  for (const id of ['highway', 'checkpoint', 'harlan']) {
+    const map = maps.buildMap(id, 7, { mode: 'campaign' });
+    noRenderErrors(() => renderMapPreview(mockCanvas(360, 240), map));
+    const players = CLASS_IDS.slice(0, 3).map((cls, i) => ({ id: i + 1, name: 'P' + i, color: i, cls }));
+    const game = new Game({ mapId: id, seed: 7, players, settings: { difficulty: 'normal', waves: 10, mode: 'campaign' } });
+    const r = createRenderer(mockCanvas(1280, 720), { map: game.map, quality: 'high', mode: 'campaign' });
+    const roster = players.map((p) => ({ ...p, ready: false, ping: 0, host: p.id === 1 }));
+    const c = game.campaign;
+    const draw = (n) => {
+      for (let i = 0; i < n; i++) {
+        game.step();
+        const snap = game.snapshot();
+        r.addEvents(snap.events, { localId: 1 });
+        r.render(snap, { localId: 1, roster, now: game.time, dt: 1 / 60, settings: { screenShake: true, showNames: true } });
+      }
+    };
+    noRenderErrors(() => {
+      draw(40);                                     // the hill
+      game.wave = c.plan.breakout - 1; game.phase = 'intermission'; game.timer = 0;
+      draw(200);                                    // the breakout, the horde front
+      for (let f = 0; f < 3; f++) { c.stage = 3; c.floor = f; c.moveUp(); draw(30); }   // floors 1..3
+      c.moveUp();                                   // the roof
+      game.wave = c.plan.roof - 1; game.phase = 'intermission'; game.timer = 0;
+      draw(60);
+      c.kills = c.quota - 1; c.onKill();
+      const z = map.campaign.roof.zip;
+      game.players[0].x = z.ix; game.players[0].y = z.iy;
+      draw(5);
+      c.tryZip(game.players[0]);
+      draw(400);                                    // the ride and the landing
+    });
+    r.destroy();
+  }
+});
+
 test('class portraits for every class and colour', () => {
   noRenderErrors(() => {
     for (const cls of CLASS_IDS) for (let c = 0; c < PLAYER_COLORS.length; c++) renderClassPortrait(mockCanvas(96, 96), cls, c);

@@ -13,6 +13,7 @@ import {
   MASK_MOVE, MASK_SOLID, MASK_WATER, MASK_BARRICADE, MASK_BULKY,
 } from './geom.js';
 import { stepJump, normVertical, toZq, Z_UNIT, COOL_TICKS, JUMP_TICKS } from './jump.js';
+import { terrainOf } from './terrain.js';
 
 /**
  * Collision mask for heavies (bloater, brute, boss): they crash over crushable low
@@ -42,6 +43,8 @@ const MANTLE_TOP_TICKS = 8;
 const MANTLE_OVER_TICKS = 12;
 const MANTLE_INSET = PLAYER_RADIUS + 2;
 const REACH_Q = toZq(MANTLE_REACH);
+/** Walking over terrain: a standing body follows the ground up or down by at most this (Z_UNITs) a tick. */
+const TERRAIN_SNAP_Q = toZq(12);
 const MIN_Q = toZq(MANTLE_MIN);
 /** Height of a jump's apex in Z_UNITs. */
 const APEX_Q = (JUMP_TICKS / 2) * (JUMP_TICKS / 2);
@@ -64,6 +67,8 @@ export class CollisionWorld {
     this.width = map.width;
     this.height = map.height;
     this.colliders = mapColliders(map);
+    /** Terrain height field of a campaign map (shared/terrain.js); flat elsewhere. */
+    this.terrain = terrainOf(map);
     this.index = new StaticIndex(this.colliders, map.width, map.height, { cellSize: 128, margin: 24 });
     /** Barricade boxes, parallel to the list given to setBarricades(). */
     this.barricades = [];
@@ -254,7 +259,8 @@ export class CollisionWorld {
   groundQ(x, y, zq) {
     const near = this._near;
     const n = this.index.query(x - STAND_PAD, y - STAND_PAD, x + STAND_PAD, y + STAND_PAD, MASK_MOVE, near);
-    let best = 0, ob = null;
+    // the terrain is always a floor (even above the feet: a body under the hill comes up onto it)
+    let best = this.terrain.flat ? 0 : this.terrain.q(x, y), ob = null;
     for (let i = 0; i < n; i++) {
       const o = near[i];
       if (o.stand && o.topQ <= zq && o.topQ > best && pointInObb(o, x, y, STAND_PAD)) {
@@ -270,7 +276,7 @@ export class CollisionWorld {
   groundAt(x, y, z) {
     const near = this._near;
     const n = this.index.query(x - STAND_PAD, y - STAND_PAD, x + STAND_PAD, y + STAND_PAD, MASK_MOVE, near);
-    let best = 0, ob = null;
+    let best = this.terrain.flat ? 0 : this.terrain.height(x, y), ob = null;
     for (let i = 0; i < n; i++) {
       const o = near[i];
       if (o.stand && o.top <= z + 1e-6 && o.top > best && pointInObb(o, x, y, STAND_PAD)) {
@@ -280,6 +286,16 @@ export class CollisionWorld {
     }
     this.groundOb = ob;
     return best;
+  }
+
+  /** Terrain height at (x, y) in whole Z_UNITs (0 on a flat map). */
+  terrainQ(x, y) {
+    return this.terrain.flat ? 0 : this.terrain.q(x, y);
+  }
+
+  /** Terrain height at (x, y) in world units (0 on a flat map). */
+  terrainH(x, y) {
+    return this.terrain.flat ? 0 : this.terrain.height(x, y);
   }
 
   /**
@@ -374,7 +390,7 @@ export function findLedge(world, x, y, r, zq, dirX, dirY) {
   let best = -1, bestD = Infinity;
   for (let i = 0; i < n; i++) {
     const o = near[i];
-    if (!o.stand || o.topQ <= zq || o.topQ <= MIN_Q || o.topQ - zq > REACH_Q) continue;
+    if (!o.stand || o.topQ <= zq || o.topQ - o.baseQ <= MIN_Q || o.topQ - zq > REACH_Q) continue;
     const d = distToObb(o, x, y);
     if (d > reach || d < 1e-6 || d > bestD || (d === bestD && o.ci > best)) continue;
     closestPointOnObb(o, x, y, _cp);
@@ -400,7 +416,7 @@ export function ledgeAhead(world, x, y, zq, dirX, dirY, look = 40) {
   let best = -1, bestD = Infinity;
   for (let i = 0; i < n; i++) {
     const o = near[i];
-    if (!o.stand || o.topQ <= zq || o.topQ <= MIN_Q || o.topQ - zq > REACH_Q + APEX_Q) continue;
+    if (!o.stand || o.topQ <= zq || o.topQ - o.baseQ <= MIN_Q || o.topQ - zq > REACH_Q + APEX_Q) continue;
     const d = distToObb(o, x, y);
     if (d > reach || d < 1e-6 || d >= bestD) continue;
     closestPointOnObb(o, x, y, _cp);
@@ -478,6 +494,11 @@ export function stepPlayerMovement(p, cmd, dt, world) {
     settleVertical(p, world);
     return 0;
   }
+  // Riding the zip line (campaign): the director moves the body along the cable.
+  if (p.frozen) {
+    p.sprinting = false;
+    return 0;
+  }
   const sm = p.staminaMult > 0 ? p.staminaMult : 1;
   let stamina = Number.isFinite(p.stamina) ? p.stamina : STAMINA_MAX;
   if (p.climbT > 0) {
@@ -523,8 +544,22 @@ export function stepPlayerMovement(p, cmd, dt, world) {
       : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1);
     world.moveCircle(p, PLAYER_RADIUS, mx * speed * dt, my * speed * dt, MASK_MOVE, z);
   }
-  // Walked off the edge of what we stand on: fall from the next tick.
-  if (p.vzq === 0 && p.zq > 0 && world.groundQ(p.x, p.y, p.zq) < p.zq) p.vzq = -1;
+  // Walked off the edge of what we stand on: fall from the next tick. On terrain a body
+  // standing on the ground follows it up and down the slope instead (no fall, no landing).
+  if (p.vzq === 0 && (p.zq > 0 || !world.terrain.flat)) {
+    const g = world.groundQ(p.x, p.y, p.zq);
+    if (g > p.zq) {
+      p.zq = g;
+      p.z = g * Z_UNIT;
+    } else if (g < p.zq) {
+      if (world.groundOb === null && p.zq - g <= TERRAIN_SNAP_Q) {
+        p.zq = g;
+        p.z = g * Z_UNIT;
+      } else {
+        p.vzq = -1;
+      }
+    }
+  }
   // Coming down onto low cover wedged against something else can leave no way out by the
   // shortest push: walk out to the nearest free spot instead of staying stuck inside.
   if (jump < 0 || p.vzq !== 0) world.unstick(p, PLAYER_RADIUS, z);
@@ -553,6 +588,6 @@ export function settleVertical(p, world) {
   p.climbT = 0;
   p.climbTo = -1;
   p.jumpCd = 0;
-  p.zq = p.zq > 0 ? world.groundQ(p.x, p.y, p.zq) : 0;
+  p.zq = p.zq > 0 || !world.terrain.flat ? world.groundQ(p.x, p.y, p.zq) : 0;
   p.z = p.zq * Z_UNIT;
 }

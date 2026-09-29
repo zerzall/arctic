@@ -115,6 +115,9 @@ export function createZombies3D(ctx) {
 
   // corpses
   const corpses = [];
+  // campaign terrain: ground height under a point (0 on flat maps)
+  const gnd = ctx.groundY || (() => 0);
+  const rough = !!ctx.terrain && !ctx.terrain.flat;
 
   // ---- gibs (meat chunks and bone shards) ----
   const gibMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0 });
@@ -472,7 +475,7 @@ export function createZombies3D(ctx) {
       }
       if (s.charge > 0.3 && z.type === 'brute' && d2 < 1400 * 1400 && fx.rng() < dt * 30) {
         const back = s.a + Math.PI + (fx.rng() - 0.5) * 1.2;
-        fx.spawn(z.x + Math.cos(back) * 14, 4, z.y + Math.sin(back) * 14, Math.cos(back) * 40, 14, Math.sin(back) * 40,
+        fx.spawn(z.x + Math.cos(back) * 14, 4 + zh, z.y + Math.sin(back) * 14, Math.cos(back) * 40, 14, Math.sin(back) * 40,
           0.9, 10, 34, col('#5d5040'), 0.4, FR.SMOKE, 0, -6, 1.5);
       }
       // view-frustum cull (generous margin: flashlight shadows, big bodies)
@@ -554,7 +557,7 @@ export function createZombies3D(ctx) {
     for (const k of [b1, b2]) {
       if (k < 0 || burning[k + 1] > 1200 * 1200) continue;
       const z = burning[k];
-      ctx.lights.steady('zburn' + z.id, z.x, z.y, 34, '#ff8a33', 1.3, 200);
+      ctx.lights.steady('zburn' + z.id, z.x, z.y, 34 + (z.z > 0 ? z.z : 0), '#ff8a33', 1.3, 200);
     }
   }
 
@@ -581,7 +584,7 @@ export function createZombies3D(ctx) {
       type, x: e.x, y: e.y, a: facing, t: 0, id: e.id | 0, seed, kind, side: rel > 0 ? 1 : -1,
       char: s ? s.char : 0, burn: s ? s.burn : 0, elite: false, lod: -1, spd: s ? Math.min(1, s.spd / 120) : 0,
       armsUp: s ? s.armsUp : true, tilt: s ? s.tilt : 0, cache: null,
-      h: s && s.zh > 0 ? s.zh : 0,     // killed up on a roof: it drops there
+      h: s && s.zh > 0 ? s.zh : gnd(e.x, e.y),     // killed up on a roof: it drops there
     });
   }
 
@@ -727,7 +730,7 @@ export function createZombies3D(ctx) {
       if (gn < GIB_CAP) i = gn++;
       else i = Math.floor(fx.rng() * GIB_CAP);
       const a = fx.rng() * TAU, sp = 60 + fx.rng() * 220;
-      G.x[i] = x + Math.cos(a) * 6; G.y[i] = y + Math.sin(a) * 6; G.h[i] = 18 + fx.rng() * 25;
+      G.x[i] = x + Math.cos(a) * 6; G.y[i] = y + Math.sin(a) * 6; G.h[i] = 18 + fx.rng() * 25 + (rough ? gnd(x, y) : 0);
       G.vx[i] = Math.cos(a) * sp; G.vy[i] = Math.sin(a) * sp; G.vh[i] = 150 + fx.rng() * 280;
       G.rx[i] = fx.rng() * TAU; G.ry[i] = fx.rng() * TAU; G.age[i] = 0;
       G.s[i] = size * (0.6 + fx.rng() * 0.9);
@@ -743,12 +746,13 @@ export function createZombies3D(ctx) {
     for (let i = 0; i < gn; i++) {
       G.age[i] += dt;
       if (G.age[i] > 9) continue;
-      if (G.h[i] > 0.8 || G.vh[i] > 0) {
+      const fl = rough ? gnd(G.x[i], G.y[i]) : 0;
+      if (G.h[i] > fl + 0.8 || G.vh[i] > 0) {
         G.vh[i] -= 900 * dt;
         G.x[i] += G.vx[i] * dt; G.y[i] += G.vy[i] * dt; G.h[i] += G.vh[i] * dt;
         G.rx[i] += dt * 9; G.ry[i] += dt * 7;
-        if (G.h[i] < 0.8) {
-          G.h[i] = 0.8;
+        if (G.h[i] < fl + 0.8) {
+          G.h[i] = fl + 0.8;
           if (Math.abs(G.vh[i]) > 120) {
             G.vh[i] = -G.vh[i] * 0.25;
             if (fx.rng() < 0.35) ctx.ground.decal('blood', G.x[i], G.y[i], 3 + G.s[i] * 1.5, fx.rng() * TAU, 0.7);

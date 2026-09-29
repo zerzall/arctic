@@ -342,7 +342,19 @@ function labelTexture(text) {
  * @param {object} ctx renderer ctx (SPEC §7.5)
  */
 export function createItems3D(ctx) {
-  const fx = acquireFx(ctx);
+  const fx0 = acquireFx(ctx);
+  // Terrain (campaign maps): everything here is written for a flat ground at y = 0. `gOff` is
+  // the ground height under the entity being drawn; put(), the fx wrapper and the light shim add it.
+  const G = ctx.groundY || (() => 0);
+  const rough = !!ctx.terrain && !ctx.terrain.flat;
+  let gOff = 0;
+  const fx = rough ? Object.create(fx0) : fx0;
+  const lights = rough ? { steady: (key, x, y, h, ...a) => ctx.lights.steady(key, x, y, h + gOff, ...a) } : ctx.lights;
+  if (rough) {
+    fx.spawn = (x, h, y, ...a) => fx0.spawn(x, h + gOff, y, ...a);
+    fx.glow = (x, h, y, ...a) => fx0.glow(x, h + gOff, y, ...a);
+    fx.beam = (ax, ah, ay, bx, bh, by, ...a) => fx0.beam(ax, ah + gOff, ay, bx, bh + gOff, by, ...a);
+  }
   const R = fx.rng;
   const root = new THREE.Group();
   root.name = 'items3d';
@@ -426,7 +438,7 @@ export function createItems3D(ctx) {
   function put(pair, i, x, h, y, ry, rx = 0, rz = 0, s = 1, sy = s, sz = s) {
     _e.set(rx, ry, rz, 'YXZ');
     _q.setFromEuler(_e);
-    _p.set(x, h, y);
+    _p.set(x, h + gOff, y);
     _s.set(s, sy, sz);
     _m.compose(_p, _q, _s);
     if (pair.isInstancedMesh) { pair.setMatrixAt(i, _m); return; }
@@ -481,6 +493,7 @@ export function createItems3D(ctx) {
       s.seen = frameNo;
       const a = p.angle || 0;
       const dir = -a;
+      if (rough) gOff = G(p.x, p.y);
       switch (p.kind) {
         case 'bolt': {
           const i = counts.bolt++;
@@ -514,7 +527,7 @@ export function createItems3D(ctx) {
             // plain grey: a glowing (F_HOT) trail summed into an orange cloud behind every rocket
             fx.spawn(bx - Math.cos(a) * 8, 40, by - Math.sin(a) * 8, (R() - 0.5) * 10, 4 + R() * 6, (R() - 0.5) * 10, 1.8 + R(), 5, 22, C('#77746e'), 0.32, R() < 0.5 ? FR.SMOKE : FR.SMOKE4, 0, -3, 0.6);
           }
-          ctx.lights.steady('rocket' + p.id, bx, by, 40, '#ffa040', 1.3, 200);
+          lights.steady('rocket' + p.id, bx, by, 40, '#ffa040', 1.3, 200);
           break;
         }
         case 'flame': {
@@ -527,7 +540,7 @@ export function createItems3D(ctx) {
               Math.cos(a) * 120, 18 + R() * 20, Math.sin(a) * 120, 0.22 + R() * 0.12, 10 + grow * 16, 22 + grow * 22, FLAME_BASE, 0.34, R() < 0.5 ? FR.FLAME : FR.FIREBALL, F_ADD | F_FIRE | F_FLICKER, -30, 3);
             fx.stretchLast(i, 1.2);
           }
-          if ((p.id & 7) === 0) ctx.lights.steady('flame' + (p.id & 31), p.x, p.y, 30, '#ff8a33', 0.8, 180);
+          if ((p.id & 7) === 0) lights.steady('flame' + (p.id & 31), p.x, p.y, 30, '#ff8a33', 0.8, 180);
           break;
         }
         case 'frag': {
@@ -543,7 +556,7 @@ export function createItems3D(ctx) {
           const h = 40 + Math.sin(Math.min(1, s.t / 0.9) * Math.PI) * 30 - s.t * 30;
           if (i < P_CAP) put(proj.molotov, i, p.x, Math.max(4, h), p.y, dir, s.t * 11, s.t * 7);
           fx.spawn(p.x, h + 6, p.y, (R() - 0.5) * 10, 20, (R() - 0.5) * 10, 0.25, 4, 1, WHITE, 1, FR.FLAME, F_ADD | F_FIRE | F_FLICKER, -40, 1);
-          ctx.lights.steady('molotov' + p.id, p.x, p.y, h + 6, '#ff9a40', 1.2, 170);
+          lights.steady('molotov' + p.id, p.x, p.y, h + 6, '#ff9a40', 1.2, 170);
           break;
         }
         case 'acid': {
@@ -567,7 +580,7 @@ export function createItems3D(ctx) {
             fx.spawn(p.x, h, p.y, Math.cos(back) * sp, 20 + R() * 60, Math.sin(back) * sp, 0.3 + R() * 0.3, 1.2, 0.5, H('#ffb080', 3), 1, FR.DOT, F_ADD | F_BOUNCE, 500, 1);
           }
           if (R() < dt * (high ? 40 : 15)) fx.spawn(p.x, h, p.y, (R() - 0.5) * 8, 6 + R() * 8, (R() - 0.5) * 8, 1.6 + R(), 4, 18, C('#b0402e'), 0.3, FR.SMOKE3, 0, -3, 0.6);
-          ctx.lights.steady('flarep' + p.id, p.x, p.y, h, '#ff4a2a', 2.0, 380);
+          lights.steady('flarep' + p.id, p.x, p.y, h, '#ff4a2a', 2.0, 380);
           break;
         }
         case 'harpoon': {
@@ -588,13 +601,14 @@ export function createItems3D(ctx) {
               0.35 + R() * 0.2, 10 + grow * 12, 26 + grow * 22, C('#e2f6ff'), 0.26, R() < 0.5 ? FR.SMOKE2 : FR.SMOKE4, 0, -4, 2.5);
           }
           if (high && R() < dt * 10) fx.spawn(p.x, 22 + R() * 14, p.y, (R() - 0.5) * 30, 10 + R() * 20, (R() - 0.5) * 30, 0.5, 1.4, 0.5, H('#c8f0ff', 2.2), 1, FR.GLINT, F_ADD | F_FLICKER, 30, 1);
-          if ((p.id & 7) === 0) ctx.lights.steady('frost' + (p.id & 31), p.x, p.y, 28, '#9ae8ff', 0.45, 150);
+          if ((p.id & 7) === 0) lights.steady('frost' + (p.id & 31), p.x, p.y, 28, '#9ae8ff', 0.45, 150);
           break;
         }
         default:
           break;
       }
     }
+    gOff = 0;
     for (const k in proj) finish(proj[k], Math.min(P_CAP, counts[k]));
     if (frameNo % 30 === 0) for (const [id, s] of projState) if (frameNo - s.seen > 30) projState.delete(id);
 
@@ -606,6 +620,7 @@ export function createItems3D(ctx) {
     const seenCrates = new Set();
     for (let k = 0; k < pickups.length; k++) {
       const p = pickups[k];
+      if (rough) gOff = G(p.x, p.y);
       const glowC = C(PICKUP_GLOW[p.kind] || '#ffffff');
       const pulse = 0.75 + Math.sin(t * 3 + p.id) * 0.25;
       if (p.kind === 'crate') {
@@ -627,10 +642,11 @@ export function createItems3D(ctx) {
         // a glowing symbol hovering above: readable at a glance, blooms a little
         const o = nIcon++ * 4;
         const k2 = 1.7 + pulse * 0.6;
-        IP[o] = p.x; IP[o + 1] = h + 12 + Math.sin(t * 2.2 + p.id * 1.7) * 0.8; IP[o + 2] = p.y; IP[o + 3] = 9;
+        IP[o] = p.x; IP[o + 1] = gOff + h + 12 + Math.sin(t * 2.2 + p.id * 1.7) * 0.8; IP[o + 2] = p.y; IP[o + 3] = 9;
         IC[o] = glowC.r * k2; IC[o + 1] = glowC.g * k2; IC[o + 2] = glowC.b * k2; IC[o + 3] = ICON[p.kind] ?? 5;
       }
     }
+    gOff = 0;
     for (const k in pc) if (pick[k]) finish(pick[k], Math.min(PK_CAP, pc[k]));
     finish(crateInst, nCrate);
     iconGeo.instanceCount = nIcon;
@@ -645,6 +661,7 @@ export function createItems3D(ctx) {
     const turrets = (view && view.turrets) || [];
     for (let k = 0; k < turrets.length && nt < T_CAP; k++) {
       const tr = turrets[k];
+      if (rough) gOff = G(tr.x, tr.y);
       const i = nt++;
       put(tripods, i, tr.x, 0, tr.y, hash01(tr.id) * TAU);
       const recoil = tr.firing ? Math.sin(t * 60) * 1.2 : 0;
@@ -663,6 +680,7 @@ export function createItems3D(ctx) {
         if (R() < 0.3) fx.spawn(tr.x, 30, tr.y, (R() - 0.5) * 60, 60, (R() - 0.5) * 60, 0.3, 1, 0.5, H('#ffcf80', 2.5), 1, FR.DOT, F_ADD | F_BOUNCE, 500, 0);
       }
     }
+    gOff = 0;
     finish(tripods, nt);
     finish(heads, nt);
 
@@ -672,6 +690,7 @@ export function createItems3D(ctx) {
     const bars = (view && view.barricades) || [];
     for (let k = 0; k < bars.length && nb < B_CAP; k++) {
       const b = bars[k];
+      if (rough) gOff = G(b.x, b.y);
       // snapshot angle = direction of the long side (movement.js setBarricades)
       const ang = b.angle || 0;
       put(barBase, nb++, b.x, 0, b.y, -ang);
@@ -683,6 +702,7 @@ export function createItems3D(ctx) {
         put(barRows[r], rowN[r]++, b.x, loose * -3, b.y, -ang, 0, (hash01(b.id + r) < 0.5 ? 1 : -1) * wob);
       }
     }
+    gOff = 0;
     finish(barBase, nb);
     for (let r = 0; r < 4; r++) finish(barRows[r], rowN[r]);
 
@@ -693,6 +713,7 @@ export function createItems3D(ctx) {
     const hz = (view && view.hazards) || [];
     for (let k = 0; k < hz.length; k++) {
       const h = hz[k];
+      if (rough) gOff = G(h.x, h.y);
       const life = Math.max(0, Math.min(1, h.life));
       const r = h.r || 60;
       const d2 = (h.x - camX) ** 2 + (h.y - camY) ** 2;
@@ -749,6 +770,7 @@ export function createItems3D(ctx) {
       }
     }
     finish(puddles, np);
+    gOff = 0;
     finish(flareSticks, nf);
     // flares light the road: the four nearest get a strong red pool light each (they
     // outscore street lamps in the pool, see lights.js)
@@ -758,7 +780,8 @@ export function createItems3D(ctx) {
     for (let n = 0; n < Math.min(4, forder.length); n++) {
       const k = forder[n];
       const h = flareLights[k + 1];
-      ctx.lights.steady('flare' + h.id, h.x, h.y, 26, '#ff3a1a', 2.1 * flareLights[k + 2], 430);
+      gOff = rough ? G(h.x, h.y) : 0;
+      lights.steady('flare' + h.id, h.x, h.y, 26, '#ff3a1a', 2.1 * flareLights[k + 2], 430);
     }
     // hazard lights: the three nearest
     const order = [];
@@ -767,7 +790,8 @@ export function createItems3D(ctx) {
     for (let n = 0; n < Math.min(3, order.length); n++) {
       const k = order[n];
       const h = hazardLights[k + 1];
-      ctx.lights.steady('hz' + h.kind + h.id, h.x, h.y, h.kind === 'fire' ? 30 : 10, hazardLights[k + 2], hazardLights[k + 3], hazardLights[k + 4]);
+      gOff = rough ? G(h.x, h.y) : 0;
+      lights.steady('hz' + h.kind + h.id, h.x, h.y, h.kind === 'fire' ? 30 : 10, hazardLights[k + 2], hazardLights[k + 3], hazardLights[k + 4]);
     }
   }
 
@@ -797,7 +821,7 @@ export function createItems3D(ctx) {
       ex = { group, gun, label, weapon: wid };
       crateExtras.set(p.id, ex);
     }
-    ex.group.position.set(p.x, 26 + Math.sin(t * 2 + p.id) * 2, p.y);
+    ex.group.position.set(p.x, 26 + Math.sin(t * 2 + p.id) * 2 + G(p.x, p.y), p.y);
     if (ex.gun) ex.gun.rotation.y = t * 1.2;
     // the label always faces the camera
     ex.label.quaternion.copy(ctx.camera.quaternion);

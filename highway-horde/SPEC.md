@@ -48,6 +48,7 @@ highway-horde/
   public/js/shared/constants.js math.js rng.js       (lead — read only)
   public/js/shared/weapons.js zombies.js classes.js items.js  (lead — data, read only)
   public/js/shared/maps.js                           (maps)
+  public/js/shared/maps-campaign.js terrain.js campaign.js  (campaign — §2, §3.8; sim/campaign.js is its director)
   public/js/shared/geom.js spatial.js flowfield.js movement.js sim.js  (sim)
   public/js/shared/sim/bots.js                       (bots — AI survivors, §3.6)
   public/js/shared/protocol.js                       (net)
@@ -76,12 +77,17 @@ export const MAP_LIST;              // [{ id, name, description, modes?, time?, 
                                     // modes: the game modes it plays (absent = every mode);
                                     // time: 'day' = a fixed time of day, times: [...] = a list of
                                     // them (absent = night and day, §7.5.1)
-export function buildMap(id, seed); // → MapDef, deterministic for (id, seed); unknown id → throws
+export function buildMap(id, seed, opts?); // → MapDef, deterministic for (id, seed[, opts]); unknown id → throws
+                                    // opts.mode 'campaign' builds the campaign variant of a map that has one
 ```
 
 Five maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Truck Stop),
 `bridge` (Blackwater Bridge), `checkpoint` (Checkpoint Delta) and `harlan` (Harlan County,
-`modes: ['zone']`: the Evac Run map, §3.7, built in `shared/maps-harlan.js`).
+`modes: ['zone', 'campaign']`: the Evac Run map, §3.7, built in `shared/maps-harlan.js`).
+`highway`, `checkpoint` and `harlan` have a **campaign extension** (§3.8, `modes` lists
+`'campaign'`); `buildMap(id, seed, { mode: 'campaign' })` lays the map out as usual and then
+adds the hill, the tower and its annex (`shared/maps-campaign.js`) on top: the default build
+(no `opts`, or another mode) is exactly what it always was.
 
 ```js
 MapDef = {
@@ -117,8 +123,10 @@ MapDef = {
   pois: [ { name, x, y, r } ],           // points of interest: the Evac Run's safe-zone centres and
                                          // radii (§3.7), fixed layout; every map has ≥ 5
   modes?: ['zone'],                      // only on maps that don't play every mode (copied from MAP_LIST)
-  time?: 'day', times?: ['day'],         // only on maps that fix the time of day (copied from MAP_LIST);
-                                         // `time: 'day'` is all a day-only map has to declare (§7.5.1)
+  time?: 'day', times?: ['day'],         // maps that fix the time of day (copied from MAP_LIST; §7.5.1);
+                                         // campaign variants are daytime maps (`time: 'day'`)
+  terrain?: { hills: [...], plateaus: [...] },  // campaign variants: the height field (below)
+  campaign?: CampaignExt,                // campaign variants only (below)
   overpass: null | {                     // elevated roads (visual; the sim sees only their piers
                                          // and ramp walls, which are ordinary obstacles)
     decks: [ { kind, w, pts: [[x, y, z], ...] } ], // kind 'viaduct'|'ramp'; road surface at height z
@@ -144,6 +152,31 @@ Obstacle = {
                                          // optional explicit height (the church tower)
 }
 ```
+
+**Terrain** (campaign variants; `shared/terrain.js`, arithmetic only, so it is bit-identical
+in the sim, the client prediction and every renderer): `hills: [{ x, y, r, plateau, h,
+flank? }]` (flat `h` inside `plateau`, then a smootherstep down to 0 at `r`; `flank` marks a
+hill whose slope slows and exposes zombies, §3.8) and `plateaus: [{ x0, y0, x1, y1, h, edge }]`
+(a flat raised rectangle with an `edge`-wide steep skirt; the annex floors). `terrainOf(map)`
+→ `{ flat, height(x, y), q(x, y), flank(x, y), maxHeight }` (cached per map);
+`terrainHeight(map, x, y)`; the height of the highest piece wins. Ground under obstacles is the
+terrain: an obstacle's top is `terrain(centre) + height` (`geom.js` colliders carry `baseQ`).
+A standing body follows the terrain (snap ≤ `TERRAIN_SNAP_Q`), a zombie snaps by ≤ 12 units.
+
+**CampaignExt** (`map.campaign`, all deterministic for (map id, seed)): `hill { x, y, r,
+plateau, h, gate, spawns[] }` (the team's start on the plateau), `route [[x, y], ...]` +
+`routeLen` (hill → tower door), `entrance { x, y, r }` (the door's circle), `tower { x, y, a, w,
+h, top }`, `floors [{ id, name, n, x0, y0, x1, y1, base, ceil, arrive[], stairs { x, y, r },
+spawns[] (zombie rects), supply { x, y }, doors[], skylight? }]` (lobby, offices, atrium: three
+compact 1000 x 680 rooms on plateaus 0 / 100 / 200 units high, below the base map),
+`roof { x0.., base 380, arrive[], supply, pad, zip { x, y, z, ix, iy, r }, spawns[] }`,
+`landing { x0.., base 60, x, y, slots[], end { x, y, z } }` (the far end of the cable) and
+`skyline[]` (the distant buildings). Sizes: Checkpoint Delta 4850 x 5860, Highway 9 Pileup
+9500 x 5060, Harlan County 7200 x 10060 (the annex lies in the new ground below the old map);
+315 / 470 / 747 obstacles. New obstacle kinds (`CAMPAIGN_KINDS`, heights in `CAMPAIGN_HEIGHT`):
+'palisade' (74), 'watchtower' (230), 'tower' (440), 'iwall' (132), 'desk' (30, low cover),
+'cabinet' (92), 'counter' (40, low cover), 'ipillar' (132), 'stairs' (132), 'hvac' (56),
+'parapet' (44), 'rim' (an invisible edge), 'mast' (300).
 
 Kind conventions used by maps.js (renderers rely on them): 'semi' is both the cab
 (length ≤ 100) and the trailer (240 long) of a rig; 'tanker' is the tank body with a
@@ -263,6 +296,14 @@ fall next tick. A landing (and every airborne tick) checks `circleBlockedAt`; a 
 coming down inside something wedged against something else is moved by
 `world.unstick(pos, r, z)` to the nearest free spot (rings every 4 px up to 96 px in 8 fixed
 directions — exact constants, so every engine agrees). Knockback moves use the player's `z`.
+
+**Terrain** (campaign variants, §2): the map's height field is an always-there floor: `world.terrainQ(x, y)`
+= round(height / Z_UNIT) (`terrainH` in units, bit-identical in every engine). `groundQ` starts
+from it (standables above it still win), a standing body follows it after every move (it is lifted onto a higher ground at once; a drop of at most
+`TERRAIN_SNAP_Q` = 12 units onto the terrain itself is followed down; a bigger one, like walking off a
+plateau's edge, is an ordinary fall), an obstacle's `topQ` is `toZq(clear) + baseQ` (`baseQ` =
+the terrain under its centre; `MIN_Q` climbing tests use `topQ − baseQ`), and jump / climb / fall
+work as on a roof. A `frozen` player (a zip-line ride, §3.8) skips `stepPlayerMovement`.
 
 **Mantling.** After the move, an 'alive' player who is airborne or pressing `jump`, and
 moving, climbs the nearest standable collider (`findLedge`) that the body touches (within
@@ -564,6 +605,82 @@ without ≥ 2 POIs; a zone game has no objective (`settings.objective` false). `
   harassers, the wire, lobby rules and prefs, bot teams through the zones, determinism, the
   host tick on Harlan County vs the highway).
 
+### 3.8 Campaign — settings.mode 'campaign' (`shared/campaign.js`, `shared/sim/campaign.js`, `shared/maps-campaign.js`, `shared/terrain.js`)
+
+An extension of Highway 9 Pileup, Checkpoint Delta and Harlan County, picked with the lobby's
+Mode row (`fixModeCombo` keeps map and mode compatible); a daytime game (`map.time 'day'`) on
+the campaign variant of the map (§2). No objective to defend (`settings.objective` false), no
+edge spawns: the director places every zombie. One wave counter runs through four stages
+(`wavePlan(waves, floors)`: `hill = max(3, round(0.6 × waves))` hill waves, then the breakout,
+one wave per floor, the roof; `totalWaves` in the snapshot is that total). `shared/campaign.js`
+holds the tuning table `CAMPAIGN` (numbers below), `SUB`, `wavePlan`/`stageOfWave`/`killQuota`,
+the route helpers and `stageBanner`; `game.campaign` is a `CampaignDirector` (null in the other
+modes), whose hooks core.js calls (`begin`, `next`, `onIntermissionEnd`, `onWaveStart`,
+`holdsWave`, `checkEnd`, `spawnRects`, `spawnPoint`, `aliveCap`, `pace`, `slowMult`,
+`damageMult`, `onKill`, `tryZip`, `update`, `snapshot`).
+
+- **Stage 1, HILLTOP** (waves 1..N). The team starts on the plateau of a real hill (r 980,
+  plateau 350, 110 units high) ringed by a palisade with eight gates, sandbag funnels, a
+  watchtower, the supply station, a truck and cover. Ordinary waves and intermissions, but the
+  horde comes up the slope: zombies attack from a spiral of directions (2, 3, 3, then 4 at a
+  time, turning `hillRing.spinRate` rad/s) out of a ring 40..340 px past the foot. **Slope:**
+  a zombie on the flank moves (1 − 0.4 × flank) as fast and takes (1 + 0.3 × flank) damage
+  (`flank` = 4f(1 − f), 0 on the plateau and at the foot); a shooter ≥ 24 units above its
+  target deals +12 %. The last hill wave ends with a boss (ceil(n/3), 15 % fewer zombies), then
+  an 18 s breather (shop open) announces the breakout (`brief`).
+- **Stage 2, BREAKOUT** (wave N + 1, `holdsWave`: it does not end by killing everything). The
+  hill's gates blow, a first wave pours over the far palisade, and a **horde front** starts
+  330 px behind the hill's centre and walks the route at clamp(length / 64 s, 54, 96) px/s
+  (`frontSpeed`). Anyone behind it (`routeProgress` arclength < front) takes
+  `frontDps(t)` = min(26, 6 + 2.4 t) hp/s, t = seconds behind (it decays 2× as fast ahead of
+  it), straight off hp, armour or not (reported like acid); a downed survivor bleeds out 1.6×
+  as fast instead. Wave zombies (600 queued, at most 70 + 10 n alive, spawn interval × 0.7)
+  spawn at the front (weight 3), ahead of the team's lead (1.6) and out of the side streets
+  (0.8). The stage ends when every survivor standing is inside the entrance circle (r 120) for
+  2.5 s (`enter`), or the front has passed the door with anyone inside: the field is cleared,
+  the team moves to floor 1 (`arrive()`), the stage counts as a cleared wave (bonus, respawns,
+  revives).
+- **Stage 3, ASCENT** (waves N + 2 .. N + 1 + F, F = 3: Lobby, Offices, Atrium). One wave
+  per floor of 0.5 × a normal wave's zombies (min 8), out of the floor's doors and vents
+  (at most 24 + 7 n alive, pace × 0.85); the last floor also has a boss (ceil(n/3)). When the
+  floor is clear the **stairs open** (`SUB.OPEN`) for 24 s (2.5 s once everyone stands on them;
+  bots go when the team is ready or 14 s are left); at the end everyone is moved up (`moveUp`:
+  the field — zombies, loot, projectiles, hazards, turrets, barricades — is cleared, the team
+  stands on the next floor's arrival slots at the floor's height) and a 9 s breather starts
+  with a supply drop (ammo, first aid, armour, from the last floor a weapon crate).
+- **Stage 4, ROOFTOP** (the last wave, `holdsWave`). Kill `killQuota(n)` = round((44 + 26 (n − 1))
+  × difficulty.count) zombies (spawn queue endless, at most 30 + 9 n alive, pace × 0.75;
+  ceil(n/2) bosses walk in 26 s (+ 12 s per survivor a team lacks of three) after the start).
+  At the quota `zip` turns true (`SUB.ZIP`, event 'zip'): **interact within the gantry
+  circle** (r 100) to ride. A ride (`tryZip`) freezes the survivor (`frozen`, `riding` counts
+  `RIDE_TICKS` = 4.8 s down): they swing to the cable, slide along it (eased) hanging 66 units
+  below it, and land on the far pad as `escaped` (invulnerable and untargetable throughout,
+  not shooting, taking no damage or pickups; event 'ride' then 'escape'). **Victory** when
+  someone has escaped and nobody standing is left (alive, or downed with a self-revive kit,
+  and not escaped) — a downed teammate left behind bleeds out; **defeat** when nobody
+  standing is left and nobody escaped, as in every mode.
+- **Late join / respawn.** A joiner enters alive in the breakout and on the roof (no wave clear
+  to wait for), else as in §3.4; `spawnPoint(i)` = the hill's spawns (stage 1), beside the
+  survivor farthest along the route but never behind the front (stage 2), the floor's arrival
+  slots (3, 4). Everyone standing when a stage changes is teleported with the team.
+- **Nav.** The zombie flow fields get `maxDist = ZONE.navRange` (2800) as on any big map; a
+  zombie wedged far from everyone for 4 s is relocated (`STUCK_FAR_WEDGED`).
+- **Bots** play the whole run: the hill's spots around the top, the breakout's spots inside the
+  door circle (each on its own bearing), the stairs once the floor is clear, the gantry once the
+  line is live (`errand` modes 'zip' and 'stairs'); they shop at the stage's supply point and
+  never run ahead of the front's pressure.
+- **Snapshot**: `campaign { stage, floor, sub, x, y, r (the stage's circle), t, total (a timed
+  part: the door hold), front (route arclength or −1e9), kills, quota, zip, sx, sy (the current
+  supply point) }`, players `esc` and `ride` (0..1), events 'campaign' (§4.1). `game.campaign.stats`
+  = { blight, rides, escaped, arrivals } for tools.
+- **Balance** (docs/BALANCE.md): average bots on Normal escape ≈ 20 % solo, 65 % as a pair, 55 %
+  with three or four, 75 % with six; skilled bots win nearly every run from three up. Hard is a
+  real fight (≈ 10 % for four average bots), Easy is walked through.
+- Tests: `tests/campaign.test.js` (map extension and connectivity on the sim's own navigation
+  field, terrain agreement, slow zones, floor transitions, quota / zip / escape / victory /
+  defeat, late join, bots through a whole run and the breakout on every map, the wire, lobby
+  rules, determinism, host tick), the e2e scenario `k`.
+
 ---------------------------------------------------------------------------------------
 
 ## 4. Snapshot (render state)
@@ -588,6 +705,10 @@ Snapshot = {
                             //   x, y, r (live circle; while moving the announced one),
                             //   nx, ny, nr (the circle it heads for: the shrink target),
                             //   t, total (s left in the stage and its length), sx, sy (supply drop) }
+  campaign,                 // Campaign (§3.8), else null: { stage 1..4, floor (0 outside the tower, 1..3,
+                            //   4 = roof), sub (SUB: 0 fight|1 rest|2 brief|3 stairs open|4 arrived|5 zip),
+                            //   x, y, r (the stage's circle), t, total (s of a timed part), front (px along
+                            //   the route, -1e9 = none), kills, quota, zip (0|1), sx, sy (supply point) }
   players: [ {
     id, x, y, angle,
     state,                  // 'alive'|'downed'|'dead'
@@ -612,7 +733,9 @@ Snapshot = {
     earned,                 // total cash earned this game (end-screen stat)
     sprintLock,             // true while exhausted (must regain STAMINA_MIN_TO_SPRINT) — for exact prediction
     freeMag,                // rounds in the free pistol (fired while downed with no pistol) — for exact prediction
-    z,                      // feet height (world units): jumping, climbing, on top of something; 0 on the ground
+    z,                      // feet height (world units): jumping, climbing, on top of something, the terrain's
+                            //   height on a campaign map (§2); 0 on the ground of the other maps
+    esc, ride,              // Campaign: escaped down the zip line / 0..1 progress of a ride (0 = not riding)
     zq, vzq, jumpCd, climbT, climbTo,  // vertical state (§3.2), exact integers — for exact prediction
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/, z /*feet height, 0 on the ground*/ } ],
@@ -663,6 +786,7 @@ All events carry the fields listed; consumers ignore unknown types.
 | `waveclear` | wave, bonus | wave cleared |
 | `drop` | x, y | supply crate landed (Evac Run: the zone's supply drop) |
 | `zone` | stage, poi, x, y, r, time | Evac Run: a zone was announced ('next'), locked ('lock') or started to shrink ('shrink') |
+| `campaign` | what, stage, floor, pid | Campaign: what = 'stage' (a wave of the stage started or the stairs opened), 'brief' (the hill will fall), 'breakout', 'floor' (the team moved to that floor / the roof / the tower), 'zip' (the line is live), 'ride' / 'escape' (pid) |
 | `gameover` | reason | 'wiped'|'objective' |
 | `victory` | — | all waves cleared |
 
@@ -688,7 +812,12 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 7 (3 added the jump state and, separately, the new guns' fields; both
+u8. PROTOCOL_VERSION 8 (the Campaign: a header flag (8) and a 26-byte block after the zone
+one — stage, floor, sub u8, the circle as x, y positions and a radius at 0.25 px, the timer and
+its length at 0.01 s, the horde front as an f32 (−1e9 = none), kills and quota u16, the zip flag,
+the supply point — bit 64 of a player's flags byte (`esc`) and a trailing `ride` u8 per player,
+zombie heights as u16 (the floors reach 380 units; 2 bytes per zombie up high) and the
+binary `campaign` event; 7 was climbing / the Evac Run; 3 added the jump state and, separately, the new guns' fields; both
 together are 4; 5 appends the belt-fed HMG to the weapon table; 6 was used twice, by
 the Evac Run zone and by climbing, which merged as 7). The Evac Run zone: a header flag and
 a 25-byte block after the objective — stage, poi, from u8, the two circles' centres as
@@ -858,6 +987,13 @@ dashed circle it shrinks to, a violet haze over the blight during a wave, the su
 with a pulsing beacon (and a light), and while the player is outside the circle an edge
 arrow with the zone's name and distance; the objective's corner brackets are not drawn.
 
+The Campaign (top-down): `render/campaign2d.js` shades the terrain (the hill as a lit dome with
+contour rings, plateaus with a cliff line) under the obstacles, draws the stage's circle (amber;
+dashed green once the zip line is live), the horde front (a red wall and tint over the route
+behind it), the zip cable with its pulse, the stage's supply beacon and an edge arrow to the
+circle, plus the lobby thumbnail extras; `render/obstacles-campaign.js` draws the new kinds.
+The old objective is scenery there (no glow, no marker).
+
 ### 7.2 Input — `ui/input.js`
 ```js
 export function createInput(canvas)
@@ -910,12 +1046,30 @@ everything but that button through. A touch button that opens the shop or pause 
 swallows the tap's trailing click (it would land on what just opened, e.g. buy a card).
 The HUD weapon panel shows the weapon actually in hand (`activeWeapon()`: a downed
 survivor's pistol).
-Lobby: a Mode row (Defend / Evac Run, with the mode's description) above difficulty; a map
-card that plays only some modes carries a tag ("Evac Run only") and picking it switches the
-mode; the objective toggle is disabled (Off) in Evac Run; `prefs.lobby.mode` is stored and
-validated (`ui/storage.js`). A Time segmented control (Night / Day, `#opt-time`) sits next to the
-Mode row, works like it (a day-only map card carries a "Day only" tag, picking it switches the time,
-picking Night leaves it for a night map) and is stored in `prefs.lobby.time`.
+Lobby: a Mode row (Defend / Evac Run / Campaign, with the mode's description) above difficulty; a
+map card that does not play both standard modes carries a tag ("Evac Run · Campaign only" on
+Harlan County) and picking it switches the mode; maps with the campaign extension carry a
+CAMPAIGN badge over their preview, and in Campaign mode every such card previews the campaign
+variant (hill, route, zip line); the objective toggle is disabled (Off) in Evac Run and the
+Campaign; `prefs.lobby.mode` is stored and validated (`ui/storage.js`).
+A Time segmented control (Night / Day, `#opt-time`) sits next to the Mode row, works like it (a
+day-only map card carries a "Day only" tag, picking it switches the time, picking Night leaves it
+for a night map) and is stored in `prefs.lobby.time`; choosing the Campaign mode sets Day.
+Campaign HUD (`ui/campaignhud.js`, `createHud(…, { mode: 'campaign' })`, mode chosen by
+`map.campaign`): the stage panel under the compass ("HILLTOP STAND · WAVE 3/9 — high ground:
++12% damage", "BREAKOUT · REACH THE TOWER — 103 m to the tower door · 5 m ahead of the horde",
+"HOLD THE DOOR", "FLOOR 2 · OFFICES — clear the floor: 9 left", "stairs open, 19 m away · up in
+24 s", "ROOFTOP · 12/96", "ZIP LINE LIVE", "ESCAPED — waiting for the others"), with a progress
+bar; the wave panel names the stage counters (HILL WAVE n / N, STAGE 2 / 4, FLOOR n / 3,
+ROOFTOP kills / quota); a pulsing "THE HORDE HAS YOU" warning, a red screen edge and a tone
+every 1.6 s while you are behind the front; a full-screen title card over a short fade
+(FLOOR 1 / LOBBY, ROOFTOP) when the team moves; banners for the hilltop, the breakout, the zip
+line waking up and your escape; toasts for teammates' rides and escapes; the interact prompt at
+the gantry; the end screen says "Escaped" (or where the team fell). The compass shows the
+stage's circle (amber ring; green once the line is live) and the stage's supply point (green
++); the minimap / radar draws the hill, the route, the zip cable, the circle, the red band
+behind the horde front and the supply point; mid-wave shopping works at that supply point
+(`view.campaign.sx, sy`, as the sim's `shopOpen`).
 Evac Run HUD (`ui/zonehud.js`, `createHud(…, { mode: 'zone' })`): a panel under the compass
 ("MOVE TO GAS-N-GO · Zone locks in 42 s · 80 m away", "HOLD …", "THE ZONE IS SHRINKING",
 "FINAL CIRCLE", with a timer bar; green once you're in), a banner + sting for each new zone
@@ -969,6 +1123,8 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
                 //  |'gameover'|'victory'|'countdown'|'ready'
                 //  |'zone' (a new safe zone / the shrink: radio click + bright two-note call)
                 //  |'zonewarn' (short double beep while standing in the blight)
+                //  |'stage' (the hilltop / breakout: low horns and timpani) |'floor' (a lift chime over a
+                //  falling rumble) |'zipline' (the line waking up) |'escape' (a short fanfare)
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
@@ -976,7 +1132,10 @@ audio.setMap(map)                            // permanent map fires crackle when
 // player leaves / returns to its feet (vzq), 'climb' (palms on the ledge, a strained grunt,
 // boots scrabbling) when a climb starts, 'land_roof' (a hollow sheet-metal thunk) for a
 // landing up on something and 'roofstep' every ~60 px walked on a roof — the local one
-// from its predicted view at once.
+// from its predicted view at once. Heights are relative to the map's terrain (`setMap`): on
+// the campaign's hill and floors nothing is "up on a roof". A ride starts 'zip_ride' (ratchet,
+// sheave whine, rushing wind; 5.2 s) at the rider, an escape a landing thunk, and walking up
+// the campaign's stairs plays a clanking 'stairstep' every ~34 px.
 // First person: pass `yaw` in addEvents/update opts (see §7.5 "Audio orientation";
 // exported helpers orientedPan(dx, dy, yaw) and rearShade(behind, maxLp) are unit-tested).
 // addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
@@ -1060,6 +1219,23 @@ zone3d.js       Evac Run (ctx.mode 'zone', built at creation so the warm-up comp
                 overlay markers: the zone (name + distance, pinned to the screen edge with an
                 arrow) and a SUPPLY tag; hides the objective marker
 world-rural.js  Harlan County's kinds: grain silos (300) and headstones (30)
+campaign3d.js   the Campaign (built whenever the map has `campaign`; ctx.mode 'campaign'): an
+                amber (green once the line is live) ring and a soft light column over the stage's
+                circle (thin near the eye, never a slab when you stand in it), the tower's blue
+                beacon during the breakout, the horde front (a churning dust wall + red-hot foot
+                across the street, brown thicker fog while you are behind it), a pulse and
+                trolleys on the zip cable, an overlay marker for the circle (TOWER / STAIRS /
+                GANTRY / ZIP LINE with the distance); the camera rolls and widens its FOV while
+                riding (renderer3d.js updateCamera)
+world-ridge.js  the campaign's kinds and dressing: the palisade, watchtower, tower (curtain wall,
+                sign, red beacon), the annex (curtain-wall shells around the plateaus, offices with
+                desks / cabinets / counters / columns, the stairs), the roof (parapet, plant,
+                helipad, antenna, the zip gantry and cable), the landing pad, a painted skyline
+  terrain in the renderers: `ctx.terrain` / `ctx.groundY(x, y)` (shared/terrain.js): the ground
+  tile mesh is subdivided with the heights (`ground.js`), every world object is lifted onto
+  `groundY(centre)` (`world-geo.js setGround`), the grass shader follows the hill, map lights
+  and light sprites are lifted, and the sub-systems add the ground height under an effect
+  (`effects3d.js` / `items3d.js` wrappers, gibs and corpses in `zombies3d.js`).
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
 world-tex.js    procedural world textures (window/neon atlas, chain-link mask, water normals)
@@ -1255,11 +1431,11 @@ change.
 time, changed)` (mirrors `fixModeCombo`: picking a map that doesn't play the time switches the time,
 picking a time the map doesn't play switches to the first map that does), `resolveTime(map,
 requested)` (what a game really plays; `Game` stores it in `game.settings.time`).
-**A day-only map** (e.g. the daytime campaign map) just declares `time: 'day'` in its `MAP_LIST`
+**A day-only map** just declares `time: 'day'` in its `MAP_LIST`
 entry (or `times: ['day']`); `buildMap` copies it onto the MapDef, `mergeSettings` keeps
 map + time compatible, the lobby card shows a "Day only" tag, and both renderers read `map.time`
 when no `time` option is given. Settings travel as JSON (`settings` / `start` control messages),
-so there is **no PROTOCOL_VERSION bump**; old peers without a time read `night`. `ui/match.js`
+so the time itself needs **no PROTOCOL_VERSION bump** (the protocol is 8 because of the Campaign, §3.8); old peers without a time read `night`. The Campaign (`mode: 'campaign'`) is a daytime game: `buildMap(id, seed, { mode: 'campaign' })` sets `map.time = 'day'`, `mergeSettings` forces `time: 'day'` while the mode is Campaign (the lobby's Time row shows Day, disabled), and the renderers therefore draw the campaign maps with the daylight look. `ui/match.js`
 passes `resolveTime(map, session.settings.time)` to `createRenderer(3D)`.
 
 **First person by day** (`ctx.time === 'day'`; `lights.js` `ambientFor(map, time)` returns
@@ -1331,6 +1507,13 @@ Evac Run map). Possible follow-up: a `dusk` time (the sun parameters and `lampK`
   relay in first person — each camera sees the other, the client's W moves it along
   its own yaw on the host, and the host sees the client jump. Headless Chromium renders WebGL with SwiftShader (software), so
   g/h are written to hold at a few frames per second.
+  Scenario k (campaign, 420 s budget): the lobby's Mode row (three modes), CAMPAIGN badges on
+  the three extended maps only, a map without the extension leaving Campaign mode, then Play Solo
+  with two bots on Checkpoint Delta (top-down): the stage panel names the hilltop and the team
+  stands up the hill, a hill wave; the host's game is driven to the breakout (horde front in the
+  snapshot), the door (a FLOOR 1 title card), the roof, the quota (banner, prompt), the local
+  survivor rides (E) and the bots after, the end screen says "Escaped"; then a first-person game
+  (quality 'low') checks the campaign group in the scene, the hill, floor 1 and the roof heights.
   Scenario i (zone): Play Solo (top-down), the lobby's Mode row and the Evac Run-only Harlan
   County card keep map and mode compatible (the pick wins), two bots; the zone is announced
   (snapshot, zone panel), the player walks toward it with the WASD combination the shared

@@ -21,6 +21,7 @@
 
 import { WEAPONS } from '../shared/weapons.js';
 import { BLEEDOUT_TIME } from '../shared/constants.js';
+import { terrainOf } from '../shared/terrain.js';
 import { clamp, lerp } from '../shared/math.js';
 import { SOUNDS, SOUND_IDS } from './sounds.js';
 import { createBank } from './bank.js';
@@ -63,6 +64,8 @@ const UI = {
   wave: 'siren', waveclear: 'waveclear', gameover: 'gameover', victory: 'victory', countdown: 'ui_countdown', ready: 'ui_ready',
   // Evac Run: a new safe zone announced / the warning while standing in the blight
   zone: 'zone_call', zonewarn: 'zone_warn',
+  // Campaign: a stage / floor title card, the zip line waking up, the escape
+  stage: 'camp_stage', floor: 'camp_floor', zipline: 'zipline', escape: 'camp_escape',
 };
 
 // Reload choreography per weapon: [sound, fraction of the reload time, playback rate].
@@ -879,21 +882,44 @@ class Engine {
     for (const p of view.players) {
       if (!p) continue;
       const alive = p.state !== 'dead';
-      const z = alive && p.z > 0 ? p.z : 0;
+      // height above the ground under the feet: on a campaign map the hill, the floors and the
+      // roof are terrain, not "up on a car" (so no hollow roof steps there)
+      const gz = this.terrain ? this.terrain.height(p.x, p.y) : 0;
+      const z = alive && p.z > gz + 0.5 ? p.z - gz : 0;
       const climb = alive && p.climbT > 0;
       const air = alive && (climb || (p.vzq !== undefined ? p.vzq !== 0 : z > 0));
       const s = last.get(p.id);
       if (!s) {
-        last.set(p.id, { air, climb, x: p.x, y: p.y, step: 0 });
+        last.set(p.id, { air, climb, x: p.x, y: p.y, step: 0, ride: 0, esc: false });
         continue;
       }
       const opts = p === me ? { local: true, prio: PRIO_OWN } : { x: p.x, y: p.y };
+      // Campaign: the zip-line ride (its whole ratchet, whine and wind in one sound) and the touch-down
+      const ride = alive && p.ride > 0 ? 1 : 0;
+      if (ride && !s.ride) this.play('zip_ride', opts);
+      if (p.esc && !s.esc) this.play('land_roof', { ...opts, gain: 1.4 });
+      s.ride = ride;
+      s.esc = !!p.esc;
+      if (ride) {
+        s.x = p.x;
+        s.y = p.y;
+        s.air = true;
+        continue;
+      }
       if (climb && !s.climb) this.play('climb', opts);
       else if (air && !s.air) this.play('jump', opts);
       else if (!air && s.air && !s.climb) this.play(z > 0 ? 'land_roof' : 'land', opts);
-      // walking about on a roof: a hollow step every ~60 px
+      // walking about on a roof: a hollow step every ~60 px; up the stairs a clanking tread
+      // every ~34 px (the campaign's stairs are obstacles of kind 'stairs')
       const d = Math.hypot(p.x - s.x, p.y - s.y);
-      if (!air && z > 0 && dt > 0 && d < 40) {
+      const onStairs = !air && dt > 0 && d < 40 && this.onStairs(p.x, p.y);
+      if (onStairs) {
+        s.step += d;
+        if (s.step > 34) {
+          s.step = 0;
+          this.play('stairstep', opts);
+        }
+      } else if (!air && z > 0 && dt > 0 && d < 40) {
         s.step += d;
         if (s.step > 60) {
           s.step = 0;
@@ -907,6 +933,18 @@ class Engine {
       s.x = p.x;
       s.y = p.y;
     }
+  }
+
+  /** True if (x, y) is on one of the campaign map's flights of stairs. */
+  onStairs(x, y) {
+    const st = this.stairs;
+    if (!st) return false;
+    for (const o of st) {
+      const c = Math.cos(o.a || 0), sn = Math.sin(o.a || 0);
+      const dx = x - o.x, dy = y - o.y;
+      if (Math.abs(dx * c + dy * sn) <= o.w / 2 && Math.abs(-dx * sn + dy * c) <= o.h / 2) return true;
+    }
+    return false;
   }
 
   wantLoop(want, key, id, p, local, gain, rate) {
@@ -1194,6 +1232,11 @@ class Engine {
   setMap(map) {
     const fires = map && Array.isArray(map.fires) ? map.fires : [];
     this.mapFires = fires.filter((f) => f && Number.isFinite(f.x) && Number.isFinite(f.y));
+    // the campaign's terrain (hill, floors) and stairs: footsteps and landings are ground-relative
+    const t = map && map.terrain ? terrainOf(map) : null;
+    this.terrain = t && !t.flat ? t : null;
+    const st = map && Array.isArray(map.obstacles) ? map.obstacles.filter((o) => o.kind === 'stairs') : [];
+    this.stairs = st.length ? st : null;
   }
 
   stats() {
@@ -1251,7 +1294,7 @@ export function createAudio(options = {}) {
     addEvents: safe((events, opts) => eng.addEvents(events, opts)),
     /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. opts: { localId, dt, x?, y?, yaw? } */
     update: safe((view, opts) => eng.update(view, opts)),
-    /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'|'zone'|'zonewarn'. */
+    /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'|'zone'|'zonewarn'|'stage'|'floor'|'zipline'|'escape'. */
     ui: safe((name) => eng.ui(name)),
     /** Volumes 0..1 (any subset of master, sfx, music). Kept across unlock. */
     setVolume: safe((v) => eng.setVolume(v)),

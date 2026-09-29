@@ -169,6 +169,8 @@ export function mergeSettings(current, patch) {
   const tfix = fixTimeCombo(out.mapId, out.time, timePicked && !mapPicked ? 'time' : 'map');
   out.mapId = tfix.mapId;
   out.time = tfix.time;
+  // The Campaign is a daytime game (its maps are built with time 'day'): the time follows it.
+  if (out.mode === 'campaign') out.time = 'day';
   if (DIFFICULTY_IDS.includes(patch.difficulty)) out.difficulty = patch.difficulty;
   if (Number.isInteger(patch.waves) && patch.waves >= 0 && patch.waves <= MAX_WAVES) out.waves = patch.waves;
   if (typeof patch.objective === 'boolean') out.objective = patch.objective;

@@ -41,6 +41,7 @@ const ELITE_CHANCE = 0.02;
 const ELITE_FROM_WAVE = 4;
 const STUCK_TELEPORT_AFTER = 12;
 const STUCK_FAR = 650;
+const STUCK_FAR_WEDGED = 240;
 /** Evac Run: a zombie stuck out in the blight re-enters unless a survivor is this close. */
 const STUCK_FAR_BLIGHT = 300;
 const BIG_RADIUS = 20;          // zombies this big are heavies: over low cover, wide-gap field
@@ -54,6 +55,8 @@ export const HEAVY_BODY_RADIUS = 28;
 const CLIMB_NEAR = 260;
 /** Zombies this far apart in height don't jostle each other (one on a roof, one below). */
 const SEP_DZ = 30;
+/** Walking over terrain: a zombie follows the ground up or down by at most this (units) a tick. */
+const TERRAIN_SNAP = 12;
 /** A zombie this far below or above a survivor doesn't bump into them. */
 const PUSH_DZ = 40;
 
@@ -94,7 +97,7 @@ export function updateSpawning(game) {
   if (game.spawnTimer > 0) return;
   let alive = 0;
   for (const z of game.zombies) if (!z.dead) alive++;
-  const room = game.diff.maxAlive - alive;
+  const room = (game.campaign ? game.campaign.aliveCap(game.diff.maxAlive) : game.diff.maxAlive) - alive;
   if (room <= 0) {
     game.spawnTimer = 0.5;
     return;
@@ -114,7 +117,7 @@ export function updateSpawning(game) {
   game.spawnQueue -= group;
   const crowd = (1 + WAVE_ZOMBIES.perPlayer * (game.wavePlayers - 1)) * game.diff.count;
   const base = Math.max(sp.min, Math.min(sp.start, sp.start - sp.perWave * (w - 1)));
-  game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25);
+  game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25) * (game.campaign ? game.campaign.pace() : 1);
 }
 
 function pickType(game, w) {
@@ -136,7 +139,7 @@ function pickType(game, w) {
 export function pickSpawnRect(game) {
   let rects = game.map.zombieSpawns, farD = 700;
   // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges.
-  const zr = game.zone ? game.zone.spawnRects() : null;
+  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : null;
   if (zr) {
     rects = zr.rects;
     farD = zr.far;
@@ -216,7 +219,7 @@ export function spawnZombie(game, type, x, y, elite = false) {
     stuckT: 0, progT: rng.range(0, 1), lastProg: Infinity, unstickT: 0, udx: 0, udy: 0,
     bumpB: null, bumpT: 0, hurtT: 0, flashT: 0, lastBy: 0, touched: 0, holding: false,
     // height: feet z (0 on the ground), fall speed, and a climb in progress
-    z: 0, vz: 0, climbWait: 0, climbT: 0, climbDur: 0, climbO: null, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0,
+    z: game.world.terrainH(x, y), vz: 0, climbWait: 0, climbT: 0, climbDur: 0, climbO: null, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0,
   };
   game.zombies.push(z);
   return z;
@@ -247,7 +250,7 @@ function chooseTarget(game, z) {
     kind = TK_OBJECTIVE;
   }
   for (const p of game.players) {
-    if (p.state === 'dead') continue;
+    if (p.state === 'dead' || p.escaped || p.riding > 0) continue;
     let d = Math.hypot(p.x - z.x, p.y - z.y) - PLAYER_RADIUS;
     if (p.state === 'downed') d += DOWNED_BIAS;
     if (d < best) {
@@ -335,7 +338,7 @@ function refreshTarget(game, z) {
 
 function targetValid(game, z) {
   switch (z.tgtKind) {
-    case TK_PLAYER: return z.tgt.state !== 'dead' && game.players.includes(z.tgt);
+    case TK_PLAYER: return z.tgt.state !== 'dead' && !z.tgt.escaped && !(z.tgt.riding > 0) && game.players.includes(z.tgt);
     case TK_TURRET: return !z.tgt.dead;
     case TK_OBJECTIVE: return !!game.objective && game.objective.hp > 0;
     default: return false;
@@ -493,7 +496,7 @@ function stepNormal(game, z) {
   }
   if (inReach) move = 0;
   const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1)
-    * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move;
+    * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move * (game.campaign ? game.campaign.slowMult(z) : 1);
   moveZombie(game, z, dirX * speed, dirY * speed, true);
   // Pressed against the perch of a survivor out of reach: climb up after them.
   if (needUp && def.climb && z.tgtDist < CLIMB_NEAR) {
@@ -591,7 +594,7 @@ function moveZombie(game, z, vx, vy, separate) {
     pushed = pushOutOf(z, t.x, t.y, TURRET.radius) || pushed;
   }
   if (pushed) world.resolveCircle(z, z.body, z.mask, z.z);
-  if (z.z > 0 || z.vz !== 0) stepHeight(game, z);
+  if (z.z > 0 || z.vz !== 0 || !world.terrain.flat) stepHeight(game, z);
   z.vx = (z.x - ox) / DT;
   z.vy = (z.y - oy) / DT;
 }
@@ -647,7 +650,19 @@ function gapTo(game, z, p) {
  * (no damage) when it walks or is knocked off the edge.
  */
 function stepHeight(game, z) {
-  const g = game.world.groundAt(z.x, z.y, z.z);
+  const world = game.world;
+  const g = world.groundAt(z.x, z.y, z.z);
+  if (!world.terrain.flat && z.vz === 0) {
+    // on terrain a walker follows the ground up and down the slope (no fall, no landing)
+    if (g > z.z) {
+      z.z = g;
+      return;
+    }
+    if (g < z.z && world.groundOb === null && z.z - g <= TERRAIN_SNAP) {
+      z.z = g;
+      return;
+    }
+  }
   if (z.vz === 0 && g >= z.z) return;
   z.vz -= JUMP_GRAVITY * DT;
   z.z += z.vz * DT;
@@ -968,7 +983,10 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
   }
   const busy = inReach || z.holding || z.swingT > 0 || z.bumpT > 0 || z.climbWait > 0 || z.tgtKind === TK_NONE;
   if (!busy && z.lastProg - metric < z.speed * 0.25) z.stuckT += 1;
-  else z.stuckT = Math.max(0, z.stuckT - 2);
+  else {
+    z.stuckT = Math.max(0, z.stuckT - 2);
+    if (z.stuckT === 0) z.wedge = 0;
+  }
   z.lastProg = metric;
   if (z.stuckT >= 3 && z.unstickT <= 0) {
     // Sidestep along the wall for a moment.
@@ -981,7 +999,10 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
     let far = true;
     // (Evac Run: the team stays in the circle, so one stuck outside it would stall the wave)
     const zc = game.zone && game.phase === 'wave' && game.zone.stage > 0 ? game.zone.circle : null;
-    const farR = zc && Math.hypot(z.x - zc.x, z.y - zc.y) > zc.r + 60 ? STUCK_FAR_BLIGHT : STUCK_FAR;
+    let farR = zc && Math.hypot(z.x - zc.x, z.y - zc.y) > zc.r + 60 ? STUCK_FAR_BLIGHT : STUCK_FAR;
+    // (Campaign: one wedged for 24 s — a heavy in a pocket of the fort — is relocated unless
+    // a survivor stands right beside it)
+    if (game.campaign && (z.wedge = (z.wedge || 0) + 1) >= 2) farR = STUCK_FAR_WEDGED;
     for (const p of game.players) {
       if (p.state !== 'dead' && Math.hypot(p.x - z.x, p.y - z.y) < farR) {
         far = false;
@@ -994,7 +1015,7 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
       const p = spawnPoint(game, rect, z.body, z.mask);
       z.x = p.x;
       z.y = p.y;
-      z.z = 0;
+      z.z = game.world.terrainH(p.x, p.y);
       z.vz = 0;
       z.kvx = 0;
       z.kvy = 0;

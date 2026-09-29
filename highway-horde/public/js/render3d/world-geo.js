@@ -279,6 +279,9 @@ export function createGeoBuilder(opts) {
   for (const b of Object.keys(bucketDefs)) store.set(b, new Map());
   let cellKey = '0,0';
   let objX = 0, objY = 0;
+  // Terrain (campaign maps): every object frame stands on the ground at its own position.
+  let groundFn = null;
+  let objLift = 0;
   let jitter = 0.08;
   let rng = seededRng(1);
   let aoH = 34, aoMin = 0.42;
@@ -310,6 +313,8 @@ export function createGeoBuilder(opts) {
      * x (roll) and z (pitch: +x up) axes first (a sloped ramp, a car over the edge).
      */
     obj(x, y, a = 0, seed = 0, groundY = 0, tilt = null) {
+      objLift = groundFn ? groundFn(x, y) : 0;
+      groundY += objLift;
       _obj.makeRotationY(-a);
       if (tilt) {
         _e.set(tilt[0], 0, tilt[1]);
@@ -325,6 +330,8 @@ export function createGeoBuilder(opts) {
       return B;
     },
     get rng() { return rng; },
+    /** Terrain: a function (x, y) → ground height; frames placed afterwards are lifted by it. */
+    setGround(fn) { groundFn = fn; return B; },
     /** Force following objects into a named cell (null = by position). */
     setCell(key) { cellOverride = key; return B; },
     /** Per-call colour variation amplitude (0 = exact colours). */
@@ -480,7 +487,7 @@ export function createGeoBuilder(opts) {
       NN[pi] = _n.x; NN[pi + 1] = _n.y; NN[pi + 2] = _n.z;
       let ao = 1;
       if (useAO && aoH > 0) {
-        const hh = Math.max(0, Math.min(1, _v.y / aoH));
+        const hh = Math.max(0, Math.min(1, (_v.y - objLift) / aoH));
         ao = aoMin + (1 - aoMin) * hh * hh * (3 - 2 * hh);
       }
       C[pi] = cr * ao; C[pi + 1] = cg * ao; C[pi + 2] = cb * ao;

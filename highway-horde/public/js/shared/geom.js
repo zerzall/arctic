@@ -10,6 +10,7 @@
 // (true when it can be stood on) and `ci` (their index in the collider list).
 
 import { jumpClearance, standTop, toZq, Z_UNIT } from './jump.js';
+import { terrainOf } from './terrain.js';
 
 /** Blocks bullets, beams, projectiles and line of sight. */
 export const MASK_SOLID = 1;
@@ -49,7 +50,7 @@ const EPS = 1e-9;
 export function makeObb(x, y, w, h, a = 0, mask = 0, ref = null) {
   const ob = {
     x, y, hw: w / 2, hh: h / 2, a, c: 1, s: 0, mask, ref,
-    minX: 0, minY: 0, maxX: 0, maxY: 0, top: Infinity, topQ: Infinity, stand: false, ci: -1,
+    minX: 0, minY: 0, maxX: 0, maxY: 0, top: Infinity, topQ: Infinity, baseQ: 0, stand: false, ci: -1,
   };
   setObbPose(ob, x, y, a);
   return ob;
@@ -457,12 +458,18 @@ export class StaticIndex {
  */
 export function mapColliders(map) {
   const out = [];
+  // A campaign map has terrain (shared/terrain.js): every obstacle stands on the ground at
+  // its centre, so its top is the terrain height there plus its own height. `baseQ` is that
+  // ground height in Z_UNITs (0 on a flat map, where nothing below changes).
+  const terrain = terrainOf(map);
   for (const o of map.obstacles || []) {
     const mask = MASK_MOVE | (o.solid ? MASK_SOLID : 0) | (isCrushable(o) ? 0 : MASK_BULKY);
     const box = makeObb(o.x, o.y, o.w, o.h, o.a || 0, mask, o);
     const clear = jumpClearance(o);
+    box.baseQ = 0;
     if (clear < Infinity) {
-      box.topQ = toZq(clear);
+      if (!terrain.flat) box.baseQ = terrain.q(o.x, o.y);
+      box.topQ = toZq(clear) + box.baseQ;
       box.top = box.topQ * Z_UNIT;
       box.stand = standTop(o) > 0;
     }

@@ -17,6 +17,7 @@ import { MASK_OBJECTIVE } from '../geom.js';
 import { SpatialHash } from '../spatial.js';
 import { FlowField } from '../flowfield.js';
 import { createCollisionWorld, MASK_HEAVY } from '../movement.js';
+import { resetVertical } from '../jump.js';
 import {
   createPlayer, updatePlayers, updateDowned, updatePickups, applyBuy, respawnPlayer,
   revivePlayer, playerSnapshot, dropCrate, spawnPointFor, queueCmd, departRecord, restoreDeparted,
@@ -29,6 +30,7 @@ import {
 } from './zombies.js';
 import { createBrain, updateBots } from './bots.js';
 import { ZoneDirector } from './zone.js';
+import { CampaignDirector } from './campaign.js';
 import { mapModes } from '../zone.js';
 import { resolveTime } from '../timeofday.js';
 
@@ -91,11 +93,13 @@ export class GameCore {
     const modes = mapModes(map);
     let mode = modes.includes(this.settings.mode) ? this.settings.mode : modes[0];
     if (mode === 'zone' && !(map.pois && map.pois.length >= 2)) mode = 'defend';
+    // The campaign (SPEC §3.8) needs the map's campaign extension (maps-campaign.js).
+    if (mode === 'campaign' && !(map.campaign && map.campaign.hill)) mode = modes.includes('defend') ? 'defend' : 'zone';
     this.mode = mode;
     this.settings.mode = mode;
     // Time of day (SPEC §7.5.1): cosmetic only (lighting); a day-only map plays day whatever was asked.
     this.settings.time = resolveTime(map, this.settings.time);
-    if (mode === 'zone') this.settings.objective = false;
+    if (mode === 'zone' || mode === 'campaign') this.settings.objective = false;
     this.rng = createRng((this.seed ^ hashString('highway-horde-sim')) >>> 0);
 
     this.world = createCollisionWorld(map);
@@ -109,6 +113,8 @@ export class GameCore {
     this.zgrid = new SpatialHash(map.width, map.height, 64);
     /** The moving safe zone of an Evac Run (sim/zone.js), else null. */
     this.zone = mode === 'zone' ? new ZoneDirector(this) : null;
+    /** The four-stage campaign director (sim/campaign.js), else null. */
+    this.campaign = mode === 'campaign' ? new CampaignDirector(this) : null;
 
     this.tick = 0;
     this.time = 0;
@@ -172,6 +178,7 @@ export class GameCore {
     if (this.players.length === 1) this.players[0].selfRevive = true;
     // Evac Run: the first zone is announced at once; getting there is the prep phase.
     if (this.zone) this.timer = this.zone.begin();
+    if (this.campaign) this.timer = this.campaign.begin();
     /** Set once the constructor is done: later players join at the zone (zone mode). */
     this.started = true;
     this._rebuildFlow('all');
@@ -190,7 +197,8 @@ export class GameCore {
   addPlayer(info) {
     const existing = this.getPlayer(info.id);
     if (existing) return existing;
-    const midWave = this.phase === 'wave' || this.phase === 'gameover' || this.phase === 'victory';
+    // (the campaign's breakout and roof waves never clear: a joiner there enters alive)
+    const midWave = (this.phase === 'wave' && !(this.campaign && this.campaign.lateAlive())) || this.phase === 'gameover' || this.phase === 'victory';
     const p = this._addPlayer(info, midWave ? 'dead' : 'alive');
     const key = departKey(p);
     const rec = this.departed.get(key);
@@ -273,6 +281,7 @@ export class GameCore {
 
     this._updatePhase();
     if (this.zone) this.zone.update();
+    if (this.campaign) this.campaign.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
     // AI survivors decide now and queue their cmds like everyone else's input.
@@ -317,13 +326,14 @@ export class GameCore {
       tick: this.tick,
       phase: this.phase,
       wave: this.wave,
-      totalWaves: this.settings.waves,
+      totalWaves: this.campaign ? this.campaign.total : this.settings.waves,
       timer: this.phase === 'prep' || this.phase === 'intermission' ? Math.max(0, this.timer) : 0,
       remaining: this.remaining(),
       bossHp: bossMax > 0 ? clamp01(bossHp / bossMax) : -1,
       objective: this.objective ? { hp: Math.max(0, Math.round(this.objective.hp)), maxHp: this.objective.maxHp } : null,
       readyCount,
       zone: this.zone ? this.zone.snapshot() : null,
+      campaign: this.campaign ? this.campaign.snapshot() : null,
       players: this.players.map((p) => playerSnapshot(this, p)),
       zombies: zs,
       projectiles: this.projectiles.filter((pr) => !pr.dead).map((pr) => ({
@@ -348,6 +358,8 @@ export class GameCore {
   remaining() {
     let alive = 0;
     for (const z of this.zombies) if (!z.dead) alive++;
+    // (the roof's and the breakout's queues are endless streams: only what is alive counts)
+    if (this.campaign && this.campaign.holdsWave()) return alive;
     return alive + this.spawnQueue + this.bossQueue;
   }
 
@@ -398,6 +410,7 @@ export class GameCore {
     const sp = spawnPointFor(this, this.players.length - 1);
     p.x = sp.x;
     p.y = sp.y;
+    resetVertical(p, this.world.terrainQ(p.x, p.y));
     if (state === 'dead') {
       p.state = 'dead';
       p.respawn = true;
@@ -416,7 +429,7 @@ export class GameCore {
     const targets = this._flowTargets;
     let n = 0;
     for (const p of this.players) {
-      if (p.state === 'dead') continue;
+      if (p.state === 'dead' || p.escaped || p.riding > 0) continue;
       targets[n++] = p;
     }
     for (const t of this.turrets) if (!t.dead) targets[n++] = t;
@@ -435,7 +448,14 @@ export class GameCore {
       for (const p of this.players) if (!p.ready) { allReady = false; break; }
       // Evac Run: the vote only skips the rest of the move once everyone is in the zone.
       if (allReady && this.zone && !this.zone.everyoneIn()) allReady = false;
-      if (this.timer <= 0 || allReady) this._startWave(this.wave + 1);
+      if (this.timer <= 0 || allReady) {
+        // Campaign: the end of a floor's intermission takes the stairs instead of starting a wave.
+        if (ph === 'intermission' && this.campaign && this.campaign.onIntermissionEnd()) {
+          for (const p of this.players) p.ready = false;
+        } else {
+          this._startWave(this.wave + 1);
+        }
+      }
     }
   }
 
@@ -453,7 +473,8 @@ export class GameCore {
     this.bossTimer = 10;
     startWaveSpawns(this);
     if (this.zone) this.zone.lock();
-    this.emit({ type: 'wave', wave: w, boss });
+    if (this.campaign) this.campaign.onWaveStart(w);
+    this.emit({ type: 'wave', wave: w, boss: this.waveBosses > 0 });
   }
 
   _waveClear() {
@@ -473,14 +494,14 @@ export class GameCore {
     for (const pr of this.projectiles) if (pr.kind === 'acid' || !pr.owner) pr.dead = true;
     // (Evac Run: the reward is the supply drop waiting in the next zone.)
     if (!this.zone) dropCrate(this);
-    if (this.settings.waves > 0 && w >= this.settings.waves) {
+    if (!this.campaign && this.settings.waves > 0 && w >= this.settings.waves) {
       this.phase = 'victory';
       this.over = 'victory';
       this.emit({ type: 'victory' });
       return;
     }
     this.phase = 'intermission';
-    this.timer = this.zone ? this.zone.next() : INTERMISSION_TIME;
+    this.timer = this.zone ? this.zone.next() : this.campaign ? this.campaign.next() : INTERMISSION_TIME;
   }
 
   _gameOver(reason) {
@@ -499,7 +520,18 @@ export class GameCore {
     }
     // A cleared wave wins a tie with a wipe: the clear revives the downed (the last
     // zombie's death, a bloater burst, may have knocked down the last survivor).
-    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0) {
+    if (this.campaign) {
+      // the roof: the last survivor out of the zip line wins the game
+      if (this.campaign.checkEnd() === 'victory') {
+        this.phase = 'victory';
+        this.over = 'victory';
+        this.spawnQueue = 0;
+        this.bossQueue = 0;
+        this.emit({ type: 'victory' });
+        return;
+      }
+    }
+    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0 && !(this.campaign && this.campaign.holdsWave())) {
       let any = false;
       for (const z of this.zombies) if (!z.dead) { any = true; break; }
       if (!any) {
@@ -510,7 +542,7 @@ export class GameCore {
     if (this.players.length > 0) {
       let standing = false;
       for (const p of this.players) {
-        if (p.state === 'alive' || (p.state === 'downed' && p.selfRevive)) {
+        if (!p.escaped && (p.state === 'alive' || (p.state === 'downed' && p.selfRevive))) {
           standing = true;
           break;
         }
