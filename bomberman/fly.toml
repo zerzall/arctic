@@ -7,7 +7,8 @@
 # `fly launch` writes `app` and `primary_region` for you, so they are not set here.
 
 kill_signal = "SIGTERM"
-# The server finishes its graceful shutdown within 8 s (docs/SPEC.md section 7); flyctl documents the duration string form.
+# The server finishes its graceful shutdown within 8 s (docs/SPEC.md section 7). "10s" is the documented duration form;
+# the bare integer 10 of older configs means the same number of seconds.
 kill_timeout = "10s"
 
 [env]

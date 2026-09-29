@@ -1,12 +1,18 @@
 // UI screenshot rig (developer tooling, not part of the game).
 //
 //   node scripts/dev/ui/shots.mjs [--out DIR] [--only a,b] [--viewports 390x844,844x390,1280x720,1920x1080] [--nosprites] [--reduced] [--quiet]
+//                                 [--lint-only] [--fast] [--strict]
 //
 // Serves client/, shared/ and scripts/dev/ui/ over a tiny static server, opens gallery.html in headless Chromium, and for every
 // scene of gallery.js and every viewport writes <scene>-<W>x<H>.png. It also runs the gallery's layout lint (horizontal
 // overflow, clipped text, tap targets under 48 px, HUD pieces overlapping each other or the play field) and prints the findings.
 // Phones (390x844, 844x390) are emulated with touch and a device scale factor of 2, so the touch layout of the game screen applies.
 // Look at the PNGs (Read tool / image viewer); iterate on client/css/style.css and client/js/ui.js until they are right.
+//
+// --lint-only skips the PNGs (only the layout lint runs); --fast shortens every scene's settle time, which is plenty for the lint
+// (animations do not change layout) but can catch a pop-in mid-flight in a screenshot.
+// Other sizes worth a lint pass: 320x568 and 568x320 (smallest phones), 360x640 and 640x360 (the most common Android size),
+// 375x667, 412x915, 768x1024 and 1024x768 (tablets), 3840x2160 (a TV that reports its physical pixels).
 //
 // Output goes to --out, else $UI_SHOTS_OUT, else <tmpdir>/blast-party-ui. Exit code 1 when the lint found problems (with --strict).
 
@@ -28,10 +34,11 @@ const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inl
 const MOUNTS = [['/__ui/', here], ['/shared/', path.join(repo, 'shared')], ['/', path.join(repo, 'client')]];
 
 function parseArgs(argv) {
-  const opts = { out: process.env.UI_SHOTS_OUT ?? path.join(os.tmpdir(), 'blast-party-ui'), only: null, viewports: ['390x844', '844x390', '1280x720', '1920x1080'], nosprites: false, quiet: false, strict: false, reduced: false };
+  const opts = { out: process.env.UI_SHOTS_OUT ?? path.join(os.tmpdir(), 'blast-party-ui'), only: null, viewports: ['390x844', '844x390', '1280x720', '1920x1080'], nosprites: false, quiet: false, strict: false, reduced: false, lintOnly: false, fast: false };
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, '');
-    if (key === 'nosprites' || key === 'quiet' || key === 'strict' || key === 'reduced') opts[key] = true;
+    if (['nosprites', 'quiet', 'strict', 'reduced', 'fast'].includes(key)) opts[key] = true;
+    else if (key === 'lint-only') opts.lintOnly = true;
     else if (key === 'out') opts.out = argv[++i];
     else if (key === 'only') opts.only = argv[++i].split(',');
     else if (key === 'viewports') opts.viewports = argv[++i].split(',');
@@ -88,12 +95,12 @@ try {
     const names = await page.evaluate(() => window.gallery.names);
     for (const name of names) {
       if (opts.only && !opts.only.includes(name)) continue;
-      await page.evaluate((n) => window.gallery.show(n), name);
-      const issues = await page.evaluate(() => window.gallery.lint());
+      await page.evaluate(([n, fast]) => window.gallery.show(n, { fast }), [name, opts.fast]);
       const file = path.join(opts.out, `${name}${opts.nosprites ? '-nosprites' : ''}${opts.reduced ? '-reduced' : ''}-${vp}.png`);
-      await page.screenshot({ path: file });
+      if (!opts.lintOnly) await page.screenshot({ path: file });
+      const issues = await page.evaluate(() => window.gallery.lint());   // after the shot: the lint fast-forwards every animation
       // Long screens (lobby, results, modals): also capture what is below the fold, a page at a time.
-      const pages = await page.evaluate(() => {
+      const pages = opts.lintOnly ? 1 : await page.evaluate(() => {
         const scroller = document.querySelector('.modal-body') ?? [...document.querySelectorAll('.screen')].find((s) => !s.hidden && s.id !== 'game');
         return scroller ? Math.min(4, Math.ceil(scroller.scrollHeight / scroller.clientHeight - 0.05)) : 1;
       });
@@ -114,5 +121,5 @@ try {
   await browser.close();
   server.close();
 }
-console.log(`screenshots in ${opts.out}; ${problems} lint finding(s)`);
+console.log(`${opts.lintOnly ? 'lint only' : `screenshots in ${opts.out}`}; ${problems} lint finding(s)`);
 if (opts.strict && problems) process.exit(1);

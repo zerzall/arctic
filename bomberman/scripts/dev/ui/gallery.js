@@ -2,7 +2,7 @@
 //
 // Mounts client/js/ui.js with fake data for every screen and state and exposes them as named scenes:
 //   window.gallery.names            scene names
-//   await window.gallery.show(name) put the UI into a scene, draw a mock arena behind the HUD, wait for it to settle
+//   await window.gallery.show(name, {fast}) put the UI into a scene, draw a mock arena behind the HUD, wait for it to settle
 //   window.gallery.lint()           layout problems of the current scene (overflow, clipped text, small tap targets, HUD overlaps)
 // scripts/dev/ui/shots.mjs drives it with Playwright; it can also be opened by hand: http://localhost:PORT/__ui/gallery.html#scene=lobby-host
 //
@@ -242,6 +242,14 @@ const describe = (n) => `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}${ty
 const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 
 function lint() {
+  // Spring animations overshoot their boxes on the way in; judge the layout they settle into.
+  for (const animation of document.getAnimations()) {
+    try {
+      animation.finish();
+    } catch {
+      // an endless animation (bobbing, pulsing) has no end state to jump to
+    }
+  }
   const issues = [];
   const push = (kind, node, extra = '') => issues.push(`${kind}: ${describe(node)}${extra ? ` ${extra}` : ''}`);
   const W = window.innerWidth;
@@ -272,17 +280,24 @@ function lint() {
   }
 
   if (isGame) {
-    const pieces = [...document.querySelectorAll('.chip, .hud-tl, .hud-tr, .hud-center, .hud-me, .hud-feed')].filter(visible);
+    const pieces = [...document.querySelectorAll('.chip, .hud-tl, .hud-tr, .hud-center, .hud-timer, .hud-sd, .hud-me, .hud-feed')].filter(visible);
     for (let i = 0; i < pieces.length; i++) {
       for (let j = i + 1; j < pieces.length; j++) {
         if (pieces[i].contains(pieces[j]) || pieces[j].contains(pieces[i])) continue;
         if (overlap(rectOf(pieces[i]), rectOf(pieces[j])) > 4) push('HUD pieces overlap', pieces[i], `<-> ${describe(pieces[j])}`);
       }
     }
+    // Portrait phones: the thumbs' area under the status strip must hold the BOMB button (input.js sizes it clamp(88px, 22vmin, 128px)).
+    const touch = document.querySelector('#touch');
+    if (touch && visible(touch) && H > W && getComputedStyle(touch).display !== 'none') {
+      const bomb = Math.min(128, Math.max(88, Math.min(W, H) * 0.22));
+      const room = rectOf(touch).height;
+      if (room < bomb + 16) issues.push(`touch area too short for the BOMB button (${Math.round(room)} px < ${Math.round(bomb + 16)} px)`);
+    }
     if (arenaRect) {
       const t = arenaRect.tile;
       const inner = { left: arenaRect.x + t * 1.02, right: arenaRect.x + arenaRect.w - t * 1.02, top: arenaRect.y + t * 1.02, bottom: arenaRect.y + arenaRect.h - t * 1.02 };
-      for (const n of document.querySelectorAll('.chip, .hud-me, .hud-tl, .hud-tr, .hud-center, .hud-timer, .hud-sd')) {
+      for (const n of document.querySelectorAll('.chip, .hud-me, .hud-tl, .hud-tr, .hud-center, .hud-timer, .hud-sd, .feed-item')) {
         if (!visible(n) || n.contains(document.querySelector('.hud-timer')) && n.matches('.hud-center')) continue;
         const area = overlap(rectOf(n), inner);
         if (area > 6) push('HUD covers the play field', n, `(${Math.round(area)} px2)`);
@@ -314,7 +329,8 @@ window.gallery = {
   names: Object.keys(scenes),
   calls,
   ui,
-  async show(name) {
+  /** @param {string} name @param {{fast?: boolean}} [opts] `fast` caps the settle time: enough for layout checks, not for judging animations */
+  async show(name, { fast = false } = {}) {
     const scene = scenes[name];
     if (!scene) throw new Error(`unknown scene ${name}`);
     await ui.ready;
@@ -326,7 +342,7 @@ window.gallery = {
       fakeTouch();
       drawArena(['meadow', 'frost', 'lava', 'candy', 'night'][name.length % 5]);
     }
-    await sleep(scene.settle ?? 1100);
+    await sleep(fast ? Math.min(scene.settle ?? 1100, 350) : scene.settle ?? 1100);
     return ui.current;
   },
   lint,

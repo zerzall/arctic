@@ -110,6 +110,9 @@ export function formatClock(sec) {
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** The plain-object entries of a list from the network: a malformed message must not take the whole UI down. */
+const records = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x === 'object') : []);
+
 /** Connection quality from a round-trip time in ms: 'good' | 'ok' | 'bad', or 'none' when unknown. */
 export function pingQuality(ms) {
   if (!Number.isFinite(ms) || ms < 0) return 'none';
@@ -121,7 +124,7 @@ export function pingQuality(ms) {
  * button can say so before the server has to.
  */
 export function startBlocker(lobby) {
-  const players = lobby?.players ?? [];
+  const players = records(lobby?.players);
   if (players.length < MIN_TO_START) return 'Add a bot or wait for a friend: you need at least 2 players.';
   if (lobby.settings?.mode === 'teams') {
     const sizes = [0, 0];
@@ -137,7 +140,7 @@ export function startBlocker(lobby) {
  * @returns {{place:number, people:object[]}[]}
  */
 export function podiumGroups(standings, { byTeam = false } = {}) {
-  const list = Array.isArray(standings) ? standings : [];
+  const list = records(standings);
   if (!byTeam) {
     const places = [...new Set(list.map((s) => s.place))].sort((a, b) => a - b);
     return places.slice(0, 3).map((place) => ({ place, people: list.filter((s) => s.place === place) }));
@@ -165,7 +168,7 @@ const AWARDS = [
  * @returns {{stat:string,title:string,hint:string,icon:string,player:object,value:number,label:string}[]}
  */
 export function computeAwards(standings) {
-  const list = Array.isArray(standings) ? standings : [];
+  const list = records(standings);
   if (list.length < 2) return [];
   const awards = [];
   for (const a of AWARDS) {
@@ -1335,7 +1338,7 @@ class GameScreen {
     this.state = '';
     this.meSig = '';
     this.setSuddenDeath(false);
-    if (Array.isArray(players)) this.buildChips(players);
+    if (Array.isArray(players)) this.buildChips(records(players));
   }
 
   end() {
@@ -1550,7 +1553,8 @@ class GameScreen {
       clear(box);
       return;
     }
-    const byId = new Map((players ?? this.ui.lobbyMsg?.players ?? []).map((p) => [p.id, p]));
+    const byId = new Map(records(players ?? this.ui.lobbyMsg?.players).map((p) => [p.id, p]));
+    const scores = records(msg.scores);
     const teams = this.ui.lobbyMsg?.settings?.mode === 'teams' || (msg.winnerTeam != null && msg.winnerId == null);
     const winner = msg.winnerId != null ? byId.get(msg.winnerId) : null;
     const me = this.ui.you;
@@ -1582,11 +1586,11 @@ class GameScreen {
     };
     if (teams) {
       for (const t of [0, 1]) {
-        const wins = Math.max(0, ...(msg.scores ?? []).filter((s) => s.team === t).map((s) => s.wins | 0));
+        const wins = Math.max(0, ...scores.filter((s) => s.team === t).map((s) => s.wins | 0));
         scoreRows.push(el('li', { class: 're-score', dataset: { team: String(t) } }, el('span', { class: 'team-badge', dataset: { team: String(t) }, text: teamLetter(t) }), el('span', { class: 're-name', text: TEAM_NAMES[t] }), pips(wins)));
       }
     } else {
-      for (const s of msg.scores ?? []) {
+      for (const s of scores) {
         const p = byId.get(s.id);
         if (!p) continue;
         scoreRows.push(el('li', { class: `re-score${s.id === msg.winnerId ? ' is-winner' : ''}${s.id === me ? ' is-me' : ''}` }, avatar(p.color, 1.7), bdi(p.name, 're-name'), pips(s.wins | 0)));
@@ -1663,7 +1667,7 @@ class ResultsScreen {
   render(msg) {
     this.msg = msg;
     const ui = this.ui;
-    const standings = [...(msg.standings ?? [])];
+    const standings = records(msg.standings);
     const teams = msg.winnerTeam != null;
     const teamMatch = teams || ui.lobbyMsg?.settings?.mode === 'teams';
     const me = ui.you;
@@ -2005,7 +2009,7 @@ export class UI {
     this.showConnecting(null);
     this.showReconnecting(null);
     this.resetRoom();
-    this.title.show(opts);
+    this.title.show(opts ?? {});
     this.show('title');
   }
 
@@ -2028,6 +2032,7 @@ export class UI {
    */
   showLobby(msg) {
     if (!msg || !Array.isArray(msg.players)) return;
+    msg = { ...msg, players: records(msg.players) };
     const prev = this.lobbyMsg;
     this.lobbyMsg = msg;
     this.you = msg.you;
@@ -2052,9 +2057,9 @@ export class UI {
     if (said.length) this.announce(said.join('. '));
   }
 
-  /** @param {{players?: {id:number,name:string,color:number,team:number,isBot:boolean}[]}} [opts] the round's fighters */
-  showGame({ players } = {}) {
-    this.game.begin(players);
+  /** @param {{players?: {id:number,name:string,color:number,team:number,isBot:boolean}[]}} [round] the `round` message (only its fighters are used) */
+  showGame(round) {
+    this.game.begin(round?.players);
     this.show('game');
     if (!fullscreenSupported() && matchMedia('(pointer: coarse)').matches && !store.get('bp.fshint')) {
       store.set('bp.fshint', '1');
@@ -2064,7 +2069,7 @@ export class UI {
 
   /** ~10 Hz. `m` is the hudModel of SPEC 8.6. */
   updateHud(m) {
-    if (m && Array.isArray(m.players)) this.game.update(m);
+    if (m && Array.isArray(m.players)) this.game.update({ ...m, players: records(m.players) });
   }
 
   /** Round-trip time in ms (null = unknown). In Practice the meters show "Local". */
@@ -2161,11 +2166,13 @@ export class UI {
     if (secondsLeft === null || secondsLeft === undefined) {
       this.reconnecting?.remove();
       this.reconnecting = null;
+      this.root.classList.remove('is-reconnecting');
       return;
     }
     if (!this.reconnecting) {
       this.reconnecting = el('div', { class: 'reconnect-bar' }, el('span', { class: 'spinner', 'aria-hidden': 'true' }), el('span', { class: 'reconnect-text' }));
       this.layers.conn.appendChild(this.reconnecting);
+      this.root.classList.add('is-reconnecting');
       this.announce('Connection lost. Reconnecting...');
     }
     const text = `Connection lost. Reconnecting${Number.isFinite(secondsLeft) ? ` (giving up in ${Math.max(0, Math.ceil(secondsLeft))} s)` : ''}...`;
@@ -2178,7 +2185,8 @@ export class UI {
    * @param {{title:string, text?:string, tone?:'info'|'error'|'good', icon?:string, dismissible?:boolean,
    *   actions?:{label:string, kind?:'primary'|'glass'|'danger', onClick?:Function, keepOpen?:boolean}[]}} opts
    */
-  showDialog({ title, text = '', tone = 'info', icon: iconName, dismissible = false, actions = [{ label: 'OK', kind: 'primary' }] }) {
+  showDialog(options) {
+    const { title = '', text = '', tone = 'info', icon: iconName, dismissible = false, actions = [{ label: 'OK', kind: 'primary' }] } = options ?? {};
     this.hideDialog();
     const frame = dialogFrame({ title, cls: `modal-dialog tone-${tone}`, closable: false, icon: iconName ?? (tone === 'error' ? 'bomb' : tone === 'good' ? 'check' : 'help'), role: tone === 'error' ? 'alertdialog' : 'dialog' });
     if (text) frame.body.appendChild(el('p', { class: 'dialog-text', text }));
@@ -2197,7 +2205,8 @@ export class UI {
   // ---- Settings shared by the title screen, lobby and menu
 
   /** Pushes audio/effects/controls state into the UI (main.js calls this once audio has loaded its saved values). */
-  setSettings(s = {}) {
+  setSettings(s) {
+    s ??= {};
     if (typeof s.volume === 'number') this.settings.volume = Math.min(1, Math.max(0, s.volume));
     if (typeof s.muted === 'boolean') this.settings.muted = s.muted;
     if (typeof s.reduce === 'boolean') {

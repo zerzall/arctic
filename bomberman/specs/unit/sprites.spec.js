@@ -102,7 +102,7 @@ for (const theme of THEMES) {
     assert.equal(set.spawnShield.length, S.SHIELD_FRAMES);
     assert.equal(set.curseAura.length, S.CURSE_AURA_FRAMES);
     assert.equal(set.teamRing.length, 2);
-    for (const key of ['shadow', 'dot', 'glowWarm', 'glowCool', 'flameGlow', 'spark', 'ember', 'twinkle', 'skull', 'ring', 'star', 'warning']) assert.ok(set.fx[key].img, key);
+    for (const key of ['shadow', 'dot', 'glowWarm', 'glowCool', 'flameGlow', 'spark', 'ember', 'twinkle', 'skull', 'ring', 'star', 'warning', 'hazard']) assert.ok(set.fx[key].img, key);
     assert.equal(set.fx.smoke.length, 3);
     assert.equal(set.fx.darkSmoke.length, 3);
     assert.equal(set.fx.confetti.length, 6);
@@ -200,6 +200,8 @@ test('data URL helpers cache and reject unknown names', () => {
     assert.equal(S.iconDataURL('skull', 28), url);
     assert.equal(made, n, 'second call is served from the cache');
     assert.equal(S.iconDataURL('nope', 28), '');
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty', undefined, null, 5]) assert.equal(S.iconDataURL(name, 28), '', String(name));
+    for (const index of ['length', 'map', '__proto__', '1', 1.5, NaN, null, undefined, -1, 8]) assert.equal(S.avatarDataURL(index, 28), '', String(index));
     assert.match(S.avatarDataURL(5, 40), /^data:image\/png/);
     assert.equal(S.avatarDataURL(9, 40), '');
     for (const name of S.ICON_NAMES) assert.match(S.iconDataURL(name, 24), /^data:/, name);
@@ -213,6 +215,33 @@ test('bad options are rejected early', () => {
   assert.throws(() => build({ tile: 4, theme: 'meadow' }), RangeError);
   assert.throws(() => build({ tile: NaN, theme: 'meadow' }), RangeError);
   assert.throws(() => build({ tile: 64, theme: 'moon' }), RangeError);
+  assert.throws(() => build({ tile: 100000, theme: 'meadow' }), RangeError, 'a runaway tile size must not allocate canvases of that size');
+  assert.throws(() => build({ tile: '64', theme: 'meadow' }), RangeError);
+});
+
+test('theme names are matched exactly: Object.prototype keys and near misses are unknown themes', () => {
+  const made = [];
+  const track = (w, h) => { const c = fakeCanvas(w, h); made.push(c); return c; };
+  for (const theme of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'random', 'Meadow', '', null, 5, ['meadow']]) {
+    assert.throws(() => S.buildSpriteSet({ tile: 16, theme, createCanvas: track }), RangeError, String(theme));
+  }
+  assert.equal(made.length, 0, 'nothing is allocated for a rejected theme');
+});
+
+test('a build that fails half way gives back the shared sprites it had pinned', () => {
+  globalThis.document = { createElement: () => fakeCanvas(1, 1) };
+  try {
+    const a = S.buildSpriteSet({ tile: 26, theme: 'meadow' });
+    const page = a.character(0).idle[0].img;
+    // fail while the terrain of the second set is being laid out: its canvas factory is the document, so break that
+    globalThis.document = { createElement: () => { throw new Error('canvas memory exhausted'); } };
+    assert.throws(() => S.startSpriteBuild({ tile: 26, theme: 'lava' }), /canvas memory exhausted/);
+    globalThis.document = { createElement: () => fakeCanvas(1, 1) };
+    a.dispose();
+    assert.equal(page.width, 0, 'the failed build did not keep the shared actor sprites alive');
+  } finally {
+    delete globalThis.document;
+  }
 });
 
 test('tileHash is stable and spreads neighbouring tiles', () => {
@@ -417,4 +446,57 @@ test('set.pages lists the canvases sprites are drawn from', () => {
   assert.ok(pages.includes(set.backdrop.canvas));
   set.dispose();
   assert.deepEqual(set.pages, []);
+});
+
+/** A canvas factory whose contexts count save/restore pairs and 1 x 1 reads, and whose fillStyle assignments can be made to throw for chosen canvases. */
+function countingFactory() {
+  const stats = { saves: 0, restores: 0, tinyReads: 0, throwOn: null, thrown: 0 };
+  const create = (w, h) => {
+    const c = { width: w, height: h };
+    c.getContext = () => (c.ctx ??= new Proxy({ canvas: c }, {
+      get(t, prop) {
+        if (prop in t) return t[prop];
+        if (prop === 'save') return () => { stats.saves++; };
+        if (prop === 'restore') return () => { stats.restores++; };
+        if (prop === 'getImageData') return (x, y, rw, rh) => { if (rw === 1 && rh === 1) stats.tinyReads++; return { data: new Uint8ClampedArray(rw * rh * 4).fill(255), width: rw, height: rh }; };
+        if (typeof prop === 'string' && prop.startsWith('create')) return () => ({ addColorStop() {} });
+        return () => {};
+      },
+      set(t, prop, v) { if (stats.throwOn && prop === 'fillStyle' && stats.throwOn(c)) { stats.thrown++; throw new Error('boom'); } t[prop] = v; return true; },
+    }));
+    return c;
+  };
+  create.stats = stats;
+  return create;
+}
+
+test('pages are rasterised regularly while drawing, so one pump slice never pays for a whole page', () => {
+  const factory = countingFactory();
+  const set = S.buildSpriteSet({ tile: 32, theme: 'meadow', createCanvas: factory });
+  assert.ok(factory.stats.tinyReads > 80, `${factory.stats.tinyReads} forced rasterisations`);
+  set.dispose();
+});
+
+test('a sprite whose drawing throws does not corrupt the sprites after it, and the build still finishes', () => {
+  const factory = countingFactory();
+  let n = 0;
+  factory.stats.throwOn = (canvas) => canvas.width >= 300 && ++n === 400;   // one failure in the vector drawing of an atlas page (not in a scratch layer)
+  const b = S.startSpriteBuild({ tile: 32, theme: 'meadow', createCanvas: factory });
+  let failures = 0, guard = 0;
+  while (guard++ < 10000) {
+    try { if (b.pump(0)) break; } catch (err) { assert.equal(err.message, 'boom'); failures++; }
+  }
+  assert.equal(failures, 1);
+  assert.equal(b.set.ready, true);
+  assert.equal(factory.stats.saves, factory.stats.restores, 'every save has its restore, even for the sprite that threw');
+  b.set.dispose();
+});
+
+test('running out of canvases while a set is laid out gives back the pages already allocated', () => {
+  for (const failAt of [0, 1, 2]) {   // the actor atlas takes two pages at this size and the terrain one, so each of these fails inside a seal()
+    const made = [];
+    const scarce = (w, h) => { if (made.length >= failAt) throw new Error('out of canvas memory'); const c = fakeCanvas(w, h); made.push(c); return c; };
+    assert.throws(() => S.startSpriteBuild({ tile: 64, theme: 'candy', createCanvas: scarce }), /out of canvas memory/);
+    assert.ok(made.every((c) => c.width === 0 && c.height === 0), `${made.filter((c) => c.width > 0).length} of ${made.length} canvases leaked (failing at ${failAt})`);
+  }
 });

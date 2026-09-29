@@ -71,7 +71,10 @@ const QUALITY = [                   // index = quality level
 ];
 const REDUCED_PARTICLES = 60;
 const CANVAS_MEMORY_SOFT_LIMIT = 10e6;   // px: above this many canvas pixels alive (atlas + screen + baked arena) the GPU texture cache thrashes
-const DANGER_TICKS = 66;            // a bomb this close to exploding tints the floor its blast will burn
+const DANGER_TICKS = 66;            // a bomb (or a chain) this close to exploding marks the floor its blast will burn
+const DANGER_ALERT_TICKS = 45;      // the local fighter's ring turns to a warning when their tile burns this soon
+const NO_DANGER = 1e9;
+const BOMB_CAP = 96;                // bombs considered for the danger marks (8 fighters carry at most 64)
 
 const FLASH_MAX_ALPHA = 0.18;       // section 8.2 flash safety
 const FLASH_RAMP_MS = 100;
@@ -80,6 +83,8 @@ const FLASH_MIN_GAP_MS = 400;
 const SHAKE_MAX_PX = 6;             // css px
 const SHAKE_MS = 250;
 
+const SLOW_FRAME_MS = 24, SLOW_FRAMES = 120;       // adaptive quality: an EMA of the frame interval above this for this many frames lowers the level
+const CAP_FRAME_MS = 1000 / 30, CAP_TOLERANCE_MS = 1.2, CAP_JITTER_MS = 0.6;   // ... unless the frames are steadily 30 Hz apart (a capped display)
 const TICK_MS = 1000 / 60;
 const REVIVE_GRACE_MS = 400;        // a `death` event is trusted over a View that still says alive for this long (snapshots lag events)
 const DYING_TICKS = 36;             // a defeated fighter's own body: hurt flash, dizzy spin, gone in a poof ...
@@ -185,23 +190,58 @@ function roundedRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-/** Pill with a player's name, baked once per (name, colour, size) because live fillText of eight labels costs more than a blit. */
+// ---- Name tags ------------------------------------------------------------------------------------------------------
+
+/** Where the styles change, in css pixels per tile: a coloured pill where there is room, a small translucent pill on phones, plain text below. */
+const TAG_PILL_MIN = 44, TAG_COMPACT_MIN = 27;
+const TAG_PILL = 0, TAG_COMPACT = 1, TAG_PLAIN = 2;
+/** Names are only drawn for the local fighter below this tile size: eight tags would hide a fifth of a 320 px wide arena. */
+const TAG_LOCAL_ONLY_BELOW = 22;
+const TAG_CAP = 16;                  // tags laid out per frame (a room has at most 8 fighters)
+const TAG_ABOVE = 0.9;               // tiles: a tag's bottom edge sits this far above the fighter's centre (the accessories reach ~0.95)
+
+/** Which tag style suits tiles of `T` device pixels at `dpr` (exported for the tests). */
+export function tagStyleFor(T, dpr) {
+  const css = T / (dpr || 1);
+  return css >= TAG_PILL_MIN ? TAG_PILL : css >= TAG_COMPACT_MIN ? TAG_COMPACT : TAG_PLAIN;
+}
+
+/** Whether the fighter's tag is drawn at all at this tile size (see TAG_LOCAL_ONLY_BELOW). */
+export function tagWanted(isMe, T, dpr) {
+  return isMe || T / (dpr || 1) >= TAG_LOCAL_ONLY_BELOW;
+}
+
+/**
+ * A player's name as a small label, baked once per (name, colour, size) because live fillText of eight labels costs more than a blit.
+ * Phones get a smaller, see-through label and the smallest screens plain outlined text, so the tag never hides more of the arena than
+ * the fighter itself: a 0.6 tile tall pill above every head made a 390 px wide arena unreadable in a fight.
+ */
 function buildNameTag(createCanvas, probe, name, hex, isMe, T, dpr) {
-  const fontPx = Math.max(Math.round(T * 0.22), Math.round(10 * dpr));   // 0.22 tile, but never below 10 css px
+  const style = tagStyleFor(T, dpr);
+  const fontPx = Math.round(style === TAG_PILL ? Math.max(T * 0.22, 10 * dpr) : style === TAG_COMPACT ? Math.max(T * 0.3, 9 * dpr) : Math.max(T * 0.36, 9 * dpr));
   const font = `800 ${fontPx}px ${FONT}`;
   probe.font = font;
   const maxText = 3 * T - fontPx;                         // spec: fillText(text, x, y, maxWidth = 3 * tile)
   const textW = Math.min(probe.measureText(name)?.width ?? name.length * fontPx * 0.6, maxText);
-  const padX = Math.round(fontPx * 0.55), lw = Math.max(1, Math.round(fontPx * 0.14));
-  const w = Math.ceil(textW + padX * 2 + lw * 2), h = Math.ceil(fontPx * 1.5 + lw * 2);
+  const pill = style !== TAG_PLAIN;
+  const padX = Math.round(fontPx * (style === TAG_PILL ? 0.55 : pill ? 0.4 : 0.15));
+  const lw = Math.max(pill ? 1 : 2, Math.round(fontPx * (style === TAG_PILL ? 0.14 : pill ? 0.1 : 0.26)));   // border of a pill, halo of plain text
+  const w = Math.ceil(textW + padX * 2 + lw * 2), h = Math.ceil(fontPx * (style === TAG_PILL ? 1.5 : pill ? 1.3 : 1.15) + lw * 2);
   const canvas = createCanvas(w, h);
   const g = canvas.getContext('2d');
-  g.beginPath(); roundedRect(g, lw / 2, lw / 2, w - lw, h - lw, h / 2);
-  g.fillStyle = isMe ? 'rgba(52,34,8,0.86)' : 'rgba(27,16,51,0.74)'; g.fill();
-  g.lineWidth = lw; g.strokeStyle = isMe ? GOLD : hex; g.stroke();
+  if (pill) {
+    g.beginPath(); roundedRect(g, lw / 2, lw / 2, w - lw, h - lw, h / 2);
+    g.fillStyle = isMe ? `rgba(52,34,8,${style === TAG_PILL ? 0.86 : 0.78})` : `rgba(27,16,51,${style === TAG_PILL ? 0.74 : 0.6})`; g.fill();
+    g.lineWidth = lw; g.strokeStyle = isMe ? GOLD : hex; g.stroke();
+  }
   g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const ty = h / 2 + fontPx * 0.06;
+  if (!pill) {                                            // a dark halo keeps white text legible on any floor
+    g.lineJoin = 'round'; g.lineWidth = lw * 2; g.strokeStyle = isMe ? 'rgba(52,34,8,0.9)' : 'rgba(27,16,51,0.85)';
+    g.strokeText(name, w / 2, ty, maxText);
+  }
   g.fillStyle = isMe ? '#fff3c4' : '#ffffff';
-  g.fillText(name, w / 2, h / 2 + fontPx * 0.06, maxText);
+  g.fillText(name, w / 2, ty, maxText);
   return { canvas, w, h };
 }
 
@@ -226,7 +266,7 @@ class PlayerFx {
     this.placeAt = -1e9; this.kickAt = -1e9; this.throwAt = -1e9; this.pickupAt = -1e9; this.hitAt = -1e9;
     this.curseAcc = 0;
     this.emote = -1; this.emoteAt = -1e9;
-    this.tag = null; this.tagName = ''; this.tagColor = -1; this.tagMe = false; this.tagT = 0;
+    this.tag = null; this.tagName = ''; this.tagColor = -1; this.tagMe = false; this.tagT = 0; this.tagDpr = 0;
   }
 
   releaseTag() {
@@ -243,6 +283,7 @@ class BombFx {
     this.x = 0; this.y = 0;
     this.landAt = -1e9;
     this.sparkAcc = 0;
+    this.trail = 0;              // distance rolled since the last puff of dust
     this.init = false;
   }
 }
@@ -301,7 +342,7 @@ export class Renderer {
     this.showNames = true;
 
     this.quality = 2;
-    this.qualityFrames = 0; this.frameEma = 0;
+    this.qualityFrames = 0; this.frameEma = 0; this.pace = { n: 0, mean: 0, m2: 0 };   // pace: running mean and variance of the slow window
     this.reduceUser = typeof opts.reducedEffects === 'boolean' ? opts.reducedEffects : null;   // null = follow the system preference
     this.reduceSystem = false;
     const mm = opts.matchMedia ?? (typeof matchMedia === 'function' ? matchMedia : null);
@@ -317,7 +358,8 @@ export class Renderer {
 
     this.cssW = 0; this.cssH = 0; this.dprIn = 1;
     this.layout = null;
-    this.set = null; this.build = null; this.buildKey = '';
+    this.set = null; this.build = null; this.buildTile = 0; this.buildTheme = '';
+    this.buildFailures = 0; this.buildRetryAt = 0;
     this.wantTileSince = 0;
     this.statics = null;          // baked arena: { canvas, x, y }
     this.staticOk = false;        // whether baking is worth its memory at this size (see staticPolicy)
@@ -325,7 +367,7 @@ export class Renderer {
     this.prepared = null;         // { pattern, statics } derived from a finished build, waiting one frame for the swap
     this.staticKey = '';
     this.backdropPattern = null;
-    this.tintCurse = null; this.tintDanger = null;
+    this.tintCurse = null; this.tintDanger = null; this.tintBase = null; this.dimTop = 0;
     this.hintTheme = 'meadow';
     this.mode = 'ffa';
     this.lastView = null;
@@ -336,7 +378,9 @@ export class Renderer {
     this.tilePop = new Float64Array(CELLS).fill(-1e9); this.tileSeen = new Int32Array(CELLS).fill(-1e6); this.tilePhase = new Float32Array(CELLS);
     this.pops = [];                                    // crates bursting apart: { tx, ty, t0 }
     this.list = new DrawList();
-    this.dangerMask = new Uint8Array(CELLS); this.tileBomb = new Uint8Array(CELLS);
+    this.tagRect = new Float32Array(TAG_CAP * 4); this.tagOf = new Int16Array(TAG_CAP); this.headTop = new Float32Array(TAG_CAP);   // name tag layout, reused every frame
+    this.danger = new Float32Array(CELLS).fill(NO_DANGER); this.tileBomb = new Int16Array(CELLS).fill(-1);   // ticks until a tile burns; the bomb on a tile
+    this.bombFuse = new Float32Array(BOMB_CAP); this.chainFrom = new Int16Array(BOMB_CAP * 4); this.chainTo = new Int16Array(BOMB_CAP * 4);
     this.pose = { sx: 1, sy: 1, dx: 0, dy: 0 };
     this.lastState = -1; this.lastCountdown = 0; this.goAt = -1e9; this.endAt = -1e9; this.winners = 0;
 
@@ -377,16 +421,17 @@ export class Renderer {
     this.frameNo++;
     const dt = clamp(dtMs || 0, 0, 100) / 1000;
     this.trackFrameTime(dtMs, nowMs);
-    if (!view || !view.grid || !this.layout) return;
-    this.lastView = view;
+    if (!this.layout) return;
+    const drawable = !!(view && view.grid);
     try {
-      this.updateCells(view.grid);
-      this.syncSprites(view.theme);
-      if (this.set) {
+      // Without a View (before the first `round`) the frame still moves the sprite build along, so a theme hint has a head start.
+      if (drawable) { this.lastView = view; this.updateCells(view.grid); }
+      this.syncSprites(drawable ? view.theme : undefined);
+      if (this.set && drawable) {
         this.advance(view, dt);
         this.paint(view);
       } else {
-        this.paintPlaceholder(view.theme);
+        this.paintPlaceholder(drawable ? view.theme : undefined);
       }
     } catch (err) {
       this.noteError(err);
@@ -433,7 +478,7 @@ export class Renderer {
   /** Quality level 0..2 (spec: 2 = dpr cap 2, 1 = dpr cap 1.5 and fewer particles, 0 = dpr 1, no glow, 60 particles). */
   setQuality(q) {
     this.quality = clamp(Math.round(q) || 0, 0, 2);
-    this.qualityFrames = 0;
+    this.resetPace();
     this.applyQuality();
     this.relayout();
   }
@@ -492,14 +537,26 @@ export class Renderer {
       this.stats.fps = Math.round((this.fpsFrames * 1000) / (nowMs - this.fpsT0));
       this.fpsFrames = 0; this.fpsT0 = nowMs;
     }
-    // Adaptive quality: an EMA of the frame interval above 24 ms for 120 frames lowers the level, never raises it (setQuality can).
-    if (dtMs > 0 && dtMs < 250) {
-      this.frameEma = this.frameEma ? this.frameEma + (dtMs - this.frameEma) * 0.05 : dtMs;
-      this.stats.frameMs = this.frameEma;
-      if (this.frameEma > 24 && this.quality > 0) {
-        if (++this.qualityFrames >= 120) this.setQuality(this.quality - 1);
-      } else if (this.frameEma <= 24) this.qualityFrames = 0;
-    }
+    if (!(dtMs > 0 && dtMs < 250)) return;                     // (a stall or a backgrounded tab is not a slow frame)
+    this.frameEma = this.frameEma ? this.frameEma + (dtMs - this.frameEma) * 0.05 : dtMs;
+    this.stats.frameMs = this.frameEma;
+    // Adaptive quality (8.2): an EMA of the frame interval above 24 ms for 120 frames lowers the level; only setQuality() raises it again.
+    // Frames while a sprite set is being built do not count (the build slices are meant to cost time), and neither does a window whose
+    // frames are 33.3 ms apart with hardly any jitter: that is a display capped to 30 Hz (iOS Low Power Mode, browser energy savers),
+    // where a lower quality would make the picture worse without making it any faster.
+    if (this.frameEma <= SLOW_FRAME_MS || this.quality === 0) { this.resetPace(); return; }
+    if (this.build !== null) return;
+    const pace = this.pace, n = ++pace.n, delta = dtMs - pace.mean;
+    pace.mean += delta / n; pace.m2 += delta * (dtMs - pace.mean);
+    if (++this.qualityFrames < SLOW_FRAMES) return;
+    const capped = Math.sqrt(pace.m2 / (n - 1)) < CAP_JITTER_MS && Math.abs(pace.mean - CAP_FRAME_MS) < CAP_TOLERANCE_MS;
+    this.resetPace();
+    if (!capped) this.setQuality(this.quality - 1);
+  }
+
+  resetPace() {
+    this.qualityFrames = 0;
+    this.pace.n = 0; this.pace.mean = 0; this.pace.m2 = 0;
   }
 
   relayout() {
@@ -537,6 +594,14 @@ export class Renderer {
     };
     this.tintCurse = make('120,40,190');
     this.tintDanger = make('255,90,40');
+    // A portrait screen leaves a lot of backdrop below the arena, where the touch controls go: let it fall quiet towards the bottom.
+    const under = L.oy + GRID_H * L.tile;
+    this.dimTop = under;
+    if (L.height - under > L.tile * 1.5) {
+      const grad = g.createLinearGradient(0, under, 0, L.height);
+      grad.addColorStop(0, 'rgba(12,6,32,0)'); grad.addColorStop(0.4, 'rgba(12,6,32,0.3)'); grad.addColorStop(1, 'rgba(12,6,32,0.55)');
+      this.tintBase = grad;
+    } else this.tintBase = null;
   }
 
   seedAmbient() {
@@ -549,23 +614,37 @@ export class Renderer {
 
   // ---- Sprites: time-sliced rebuilds, baked static arena --------------------------------------------------------------
 
+  /**
+   * Keep the sprite set in step with the layout and the theme. A missing or stale set is rebuilt in time slices while the old one keeps
+   * drawing. A build that fails (out of canvas memory on a phone) is dropped and retried after a pause, and after the second failure at a
+   * lower quality, which means smaller sprites. Never throws: a broken build must not take the picture down with it.
+   */
   syncSprites(viewTheme) {
     const L = this.layout;
     const theme = THEMES.includes(viewTheme) ? viewTheme : this.hintTheme;
     const cur = this.set;
-    if (cur && cur.tile === L.tile && cur.theme === theme) { this.dropBuild(); return; }
-    const key = `${L.tile}|${theme}`;
-    if (this.buildKey !== key) {
+    if (cur && cur.tile === L.tile && cur.theme === theme) { if (this.build || this.prepared) this.dropBuild(); return; }
+    if (this.now < this.buildRetryAt) return;
+    try {
+      this.stepBuild(L, theme, cur);
+    } catch (err) {
+      this.noteError(err);
+      this.dropBuild();
+      this.buildRetryAt = this.now + Math.min(8000, 500 * 2 ** this.buildFailures);
+      if (++this.buildFailures >= 2 && this.quality > 0) {
+        this.setQuality(this.quality - 1);
+        this.buildRetryAt = this.now + 250;
+      }
+    }
+  }
+
+  stepBuild(L, theme, cur) {
+    if (!this.build || this.buildTile !== L.tile || this.buildTheme !== theme) {
       // While a window is being dragged the tile size changes every frame; wait until it settles (the old set keeps drawing, scaled).
       if (cur && cur.tile !== L.tile && this.now - this.wantTileSince < 150) return;
       this.dropBuild();
-      try {
-        this.build = startSpriteBuild({ tile: L.tile, theme, dpr: Math.round(L.dpr * 100) / 100, createCanvas: this.makeCanvas === defaultCreateCanvas ? undefined : this.makeCanvas });
-        this.buildKey = key;
-      } catch (err) {
-        this.noteError(err);
-        return;
-      }
+      this.build = startSpriteBuild({ tile: L.tile, theme, dpr: Math.round(L.dpr * 100) / 100, createCanvas: this.makeCanvas === defaultCreateCanvas ? undefined : this.makeCanvas });
+      this.buildTile = L.tile; this.buildTheme = theme;
     }
     // A new theme is on screen the moment it is ready, so it gets a bigger slice than a same-theme resize (terrain alone is ~15 ms);
     // with no set at all there is nothing to draw, so take even more.
@@ -580,6 +659,7 @@ export class Renderer {
       if (cur) return;
     }
     this.swapSet(this.build.set, this.prepared);
+    this.buildFailures = 0;
   }
 
   /** Everything that is derived from a finished sprite set and costs a few milliseconds. */
@@ -596,7 +676,7 @@ export class Renderer {
     const old = this.set;
     const retile = !old || old.tile !== next.tile;
     this.set = next;
-    this.build = null; this.buildKey = ''; this.buildDone = false; this.prepared = null;
+    this.build = null; this.buildTile = 0; this.buildTheme = ''; this.buildDone = false; this.prepared = null;
     this.stats.builds++;
     this.particles.bind(next);
     this.backdropPattern = prepared.pattern;
@@ -610,7 +690,7 @@ export class Renderer {
   }
 
   dropBuild() {
-    if (this.build) { this.build.set.dispose(); this.build = null; this.buildKey = ''; this.buildDone = false; }
+    if (this.build) { this.build.set.dispose(); this.build = null; this.buildTile = 0; this.buildTheme = ''; this.buildDone = false; }
     if (this.prepared) { if (this.prepared.statics) releaseCanvas(this.prepared.statics.canvas); this.prepared = null; }
   }
 
@@ -741,7 +821,7 @@ export class Renderer {
       const p = ps[i], fx = this.fxFor(p.id);
       fx.seen = this.frameNo;
       const dx = p.x - fx.x, dy = p.y - fx.y, d = Math.abs(dx) + Math.abs(dy);
-      if (!fx.init || d > 3) { fx.x = p.x; fx.y = p.y; fx.init = true; } else if (dt > 0) {
+      if (!fx.init || !(d <= 3)) { fx.x = p.x; fx.y = p.y; fx.init = true; } else if (dt > 0) {   // (a NaN distance is a teleport too: it must not poison the smoothed speed)
         fx.x = p.x; fx.y = p.y;
         fx.speed += (d / dt - fx.speed) * Math.min(1, dt * 14);
         if (!fx.moving && fx.speed > 0.6) fx.moving = true; else if (fx.moving && fx.speed < 0.25) fx.moving = false;
@@ -820,7 +900,12 @@ export class Renderer {
       const dx = fx.init ? b.x - fx.x : 0, dy = fx.init ? b.y - fx.y : 0;
       fx.spin += (Math.abs(dx) > Math.abs(dy) ? dx : dy) / 0.33;
       if (b.fly) fx.spin += dt * 9;
-    } else fx.spin *= 0.6;
+      else if (!reduced && this.fxLevel.sparks > 0 && (fx.trail += Math.abs(dx) + Math.abs(dy)) > 0.55) {   // a rolling bomb kicks up a little dust
+        fx.trail = 0;
+        const [ux, uy] = DIR4[(b.dir - 1) & 3];
+        this.particles.dust(b.x - ux * 0.25, b.y - uy * 0.25 + 0.3, 1, 0.17, 0.1, 0.12);
+      }
+    } else { fx.spin *= 0.6; fx.trail = 0; }
     fx.x = b.x; fx.y = b.y; fx.init = true;
     if (idx >= 0 && idx < CELLS && !b.fly) { this.tileSeen[idx] = this.frameNo; this.tilePop[idx] = fx.born; this.tilePhase[idx] = fx.phase; }
     if (!reduced && this.fxLevel.sparks > 0 && !b.fly) {
@@ -828,7 +913,11 @@ export class Renderer {
       if (fx.sparkAcc >= 1) {
         fx.sparkAcc -= 1;
         const s = BOMB_PULSE[Math.floor(fx.phase * BOMB_PULSE.length) % BOMB_PULSE.length];   // the fuse rides the swelling body
-        this.particles.fuseSpark(b.x + BOMB_FUSE_TIP.x * s, b.y, -BOMB_FUSE_TIP.y * s);
+        if (b.dir === 0) this.particles.fuseSpark(b.x + BOMB_FUSE_TIP.x * s, b.y, -BOMB_FUSE_TIP.y * s);
+        else {                                                                          // ... and turns with a rolling one (its centre is 0.08 below the anchor)
+          const c = Math.cos(fx.spin), n = Math.sin(fx.spin), ox = BOMB_FUSE_TIP.x * s, oy = (BOMB_FUSE_TIP.y - 0.08) * s;
+          this.particles.fuseSpark(b.x + ox * c - oy * n, b.y, -(ox * n + oy * c) - 0.08);
+        }
       }
     }
   }
@@ -882,7 +971,11 @@ export class Renderer {
   paint(view) {
     const g = this.ctx, L = this.layout, set = this.set, now = this.now;
     const T = set.tile, k = L.tile / T, reduced = this.reducedEffects;
-    const [sx, sy] = this.cameraOffset(now, L.dpr, reduced);
+    // A frame that threw half way may have left a transform, an alpha or a blend mode behind; every frame starts from a known state.
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    const cam = this.cameraOffset(now, L.dpr, reduced), sx = cam[0], sy = cam[1];
     const level = this.fxLevel;
 
     // 1. backdrop around the arena (also under the shake margin)
@@ -943,6 +1036,7 @@ export class Renderer {
     if (ax0 > wx0) g.fillRect(wx0, ay0, ax0 - wx0, ay1 - ay0);
     if (wx1 > ax1) g.fillRect(ax1, ay0, wx1 - ax1, ay1 - ay0);
     g.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.tintBase) { g.fillStyle = this.tintBase; g.fillRect(0, this.dimTop, L.width, L.height - this.dimTop); }
   }
 
   /** Cast shadows of crates and sudden-death walls, sudden-death telegraphs, throw targets, item glows. */
@@ -990,12 +1084,13 @@ export class Renderer {
     if (its.length) {
       if (level.glow) g.globalCompositeOperation = 'lighter';
       for (let i = 0; i < its.length; i++) {
-        const it = its[i];
+        const it = its[i], glow = set.itemGlow(it.kind);
+        if (!glow) continue;                                   // (a kind this build does not know: skip it rather than lose the frame)
         const fx = this.items.get(it.id);
         const born = fx ? clamp((now - fx.born) / 260, 0, 1) : 1;
         const pulse = reduced ? 0.9 : 0.85 + 0.15 * Math.sin(now * 0.005 + it.id);
         g.globalAlpha = (level.glow ? 0.9 : 0.6) * pulse * born;
-        drawSprite(g, set.itemGlow(it.kind), it.x * T, (it.y + 0.02) * T, 0.8);
+        drawSprite(g, glow, it.x * T, (it.y + 0.02) * T, 0.8);
       }
       g.globalAlpha = 1;
       g.globalCompositeOperation = 'source-over';
@@ -1003,42 +1098,70 @@ export class Renderer {
   }
 
   /**
-   * Tint the tiles that a bomb about to explode will burn (its own arms only, chains are not predicted), so danger reads at a
-   * glance: pale for the last 1.1 s, stronger for the last half second. One fill per strength, not per tile.
+   * Mark the tiles that bombs are about to burn, so danger reads at a glance. Chain reactions count: a blast that reaches another bomb
+   * sets it off in the same instant, so a tile burns when the SOONEST bomb of its chain goes off, and the marks show that. Strength and
+   * pulse grow as the moment nears; a bright border keeps the mark readable on any floor (a plain red wash all but vanished on candy
+   * pink). Leaves `this.danger` (ticks until each tile burns) for the local fighter's ring.
    */
   paintDanger(g, view, T, now, reduced) {
-    const bs = view.bombs, mask = this.dangerMask, at = this.tileBomb, cells = this.cells;
-    let any = false;
-    at.fill(0);
-    for (let i = 0; i < bs.length; i++) if (!bs[i].fly && bs[i].ty * GRID_W + bs[i].tx < CELLS) at[bs[i].ty * GRID_W + bs[i].tx] = 1;
-    mask.fill(0);
-    for (let i = 0; i < bs.length; i++) {
+    const bs = view.bombs, n = Math.min(bs.length, BOMB_CAP), cells = this.cells, at = this.tileBomb, danger = this.danger, fuse = this.bombFuse;
+    const from = this.chainFrom, to = this.chainTo;
+    danger.fill(NO_DANGER);
+    if (n === 0) return;
+    at.fill(-1);
+    for (let i = 0; i < n; i++) {
+      const b = bs[i], idx = b.ty * GRID_W + b.tx;
+      const live = !b.fly && idx >= 0 && idx < CELLS;
+      fuse[i] = live ? b.fuse : NO_DANGER;                                            // (a thrown bomb is in the air: fire ignores it)
+      if (live) at[idx] = i;
+    }
+    let edges = 0;                                                                    // bomb i's blast reaches bomb j
+    for (let i = 0; i < n; i++) {
+      if (fuse[i] === NO_DANGER) continue;
       const b = bs[i];
-      if (b.fly || b.fuse > DANGER_TICKS) continue;
+      for (let d = 0; d < 4; d++) {
+        const dx = DIR4[d][0], dy = DIR4[d][1];
+        for (let k = 1; k <= b.range; k++) {
+          const x = b.tx + dx * k, y = b.ty + dy * k;
+          if (x < 0 || y < 0 || x >= GRID_W || y >= GRID_H || cells[y * GRID_W + x] !== CELL_FLOOR) break;   // a wall stops the fire, a crate absorbs it
+          const j = at[y * GRID_W + x];
+          if (j >= 0) { if (edges < from.length) { from[edges] = i; to[edges++] = j; } break; }                // the arm ends at the next bomb
+        }
+      }
+    }
+    for (let pass = 0; pass < n; pass++) {                                            // the soonest fuse of a chain spreads along it
+      let changed = false;
+      for (let e = 0; e < edges; e++) if (fuse[from[e]] < fuse[to[e]]) { fuse[to[e]] = fuse[from[e]]; changed = true; }
+      if (!changed) break;
+    }
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const f = fuse[i];
+      if (!(f <= DANGER_TICKS)) continue;
       any = true;
-      const level = b.fuse <= 30 ? 2 : 1;
-      const c0 = b.ty * GRID_W + b.tx;
-      if (mask[c0] < level) mask[c0] = level;
+      const b = bs[i], c0 = b.ty * GRID_W + b.tx;
+      if (f < danger[c0]) danger[c0] = f;
       for (let d = 0; d < 4; d++) {
         const dx = DIR4[d][0], dy = DIR4[d][1];
         for (let k = 1; k <= b.range; k++) {
           const x = b.tx + dx * k, y = b.ty + dy * k;
           if (x < 0 || y < 0 || x >= GRID_W || y >= GRID_H) break;
-          const idx = y * GRID_W + x, cell = cells[idx];
-          if (cell === CELL_HARD || cell === CELL_SUDDEN || cell === CELL_SOFT) break;   // a wall stops the fire, a crate absorbs it
-          if (mask[idx] < level) mask[idx] = level;
-          if (at[idx]) break;                                                            // the next bomb takes over
+          const idx = y * GRID_W + x;
+          if (cells[idx] !== CELL_FLOOR) break;
+          if (f < danger[idx]) danger[idx] = f;
+          if (at[idx] >= 0) break;
         }
       }
     }
     if (!any) return;
-    const pulse = reduced ? 1 : 0.85 + 0.15 * Math.sin(now * 0.012), pad = Math.max(2, Math.round(T * 0.05));
-    g.fillStyle = '#ff3b2a';
-    for (let level = 1; level <= 2; level++) {
-      g.beginPath();
-      for (let idx = 0; idx < CELLS; idx++) if (mask[idx] === level) g.rect((idx % GRID_W) * T + pad, Math.floor(idx / GRID_W) * T + pad, T - 2 * pad, T - 2 * pad);
-      g.globalAlpha = (level === 1 ? 0.16 : 0.3) * pulse;
-      g.fill();
+    const mark = this.set.fx.hazard;
+    for (let idx = 0; idx < CELLS; idx++) {
+      const f = danger[idx];
+      if (f > DANGER_TICKS) continue;
+      const u = 1 - f / DANGER_TICKS;                                                 // 0 far away .. 1 about to burn
+      const pulse = reduced ? 1 : 0.88 + 0.12 * Math.sin(now * (0.008 + 0.01 * u));                // 1.3 Hz rising to 2.9 Hz: never a strobe
+      g.globalAlpha = (0.4 + 0.6 * u) * pulse;
+      drawSprite(g, mark, (idx % GRID_W) * T, Math.floor(idx / GRID_W) * T);
     }
     g.globalAlpha = 1;
   }
@@ -1147,8 +1270,9 @@ export class Renderer {
     // shadow shrinks while hopping
     const lift = clamp(-pose.dy * 3, 0, 0.4);
     drawSprite(g, set.fx.shadow, Math.round(px), Math.round(py + 0.36 * T), 0.95 - lift * 0.5);
-    if (this.teamMode(view)) drawSprite(g, set.teamRing[p.team & 1], Math.round(px), Math.round(py + 0.34 * T));
-    else if (p.isMe) this.paintLocalRing(g, px, py, T, now);
+    const teams = this.teamMode(view);
+    if (teams) drawSprite(g, set.teamRing[p.team & 1], Math.round(px), Math.round(py + 0.34 * T));
+    if (p.isMe) this.paintLocalRing(g, px, py, T, now, teams, this.dangerAt(p));
     drawSprite(g, sprite, cx, cy, pose.sx, pose.sy);
     // shield bubble: item shield first (its last 2 s blink), else the spawn shield (blinks all along)
     if (p.shield > 0 && p.shield !== SHIELD_FOREVER) {
@@ -1176,12 +1300,21 @@ export class Renderer {
     return t >= 0 && t < 1 ? 0.14 * Math.sin(t * Math.PI) : 0;
   }
 
-  paintLocalRing(g, px, py, T, now) {
-    g.strokeStyle = '#ffe06e';
-    g.globalAlpha = 0.9;
-    g.lineWidth = Math.max(2, T * 0.06);
+  /** Ticks until the tile under a fighter burns (NO_DANGER when no bomb threatens it). */
+  dangerAt(p) {
+    const tx = Math.floor(p.x), ty = Math.floor(p.y);
+    return tx >= 0 && ty >= 0 && tx < GRID_W && ty < GRID_H ? this.danger[ty * GRID_W + tx] : NO_DANGER;
+  }
+
+  /** The gold ring that says "this one is you"; it turns to a pulsing red warning while a bomb is about to burn the tile underfoot. */
+  paintLocalRing(g, px, py, T, now, teams, danger) {
+    const alarm = danger <= DANGER_ALERT_TICKS && !this.reducedEffects;
+    const swell = alarm ? 0.05 * Math.sin(now * 0.018) : 0.02 * Math.sin(now * 0.006);
+    g.strokeStyle = danger <= DANGER_ALERT_TICKS ? '#ff5a3c' : '#ffe06e';
+    g.globalAlpha = 0.92;
+    g.lineWidth = Math.max(2, T * (danger <= DANGER_ALERT_TICKS ? 0.08 : 0.06));
     g.beginPath();
-    g.ellipse(px, py + 0.35 * T, T * (0.44 + 0.02 * Math.sin(now * 0.006)), T * 0.19, 0, 0, TAU);
+    g.ellipse(px, py + 0.35 * T, T * ((teams ? 0.53 : 0.44) + swell), T * ((teams ? 0.24 : 0.19) + swell * 0.4), 0, 0, TAU);
     g.stroke();
     g.globalAlpha = 1;
   }
@@ -1229,10 +1362,13 @@ export class Renderer {
     if (b.dir === 0 && !b.fly) { drawSprite(g, sprite, px, Math.round(py), sx, sy); return; }
     // Rolling or flying: the whole ball turns, so the fuse whirls around it. The body's centre is 0.08 tile below the sprite anchor.
     g.save();
-    g.translate(px, Math.round(py + (b.fly ? -this.flightHeight(b) * T : 0) + 0.08 * T));
-    g.rotate(b.fly ? fx.spin * 0.5 : fx.spin);
-    drawSprite(g, sprite, 0, Math.round(-0.08 * T), sx, sy);
-    g.restore();
+    try {
+      g.translate(px, Math.round(py + (b.fly ? -this.flightHeight(b) * T : 0) + 0.08 * T));
+      g.rotate(b.fly ? fx.spin * 0.5 : fx.spin);
+      drawSprite(g, sprite, 0, Math.round(-0.08 * T), sx, sy);
+    } finally {
+      g.restore();
+    }
   }
 
   drawGhostBomb(g, gb, T, now, reduced) {
@@ -1246,14 +1382,14 @@ export class Renderer {
   }
 
   drawItem(g, it, T, now, reduced) {
-    const set = this.set, fx = this.items.get(it.id);
-    if (!fx) return;
+    const set = this.set, fx = this.items.get(it.id), token = set.item(it.kind);
+    if (!fx || !token) return;
     const t = clamp((now - fx.born) / 320, 0, 1), sc = t < 1 ? easeOutBack(t) : 1;
     const bob = reduced ? 0 : Math.sin(now * 0.005 + it.id * 1.7) * 0.05;
     const jitter = it.kind === 'skull' && !reduced ? Math.sin(now * 0.05) * 0.012 : 0;
     const px = Math.round((it.x + jitter) * T), py = Math.round((it.y - 0.04 + bob) * T);
     drawSprite(g, set.fx.shadow, Math.round(it.x * T), Math.round((it.y + 0.3) * T), 0.6 - bob * 0.8);
-    drawSprite(g, set.item(it.kind), px, py, sc);
+    drawSprite(g, token, px, py, sc);
   }
 
   // ---- Things above the y-sorted layer -------------------------------------------------------------------------------
@@ -1305,34 +1441,84 @@ export class Renderer {
   // ---- Overlays ----------------------------------------------------------------------------------------------------
 
   paintOverlays(g, view, T, now, reduced) {
-    const set = this.set, ps = view.players;
-    for (let i = 0; i < ps.length; i++) {
+    const set = this.set, ps = view.players, n = Math.min(ps.length, TAG_CAP);
+    const rect = this.tagRect, tagOf = this.tagOf, above = this.headTop, dpr = this.layout.dpr;
+    let tags = 0;
+    for (let i = 0; i < n; i++) {
       const p = ps[i], fx = this.players.get(p.id);
+      above[i] = NaN;
       if (!fx || fx.gone) continue;
-      const px = Math.round(p.x * T);
-      let top = p.y - 1.06;
-      if (this.showNames && !fx.dead && p.name) {
-        const hex = PLAYER_COLORS[clamp(p.color | 0, 0, PLAYER_COLORS.length - 1)].hex;
-        if (!fx.tag || fx.tagName !== p.name || fx.tagColor !== p.color || fx.tagMe !== p.isMe || fx.tagT !== T) {
+      let y = (p.y - TAG_ABOVE) * T;                                   // what sits on a fighter's head starts here
+      if (this.showNames && !fx.dead && p.name && tagWanted(p.isMe, T, dpr)) {
+        if (!fx.tag || fx.tagName !== p.name || fx.tagColor !== p.color || fx.tagMe !== p.isMe || fx.tagT !== T || fx.tagDpr !== dpr) {
           fx.releaseTag();
-          fx.tag = buildNameTag(this.makeCanvas, this.measureContext(), p.name, hex, p.isMe, T, this.layout.dpr);
-          fx.tagName = p.name; fx.tagColor = p.color; fx.tagMe = p.isMe; fx.tagT = T;
+          fx.tag = buildNameTag(this.makeCanvas, this.measureContext(), p.name, PLAYER_COLORS[clamp(p.color | 0, 0, PLAYER_COLORS.length - 1)].hex, p.isMe, T, dpr);
+          fx.tagName = p.name; fx.tagColor = p.color; fx.tagMe = p.isMe; fx.tagT = T; fx.tagDpr = dpr;
         }
-        const tag = fx.tag;
-        g.drawImage(tag.canvas, Math.round(px - tag.w / 2), Math.round(top * T - tag.h / 2));
-        top -= (tag.h / T) * 0.5 + 0.06;
+        const tag = fx.tag, at = tags * 4;
+        rect[at] = Math.round(p.x * T - tag.w / 2); rect[at + 1] = Math.round(y - tag.h); rect[at + 2] = tag.w; rect[at + 3] = tag.h;
+        tagOf[tags++] = i;
+        y -= tag.h;
       }
-      if (p.isMe && !fx.dead && (view.state === STATE.COUNTDOWN || now - this.goAt < 2200)) this.paintArrow(g, px, top * T, T, now, reduced);
+      above[i] = y;
+    }
+    if (tags > 1) this.spreadTags(tags, view, T);
+    for (let k = 0; k < tags; k++) {
+      const i = tagOf[k], at = k * 4;
+      g.drawImage(this.players.get(ps[i].id).tag.canvas, rect[at], rect[at + 1]);
+      above[i] = rect[at + 1];
+    }
+    for (let i = 0; i < n; i++) {
+      const p = ps[i], fx = this.players.get(p.id), y = above[i];
+      if (!fx || y !== y) continue;                                    // (NaN: not drawn at all)
+      const px = Math.round(p.x * T);
+      if (p.isMe && !fx.dead && (view.state === STATE.COUNTDOWN || now - this.goAt < 2200)) this.paintArrow(g, px, y - 0.06 * T, T, now, reduced);
       const age = now - fx.emoteAt;
       if (fx.emote >= 0 && age < 2400) {
         const pop = age < 240 ? easeOutBack(age / 240) : 1, out = age > 2000 ? (age - 2000) / 400 : 0;
         g.globalAlpha = 1 - out;
-        drawSprite(g, set.emote(fx.emote), px, Math.round((top - 0.04 - out * 0.3) * T), pop);
+        drawSprite(g, set.emote(fx.emote), px, Math.round(y - (0.1 + out * 0.3) * T), pop);
         g.globalAlpha = 1;
       }
     }
     this.texts.draw(g, T, FONT);
     this.paintBanner(g, T, now, reduced);
+  }
+
+  /**
+   * Push overlapping name tags apart (rects in this.tagRect, owners in this.tagOf) along the axis on which they overlap least: two
+   * fighters in a brawl would otherwise print over each other's name. The local fighter's tag stays put; tags stay on the canvas.
+   */
+  spreadTags(n, view, T) {
+    const r = this.tagRect, of = this.tagOf, ps = view.players, L = this.layout, k = L.tile / T;
+    const minX = -L.ox / k, maxX = (L.width - L.ox) / k, minY = -L.oy / k;
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (let a = 0; a < n; a++) {
+        for (let b = a + 1; b < n; b++) {
+          const A = a * 4, B = b * 4;
+          const ox = Math.min(r[A] + r[A + 2], r[B] + r[B + 2]) - Math.max(r[A], r[B]) + 2;
+          const oy = Math.min(r[A + 1] + r[A + 3], r[B + 1] + r[B + 3]) - Math.max(r[A + 1], r[B + 1]) + 2;
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          const meA = ps[of[a]].isMe, meB = ps[of[b]].isMe;
+          if (oy <= ox) {
+            const up = r[A + 1] <= r[B + 1] ? A : B, low = up === A ? B : A;
+            if ((up === A ? meA : meB) && !(low === A ? meA : meB)) r[low + 1] += oy; else r[up + 1] -= oy;
+          } else {
+            const left = r[A] <= r[B] ? A : B, right = left === A ? B : A;
+            const meL = left === A ? meA : meB, meR = right === A ? meA : meB;
+            if (meL) r[right] += ox; else if (meR) r[left] -= ox; else { r[left] -= ox / 2; r[right] += ox / 2; }
+          }
+        }
+      }
+      for (let a = 0; a < n; a++) {
+        const A = a * 4;
+        r[A] = Math.round(clamp(r[A], minX + 1, maxX - r[A + 2] - 1));
+        r[A + 1] = Math.round(Math.max(r[A + 1], minY + 1));
+      }
+      if (!moved) break;
+    }
   }
 
   paintArrow(g, x, y, T, now, reduced) {
@@ -1351,13 +1537,16 @@ export class Renderer {
     const pop = reduced ? 1 : age < inMs ? 0.55 + 0.45 * easeOutBack(age / inMs) : 1;
     const size = Math.round(T * (b.kind === 'sd' ? 1 : 0.9));
     g.save();
-    g.globalAlpha = clamp(a, 0, 1);
-    g.translate(GRID_W * T / 2, GRID_H * T * 0.36);
-    g.scale(pop, pop);
-    g.font = boldFont(size); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    g.lineWidth = size * 0.2; g.strokeStyle = 'rgba(27,16,51,0.95)'; g.strokeText(b.text, 0, size * 0.05);
-    g.fillStyle = b.kind === 'sd' ? '#ff6a3d' : GOLD; g.fillText(b.text, 0, 0);
-    g.restore();
+    try {
+      g.globalAlpha = clamp(a, 0, 1);
+      g.translate(GRID_W * T / 2, GRID_H * T * 0.36);
+      g.scale(pop, pop);
+      g.font = boldFont(size); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+      g.lineWidth = size * 0.2; g.strokeStyle = 'rgba(27,16,51,0.95)'; g.strokeText(b.text, 0, size * 0.05);
+      g.fillStyle = b.kind === 'sd' ? '#ff6a3d' : GOLD; g.fillText(b.text, 0, 0);
+    } finally {
+      g.restore();
+    }
   }
 
   /** Flash, tints and the debug text in screen space. */

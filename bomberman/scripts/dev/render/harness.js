@@ -453,6 +453,31 @@ const scenes = {
     };
   },
 
+  /** A fighter walking a loop (right, down, left, up): walk cycles, facing changes, footstep dust; one strip per leg. */
+  walk(o) {
+    emptyStage(o);
+    stage.teleport(0, 1, 1, 1); stage.teleport(1, 13, 11);   // the lanes between the pillars are the odd rows and columns
+    const shots = [];
+    for (const [i, d] of [2, 3, 4, 1].entries()) {
+      stage.drive(0, { d, ticks: 60 });
+      shots.push({ name: `walk-${i}`, data: h.strip({ frames: 6, every: 10, crop: [0, 0, 2.2, 2.4], follow: 0, cols: 6, label: false }) });
+    }
+    return { shots };
+  },
+
+  /** Name tags with fighters standing shoulder to shoulder: sizes by tile size, overlap handling, the local fighter's gold tag. */
+  tags(o) {
+    h.setup({ ...o, n: 8, reckless: 0 });
+    h.skipCountdown();
+    stage.quiet();
+    stage.clear(1, 1, 13, 11);
+    // side by side, one above the other, a trio, and two loners
+    [[3, 3], [4, 3], [7, 2], [7, 3], [11, 5], [12, 5], [11, 6], [4, 9]].forEach(([x, y], i) => stage.teleport(i, x, y, 2));
+    for (const p of h.world.players) p.spawnShield = 0;
+    h.advance(6);
+    return { shots: [{ name: 'tags', data: h.shot() }] };
+  },
+
   /** Emote bubbles and a shielded, cursed, team-ringed lineup. */
   lineup(o) {
     h.setup({ ...o, n: 8, mode: 'teams', reckless: 0 });

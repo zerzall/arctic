@@ -7,7 +7,7 @@
 // ----------------------------------------------------------------------------------------------------------
 // USAGE
 //
-//   const set = buildSpriteSet({ tile: 64, theme: 'lava', dpr: 2 });   // tile = device pixels per arena tile
+//   const set = buildSpriteSet({ tile: 64, theme: 'lava', dpr: 2 });   // tile = device pixels per arena tile, 8 to 256 (anything else, or an unknown theme, throws RangeError)
 //   drawSprite(ctx, set.floorAt(tx, ty), tx * tile, ty * tile);
 //   drawSprite(ctx, set.character(colorIndex).walk[facing][frame], x * tile, y * tile);   // (x, y) = tile units
 //   ...
@@ -16,9 +16,10 @@
 // dispose() zeroes every canvas (iOS Safari's canvas memory budget), and drawImage() of an empty canvas throws, so stop
 // drawing a set's sprites before you dispose it; disposing while a build is still being pumped is fine.
 //
-// Building takes ~110 ms at tile 64 and ~130 ms at tile 96 (headless Chromium, software raster, all eight colours), plus ~35 ms to crop
-// the actor atlas to the visible pixels (see Atlas.queueCompaction).
-// The build is shared: a set for another theme at the same tile size only redraws the terrain (10-20 ms), because
+// Building takes ~150 ms at tile 64 and ~230 ms at tile 96 (headless Chromium, software raster, all eight colours, including the ~40 ms it
+// takes to crop the actor atlas to the visible pixels, see Atlas.queueCompaction). Pumped at 4 ms a frame that is 30 to 50 slices; no slice
+// is longer than ~15 ms.
+// The build is shared: a set for another theme at the same tile size only redraws the terrain (5-10 ms), because
 // characters, bombs, flames, items and effects are theme independent and kept in a reference-counted cache until
 // the last set using them is disposed.
 //
@@ -70,8 +71,9 @@
 //                                  order: grin, laugh, angry, scream, thumbs-up, party, bomb, skull; 8..11 = GG, heart,
 //                                  cry, cool for future use)
 //     set.fx                       { shadow, dot, glowWarm, glowCool, flameGlow, spark, smoke[3], darkSmoke[3], ember, twinkle, skull, ring, star,
-//                                  confetti[6], warning }
-//                                  soft blob shadow (scale it per object), particle textures, sudden-death marker
+//                                  confetti[6], warning, hazard }
+//                                  soft blob shadow (scale it per object), particle textures, sudden-death marker, and `hazard`: the
+//                                  striped floor mark of a tile a bomb is about to burn (tile sized, anchor = the tile's top-left)
 //
 // Animation hints: walk with walkFrame(distanceWalked) (about WALK_TILES_PER_CYCLE tiles per cycle) and show
 // idle[facing] when not moving, swapping in blink[facing] for ~120 ms every 3-5 s; on death play death[] once or twice
@@ -246,9 +248,11 @@ export const THEME_PALETTES = {};
 // ================================================================================================
 
 const PAGE_MAX = 2048; // spec 8.2: no atlas canvas larger than 2048 x 2048
+const TILE_MAX = 256;  // the renderer never asks for more than 96; beyond ~1000 the widest sprite no longer fits a page, and 256 is already ~50 Mpx
 const GAP = 2;         // transparent gutter between sprites so smoothed / scaled draws never bleed
 const ALPHA_MIN = 4;   // alpha (0..255) below which a pixel counts as empty when cropping sprites
 const SCAN_CHUNK = 24, COPY_CHUNK = 48;   // sprites per time slice while compacting
+const FLUSH_EVERY = 6;   // sprites drawn between two forced rasterisations of a page (see Atlas.flushEvery)
 
 function defaultCreateCanvas(w, h) {
   if (typeof document !== 'undefined') {
@@ -336,7 +340,12 @@ class Atlas {
 
   /** Allocate the page canvases (cheap until first drawn on) and point every sprite at its page. */
   seal() {
-    for (const p of this.pages) { p.canvas = this.createPage(Math.max(1, p.w), Math.max(1, p.h)); p.readable = this.readable; }
+    try {
+      for (const p of this.pages) { p.canvas = this.createPage(Math.max(1, p.w), Math.max(1, p.h)); p.readable = this.readable; }
+    } catch (err) {
+      this.dispose();   // out of canvas memory half way: hand back the pages that did get allocated
+      throw err;
+    }
     for (const t of this.tasks) if (t.sprite) t.sprite.img = t.page.canvas;
   }
 
@@ -360,8 +369,8 @@ class Atlas {
         g.clip();
         g.translate(sp.x + sp.ax, sp.y + sp.ay);
         if (!t.raw) g.scale(env.s, env.s);
-        t.draw(g, env);
-        g.restore();
+        try { t.draw(g, env); } finally { g.restore(); }   // a throwing sprite must not leave its clip and transform on the page for every sprite after it
+        this.flushEvery(t.page, g, sp.x, sp.y);
       } else {
         t.draw(null, env);
       }
@@ -431,7 +440,9 @@ class Atlas {
   /** Copy a sprite's visible rectangle to its new place and make the sprite object describe it. */
   moveSprite(t, box) {
     const sp = t.sprite, dst = t.spot.page, src = t.page;
-    this.context(dst).drawImage(src.canvas, sp.x + box.x, sp.y + box.y, box.w, box.h, t.spot.x, t.spot.y, box.w, box.h);
+    const g = this.context(dst);
+    g.drawImage(src.canvas, sp.x + box.x, sp.y + box.y, box.w, box.h, t.spot.x, t.spot.y, box.w, box.h);
+    this.flushEvery(dst, g, t.spot.x, t.spot.y);
     sp.img = dst.canvas; sp.x = t.spot.x; sp.y = t.spot.y;
     sp.ax -= box.x; sp.ay -= box.y; sp.w = box.w; sp.h = box.h;
   }
@@ -441,6 +452,19 @@ class Atlas {
     for (const c of this.scratch) releaseCanvas(c);
     this.scratch.clear();
     this.packer = new ShelfPacker(); this.tasks = []; this.cursor = 0; this.fresh = null;
+  }
+
+  /**
+   * Canvas 2D only records the drawing calls and rasterises them at the first read of the page. Without a read while drawing, the whole
+   * page is rasterised inside one slice (measured: a 25 to 30 ms hitch at tile 64 in the middle of the countdown) and again, for the
+   * compacted pages, inside the first frame that draws from them. A 1 x 1 read every few sprites makes each slice pay for what it drew,
+   * so the time budget of pump() is honest; the total cost is the same. (Not after every sprite: on engines that keep the page on the
+   * GPU each read is a round trip.)
+   */
+  flushEvery(page, g, x, y) {
+    if ((page.unread = (page.unread ?? 0) + 1) < FLUSH_EVERY) return;
+    page.unread = 0;
+    g.getImageData?.(x, y, 1, 1);
   }
 
   /** Total pixels currently allocated (for the debug overlay and the memory test). */
@@ -1409,8 +1433,9 @@ function iconGG(g) {
   g.beginPath(); rrect(g, -40, -26, 80, 52, 16);
   fillLine(g, lin(g, 0, -26, 0, 26, [[0, '#8f6bff'], [1, '#4a2fc0']]), INK, 4.8);
   g.font = '900 40px "Arial Black", Impact, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 7; g.strokeStyle = INK; g.lineJoin = 'round'; g.strokeText('GG', 0, 3);
-  g.fillStyle = lin(g, 0, -16, 0, 22, [[0, '#ffffff'], [1, '#ffe27a']]); g.fillText('GG', 0, 3);
+  // maxWidth: "Arial Black" is missing on many phones and the fallback face may be much wider; the badge is 80 units across
+  g.lineWidth = 7; g.strokeStyle = INK; g.lineJoin = 'round'; g.strokeText('GG', 0, 3, 66);
+  g.fillStyle = lin(g, 0, -16, 0, 22, [[0, '#ffffff'], [1, '#ffe27a']]); g.fillText('GG', 0, 3, 66);
   g.beginPath(); ellipse(g, -22, -18, 12, 4, -0.2); g.fillStyle = 'rgba(255,255,255,0.35)'; g.fill();
 }
 
@@ -1496,19 +1521,19 @@ function renderDataURL(key, size, draw) {
  * Names: ICON_NAMES (bomb, flame, speed, kick, glove, shield, skull, slow, rush, reverse, nobomb, spam, crown, star, ghost, bot, heart, emote-*).
  */
 export function iconDataURL(name, size = 32) {
-  if (!ICONS[name]) return '';
+  if (typeof name !== 'string' || !Object.prototype.hasOwnProperty.call(ICONS, name)) return '';   // not ICONS[name]: "constructor" is not an icon
   return renderDataURL(`icon:${name}`, size, (g) => drawIcon(g, name));
 }
 
 /** PNG data URL of a blastie portrait (head, face and accessory) for lobby and HUD, `size` x `size` device pixels (cached). */
 export function avatarDataURL(colorIndex, size = 48) {
-  const c = PLAYER_COLORS[colorIndex];
+  const c = Number.isInteger(colorIndex) ? PLAYER_COLORS[colorIndex] : undefined;
   if (!c) return '';
   return renderDataURL(`avatar:${colorIndex}`, size, (g) => {
     const L = makeLook(c.hex), draw = ACCESSORY_DRAW[c.accessory];
     g.scale(0.76, 0.76);
-    g.translate(0, 24);
-    g.beginPath(); ellipse(g, 0, 36, 34, 9);
+    g.translate(0, 22);
+    g.beginPath(); ellipse(g, 0, 35, 34, 8);   // ends at 49 of the 50 units above the centre: a flat-cut shadow at the bottom edge otherwise
     g.fillStyle = rgba(SHADOW_INK, 0.25); g.fill();
     drawBodyBlob(g, L);
     drawFace(g, L, 'down', {});
@@ -1609,6 +1634,9 @@ function buildBombs(atlas) {
 
 export const FLAME_FRAMES = 4;
 const FLAME_PAD = 4;
+// The hot core runs to the very edge of the cell, past the tile edge into the padding: neighbouring tiles overlap by FLAME_PAD on each
+// side, and a core that stopped at the tile edge left a strip of plain orange on top of the neighbour's core (a seam at every join).
+const CORE_REACH = 50 + FLAME_PAD;
 const FLAME_W = 27;      // arm half width where it meets a neighbouring tile (identical in every sprite so tiles join seamlessly)
 const FLAME_LAYERS = [   // outermost first: dark rim, red, orange, yellow, white-hot
   { k: 1.14, color: '#a3141a' },
@@ -1657,7 +1685,7 @@ function drawFlame(g, mask, frame) {
       g.moveTo(hx + hr * layer.k, hy); g.arc(hx, hy, hr * layer.k, 0, TAU);
       g.fillStyle = layer.color; g.fill();
       g.beginPath();
-      for (const [dx, dy, bit] of ARM_DIRS) if (mask & bit) { g.moveTo(0, 0); g.lineTo(dx * 50, dy * 50); }
+      for (const [dx, dy, bit] of ARM_DIRS) if (mask & bit) { g.moveTo(0, 0); g.lineTo(dx * CORE_REACH, dy * CORE_REACH); }
       g.lineCap = 'butt'; g.lineWidth = 2 * FLAME_W * layer.k; g.strokeStyle = layer.color; g.stroke();
       if (mask !== 0 && (mask & (mask - 1)) === 0) {   // single arm: the core also fills the rounded free end
         const d = discs[discs.length - 1];
@@ -1729,6 +1757,24 @@ function drawSmoke(g, seed, tint) {
   }
 }
 
+/**
+ * Floor mark for a tile that a bomb is about to burn (tile sized, anchor = the tile's top-left corner): red warning stripes over a red wash,
+ * a hot rim, and a dark outer edge so the rim still separates from light floors. Draw it with an alpha that grows as the bomb burns down;
+ * a plain red wash all but vanished on candy pink and turned to mud on grass, stripes and a rim read on every floor.
+ */
+function drawHazard(g) {
+  const x0 = 5, y0 = 5, side = 90, r = 14;
+  g.beginPath(); rrect(g, x0, y0, side, side, r);
+  g.fillStyle = 'rgba(255,48,32,0.34)'; g.fill();
+  g.save(); g.clip();
+  stripes(g, x0, y0, x0 + side, y0 + side, 13, 'rgba(255,36,28,0.62)', 'rgba(255,36,28,0)');
+  g.restore();
+  g.beginPath(); rrect(g, x0 + 1.5, y0 + 1.5, side - 3, side - 3, r - 1.5);
+  g.lineWidth = 3; g.strokeStyle = 'rgba(255,226,130,0.95)'; g.stroke();
+  g.beginPath(); rrect(g, x0, y0, side, side, r);
+  g.lineWidth = 2; g.strokeStyle = 'rgba(120,10,16,0.55)'; g.stroke();
+}
+
 function buildFx(atlas) {
   const fx = { smoke: [], confetti: [] };
   fx.dot = atlas.add(64, 64, 32, 32, (g) => {
@@ -1780,6 +1826,7 @@ function buildFx(atlas) {
     g.beginPath(); g.moveTo(0, -12); g.lineTo(0, 8); g.lineWidth = 7; g.strokeStyle = INK; g.lineCap = 'round'; g.stroke();
     g.beginPath(); circle(g, 0, 17, 3.8); g.fillStyle = INK; g.fill();
   });
+  fx.hazard = atlas.add(100, 100, 0, 0, drawHazard);   // floor mark under the blast area of a bomb about to go off
   fx.shadow = atlas.add(104, 54, 52, 27, drawSoftShadow);
   return fx;
 }
@@ -2414,13 +2461,19 @@ function drawSuddenWall(g) {
   });
 }
 
-/** Soft shadow a block casts to its right and below it (origin = the block's tile top-left). */
+/**
+ * Soft shadow a block casts to its right and below it (origin = the block's tile top-left, cell 145 x 118). The footprint is pushed to the
+ * lower right by the top-left light and softened by stacking translucent rounded rectangles that grow outwards: gradient strips left hard
+ * slab edges and a doubly dark square where they overlapped. The blur stays 16 units inside the cell, so nothing is cut at its border.
+ */
 function drawBlockShadow(g) {
-  g.fillStyle = lin(g, 92, 0, 142, 0, [[0, rgba(SHADOW_INK, 0.36)], [0.5, rgba(SHADOW_INK, 0.14)], [1, rgba(SHADOW_INK, 0)]]);
-  g.fillRect(92, 8, 50, 100);
-  g.fillStyle = lin(g, 0, 94, 0, 116, [[0, rgba(SHADOW_INK, 0.36)], [1, rgba(SHADOW_INK, 0)]]);
-  g.fillRect(4, 94, 96, 22);
-  g.beginPath(); ellipse(g, 98, 100, 22, 16); g.fillStyle = rad(g, 98, 100, 0, 98, 100, 22, [[0, rgba(SHADOW_INK, 0.3)], [1, rgba(SHADOW_INK, 0)]]); g.fill();
+  const n = 7, lo = -8, hi = 16;
+  g.fillStyle = rgba(SHADOW_INK, 0.07);
+  for (let i = 0; i < n; i++) {
+    const e = lo + (hi - lo) * (i / (n - 1));
+    g.beginPath(); rrect(g, 16 - e, 20 - e, 96 + 2 * e, 80 + 2 * e, Math.max(2, 22 + e));
+    g.fill();
+  }
 }
 
 export const SOFT_POP_FRAMES = 3;
@@ -2579,15 +2632,19 @@ export function tileHash(tx, ty) {
  * until it returns true, then use `.set`. `buildSpriteSet` is the blocking version.
  */
 export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas } = {}) {
-  if (!Number.isFinite(tile) || tile < 8) throw new RangeError('sprites: tile must be a device-pixel size >= 8');
+  if (!Number.isFinite(tile) || tile < 8 || tile > TILE_MAX) throw new RangeError(`sprites: tile must be a device-pixel size from 8 to ${TILE_MAX}`);
   tile = Math.round(tile);   // tile-sized sprites must be exactly one tile wide or the floor shows seams
-  if (!THEME_ART[theme]) throw new RangeError(`sprites: unknown theme "${theme}"`);
+  if (!THEMES.includes(theme)) throw new RangeError(`sprites: unknown theme "${theme}"`);   // (a plain THEME_ART[theme] lookup would accept "constructor")
   const env = { s: tile / UNIT, tile, dpr, createCanvas: createCanvas ?? defaultCreateCanvas };
   const key = `${tile}|${dpr}`;
   let actors = createCanvas ? null : actorCache.get(key);
   if (!actors) { actors = buildActors(env); if (!createCanvas) actorCache.set(key, actors); }
+  const releaseActors = () => {
+    if (--actors.refs === 0) { actors.atlas.dispose(); if (actorCache.get(key) === actors) actorCache.delete(key); }
+  };
   actors.refs++;
-  const terrain = buildTerrain(env, theme);
+  let terrain;
+  try { terrain = buildTerrain(env, theme); } catch (err) { releaseActors(); throw err; }   // a failed build must not pin the shared sprites
   let disposed = false;
 
   const set = {
@@ -2629,7 +2686,7 @@ export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas
       disposed = true;
       terrain.atlas.dispose();
       if (terrain.backdrop.canvas) { releaseCanvas(terrain.backdrop.canvas); terrain.backdrop.canvas = null; }
-      if (--actors.refs === 0) { actors.atlas.dispose(); if (actorCache.get(key) === actors) actorCache.delete(key); }
+      releaseActors();
     },
   };
 

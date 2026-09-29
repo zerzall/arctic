@@ -23,11 +23,14 @@
 // makes "the output never exceeds 0.93" a property of the graph instead of a hope.
 //
 // DEVIATIONS / READINGS OF THE SPEC (also in the engineer's report)
-//  * "<= 18 % master gain by default" is read as a cap on the MUSIC's default loudness: with the default volume the music peaks at
-//    about 0.18 of full scale, well under the effects. `volume` is the user's 0..1 slider (default 0.8) and maps to gain by volume^2.
+//  * "<= 18 % master gain by default" is read as a cap on the MUSIC: its bus runs at 0.18 while sound effects run at 1.0, so at the
+//    default volume the music peaks below 0.18 of full scale (scripts/dev/audio/render.mjs asserts it). `volume` is the user's 0..1 slider (default 0.8) and maps to gain by volume^2.
 //  * unlock() only arms the gesture listeners; the AudioContext is created inside the first real gesture (creating one at boot logs a
 //    console warning and stays suspended anyway).
-//  * Extras beyond the interface: duck(ms), supported, state, and the exported Engine / compileTrack / name lists used by the tests.
+//  * Extras beyond the interface: duck(ms), supported, state (audio.play returns whether the sound started), and the exports the tests and
+//    the rig use: Engine, createAudio, compileTrack, noteToMidi, SOUND_NAMES, MUSIC_NAMES and the tuning constants.
+//  * While the tab is hidden the music is paused in place (the context is suspended and the look-ahead timer stopped, as SPEC 8.5 asks)
+//    and carries on from the same bar when the tab returns.
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Constants
@@ -36,7 +39,7 @@ const STORAGE_KEY = 'bp.audio';
 const GESTURES = ['pointerup', 'touchend', 'click', 'keydown'];   // NOT touchstart / pointerdown: iOS does not treat them as unlock gestures
 export const DEFAULT_VOLUME = 0.8;
 const MASTER_TAPER = 2;            // gain = volume ^ 2: the low half of the slider stays usable
-const MUSIC_LEVEL = 0.245;          // music bus gain; with the default volume the music peaks at ~0.18 (see DEVIATIONS)
+export const MUSIC_LEVEL = 0.18;   // music bus gain: the spec's "<= 18 % master gain"; effects run at 1.0 on their own bus
 export const MAX_VOICES = 24;             // concurrent sound effects; the lowest-priority, oldest one is stolen for a more important newcomer
 export const LOOKAHEAD_S = 1.2;           // the sequencer schedules this far ahead so a throttled or busy main thread never starves the music
 export const PUMP_MS = 25;
@@ -568,9 +571,9 @@ const TRACKS = {
     bpm: 96, swing: 0.14,
     chords: 'Cmaj7 Am7 Dm7 G7 Cmaj7 Am7 Fmaj7 Gsus',
     parts: [
-      { part: 'pad', inst: 'pad', kind: 'chord', gain: 0.7, rows: ['x - - - | - - - - | - - - - | - - - -'] },
-      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.5, gate: 0.7, rows: ['r - . . | . . r - | . . 5 - | . . o .', 'r - . . | . r - . | 5 - . . | . o . 5'] },
-      { part: 'melody', inst: 'pluck', kind: 'notes', gain: 2.1, pan: 0.15, rows: [
+      { part: 'pad', inst: 'pad', kind: 'chord', gain: 0.95, rows: ['x - - - | - - - - | - - - - | - - - -'] },
+      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.68, gate: 0.7, rows: ['r - . . | . . r - | . . 5 - | . . o .', 'r - . . | . r - . | 5 - . . | . o . 5'] },
+      { part: 'melody', inst: 'pluck', kind: 'notes', gain: 2.86, pan: 0.15, rows: [
         'E5 - . . | G5 - . E5 | . . D5 - | C5 - . .',
         '. . E5 - | A5 - . G5 | . . E5 - | C5 - . .',
         '. . F5 - | A5 - . F5 | . . D5 - | A4 - . .',
@@ -580,10 +583,10 @@ const TRACKS = {
         '. A5 - C6 | - A5 - . | G5 - F5 - | E5 - . .',
         '. D6 - C6 | - G5 - . | D5 - G5 - | . . . .',
       ] },
-      { part: 'comp', inst: 'stab', kind: 'chord', gain: 0.8, pan: -0.25, rows: ['. . x . | . . x . | . . x . | . . x .'] },
-      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.42, rows: ['X...|..x.|..X.|....', 'X...|....|.xX.|....'] },
-      { part: 'snare', inst: 'brush', kind: 'drum', gain: 0.9, rows: ['....|X...|....|X...'] },
-      { part: 'hat', inst: 'hat', kind: 'drum', gain: 0.75, pan: 0.3, rows: ['x.o.|x.o.|x.o.|x.o.'] },
+      { part: 'comp', inst: 'stab', kind: 'chord', gain: 1.09, pan: -0.25, rows: ['. . x . | . . x . | . . x . | . . x .'] },
+      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.57, rows: ['X...|..x.|..X.|....', 'X...|....|.xX.|....'] },
+      { part: 'snare', inst: 'brush', kind: 'drum', gain: 1.23, rows: ['....|X...|....|X...'] },
+      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.02, pan: 0.3, rows: ['x.o.|x.o.|x.o.|x.o.'] },
     ],
   },
 
@@ -591,15 +594,15 @@ const TRACKS = {
     bpm: 140, swing: 0,
     chords: BATTLE_CHORDS,
     parts: [
-      { part: 'lead', inst: 'lead', kind: 'notes', gain: 1.27, gate: 0.92, rows: BATTLE_LEAD },
-      { part: 'arp', inst: 'arp', kind: 'arp', gain: 1.55, pan: -0.3, rows: [SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP,
+      { part: 'lead', inst: 'lead', kind: 'notes', gain: 1.73, gate: 0.92, rows: BATTLE_LEAD },
+      { part: 'arp', inst: 'arp', kind: 'arp', gain: 2.11, pan: -0.3, rows: [SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP,
         SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, SPARSE_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP, BUSY_ARP] },
-      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.44, gate: 0.75, rows: ['r - r - | o - r - | r - r - | o - 5 -', 'r - r - | o - r - | r - r - | o - 5 -',
+      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.6, gate: 0.75, rows: ['r - r - | o - r - | r - r - | o - 5 -', 'r - r - | o - r - | r - r - | o - 5 -',
         'r - r - | o - r - | r - r - | o - 5 -', 'r - r - | o - r - | 5 - 5 - | o - 3 -'] },
-      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.48, rows: ['X...X...X...X...', 'X...X...X.x.X...'] },
-      { part: 'snare', inst: 'snare', kind: 'drum', gain: 0.8, rows: ['....X.......X...', '....X.......X...', '....X.......X...', '....X.......xxXX'] },
-      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.0, pan: 0.3, rows: ['x.X.x.X.x.X.x.X.', 'x.X.x.X.x.X.x.o.'] },
-      { part: 'ohat', inst: 'ohat', kind: 'drum', gain: 0.9, pan: 0.3, rows: ['................', '..............x.'] },
+      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.65, rows: ['X...X...X...X...', 'X...X...X.x.X...'] },
+      { part: 'snare', inst: 'snare', kind: 'drum', gain: 1.09, rows: ['....X.......X...', '....X.......X...', '....X.......X...', '....X.......xxXX'] },
+      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.36, pan: 0.3, rows: ['x.X.x.X.x.X.x.X.', 'x.X.x.X.x.X.x.o.'] },
+      { part: 'ohat', inst: 'ohat', kind: 'drum', gain: 1.23, pan: 0.3, rows: ['................', '..............x.'] },
     ],
   },
 
@@ -608,14 +611,14 @@ const TRACKS = {
     bpm: 172, swing: 0,
     chords: BATTLE_CHORDS,
     parts: [
-      { part: 'lead', inst: 'lead2', kind: 'notes', gain: 2.0, gate: 0.85, rows: BATTLE_LEAD },
-      { part: 'arp', inst: 'arp', kind: 'arp', gain: 2.1, pan: -0.3, rows: [BUSY_ARP] },
-      { part: 'stab', inst: 'stab', kind: 'chord', gain: 1.2, pan: 0.25, rows: ['. . x . | . . x . | . . x . | . . x .'] },
-      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.44, gate: 0.6, rows: ['r r o r | r r o r | r r o r | r o 5 o', 'r r o r | r r o r | r r o r | 5 5 o o'] },
-      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.5, rows: ['X...X...X...X...', 'X...X...X..xX.x.'] },
-      { part: 'snare', inst: 'snare', kind: 'drum', gain: 0.85, rows: ['....X.......X...', '....X..o....X...', '....X.......X...', '....X...x.x.xXXX'] },
-      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.4, pan: 0.3, rows: ['XoxoXoxoXoxoXoxo'] },
-      { part: 'ohat', inst: 'ohat', kind: 'drum', gain: 0.63, pan: 0.3, rows: ['..x...x...x...x.'] },
+      { part: 'lead', inst: 'lead2', kind: 'notes', gain: 2.72, gate: 0.85, rows: BATTLE_LEAD },
+      { part: 'arp', inst: 'arp', kind: 'arp', gain: 2.86, pan: -0.3, rows: [BUSY_ARP] },
+      { part: 'stab', inst: 'stab', kind: 'chord', gain: 1.63, pan: 0.25, rows: ['. . x . | . . x . | . . x . | . . x .'] },
+      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.6, gate: 0.6, rows: ['r r o r | r r o r | r r o r | r o 5 o', 'r r o r | r r o r | r r o r | 5 5 o o'] },
+      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.68, rows: ['X...X...X...X...', 'X...X...X..xX.x.'] },
+      { part: 'snare', inst: 'snare', kind: 'drum', gain: 1.16, rows: ['....X.......X...', '....X..o....X...', '....X.......X...', '....X...x.x.xXXX'] },
+      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.91, pan: 0.3, rows: ['XoxoXoxoXoxoXoxo'] },
+      { part: 'ohat', inst: 'ohat', kind: 'drum', gain: 0.86, pan: 0.3, rows: ['..x...x...x...x.'] },
     ],
   },
 
@@ -623,7 +626,7 @@ const TRACKS = {
     bpm: 132, swing: 0,
     chords: 'C F C G C F G C',
     parts: [
-      { part: 'lead', inst: 'lead', kind: 'notes', gain: 1.35, gate: 0.92, rows: [
+      { part: 'lead', inst: 'lead', kind: 'notes', gain: 1.84, gate: 0.92, rows: [
         'C5 - E5 - | G5 - C6 - | E6 - D6 - | C6 - . .',
         'A5 - F5 - | A5 - C6 - | A5 - G5 - | F5 - . .',
         'G5 - E5 - | G5 - C6 - | E6 - D6 - | C6 - . .',
@@ -633,12 +636,12 @@ const TRACKS = {
         'B5 . B5 B5 | D6 - B5 - | G5 - B5 - | D6 - . .',
         'C6 - E6 - | G5 - C6 - | E6 - D6 - | C6 - . .',
       ] },
-      { part: 'arp', inst: 'arp', kind: 'arp', gain: 1.25, pan: -0.3, rows: [SPARSE_ARP] },
-      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.44, gate: 0.75, rows: ['r - o - | r - o - | r - o - | r - 5 -'] },
-      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.45, rows: ['X...X...X...X...'] },
-      { part: 'clap', inst: 'clap', kind: 'drum', gain: 1.5, rows: ['....X.......X...'] },
-      { part: 'hat', inst: 'hat', kind: 'drum', gain: 0.9, pan: 0.3, rows: ['..x...x...x...x.'] },
-      { part: 'crash', inst: 'crash', kind: 'drum', gain: 0.63, rows: ['X...............', '................'] },
+      { part: 'arp', inst: 'arp', kind: 'arp', gain: 1.7, pan: -0.3, rows: [SPARSE_ARP] },
+      { part: 'bass', inst: 'bass', kind: 'bass', gain: 0.6, gate: 0.75, rows: ['r - o - | r - o - | r - o - | r - 5 -'] },
+      { part: 'kick', inst: 'kick', kind: 'drum', gain: 0.61, rows: ['X...X...X...X...'] },
+      { part: 'clap', inst: 'clap', kind: 'drum', gain: 2.04, rows: ['....X.......X...'] },
+      { part: 'hat', inst: 'hat', kind: 'drum', gain: 1.23, pan: 0.3, rows: ['..x...x...x...x.'] },
+      { part: 'crash', inst: 'crash', kind: 'drum', gain: 0.86, rows: ['X...............', '................'] },
     ],
   },
 };
@@ -660,6 +663,7 @@ export function compileTrack(name) {
     for (let bar = 0; bar < bars; bar++) {
       const row = part.rows[bar % part.rows.length], chord = chords[bar];
       const tokens = part.kind === 'drum' ? [...row.replace(/[\s|]/g, '')] : row.replace(/\|/g, ' ').trim().split(/\s+/);
+      if (tokens.length !== STEPS_PER_BAR) throw new Error(`audio: ${name}/${part.part} bar ${bar + 1} has ${tokens.length} steps, not ${STEPS_PER_BAR}`);
       tokens.forEach((tok, i) => {
         const at = bar * STEPS_PER_BAR + i;
         if (tok === '-') { if (held) held.len++; return; }
@@ -766,6 +770,11 @@ class Run {
     }
   }
 
+  /** The sixteenth sounding at `now`: the cursor runs up to LOOKAHEAD_S ahead of the speakers. */
+  stepAt(now) {
+    return this.step - Math.max(0, (this.nextTime - now) / this.track.stepDur);
+  }
+
   /** Schedules every sixteenth that starts before `until`. Steps are laid out by accumulation, so a loop seam is exactly one step long. */
   scheduleUntil(until) {
     const { track } = this, late = this.engine.ctx.currentTime - this.nextTime;
@@ -810,7 +819,11 @@ class Conductor {
     const now = this.engine.ctx.currentTime, t = when ?? now + 0.06;
     const crossfade = this.run !== null;
     if (this.run) this.retire(this.run, t, FADE_CROSS_S);
-    const resume = step ?? (name === this.name ? this.step : 0);
+    let resume = step ?? (name === this.name ? this.step : 0);
+    // Tracks that share their chords (battle -> battle_fast) carry on from the next bar: the tune shifts gear instead of restarting.
+    if (step === undefined && this.run && this.run.track.chords.join() === track.chords.join()) {
+      resume = ((Math.floor(this.run.stepAt(now) / STEPS_PER_BAR) + 1) * STEPS_PER_BAR) % track.steps;
+    }
     this.run = new Run(this.engine, track, t, fade ?? (crossfade ? FADE_CROSS_S : FADE_FIRST_S), resume);
     this.name = name;
     return true;
@@ -957,7 +970,7 @@ export class Engine {
     // Kick, bass, lead and hat all land on the downbeat; squashing those stacked transients is what lets the music carry more body
     // under its peak cap.
     const glue = ctx.createDynamicsCompressor();
-    glue.threshold.value = -14;
+    glue.threshold.value = -11;
     glue.knee.value = 6;
     glue.ratio.value = 12;
     glue.attack.value = 0.002;
@@ -1016,12 +1029,12 @@ export class Engine {
   /**
    * Plays a sound effect. Returns false when it was not started: unknown name, dropped by its cooldown, or outranked when all voices are busy.
    * @param {string} name  one of SOUND_NAMES
-   * @param {{ pan?: number, vol?: number, rate?: number }} [o]
+   * @param {{ pan?: number, vol?: number, rate?: number }} [opts]
    * @param {number} [when]  absolute context time (default: right now)
    */
-  play(name, o = {}, when = this.ctx.currentTime + START_LEAD_S) {
+  play(name, opts, when = this.ctx.currentTime + START_LEAD_S) {
     if (typeof name !== 'string' || !Object.hasOwn(SFX, name)) return false;
-    const def = SFX[name];
+    const def = SFX[name], o = opts ?? {};
 
     // Cooldown: a repeat too close to the previous one is pushed back to keep the gap if that is within `spread`, else dropped.
     let start = when, chain = 0;
@@ -1193,7 +1206,7 @@ export function createAudio(env = {}) {
     /** Plays a sound effect; false when it did not sound (locked, muted, hidden, unknown, cooled down, outranked). Never queued, never throws. */
     play(name, opts) {
       if (muted || !running() || hidden()) return false;
-      try { return engine.play(name, opts ?? {}); } catch { return false; }
+      try { return engine.play(name, opts); } catch { return false; }
     },
 
     /** Switches the music (crossfading) or stops it with `null`. Unknown names are ignored. */

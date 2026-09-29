@@ -104,6 +104,24 @@ export function analyse(x, sr) {
   };
 }
 
+/**
+ * Loop-seam check for a rendered music track that started at `start` and ran past its first loop. Measures the RMS of the 100 ms around
+ * every bar line and returns how far the loop seam (bar line number `bars`) is from the median of the other bar lines, in dB: a gap or
+ * a double-hit at the seam shows up as a large number, a seamless loop as roughly 0.
+ */
+export function seamDb(x, sr, { start, barDur, bars }) {
+  const rmsAt = (t) => {
+    const a = Math.max(0, Math.round((t - 0.05) * sr)), b = Math.min(x.length, Math.round((t + 0.05) * sr));
+    let e = 0;
+    for (let i = a; i < b; i++) e += x[i] * x[i];
+    return Math.sqrt(e / Math.max(1, b - a));
+  };
+  const others = [];
+  for (let k = 1; start + (k + 0.5) * barDur < x.length / sr; k++) if (k !== bars) others.push(rmsAt(start + k * barDur));
+  others.sort((p, q) => p - q);
+  return db(rmsAt(start + bars * barDur)) - db(others[others.length >> 1]);
+}
+
 /** Short-time log spectrogram: rows are frames, columns are bins up to `maxHz`, values are dB relative to the loudest cell. */
 export function spectrogram(x, sr, { size = 1024, hop = 512, maxHz = 12000 } = {}) {
   const bins = Math.min(size / 2, Math.floor((maxHz * size) / sr)), rows = [];

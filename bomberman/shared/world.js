@@ -439,7 +439,7 @@ export class World {
     if (!this.suddenDeath || !inBoard(tx, ty)) return Infinity;
     const idx = ty * W + tx;
     const i = this._sdIndex[idx];
-    if (i < 0) return Infinity;
+    if (!(i >= 0)) return Infinity;                  // also catches non-integer tiles (undefined slot)
     const t = this.sdStart + i * SD_INTERVAL + SD_WARN_TICKS;
     return this.grid[idx] === 'X' || !this._sdFrozen ? t : Infinity;
   }

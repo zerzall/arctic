@@ -2062,6 +2062,17 @@ test('schedule: cell i starts falling at sdStart + 8i and its wall lands SD_WARN
   assert.ok(w.landTick(7, 6) - w.sdStart <= 952, 'within the classic bound');
 });
 
+test('gridVer counts every cell change: one per destroyed block and one per landed sudden-death tile', () => {
+  const w = toSuddenDeath();
+  const rec = record(w);
+  const before = w.gridVer;
+  for (let t = 0; t < 400 && w.state === STATE.PLAYING; t++) rec.tick();
+  const landed = rec.of('sdland').length;
+  assert.ok(landed > 40, 'a good part of the spiral landed');
+  assert.equal(w.gridVer - before, landed, 'each landing bumps gridVer exactly once (a soft block under the tile included)');
+  assert.equal(w.grid.filter((c) => c === 'X').length, landed);
+});
+
 test('landTick: Infinity before sudden death, for walls, and for anything cancelled by the lock', () => {
   const w = live(mk({ n: 2, roundTime: 60 }));
   assert.equal(w.landTick(3, 3), Infinity);
@@ -2070,6 +2081,8 @@ test('landTick: Infinity before sudden death, for walls, and for anything cancel
   assert.equal(w.landTick(0, 0), Infinity);
   assert.equal(w.landTick(2, 2), Infinity, 'pillar');
   assert.equal(w.landTick(99, 99), Infinity);
+  assert.equal(w.landTick(3.5, 3), Infinity, 'a fractional tile is not scheduled (never NaN)');
+  assert.equal(w.landTick(NaN, 3), Infinity);
   assert.equal(w.landTick(3, 3), w.sdStart + w.sdOrder.indexOf(idx(3, 3)) * 8 + 48);
   w.player(1).alive = false;
   w.tick();
@@ -2668,4 +2681,156 @@ test('the outcome lock ends a running spawn shield (the blinking stops, only SHI
   assert.equal(w.state, STATE.ENDING);
   assert.equal(w.player(0).spawnShield, 0);
   assert.equal(w.player(0).shield, C.SHIELD_FOREVER);
+});
+
+// ---- Differential tests against literal transcriptions of the SPEC listings ----------------------------
+
+/** SPEC 3.5, transcribed verbatim (with the per-call closures the production code inlines). */
+function specMovePlayer(p, d, env) {
+  if (d === 0) { p.moving = false; return { moved: false, blocked: false }; }
+  const horiz = d === 2 || d === 4, sgn = (d === 2 || d === 3) ? 1 : -1;
+  p.facing = d - 1;
+  const step = effectiveSpeed(p) * DT;
+  const a = horiz ? 'x' : 'y', q = horiz ? 'y' : 'x';
+  const ap = p[a], pp = p[q];
+  const lo = Math.floor(pp - HALF + EPS), hi = Math.floor(pp + HALF - EPS);
+  const np = ap + sgn * step;
+  const edgeTile = (e) => sgn > 0 ? Math.floor(e - EPS) : Math.floor(e + EPS);
+  const tOld = edgeTile(ap + sgn * HALF), tNew = edgeTile(np + sgn * HALF);
+  const solid = (t, lane) => horiz ? env.isSolid(t, lane, p) : env.isSolid(lane, t, p);
+  let sLo = false, sHi = false;
+  if (tNew !== tOld) { sLo = solid(tNew, lo); sHi = lo === hi ? sLo : solid(tNew, hi); }
+  let r;
+  if (!sLo && !sHi) { p[a] = np; r = { moved: true, blocked: false }; }
+  else if (lo !== hi && sLo !== sHi && Math.floor(pp) === (sLo ? hi : lo)) {
+    const delta = (sLo ? hi : lo) + 0.5 - pp;
+    p[q] = pp + Math.sign(delta) * Math.min(step, Math.abs(delta));
+    r = { moved: true, blocked: false };
+  } else {
+    p[a] = sgn > 0 ? tNew - HALF - EPS : tNew + 1 + HALF + EPS;
+    r = { moved: false, blocked: true };
+  }
+  p.moving = r.moved;
+  return r;
+}
+
+test('movePlayer is bit-identical to the SPEC 3.5 listing on 300 000 random states, including positions on the EPS boundaries', () => {
+  const rng = makeRng(99);
+  const curses = [null, 'slow', 'rush'];
+  const nudges = [0, EPS, -EPS, 2 * EPS, 1e-9];
+  for (let map = 0; map < 150; map++) {
+    const grid = [];
+    for (let i = 0; i < W * H; i++) {
+      const tx = i % W;
+      const ty = (i - tx) / W;
+      grid.push(tx === 0 || ty === 0 || tx === W - 1 || ty === H - 1 || rng.next() < 0.3 ? '#' : '.');
+    }
+    const env = makeEnv(grid, []);
+    for (let k = 0; k < 2000; k++) {
+      const base = { id: 0, x: 1 + rng.next() * 13, y: 1 + rng.next() * 11, facing: 0, moving: false, speedLv: rng.int(7), curse: curses[rng.int(3)] };
+      if (rng.int(3) === 0) base.x = Math.round(base.x) + (rng.int(2) ? 1 : -1) * (HALF + nudges[rng.int(5)]);
+      if (rng.int(3) === 0) base.y = Math.round(base.y) + (rng.int(2) ? 1 : -1) * (HALF + nudges[rng.int(5)]);
+      if (rng.int(4) === 0) base.x = Math.floor(base.x) + 0.5;
+      if (rng.int(4) === 0) base.y = Math.floor(base.y) + 0.5;
+      const d = rng.int(5);
+      const got = { ...base };
+      const want = { ...base };
+      const rGot = movePlayer(got, d, env);
+      const rWant = specMovePlayer(want, d, env);
+      assert.deepEqual(got, want, `state after ${JSON.stringify(base)} d=${d}`);
+      assert.deepEqual({ ...rGot }, rWant);
+    }
+  }
+});
+
+/** SPEC 3.6a, transcribed literally: the flame maps, blocks and boom order of one resolution. */
+function specResolve(w) {
+  const nonFlying = w.bombs.filter((b) => !b.fly);
+  const lingering = new Set(w.flames.map((f) => f.ty * W + f.tx));
+  const queue = nonFlying.filter((b) => b.fuse <= 0 || lingering.has(b.ty * W + b.tx)).sort((a, b) => a.id - b.id);
+  const boom = new Set(queue.map((b) => b.id));
+  const blocks = new Set();
+  const flames = new Map();
+  const booms = [];
+  const bit = [0, 1, 2, 4, 8];
+  const back = [0, 4, 8, 1, 2];
+  const addFlame = (x, y, owner, mask) => {
+    let f = flames.get(y * W + x);
+    if (!f) flames.set(y * W + x, f = { mask: 0, owners: [] });
+    f.mask |= mask;
+    if (!f.owners.includes(owner)) f.owners.push(owner);
+  };
+  for (let qi = 0; qi < queue.length; qi++) {
+    const b = queue[qi];
+    const tiles = [[b.tx, b.ty]];
+    let centre = 0;
+    for (let d = 1; d <= 4; d++) {
+      const arm = [];
+      for (let k = 1; k <= b.range; k++) {
+        const x = b.tx + C.DIR_DX[d] * k;
+        const y = b.ty + C.DIR_DY[d] * k;
+        if (x < 0 || y < 0 || x >= W || y >= H) break;
+        const c = w.grid[y * W + x];
+        if (c === '#' || c === 'X') break;
+        arm.push([x, y]);
+        tiles.push([x, y]);
+        if (c === '+') { blocks.add(y * W + x); break; }
+        const other = nonFlying.find((o) => o.tx === x && o.ty === y);
+        if (other) {
+          if (!boom.has(other.id)) { boom.add(other.id); queue.push(other); }
+          break;
+        }
+      }
+      if (arm.length) centre |= bit[d];
+      arm.forEach(([x, y], i) => addFlame(x, y, b.owner, i < arm.length - 1 ? bit[d] | back[d] : back[d]));
+    }
+    addFlame(b.tx, b.ty, b.owner, centre);
+    booms.push([b.id, b.owner, b.tx, b.ty, b.range, tiles]);
+  }
+  return { flames, blocks: [...blocks].sort((a, b) => a - b), booms };
+}
+
+test('the explosion resolver equals a literal transcription of SPEC 3.6a on 1500 random boards (chains, blocks, lingering flames, owners, masks)', () => {
+  const rng = makeRng(5);
+  for (let trial = 0; trial < 1500; trial++) {
+    const w = live(mk({ n: 4, open: false, seed: trial, blocks: ['few', 'normal', 'many'][trial % 3], items: 'many', layout: trial % 2 ? 'open' : 'classic' }));
+    const floor = [];
+    for (let i = 0; i < W * H; i++) if (w.grid[i] !== '#') floor.push(i);
+    for (let i = 0, n = 1 + rng.int(10); i < n; i++) {
+      const at = floor[rng.int(floor.length)];
+      const tx = at % W;
+      const ty = (at - tx) / W;
+      if (w.grid[at] !== '.' || w.bombs.some((b) => b.tx === tx && b.ty === ty)) continue;
+      w.bombs.push({ id: w.bombs.length + 100 + i, owner: rng.int(5) - 1, x: tx + 0.5, y: ty + 0.5, tx, ty, range: 1 + rng.int(5), fuse: rng.int(3) === 0 ? 1 : 2 + rng.int(100), dir: 0, step: 0, pass: [], fly: null });
+    }
+    w.bombs.sort((a, b) => a.id - b.id);
+    for (let i = 0, n = rng.int(4); i < n; i++) {                       // lingering flames from earlier ticks
+      const at = floor[rng.int(floor.length)];
+      if (w.grid[at] === '#' || w._flameGrid[at]) continue;
+      const rec = { tx: at % W, ty: (at - (at % W)) / W, ticks: 5, mask: 0, owners: [3] };
+      w._flameGrid[at] = rec;
+      w.flames.push(rec);
+    }
+    w.flames.sort((a, b) => a.ty - b.ty || a.tx - b.tx);
+    for (const p of w.players) p.shield = C.SHIELD_FOREVER;
+    const before = { items: w.items.map((it) => ({ ...it })), drops: w._drops.slice(), flames: new Map(w.flames.map((f) => [f.ty * W + f.tx, { mask: f.mask, owners: f.owners.slice() }])) };
+    // the resolver runs after the fuse step of the same tick, so pre-decrement the fuses the way tick() will
+    for (const b of w.bombs) b.fuse++;
+    const ref = specResolve({ grid: w.grid, bombs: w.bombs.map((b) => ({ ...b, fuse: b.fuse - 1 })), flames: w.flames });
+    const rec = record(w);
+    rec.tick();
+    const ctx = `trial ${trial}`;
+    assert.deepEqual(rec.of('boom').map((e) => e.ev.slice(1)), ref.booms, `${ctx}: boom events`);
+    assert.deepEqual(rec.of('block').map((e) => e.ev[2] * W + e.ev[1]), ref.blocks, `${ctx}: destroyed blocks`);
+    for (const [at, f] of ref.flames) {
+      const old = before.flames.get(at);
+      const got = w.flames.find((r) => r.ty * W + r.tx === at);
+      assert.ok(got, `${ctx}: flame at ${at}`);
+      assert.equal(got.mask, f.mask | (old ? old.mask : 0), `${ctx}: mask at ${at}`);
+      assert.deepEqual(got.owners, old ? [...old.owners, ...f.owners.filter((o) => !old.owners.includes(o))] : f.owners, `${ctx}: owners at ${at}`);
+    }
+    assert.equal(w.flames.length, new Set([...ref.flames.keys(), ...before.flames.keys()]).size, `${ctx}: no extra flames`);
+    assert.deepEqual(rec.of('itemgone').map((e) => e.ev[1]), before.items.filter((it) => ref.flames.has(it.ty * W + it.tx)).map((it) => it.id), `${ctx}: items destroyed`);
+    assert.equal(rec.of('itemspawn').length, ref.blocks.filter((at) => before.drops[at]).length, `${ctx}: prizes revealed`);
+  }
 });

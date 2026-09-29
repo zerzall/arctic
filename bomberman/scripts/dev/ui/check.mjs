@@ -311,6 +311,32 @@ try {
   await scene('roundend-draw');
   check((await visibleText('.re-title')).includes('draw'), 'round end: a draw is announced');
 
+  // ---- Garbage in, no exceptions out ----------------------------------------------------------------------
+  // main.js feeds the UI whatever the network produced, so no render method may throw on a malformed or partial message.
+  const thrown = await page.evaluate(() => {
+    const ui = window.gallery.ui;
+    const long = 'x'.repeat(5000);
+    const junk = [undefined, null, 0, 7, '', 'text', [], {}, { players: null }, { players: [{}] }, { players: [null, 3, 'a'] }, { standings: 'no', winner: 1 }, { scores: {}, standings: [{}] }, () => 1];
+    const fighter = { id: 1, name: long, color: 99, team: 5, isBot: 'yes', level: 'godlike', connected: undefined, isHost: 1, wins: -3, waiting: null };
+    const calls = [
+      ['showTitle', junk], ['showConnecting', junk], ['showLobby', junk.concat([{ code: 'zz', players: [fighter], settings: null, you: 'me' }, { code: '<img src=x>', phase: 'lobby', hostId: 9, you: 1, players: [fighter, fighter] }])],
+      ['showGame', junk], ['updateHud', junk.concat([{ players: [fighter], timeLeftSec: 'soon', state: 'dancing', suddenDeath: 'yes' }])], ['setPing', junk], ['showCountdown', junk],
+      ['showRoundEnd', junk.concat([{ n: 1, scores: [{ id: 1 }], draw: false, winnerId: 42 }])], ['showResults', junk.concat([{ standings: [fighter, {}, null], reason: 'wins' }])],
+      ['toast', junk], ['killfeed', junk], ['addChat', junk.concat([{ from: -5, name: null, text: long }, { text: '' }])], ['showMenu', junk], ['showReconnecting', junk], ['showDialog', junk], ['banner', junk], ['setSettings', junk],
+    ];
+    const failures = [];
+    for (const [method, args] of calls) {
+      for (const arg of args) {
+        try { ui[method](arg); } catch (err) { failures.push(`${method}(${JSON.stringify(arg)?.slice(0, 40)}): ${err.message}`); }
+      }
+    }
+    return failures;
+  });
+  check(thrown.length === 0, `robustness: render methods never throw on junk ${JSON.stringify(thrown.slice(0, 12))}`);
+  await page.evaluate(() => { window.gallery.ui.hideDialog(); window.gallery.ui.showMenu(false); window.gallery.ui.showReconnecting(null); window.gallery.ui.showConnecting(null); });
+  await scene('lobby-host');
+  check(await page.locator('#screen-lobby').isVisible(), 'robustness: the UI still works after the junk');
+
   // ---- Accessibility contract ---------------------------------------------------------------------------
   for (const [width, height, label] of [[1280, 800, 'desktop'], [320, 568, 'small phone']]) for (const name of ['title', 'lobby-host', 'game-playing', 'results-podium']) {
     await page.setViewportSize({ width, height });

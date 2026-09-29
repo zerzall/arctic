@@ -8,26 +8,15 @@
 // table and exits non-zero when a check fails:
 //   every render   no NaN, peak <= 0.95 at full volume, no DC offset
 //   sound effects  audible at the default volume, 20 ms..4 s long, silent at the very end (nothing is cut off with a click)
-//   music          peak <= 0.18 at the default volume (the spec's "<= 18 %"), the whole loop is sounding
+//   music          peak <= 0.18 at the default volume (the spec's "<= 18 %"), the whole loop is sounding, no gap or double-hit at the loop seam
 //   scenes         8 simultaneous explosions, 300 sounds in a second, every sound at once: still <= 0.95
 // The default-volume renders are what a player hears out of the box; the full-volume ones prove the limiter.
 // --mix instead prints, for each music track, every part soloed (level against the full mix) so the balance can be tuned; it writes nothing.
-import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
-import { analyse, encodeWav } from './analyse.js';
-
-const require = createRequire('/opt/node22/lib/node_modules/');
-process.env.PLAYWRIGHT_BROWSERS_PATH ??= '/opt/pw-browsers';
-const { chromium } = require('playwright');
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.resolve(here, '../../..');
-const MIME = { '.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8' };
-const MOUNTS = [['/__audio/', here], ['/js/', path.join(repo, 'client/js')]];
+import { analyse, encodeWav, seamDb } from './analyse.js';
+import { openRig } from './rig.mjs';
 
 const args = { out: process.env.AUDIO_OUT || path.join(os.tmpdir(), 'blast-party-audio'), only: null, sheet: true, mix: false };
 for (let i = 2; i < process.argv.length; i++) {
@@ -39,35 +28,14 @@ for (let i = 2; i < process.argv.length; i++) {
   else throw new Error(`unknown argument ${a}`);
 }
 
-function serve() {
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://x').pathname;
-    const mount = MOUNTS.find(([prefix]) => url.startsWith(prefix));
-    const file = mount && path.join(mount[1], path.normalize(url.slice(mount[0].length)));
-    try {
-      if (!file || !file.startsWith(mount[1])) throw new Error('outside');
-      const body = await fs.readFile(file);
-      res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
-      res.end(body);
-    } catch {
-      res.writeHead(404).end();
-    }
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
-}
-
 const decode = (b64) => { const b = Buffer.from(b64, 'base64'); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
 const fmt = (x, n = 1) => x.toFixed(n).padStart(6);
 const failures = [];
 const check = (ok, what) => { if (!ok) failures.push(what); return ok ? '' : ' !'; };
 
-const server = await serve();
-const browser = await chromium.launch({ args: ['--no-sandbox'] });
+const rig = await openRig('harness.html');
 try {
-  const page = await browser.newPage();
-  page.on('pageerror', (e) => { throw e; });
-  page.on('console', (m) => { if (m.type() === 'error') failures.push(`console error: ${m.text()}`); });
-  await page.goto(`http://127.0.0.1:${server.address().port}/__audio/harness.html`);
+  const { page } = rig;
   await page.waitForFunction(() => window.audioHarness);
   const info = await page.evaluate(() => ({ sounds: [...window.audioHarness.SOUND_NAMES], music: [...window.audioHarness.MUSIC_NAMES], volume: window.audioHarness.DEFAULT_VOLUME }));
   const wanted = (n) => !args.only || args.only.has(n);
@@ -127,10 +95,12 @@ try {
     const d = await run(job), full = await run({ ...job, volume: 1, key: undefined });
     await save('music', name, d);
     musicKeys.push(job.key);
+    const seam = seamDb(d.mono, d.sr, { start: 0.05, barDur: 16 * t.stepDur, bars: t.bars });
     const flags = common(name, d, full) + check(d.peakLR <= 0.18, `${name}: music peak ${d.peakLR.toFixed(3)} > 0.18 at the default volume`)
+      + check(Math.abs(seam) <= 4, `${name}: the loop seam is ${seam.toFixed(1)} dB off the other bar lines`)
       + check(d.peakLR >= 0.1, `${name}: music too quiet (peak ${d.peakLR.toFixed(3)})`)
       + check(d.a.active >= loop * 0.9, `${name}: only ${d.a.active.toFixed(1)} s of ${loop.toFixed(1)} s sound`);
-    console.log(row(name, d, full) + `   loop ${loop.toFixed(1)} s, ${t.bpm} bpm, ${t.bars} bars` + flags);
+    console.log(row(name, d, full) + `   loop ${loop.toFixed(1)} s, ${t.bpm} bpm, ${t.bars} bars, seam ${seam >= 0 ? '+' : ''}${seam.toFixed(1)} dB` + flags);
   }
 
   console.log(`\nSCENES (full volume)\n${header}`);
@@ -150,6 +120,7 @@ try {
   }
 
   console.log(`\nfiles in ${args.out}`);
+  failures.push(...rig.problems);
   if (failures.length) {
     console.log(`\n${failures.length} FAILED CHECK(S):\n  ${failures.join('\n  ')}`);
     process.exitCode = 1;
@@ -157,6 +128,5 @@ try {
     console.log('all checks passed');
   }
 } finally {
-  await browser.close();
-  server.close();
+  await rig.close();
 }

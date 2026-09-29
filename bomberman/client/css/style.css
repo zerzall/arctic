@@ -35,9 +35,9 @@
   --font: "Baloo 2", "Fredoka", "Trebuchet MS", "Avenir Next Rounded", ui-rounded, system-ui, sans-serif;
 }
 
-/* One rem = 16 px on phones and laptops, growing on big screens so the UI stays readable from the sofa. */
+/* One rem = 16 px on phones and laptops, growing on big screens so the UI stays readable from the sofa (about 19 px at 1080p, 34 px at 4K). */
 html {
-  font-size: clamp(16px, calc(9px + .95vmin), 40px);
+  font-size: clamp(16px, calc(4px + 1.4vmin), 44px);
 }
 
 html, body {
@@ -79,6 +79,7 @@ body {
   position: relative;
   z-index: 1;
   height: 100%;
+  overflow-x: hidden;   /* springy pop-ins overshoot their box for a moment; that must never add a sideways scrollbar */
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -417,6 +418,10 @@ bdi {
 .btn-sm { padding: .3rem .8rem; font-size: 1rem; border-radius: .85rem; }
 .btn-lg { min-height: 3.5rem; padding: .5rem 1.4rem; font-size: 1.25rem; }
 .btn-xl { min-height: 4.4rem; padding: .6rem 1.6rem; font-size: 1.6rem; border-radius: 1.3rem; }
+
+@media (max-width: 24rem) {
+  .btn-xl { padding-inline: 1rem; font-size: 1.35rem; }
+}
 .btn-square { width: 3.25rem; padding: 0; flex: none; }
 
 .btn[aria-disabled="true"], .btn.is-disabled {
@@ -999,7 +1004,8 @@ bdi {
 .invite-actions .btn { flex: 1 1 8rem; }
 .invite-actions .btn-primary { flex-basis: 100%; }
 
-@media (min-width: 40rem) {
+/* The link and its buttons share a row only when the card is wide: a single column of 40-48rem, or two columns from 64rem */
+@media (min-width: 40rem) and (max-width: 47.99rem), (min-width: 64rem) {
   .invite-row { flex-direction: row; align-items: center; }
   .invite-link { flex: 1; }
   .invite-actions { flex: none; flex-wrap: nowrap; }
@@ -1012,7 +1018,9 @@ bdi {
 .qr-caption { margin: .25rem 0 0; font-size: .875rem; font-weight: 800; color: #3a2a6a; }
 .qr-toggle[aria-expanded="true"] { box-shadow: 0 .28rem 0 rgba(0, 0, 0, .32), inset 0 0 0 .14rem var(--yellow); }
 
-@media (min-width: 48rem) {
+/* Wide and tall enough: the QR code is always out. On short screens (a phone on its side) it stays behind the toggle, so the letters
+   and the player list keep the little height there is. */
+@media (min-width: 48rem) and (min-height: 32rem) {
   .code-card.has-qr .qr-box { display: block !important; }
   .qr-toggle { display: none !important; }
 }
@@ -1318,7 +1326,7 @@ bdi {
 }
 
 .hud-timer .ic { width: 1.1rem; height: 1.1rem; vertical-align: 0; color: var(--yellow); }
-.hud-timer.is-low { background: #d92b45; box-shadow: 0 0 0 .15rem rgba(255, 255, 255, .5); animation: pulse .5s ease-in-out infinite alternate; }
+.hud-timer.is-low { background: #d92b45; box-shadow: 0 0 0 .15rem rgba(255, 255, 255, .5); animation: pulse-ring .5s ease-in-out infinite alternate; }
 .hud-timer.is-low .ic { color: #fff; }
 
 .hud-sd {
@@ -1327,21 +1335,35 @@ bdi {
   gap: .4rem;
   padding: .12rem .85rem;
   border-radius: 99px;
-  font-size: clamp(.85rem, 3.6vw, 1.05rem);
+  max-width: 100%;
+  font-size: clamp(.8rem, 3.2vw, 1.05rem);
   font-weight: 900;
+  line-height: 1.1;
   letter-spacing: .04em;
+  text-align: center;
   text-transform: uppercase;
-  white-space: nowrap;
   background: #d92b45;
   box-shadow: 0 0 0 .15rem rgba(255, 255, 255, .5);
-  animation: pulse .6s ease-in-out infinite alternate;
+  animation: pulse-ring .6s ease-in-out infinite alternate;
 }
 
 .hud-center.is-sd .hud-timer { display: none; }
 
+/* The chip shares the top bar with the menu and emote buttons: on narrow phones it drops its icon (and wraps as a last resort) */
+@media (max-width: 26rem) {
+  .hud-sd { padding-inline: .55rem; }
+  .hud-sd .ic { display: none; }
+}
+
 @keyframes pulse {
   from { transform: scale(1); }
   to { transform: scale(1.07); }
+}
+
+/* The top bar is tight on a phone, so its alarms pulse a halo instead of growing into their neighbours */
+@keyframes pulse-ring {
+  from { box-shadow: 0 0 0 .15rem rgba(255, 255, 255, .55); }
+  to { box-shadow: 0 0 0 .4rem rgba(255, 255, 255, .12); }
 }
 
 /* Player chips: avatar + wins on phones, more as space allows */
@@ -1392,33 +1414,39 @@ bdi {
   .chip-name { display: block; }
 }
 
-/* Kill feed: floats over the bottom of the arena unless the layout has spare room for it (see the media queries below) */
+/* Kill feed. By default a one-line ticker that rides the arena's bottom wall row (nothing playable is under it, so it can never
+   hide a fighter); only the newest line shows. Layouts with spare room turn it back into a list (see the media queries below). */
 .hud-feed {
   position: absolute;
-  right: .5rem;
   bottom: 100%;
+  left: 50%;
   z-index: 4;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: .25rem;
-  max-width: 78%;
-  margin: 0 0 .4rem;
+  width: max-content;
+  max-width: calc(100% - 1rem);
+  margin: 0;
   padding: 0;
   list-style: none;
+  transform: translateX(-50%);
   pointer-events: none;
 }
+
+/* Older lines are parked (not display:none): a parked line keeps its animation clock, so it never replays its entrance if it is shown again. */
+.hud-feed .feed-item:not(:last-child) { position: absolute; visibility: hidden; }
 
 .feed-item {
   display: inline-flex;
   align-items: center;
   gap: .4rem;
   max-width: 100%;
-  padding: .2rem .7rem .2rem .45rem;
+  padding: .05rem .7rem .05rem .4rem;
   border-radius: 99px;
-  font-size: .95rem;
+  font-size: .875rem;
   font-weight: 800;
-  background: rgba(14, 9, 40, .82);
+  background: rgba(14, 9, 40, .86);
   box-shadow: inset 0 0 0 .1rem rgba(255, 255, 255, .18);
   animation: feed-in .35s var(--spring) both, feed-out .4s ease-in 4.5s forwards;
 }
@@ -1427,7 +1455,7 @@ bdi {
 .feed-chat { animation-delay: 0s, 6.5s; }
 .feed-chat .gicon { --s: 1rem !important; }
 
-@keyframes feed-in { from { opacity: 0; transform: translateX(1.5rem); } to { opacity: 1; transform: none; } }
+@keyframes feed-in { from { opacity: 0; transform: translateY(.6rem) scale(.9); } to { opacity: 1; transform: none; } }
 @keyframes feed-out { to { opacity: 0; transform: translateY(-.4rem); } }
 
 /* My status strip below the arena (fixed height, so the controls never jump) */
@@ -1651,15 +1679,21 @@ bdi {
 /* ---------------------------------------------------------------------------------------------------------------
    Game screen: portrait phone (arena keeps its shape, controls below)
    ------------------------------------------------------------------------------------------------------------- */
+/* Tall phones have a free band between the status strip and the thumbs: the feed becomes a three-line list there */
 @media (orientation: portrait) and (min-height: 46rem) {
-  .screen-game[data-touch="1"] .hud-feed { position: static; align-items: flex-end; justify-content: flex-end; min-height: 5.6rem; max-width: none; margin: 0 0 .3rem; }
+  .screen-game[data-touch="1"] .hud-feed { position: static; align-items: flex-end; justify-content: flex-end; width: auto; max-width: none; min-height: 5.6rem; margin: 0 0 .3rem; transform: none; }
+  .screen-game[data-touch="1"] .hud-feed .feed-item:not(:last-child) { position: static; visibility: visible; }
+  .screen-game[data-touch="1"] .hud-feed .feed-item:nth-last-child(n+4) { position: absolute; visibility: hidden; }
+  .screen-game[data-touch="1"] .feed-item { padding-block: .2rem; font-size: .95rem; }
 }
 
 @media (orientation: portrait) {
   .screen-game[data-touch="1"] { grid-template-rows: auto auto auto minmax(0, 1fr); }
   .screen-game[data-touch="1"] #stage,
   .screen-game[data-touch="1"] .hud-layer { grid-area: 2 / 1; }
-  .screen-game[data-touch="1"] #stage { width: 100%; aspect-ratio: 15 / 13; max-height: 60dvh; }   /* width stays full even when max-height caps the height */
+  /* Width stays full even when max-height caps the height (the arena is then letterboxed). The 19rem is the HUD bar (8.2), one status
+     row (2.9) and room for the BOMB button (6.5, more when a second status row appears), so a short phone never squeezes the thumbs out. */
+  .screen-game[data-touch="1"] #stage { width: 100%; aspect-ratio: 15 / 13; max-height: min(58dvh, calc(100dvh - 19rem)); }
   .screen-game[data-touch="1"] .hud-strip { grid-area: 3 / 1; }
   .screen-game[data-touch="1"] #touch { grid-area: 4 / 1; }
 }
@@ -1715,9 +1749,19 @@ bdi {
   .hud-feed {
     position: static;
     align-items: flex-start;
+    width: auto;
     max-width: 100%;
     margin: 0 0 .4rem;
+    transform: none;
   }
+
+  .hud-feed .feed-item:not(:last-child) { position: static; visibility: visible; }
+  .hud-feed .feed-item:nth-last-child(n+4) { position: absolute; visibility: hidden; }
+  .feed-item { padding-block: .2rem; font-size: .95rem; }
+  /* The margins show the arena theme behind them (white ice, green meadow), so every control there brings its own dark backing */
+  .hud-tl .icon-btn, .hud-tr .icon-btn, .hud-tl .ping { background: rgba(14, 9, 40, .82); }
+  .chip.is-me { background: rgba(58, 38, 6, .94); }
+  .chip.is-away { opacity: .75; }
 
   .hud-round { display: none; }
   .hud-timer { padding-block: 0; font-size: min(1.5rem, calc(100dvh / 13 * .58)); background: rgba(14, 9, 40, .82); }
@@ -1742,13 +1786,13 @@ bdi {
   .screen-game[data-touch="0"] .hud-layer { z-index: 4; }
 }
 
-/* Landscape phones: single-line chips, two feed lines, so the side margins hold everything */
+/* Short landscape screens: single-line chips, two feed lines, so the side margins hold everything */
 @media (orientation: landscape) and (min-aspect-ratio: 17 / 10) and (max-height: 34rem) {
   .chip { padding-block: .15rem; }
   .chip-body { flex-direction: row; align-items: center; gap: .4rem; }
   .chip-name { flex: 1; min-width: 0; }
   .chip-stats { display: none; }
-  .hud-feed .feed-item:nth-last-child(n+3) { display: none; }
+  .hud-feed .feed-item:nth-last-child(n+3) { position: absolute; visibility: hidden; }
   .hud-top { gap: .25rem 0; }
   .feed-item { padding: .05rem .6rem .05rem .35rem; font-size: .875rem; }
   .hud-me { gap: .25rem; }
@@ -1756,8 +1800,32 @@ bdi {
   .hud-me .gicon { --s: 1.1rem !important; }
 }
 
-/* Very small landscape screens: the side margins only fit an avatar and the win count */
-@media (orientation: landscape) and (min-aspect-ratio: 17 / 10) and (max-width: 40rem) {
+/* Landscape phones (up to 416 px tall, which is every phone in landscape): the margins keep only the chips and my status. The kill
+   feed leaves them and becomes the one-line ticker on the arena's bottom wall row (the strip is un-positioned so the ticker is
+   placed against the whole screen). */
+@media (orientation: landscape) and (min-aspect-ratio: 17 / 10) and (max-height: 26rem) {
+  .hud-strip { position: static; width: calc(var(--m) + 100dvh / 13 - .5rem); }   /* one tile wider: the left wall column is not playable, so my status may cover it */
+  .hud-feed { position: absolute; bottom: 0; left: 50%; align-items: center; width: max-content; max-width: calc(100dvh * 15 / 13 - 2rem); margin: 0; transform: translateX(-50%); }
+  .hud-feed .feed-item:not(:last-child) { position: absolute; visibility: hidden; }
+  .chip { gap: .3rem; padding-block: .1rem; }
+  .chip .avatar { --s: 1.8rem !important; }
+  .chip-status { right: -.5rem; bottom: -.35rem; }
+  .hud-me .me-item { max-width: 100%; }
+  .hud-me .me-curse b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .85rem; }
+}
+
+/* Tiny landscape screens (a 320 px tall phone): everything in the margins shrinks one more step */
+@media (orientation: landscape) and (min-aspect-ratio: 17 / 10) and (max-height: 22rem) {
+  .chip .avatar { --s: 1.5rem !important; }
+  .chip { padding-block: .05rem; }
+  .hud-top { gap: .15rem 0; }
+  .hud-me { gap: .15rem; }
+  .hud-me .me-item { font-size: .85rem; }
+  .hud-me .gicon { --s: .95rem !important; }
+}
+
+/* Narrow landscape screens: the side margins only fit an avatar and the win count */
+@media (orientation: landscape) and (min-aspect-ratio: 17 / 10) and (max-width: 46rem) {
   .chip-name { display: none; }
   .chip { width: auto; }
 }
@@ -1847,9 +1915,10 @@ bdi {
 .standings td:last-child { border-radius: 0 1rem 1rem 0; }
 .standings tr.is-me td { background: rgba(255, 210, 63, .16); }
 .col-place { width: 3.3rem; }
-.col-num { width: 4.1rem; text-align: center !important; font-weight: 800; font-variant-numeric: tabular-nums; }
+.col-num { width: 3.5rem; text-align: center !important; font-weight: 800; font-variant-numeric: tabular-nums; }
 th.col-num { padding-inline: 0; text-align: center; }
 .std-name { display: flex; align-items: center; gap: .5rem; min-width: 0; font-weight: 900; }
+.std-name > :not(bdi) { flex: none; }
 .std-name bdi { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .medal { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; font-weight: 900; color: #2a1600; background: rgba(255, 255, 255, .16); box-shadow: 0 .12rem 0 rgba(0, 0, 0, .3); }
@@ -1858,8 +1927,9 @@ th.col-num { padding-inline: 0; text-align: center; }
 .medal-3 { background: linear-gradient(180deg, #ffc994, #c9702b); }
 .medal-4 { color: #fff; }
 
-/* The extra columns need room: hide them on phones and in the narrow half of a two-column layout */
-@media (max-width: 34rem), (min-width: 48rem) and (max-width: 66rem) {
+/* The extra columns need room: hide them on phones and in the narrow half of a two-column layout (the half is only wide enough
+   for all six number columns and a readable name from about 100rem, i.e. a 1080p screen and up) */
+@media (max-width: 34rem), (min-width: 48rem) and (max-width: 99.9rem) {
   .hide-sm { display: none; }
 }
 
@@ -1907,7 +1977,7 @@ th.col-num { padding-inline: 0; text-align: center; }
 
 .modal-head { display: flex; align-items: center; gap: .7rem; padding: .9rem .9rem .3rem 1.25rem; }
 .modal-icon { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: rgba(255, 210, 63, .2); color: var(--yellow); }
-.modal-title { flex: 1; margin: 0; font-size: 1.7rem; font-weight: 900; }
+.modal-title { flex: 1; margin: 0; font-size: clamp(1.35rem, 5.8vw, 1.7rem); font-weight: 900; }
 .modal-body { display: flex; flex-direction: column; gap: .9rem; padding: .4rem 1.25rem 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
 .dialog-text { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink-2); }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
@@ -1975,6 +2045,9 @@ th.col-num { padding-inline: 0; text-align: center; }
   animation: toast-in .4s var(--spring) both;
 }
 
+/* While the reconnect bar is up, toasts start below it instead of on top of it */
+.is-reconnecting .toasts { top: calc(max(.6rem, env(safe-area-inset-top)) + 4rem); }
+
 .toast-text { min-width: 0; }
 .toast-icon { display: grid; flex: none; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: rgba(255, 255, 255, .16); }
 .toast-good { border-color: #54e37a; }
@@ -2014,9 +2087,10 @@ th.col-num { padding-inline: 0; text-align: center; }
   display: flex;
   align-items: center;
   gap: .7rem;
+  width: max-content;   /* an absolutely placed box at left:50% would otherwise get half the screen and wrap into a sliver */
   max-width: 94vw;
   padding: .5rem 1.1rem;
-  border-radius: 99px;
+  border-radius: 1.4rem;
   font-weight: 800;
   background: #b3182f;
   box-shadow: 0 0 0 .15rem rgba(255, 255, 255, .55), 0 .6rem 1.5rem rgba(0, 0, 0, .55);
@@ -2080,7 +2154,8 @@ th.col-num { padding-inline: 0; text-align: center; }
   .field-hint { display: none; }
   .btn-xl { min-height: 3.5rem; font-size: 1.3rem; }
   .title-cog { right: auto; left: .75rem; }
-  .title-links .btn { font-size: 1rem; }
+  .title-links { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+  .title-links .btn { padding-inline: .4rem; font-size: 1rem; line-height: 1.1; white-space: normal; }
   .title-links .btn .ic { display: none; }
 }
 
@@ -2099,8 +2174,25 @@ th.col-num { padding-inline: 0; text-align: center; }
   .podium-avatar { --s: 3.2rem !important; }
 }
 
+/* A phone on its side: dialogs and the in-game menu shed their padding and lay their buttons out two by two */
+@media (max-height: 32rem) {
+  .modal-head { padding-block: .5rem 0; }
+  .modal-body { gap: .55rem; padding-bottom: .9rem; }
+  .modal-menu .dialog-text { display: none; }
+  .menu-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+  .menu-list > .btn-primary, .menu-list > .switch-row, .menu-list > .btn-danger { grid-column: 1 / -1; }
+  .menu-list > .switch-row { padding-block: 0; }
+  .menu-list .btn { min-height: 3rem; }
+}
+
+@media (max-width: 24rem) {
+  .modal-icon { display: none; }
+}
+
 @media (max-height: 32rem) {
   .code-letters { font-size: min(11vw, 3.4rem); }
+  .code-hint { display: none; }
+  .qr-canvas { width: 8rem; height: 8rem; }
   .actionbar { padding-top: 1.2rem; padding-bottom: .7rem; }
   .actionbar .btn-xl { min-height: 3.25rem; font-size: 1.25rem; }
 }

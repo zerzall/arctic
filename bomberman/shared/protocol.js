@@ -129,6 +129,7 @@ const TOKEN_RE = /^[\x21-\x7e]{1,64}$/;
 const MAX_CODE_LEN = 16;
 
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+const plain = (n) => n + 0;                        // -0 + 0 is +0: parsed "-0" must not leak into cmds or ids
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** True if any object key at any depth is a prototype-pollution vector. Iterative: hostile nesting cannot overflow the stack. */
@@ -159,7 +160,7 @@ function readName(v) {
 function readColor(data, msg) {
   if (data.color === undefined) return true;
   if (!isInt(data.color, 0, 7)) return false;
-  msg.color = data.color;
+  msg.color = plain(data.color);
   return true;
 }
 
@@ -183,7 +184,7 @@ function readProfile(data) {
   const msg = { t: data.t };
   if (data.id !== undefined) {
     if (!isInt(data.id, 0, MAX_ID)) return BAD_MSG;
-    msg.id = data.id;
+    msg.id = plain(data.id);
   }
   if (data.name !== undefined) {
     const name = readName(data.name);
@@ -193,7 +194,7 @@ function readProfile(data) {
   if (!readColor(data, msg)) return BAD_MSG;
   if (data.team !== undefined) {
     if (!isInt(data.team, 0, 1)) return BAD_MSG;
-    msg.team = data.team;
+    msg.team = plain(data.team);
   }
   return { ok: true, msg };
 }
@@ -219,13 +220,13 @@ function readInput(data) {
     if (!Array.isArray(r) || r.length !== 4) return BAD_MSG;
     const [s, d, b, x] = r;
     if (!isInt(s, 0, MAX_SEQ) || !isInt(d, 0, 4) || !isInt(b, 0, 1) || !isInt(x, 0, 1)) return BAD_MSG;
-    c[i] = [s, d, b, x];
+    c[i] = [plain(s), plain(d), plain(b), plain(x)];
   }
   return { ok: true, msg: { t: data.t, c } };
 }
 
 function readId(data) {
-  return isInt(data.id, 0, MAX_ID) ? { ok: true, msg: { t: data.t, id: data.id } } : BAD_MSG;
+  return isInt(data.id, 0, MAX_ID) ? { ok: true, msg: { t: data.t, id: plain(data.id) } } : BAD_MSG;
 }
 
 function parseData(data) {
@@ -252,7 +253,7 @@ function parseData(data) {
     case CLIENT_MSG.CHAT:
       return typeof data.text === 'string' ? { ok: true, msg: { t: data.t, text: sanitizeText(data.text, MAX_CHAT, '') } } : BAD_MSG;
     case CLIENT_MSG.EMOTE:
-      return isInt(data.e, 0, 7) ? { ok: true, msg: { t: data.t, e: data.e } } : BAD_MSG;
+      return isInt(data.e, 0, 7) ? { ok: true, msg: { t: data.t, e: plain(data.e) } } : BAD_MSG;
     case CLIENT_MSG.PING:
       return typeof data.ts === 'number' && Number.isFinite(data.ts) ? { ok: true, msg: { t: data.t, ts: data.ts } } : BAD_MSG;
     default:

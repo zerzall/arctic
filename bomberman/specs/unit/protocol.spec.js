@@ -250,6 +250,14 @@ test('in: exact [s,d,b,x] integers', () => {
   bad('{"t":"in","c":[[1,0,0,null]]}');
 });
 
+test('a parsed "-0" never leaks into cmds, ids or enums (Object.is(-0, 0) is false)', () => {
+  assert.ok(ok('{"t":"in","c":[[-0,-0,-0,-0]]}').c[0].every((v) => Object.is(v, 0)));
+  assert.ok(Object.is(ok('{"t":"kick","id":-0}').id, 0));
+  assert.ok(Object.is(ok('{"t":"emote","e":-0}').e, 0));
+  const profile = ok('{"t":"profile","id":-0,"color":-0,"team":-0}');
+  assert.ok([profile.id, profile.color, profile.team].every((v) => Object.is(v, 0)));
+});
+
 test(`in: at most ${IN_MAX_CMDS} cmds per frame`, () => {
   const rows = (n) => Array.from({ length: n }, (_, i) => [i + 1, 0, 0, 0]);
   assert.equal(ok(j({ t: 'in', c: rows(IN_MAX_CMDS) })).c.length, IN_MAX_CMDS);

@@ -11,6 +11,10 @@ on:
       - 'bomberman/**'
       - '.github/workflows/bomberman.yml'
 
+# The tests only read the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
