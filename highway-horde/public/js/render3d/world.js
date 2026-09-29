@@ -19,12 +19,13 @@ import { makeDetailArray, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
+import { setDetailLevel } from './world-arch.js';
 import {
   jersey, sandbags, guardrail, fence, wall, hesco, container, pump, pillar, buildCanopies, tent, booth, rock,
   lampPost, cone, tires, rubble, debris, roadSign, grassTuft, trafficSignal, pricePylon,
 } from './world-props.js';
 import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
-import { trunk, canopy, bush, buildTreeLine, createGrassField } from './world-veg.js';
+import { trunk, canopy, bush, buildTreeLine, createGrassField, scatterFlora, setBiome } from './world-veg.js';
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
 import { terrainHeight } from '../shared/terrain.js';
@@ -177,6 +178,11 @@ export function createWorld(ctx, deps) {
     mats.hi.flicker.color.setScalar(0.16);
     mats.hi.blink.color.setScalar(0.55);
     ground.uniforms.wetness.value = amb.wet;
+    // rooms behind the windows: dim but readable in daylight (curtains, furniture), lit ones washed out
+    mats.shared.uRoomAmb.value = 0.3;
+    mats.uniforms.uRoomK.value = 0.32;
+  } else {
+    mats.shared.uRoomAmb.value = 0.03;
   }
   // a long map (the highway) cuts its heavy buckets finer: looking down the road, the
   // frustum and the fog then drop most of the pileup behind and beside the camera
@@ -189,10 +195,14 @@ export function createWorld(ctx, deps) {
       std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
       glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
       fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
+      // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
+      room: { det: true, ao: false }, stain: { uv: true },
     },
   });
 
   if (hasTerrain) B.setGround(gy);
+  // geometry detail of the buildings follows the tier the world is built for
+  setDetailLevel(tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -200,6 +210,7 @@ export function createWorld(ctx, deps) {
   const lightByPos = (x, y) => map.lights.find((l) => Math.abs(l.x - x) < 4 && Math.abs(l.y - y) < 4) || null;
 
   // ---- obstacles ----
+  setBiome(map);   // tree species by map (the trunks agree with their crowns)
   // one building per map carries a neon sign (the truck stop's, a motel's on the highway)
   const signCell = map.id === 'truckstop' ? 'truckSign' : map.id === 'highway' ? 'motel' : null;
   let signBuilding = null;
@@ -247,6 +258,15 @@ export function createWorld(ctx, deps) {
       console.warn('world: decor model failed', d.kind, err);
     }
   });
+
+  // ---- undergrowth: ferns and logs under trees, weeds along fences and walls, ivy, verges ----
+  const tFlora = performance.now();
+  try {
+    scatterFlora(B, map, ground.waters);
+  } catch (err) {
+    console.warn('world: undergrowth failed', err);
+  }
+  const tFloraMs = performance.now() - tFlora;
 
   // ---- fires ----
   const fires = map.fires.map((f) => ({ x: f.x, y: f.y, r: f.r, base: fireBaseHeight(map, f.x, f.y) }));
@@ -610,7 +630,7 @@ export function createWorld(ctx, deps) {
         dress: dress ? dress.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
-          obstacles: Math.round(tObsMs), decor: Math.round(tDecMs), treeLine: Math.round(tTlMs),
+          obstacles: Math.round(tObsMs), decor: Math.round(tDecMs), treeLine: Math.round(tTlMs), flora: Math.round(tFloraMs),
         },
       };
     },

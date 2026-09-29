@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { periodicFbm, createRng } from '../render/util.js';
 
-const AW = 1024, AH = 1024;
+const AW = 1024, AH = 1536;
 // Atlas cells in canvas pixels [x0, y0, x1, y1] (y down).
 const CELLS = {
   plate0: [0, 512, 128, 576],
@@ -44,6 +44,17 @@ const CELLS = {
   gantry: [384, 256, 896, 448],
   gasSign: [896, 256, 1024, 448],
 };
+// Painted shop / building signs (256 x 64, 4 columns x 6 rows), neon signs (2 rows) and
+// spray-paint graffiti with alpha (128 x 64, in the free corner under the road signs).
+export const SIGN_NAMES = [
+  'PHARMACY', 'HARDWARE', 'DELI & GROCERY', 'PAWN SHOP', 'CAFE', 'LAUNDROMAT', 'BAKERY', 'GUNS & AMMO', 'LIQUOR', 'AUTO PARTS', 'MOTEL OFFICE', 'BARBER SHOP',
+  'FEED & SEED', 'BAIL BONDS', 'GENERAL STORE', 'TIRES', 'POST OFFICE', 'SHERIFF', 'CLINIC', 'BAR & GRILL', 'PIZZA', 'VIDEO RENTAL', 'SAWMILL CO.', "ST. JUDE'S CHURCH",
+];
+export const NEON_NAMES = ['OPEN', 'BAR', 'PIZZA', 'HOTEL', 'LIQUOR', '24 HR', 'CAFE', 'MOTEL'];
+SIGN_NAMES.forEach((_, i) => { CELLS['sign' + i] = [(i % 4) * 256, 1024 + Math.floor(i / 4) * 64, (i % 4) * 256 + 256, 1024 + Math.floor(i / 4) * 64 + 64]; });
+NEON_NAMES.forEach((_, i) => { CELLS['nsign' + i] = [(i % 4) * 256, 1408 + Math.floor(i / 4) * 64, (i % 4) * 256 + 256, 1408 + Math.floor(i / 4) * 64 + 64]; });
+for (let i = 0; i < 9; i++) CELLS['gfx' + i] = [(i % 3) * 128, 320 + Math.floor(i / 3) * 64, (i % 3) * 128 + 128, 320 + Math.floor(i / 3) * 64 + 64];
+export const SIGN_COUNT = SIGN_NAMES.length, NEON_COUNT = NEON_NAMES.length, GFX_COUNT = 9;
 
 /** UV rect [u0, v0, u1, v1] of an atlas cell (texture uses flipY = true). */
 export function atlasUV(name) {
@@ -221,6 +232,7 @@ function atlasCanvas() {
     }
   });
   paintExtraCells(g, cell, person);
+  paintFacadeCells(g, cell);
   return atlas;
 }
 
@@ -494,25 +506,145 @@ function paintExtraCells(g, cell, person) {
   });
 }
 
+/** Shop signs, neon signs and graffiti (the atlas' new rows). */
+function paintFacadeCells(g, cell) {
+  // [bg, fg, accent] per sign; every one is weathered differently (fade, drips, chips)
+  const STYLES = [
+    ['#f2efe6', '#1a6a3c', '#c62828'], ['#f2c21a', '#1a1a1a', '#c41a1a'], ['#a8221e', '#f4e8cc', '#f2c21a'], ['#1d2c5a', '#e8c24a', '#e8e8e8'],
+    ['#5a3a24', '#f4e8cc', '#c8a060'], ['#2a5aa8', '#f0f4f8', '#f2c21a'], ['#f4e6d0', '#b04a5a', '#5a3a24'], ['#1c1c1c', '#f08a1a', '#c41a1a'],
+    ['#151515', '#e83a3a', '#f2c21a'], ['#b71c1c', '#f4f4f0', '#1a1a1a'], ['#1d5a36', '#f0e8d0', '#c8a060'], ['#f4f4f0', '#c41a1a', '#1d3f8a'],
+    ['#c8b088', '#24422a', '#7a3a1a'], ['#f2c21a', '#1a1a1a', '#1a1a1a'], ['#24422a', '#e8c86a', '#f4e8cc'], ['#1a1a1a', '#f2c21a', '#f4f4f0'],
+    ['#1d3f8a', '#f4f4f0', '#c62828'], ['#c8b48c', '#4a3020', '#4a3020'], ['#f4f4f0', '#1a8a8a', '#c62828'], ['#5a1a1a', '#f4e6c8', '#c8a060'],
+    ['#c62828', '#f2c21a', '#f4f4f0'], ['#4a1d6a', '#f2c21a', '#f4f4f0'], ['#5a4030', '#e8dcc0', '#c8a060'], ['#f0ece0', '#1a1a1a', '#7a1a1a'],
+  ];
+  const rng = createRng(555);
+  SIGN_NAMES.forEach((name, i) => cell('sign' + i, (w, h) => {
+    const [bg, fg, ac] = STYLES[i % STYLES.length];
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    // border, and stripes of the accent colour
+    g.strokeStyle = fg;
+    g.lineWidth = 3;
+    g.strokeRect(4, 4, w - 8, h - 8);
+    g.fillStyle = ac;
+    g.fillRect(9, h - 12, w - 18, 3);
+    g.fillRect(9, 9, w - 18, 2);
+    // the name, fitted to the board
+    g.fillStyle = fg;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let size = 34;
+    do {
+      g.font = `bold ${size}px Impact, "Arial Black", "Arial Narrow", Arial, sans-serif`;
+      size -= 2;
+    } while (g.measureText(name).width > w - 30 && size > 12);
+    g.fillText(name, w / 2, h / 2 - 1);
+    // weather: sun-faded top, rust drips from the bottom edge, chips down to bare board, scratches
+    g.fillStyle = 'rgba(255,255,255,0.10)';
+    g.fillRect(0, 0, w, h * 0.35);
+    for (let k = 0; k < 7; k++) {
+      const x = rng.next() * w, len = 6 + rng.next() * 30;
+      const dg = g.createLinearGradient(0, h - len, 0, h);
+      dg.addColorStop(0, 'rgba(90,50,20,0)');
+      dg.addColorStop(1, 'rgba(90,50,20,0.42)');
+      g.fillStyle = dg;
+      g.fillRect(x, h - len, 1 + rng.next() * 2, len);
+    }
+    g.fillStyle = 'rgba(46,38,30,0.55)';
+    for (let k = 0; k < 9; k++) g.fillRect(rng.next() * w, rng.next() * h, 1 + rng.next() * 5, 1 + rng.next() * 3);
+    g.strokeStyle = 'rgba(30,26,20,0.3)';
+    g.lineWidth = 1;
+    for (let k = 0; k < 6; k++) {
+      const x = rng.next() * w, y = rng.next() * h;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + 12 + rng.next() * 24, y + (rng.next() - 0.5) * 8);
+      g.stroke();
+    }
+    const dirt = g.createLinearGradient(0, h * 0.6, 0, h);
+    dirt.addColorStop(0, 'rgba(50,38,24,0)');
+    dirt.addColorStop(1, 'rgba(50,38,24,0.3)');
+    g.fillStyle = dirt;
+    g.fillRect(0, 0, w, h);
+  }));
+  const NEON_COLORS = [['#ffe6e6', '#ff2a3a'], ['#e8fbff', '#2ac8ff'], ['#fff4d8', '#ff7a1a'], ['#f0fff8', '#20e0a0'], ['#ffeaf6', '#ff3d8b'], ['#f6f0ff', '#a05aff'], ['#fffbe0', '#ffc61a'], ['#e6ffe8', '#3aff6a']];
+  NEON_NAMES.forEach((name, i) => cell('nsign' + i, (w, h) => {
+    g.fillStyle = '#0c0a10';
+    g.fillRect(0, 0, w, h);
+    const [core, glow] = NEON_COLORS[i % NEON_COLORS.length];
+    g.font = `bold ${name.length > 5 ? 34 : 44}px "Arial Black", Arial, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.shadowColor = glow;
+    for (const blur of [16, 8, 3]) {
+      g.shadowBlur = blur;
+      g.strokeStyle = glow;
+      g.lineWidth = 4;
+      g.strokeText(name, w / 2, h / 2 + 2);
+    }
+    g.shadowBlur = 2;
+    g.lineWidth = 1.6;
+    g.strokeStyle = core;
+    g.strokeText(name, w / 2, h / 2 + 2);
+    g.shadowBlur = 0;
+    g.strokeStyle = glow;
+    g.lineWidth = 2;
+    g.strokeRect(5, 5, w - 10, h - 10);
+  }));
+  // graffiti: spray tags with drips, on a transparent cell
+  const TAGS = [['REPENT', '#e8e0d0'], ['RIP', '#d8261e'], ['RUN', '#f2c21a'], ['DEAD', '#1a1a1a'], ['NO EXIT', '#e8e0d0'], ['HELP', '#d8261e'], ['END IS NEAR', '#2a8ad8'], ['ZED', '#3aa84a'], ['GOD SEES', '#e8e0d0']];
+  TAGS.forEach(([txt, col], i) => cell('gfx' + i, (w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let size = 40;
+    do { g.font = `bold ${size}px Impact, "Arial Black", Arial, sans-serif`; size -= 3; } while (g.measureText(txt).width > w - 14 && size > 10);
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.rotate((rng.next() - 0.5) * 0.18);
+    g.lineWidth = 5;
+    g.strokeStyle = 'rgba(0,0,0,0.75)';
+    g.strokeText(txt, 0, 0);
+    g.fillStyle = col;
+    g.fillText(txt, 0, 0);
+    g.restore();
+    // drips
+    g.fillStyle = col;
+    for (let k = 0; k < 6; k++) {
+      const x = w * 0.15 + rng.next() * w * 0.7;
+      g.fillRect(x, h / 2 + 4, 1.4, 6 + rng.next() * 22);
+      g.beginPath();
+      g.arc(x + 0.7, h / 2 + 10 + rng.next() * 22, 1.6, 0, 7);
+      g.fill();
+    }
+  }));
+}
+
 // ---- foliage cards ---------------------------------------------------------------------------
 
 /**
- * Leaf-cluster atlas (alpha): 2×2 cells — broadleaf clusters A and B, a pine bough, a
- * scrub / bush cluster. Grey-scale (the vertex colour tints it), dense enough that
+ * Leaf-cluster atlas (alpha): 4×2 cells — broadleaf clusters A and B, a pine bough, a
+ * scrub / bush cluster, a palm frond, birch foliage, a fern and ivy. Grey-scale (the vertex colour tints it), dense enough that
  * alpha-tested mips stay full at distance.
  */
-export const LEAF_CELLS = { broadA: [0, 0, 0.5, 0.5], broadB: [0.5, 0, 1, 0.5], pine: [0, 0.5, 0.5, 1], scrub: [0.5, 0.5, 1, 1] };
+export const LEAF_CELLS = {
+  broadA: [0, 0, 0.25, 0.5], broadB: [0.25, 0, 0.5, 0.5], pine: [0, 0.5, 0.25, 1], scrub: [0.25, 0.5, 0.5, 1],
+  // palm frond (rib along +u from the left middle), birch foliage (small pale leaves), fern (base at the bottom middle), ivy
+  frond: [0.5, 0, 0.75, 0.5], birch: [0.75, 0, 1, 0.5], fern: [0.5, 0.5, 0.75, 1], ivy: [0.75, 0.5, 1, 1],
+};
 
 let leafCanvas = null;
 let leafData = null;   // straight-alpha RGBA of leafCanvas (see makeLeafTexture)
 export function makeLeafTexture(anisotropy = 4) {
   if (!leafCanvas) {
-    const S = 512, H = S / 2;
+    const S = 256, CW = 1024, CH = 512;
     leafCanvas = document.createElement('canvas');
-    leafCanvas.width = leafCanvas.height = S;
+    leafCanvas.width = CW;
+    leafCanvas.height = CH;
     const g = leafCanvas.getContext('2d');
-    g.clearRect(0, 0, S, S);
+    g.clearRect(0, 0, CW, CH);
     const rng = createRng(9001);
+    const H = S;
     const leaf = (x, y, len, wid, ang, shade) => {
       g.save();
       g.translate(x, y);
@@ -562,25 +694,149 @@ export function makeLeafTexture(anisotropy = 4) {
       }
       g.restore();
     };
-    cluster(0, H, 520, H * 0.44, 20, 8, false);     // broadA (uv top-left in GL = bottom row here)
+    cluster(0, H, 520, H * 0.44, 20, 8, false);     // broadA (uv bottom-left in GL = bottom row here)
     cluster(H, H, 420, H * 0.42, 26, 10, false);    // broadB
     cluster(0, 0, 360, H * 0.44, 18, 0, true);      // pine
     cluster(H, 0, 620, H * 0.42, 13, 6, false);     // scrub
+    // ---- palm frond: a rib curving along +x, leaflets sweeping forward and drooping
+    {
+      const ox = 2 * H, oy = H;
+      g.save();
+      g.beginPath();
+      g.rect(ox + 1, oy + 1, H - 2, H - 2);
+      g.clip();
+      const ribY = (t) => oy + H * 0.5 - Math.sin(t * Math.PI * 0.9) * H * 0.07 + t * t * H * 0.1;
+      g.strokeStyle = 'rgb(200,200,200)';
+      g.lineWidth = 3.4;
+      g.beginPath();
+      for (let t = 0; t <= 1.001; t += 0.05) g.lineTo(ox + 6 + t * (H - 12), ribY(t));
+      g.stroke();
+      for (let k = 0; k < 46; k++) {
+        const t = 0.06 + (k / 46) * 0.92;
+        const px = ox + 6 + t * (H - 12), py = ribY(t);
+        const len = H * 0.4 * Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.06)) + 6;
+        for (const sd of [-1, 1]) {
+          const shade = Math.round(150 + rng.range(-30, 40));
+          g.strokeStyle = `rgb(${shade},${shade},${shade})`;
+          g.lineWidth = 3.0 - t * 1.2;
+          g.beginPath();
+          g.moveTo(px, py);
+          g.quadraticCurveTo(px + len * 0.45, py + sd * len * 0.55, px + len * 0.7, py + sd * len * 0.95 + len * 0.15);
+          g.stroke();
+        }
+      }
+      g.restore();
+    }
+    // ---- birch: dense small pale leaves on fine twigs
+    {
+      const ox = 3 * H, oy = H;
+      g.save();
+      g.beginPath();
+      g.rect(ox + 1, oy + 1, H - 2, H - 2);
+      g.clip();
+      g.strokeStyle = 'rgb(210,205,195)';
+      g.lineWidth = 1.6;
+      for (let k = 0; k < 10; k++) {
+        const a = rng.next() * Math.PI * 2, r = H * (0.25 + rng.next() * 0.2);
+        g.beginPath();
+        g.moveTo(ox + H / 2, oy + H / 2);
+        g.quadraticCurveTo(ox + H / 2 + Math.cos(a) * r * 0.5 + 8, oy + H / 2 + Math.sin(a) * r * 0.5, ox + H / 2 + Math.cos(a) * r, oy + H / 2 + Math.sin(a) * r);
+        g.stroke();
+      }
+      for (let k = 0; k < 700; k++) {
+        const a = rng.next() * Math.PI * 2, rr = Math.sqrt(rng.next()) * H * 0.46;
+        const x = ox + H / 2 + Math.cos(a) * rr, y = oy + H / 2 + Math.sin(a) * rr * 0.92;
+        const shade = Math.round(150 + (1 - rr / (H * 0.46)) * 70 + rng.range(-20, 20));
+        leaf(x, y, 10 + rng.next() * 8, 4.4 + rng.next() * 2.4, rng.next() * 6.28, shade);
+      }
+      g.restore();
+    }
+    // ---- fern: a pinnate frond growing up from the bottom middle
+    {
+      const ox = 2 * H, oy = 0;
+      g.save();
+      g.beginPath();
+      g.rect(ox + 1, oy + 1, H - 2, H - 2);
+      g.clip();
+      const bx = ox + H / 2, by = oy + H - 4;
+      const curve = (t) => Math.sin(t * 2.0) * 10 * (t > 0.5 ? 1 : 0.4);
+      g.strokeStyle = 'rgb(170,170,170)';
+      g.lineWidth = 2.6;
+      g.beginPath();
+      for (let t = 0; t <= 1.001; t += 0.05) g.lineTo(bx + curve(t), by - t * (H - 12));
+      g.stroke();
+      for (let k = 0; k < 26; k++) {
+        const t = 0.08 + (k / 26) * 0.9;
+        const px = bx + curve(t), py = by - t * (H - 12);
+        const len = H * 0.46 * Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.12)) + 4;
+        for (const sd of [-1, 1]) {
+          const shade = Math.round(150 + rng.range(-30, 40));
+          g.strokeStyle = `rgb(${shade},${shade},${shade})`;
+          g.lineWidth = 2.4 - t;
+          g.beginPath();
+          g.moveTo(px, py);
+          g.quadraticCurveTo(px + sd * len * 0.6, py - len * 0.12, px + sd * len, py + len * 0.25);
+          g.stroke();
+          for (let m = 1; m < 5; m++) {
+            const mx = px + sd * len * (m / 5) * 0.95, my = py + (len * 0.25 - len * 0.1) * (m / 5) - 2;
+            g.lineWidth = 1.5;
+            g.beginPath();
+            g.moveTo(mx, my);
+            g.lineTo(mx + sd * 4, my - 9 * (1 - m / 6));
+            g.stroke();
+          }
+        }
+      }
+      g.restore();
+    }
+    // ---- ivy: glossy heart-shaped leaves on a vine
+    {
+      const ox = 3 * H, oy = 0;
+      g.save();
+      g.beginPath();
+      g.rect(ox + 1, oy + 1, H - 2, H - 2);
+      g.clip();
+      g.strokeStyle = 'rgb(90,70,50)';
+      g.lineWidth = 2;
+      for (let k = 0; k < 5; k++) {
+        g.beginPath();
+        const x0 = ox + 30 + rng.next() * (H - 60);
+        g.moveTo(x0, oy + H);
+        g.bezierCurveTo(x0 + rng.range(-40, 40), oy + H * 0.66, x0 + rng.range(-40, 40), oy + H * 0.33, x0 + rng.range(-30, 30), oy);
+        g.stroke();
+      }
+      for (let k = 0; k < 190; k++) {
+        const x = ox + 8 + rng.next() * (H - 16), y = oy + 8 + rng.next() * (H - 16);
+        const shade = Math.round(120 + rng.range(-30, 70));
+        g.save();
+        g.translate(x, y);
+        g.rotate(rng.next() * 6.28);
+        g.fillStyle = `rgb(${shade},${shade},${shade})`;
+        g.beginPath();
+        const s = 7 + rng.next() * 6;
+        g.moveTo(0, s);
+        g.bezierCurveTo(-s * 1.3, s * 0.3, -s * 0.9, -s * 0.9, 0, -s * 0.35);
+        g.bezierCurveTo(s * 0.9, -s * 0.9, s * 1.3, s * 0.3, 0, s);
+        g.fill();
+        g.restore();
+      }
+      g.restore();
+    }
   }
   // The canvas holds premultiplied pixels: every transparent texel is black, and the
   // mipmaps averaged that black into the needles, so a distant pine turned into dark
   // speckles over its cone. Upload straight RGBA instead, with the transparent texels
   // carrying the mean leaf shade (colour bleed), rows flipped like a canvas upload.
   if (!leafData) {
-    const S = leafCanvas.width;
-    const src = leafCanvas.getContext('2d').getImageData(0, 0, S, S).data;
+    const CW = leafCanvas.width, CH = leafCanvas.height;
+    const src = leafCanvas.getContext('2d').getImageData(0, 0, CW, CH).data;
     let sum = 0, n = 0;
     for (let i = 0; i < src.length; i += 4) if (src[i + 3] > 200) { sum += src[i]; n++; }
     const mean = n ? sum / n : 150;
     leafData = new Uint8Array(src.length);
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4, o = ((S - 1 - y) * S + x) * 4;
+    for (let y = 0; y < CH; y++) {
+      for (let x = 0; x < CW; x++) {
+        const i = (y * CW + x) * 4, o = ((CH - 1 - y) * CW + x) * 4;
         const a = src[i + 3] / 255;
         // canvas readback is un-premultiplied already; blend the fringe toward the mean
         for (let k = 0; k < 3; k++) leafData[o + k] = Math.round(src[i + k] * a + mean * (1 - a));

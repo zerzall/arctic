@@ -16,6 +16,7 @@ import { T, shadeHex, mixHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
 import { beam } from './world-bld.js';
+import { roomId, acUnit, ventStack, antenna, dish, hatch, DETAIL } from './world-arch.js';
 import { CAMPAIGN_HEIGHT, PLATEAU_EDGE } from '../shared/maps-campaign.js';
 
 const STEEL = [DET.rust, 0.45, 0.85];
@@ -124,17 +125,25 @@ export function skyscraper(B, o, L, W, halos) {
   // plinth, podium and lobby glass
   B.rblock('std', 0, 0, 0, L + 16, 10, W + 16, 2, '#8b8880', null, { surf: S });
   B.block('std', 0, 10, 0, L, 44, W, '#6f7780', null, { surf: [DET.panel, 0.45, 0.4] });
+  // stone-clad piers between the lobby glazing, and a projecting cornice over the podium
+  if (DETAIL.level >= 1) {
+    for (let s2 = -1; s2 <= 1; s2 += 2) {
+      for (let i = 0; i <= 8; i++) B.rblock('std', s2 * (hl + 1.2), 10, -hw + 8 + (i * (W - 16)) / 8, 3, 44, 4, 0.5, '#9a978e', null, { surf: [DET.concrete, 0.7, 0.1] });
+      for (let i = 0; i <= 6; i++) B.rblock('std', -hl + 8 + (i * (L - 16)) / 6, 10, s2 * (hw + 1.2), 4, 44, 3, 0.5, '#9a978e', null, { surf: [DET.concrete, 0.7, 0.1] });
+    }
+    B.rblock('std', 0, 52, 0, L + 5, 4, W + 5, 1, '#a9a69e', null, { surf: [DET.concrete, 0.75, 0.1] });
+  }
   // lobby glazing on all four faces, lit from inside
   for (let s = -1; s <= 1; s += 2) {
     for (let i = 0; i < 8; i++) {
       const t = -hw + 22 + (i * (W - 44)) / 7;
-      B.add('glass', T.plane(), [s * (hl + 0.3), 32, t], [26, 36, 1], [0, s > 0 ? Math.PI / 2 : -Math.PI / 2, 0], GLASS_C, { surf: [0, -1, -1] });
-      if (i !== 3 && i !== 4 || s < 0) B.add('glow', T.plane(), [s * (hl + 0.1), 32, t], [24, 34, 1], [0, s > 0 ? Math.PI / 2 : -Math.PI / 2, 0], '#ffe9c4', { emissive: 0.55, uv: atlasUV('winOffice') });
+      B.add('glass', T.plane(), [s * (hl + 0.3), 32, t], [26, 36, 1], [0, s > 0 ? Math.PI / 2 : -Math.PI / 2, 0], GLASS_C, { pane: { id: roomId(2, 40 + i + s * 9), w: 26, h: 36 } });
+      if (i !== 3 && i !== 4 || s < 0) B.add('room', T.plane(), [s * (hl + 0.1), 32, t], [24, 34, 1], [0, s > 0 ? Math.PI / 2 : -Math.PI / 2, 0], '#ffe9c4', { pane: { id: roomId(2, 60 + i + s * 7), w: 24, h: 34 }, emissive: 1.0 });
     }
     for (let i = 0; i < 6; i++) {
       const t = -hl + 22 + (i * (L - 44)) / 5;
-      B.add('glass', T.plane(), [t, 32, s * (hw + 0.3)], [30, 36, 1], [0, s > 0 ? 0 : Math.PI, 0], GLASS_C, { surf: [0, -1, -1] });
-      B.add('glow', T.plane(), [t, 32, s * (hw + 0.1)], [28, 34, 1], [0, s > 0 ? 0 : Math.PI, 0], '#ffe9c4', { emissive: 0.45, uv: atlasUV('winOffice') });
+      B.add('glass', T.plane(), [t, 32, s * (hw + 0.3)], [30, 36, 1], [0, s > 0 ? 0 : Math.PI, 0], GLASS_C, { pane: { id: roomId(2, 80 + i + s * 5), w: 30, h: 36 } });
+      B.add('room', T.plane(), [t, 32, s * (hw + 0.1)], [28, 34, 1], [0, s > 0 ? 0 : Math.PI, 0], '#ffe9c4', { pane: { id: roomId(2, 100 + i + s * 3), w: 28, h: 34 }, emissive: 0.9 });
     }
   }
   // the front door: a glass revolving door, a canopy, warm underlights, planters
@@ -177,15 +186,26 @@ export function skyscraper(B, o, L, W, halos) {
         const tone = hash01(fl * 31 + b * 7 + faces.indexOf(f) * 101);
         const lit = tone < 0.075;
         const px = f.ax === 'x' ? [f.sgn * (f.off + 0.7), y + 4 + (band - 4) / 2, t] : [t, y + 4 + (band - 4) / 2, f.sgn * (f.off + 0.7)];
-        B.add(lit ? 'glow' : 'glass', T.plane(), px, [bw - 2.2, band - 6, 1], [0, f.rot, 0], lit ? '#ffffff' : shadeHex(GLASS_C, (tone - 0.5) * 0.24),
-          lit ? { emissive: 0.8, uv: atlasUV(tone < 0.03 ? 'winCool' : 'winOffice') } : { surf: [0, -1, -1] });
+        const pid = roomId(hash01(fl * 17 + b * 5 + faces.indexOf(f) * 31) < 0.12 ? 3 : 2, fl * 131 + b * 17 + faces.indexOf(f) * 977);
+        B.add(lit ? 'room' : 'glass', T.plane(), px, [bw - 2.2, band - 6, 1], [0, f.rot, 0], lit ? (tone < 0.03 ? '#dcecff' : '#fff0d8') : shadeHex(GLASS_C, (tone - 0.5) * 0.24),
+          lit ? { pane: { id: pid, w: bw - 2.2, h: band - 6 }, emissive: 1.1 } : { pane: { id: pid, w: bw - 2.2, h: band - 6 } });
       }
     }
-    // mullions
+    // mullions, and deep sun-shading fins every third bay
     for (let b = 0; b <= bays; b++) {
       const t = -f.len / 2 + b * bw;
-      if (f.ax === 'x') B.block('std', f.sgn * (f.off + 1), y0, t, 2.4, yTop - y0, 2.2, '#8a95a0', null, { surf: [DET.panel, 0.35, 0.7] });
-      else B.block('std', t, y0, f.sgn * (f.off + 1), 2.2, yTop - y0, 2.4, '#8a95a0', null, { surf: [DET.panel, 0.35, 0.7] });
+      const fin = b % 3 === 0;
+      const dep = fin ? 6.5 : 2.4;
+      const sx = fin ? 3.4 : 2.2;
+      if (f.ax === 'x') B.block('std', f.sgn * (f.off + dep / 2 - 0.2), y0, t, dep, yTop - y0, sx, fin ? '#7c8791' : '#8a95a0', null, { surf: [fin ? DET.concrete : DET.panel, 0.4, fin ? 0.15 : 0.7] });
+      else B.block('std', t, y0, f.sgn * (f.off + dep / 2 - 0.2), sx, yTop - y0, dep, fin ? '#7c8791' : '#8a95a0', null, { surf: [fin ? DET.concrete : DET.panel, 0.4, fin ? 0.15 : 0.7] });
+    }
+    // a metal drip cap every few floors, catching the sun in a horizontal line
+    if (DETAIL.level >= 1) {
+      for (let y = y0 + band * 3; y < yTop - band; y += band * 3) {
+        if (f.ax === 'x') B.box('std', f.sgn * (f.off + 1.7), y, 0, 3.4, 1.6, f.len, '#a9b3bc', null, { surf: [0, 0.3, 0.85] });
+        else B.box('std', 0, y, f.sgn * (f.off + 1.7), f.len, 1.6, 3.4, '#a9b3bc', null, { surf: [0, 0.3, 0.85] });
+      }
     }
   }
   // corner columns
@@ -199,7 +219,7 @@ export function skyscraper(B, o, L, W, halos) {
     for (let b = 0; b < 6; b++) {
       const t = -len / 2 + ((b + 0.5) * len) / 6;
       const px = f.ax === 'x' ? [f.sgn * (off + 0.7), yTop + 50, t] : [t, yTop + 50, f.sgn * (off + 0.7)];
-      B.add('glass', T.plane(), px, [len / 6 - 3, 58, 1], [0, f.rot, 0], GLASS_C, { surf: [0, -1, -1] });
+      B.add('glass', T.plane(), px, [len / 6 - 3, 58, 1], [0, f.rot, 0], GLASS_C, { pane: { id: roomId(2, 300 + b * 7 + faces.indexOf(f) * 13), w: len / 6 - 3, h: 58 } });
     }
   }
   // crown: a plant deck, a helipad ring, the lift shaft housing, antenna and beacons
@@ -209,6 +229,20 @@ export function skyscraper(B, o, L, W, halos) {
   B.rblock('std', hl * 0.2, topY + 5, -hw * 0.3, 36, 18, 44, 1.2, '#525c66', null, { surf: [DET.panel, 0.5, 0.4] });
   B.cyl('neon', 0, topY + 5.2, 0, 66, 0.6, '#ffb84a', 40, 1, null, { emissive: 2.4, uv: atlasUV('white') });
   B.cyl('std', 0, topY + 5, 0, 62, 0.5, '#2a3138', 40, 1, null, { surf: [DET.slab, 0.9, 0] });
+  // roof plant on the deck: cooling units, stacks, a hatch, a window-washing rig on rails
+  acUnit(B, hl * 0.42, topY + 5, hw * 0.35, 30, 20, 16, 0.2, '#8e9498');
+  acUnit(B, -hl * 0.45, topY + 5, -hw * 0.35, 24, 18, 14, 0, '#9aa0a4');
+  ventStack(B, hl * 0.1, topY + 5, hw * 0.4, 3, 14);
+  ventStack(B, -hl * 0.1, topY + 5, -hw * 0.42, 2.6, 18);
+  if (DETAIL.level >= 1) {
+    hatch(B, -hl * 0.05, topY + 5, hw * 0.05, 22, 16, 0.4);
+    const rx = hl - ins - 4;
+    B.box('std', rx, topY + 6.5, 0, 1.4, 1.4, W - ins * 2 - 8, '#3a3e42', null, { surf: STEEL });
+    B.rblock('std', rx - 3, topY + 5, 0, 12, 10, 16, 1, '#c25a12', null, { surf: [DET.panel, 0.45, 0.5] });
+    B.box('std', rx + 14, topY + 16, 0, 34, 2.6, 3, '#3a3e42', null, { surf: STEEL });
+    B.box('std', rx + 30, topY - 2, 0, 1, 40, 1, '#20242a', null, { surf: STEEL });
+    B.rblock('std', rx + 30, topY - 46, 0, 6, 10, 26, 0.8, '#d9761a', null, { surf: [DET.panel, 0.45, 0.4] });
+  }
   const mastX = -hl * 0.55, mastZ = -hw * 0.5;
   B.cyl('std', mastX, topY + 5, mastZ, 2.4, 120, '#9aa0a6', 8, 0.55, null, { surf: STEEL });
   for (const [x, y, z] of [[mastX, topY + 125, mastZ], [hl * 0.8, topY + 6, hw * 0.75], [-hl * 0.8, topY + 6, -hw * 0.75], [hl * 0.8, topY + 6, -hw * 0.75], [-hl * 0.8, topY + 6, hw * 0.75]]) {
@@ -239,6 +273,24 @@ export function iwall(B, o, L, W) {
   B.block('std', 0, 0, 0, L + 1, 5, W + 2.4, '#3a3630', null, { surf: [DET.panel, 0.6, 0.2] });
   B.block('std', 0, 34, 0, L + 0.4, 2.4, W + 1.6, '#8f887a', null, { surf: [DET.panel, 0.6, 0.2] });
   B.block('std', 0, H - 4, 0, L + 0.4, 4, W + 1.2, '#bdb6a8', null, { surf: S });
+  // things on the walls: notices and posters, fire extinguishers, a wall clock
+  if (DETAIL.level >= 1 && L >= 90) {
+    const n = Math.max(1, Math.floor(L / 130));
+    for (let i = 0; i < n; i++) {
+      const h = hash01((o.id || 1) * 31 + i * 7);
+      const t = -L / 2 + ((i + 0.3 + h * 0.4) * L) / n;
+      const sd = h < 0.5 ? -1 : 1;
+      const out = W / 2 + 0.9;
+      const rot = [0, sd > 0 ? 0 : Math.PI, 0];
+      if (h < 0.55) B.add('decal', T.plane(), [t, 64, sd * out], [18, 26, 1], rot, '#ffffff', { uv: atlasUV('poster' + Math.floor(h * 5.4) % 3), noAO: true });
+      else if (h < 0.85) {
+        B.rblock('std', t, 34, sd * (W / 2 + 1.6), 5, 15, 5, 0.6, '#c62828', null, { surf: [DET.panel, 0.4, 0.3], noJitter: true });
+        B.box('std', t, 52, sd * (W / 2 + 1.0), 7, 0.6, 3, '#e8e8e8', null, { surf: [DET.panel, 0.4, 0.3], noJitter: true });
+      } else {
+        B.cyl('std', t, 78, sd * (W / 2 + 1.2), 6, 1.6, '#d8d4c8', 14, 1, [Math.PI / 2, 0, 0], { surf: [DET.panel, 0.4, 0.2], noJitter: true });
+      }
+    }
+  }
   if (L >= 500 && W >= 20) {
     // pilasters and daylight windows on both faces
     const n = Math.max(2, Math.round(L / 150));
@@ -595,7 +647,14 @@ function shell(B, rect, base, top, seed, roofSlab, tone = CURTAIN) {
       const o2 = off + Math.sign(off) * 0.9;
       const gp = ax === 'x' ? [o2, y + 3.4 + (bandH - 4.4) / 2, 0] : [0, y + 3.4 + (bandH - 4.4) / 2, o2];
       const n = Math.round(y / bandH);
-      B.add('glass', T.plane(), gp, [len - 6, bandH - 6, 1], [0, rot, 0], shadeHex(GLASS_C, (hash01(seed * 13 + n) - 0.5) * 0.3), { surf: [0, -1, -1] });
+      // one office per ~46 units of glass (each its own interior-mapped room)
+      const segs = Math.max(1, Math.round((len - 6) / 46));
+      const sw = (len - 6) / segs;
+      for (let sgi = 0; sgi < segs; sgi++) {
+        const off = -(len - 6) / 2 + (sgi + 0.5) * sw;
+        const gp2 = ax === 'x' ? [gp[0], gp[1], off] : [off, gp[1], gp[2]];
+        B.add('glass', T.plane(), gp2, [sw - 0.8, bandH - 6, 1], [0, rot, 0], shadeHex(GLASS_C, (hash01(seed * 13 + n * 7 + sgi) - 0.5) * 0.3), { pane: { id: roomId(2, seed * 101 + n * 13 + sgi), w: sw - 0.8, h: bandH - 6 } });
+      }
     }
     const m = Math.max(2, Math.round(len / 46));
     for (let i = 0; i <= m; i++) {
