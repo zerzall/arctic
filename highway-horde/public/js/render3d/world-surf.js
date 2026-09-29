@@ -645,19 +645,21 @@ function generate() {
       }
       continue;
     }
+    const kk = k * 2;
     for (let y = 0; y < N; y++) {
-      const ym = ((y + N - 1) % N) * N, yp = ((y + 1) % N) * N, yc = y * N;
+      const ym = ((y + N - 1) & (N - 1)) * N, yp = ((y + 1) & (N - 1)) * N, yc = y * N;
       for (let x = 0; x < N; x++) {
-        const xm = (x + N - 1) % N, xp = (x + 1) % N;
+        const xm = (x + N - 1) & (N - 1), xp = (x + 1) & (N - 1);
         // normal = normalize(-dh/du, -dh/dv, 1); u along x (columns), v along y (rows)
-        const nx = -(h[yc + xp] - h[yc + xm]) * 0.5 * k * 4;
-        const ny = -(h[yp + x] - h[ym + x]) * 0.5 * k * 4;
-        const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
-        const o = base + (yc + x) * 4;
-        data[o] = Math.round((nx * inv * 0.5 + 0.5) * 255);
-        data[o + 1] = Math.round((ny * inv * 0.5 + 0.5) * 255);
-        data[o + 2] = Math.round(clamp01(r[yc + x]) * 255);
-        data[o + 3] = Math.round(clamp01(a[yc + x]) * 255);
+        const nx = -(h[yc + xp] - h[yc + xm]) * kk;
+        const ny = -(h[yp + x] - h[ym + x]) * kk;
+        const inv = 127.5 / Math.sqrt(nx * nx + ny * ny + 1);
+        const o = base + ((yc + x) << 2);
+        const rv = r[yc + x], av = a[yc + x];
+        data[o] = nx * inv + 127.5 + 0.5;
+        data[o + 1] = ny * inv + 127.5 + 0.5;
+        data[o + 2] = (rv < 0 ? 0 : rv > 1 ? 255 : rv * 255) + 0.5;
+        data[o + 3] = (av < 0 ? 0 : av > 1 ? 255 : av * 255) + 0.5;
       }
     }
   }

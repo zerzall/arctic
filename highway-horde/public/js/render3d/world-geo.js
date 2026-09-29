@@ -494,6 +494,7 @@ export function createGeoBuilder(opts) {
     const sx = s ? s[0] : 1, sy = s ? s[1] : 1, sz = s ? s[2] : 1;
     const px0 = p ? p[0] : 0, py0 = p ? p[1] : 0, pz0 = p ? p[2] : 0;
     const P = t.pos.a, NN = t.nor.a, C = t.col.a;
+    const me = m.elements, ne = _nm.elements;
     let pi = t.pos.n;
     for (let i = 0; i < n; i++) {
       let x = pa[i * 3], y = pa[i * 3 + 1], z = pa[i * 3 + 2];
@@ -503,8 +504,12 @@ export function createGeoBuilder(opts) {
         const f = 1 + (hash01(h + (wob.seed | 0)) - 0.5) * 2 * wob.amp;
         x *= f; y *= f; z *= f;
       }
-      _v.set(x, y, z).applyMatrix4(m);
-      _n.set(na[i * 3], na[i * 3 + 1], na[i * 3 + 2]).applyMatrix3(_nm).normalize();
+      // (the matrix products written out: this is the hottest loop of the world build)
+      _v.set(me[0] * x + me[4] * y + me[8] * z + me[12], me[1] * x + me[5] * y + me[9] * z + me[13], me[2] * x + me[6] * y + me[10] * z + me[14]);
+      const tnx = na[i * 3], tny = na[i * 3 + 1], tnz = na[i * 3 + 2];
+      const wnx = ne[0] * tnx + ne[3] * tny + ne[6] * tnz, wny = ne[1] * tnx + ne[4] * tny + ne[7] * tnz, wnz = ne[2] * tnx + ne[5] * tny + ne[8] * tnz;
+      const wl = 1 / (Math.sqrt(wnx * wnx + wny * wny + wnz * wnz) || 1);
+      _n.set(wnx * wl, wny * wl, wnz * wl);
       P[pi] = _v.x; P[pi + 1] = _v.y; P[pi + 2] = _v.z;
       if (GEO_DEBUG && !(_v.x === _v.x && _v.y === _v.y && _v.z === _v.z)) throw new Error('geo: NaN vertex in bucket ' + bucket);
       NN[pi] = _n.x; NN[pi + 1] = _n.y; NN[pi + 2] = _n.z;

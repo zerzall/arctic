@@ -47,6 +47,8 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
   float h0 = hhH1(id + 1.0), h1 = hhH1(id + 17.0), h2 = hhH1(id + 31.0), h3 = hhH1(id + 47.0), h4 = hhH1(id + 63.0), h5 = hhH1(id + 79.0);
   float W = sz.x, H = sz.y;
   float D = W * mix(0.9, 1.5, h0);
+  // fine patterns (slats, tiles, shelves) dissolve into their average as the pane shrinks on screen
+  float bl = smoothstep(0.003, 0.014, px);
   vec3 o = vec3(uv.x * W, uv.y * H, 0.0);
   d = normalize(d);
   d.z = max(d.z, 0.025);
@@ -81,6 +83,7 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
       float shelf = step(0.1, fract(sc.y));
       vec3 good = 0.42 + 0.36 * vec3(hhH1(floor(sc.x) * 3.1 + floor(sc.y)), hhH1(floor(sc.x) * 5.7 + floor(sc.y) + 1.0), hhH1(floor(sc.x) * 7.9 + floor(sc.y) + 2.0));
       alb = mix(vec3(0.3, 0.2, 0.12), good, shelf * step(0.3, hhH1(floor(sc.x) + floor(sc.y) * 13.0 + id)) * step(H * 0.08, p.y));
+      alb = mix(alb, vec3(0.5, 0.42, 0.34), bl * 0.85);
     }
   } else if (side) {
     nrm = vec3(d.x > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
@@ -90,12 +93,16 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
       float shelf = step(0.1, fract(sc.y));
       vec3 good = 0.42 + 0.36 * vec3(hhH1(floor(sc.x) * 2.3 + floor(sc.y)), hhH1(floor(sc.x) * 4.1 + floor(sc.y) + 1.0), hhH1(floor(sc.x) * 6.7 + floor(sc.y) + 2.0));
       alb = mix(vec3(0.3, 0.2, 0.12), good, shelf * step(0.35, hhH1(floor(sc.x) + floor(sc.y) * 11.0 + id)) * step(H * 0.08, p.y));
+      alb = mix(alb, vec3(0.5, 0.42, 0.34), bl * 0.85);
     }
   } else if (d.y < 0.0) {
     nrm = vec3(0.0, 1.0, 0.0);
     // boards, tiles or carpet
-    vec3 fl = vec3(0.30, 0.19, 0.11) * (0.75 + 0.25 * step(0.5, fract(p.x / (W * 0.09))));
-    if ((type > 0.5 && type < 1.5) || type > 4.5) fl = vec3(0.7, 0.7, 0.66) * (0.8 + 0.2 * mod(floor(p.x / (W * 0.12)) + floor(p.z / (W * 0.12)), 2.0));
+    // (a floor pattern seen at a grazing angle is a moire of stripes: it fades with the angle and the distance)
+    float fa = smoothstep(0.03, 0.2, abs(d.y)) * (1.0 - bl);
+    vec3 fl;
+    fl = vec3(0.30, 0.19, 0.11) * mix(0.875, 0.75 + 0.25 * step(0.5, fract(p.x / (W * 0.09))), fa);
+    if ((type > 0.5 && type < 1.5) || type > 4.5) fl = vec3(0.7, 0.7, 0.66) * mix(0.9, 0.8 + 0.2 * mod(floor(p.x / (W * 0.12)) + floor(p.z / (W * 0.12)), 2.0), fa);
     if (type > 1.5 && type < 2.5) fl = vec3(0.24, 0.27, 0.32);
     if (type > 2.5 && type < 3.5) fl = vec3(0.34, 0.33, 0.31);
     alb = fl;
@@ -167,7 +174,7 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
       if (pc.y > H * (1.0 - cover)) {
         float slat = fract(pc.y / (H * 0.075));
         gapDim = 0.4;
-        if (slat < 0.8) { alb = vec3(0.86, 0.82, 0.72) * (0.8 + 0.2 * slat); nrm = vec3(0.0, 0.0, -1.0); t = tc; p = pc; ambK = 2.3; gapDim = 1.0; }
+        if (slat < 0.8 || bl > 0.5) { alb = vec3(0.86, 0.82, 0.72) * (0.8 + 0.2 * slat); nrm = vec3(0.0, 0.0, -1.0); t = tc; p = pc; ambK = 2.3; gapDim = 1.0; }
       }
     }
   }
@@ -389,7 +396,7 @@ function roomMaterial(uniforms) {
           diffuseColor.rgb *= hhRoom(vDet.xy, abs(vSurf) * 128.0, dd, vDet.z - 100.0, 1.0, 0.09, uTime, pxs) * uRoomK;
         }`);
   };
-  m.customProgramCacheKey = () => 'hh-room-v1';
+  m.customProgramCacheKey = () => 'hh-room-v2';
   return m;
 }
 

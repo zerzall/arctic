@@ -11,6 +11,9 @@ import { INTERIOR_GLSL } from '../js/render3d/world-mat.js';
 const q = new URLSearchParams(location.search);
 const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
 const c = document.getElementById('c');
+const S = Number(q.get('size') || 512);
+c.width = c.height = S;
+c.style.width = c.style.height = '512px';
 const gl = c.getContext('webgl2');
 const vs = `#version 300 es
 in vec2 p; out vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -25,9 +28,8 @@ void main(){
   // world-scale coordinates like the game (a pane on a wall facing +z far from the origin), eye ahead of it
   vec3 wP = base + vec3(P.x, P.y, 0.0), wE = base + eye;
   vec3 V = normalize(wP - wE);
-  vec3 N = vec3(0.0, 0.0, 1.0);
-  vec3 R = normalize(vec3(N.z, 0.0, -N.x));
-  vec3 d = vec3(dot(V, R), V.y, dot(V, -N));
+  // (the pane faces the eye at -z; u grows along +x, the room lies at +z: the ray is simply V)
+  vec3 d = V;
   float px = max(fwidth(uv.x), fwidth(uv.y));
   vec3 col = hhRoom(uv, sz, d, rid, lamp, amb, 0.0, px);
   o = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
@@ -51,7 +53,7 @@ gl.uniform3f(gl.getUniformLocation(pr, 'eye'), num('ex', w / 2), num('ey', h / 2
 gl.uniform1f(gl.getUniformLocation(pr, 'rid'), num('type', 0) * 256 + num('id', 7));
 gl.uniform1f(gl.getUniformLocation(pr, 'lamp'), num('lamp', 0));
 gl.uniform1f(gl.getUniformLocation(pr, 'amb'), num('amb', 0.3));
-gl.viewport(0, 0, 512, 512);
+gl.viewport(0, 0, S, S);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 document.title = document.title.startsWith('ERR') ? document.title : 'room lab ok';
 </script>

@@ -40,27 +40,33 @@ export function cardList() {
  */
 export function card(list, c, f, spin, w, h, cc, rect, bend = 0) {
   _q.setFromUnitVectors(_z, f);
-  const rot = new THREE.Quaternion().setFromAxisAngle(_z, spin);
-  _q.multiply(rot);
-  const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
-  const P = corners.map(([x, y]) => {
-    _v.set(x * w, y * h, (x * x + y * y) * bend).applyQuaternion(_q);
-    return [c[0] + _v.x, c[1] + _v.y, c[2] + _v.z];
-  });
-  const N = P.map((p) => {
-    _n.set(p[0] - cc[0], (p[1] - cc[1]) * 0.8 + 0.25 * Math.abs(cc[1]) * 0.01, p[2] - cc[2]).normalize();
-    _v.copy(f).multiplyScalar(0.35);
-    _n.multiplyScalar(0.65).add(_v).normalize();
-    return [_n.x, _n.y, _n.z];
-  });
+  _qs.setFromAxisAngle(_z, spin);
+  _q.multiply(_qs);
   const [u0, v0, u1, v1] = rect;
-  const U = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
-  for (const k of [0, 1, 2, 0, 2, 3]) {
-    list.pos.push(...P[k]);
-    list.nor.push(...N[k]);
-    list.uv.push(...U[k]);
+  // corner order: (-,-) (+,-) (+,+) (-,+); two triangles 0 1 2, 0 2 3
+  for (let k = 0; k < 4; k++) {
+    const x = CORN[k * 2], y = CORN[k * 2 + 1];
+    _v.set(x * w, y * h, (x * x + y * y) * bend).applyQuaternion(_q);
+    const px = c[0] + _v.x, py = c[1] + _v.y, pz = c[2] + _v.z;
+    _n.set(px - cc[0], (py - cc[1]) * 0.8 + 0.25 * Math.abs(cc[1]) * 0.01, pz - cc[2]).normalize().multiplyScalar(0.65);
+    _n.x += f.x * 0.35; _n.y += f.y * 0.35; _n.z += f.z * 0.35;
+    _n.normalize();
+    const o = k * 3;
+    _cp[o] = px; _cp[o + 1] = py; _cp[o + 2] = pz;
+    _cn[o] = _n.x; _cn[o + 1] = _n.y; _cn[o + 2] = _n.z;
+  }
+  const us = [u0, u1, u1, u0], vs = [v0, v0, v1, v1];
+  for (let t = 0; t < 6; t++) {
+    const k = QUAD[t], o = k * 3;
+    list.pos.push(_cp[o], _cp[o + 1], _cp[o + 2]);
+    list.nor.push(_cn[o], _cn[o + 1], _cn[o + 2]);
+    list.uv.push(us[k], vs[k]);
   }
 }
+const _qs = new THREE.Quaternion();
+const _cp = new Float64Array(12), _cn = new Float64Array(12);
+const CORN = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
+const QUAD = [0, 1, 2, 0, 2, 3];
 
 /**
  * A strip card along `u` (unit) from `base`, `segs` quads long, drooping by `droop` at the end
