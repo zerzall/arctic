@@ -286,7 +286,7 @@ export class GameCore {
       }
       zs.push({
         id: z.id, type: z.type, x: z.x, y: z.y, angle: z.angle,
-        hp: clamp01(z.hp / z.maxHp), flags: zombieFlags(z),
+        hp: clamp01(z.hp / z.maxHp), flags: zombieFlags(z), z: z.z,
       });
     }
     let readyCount = 0;

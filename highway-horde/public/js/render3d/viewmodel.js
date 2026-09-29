@@ -11,7 +11,8 @@
 // the armband.
 //
 // Animation: idle sway + look lag, walk/sprint bob (sprint tilts the gun), a jump dip on
-// take-off and a heavier one on landing (a spring; no bob in the air), recoil kick
+// take-off and a heavier one on landing (a spring; no bob in the air), lowered while
+// climbing onto something, recoil kick
 // with the slide/bolt cycling on each own shot (predicted shots count, echo shots never),
 // brass/shell casings, a real reload driven by the local record's `reloading` (magazine
 // drops out, the support hand brings a fresh one and racks the bolt; shotgun shells one
@@ -187,7 +188,7 @@ export function createViewmodel(ctx) {
     throwT: 9, throwKind: 'frag', pumpT: 9, lastShot: -9, spin: 0, spinAngle: 0, cylA: 0, cylTarget: 0,
     flashT: 9, dualSide: 0, down: 0, railCharge: 1, rlPrev: 0, ejected: false, boltT: 9,
     leverT: 9, leverEjected: false, chainPh: 0, saw: 0, reelV: 0,
-    visible: false, lastZ: 0, air: 0, jumpY: 0, jumpV: 0,
+    visible: false, lastAir: false, air: 0, jumpY: 0, jumpV: 0, climb: 0,
   };
   let localId = 0;
   let now = 0;
@@ -389,12 +390,15 @@ export function createViewmodel(ctx) {
     const downed = local.state === 'downed' ? 1 : 0;
     st.down += (downed - st.down) * damp(5, dt);
     // jump: the gun lags the body — it dips on take-off and drops harder on landing, then
-    // springs back; in the air it floats a little higher with no walk bob
-    const jz = local.z > 0 ? local.z : 0;
-    if (st.lastZ <= 0 && jz > 0) st.jumpV -= JUMP_TAKEOFF_KICK;
-    else if (st.lastZ > 0 && jz <= 0) st.jumpV -= JUMP_LAND_KICK;
-    st.lastZ = jz;
-    st.air += ((jz > 0 ? 1 : 0) - st.air) * damp(10, dt);
+    // springs back; in the air it floats a little higher with no walk bob. Climbing: the
+    // gun drops out of the way while the hands pull the body up, and comes back on top.
+    const climbing = local.climbT > 0;
+    const air = climbing || (local.vzq !== undefined ? local.vzq !== 0 : local.z > 0);
+    if (!st.lastAir && air) st.jumpV -= JUMP_TAKEOFF_KICK;
+    else if (st.lastAir && !air) st.jumpV -= st.climb > 0.3 ? JUMP_TAKEOFF_KICK : JUMP_LAND_KICK;
+    st.lastAir = air;
+    st.air += ((air && !climbing ? 1 : 0) - st.air) * damp(10, dt);
+    st.climb += ((climbing ? 1 : 0) - st.climb) * damp(climbing ? 16 : 6, dt);
     for (let left = dt; left > 1e-6;) {
       const h = Math.min(left, 1 / 120);
       st.jumpV += (-JUMP_SPRING_K * st.jumpY - JUMP_SPRING_C * st.jumpV) * h;
@@ -441,7 +445,7 @@ export function createViewmodel(ctx) {
     const P = PLACE[style] || PLACE.rifle;
     const t = now;
     const idleX = Math.sin(t * 1.1) * 0.12, idleY = Math.sin(t * 1.7) * 0.1;
-    const bobA = st.bobAmt * (1 + st.sprint * 0.8) * (1 - st.air);
+    const bobA = st.bobAmt * (1 + st.sprint * 0.8) * (1 - Math.max(st.air, st.climb));
     const bobX = Math.sin(st.bobPh) * 0.45 * bobA, bobY = -Math.abs(Math.cos(st.bobPh)) * 0.4 * bobA;
     const heavyK = model.heavy ? 0.75 : 1;
     // reload: the gun comes up a little toward the middle, canted clockwise so the mag
@@ -460,11 +464,11 @@ export function createViewmodel(ctx) {
     }
     const x = P[0] + VM_SHIFT_X + idleX + bobX + st.swayX * 0.6 - st.sprint * 1.5 - ml * 2.5 + thK * 1.5 - rlTilt * 1.3 * rlUp + vibX;
     const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5 + vibY
-      + st.jumpY + st.air * 0.35;
+      + st.jumpY + st.air * 0.35 - st.climb * 7;
     const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8;
     holder.position.set(x, y, z);
     holder.rotation.set(
-      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04,
+      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04 - st.climb * 0.5,
       -0.04 + (P[4] || 0) + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp,
       st.recoilRoll - rlTilt * (model.reload === 'shells' || model.reload === 'single' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');

@@ -292,15 +292,15 @@ function obbExit(ob, ox, oy, dx, dy) {
  * obstacles that are at most `thick` px deep along the ray (never the objective).
  * Writes out.stop (where the round ends), out.wall (true if a wall stopped it) and
  * out.n + out.at[] (distances where it entered each wall it went through). Shared with
- * the clients' shot prediction.
+ * the clients' shot prediction. `above`: the shooter's feet height (see roofReach).
  */
-export function traceRound(world, x, y, dx, dy, range, pen, out) {
+export function traceRound(world, x, y, dx, dy, range, pen, out, above = 0) {
   out.n = 0;
   out.wall = false;
   out.stop = range;
   let t0 = 0;
   for (let guard = 0; guard < 8; guard++) {
-    const tw = world.raycastSolid(x + dx * t0, y + dy * t0, dx, dy, range - t0);
+    const tw = world.raycastSolid(x + dx * t0, y + dy * t0, dx, dy, range - t0, above);
     if (tw < 0) return out;
     const entry = t0 + tw;
     const ob = world.index.hit.obb;
@@ -321,6 +321,28 @@ export function traceRound(world, x, y, dx, dy, range, pen, out) {
   return out;
 }
 const penOut = { n: 0, wall: false, stop: 0, at: new Float64Array(8) };
+
+/**
+ * Shooting from up high, and at zombies up high (SPEC §4): a round passes over every
+ * obstacle no taller than the shooter's feet (raycastSolid's `above`), and a zombie
+ * standing on top of the obstacle that stopped it is above that obstacle, so still in
+ * the line of fire. Call right after the raycast that returned `tw` (it reads the hit
+ * box from world.index.hit). Writes out.far (zombies up to this distance may be hit) and
+ * out.top (those beyond `tw` need their feet at least this high). Shared with the
+ * clients' shot prediction.
+ */
+export function roofReach(world, x, y, dx, dy, tw, out) {
+  out.far = tw;
+  out.top = Infinity;
+  const ob = tw >= 0 && world.index ? world.index.hit.obb : null;
+  if (ob && ob.stand) {
+    const t = tw + 0.01;
+    out.far = tw + obbExit(ob, x + dx * t, y + dy * t, dx, dy) + MAX_ZOMBIE_RADIUS;
+    out.top = ob.top - 0.5;
+  }
+  return out;
+}
+const roofOut = { far: 0, top: Infinity };
 
 /** Walls a round went through before distance t (see traceRound). */
 function wallsBefore(tr, t) {
@@ -348,6 +370,7 @@ function falloffMult(t, w) {
 export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, dmgMult, credit, shooter) {
   const ev = game.shotEvent(key, pid, turretId, weaponId, x + Math.cos(angle) * MUZZLE, y + Math.sin(angle) * MUZZLE, angle);
   const world = game.world, rng = game.rng;
+  const above = shooter ? shooter.z || 0 : 0;
   const ff = !!game.settings.friendlyFire && !!shooter;
   const cand = game.tmpA;
   const pellets = w.pellets || 1;
@@ -359,20 +382,22 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
     let maxT = w.range;
     let tw;
     if (pen) {
-      traceRound(world, x, y, dx, dy, w.range, pen, penOut);
+      traceRound(world, x, y, dx, dy, w.range, pen, penOut, above);
       tw = penOut.wall ? penOut.stop : -1;
     } else {
-      tw = world.raycastSolid(x, y, dx, dy, maxT);
+      tw = world.raycastSolid(x, y, dx, dy, maxT, above);
     }
     if (tw >= 0) maxT = tw;
+    const roof = roofReach(world, x, y, dx, dy, tw, roofOut);
+    const farT = Math.max(maxT, Math.min(w.range, roof.far));
     const pierce = Math.min(w.pierce || 1, hitT.length);
     let nh = 0;
-    const n = game.zgrid.queryRay(x, y, dx, dy, maxT, MAX_ZOMBIE_RADIUS, cand);
+    const n = game.zgrid.queryRay(x, y, dx, dy, farT, MAX_ZOMBIE_RADIUS, cand);
     for (let i = 0; i < n; i++) {
       const z = cand[i];
       if (z.dead) continue;
-      const t = rayCircle(x, y, dx, dy, z.x, z.y, z.radius, maxT);
-      if (t < 0) continue;
+      const t = rayCircle(x, y, dx, dy, z.x, z.y, z.radius, farT);
+      if (t < 0 || (t > maxT && !(z.z >= roof.top))) continue;
       nh = insertHit(nh, pierce, t, z);
     }
     if (ff) {
@@ -400,7 +425,7 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
     if (nh >= pierce) {
       endT = hitT[nh - 1];
     } else if (tw >= 0) {
-      endT = tw;
+      endT = nh > 0 ? Math.max(tw, hitT[nh - 1]) : tw;
       if (!hit) hit = 2;
     }
     if (ev.rays.length < MAX_RAYS_PER_EVENT) {
@@ -428,7 +453,7 @@ function fireRail(game, p, id, w) {
   const ev = game.shotEvent(p.id, p.id, 0, id, x + Math.cos(a) * MUZZLE, y + Math.sin(a) * MUZZLE, a);
   const dx = Math.cos(a), dy = Math.sin(a);
   let maxT = w.range;
-  const tw = game.world.raycastSolid(x, y, dx, dy, maxT);
+  const tw = game.world.raycastSolid(x, y, dx, dy, maxT, p.z || 0);
   if (tw >= 0) maxT = tw;
   const cand = game.tmpA;
   const n = game.zgrid.queryRay(x, y, dx, dy, maxT, MAX_ZOMBIE_RADIUS, cand);
@@ -460,7 +485,7 @@ function fireChain(game, p, id, w) {
   game.shotEvent(p.id, p.id, 0, id, mx, my, p.angle);
   const dx = Math.cos(a), dy = Math.sin(a);
   let maxT = w.range;
-  const tw = game.world.raycastSolid(x, y, dx, dy, maxT);
+  const tw = game.world.raycastSolid(x, y, dx, dy, maxT, p.z || 0);
   if (tw >= 0) maxT = tw;
   const cand = game.tmpA;
   const n = game.zgrid.queryRay(x, y, dx, dy, maxT, MAX_ZOMBIE_RADIUS, cand);
@@ -519,7 +544,7 @@ function fireProjectile(game, p, id, w) {
   // Spawn at the muzzle unless a wall is closer, so point-blank shots still connect.
   let sx = p.x, sy = p.y;
   const dx = Math.cos(a), dy = Math.sin(a);
-  const tw = game.world.raycastSolid(p.x, p.y, dx, dy, MUZZLE);
+  const tw = game.world.raycastSolid(p.x, p.y, dx, dy, MUZZLE, p.z || 0);
   const off = tw >= 0 ? Math.max(0, tw - 2) : 12;
   sx += dx * off;
   sy += dy * off;
@@ -531,6 +556,7 @@ function fireProjectile(game, p, id, w) {
     explodeRadius: spec.explodeRadius || 0, explodeDamage: spec.explodeDamage || 0,
     burn: w.burn || null, chill: w.chill || 0, flare: spec.flare || null,
     drag: spec.drag || 0, pin: spec.pin || 0, dragged: null,
+    above: p.z || 0,
   });
 }
 
@@ -556,7 +582,7 @@ function fireSaw(game, p, id, w) {
     if (d > w.range + z.radius) continue;
     const close = d < z.radius + PLAYER_RADIUS + 6;
     if (!close && Math.abs(angleDiff(a, Math.atan2(dy, dx))) > half + Math.atan2(z.radius, d)) continue;
-    if (!close && !game.world.lineOfSight(p.x, p.y, z.x, z.y)) continue;
+    if (!close && !game.world.lineOfSight(p.x, p.y, z.x, z.y, Math.max(p.z || 0, z.z))) continue;
     const nx = d > 1e-6 ? dx / d : Math.cos(a), ny = d > 1e-6 ? dy / d : Math.sin(a);
     knockZombie(z, nx, ny, w.knockback);
     if (rays < SAW_MAX_RAYS && ev.rays.length < MAX_RAYS_PER_EVENT) {
@@ -571,12 +597,13 @@ function fireSaw(game, p, id, w) {
 export function throwProjectile(game, p, kind) {
   const a = p.angle;
   const dx = Math.cos(a), dy = Math.sin(a);
-  const tw = game.world.raycastSolid(p.x, p.y, dx, dy, 20);
+  const tw = game.world.raycastSolid(p.x, p.y, dx, dy, 20, p.z || 0);
   const off = tw >= 0 ? Math.max(0, tw - 6) : 14;
   const vx = dx * THROW_SPEED + p.vx * 0.3, vy = dy * THROW_SPEED + p.vy * 0.3;
   const base = {
     kind, x: p.x + dx * off, y: p.y + dy * off, vx, vy, angle: a, radius: 5, owner: p.id, weapon: null,
     damage: 0, pierce: 0, knockback: 0, explodeRadius: 0, explodeDamage: 0, burn: null,
+    above: p.z || 0,
   };
   if (kind === 'frag') {
     const f = THROWABLES.frag;
@@ -708,7 +735,7 @@ function stepShot(game, pr) {
   const dx = pr.vx / speed, dy = pr.vy / speed;
   const step = speed * DT;
   pr.life -= DT;
-  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step);
+  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step, pr.above || 0);
   const wallT = tw >= 0 ? tw : Infinity;
   const maxT = Math.min(step, wallT);
   const cand = game.tmpA;
@@ -798,7 +825,7 @@ function stepFlame(game, pr) {
   }
   const dx = pr.vx / speed, dy = pr.vy / speed;
   const step = speed * DT;
-  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step);
+  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step, pr.above || 0);
   const adv = tw >= 0 ? Math.max(0, tw - 2) : step;
   pr.x += dx * adv;
   pr.y += dy * adv;
@@ -858,7 +885,7 @@ function moveBouncing(game, pr, bounce) {
     if (sp < 1e-6) break;
     const dx = pr.vx / sp, dy = pr.vy / sp;
     const idx = game.world.index;
-    const t = idx.raycast(pr.x, pr.y, dx, dy, remaining + pr.radius, MASK_SOLID, 0);
+    const t = idx.raycast(pr.x, pr.y, dx, dy, remaining + pr.radius, MASK_SOLID, 0, pr.above || 0);
     if (t < 0) {
       pr.x += dx * remaining;
       pr.y += dy * remaining;
@@ -899,7 +926,7 @@ function stepMolotov(game, pr) {
   const dx = pr.vx / sp, dy = pr.vy / sp;
   const step = sp * DT;
   pr.angle += DT * 12;
-  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step + pr.radius);
+  const tw = game.world.raycastSolid(pr.x, pr.y, dx, dy, step + pr.radius, pr.above || 0);
   let shatter = false;
   let adv = step;
   if (tw >= 0) {

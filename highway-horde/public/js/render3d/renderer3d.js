@@ -204,7 +204,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     x: camera.position.x, y: camera.position.z, eye: EYE, yaw: 0, pitch: 0, roll: 0,
     lastX: NaN, lastY: NaN, speed: 0, bob: 0, kick: 0, mode: 'fps', chaseId: 0,
     cx: camera.position.x, cy: EYE, cz: camera.position.z, orbit: 0, time: 0,
-    lastZ: 0, air: 0, land: 0, landV: 0,
+    lastZ: 0, lastAir: false, air: 0, land: 0, landV: 0, climb: 0,
   };
   let lastSettings = { screenShake: true, fov: 80 };
   let localId = 0;
@@ -220,13 +220,19 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
     const alive = local && local.state !== 'dead';
     if (alive) {
       // --- first person ---
-      if (rig.mode !== 'fps') { rig.lastX = NaN; rig.mode = 'fps'; rig.lastZ = 0; rig.land = rig.landV = 0; }
+      if (rig.mode !== 'fps') { rig.lastX = NaN; rig.mode = 'fps'; rig.lastZ = 0; rig.lastAir = false; rig.land = rig.landV = 0; }
       const downed = local.state === 'downed';
-      // jump: the eye rides the feet height; touch-down kicks a short dip, walk bob fades in the air
+      // jump: the eye rides the feet height (on a roof too); touch-down kicks a short dip
+      // (a smaller one at the end of a climb), walk bob fades in the air and on the way up
       const z = local.z > 0 ? local.z : 0;
-      if (rig.lastZ > 0 && z === 0) rig.landV -= LAND_KICK;
+      const climbing = local.climbT > 0;
+      const airborne = climbing || (local.vzq !== undefined ? local.vzq !== 0 : z > 0);
+      if (rig.lastAir && !airborne) rig.landV -= rig.climb > 0.3 ? LAND_KICK * 0.45 : LAND_KICK;
+      rig.lastAir = airborne;
       rig.lastZ = z;
-      rig.air += ((z > 0 ? 1 : 0) - rig.air) * (1 - Math.exp(-dt * 12));
+      rig.air += ((airborne ? 1 : 0) - rig.air) * (1 - Math.exp(-dt * 12));
+      // climbing: the view dips toward the ledge and rolls a little as the body swings over
+      rig.climb += ((climbing ? 1 : 0) - rig.climb) * (1 - Math.exp(-dt * (climbing ? 14 : 7)));
       for (let left = Math.min(dt, 0.1); left > 1e-6;) {
         const h = Math.min(left, 1 / 120);
         rig.landV += (-LAND_K * rig.land - LAND_C * rig.landV) * h;
@@ -250,7 +256,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       camera.position.set(local.x + rx * bobX, rig.eye + bobY + z + rig.land, local.y + ry * bobX);
       const rollT = downed ? 0.22 + Math.sin(rig.time * 0.7) * 0.03 : Math.cos(rig.bob) * 0.006 * sp;
       rig.roll += (rollT - rig.roll) * (1 - Math.exp(-dt * 5));
-      camera.rotation.set(pitch + rig.kick, -yaw - Math.PI / 2, rig.roll);
+      camera.rotation.set(pitch + rig.kick - rig.climb * 0.1, -yaw - Math.PI / 2, rig.roll + rig.climb * 0.035);
       rig.cx = camera.position.x; rig.cy = camera.position.y; rig.cz = camera.position.z;
       rig.yaw = yaw; rig.pitch = pitch;
     } else {

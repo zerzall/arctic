@@ -13,7 +13,8 @@ import { CLASSES, perksFor } from '../classes.js';
 import { ITEMS, isBuyable, isWeaponId, isItemId, ammoPrice, DROP_TABLE } from '../items.js';
 import { angleDiff } from '../math.js';
 import { makeObb, circleOverlapsObb, MASK_MOVE } from '../geom.js';
-import { stepPlayerMovement } from '../movement.js';
+import { stepPlayerMovement, settleVertical } from '../movement.js';
+import { resetVertical } from '../jump.js';
 import { clearEdges, mergeEdges } from './core.js';
 import {
   fireWeaponShot, damageZombie, knockZombie, throwProjectile, rebuildBarricades, MAX_ZOMBIE_RADIUS,
@@ -55,7 +56,8 @@ export function createPlayer(game, info) {
     x: 0, y: 0, angle: 0, vx: 0, vy: 0, kbx: 0, kby: 0,
     state: 'alive',
     hp: perks.maxHp, maxHp: perks.maxHp, armor: perks.startArmor,
-    stamina: STAMINA_MAX, sprintLock: false, sprinting: false, jumpT: 0, z: 0,
+    stamina: STAMINA_MAX, sprintLock: false, sprinting: false,
+    zq: 0, vzq: 0, jumpCd: 0, climbT: 0, climbTo: -1, z: 0,
     speedMult: perks.speedMult, moveMult: 1, staminaMult: perks.staminaMult,
     slot: 1, lastSlot: 0,
     slots: [null, null, null], mag: [0, 0, 0], res: [0, 0, 0],
@@ -393,7 +395,7 @@ function doMelee(game, p) {
     if (d > MELEE_RANGE + z.radius) continue;
     const close = d < z.radius + PLAYER_RADIUS + 4;
     if (!close && Math.abs(angleDiff(p.angle, Math.atan2(dy, dx))) > MELEE_ARC / 2 + Math.atan2(z.radius, d)) continue;
-    if (!close && !game.world.lineOfSight(p.x, p.y, z.x, z.y)) continue;
+    if (!close && !game.world.lineOfSight(p.x, p.y, z.x, z.y, Math.max(p.z, z.z))) continue;
     const nx = d > 1e-6 ? dx / d : Math.cos(p.angle), ny = d > 1e-6 ? dy / d : Math.sin(p.angle);
     knockZombie(z, nx, ny, MELEE_KNOCKBACK * mult);
     damageZombie(game, z, MELEE_DAMAGE * mult, p.id, false);
@@ -541,8 +543,8 @@ function killPlayer(game, p) {
   p.reviver = 0;
   p.respawn = true;
   p.sprinting = false;
-  p.jumpT = 0;
-  p.z = 0;
+  // A corpse stays on the roof it died on; one killed mid-jump comes down.
+  settleVertical(p, game.world);
   p.kbx = 0;
   p.kby = 0;
   // The dead lose their loadout; respawn restores the starter guns.
@@ -562,8 +564,7 @@ export function respawnPlayer(game, p, i) {
   p.armor = Math.max(p.armor, p.perks.startArmor);
   p.stamina = STAMINA_MAX;
   p.sprintLock = false;
-  p.jumpT = 0;
-  p.z = 0;
+  resetVertical(p);
   p.respawn = false;
   p.bleedout = 0;
   p.revive = 0;
@@ -1057,7 +1058,12 @@ export function playerSnapshot(game, p) {
     lastSeq: p.lastSeq,
     sprintLock: p.sprintLock,
     freeMag: p.freeMag,     // the downed player's free pistol (so clients predict it exactly)
-    z: p.z,                 // feet height while jumping (0 on the ground)
-    jumpT: p.jumpT,         // jump state (shared/jump.js) — for exact prediction
+    z: p.z,                 // feet height (0 on the ground; jumping, climbing, on top of things)
+    // vertical state (shared/jump.js), exact — for prediction
+    zq: p.zq,
+    vzq: p.vzq,
+    jumpCd: p.jumpCd,
+    climbT: p.climbT,
+    climbTo: p.climbTo,
   };
 }

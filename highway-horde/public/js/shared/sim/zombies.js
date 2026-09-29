@@ -1,15 +1,17 @@
 // Zombie rules: wave spawning, targeting, flow-field steering with a swarm feel,
 // separation, attacks, and every special (bloater burst lives in combat.killZombie,
-// spitter acid, screamer buff, brute charge, boss slam).
+// spitter acid, screamer buff, brute charge, boss slam), and getting at survivors who
+// stand on top of things: grabbing from below, climbing up after them, or shoving them off.
 
 import {
   DT, PLAYER_RADIUS, CRAWLER_REACH_Z, TURRET, HP_GROWTH_PER_WAVE, SPEED_GROWTH_PER_WAVE, SPEED_GROWTH_CAP,
-  WAVE_ZOMBIES, SPAWN_PACING, OBJECTIVE_DAMAGE_MULT,
+  WAVE_ZOMBIES, SPAWN_PACING, OBJECTIVE_DAMAGE_MULT, ZOMBIE_REACH_Z, HEAVY_REACH_Z, HEAVY_SHOVE, STAND_PAD,
 } from '../constants.js';
 import { ZOMBIES, ZOMBIE_IDS } from '../zombies.js';
 import { FROST } from '../weapons.js';
-import { distToObb, closestPointOnObb, MASK_MOVE } from '../geom.js';
-import { MASK_HEAVY } from '../movement.js';
+import { distToObb, closestPointOnObb, pointInObb, MASK_MOVE } from '../geom.js';
+import { MASK_HEAVY, mantleSpot } from '../movement.js';
+import { JUMP_GRAVITY } from '../jump.js';
 import { turnTowards, TAU } from '../math.js';
 import { damagePlayer } from './players.js';
 import { OBJECTIVE_BIAS, OBJECTIVE_BIAS_BIG } from './core.js';
@@ -46,8 +48,17 @@ const BIG_RADIUS = 20;          // zombies this big are heavies: over low cover,
  */
 export const HEAVY_BODY_RADIUS = 28;
 
+/** A zombie only climbs after a survivor this close (px, centre to centre). */
+const CLIMB_NEAR = 260;
+/** Zombies this far apart in height don't jostle each other (one on a roof, one below). */
+const SEP_DZ = 30;
+/** A zombie this far below or above a survivor doesn't bump into them. */
+const PUSH_DZ = 40;
+
 const SPAWN_TYPES = ZOMBIE_IDS.filter((t) => t !== 'boss');
 const nearBuf = [];
+const ledgeBuf = [];
+const spot = { x: 0, y: 0 };
 const flowOut = { x: 0, y: 0 };
 const pt = { x: 0, y: 0 };
 
@@ -196,6 +207,8 @@ export function spawnZombie(game, type, x, y, elite = false) {
     flank: rng.range(-1, 1), phase: rng.range(0, TAU), wobble: rng.range(0.5, 1.3),
     stuckT: 0, progT: rng.range(0, 1), lastProg: Infinity, unstickT: 0, udx: 0, udy: 0,
     bumpB: null, bumpT: 0, hurtT: 0, flashT: 0, lastBy: 0, touched: 0, holding: false,
+    // height: feet z (0 on the ground), fall speed, and a climb in progress
+    z: 0, vz: 0, climbWait: 0, climbT: 0, climbDur: 0, climbO: null, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0,
   };
   game.zombies.push(z);
   return z;
@@ -254,7 +267,10 @@ function chooseTarget(game, z) {
     const dx = z.x - z.tgtX, dy = z.y - z.tgtY;
     const d = Math.hypot(dx, dy) || 1;
     const back = kind === TK_OBJECTIVE ? z.radius * 0.5 + 3 : 0;
-    z.tgtLos = game.world.lineOfMovement(z.x, z.y, z.tgtX + (dx / d) * back, z.tgtY + (dy / d) * back, z.body * 0.5, z.mask);
+    // Over whatever is no taller than the higher of the two (a survivor on a car roof is
+    // in the open for the zombies around the car; one on the roof walks straight off it).
+    const above = kind === TK_PLAYER ? Math.max(z.z, ref.z || 0) : z.z;
+    z.tgtLos = game.world.lineOfMovement(z.x, z.y, z.tgtX + (dx / d) * back, z.tgtY + (dy / d) * back, z.body * 0.5, z.mask, above);
   }
   if ((kind === TK_PLAYER || kind === TK_TURRET) && !z.tgtLos && pinnedOnObjective(game, z)) {
     z.tgtKind = TK_OBJECTIVE;
@@ -344,6 +360,10 @@ function updateZombie(game, z) {
     damageZombie(game, z, z.burnDps * DT, z.burnBy, false);
     if (z.dead) return;
   }
+  if (z.climbT > 0) {
+    stepClimb(game, z);
+    return;
+  }
   if (z.frozenT > 0) {
     z.frozenT -= DT;
     if (z.frozenT > 0) {
@@ -386,7 +406,10 @@ function stepNormal(game, z) {
   const def = z.def, sp = def.special;
   const type = z.type;
   const hasTarget = z.tgtKind !== TK_NONE;
-  const inReach = hasTarget && z.tgtGap <= def.attackRange;
+  // A survivor perched higher than this zombie can reach is not in reach from below.
+  const perched = z.tgtKind === TK_PLAYER ? z.tgt : null;
+  const needUp = !!perched && !canReachUp(z, perched);
+  const inReach = hasTarget && !needUp && (perched ? gapTo(game, z, perched) : z.tgtGap) <= def.attackRange;
   const targetsMobile = z.tgtKind === TK_PLAYER || z.tgtKind === TK_TURRET;
 
   // Specials that take over this tick.
@@ -406,7 +429,7 @@ function stepNormal(game, z) {
   z.holding = false;
   if (type === 'spitter' && z.tgtKind === TK_PLAYER) {
     const d = z.tgtDist;
-    if (z.specialCd <= 0 && d <= sp.range && game.world.lineOfSight(z.x, z.y, z.tgtX, z.tgtY)) spit(game, z);
+    if (z.specialCd <= 0 && d <= sp.range && game.world.lineOfSight(z.x, z.y, z.tgtX, z.tgtY, Math.max(z.z, z.tgt.z || 0))) spit(game, z);
     if (d < sp.keepAway * 0.8 && z.tgtLos) {
       // Too close: back off while facing the target.
       dirX = (z.x - z.tgtX) / (d || 1);
@@ -464,6 +487,18 @@ function stepNormal(game, z) {
   const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1)
     * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move;
   moveZombie(game, z, dirX * speed, dirY * speed, true);
+  // Pressed against the perch of a survivor out of reach: climb up after them.
+  if (needUp && def.climb && z.tgtDist < CLIMB_NEAR) {
+    const o = ledgeFor(game, z, perched);
+    if (o) {
+      z.climbWait += DT;
+      if (z.climbWait >= def.climb.delay) startClimb(game, z, o);
+    } else if (z.climbWait > 0) {
+      z.climbWait = Math.max(0, z.climbWait - DT);
+    }
+  } else {
+    z.climbWait = 0;
+  }
 
   // Facing: the target while fighting, else the way we're walking.
   if (hasTarget && (inReach || z.holding || z.tgtDist < 60)) {
@@ -486,7 +521,7 @@ function moveZombie(game, z, vx, vy, separate) {
     const n = game.zgrid.queryRadius(z.x, z.y, z.radius + MAX_ZOMBIE_RADIUS + 1, nearBuf);
     for (let i = 0; i < n; i++) {
       const o = nearBuf[i];
-      if (o === z || o.dead) continue;
+      if (o === z || o.dead || Math.abs(o.z - z.z) > SEP_DZ) continue;
       let dx = z.x - o.x, dy = z.y - o.y;
       const minD = z.radius + o.radius + 1;
       const d2 = dx * dx + dy * dy;
@@ -527,7 +562,7 @@ function moveZombie(game, z, vx, vy, separate) {
   const mvx = vx + sx * SEP_SPEED + kx, mvy = vy + sy * SEP_SPEED + ky;
   const ox = z.x, oy = z.y;
   const world = game.world;
-  z.touched = world.moveCircle(z, z.body, mvx * DT + cx, mvy * DT + cy, z.mask);
+  z.touched = world.moveCircle(z, z.body, mvx * DT + cx, mvy * DT + cy, z.mask, z.z);
   if (world.touchedBarricade >= 0) {
     const b = game.barricades[world.touchedBarricade];
     if (b && !b.dead) {
@@ -540,16 +575,143 @@ function moveZombie(game, z, vx, vy, separate) {
   // Walkers stop at the player's edge; they never shove players.
   let pushed = false;
   for (const p of game.players) {
-    if (p.state === 'dead') continue;
+    if (p.state === 'dead' || Math.abs(p.z - z.z) > PUSH_DZ) continue;
     pushed = pushOutOf(z, p.x, p.y, PLAYER_RADIUS) || pushed;
   }
   for (const t of game.turrets) {
     if (t.dead) continue;
     pushed = pushOutOf(z, t.x, t.y, TURRET.radius) || pushed;
   }
-  if (pushed) world.resolveCircle(z, z.body, z.mask);
+  if (pushed) world.resolveCircle(z, z.body, z.mask, z.z);
+  if (z.z > 0 || z.vz !== 0) stepHeight(game, z);
   z.vx = (z.x - ox) / DT;
   z.vy = (z.y - oy) / DT;
+}
+
+// -------------------------------------------------------------------------------------
+// Heights: standing on top of things, falling off them, climbing up after survivors
+
+/** How far above its own feet a zombie's swing reaches (SPEC §3.4). */
+function reachUp(z) {
+  if (z.type === 'crawler') return CRAWLER_REACH_Z;
+  if (z.type === 'brute' || z.boss) return HEAVY_REACH_Z;
+  return ZOMBIE_REACH_Z;
+}
+
+/** True if a survivor's feet are low enough for this zombie to hit them. */
+function canReachUp(z, p) {
+  return (p.z || 0) - z.z <= reachUp(z);
+}
+
+/**
+ * What a standing survivor stands on (a collider), or null on the ground or in the air;
+ * worked out once per tick per survivor.
+ */
+function perchOf(game, p) {
+  if (p._perchTick !== game.tick) {
+    p._perchTick = game.tick;
+    p._perch = null;
+    if (p.z > 0 && !p.vzq && !p.climbT) {
+      const top = game.world.groundAt(p.x, p.y, p.z);
+      if (top > 0 && top >= p.z - 0.5) p._perch = game.world.groundOb;
+    }
+  }
+  return p._perch;
+}
+
+/**
+ * Gap between a zombie and a survivor it can reach up to: to the survivor, or to the
+ * edge of whatever the survivor stands on (a walker at a car's bonnet grabs the legs of
+ * someone in the middle of the roof), whichever is less.
+ */
+function gapTo(game, z, p) {
+  let gap = Math.hypot(p.x - z.x, p.y - z.y) - z.radius - PLAYER_RADIUS;
+  const o = perchOf(game, p);
+  if (o && o.top > z.z + 1) {
+    const e = distToObb(o, z.x, z.y) - z.radius;
+    if (e < gap) gap = e;
+  }
+  return gap;
+}
+
+/**
+ * Gravity for a zombie up on something: it stays on the highest top under it and drops
+ * (no damage) when it walks or is knocked off the edge.
+ */
+function stepHeight(game, z) {
+  const g = game.world.groundAt(z.x, z.y, z.z);
+  if (z.vz === 0 && g >= z.z) return;
+  z.vz -= JUMP_GRAVITY * DT;
+  z.z += z.vz * DT;
+  if (z.z <= g) {
+    z.z = g;
+    z.vz = 0;
+    // landed half over an edge: out of whatever it now stands beside
+    game.world.resolveCircle(z, z.body, z.mask, z.z);
+  }
+}
+
+/**
+ * What a zombie pressed against a survivor's perch climbs: a standable collider it
+ * touches, higher than its feet and no higher than the survivor's, with room on top —
+ * the one the survivor stands on if it touches that, else the highest (a stepping stone).
+ */
+function ledgeFor(game, z, p) {
+  const world = game.world;
+  const reach = z.body + 6;
+  const n = world.index.query(z.x - reach, z.y - reach, z.x + reach, z.y + reach, MASK_MOVE, ledgeBuf);
+  let best = null, bestScore = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const o = ledgeBuf[i];
+    if (!o.stand || o.top <= z.z + 1 || o.top > (p.z || 0) + 1e-6) continue;
+    if (distToObb(o, z.x, z.y) > reach) continue;
+    mantleSpot(o, z.x, z.y, z.body + 2, spot);
+    if (world.circleBlockedAt(spot.x, spot.y, z.body, o.top)) continue;
+    const score = o.top + (pointInObb(o, p.x, p.y, STAND_PAD) ? 1000 : 0) - o.ci * 1e-6;
+    if (score > bestScore) {
+      bestScore = score;
+      best = o;
+    }
+  }
+  return best;
+}
+
+function startClimb(game, z, o) {
+  mantleSpot(o, z.x, z.y, z.body + 2, spot);
+  z.climbO = o;
+  z.climbDur = z.climbT = z.def.climb.time;
+  z.cx0 = z.x;
+  z.cy0 = z.y;
+  z.cz0 = z.z;
+  z.cx1 = spot.x;
+  z.cy1 = spot.y;
+  z.climbWait = 0;
+  z.swingT = 0;
+  z.swingRef = null;
+  z.vz = 0;
+  z.kvx = z.kvy = 0;
+}
+
+/** One tick of a climb: hands up the side first, then over the edge onto the top. */
+function stepClimb(game, z) {
+  z.climbT -= DT;
+  const k = z.climbT > 0 ? 1 - z.climbT / z.climbDur : 1;
+  const up = Math.min(1, k / 0.65);
+  const over = k < 0.4 ? 0 : (k - 0.4) / 0.6;
+  const ov = over * over * (3 - 2 * over);
+  const top = z.climbO.top;
+  z.z = z.cz0 + (top - z.cz0) * (1 - (1 - up) * (1 - up));
+  z.x = z.cx0 + (z.cx1 - z.cx0) * ov;
+  z.y = z.cy0 + (z.cy1 - z.cy0) * ov;
+  z.vx = z.vy = 0;
+  z.kvx = z.kvy = 0;
+  if (z.tgtKind !== TK_NONE) z.angle = turnTowards(z.angle, Math.atan2(z.cy1 - z.cy0, z.cx1 - z.cx0), TURN_RATE * DT);
+  if (z.climbT <= 0) {
+    z.climbT = 0;
+    z.z = top;
+    z.vz = 0;
+    z.climbO = null;
+  }
 }
 
 function pushOutOf(z, x, y, r) {
@@ -614,13 +776,22 @@ function resolveSwing(game, z) {
   const ref = z.swingRef;
   z.swingRef = null;
   switch (z.swingKind) {
-    case TK_PLAYER:
-      // A crawler's swipe goes under a survivor who is jumping (SPEC §3.4).
-      if (z.type === 'crawler' && ref.z > CRAWLER_REACH_Z) break;
-      if (ref.state !== 'dead' && Math.hypot(ref.x - z.x, ref.y - z.y) - z.radius - PLAYER_RADIUS <= reach) {
+    case TK_PLAYER: {
+      // The swipe goes under a survivor whose feet are out of reach: jumping over a
+      // crawler, or standing on a roof (SPEC §3.4).
+      if (!canReachUp(z, ref)) break;
+      const d = Math.hypot(ref.x - z.x, ref.y - z.y);
+      if (ref.state !== 'dead' && gapTo(game, z, ref) <= reach) {
         damagePlayer(game, ref, z.damage, z.x, z.y);
+        // A brute or the boss reaching up to a perch knocks the survivor off it.
+        if ((ref.z || 0) - z.z > ZOMBIE_REACH_Z && ref.state !== 'dead') {
+          const nx = d > 1e-3 ? (ref.x - z.x) / d : Math.cos(z.angle), ny = d > 1e-3 ? (ref.y - z.y) / d : Math.sin(z.angle);
+          ref.kbx += nx * HEAVY_SHOVE;
+          ref.kby += ny * HEAVY_SHOVE;
+        }
       }
       break;
+    }
     case TK_TURRET:
       if (!ref.dead && Math.hypot(ref.x - z.x, ref.y - z.y) - z.radius - TURRET.radius <= reach) damageTurret(game, ref, z.damage);
       break;
@@ -787,7 +958,7 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
     metric = fieldFor(game, z).distanceAt(z.x, z.y);
     if (!(metric < Infinity)) metric = z.tgtDist;
   }
-  const busy = inReach || z.holding || z.swingT > 0 || z.bumpT > 0 || z.tgtKind === TK_NONE;
+  const busy = inReach || z.holding || z.swingT > 0 || z.bumpT > 0 || z.climbWait > 0 || z.tgtKind === TK_NONE;
   if (!busy && z.lastProg - metric < z.speed * 0.25) z.stuckT += 1;
   else z.stuckT = Math.max(0, z.stuckT - 2);
   z.lastProg = metric;
@@ -812,6 +983,8 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
       const p = spawnPoint(game, rect, z.body, z.mask);
       z.x = p.x;
       z.y = p.y;
+      z.z = 0;
+      z.vz = 0;
       z.kvx = 0;
       z.kvy = 0;
       z.lastProg = Infinity;

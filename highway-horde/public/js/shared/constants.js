@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -47,9 +47,40 @@ export const START_CASH = 500;
 export const JUMP_HEIGHT = 48;
 export const JUMP_TIME = 36 / 60;
 export const JUMP_COOLDOWN = 6 / 60;
-export const JUMP_CLEAR = { guardrail: 22, barrier: 26, sandbags: 30 };
+// Pass-over-only obstacles (too thin to stand on): the feet clear them above this height.
+// 'fence' is a chain-link fence (a 'wall' at most 8 thick, drawn 40 high).
+export const JUMP_CLEAR = { guardrail: 22, fence: 40 };
+// Climbing (shared/jump.js): what can be stood on, and the feet height on top of it
+// (world units, from the rendered heights in render3d/world.js obstacleHeight, a little
+// under a car's roof line). Kinds with two shapes list [small, big] (a semi's cab /
+// trailer, a dumpster / shipping container); rocks follow their size (16..30). Anything
+// not listed (buildings, tall walls, fences, trees, pumps, tents, booths, pillars, the
+// overpass, barricades, water, the objective) can't be stood on.
+export const CLIMB_TOP = {
+  barrier: 26, sandbags: 30, rock: 0,
+  car: 40, suv: 54, pickup: 52, van: 70, hesco: 70, container: [62, 84],
+  truck: 100, bus: 100, tanker: 110, semi: [108, 124],
+};
+// Mantle: jumping (or falling) while moving into something standable whose top is at most
+// MANTLE_REACH above the feet pulls the player up onto it in MANTLE_TICKS (0.4 s). From the
+// ground that is anything up to the jump apex + MANTLE_REACH = 88 (a shipping container);
+// taller things (trucks, buses, trailers) only from a perch next to them. Low cover (a top
+// of MANTLE_MIN or less) is vaulted or landed on instead.
+export const MANTLE_REACH = 40;
+export const MANTLE_MIN = 32;
+export const MANTLE_TICKS = 24;
+// Standing: a player (or zombie) is on top of something while its centre is within
+// STAND_PAD of the footprint; past that it falls (gravity, no fall damage).
+export const STAND_PAD = 10;
 // Crawlers bite at ankle height: an airborne player this high (feet) is out of their reach.
 export const CRAWLER_REACH_Z = 14;
+// Zombies hit a survivor whose feet are at most this far above their own (grabbing legs
+// on a car roof, or anyone mid-jump); brutes and the boss reach HEAVY_REACH_Z and shove
+// the survivor off the perch (HEAVY_SHOVE px/s of knockback). Higher up, walkers,
+// runners and screamers climb after (ZOMBIES[type].climb).
+export const ZOMBIE_REACH_Z = 50;
+export const HEAVY_REACH_Z = 90;
+export const HEAVY_SHOVE = 420;
 
 export const DOWNED_SPEED = 45;
 export const BLEEDOUT_TIME = 30;           // seconds before a downed player dies

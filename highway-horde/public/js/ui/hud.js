@@ -22,6 +22,7 @@ import { createCompass } from './compass.js';
 import { createScoreboard } from './scoreboard.js';
 import { priceOf, itemName, shopState } from './shop.js';
 import { activeWeapon } from '../shared/sim/players.js';
+import { createCollisionWorld, ledgeAhead } from '../shared/movement.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
@@ -759,6 +760,14 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     }
   }
 
+  let climbWorld = null;
+  /** True when a jump straight ahead would mantle onto something (movement.js ledgeAhead). */
+  function canClimbAhead(me, pos, yaw) {
+    if (me.state !== 'alive' || me.climbT > 0 || me.vzq || !Number.isFinite(yaw) || !map || !map.obstacles) return false;
+    if (!climbWorld) climbWorld = createCollisionWorld(map);
+    return ledgeAhead(climbWorld, pos.x, pos.y, me.zq | 0, Math.cos(yaw), Math.sin(yaw)) >= 0;
+  }
+
   function updatePrompt(v, me, info) {
     let text = '';
     let prog = null;
@@ -817,6 +826,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
           text = info.shopOpen ? '' : `Press ${keys.shop} to open the shop at the supply station`;
         }
       }
+      // facing something you can climb onto
+      if (!text && canClimbAhead(me, pos, Number.isFinite(info.yaw) ? info.yaw : me.angle)) text = `${keys.jump} — climb`;
       if ((v.phase === 'prep' || v.phase === 'intermission') && !info.shopOpen) {
         const st = shopState(v, me, map);
         if (st.open) hintText = `Shop open — press ${keys.shop}`;

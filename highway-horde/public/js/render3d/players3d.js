@@ -7,7 +7,8 @@
 // reach for it with two-bone IK (firing hand on the grip, support hand on the foregrip),
 // so the hands stay on the gun through walk/strafe/run cycles, recoil, the reload (support
 // hand to the mag well, down to a pouch and back), the sprint low-ready and the melee
-// butt-stroke. Jumping: lifted by the snapshot's `z` with the legs tucked. Downed:
+// butt-stroke. Jumping / climbing: lifted by the snapshot's `z` with the legs tucked; on
+// top of something: lifted, standing. Downed:
 // propped on an elbow, pistol up. Dead: a corpse on its back. Each
 // has a weapon-light beam (cheap additive cone); the two nearest also get a real light.
 // Publishes each teammate's muzzle position in fx.muzzles for tracers (effects3d).
@@ -334,9 +335,11 @@ export function createPlayers3D(ctx) {
       s.sprint += ((p.sprinting ? 1 : 0) - s.sprint) * damp(6, dt);
       s.down += ((p.state === 'downed' ? 1 : 0) - s.down) * damp(5, dt);
       s.dead += ((p.state === 'dead' ? 1 : 0) - s.dead) * damp(4, dt);
-      // jump: tuck in quickly after take-off, stretch out again for the landing
+      // jump / climb: tuck in quickly after take-off, stretch out again for the landing;
+      // standing on a roof is standing (lifted by z, legs straight)
       const jz = p.state !== 'dead' && p.z > 0 ? p.z : 0;
-      s.air += ((jz > 6 ? 1 : 0) - s.air) * damp(jz > 6 ? 14 : 18, dt);
+      const up = p.state !== 'dead' && (p.climbT > 0 || (p.vzq !== undefined ? p.vzq !== 0 && jz > 3 : jz > 6));
+      s.air += ((up ? 1 : 0) - s.air) * damp(up ? 14 : 18, dt);
       // movement relative to the aim: forward/back and strafe components (smoothed)
       const rel = angleDiff(s.a, s.mvA);
       const mv = Math.min(1, s.spd / 40);

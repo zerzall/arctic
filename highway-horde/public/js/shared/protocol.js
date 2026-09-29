@@ -12,18 +12,20 @@
 //   event positions               i16, 0.5 px (tracer end points may lie off the map)
 //   player / turret / event angles u16; zombie / projectile angles u8
 //   0..1 values                   u8 (reloading/meleeing never round a non-zero to 0)
-//   player jump state (jumpT)     i8 whole ticks (exact, see jump.js); z is derived from it
+//   player vertical state         exact integers (jump.js): zq u16, vzq i8, jumpCd u8,
+//                                 climbT u8 (+ climbTo u16 while climbing); z = zq × Z_UNIT
+//   zombie height                 u8 whole units, only for zombies off the ground (flag bit 128)
 //   kinds and ids of data tables  u8 indices into WEAPON_IDS, ZOMBIE_IDS, ...
 // Events use a per-type binary schema; an event this file does not know (or one whose
 // values do not fit its schema) is sent as JSON instead, so nothing is dropped unless
 // that JSON is over MAX_JSON_EVENT_BYTES.
 
-import { PROTOCOL_VERSION, DT } from './constants.js';
+import { PROTOCOL_VERSION } from './constants.js';
 import { TAU, wrapAngle } from './math.js';
 import { WEAPON_IDS, PROJECTILE_KINDS } from './weapons.js';
 import { ZOMBIE_IDS } from './zombies.js';
 import { PICKUP_KINDS } from './items.js';
-import { jumpHeight } from './jump.js';
+import { Z_UNIT } from './jump.js';
 
 /** Message type tags (first byte of every binary message). */
 export const MSG = {
@@ -38,6 +40,8 @@ export const HAZARD_KINDS = ['fire', 'acid', 'flare'];
 export const MAX_INPUTS_PER_MESSAGE = 8;
 
 const NONE = 255;
+/** Zombie flags bit (wire only, above every ZFLAG): a height byte follows. */
+const ZF_HIGH = 128;
 const POS_OFFSET = 1024;
 const JSON_EVENT = 255;
 /**
@@ -559,8 +563,13 @@ function writePlayer(w, p) {
   w.u32(qInt(p.lastSeq, 0xffffffff));
   // The free pistol's mag (SPEC §4): NONE when the sender does not publish it.
   w.u8(Number.isInteger(p.freeMag) && p.freeMag >= 0 && p.freeMag < NONE ? p.freeMag : NONE);
-  // Jump state in whole ticks (> 0 airborne, < 0 landing cooldown); z follows from it.
-  w.i8(qSmall(num(p.jumpT) / DT, -128, 127));
+  // Vertical state (jump.js), exact: feet height, vertical speed, landing cooldown, climb.
+  w.u16(qInt(p.zq, 65535));
+  w.i8(qSmall(p.vzq, -128, 127));
+  w.u8(qInt(p.jumpCd, 255));
+  const climbT = qInt(p.climbT, 255);
+  w.u8(climbT);
+  if (climbT) w.u16(qInt(p.climbTo, 65535));
 }
 
 function readPlayer(r) {
@@ -614,8 +623,12 @@ function readPlayer(r) {
   };
   const freeMag = r.u8();
   if (freeMag !== NONE) rec.freeMag = freeMag;
-  rec.jumpT = r.i8() * DT;
-  rec.z = jumpHeight(rec.jumpT);
+  rec.zq = r.u16();
+  rec.vzq = r.i8();
+  rec.jumpCd = r.u8();
+  rec.climbT = r.u8();
+  rec.climbTo = rec.climbT ? r.u16() : -1;
+  rec.z = rec.zq * Z_UNIT;
   return rec;
 }
 
@@ -658,7 +671,7 @@ export function encodeSnapshot(snap) {
   const zombies = arr(snap.zombies);
   const nz = Math.min(zombies.length, 65535);
   w.u16(nz);
-  w.ensure(nz * 10);
+  w.ensure(nz * 11);
   for (let i = 0; i < nz; i++) {
     const z = zombies[i];
     w.u16(qInt(z.id, 65535));
@@ -667,7 +680,9 @@ export function encodeSnapshot(snap) {
     w.u16(qPos(z.y));
     w.u8(qAngle8(z.angle));
     w.u8(qUnit(z.hp));
-    w.u8(qInt(z.flags, 255));
+    const h = qInt(z.z, 255);
+    w.u8((qInt(z.flags, 255) & ~ZF_HIGH) | (h > 0 ? ZF_HIGH : 0));
+    if (h > 0) w.u8(h);
   }
 
   const projectiles = arr(snap.projectiles);
@@ -791,7 +806,7 @@ export function decodeSnapshot(buf) {
   const nz = r.u16();
   const zombies = new Array(nz);
   for (let i = 0; i < nz; i++) {
-    zombies[i] = {
+    const z = {
       id: r.u16(),
       type: kindAt(ZOMBIE_IDS, r.u8()),
       x: dqPos(r.u16()),
@@ -799,7 +814,13 @@ export function decodeSnapshot(buf) {
       angle: dqAngle8(r.u8()),
       hp: r.u8() / 255,
       flags: r.u8(),
+      z: 0,
     };
+    if (z.flags & ZF_HIGH) {
+      z.flags &= ~ZF_HIGH;
+      z.z = r.u8();
+    }
+    zombies[i] = z;
   }
   snap.zombies = zombies;
 

@@ -62,8 +62,9 @@ function checkPlayer(d, s) {
   assert.equal(d.respawn, s.respawn);
   assert.equal(d.ready, s.ready);
   assert.equal(d.sprintLock, !!s.sprintLock, `${w} sprintLock`);
-  // jump state: whole ticks, exactly; z follows from it
-  near(d.jumpT, s.jumpT || 0, 1e-9, `${w} jumpT`);
+  // vertical state: exact integers; z follows from zq
+  for (const k of ['zq', 'vzq', 'jumpCd', 'climbT']) assert.equal(d[k], s[k] || 0, `${w} ${k}`);
+  assert.equal(d.climbTo, s.climbT > 0 ? s.climbTo : -1, `${w} climbTo`);
   near(d.z, s.z || 0, 1e-6, `${w} z`);
 }
 
@@ -108,6 +109,7 @@ function checkSnapshot(d, s) {
     nearAngle(e.angle, z.angle, ANG8, 'zombie angle');
     near(e.hp, z.hp, U8, 'zombie hp');
     assert.equal(e.flags, z.flags);
+    near(e.z, Math.min(255, z.z || 0), 0.5, 'zombie z');
   });
   assert.equal(d.projectiles.length, s.projectiles.length);
   s.projectiles.forEach((p, i) => {
@@ -241,7 +243,7 @@ test('the new guns: weapon ids, frost flags, flare/frost/harpoon projectiles, fl
   assert.deepEqual(d.events, snap.events);
   assert.ok(EVENT_TYPES.includes('freeze'));
   assert.ok(buf.byteLength - base < 80, 'all binary, no JSON');
-  assert.equal(PROTOCOL_VERSION, 5);
+  assert.equal(PROTOCOL_VERSION, 6);
 });
 
 test('sprintLock round-trips both ways', () => {

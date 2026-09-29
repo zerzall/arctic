@@ -197,34 +197,66 @@ calls per tick). All randomness from a seeded rng.
 ```js
 export function createCollisionWorld(map);   // static colliders (obstacles, objective, water, bounds)
 world.setBarricades(list)                    // [{x, y, a}] or [{x, y, angle}] dynamic walls (BARRICADE size)
-export function stepPlayerMovement(p, cmd, dt, world);  // → 1 took off, -1 landed, 0 otherwise
+export function stepPlayerMovement(p, cmd, dt, world);  // → 1 took off, -1 landed (or climb done), 2 climb started, 0
 ```
 `p` needs `{ x, y, state, stamina, sprintLock, speedMult, moveMult }` (+ optional
-`staminaMult`, class perk: drain ÷ it, regen × it, and `jumpT`) and is mutated
-(x, y, stamina, sprintLock, sprinting, jumpT, z). `speedMult` comes from the class perk,
-`moveMult` from the held weapon. Players collide with static obstacles (solid or not),
-water, the objective, barricades and the map bounds — **not** with zombies or other
-players (so client prediction can be exact). Downed players move at DOWNED_SPEED and
-cannot sprint. The host sim must use this very function for player movement.
+`staminaMult`, class perk: drain ÷ it, regen × it, and the vertical state below) and is
+mutated (x, y, stamina, sprintLock, sprinting, zq, vzq, jumpCd, climbT, climbTo, z).
+`speedMult` comes from the class perk, `moveMult` from the held weapon. Players collide with
+static obstacles (solid or not), water, the objective, barricades and the map bounds —
+**not** with zombies or other players (so client prediction can be exact) — except
+obstacles their feet are above. Downed players move at DOWNED_SPEED and cannot sprint. The
+host sim must use this very function for player movement.
 
-**Jumping** (`shared/jump.js`, numbers in constants.js). `cmd.jump` while standing ready
-takes off; the jump is a fixed parabola JUMP_HEIGHT (48) units high and JUMP_TIME (0.6 s,
-36 ticks) long, then JUMP_COOLDOWN (0.1 s) on the ground before the next one (holding the
-button hops again after it). No double jump, full air control (steering and sprint work as
-on the ground), no fall damage; only 'alive' players take off (a player downed mid-air
-still comes down; the dead are put back on the ground). The whole state is `p.jumpT` (s): > 0 airborne time since take-off,
-< 0 landing cooldown left, 0 ready — always a whole number of ticks, so it travels exactly
-in snapshots; `p.z = jumpHeight(jumpT)` is the feet height. While the feet are at least an
-obstacle's clearance high the player passes over it: every collider has a `hop` height
-(geom.js; `jumpClearance(o)` from JUMP_CLEAR: guardrail 22, barrier 26, sandbags 30 — their
-rendered heights) and `Infinity` for everything else (cars and other vehicles, walls and
-fences, buildings, containers, rocks, water, the objective, player barricades).
-`world.resolveCircle(pos, r, mask, z)` / `moveCircle(pos, r, dx, dy, mask, z)` skip static
-colliders with `hop ≤ z`. A landing (and every airborne tick below the highest clearance)
-checks `world.circleBlockedAt(x, y, r, z)`; a player coming down inside low cover wedged
-against something else is moved by `world.unstick(pos, r, z)` to the nearest free spot
-(rings every 4 px up to 96 px in 8 fixed directions — exact constants, so every engine
-agrees). Knockback moves use the player's `z` too. Bots never jump.
+**Vertical state** (`shared/jump.js`, numbers in constants.js). Heights are whole multiples
+of `Z_UNIT` = JUMP_HEIGHT / (JUMP_TICKS / 2)² (≈ 0.148 units), so the state is five integers
+that travel exactly in snapshots: `zq` feet height in Z_UNITs (`z = zq × Z_UNIT` world
+units), `vzq` vertical speed in Z_UNITs per tick (0 = standing, on the ground or on top of
+something; airborne it is always odd, so never 0), `jumpCd` landing-cooldown ticks, `climbT`
+mantle ticks left and `climbTo` the collider being climbed (index into
+`world.colliders`, the same list on host and clients; -1 when not climbing). Each tick
+(`stepJump`, then the move): `zq += vzq; vzq -= 2`, landing on the highest standable top
+under the centre that the feet were above on the previous tick (0 = the ground); a jump
+from standing sets `vzq = JUMP_TICKS - 1 = 35`, which traces exactly the old fixed parabola
+(after n ticks zq = n × (36 − n): JUMP_HEIGHT 48 at the apex, down after JUMP_TIME 0.6 s),
+then JUMP_COOLDOWN (0.1 s, 6 ticks) before the next (holding the button hops again). A fall
+starts at `vzq = -1` (n² Z_UNITs after n ticks), speed capped at -127. No double jump, full
+air control, no fall damage; only 'alive' players take off (a player downed mid-air still
+comes down; the dead are settled onto whatever is under them — a corpse stays on a roof).
+
+**Tops.** Every map collider has `top` (world units, exactly `topQ × Z_UNIT`), `topQ` and
+`stand` (geom.js `mapColliders`, from jump.js `standTop` / `jumpClearance`):
+- standable (CLIMB_TOP, the rendered heights of render3d/world.js, a car a little under
+  its roof line): barrier 26, sandbags 30, rock 16..30 (by size), car 40, suv 54, pickup
+  52, van 70, hesco 70, container 62 (dumpster-sized) / 84 (shipping container), truck
+  100, bus 100, tanker 110, semi 108 (cab) / 124 (trailer);
+- pass-over only (JUMP_CLEAR, too thin to stand on): guardrail 22, chain-link fence (a
+  'wall' ≤ 8 thick) 40;
+- `Infinity` for everything else: buildings, real walls, trees, pumps, tents, booths,
+  pillars, overpass piers and ramps, water, the objective, player barricades.
+
+`world.resolveCircle(pos, r, mask, z)` / `moveCircle(pos, r, dx, dy, mask, z)` /
+`circleBlockedAt(x, y, r, z)` skip static colliders with `top ≤ z`: the feet above an
+obstacle pass over it, and on top of something it no longer blocks (a taller neighbour
+still does; a lower one is simply walked onto). **Standing**: `world.groundQ(x, y, zq)` is
+the highest standable `topQ ≤ zq` whose footprint (grown by STAND_PAD 10) contains the
+centre; a standing player whose ground drops below its feet (walked off the edge) starts to
+fall next tick. A landing (and every airborne tick) checks `circleBlockedAt`; a player
+coming down inside something wedged against something else is moved by
+`world.unstick(pos, r, z)` to the nearest free spot (rings every 4 px up to 96 px in 8 fixed
+directions — exact constants, so every engine agrees). Knockback moves use the player's `z`.
+
+**Mantling.** After the move, an 'alive' player who is airborne or pressing `jump`, and
+moving, climbs the nearest standable collider (`findLedge`) that the body touches (within
+3 px) and the move input pushes into (within ~60° of straight in), whose top is higher
+than MANTLE_MIN (32: low cover is vaulted or landed on, not climbed) and than the feet, by
+at most MANTLE_REACH (40), with room for the body on top (`circleBlockedAt` at its top).
+From the ground: a car right away, a van, hesco or shipping container from the top of a
+jump (≤ 48 + 40 = 88); trucks, buses, trailers only from a perch next to them. The climb
+takes MANTLE_TICKS (24, 0.4 s): the feet rise to the top by 8 ticks before the end, the
+body moves over onto the spot `mantleSpot` (18 px in from the edge) in the last 12 — no
+collisions, no walking or sprinting meanwhile — then it stands on top with the landing
+cooldown. Bots never jump or climb.
 
 Zombies collide with obstacles/water/objective/barricades/bounds, and are separated from
 each other (soft push) and from players (they stop at attack distance; players are not
@@ -292,8 +324,26 @@ In attack range it attacks at attackRate (damage to player: armour absorbs ARMOR
 of it while armour lasts; to turrets/barricades/objective: raw). A zombie that bumps
 into a barricade attacks the barricade. Specials: see comments in `zombies.js`
 (bloater burst, spitter acid lob + pool, screamer buff, brute charge, boss slam).
-Burning zombies take burn dps and run 15% faster. A crawler's swipe misses a player whose
-feet are higher than CRAWLER_REACH_Z (14) when it lands (jumping over crawlers).
+Burning zombies take burn dps and run 15% faster.
+
+**Survivors up on things.** A swipe (checked when it starts and when it lands) reaches a
+player whose feet are at most `reach` above the zombie's own: CRAWLER_REACH_Z 14 for
+crawlers (jumping over them works), HEAVY_REACH_Z 90 for brutes and the boss, else
+ZOMBIE_REACH_Z 50 (anyone mid-jump, and a car roof). The horizontal reach to a standing
+player is measured to the player or to the edge of what they stand on, whichever is nearer
+(a walker at the bonnet grabs the legs of someone in the middle of the roof). A brute or
+the boss hitting a player more than ZOMBIE_REACH_Z above it shoves them (HEAVY_SHOVE 420
+px/s of knockback) off the perch. A player out of reach: the zombie's line of movement
+ignores obstacles no taller than the player's feet, so it walks straight at the perch;
+walkers, runners and screamers pressed against a standable collider (topped above their
+feet, no higher than the player's) for `climb.delay` s (walker 1.4, runner 0.4, screamer
+1.0; zombies.js) climb it in `climb.time` s (0.8 / 0.45 / 0.7) — the one the player stands
+on, else the highest (a stepping stone). Crawlers, bloaters and spitters never climb
+(spitter acid still reaches: its line of sight passes over whatever the target stands on).
+Zombies have a height `z` (float, host only): they move and collide at it, stand on the
+highest top under them and fall off edges with the players' gravity (no damage); a zombie
+whose target is lower walks straight off. Zombies more than 30 apart in height don't
+separate each other; more than 40 from a player's feet, they don't bump into them.
 
 **Players.** Classes from `classes.js` set maxHp, start armour, weapons, perks.
 Slots: 3 (`WEAPON_SLOTS`). Start: slot0 pistol, slot1 class weapon, slot2 empty, cash
@@ -302,7 +352,13 @@ reloading. Empty mag + fire → auto-reload (emit 'empty' once). `reload` edge s
 reload (reload time × perks.reloadMult); switching weapons cancels a reload. Minigun
 needs `spinup` seconds of holding fire first. Hitscan: `pellets` rays with random spread,
 each ray stops at the first `solid` obstacle, damages up to `pierce` zombies along it
-(sorted by distance), damage × falloff × perks.damageMult, knockback. Friendly fire off
+(sorted by distance), damage × falloff × perks.damageMult, knockback. **From up high**
+(the 2D rule, the same on host and client prediction): a shooter's rays, rails, chains,
+melee/saw line of sight and projectiles (`pr.above`, kept for the projectile's life) pass
+over every obstacle no taller than the shooter's feet (`raycastSolid(…, above)`), so from a
+roof the SUV next door no longer blocks; a zombie standing on the obstacle that stopped a
+ray (its `z` ≥ that top, `roofReach()` in combat.js) is still hit — it is above the wall.
+Bots and spitters see over whatever the higher of the two stands on. Friendly fire off
 by default (on: 25% damage to players, never downed by it). `chain`/`rail`/`flame`/
 `projectile` per weapons.js. Weapon extras (all in weapons.js, client prediction mirrors
 the fire timing): `burst` fires that many rounds per trigger pull at `rate`, then waits
@@ -473,10 +529,10 @@ Snapshot = {
     earned,                 // total cash earned this game (end-screen stat)
     sprintLock,             // true while exhausted (must regain STAMINA_MIN_TO_SPRINT) — for exact prediction
     freeMag,                // rounds in the free pistol (fired while downed with no pistol) — for exact prediction
-    z,                      // feet height while jumping (world units), 0 on the ground
-    jumpT,                  // jump state (§3.2): > 0 airborne s, < 0 landing cooldown — for exact prediction
+    z,                      // feet height (world units): jumping, climbing, on top of something; 0 on the ground
+    zq, vzq, jumpCd, climbT, climbTo,  // vertical state (§3.2), exact integers — for exact prediction
   } ],
-  zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/ } ],
+  zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/, z /*feet height, 0 on the ground*/ } ],
   projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
   pickups: [ { id, kind /*PICKUP_KINDS*/, x, y, weapon /*crate gun id or null*/ } ],
   turrets: [ { id, owner, x, y, angle, hp /*0..1*/, ammo /*0..1*/, firing } ],
@@ -548,9 +604,13 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 5 (3 added the jump state and, separately, the new guns' fields; both
-together are 4; 5 appends the belt-fed HMG to the weapon table): an InputCmd's buttons carry a `jump` bit, and each snapshot player
-ends with its `jumpT` as a signed byte of whole ticks (`z` is derived from it on decode).
+u8. PROTOCOL_VERSION 6 (3 added the jump state and, separately, the new guns' fields; both
+together are 4; 5 appends the belt-fed HMG to the weapon table; 6 replaces the jump byte
+with the climbing vertical state): an InputCmd's buttons carry a `jump` bit (the climb key
+too); each snapshot player ends with its vertical state, exact — `zq` u16, `vzq` i8,
+`jumpCd` u8, `climbT` u8 and, only while climbing, `climbTo` u16 (`z` = zq × Z_UNIT on
+decode); a zombie off the ground sets bit 128 of its flags byte (above every ZFLAG) and
+appends its height as a u8 of whole units (5–6 bytes a player, 1 per zombie up high).
 Weapon/zombie/projectile/pickup kinds as indices into the arrays in the data files.
 Events may be packed as compact JSON (with numbers rounded to 1 decimal) inside the
 buffer; an event whose JSON exceeds `MAX_JSON_EVENT_BYTES` (1 KB) is dropped. A 6-player, 250-zombie snapshot with ~60 events must stay under 14 KB. First byte
@@ -679,8 +739,9 @@ r.screenToWorld(sx, sy) → {x, y}
 r.worldToScreen(x, y)  → {x, y}
 r.getCamera()          → {x, y}       // world point at the screen centre (read-only copy):
                                       //   the UI passes it to audio as the listener
-   // A jumping player (z > 0) is drawn up to 16 % bigger with its shadow shrunk, faded and
-   // pushed away from the body.
+   // A jumping / climbing player is drawn up to 16 % bigger with its shadow shrunk, faded
+   // and pushed away from the body; one standing on top of something (z > 0) up to 14 %
+   // bigger with the shadow at its feet; a zombie up on something up to 16 % bigger.
 r.resize()                            // call on window resize (handles devicePixelRatio)
 r.setQuality(q)
 r.destroy()
@@ -801,7 +862,10 @@ audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
 // update() also plays 'jump' / 'land' (synthesised grunt + scuff, boot thud + grit) when a
-// player's `z` leaves / returns to 0 — the local one from its predicted view at once.
+// player leaves / returns to its feet (vzq), 'climb' (palms on the ledge, a strained grunt,
+// boots scrabbling) when a climb starts, 'land_roof' (a hollow sheet-metal thunk) for a
+// landing up on something and 'roofstep' every ~60 px walked on a roof — the local one
+// from its predicted view at once.
 // First person: pass `yaw` in addEvents/update opts (see §7.5 "Audio orientation";
 // exported helpers orientedPan(dx, dy, yaw) and rearShade(behind, maxLp) are unit-tested).
 // addEvents/update listener: opts {x, y} is the camera centre (the spectated teammate
@@ -936,7 +1000,14 @@ predicted on clients) at eye height, looking along `look.yaw` / `look.pitch`, wi
 bob, landing of recoil kicks and screen shake (respect settings.screenShake). Jumping: the
 eye rides `z` (no walk bob in the air) and a touch-down kicks a ~3-unit spring dip; the
 viewmodel dips a little on take-off and more on landing, then springs back; teammates
-(players3d) are lifted by `z` with their knees tucked. Downed:
+(players3d) are lifted by `z` with their knees tucked. Climbing: the eye rides `z` up the
+0.4 s climb (no bob) with the view dipped ~6° toward the ledge and rolled a little, a
+smaller dip when it ends; the gun drops ~7 units and tilts down out of the way, then comes
+back. On top of something the eye is `z` + 52 as usual; teammates and zombies (zombies3d)
+standing up there are lifted by their `z` (standing: legs straight; a zombie killed up
+there falls on the roof), and name tags follow. The HUD prompt shows "SPACE — climb"
+(the jump key per input mode) while facing, within 40 px, a ledge a jump would mantle
+(movement.js `ledgeAhead`). Downed:
 eye 16, slight roll. Dead/spectating: a smooth third-person chase camera behind a living
 teammate (their angle), or a slow orbit over the objective when nobody is alive.
 
@@ -1063,9 +1134,11 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
   the two bots ready after them and both score kills while the human stands still.
   Scenario a readies up with N and checks that Space lifts the player (Space was 'ready'
   before jumping existed).
-  Scenario g (fps-solo, 240 s budget): pointer lock (clicking again if a busy page lets
+  Scenario g (fps-solo, 330 s budget): pointer lock (clicking again if a busy page lets
   the first request lapse), W walks along the view, Space jumps (the view's
-  local z and the camera rise, then land), losing the lock opens the
+  local z and the camera rise, then land), W + Space into the nearest car / van /
+  container with a clear run climbs onto it (the climb shows in the view, the player
+  stays on the roof and the camera sits ~52 above it), losing the lock opens the
   pause menu, turn toward the nearest zombie through `__HH.look` and kill it, End Game and
   a second game (no leaked overlay canvases). Scenario h (fps-relay): 2 players over the
   relay in first person — each camera sees the other, the client's W moves it along

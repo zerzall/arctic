@@ -11,7 +11,7 @@ import { ZOMBIE_IDS } from '../../public/js/shared/zombies.js';
 import { PICKUP_KINDS } from '../../public/js/shared/items.js';
 import { CLASSES, perksFor } from '../../public/js/shared/classes.js';
 import { STAMINA_MAX, DEFAULT_SETTINGS } from '../../public/js/shared/constants.js';
-import { jumpHeight } from '../../public/js/shared/jump.js';
+import { Z_UNIT, JUMP_VQ, JUMP_TICKS } from '../../public/js/shared/jump.js';
 
 const DT = 1 / 60;
 const MAX_QUEUE = 6;
@@ -84,13 +84,17 @@ export function samplePlayer(id, rng = createRng(id)) {
     frags: rng.int(0, 8), molotovs: rng.int(0, 3), turrets: rng.int(0, 2), barricades: rng.int(0, 4),
     selfRevive: rng.chance(0.5), bleedout: rng.range(0, 30), revive: rng.range(0, 1), reviver: rng.int(0, 6),
     respawn: rng.chance(0.3), ready: rng.chance(0.5), lastSeq: rng.int(0, 1e6), sprintLock: rng.chance(0.3),
-    // jump state: whole ticks, airborne (> 0) or landing cooldown (< 0); z follows from it
-    ...jumpState(rng.int(-6, 35) / 60),
+    // vertical state (jump.js): mid-jump, on a roof, on a cooldown or mid-climb
+    ...vertState(rng),
   };
 }
 
-function jumpState(jumpT) {
-  return { jumpT, z: jumpHeight(jumpT) };
+function vertState(rng) {
+  const n = rng.int(0, JUMP_TICKS - 1);
+  const zq = rng.chance(0.3) ? rng.int(0, 900) : n * (JUMP_TICKS - n);
+  const vzq = rng.chance(0.5) ? JUMP_VQ - 2 * n : 0;
+  const climbT = rng.chance(0.2) ? rng.int(1, 24) : 0;
+  return { zq, vzq, jumpCd: rng.int(0, 6), climbT, climbTo: climbT ? rng.int(0, 400) : -1, z: zq * Z_UNIT };
 }
 
 /**
@@ -106,6 +110,7 @@ export function bigSnapshot(nEvents = 60, seed = 3) {
     zombies.push({
       id: 1 + i * 7, type: rng.pick(ZOMBIE_IDS), x: rng.range(0, 4000), y: rng.range(0, 3000),
       angle: rng.range(-Math.PI, Math.PI), hp: rng.range(0, 1), flags: rng.int(0, 31),
+      z: rng.chance(0.1) ? rng.int(1, 124) : 0,
     });
   }
   const events = [];
@@ -288,7 +293,8 @@ export class FakeGame {
         ammo: [[12, -1], [30, 270], [0, 0]], reloading: 0, spin: 0, firing: false, meleeing: 0,
         cash: p.cash, kills: 0, damage: 0, revives: 0, downs: 0, frags: 0, molotovs: 0, turrets: 0,
         barricades: 0, selfRevive: false, bleedout: 0, revive: 0, reviver: 0, respawn: p.state === 'dead',
-        ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock, z: p.z || 0, jumpT: p.jumpT || 0,
+        ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock, z: p.z || 0,
+        zq: p.zq | 0, vzq: p.vzq | 0, jumpCd: p.jumpCd | 0, climbT: p.climbT | 0, climbTo: p.climbT ? p.climbTo : -1,
       })),
       zombies,
       projectiles: [{ id: 1, kind: 'rocket', x: cx + (t * 300) % 800, y: cy, angle: 0 }],

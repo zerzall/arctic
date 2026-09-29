@@ -6,18 +6,23 @@
 // mass: 0..1 knockback resistance (1 = immovable).
 // weight(wave): relative spawn weight on a wave; 0 means it never spawns there.
 // special: behaviour-specific numbers, see comments per type.
+// climb: { delay, time } — a survivor perched out of reach (SPEC §3.4): after pressing
+//   against the perch for `delay` s it climbs up in `time` s; absent = never climbs
+//   (crawlers, bloaters and spitters wait below, brutes and the boss reach up and shove).
 // look: drawing hints for the renderer (skin/clothes/scale).
 
 export const ZOMBIES = {
   walker: {
     name: 'Walker', hp: 70, speed: [52, 74], radius: 14, damage: 12, attackRate: 1.0, attackRange: 10,
     mass: 0.2, cash: 10, score: 10,
+    climb: { delay: 1.4, time: 0.8 },
     weight: (w) => Math.max(10, 100 - w * 4),
     look: { skin: '#7c9a6d', clothes: ['#5d4037', '#37474f', '#4e342e', '#455a64', '#6d4c41', '#283593'], scale: 1 },
   },
   runner: {
     name: 'Runner', hp: 45, speed: [150, 178], radius: 12, damage: 8, attackRate: 1.4, attackRange: 8,
     mass: 0.1, cash: 15, score: 15,
+    climb: { delay: 0.4, time: 0.45 },
     weight: (w) => (w < 2 ? 0 : 28 + w * 1.8),
     look: { skin: '#a3b88a', clothes: ['#c62828', '#1565c0', '#2e7d32', '#f9a825'], scale: 0.9 },
   },
@@ -47,6 +52,7 @@ export const ZOMBIES = {
   screamer: {
     name: 'Screamer', hp: 110, speed: [84, 96], radius: 13, damage: 8, attackRate: 1.0, attackRange: 8,
     mass: 0.2, cash: 35, score: 35,
+    climb: { delay: 1.0, time: 0.7 },
     weight: (w) => (w < 6 ? 0 : 3 + w * 0.3),
     // Screams every `cooldown` s: zombies within `radius` move `speedBuff`x faster for `duration` s.
     special: { radius: 240, speedBuff: 1.4, duration: 5, cooldown: 8 },
