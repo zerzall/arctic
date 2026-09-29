@@ -5,11 +5,12 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/",
+    "test": "node --test --test-timeout=30000 \"specs/unit/**/*.spec.js\" \"specs/integration/**/*.spec.js\"",
+    "test:e2e": "node specs/e2e/run.e2e.mjs",
     "share": "node scripts/share.js"
   },
   "dependencies": {

@@ -1,0 +1,60 @@
+{
+ "t": "lobby",
+ "code": "KQXZ",
+ "phase": "lobby",
+ "hostId": 0,
+ "you": 2,
+ "settings": {
+  "rounds": 3,
+  "roundTime": 120,
+  "suddenDeath": true,
+  "mode": "ffa",
+  "theme": "random",
+  "layout": "classic",
+  "blocks": "normal",
+  "items": "normal",
+  "locked": false
+ },
+ "players": [
+  {
+   "id": 0,
+   "name": "Mom",
+   "color": 0,
+   "team": 0,
+   "isBot": false,
+   "level": null,
+   "connected": true,
+   "isHost": true,
+   "wins": 0,
+   "waiting": false
+  },
+  {
+   "id": 1,
+   "name": "Boomer",
+   "color": 1,
+   "team": 1,
+   "isBot": true,
+   "level": "normal",
+   "connected": true,
+   "isHost": false,
+   "wins": 0,
+   "waiting": false
+  },
+  {
+   "id": 2,
+   "name": "Dad",
+   "color": 2,
+   "team": 0,
+   "isBot": false,
+   "level": null,
+   "connected": true,
+   "isHost": false,
+   "wins": 0,
+   "waiting": false
+  }
+ ],
+ "round": {
+  "n": 0,
+  "winsNeeded": 3
+ }
+}
