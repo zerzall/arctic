@@ -131,6 +131,29 @@ function flickerMaterial(uniforms, map) {
 }
 
 /**
+ * Alpha-tested foliage that keeps its coverage at a distance: mipmapping averages the
+ * needles' alpha toward the gaps, so past ~150 units most texels fell under the test and a
+ * card broke into a few flickering specks. The alpha is scaled up with the mip level
+ * (texels per pixel), which holds each card about as solid as it looks up close.
+ */
+function coverageLeaves(m, key) {
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `
+      #ifdef USE_MAP
+      {
+        vec2 hhTs = vec2(textureSize(map, 0));
+        vec2 hhDx = dFdx(vMapUv * hhTs), hhDy = dFdy(vMapUv * hhTs);
+        float hhLod = max(0.0, 0.5 * log2(max(dot(hhDx, hhDx), dot(hhDy, hhDy))));
+        diffuseColor.a *= 1.0 + hhLod * 0.32;
+      }
+      #endif
+      #include <alphatest_fragment>`);
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
+
+/**
  * Create the world's materials for every tier.
  * @param {{ detail: THREE.DataArrayTexture, atlas: THREE.Texture, chain: THREE.Texture, leaves: THREE.Texture }} tex
  * @returns {{ get(bucket, tier): THREE.Material, uniforms: object, dispose(): void }}
@@ -162,9 +185,9 @@ export function createWorldMaterials(tex) {
     fence: track(new THREE.MeshStandardMaterial({
       vertexColors: true, map: tex.chain, transparent: true, alphaTest: 0.02, depthWrite: false, side: THREE.DoubleSide, roughness: 0.55, metalness: 0.7, opacity: 0.85,
     })),
-    leaves: track(new THREE.MeshStandardMaterial({
+    leaves: track(coverageLeaves(new THREE.MeshStandardMaterial({
       vertexColors: true, map: tex.leaves, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.78, metalness: 0, envMapIntensity: 0.4,
-    })),
+    }), 'hh-leaves-v2')),
   };
   // 'low': no detail layer, no clear coat, cheap lighting models
   const low = {
@@ -177,7 +200,7 @@ export function createWorldMaterials(tex) {
     blink: hi.blink,
     flicker: hi.flicker,
     fence: track(new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.chain, transparent: true, alphaTest: 0.02, depthWrite: false, side: THREE.DoubleSide })),
-    leaves: track(new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.leaves, alphaTest: 0.45, side: THREE.DoubleSide })),
+    leaves: track(coverageLeaves(new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.leaves, alphaTest: 0.45, side: THREE.DoubleSide }), 'hh-leaves-low-v2')),
   };
   return {
     uniforms,

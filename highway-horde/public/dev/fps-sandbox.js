@@ -5,7 +5,8 @@
 // URL params: map (highway|truckstop|bridge|checkpoint), seed, quality=ultra|high|low, bots=N (0..5),
 // tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
-// graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0.
+// graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
+// vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections).
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
 // stats(), step(n), recreate(mapId), renderer, game.
 
@@ -38,6 +39,8 @@ const gfx = {
   antialias: ['smaa', 'fxaa', 'off'].includes(params.get('aa')) ? params.get('aa') : 'smaa',
   filmGrain: params.get('grain') !== '0',
   vignette: params.get('vignette') !== '0',
+  volumetrics: params.get('vol') !== '0',
+  reflections: params.get('refl') !== '0',
 };
 
 const canvas = document.getElementById('game');

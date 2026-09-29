@@ -952,6 +952,8 @@ actor-kit.js    PartBuilder (merge primitives into one vertex-coloured geometry)
 actor-rig.js    GPU-skinned InstancedMesh rig (pose rows in a float DataTexture per type)
 actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates
 fx-core.js      shared particle / streak / glow pools (3 draw calls), acquireFx(ctx)
+post.js         post-processing chain, dynamic resolution, GPU timer (see below)
+post-atmos.js   atmosphere + wet-ground reflections pass of the chain (see below)
 ```
 Each sub-system is created as `createX(ctx)` and returns
 `{ update(view, frame), addEvents?(events, opts), setQuality?(q), dispose() }`.
@@ -1028,9 +1030,11 @@ yaw magnetism toward the zombie nearest the crosshair, `look.js` AIM_ASSIST), mi
 (default true). `ui/main.js` imports render3d (three.js, ~1.3 MB) in the background after
 the title screen is up; a game that starts before it arrives waits for it (`app.js`).
 
-**First-person look & feel.** Night atmosphere: sky dome with stars/moon, fog tinted by
+**First-person look & feel.** Night atmosphere: sky dome with stars/moon, two distant mountain ridges and a dead
+city skyline (sparse lit windows, orange glow) over the tree line, fog tinted by
 `map.ambient`, dim moonlight + hemisphere light, the local flashlight (SpotLight from the
-camera; shadows only on 'high'), teammates' flashlights as cheap additive cones, map
+camera; shadows only on 'high'; a hot centre fading softly to the rim, irradiance capped
+inside ~2 m so near walls never wash out — patched into three's light chunk in lights.js), teammates' flashlights as cheap additive cones, map
 lights/fires/muzzle flashes/explosions through the fixed light pool (never add/remove
 lights at runtime — shader recompiles). Everything procedural (no model or texture files):
 PBR materials with generated detail textures (wet asphalt with reflective puddles,
@@ -1051,10 +1055,18 @@ renderScale 'auto' (phones included, at the owner's request — they run hot; 'a
 them playable). Sub-systems treat any quality other than 'low' as high.
 
 **Post-processing & graphics settings** (`render3d/post.js`). The world renders into a
-linear half-float target: world → GTAO at half resolution (high/ultra, `ao`) → viewmodel
+linear half-float target: world → GTAO at half resolution (high/ultra, `ao`) → atmosphere
+(high/ultra: `volumetrics` = analytic ground mist drifting in patches + the light pool
+scattering in the air, integrated in closed form per light up to the depth, lamps only
+below their shade, and on ultra the flashlight beam marched through it — half resolution
+on ultra, quarter on high; `reflections` = screen-space reflections on puddles (the ground
+shader's own puddle mask rebuilt from depth), wet asphalt (vertical streak blur) and water,
+rays that escape picking up the brightest sky pixels they crossed — half res / 28 steps on
+ultra, quarter / 16 on high; a depth-aware upsampling composite; 2–3 draw calls) → viewmodel
 (depth cleared) → bloom (threshold 1.2, soft knee from ~0.75: glowing things use values
 2–6) → grade (ACES + sRGB, contrast/saturation/lift-gamma-gain, `vignette`, `filmGrain`,
-dither) → SMAA or FXAA (`antialias` 'smaa' | 'fxaa' | 'off'; low forces FXAA unless off)
+dither, and colour fringes + desaturation at the edges while the local player is hurt,
+not on low) → SMAA or FXAA (`antialias` 'smaa' | 'fxaa' | 'off'; low forces FXAA unless off)
 → upscale + sharpen when the internal resolution is below 1. `settings.renderScale` is
 'auto' (dynamic resolution in 0.05 steps holding 58–60 fps, with hysteresis) or a fixed
 0.5–1 fraction of the tier's pixel-ratio cap (ultra min(dpr, 3), high min(dpr, 2), low
@@ -1064,7 +1076,8 @@ never throws (a failing chain falls back to a direct render, and is dropped afte
 failures). `settings.uiScale` (from the UI) scales the overlay. `r.stats` exposes
 drawCalls/triangles (post passes included), sceneCalls/sceneTriangles, fps, renderScale,
 pixelRatio and gpuMs (with EXT_disjoint_timer_query_webgl2). UI presets: Ultra (all
-effects), High (AO off), Low (no bloom/AO/grain, FXAA); prefs validate every field.
+effects), High (AO and reflections off), Low (no bloom/AO/grain/volumetrics/reflections,
+FXAA); prefs validate every field.
 Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
 235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms. The world
 splits its static meshes into 1600-unit cells (the heavy 'std'/'paint' buckets into 1000 on

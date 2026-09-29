@@ -5,6 +5,9 @@
 //   → ambient occlusion (GTAO at half resolution, normals rebuilt from that depth: no
 //     second geometry pass; 'high'/'ultra' only). It runs BEFORE the viewmodel so the gun
 //     is never darkened by the wall behind it.
+//   → atmosphere + wet-ground reflections (post-atmos.js: ground mist and the light pool
+//     scattering in the air, screen-space reflections on puddles, wet asphalt and water;
+//     'high'/'ultra' only, `volumetrics` / `reflections`)
 //   → viewmodel (own scene/camera, depth cleared: never clips into walls, still gets
 //     bloom, grading and anti-aliasing)
 //   → bloom (UnrealBloomPass on the HDR energy above ~1.2 with a soft knee from ~0.75:
@@ -28,16 +31,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
+import { AtmosPass } from './post-atmos.js';
 
 /** Settings the chain understands, with their defaults (SPEC §7.5 graphics settings). */
 export const POST_DEFAULTS = Object.freeze({
   renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
+  volumetrics: true, reflections: true,
 });
 
 /**
  * Normalise a settings object to the post contract (unknown / invalid values → defaults).
  * @param {object} [s]
- * @returns {{renderScale: 'auto'|number, bloom: boolean, ao: boolean, antialias: 'smaa'|'fxaa'|'off', filmGrain: boolean, vignette: boolean}}
+ * @returns {{renderScale: 'auto'|number, bloom: boolean, ao: boolean, antialias: 'smaa'|'fxaa'|'off', filmGrain: boolean, vignette: boolean, volumetrics: boolean, reflections: boolean}}
  */
 export function normPostSettings(s) {
   const o = s || {};
@@ -54,6 +59,8 @@ export function normPostSettings(s) {
     antialias: aa,
     filmGrain: o.filmGrain !== false,
     vignette: o.vignette !== false,
+    volumetrics: o.volumetrics !== false,
+    reflections: o.reflections !== false,
   };
 }
 
@@ -177,13 +184,14 @@ const GRADE_SHADER = {
     uGamma: { value: new THREE.Vector3(1.0, 1.0, 1.02) },
     uGain: { value: new THREE.Vector3(1.02, 1.0, 0.97) },
     uAspect: { value: 16 / 9 },
+    uHurt: { value: 0 },
   },
   vertexShader: `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse;
-    uniform float uTime, uGrain, uVignette, uContrast, uSaturation, uAspect;
+    uniform float uTime, uGrain, uVignette, uContrast, uSaturation, uAspect, uHurt;
     uniform vec3 uLift, uGamma, uGain;
     // the material is toneMapped: false, so three's prefix never adds these (it always
     // adds colorspace_pars_fragment, whose sRGBTransferOETF is used below)
@@ -197,12 +205,22 @@ const GRADE_SHADER = {
     void main() {
       vec4 src = texture2D(tDiffuse, vUv);
       vec3 c = max(src.rgb, 0.0);
+      // hurt: the edges of the view split into colour fringes and drain of colour (only
+      // while the local player is hurt: a uniform branch, free otherwise)
+      float hurtDesat = 0.0;
+      if (uHurt > 0.002) {
+        vec2 dc = vUv - 0.5;
+        vec2 off = dc * dot(dc, dc) * uHurt * 0.05;
+        c.r = max(texture2D(tDiffuse, vUv + off).r, 0.0);
+        c.b = max(texture2D(tDiffuse, vUv - off).b, 0.0);
+        hurtDesat = uHurt * 0.35 * smoothstep(0.05, 0.5, length(dc));
+      }
       c = ACESFilmicToneMapping(c);
       c = sRGBTransferOETF(vec4(c, 1.0)).rgb;
       // grade in display space: saturation, contrast around a low (night) pivot,
       // then lift (cool shadows) / gamma / gain (warm highlights)
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, uSaturation);
+      c = mix(vec3(l), c, uSaturation * (1.0 - hurtDesat));
       c = max((c - 0.32) * uContrast + 0.32, 0.0);
       c = c * uGain + uLift * (1.0 - c);
       c = pow(max(c, 0.0), 1.0 / uGamma);
@@ -249,12 +267,13 @@ const UPSCALE_SHADER = {
 /**
  * Build the post chain.
  * @param {THREE.WebGLRenderer} renderer
- * @param {{ scene: THREE.Scene, camera: THREE.Camera, getViewmodel: () => object|null, quality: string }} o
+ * @param {{ scene: THREE.Scene, camera: THREE.Camera, getViewmodel: () => object|null, quality: string, getAtmos?: () => object|null }} o
+ *   getAtmos: sources of the atmosphere pass (post-atmos.js AtmosPass)
  * @returns {object} { render(dt, frame), setSize(cssW, cssH, prFull, prInner) (canvas at prFull,
  *   internal targets at prInner), configure(settings, quality), warm(), target (the world
  *   render target), readBuffer, passes, sceneInfo (world pass calls / triangles), dispose() }
  */
-export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
+export function createPost(renderer, { scene, camera, getViewmodel, quality, getAtmos }) {
   const ext = renderer.extensions;
   // HDR needs a renderable float target; without one (rare mobile GPUs) fall back to 8-bit
   // and lower the bloom threshold so lights still glow
@@ -278,6 +297,7 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
     sceneInfo.triangles = i.triangles - t0;
   };
   const aoPass = new DepthAOPass(scene, camera);
+  const atmosPass = new AtmosPass(camera, getAtmos || null, hdr);
   const vmPass = new ViewmodelPass(getViewmodel);
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.55, hdr ? 1.2 : 0.72);
   // Soft-knee high pass: only the energy ABOVE the threshold blooms. The stock pass let a
@@ -311,10 +331,12 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
   const smaaPass = new SMAAPass();
   const fxaaPass = new FXAAPass();
   const upscalePass = new ShaderPass(UPSCALE_SHADER);
-  for (const p of [worldPass, aoPass, vmPass, bloomPass, gradePass, smaaPass, fxaaPass, upscalePass]) composer.addPass(p);
+  for (const p of [worldPass, aoPass, atmosPass, vmPass, bloomPass, gradePass, smaaPass, fxaaPass, upscalePass]) composer.addPass(p);
 
   let q = quality;
   let cur = null;
+  // hurt effect state: low health plus a pulse on every hp drop
+  let lastHp = NaN, hurtPulse = 0;
   let cssW = 1, cssH = 1, prFull = 1, prInner = 1;
   let time = 0;
 
@@ -334,7 +356,7 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
    * touches passes when something changed).
    */
   function configure(s, quality) {
-    const key = `${quality}|${s.bloom}|${s.ao}|${s.antialias}|${s.filmGrain}|${s.vignette}`;
+    const key = `${quality}|${s.bloom}|${s.ao}|${s.antialias}|${s.filmGrain}|${s.vignette}|${s.volumetrics}|${s.reflections}`;
     if (cur === key) return false;
     const tierChanged = !cur || cur.split('|')[0] !== quality;
     cur = key;
@@ -342,6 +364,7 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
     const low = q === 'low';
     aoPass.enabled = !low && s.ao;
     if (tierChanged) aoPass.configure(q);
+    atmosPass.configure(q, s.volumetrics, s.reflections);
     bloomPass.enabled = s.bloom;
     const wantLowBloom = low;
     if (bloomPass.lowRes !== wantLowBloom) {
@@ -359,9 +382,21 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
     return true;
   }
 
+  function hurtLevel(dt, local) {
+    hurtPulse *= Math.exp(-(dt || 0) * 2.6);
+    if (!local || local.state === 'dead' || q === 'low') { lastHp = NaN; hurtPulse = 0; return 0; }
+    const max = local.maxHp || 100;
+    const hp = Math.max(0, Math.min(max, Number(local.hp) || 0));
+    if (hp < lastHp) hurtPulse = Math.min(1, hurtPulse + (lastHp - hp) / (max * 0.25));
+    lastHp = hp;
+    const low = local.state === 'downed' ? 1 : Math.max(0, (0.35 - hp / max) / 0.35);
+    return Math.min(1, low * 0.7 + hurtPulse * 0.8);
+  }
+
   function render(dt, frame) {
     time += dt || 0;
     gradePass.uniforms.uTime.value = time % 1000;
+    gradePass.uniforms.uHurt.value = hurtLevel(dt, frame && frame.local);
     gradePass.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
     vmPass.frame = frame;
     composer.render(dt);
@@ -375,9 +410,12 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
    */
   function warm() {
     const saved = [worldPass.enabled, vmPass.enabled, aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled];
+    const savedAtmos = [atmosPass.enabled, atmosPass.vol, atmosPass.ssr];
     try {
       aoPass.enabled = !!aoPass.gtao;
       bloomPass.enabled = true;
+      // every atmosphere program (the targets stay 1x1 unless the settings want them)
+      atmosPass.enabled = atmosPass.vol = atmosPass.ssr = true;
       // [smaa, fxaa, upscale]: upscale last (both AA passes into targets), SMAA last, FXAA last, grade last
       let first = true;
       for (const [sm, fx, up] of [[true, true, true], [true, false, false], [false, true, false], [false, false, false]]) {
@@ -386,10 +424,11 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
         upscalePass.enabled = up;
         composer.render(0);
         // the scene passes only need compiling once
-        if (first) { worldPass.enabled = false; vmPass.enabled = false; aoPass.enabled = false; bloomPass.enabled = false; first = false; }
+        if (first) { worldPass.enabled = false; vmPass.enabled = false; aoPass.enabled = false; bloomPass.enabled = false; atmosPass.enabled = false; first = false; }
       }
     } finally {
       [worldPass.enabled, vmPass.enabled, aoPass.enabled, bloomPass.enabled, smaaPass.enabled, fxaaPass.enabled, upscalePass.enabled] = saved;
+      [atmosPass.enabled, atmosPass.vol, atmosPass.ssr] = savedAtmos;
     }
   }
 
@@ -397,7 +436,7 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality }) {
     hdr,
     target,
     composer,
-    passes: { world: worldPass, ao: aoPass, viewmodel: vmPass, bloom: bloomPass, grade: gradePass, smaa: smaaPass, fxaa: fxaaPass, upscale: upscalePass },
+    passes: { world: worldPass, ao: aoPass, atmos: atmosPass, viewmodel: vmPass, bloom: bloomPass, grade: gradePass, smaa: smaaPass, fxaa: fxaaPass, upscale: upscalePass },
     render,
     setSize,
     configure,

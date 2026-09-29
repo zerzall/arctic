@@ -13,7 +13,9 @@
 // Graphics settings (render(view, { settings })), applied live and cheap when unchanged:
 //   quality 'ultra'|'high'|'low', renderScale 'auto'|0.5..1 (fraction of the tier's
 //   pixel-ratio cap; 'auto' = dynamic resolution), bloom, ao (ignored on 'low'),
-//   antialias 'smaa'|'fxaa'|'off' ('low' uses FXAA), filmGrain, vignette.
+//   antialias 'smaa'|'fxaa'|'off' ('low' uses FXAA), filmGrain, vignette, volumetrics
+//   (ground mist + light scattering) and reflections (wet ground / water SSR), both
+//   ignored on 'low'.
 
 import * as THREE from 'three';
 import { createWorld, obstacleHeight, objectiveHeight, fireBaseHeight } from './world.js';
@@ -302,7 +304,9 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   // ---- post chain + dynamic resolution ----
   let post = null;
   try {
-    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q });
+    // the atmosphere pass reads the light pool, the flashlight and the ground's wet mask
+    const atmosSrc = { lights: lights.poolLights, kinds: lights.poolKinds, flashlight: lights.flashlight, ambient: amb, ground: world.ground, fogDensity: amb.fogDensity };
+    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q, getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; } });
   } catch (err) {
     logErr('post chain', err);
     post = null;
@@ -312,7 +316,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   try { gpuTimer = createGpuTimer(renderer.getContext()); } catch { gpuTimer = null; }
   let postSet = normPostSettings(null);
   // raw values of the last settings seen: re-normalised only when one of them changes
-  const rawSet = { quality: undefined, renderScale: undefined, bloom: undefined, ao: undefined, antialias: undefined, filmGrain: undefined, vignette: undefined };
+  const rawSet = { quality: undefined, renderScale: undefined, bloom: undefined, ao: undefined, antialias: undefined, filmGrain: undefined, vignette: undefined, volumetrics: undefined, reflections: undefined };
   let postErrors = 0;
 
   // ---- sizing ----
@@ -504,9 +508,11 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
       if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra') api.setQuality(s.quality);
     }
     if (s.renderScale === rawSet.renderScale && s.bloom === rawSet.bloom && s.ao === rawSet.ao && s.antialias === rawSet.antialias
-      && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette) return;
+      && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette
+      && s.volumetrics === rawSet.volumetrics && s.reflections === rawSet.reflections) return;
     rawSet.renderScale = s.renderScale; rawSet.bloom = s.bloom; rawSet.ao = s.ao; rawSet.antialias = s.antialias;
     rawSet.filmGrain = s.filmGrain; rawSet.vignette = s.vignette;
+    rawSet.volumetrics = s.volumetrics; rawSet.reflections = s.reflections;
     const prev = postSet.renderScale;
     postSet = normPostSettings(s);
     if (post) post.configure(postSet, q);
