@@ -126,7 +126,7 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 | Look & aim | Mouse (click the game first) | Right stick |
 | Shoot | Left click | RT |
 | Release the mouse / menu | Esc | Start |
-| Jump (over guard rails, barriers, sandbags) | Space | A |
+| Jump / climb (Space into a car, van or container) | Space | A |
 | Shove | Right click or V | LT |
 | Sprint | Shift | Click left stick |
 | Reload | R | X |
@@ -172,9 +172,14 @@ In the classic top-down view the mouse points where you shoot and nothing is cap
 - Check behind you. The horde comes from every side; listen for groans at your back and
   turn toward the red arcs when something hits you.
 - Revive downed teammates by holding E next to them. They have 30 seconds.
-- Jump (Space) over guard rails, jersey barriers and sandbags to cut corners or get away;
-  sprint first for a longer leap. Cars, fences and barricades are too tall. Crawlers can't
-  reach you while you're in the air.
+- Jump (Space) over guard rails, jersey barriers, sandbags and fences to cut corners or get
+  away; sprint first for a longer leap. Crawlers can't reach you while you're in the air.
+- Climb: press Space while walking into a car, van, pickup, HESCO wall or container and you
+  pull yourself up onto it ("SPACE — climb" shows when you face one). From up there you
+  shoot over the cover around you, and you can hop from roof to roof; walk off the edge to
+  get down. It buys you time, not safety: zombies grab your legs on a car roof, runners
+  and walkers climb up after you, brutes knock you off and spitters still lob acid.
+  Buildings, tall walls and trucks are too high (trucks only from a roof next to them).
 - The shop is open between waves. Mid-wave, you can only buy at the supply station.
 - Every fifth wave brings a boss. Save a frag or two for it.
 

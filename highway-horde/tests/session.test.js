@@ -924,9 +924,59 @@ test('jump: the client sees its own jump at once, matches the host tick for tick
   await frames(env, 30);
   assert.equal(localZ(), 0, 'landed');
   assert.equal(hp.z, 0);
-  assert.equal(a.pred.jumpT, hp.jumpT);
+  for (const k of ['zq', 'vzq', 'jumpCd', 'climbT']) assert.equal(a.pred[k], hp[k], k);
   const pred = a.getPredictedLocal();
   assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
+});
+
+test('climb: the client mantles onto a car at once, the host agrees tick for tick and sees it up there', async () => {
+  const env = await setup({ clients: [{ name: 'A' }] });
+  const [a] = env.clients;
+  env.host.start();
+  await flush();
+  await frames(env, 10);
+  // a sedan with room in front of its long side
+  const world = env.game().world;
+  let car = null, sx = 0, sy = 0;
+  for (const c of world.colliders) {
+    if (c.ref.kind !== 'car') continue;
+    const x = c.x + c.s * (c.hh + 18), y = c.y - c.c * (c.hh + 18);
+    if (world.isCircleFree(x, y, 17) && world.isCircleFree(x + c.s * 40, y - c.c * 40, 17)) {
+      car = c;
+      sx = x;
+      sy = y;
+      break;
+    }
+  }
+  assert.ok(car, 'a car on the map');
+  const hp = hostPlayer(env, a.localId);
+  hp.x = sx;
+  hp.y = sy;
+  await frames(env, 20);
+  const pred0 = a.getPredictedLocal();
+  assert.ok(Math.hypot(pred0.x - sx, pred0.y - sy) < 1, 'the client took the new spot');
+  const mv = { moveX: -car.s, moveY: car.c };
+  const localZ = () => a.getView().players.find((p) => p.id === a.localId).z;
+  // push into it with Space held for a few frames
+  let climbing = false, onRoof = 0;
+  await frames(env, 60, (s, i) => {
+    if (s !== a) return null;
+    if (a.pred && a.pred.climbT > 0) climbing = true;
+    if (localZ() === car.top) onRoof++;
+    // stop pushing once up (walking on would take us across the roof and off)
+    if (climbing && a.pred.climbT === 0) return input({});
+    return input({ ...mv, jump: i < 4 });
+  });
+  assert.ok(climbing, 'the client predicted the climb');
+  await frames(env, 30);
+  assert.equal(localZ(), car.top, 'the client stands on the roof');
+  assert.equal(hp.z, car.top, 'so does the host');
+  for (const k of ['zq', 'vzq', 'climbT']) assert.equal(a.pred[k], hp[k], k);
+  const pred = a.getPredictedLocal();
+  assert.ok(Math.abs(pred.x - hp.x) < 0.01 && Math.abs(pred.y - hp.y) < 0.01, `pred ${pred.x},${pred.y} host ${hp.x},${hp.y}`);
+  const seen = env.host.getView().players.find((p) => p.id === a.localId);
+  assert.ok(Math.abs(seen.z - car.top) < 1e-6, 'the host view shows the client on the roof');
+  assert.ok(onRoof > 0);
 });
 
 test('client watchdog: a slow 3D world build after start is not "Connection lost", real silence still is', async () => {

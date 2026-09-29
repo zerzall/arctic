@@ -438,6 +438,9 @@ export function createZombies3D(ctx) {
       s.stagger = Math.max(0, s.stagger - dt * 2.2);
       if (z._spd !== undefined) s.spd = z._spd;          // sandbox treadmill hook (never in snapshots)
       s.x = z.x; s.y = z.y;
+      // up on something (a car roof, a container): lifted by the snapshot's height
+      const zh = z.z > 0 ? z.z : 0;
+      s.zh = zh;
       s.a += angleDiff(s.a, z.angle) * damp(10, dt);
       const stride = STRIDE[z.type] * T.scale;
       s.ph += (Math.min(s.spd, T.def.speed[1] * 2) / stride) * TAU * dt;
@@ -465,7 +468,7 @@ export function createZombies3D(ctx) {
       const d2 = (z.x - camX) * (z.x - camX) + (z.y - camY) * (z.y - camY);
       if (burn) {
         burning.push(z, d2);
-        emitFlames(z, sc, d2, dt);
+        emitFlames(z, sc, d2, dt, zh);
       }
       if (s.charge > 0.3 && z.type === 'brute' && d2 < 1400 * 1400 && fx.rng() < dt * 30) {
         const back = s.a + Math.PI + (fx.rng() - 0.5) * 1.2;
@@ -473,7 +476,7 @@ export function createZombies3D(ctx) {
           0.9, 10, 34, col('#5d5040'), 0.4, FR.SMOKE, 0, -6, 1.5);
       }
       // view-frustum cull (generous margin: flashlight shadows, big bodies)
-      _sph.center.set(z.x, 30 * sc, z.y);
+      _sph.center.set(z.x, 30 * sc + zh, z.y);
       _sph.radius = 42 * sc;
       if (!frustum.intersectsSphere(_sph)) continue;
       // LOD with hysteresis
@@ -490,7 +493,7 @@ export function createZombies3D(ctx) {
       drawn++;
       stats.lod[L]++;
       poseZombie(z, s, T, s.ft);
-      pose.place(z.x, 0, z.y, s.a, sc);
+      pose.place(z.x, zh, z.y, s.a, sc);
       pool.solve(i, model, pose);
       writeColors(i, z, s, elite);
       const buff = (f & ZFLAG.BUFFED) ? 0.6 + Math.sin(time * 8 + s.seed * 6) * 0.4 : 0;
@@ -521,7 +524,7 @@ export function createZombies3D(ctx) {
   }
 
   const flameCol = new THREE.Color(1, 1, 1);
-  function emitFlames(z, sc, d2, dt) {
+  function emitFlames(z, sc, d2, dt, lift = 0) {
     if (d2 > 2200 * 2200 || fx.load() > 0.8) return;
     const near = d2 < 700 * 700;
     const rate = (near ? (high ? 24 : 10) : (high ? 7 : 3)) * Math.min(2.2, sc);
@@ -530,7 +533,7 @@ export function createZombies3D(ctx) {
       if (n < 1 && fx.rng() > n) break;
       n -= 1;
       const a = fx.rng() * TAU, r = fx.rng() * 7 * sc;
-      const h = (8 + fx.rng() * 42) * sc * (z.type === 'crawler' ? 0.3 : 1);
+      const h = (8 + fx.rng() * 42) * sc * (z.type === 'crawler' ? 0.3 : 1) + lift;
       const idx = fx.spawn(z.x + Math.cos(a) * r, h, z.y + Math.sin(a) * r, (fx.rng() - 0.5) * 12, 30 + fx.rng() * 40, (fx.rng() - 0.5) * 12,
         0.35 + fx.rng() * 0.3, (7 + fx.rng() * 6) * Math.sqrt(sc), 2, flameCol, 0.9, FR.FLAME, F_ADD | F_FIRE | F_FLICKER, -40, 1.2);
       fx.stretchLast(idx, 1.5);
@@ -578,6 +581,7 @@ export function createZombies3D(ctx) {
       type, x: e.x, y: e.y, a: facing, t: 0, id: e.id | 0, seed, kind, side: rel > 0 ? 1 : -1,
       char: s ? s.char : 0, burn: s ? s.burn : 0, elite: false, lod: -1, spd: s ? Math.min(1, s.spd / 120) : 0,
       armsUp: s ? s.armsUp : true, tilt: s ? s.tilt : 0, cache: null,
+      h: s && s.zh > 0 ? s.zh : 0,     // killed up on a roof: it drops there
     });
   }
 
@@ -674,7 +678,7 @@ export function createZombies3D(ctx) {
       corpses[w++] = c;
       c.burn = Math.max(0, c.burn - dt * 0.4);
       const T = types[c.type];
-      _sph.center.set(c.x, 8, c.y);
+      _sph.center.set(c.x, 8 + (c.h || 0), c.y);
       _sph.radius = 40 * T.scale;
       if (!frustum.intersectsSphere(_sph)) continue;
       const d = Math.hypot(c.x - camX, c.y - camY) / Math.max(1, T.scale * 0.8);
@@ -690,7 +694,7 @@ export function createZombies3D(ctx) {
         continue;
       }
       poseCorpse(c, T);
-      pose.place(c.x, sink, c.y, c.a, T.scale);
+      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale);
       pool.solve(i, model, pose);
       const skin = skinCols[c.type][c.id & 3];
       // dulled: the dead should not compete with the living for attention

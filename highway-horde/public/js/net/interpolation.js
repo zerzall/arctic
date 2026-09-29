@@ -43,8 +43,9 @@ function blendList(a, b, key, u, withAngle, withZ = false) {
     if (ea) {
       blendPos(e, ea, eb, u);
       if (withAngle) e.angle = lerpAngle(ea.angle, eb.angle, u);
-      // jump height (players): extrapolation must not sink anyone into the ground
-      if (withZ && (ea.z > 0 || eb.z > 0)) e.z = Math.max(0, lerp(ea.z || 0, eb.z || 0, u));
+      // height (jumping, climbing, on a roof): never extrapolated, so nobody sinks into the
+      // ground or through a roof they just landed on
+      if (withZ && (ea.z > 0 || eb.z > 0)) e.z = Math.max(0, lerp(ea.z || 0, eb.z || 0, Math.min(1, u)));
     }
     out[i] = e;
   }
@@ -87,7 +88,7 @@ export function interpolateSnapshots(a, b, u) {
     objective: b.objective ? { ...b.objective } : null,
     readyCount: b.readyCount,
     players: blendList(useA, b, 'players', u, true, true),
-    zombies: blendList(useA, b, 'zombies', u, true),
+    zombies: blendList(useA, b, 'zombies', u, true, true),
     projectiles: blendList(useA, b, 'projectiles', u, false),
     pickups: b.pickups,
     turrets: blendTurrets(useA, b, u),

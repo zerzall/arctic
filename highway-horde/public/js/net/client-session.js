@@ -15,13 +15,14 @@ import {
 } from '../shared/protocol.js';
 import { buildMap } from '../shared/maps.js';
 import { createCollisionWorld, stepPlayerMovement } from '../shared/movement.js';
+import { copyVertical } from '../shared/jump.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { rayCircle } from '../shared/geom.js';
 import { round1, angleDiff } from '../shared/math.js';
 import { activeWeapon, SWITCH_DELAY, COOLDOWN_EPS } from '../shared/sim/players.js';
-import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound } from '../shared/sim/combat.js';
+import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound, roofReach } from '../shared/sim/combat.js';
 import { Emitter } from './emitter.js';
 import { createTicker } from './ticker.js';
 import { CmdBuilder } from './cmd-builder.js';
@@ -826,15 +827,18 @@ export class ClientSession extends Emitter {
    */
   _traceRay(x, y, a, w) {
     const dx = Math.cos(a), dy = Math.sin(a);
+    const above = this.pred ? this.pred.z || 0 : 0;
     let maxT = w.range;
     let tw;
     if (w.penetrate) {
-      const tr = traceRound(this.world, x, y, dx, dy, w.range, w.penetrate, this.penScratch);
+      const tr = traceRound(this.world, x, y, dx, dy, w.range, w.penetrate, this.penScratch, above);
       tw = tr.wall ? tr.stop : -1;
     } else {
-      tw = this.world.raycastSolid(x, y, dx, dy, maxT);
+      tw = this.world.raycastSolid(x, y, dx, dy, maxT, above);
     }
     if (tw >= 0) maxT = tw;
+    const roof = roofReach(this.world, x, y, dx, dy, tw, this.roofScratch || (this.roofScratch = { far: 0, top: 0 }));
+    const farT = Math.max(maxT, Math.min(w.range, roof.far));
     const pierce = w.pierce || 1;
     const view = this.lastView;
     const zs = view ? view.zombies : null;
@@ -845,8 +849,8 @@ export class ClientSession extends Emitter {
       for (let i = 0; i < zs.length; i++) {
         const z = zs[i];
         const def = ZOMBIES[z.type];
-        const t = rayCircle(x, y, dx, dy, z.x, z.y, def ? def.radius : 14, maxT);
-        if (t < 0 || (hits.length >= pierce && t >= hits[hits.length - 1])) continue;
+        const t = rayCircle(x, y, dx, dy, z.x, z.y, def ? def.radius : 14, farT);
+        if (t < 0 || (t > maxT && !(z.z >= roof.top)) || (hits.length >= pierce && t >= hits[hits.length - 1])) continue;
         let j = hits.length < pierce ? hits.length : hits.length - 1;
         while (j > 0 && hits[j - 1] > t) {
           hits[j] = hits[j - 1];
@@ -861,7 +865,7 @@ export class ClientSession extends Emitter {
     if (hits.length >= pierce) {
       endT = hits[hits.length - 1];
     } else if (tw >= 0) {
-      endT = tw;
+      endT = hits.length ? Math.max(tw, hits[hits.length - 1]) : tw;
       if (!hit) hit = 2;
     }
     return { x: round1(x + dx * endT), y: round1(y + dy * endT), hit };
@@ -957,8 +961,7 @@ export class ClientSession extends Emitter {
     p.stamina = sp.stamina;
     p.sprinting = sp.sprinting;
     p.sprintLock = !!sp.sprintLock;
-    p.jumpT = Number.isFinite(sp.jumpT) ? sp.jumpT : 0;
-    p.z = sp.z || 0;
+    copyVertical(p, sp);
     p.speedMult = perks.speedMult;
     p.staminaMult = perks.staminaMult;
     this.predSlot = sp.slot;
@@ -997,7 +1000,10 @@ export class ClientSession extends Emitter {
         stamina: this.pred.stamina,
         sprinting: this.pred.sprinting,
         z: this.pred.z || 0,
-        jumpT: this.pred.jumpT || 0,
+        zq: this.pred.zq | 0,
+        vzq: this.pred.vzq | 0,
+        climbT: this.pred.climbT | 0,
+        climbTo: this.pred.climbTo,
         spin: this.wpn.spin,
         firing: this.clock() - this.wpn.lastFireAt <= FIRING_HOLD,
       };

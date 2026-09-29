@@ -4,10 +4,12 @@
 //
 // Every oriented box ("OBB") is a plain object built by makeObb(): centre (x, y),
 // half extents (hw, hh), angle a with its cosine/sine cached, an axis-aligned
-// bounding box, a `mask` of MASK_* bits describing what it blocks, and `hop`: the height
-// a jumping player's feet must reach to pass over it (Infinity = can't be jumped).
+// bounding box, a `mask` of MASK_* bits describing what it blocks, and `top`: the height
+// feet must reach to pass over it (Infinity = can't be jumped or climbed). Map colliders
+// also carry `topQ` (top in whole jump.js Z_UNITs; `top` = topQ × Z_UNIT exactly), `stand`
+// (true when it can be stood on) and `ci` (their index in the collider list).
 
-import { jumpClearance } from './jump.js';
+import { jumpClearance, standTop, toZq, Z_UNIT } from './jump.js';
 
 /** Blocks bullets, beams, projectiles and line of sight. */
 export const MASK_SOLID = 1;
@@ -47,7 +49,7 @@ const EPS = 1e-9;
 export function makeObb(x, y, w, h, a = 0, mask = 0, ref = null) {
   const ob = {
     x, y, hw: w / 2, hh: h / 2, a, c: 1, s: 0, mask, ref,
-    minX: 0, minY: 0, maxX: 0, maxY: 0, hop: Infinity,
+    minX: 0, minY: 0, maxX: 0, maxY: 0, top: Infinity, topQ: Infinity, stand: false, ci: -1,
   };
   setObbPose(ob, x, y, a);
   return ob;
@@ -353,9 +355,11 @@ export class StaticIndex {
   /**
    * First box matching `mask` along a ray. (dx, dy) must be a unit vector.
    * On a hit, this.hit holds { t, obb, nx, ny } (entry normal).
+   * @param {number} [above] boxes whose `top` is at most this high are ignored (a ray
+   *   from someone standing on top of things passes over them); 0 = none are
    * @returns {number} hit distance, or -1 when nothing is hit within maxT.
    */
-  raycast(ox, oy, dx, dy, maxT, mask, pad = 0) {
+  raycast(ox, oy, dx, dy, maxT, mask, pad = 0, above = 0) {
     const st = this._nextStamp();
     const stamps = this.stamps;
     const cs = this.cs;
@@ -377,7 +381,7 @@ export class StaticIndex {
         if (stamps[oi] === st) continue;
         stamps[oi] = st;
         const ob = this.obbs[oi];
-        if (!(ob.mask & mask)) continue;
+        if (!(ob.mask & mask) || (above > 0 && ob.top <= above)) continue;
         const t = rayObb(ob, ox, oy, dx, dy, maxT, pad, nrm);
         if (t >= 0 && t < best) {
           best = t;
@@ -407,20 +411,23 @@ export class StaticIndex {
     return best;
   }
 
-  /** True if the segment (x1,y1)-(x2,y2) touches no box matching `mask` (grown by pad). */
-  segmentClear(x1, y1, x2, y2, mask, pad = 0) {
+  /**
+   * True if the segment (x1,y1)-(x2,y2) touches no box matching `mask` (grown by pad)
+   * whose top is higher than `above` (see raycast).
+   */
+  segmentClear(x1, y1, x2, y2, mask, pad = 0, above = 0) {
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
-    if (len < EPS) return !this.pointBlocked(x1, y1, mask, pad);
-    return this.raycast(x1, y1, dx / len, dy / len, len, mask, pad) < 0;
+    if (len < EPS) return !this.pointBlocked(x1, y1, mask, pad, above);
+    return this.raycast(x1, y1, dx / len, dy / len, len, mask, pad, above) < 0;
   }
 
-  /** True if (px, py) lies inside any box matching `mask` (grown by pad). */
-  pointBlocked(px, py, mask, pad = 0) {
+  /** True if (px, py) lies inside any box matching `mask` (grown by pad) topped above `above`. */
+  pointBlocked(px, py, mask, pad = 0, above = 0) {
     const c = this._cy(py) * this.cols + this._cx(px);
     for (let i = this.start[c], e = this.start[c + 1]; i < e; i++) {
       const ob = this.obbs[this.items[i]];
-      if ((ob.mask & mask) && pointInObb(ob, px, py, pad)) return true;
+      if ((ob.mask & mask) && !(above > 0 && ob.top <= above) && pointInObb(ob, px, py, pad)) return true;
     }
     return false;
   }
@@ -443,7 +450,8 @@ export class StaticIndex {
 
 /**
  * Build the collision boxes for a MapDef: every obstacle (walk-blocking, shot-blocking
- * when `solid`, heavy-blocking unless crushable, jumpable per jumpClearance), every
+ * when `solid`, heavy-blocking unless crushable, passable above jumpClearance and
+ * standable per standTop — tops snapped to the Z_UNIT grid), every
  * 'water' area (walk-blocking only) and the objective (blocks everything).
  * @returns {object[]} boxes with `ref` pointing at the source object
  */
@@ -452,7 +460,12 @@ export function mapColliders(map) {
   for (const o of map.obstacles || []) {
     const mask = MASK_MOVE | (o.solid ? MASK_SOLID : 0) | (isCrushable(o) ? 0 : MASK_BULKY);
     const box = makeObb(o.x, o.y, o.w, o.h, o.a || 0, mask, o);
-    box.hop = jumpClearance(o);
+    const clear = jumpClearance(o);
+    if (clear < Infinity) {
+      box.topQ = toZq(clear);
+      box.top = box.topQ * Z_UNIT;
+      box.stand = standTop(o) > 0;
+    }
     out.push(box);
   }
   for (const ar of map.areas || []) {
@@ -462,5 +475,6 @@ export function mapColliders(map) {
   if (ob && ob.w > 0 && ob.h > 0) {
     out.push(makeObb(ob.x, ob.y, ob.w, ob.h, ob.a || 0, MASK_MOVE | MASK_SOLID | MASK_BULKY | MASK_OBJECTIVE, ob));
   }
+  for (let i = 0; i < out.length; i++) out[i].ci = i;
   return out;
 }

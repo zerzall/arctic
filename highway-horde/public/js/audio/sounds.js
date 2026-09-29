@@ -651,6 +651,43 @@ export const SOUNDS = {
     S.mix(out, click(sr, rng, 3200, 0.01, 3), sr, 0.25, 0.035);
     return S.mix(out, click(sr, rng, 4100, 0.008, 3), sr, 0.18, 0.06);
   } },
+  // Climbing (audio.js, from the players' climb state): hands slapping onto the ledge, a
+  // strained grunt, boots scrabbling up the side and the kit scraping over the edge.
+  climb: { cat: 'player', v: 3, g: 0.42, prio: 55, wet: 0.07, range: 0.7, lim: [0.15, 3], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.5);
+    // palms slap the roof edge (a hollow metal knock) with a gear clink
+    S.mix(out, thud(sr, J(rng, 210, 0.15), 120, 0.07, 0.01, 1.6), sr, 0.6);
+    S.mix(out, S.env(coin(sr, rng, J(rng, 520, 0.1)), sr, 0.001, 0.12), sr, 0.12, 0.004);
+    S.mix(out, click(sr, rng, 3000, 0.01, 3), sr, 0.25, 0.02);
+    // the pull: a strained "hnngh"
+    const f = J(rng, 135, 0.12), dur = 0.26 + rng.next() * 0.05;
+    S.mix(out, vocal(sr, rng, { dur, f0: [[0, f], [0.1, f * 1.15], [dur, f * 0.95]], vowels: ['uh', 'uh', 'a'],
+      shift: 1.02, breath: 0.7, fry: 0.3, jitter: 0.6, a: 0.02, d: dur * 0.8, drive: 1.8 }), sr, 0.45, 0.06);
+    // boots scrabbling up the side, then the body scraping over the edge
+    for (let i = 0; i < 3; i++) {
+      S.mix(out, burst(sr, rng, 'bandpass', J(rng, 1300, 0.25), 1.2, 0.04, 0.002), sr, 0.35, 0.08 + i * 0.055 + rng.next() * 0.02);
+    }
+    const scrape = S.filter(S.noise(sr, 0.18, rng), sr, 'bandpass', S.expSweep(900, 2400, 0.16), 1.4);
+    return S.mix(out, S.shape(scrape, sr, S.curve([[0, 0], [0.3, 1], [1, 0]])), sr, 0.3, 0.26);
+  } },
+  // Landing on (or stepping about on) a vehicle roof or a container: a hollow sheet-metal
+  // thunk instead of the asphalt thud.
+  land_roof: { cat: 'player', v: 3, g: 0.5, prio: 55, wet: 0.1, range: 0.7, lim: [0.1, 3], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.45);
+    S.mix(out, thud(sr, J(rng, 95, 0.1), 55, 0.16, 0.02, 2), sr, 0.8);
+    // the panel booms and rings a little
+    const f = J(rng, 180, 0.15);
+    S.mix(out, S.env(S.partials(sr, 0.4, f, [[1, 1, 0.3], [1.52, 0.6, 0.22], [2.37, 0.35, 0.15], [3.9, 0.15, 0.08]]), sr, 0.002, 0.3), sr, 0.4);
+    S.mix(out, thud(sr, J(rng, 110, 0.1), 60, 0.1, 0.02, 1.6), sr, 0.4, 0.024 + rng.next() * 0.01);
+    return S.mix(out, click(sr, rng, 3600, 0.012, 3), sr, 0.2, 0.03);
+  } },
+  roofstep: { cat: 'player', v: 4, g: 0.22, prio: 30, wet: 0.06, range: 0.5, lim: [0.12, 4], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.22);
+    S.mix(out, thud(sr, J(rng, 150, 0.15), 80, 0.06, 0.012, 1.5), sr, 0.7);
+    const f = J(rng, 260, 0.2);
+    S.mix(out, S.env(S.partials(sr, 0.2, f, [[1, 1, 0.12], [1.6, 0.5, 0.09], [2.7, 0.25, 0.06]]), sr, 0.001, 0.12), sr, 0.25);
+    return S.mix(out, burst(sr, rng, 'bandpass', J(rng, 2200, 0.2), 1.5, 0.03), sr, 0.2, 0.005);
+  } },
   heartbeat: { cat: 'player', v: 2, g: 0.8, prio: 95, wet: 0, render: (sr) => {
     const out = S.makeBuf(sr, 0.6);
     S.mix(out, thud(sr, 70, 40, 0.14, 0.03, 1.5), sr, 1);

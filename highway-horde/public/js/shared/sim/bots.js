@@ -526,7 +526,8 @@ function sense(game, b) {
     const z = topZ[k];
     if (topS[k] < -0.4) break;
     checks++;
-    if (world.lineOfSight(p.x, p.y, z.x, z.y)) {
+    // (a zombie up on something is seen over whatever it stands on)
+    if (world.lineOfSight(p.x, p.y, z.x, z.y, Math.max(p.z || 0, z.z || 0))) {
       target = z;
       break;
     }

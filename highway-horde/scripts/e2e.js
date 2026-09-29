@@ -16,7 +16,9 @@
 //   f  bots         solo lobby + Add Bot (BOT tags, ✕ removes one), the human readies,
 //                   the bots ready up after them, fight wave 1 and score kills
 //   g  fps-solo     first-person view (three.js): pointer lock, W walks along the view,
-//                   Space jumps (the camera rises and comes back down), losing the lock
+//                   Space jumps (the camera rises and comes back down), W + Space into the
+//                   nearest car / van / container climbs onto its roof (the player stays
+//                   up there, the camera rides at eye height above it), losing the lock
 //                   opens the pause menu, turn toward the nearest zombie with the view data
 //                   and kill it, End Game + a second game (no leaks)
 //   h  fps-relay    2 players over the relay in first person: each one's camera sees the
@@ -1121,6 +1123,71 @@ async function walkForward(pl, observer, pid, dist) {
   return { a, b, d, along, yaw };
 }
 
+/**
+ * Walk into the nearest car / van / container with a clear run to it and climb onto it:
+ * hold W and Space facing it until the climb starts (let go at once, so the player
+ * doesn't walk off the far side), then check the local player stands on its roof and the
+ * first-person camera rose with it. @returns {{ kind, top, z, cam, dist }}
+ */
+async function climbOnto(pl) {
+  const target = await pl.page.evaluate(async () => {
+    const [{ createCollisionWorld, mantleSpot }, { closestPointOnObb, MASK_MOVE }] = await Promise.all([
+      import('/js/shared/movement.js'), import('/js/shared/geom.js'),
+    ]);
+    const H = window.__HH;
+    const v = H.getView();
+    const me = H.session.getPredictedLocal() || v.players.find((p) => p.id === H.session.localId);
+    const world = createCollisionWorld(H.session.getMap());
+    world.setBarricades(v.barricades || []);
+    let best = null;
+    const cp = { x: 0, y: 0 }, spot = { x: 0, y: 0 };
+    for (const c of world.colliders) {
+      if (!c.stand || c.top > 88 || c.top < 36) continue;
+      closestPointOnObb(c, me.x, me.y, cp);
+      const d = Math.hypot(cp.x - me.x, cp.y - me.y);
+      if (d < 30 || d > 900 || (best && d >= best.dist)) continue;
+      // a clear run up to it, and room on top
+      const k = (d - 24) / d;
+      if (!world.lineOfMovement(me.x, me.y, me.x + (cp.x - me.x) * k, me.y + (cp.y - me.y) * k, 17, MASK_MOVE)) continue;
+      mantleSpot(c, cp.x, cp.y, 18, spot);
+      if (world.circleBlockedAt(spot.x, spot.y, 16, c.top)) continue;
+      best = { ci: c.ci, kind: c.ref.kind, top: c.top, x: c.x, y: c.y, dist: d, yaw: Math.atan2(c.y - me.y, c.x - me.x) };
+    }
+    return best;
+  });
+  expect(target, 'test setup: no car, van or container within reach of a clear run');
+  await turnTo(pl, target.yaw);
+  await setKeys(pl, new Set(['w', 'Space']));
+  let started;
+  try {
+    started = await waitFor(pl, () => {
+      const H = window.__HH;
+      const p = H.session.getPredictedLocal();
+      const v = H.session.getView();
+      const me = v && v.players.find((q) => q.id === H.session.localId);
+      return (me && me.climbT > 0) || (p && p.climbT > 0) ? true : false;
+    }, null, `a climb onto the ${target.kind} ${target.dist.toFixed(0)} px ahead`, 20e3);
+  } finally {
+    await releaseAll(pl);
+  }
+  expect(started, 'no climb');
+  const up = await waitFor(pl, () => {
+    const H = window.__HH;
+    const v = H.session.getView();
+    const me = v && v.players.find((q) => q.id === H.session.localId);
+    return me && !(me.climbT > 0) && me.vzq === 0 ? { z: me.z } : false;
+  }, null, 'the end of the climb', 10e3);
+  // a few frames later the camera has settled at eye height above the roof
+  await sleep(600);
+  const cam = await pl.page.evaluate(() => {
+    const H = window.__HH;
+    const v = H.session.getView();
+    const me = v.players.find((q) => q.id === H.session.localId);
+    return { z: me.z, cam: H.renderer && H.renderer.debug ? H.renderer.debug.camera.position.y : 0 };
+  });
+  return { kind: target.kind, top: target.top, z: up.z, zNow: cam.z, cam: cam.cam, dist: target.dist };
+}
+
 /** g. Solo in first person. */
 async function scenarioFpsSolo(sc) {
   const pl = await sc.player('fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
@@ -1166,6 +1233,15 @@ async function scenarioFpsSolo(sc) {
   const jumpT0 = Date.now();
   const hop = await jump(pl, { camera: true });
   log(`    fps jump: peak ${hop.z.toFixed(1)} units, camera up to ${hop.cam.toFixed(1)} (eye 52), landed (${((Date.now() - jumpT0) / 1000).toFixed(1)} s)`);
+
+  // Space into a car (van, container): the player climbs onto its roof and the camera rises.
+  const climbT0 = Date.now();
+  const cl = await climbOnto(pl);
+  log(`    fps climb: onto a ${cl.kind} ${cl.dist.toFixed(0)} px away, feet at ${cl.z.toFixed(1)} (top ${cl.top.toFixed(1)}), camera at ${cl.cam.toFixed(1)} (${((Date.now() - climbT0) / 1000).toFixed(1)} s)`);
+  expect(Math.abs(cl.z - cl.top) < 0.01, `the climb should end on the roof (z ${cl.z.toFixed(2)}, top ${cl.top.toFixed(2)})`);
+  expect(Math.abs(cl.zNow - cl.top) < 0.01, `the player should stay on the roof (z ${cl.zNow.toFixed(2)})`);
+  expect(cl.cam > 52 + cl.top - 8, `the camera should ride on the roof (${cl.cam.toFixed(1)} for a ${cl.top.toFixed(0)} roof)`);
+  await sc.screenshots('-climb', FPS_SHOT_MS);
 
   // Losing the pointer lock (Esc, alt-tab) opens the pause menu; resuming captures it again.
   await pl.page.evaluate(() => document.exitPointerLock());
@@ -1328,7 +1404,7 @@ const SCENARIOS = [
   ['d', 'p2p', scenarioP2P],
   ['e', 'phone', scenarioPhone],
   ['f', 'bots', scenarioBots],
-  ['g', 'fps-solo', scenarioFpsSolo, 240e3],
+  ['g', 'fps-solo', scenarioFpsSolo, 330e3],
   ['h', 'fps-relay', scenarioFpsRelay, 200e3],
 ];
 

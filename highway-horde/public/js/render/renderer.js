@@ -355,7 +355,9 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         if (flags & ZFLAG.CHARGING) off += Math.sin(time * 40) * 1.2;
         const c = Math.cos(z.angle), s = Math.sin(z.angle);
         const x = z.x + c * off, y = z.y + s * off;
-        ctx.setTransform(c * kS, s * kS, -s * kS, c * kS, K.tx + x * K.k, K.ty + y * K.k);
+        // up on a roof: a little bigger (nearer the camera)
+        const kz = z.z > 0 ? kS * (1 + Math.min(0.16, z.z / 600)) : kS;
+        ctx.setTransform(c * kz, s * kz, -s * kz, c * kz, K.tx + x * K.k, K.ty + y * K.k);
         const hw = spr.width / 2;
         ctx.drawImage(spr, -hw, -hw);
         if (flags & ZFLAG.SLOWED) {
@@ -409,8 +411,11 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         ctx.beginPath();
         ctx.ellipse(0, 0, 21, 21, 0, 0, TAU);
         ctx.stroke();
-        // jumping: the shadow slides away from the body and fades, the body grows a little
-        const air = p.z > 0 ? Math.min(1, p.z / JUMP_HEIGHT) : 0;
+        // jumping / climbing: the shadow slides away from the body and fades, the body grows
+        // a little; standing on top of something: a touch bigger, shadow at its feet
+        const flying = p.climbT > 0 || (p.vzq !== undefined ? p.vzq !== 0 : p.z > 0);
+        const air = flying && p.z > 0 ? Math.min(1, p.z / JUMP_HEIGHT) : 0;
+        const perch = !flying && p.z > 0 ? Math.min(0.14, p.z / 600) : 0;
         if (air > 0) {
           const sr = 15 * (1 - 0.3 * air);
           fillEllipse(ctx, 2 + air * 7, 3 + air * 10, sr, sr, `rgba(0,0,0,${(0.35 * (1 - 0.45 * air)).toFixed(3)})`);
@@ -418,7 +423,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
           fillEllipse(ctx, 2, 3, 15, 15, 'rgba(0,0,0,0.35)');
         }
         ctx.rotate(p.angle);
-        if (air > 0) ctx.scale(1 + 0.16 * air, 1 + 0.16 * air);
+        if (air > 0 || perch > 0) ctx.scale(1 + 0.16 * air + perch, 1 + 0.16 * air + perch);
         const wid = p.slots ? p.slots[p.slot] : null;
         if (p.state === 'downed') {
           const pistol = p.slots && p.slots[0] && WEAPONS[p.slots[0]] && WEAPONS[p.slots[0]].category === 'pistol' ? p.slots[0] : 'pistol';

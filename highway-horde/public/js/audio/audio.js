@@ -825,7 +825,7 @@ class Engine {
     const want = this.want || (this.want = []);
     want.length = 0;
     this.playerLoops(view, me, now, want);
-    this.jumpSounds(view, me);
+    this.jumpSounds(view, me, dt);
     const horde = this.hordeLoops(view, dt, want);
     this.hazardLoops(view, want, horde);
     this.syncLoops(want, now);
@@ -861,22 +861,46 @@ class Engine {
   }
 
   /**
-   * Jump / landing sounds from the players' `z` (height while jumping): a survivor leaving
-   * the ground or touching down. Read from the view, so the local player's own jump plays
-   * the instant it is predicted and teammates' when their snapshots show it.
+   * Jump / climb / landing sounds from the players' vertical state: a survivor leaving
+   * the ground, pulling up onto something, touching down (a hollow thunk on a roof), and
+   * hollow footsteps while walking about on a roof. Read from the view, so the local
+   * player's own plays the instant it is predicted and teammates' when their snapshots
+   * show it.
    */
-  jumpSounds(view, me) {
+  jumpSounds(view, me, dt = 0) {
     const last = this.jumpZ || (this.jumpZ = new Map());
     if (view.tick < this.jumpTick) last.clear(); // a new match
     this.jumpTick = view.tick;
     for (const p of view.players) {
       if (!p) continue;
-      const z = p.state !== 'dead' && p.z > 0 ? p.z : 0;
-      const prev = last.get(p.id);
-      last.set(p.id, z);
-      if (prev === undefined || (prev > 0) === (z > 0)) continue;
-      const id = z > 0 ? 'jump' : 'land';
-      this.play(id, p === me ? { local: true, prio: PRIO_OWN } : { x: p.x, y: p.y });
+      const alive = p.state !== 'dead';
+      const z = alive && p.z > 0 ? p.z : 0;
+      const climb = alive && p.climbT > 0;
+      const air = alive && (climb || (p.vzq !== undefined ? p.vzq !== 0 : z > 0));
+      const s = last.get(p.id);
+      if (!s) {
+        last.set(p.id, { air, climb, x: p.x, y: p.y, step: 0 });
+        continue;
+      }
+      const opts = p === me ? { local: true, prio: PRIO_OWN } : { x: p.x, y: p.y };
+      if (climb && !s.climb) this.play('climb', opts);
+      else if (air && !s.air) this.play('jump', opts);
+      else if (!air && s.air && !s.climb) this.play(z > 0 ? 'land_roof' : 'land', opts);
+      // walking about on a roof: a hollow step every ~60 px
+      const d = Math.hypot(p.x - s.x, p.y - s.y);
+      if (!air && z > 0 && dt > 0 && d < 40) {
+        s.step += d;
+        if (s.step > 60) {
+          s.step = 0;
+          this.play('roofstep', opts);
+        }
+      } else if (air || z === 0) {
+        s.step = 30;
+      }
+      s.air = air;
+      s.climb = climb;
+      s.x = p.x;
+      s.y = p.y;
     }
   }
 

@@ -5,13 +5,14 @@
 
 import {
   PLAYER_RADIUS, PLAYER_SPEED, SPRINT_MULT, STAMINA_MAX, STAMINA_DRAIN, STAMINA_REGEN,
-  STAMINA_MIN_TO_SPRINT, DOWNED_SPEED, BARRICADE,
+  STAMINA_MIN_TO_SPRINT, DOWNED_SPEED, BARRICADE, STAND_PAD, MANTLE_REACH, MANTLE_MIN, MANTLE_TICKS,
 } from './constants.js';
 import {
   StaticIndex, makeObb, setObbPose, circleObbPush, circleOverlapsObb, mapColliders, obbOverlap,
+  pointInObb, distToObb, closestPointOnObb,
   MASK_MOVE, MASK_SOLID, MASK_WATER, MASK_BARRICADE, MASK_BULKY,
 } from './geom.js';
-import { stepJump, JUMP_CLEAR_MAX } from './jump.js';
+import { stepJump, normVertical, toZq, Z_UNIT, COOL_TICKS, JUMP_TICKS } from './jump.js';
 
 /**
  * Collision mask for heavies (bloater, brute, boss): they crash over crushable low
@@ -30,6 +31,22 @@ const UNSTICK_STEP = 4;
 const UNSTICK_MAX = 96;
 const R2 = Math.SQRT1_2;
 const UNSTICK_DIRS = [1, 0, R2, R2, 0, 1, -R2, R2, -1, 0, -R2, -R2, 0, -1, R2, -R2];
+
+// Mantling (SPEC §3.2): a ledge counts when the body touches it (within LEDGE_GAP) and the
+// move input points into it (within ~60° of straight in). The climb rises first, reaching
+// the top MANTLE_TOP_TICKS before the end, and swings over onto it in the last
+// MANTLE_OVER_TICKS, ending MANTLE_INSET in from the edge.
+const LEDGE_GAP = 3;
+const LEDGE_FACING = -0.5;
+const MANTLE_TOP_TICKS = 8;
+const MANTLE_OVER_TICKS = 12;
+const MANTLE_INSET = PLAYER_RADIUS + 2;
+const REACH_Q = toZq(MANTLE_REACH);
+const MIN_Q = toZq(MANTLE_MIN);
+/** Height of a jump's apex in Z_UNITs. */
+const APEX_Q = (JUMP_TICKS / 2) * (JUMP_TICKS / 2);
+const _spot = { x: 0, y: 0 };
+const _cp = { x: 0, y: 0 };
 
 /**
  * Build the static collision world for a map: obstacles (solid or low cover), water,
@@ -86,8 +103,8 @@ export class CollisionWorld {
    * @param {object} pos
    * @param {number} r radius
    * @param {number} [mask] which static colliders count (MASK_MOVE, or MASK_HEAVY)
-   * @param {number} [z] feet height of a jumping player: static colliders it clears
-   *   (hop ≤ z, see jump.js) are ignored
+   * @param {number} [z] feet height: static colliders it is above (top ≤ z, see
+   *   jump.js) are ignored
    * @returns {number} MASK_* bits of what was touched (0 if nothing)
    */
   resolveCircle(pos, r, mask = MASK_MOVE, z = 0) {
@@ -101,7 +118,7 @@ export class CollisionWorld {
       let moved = false;
       const n = this.index.query(pos.x - r, pos.y - r, pos.x + r, pos.y + r, mask, near);
       for (let i = 0; i < n; i++) {
-        if (z >= near[i].hop) continue;
+        if (z >= near[i].top) continue;
         if (circleObbPush(near[i], pos.x, pos.y, r, push)) {
           pos.x += push.nx * push.depth;
           pos.y += push.ny * push.depth;
@@ -193,7 +210,7 @@ export class CollisionWorld {
     const near = this._near;
     const n = this.index.query(x - r, y - r, x + r, y + r, MASK_MOVE, near);
     for (let i = 0; i < n; i++) {
-      if (z < near[i].hop && circleOverlapsObb(near[i], x, y, r)) return true;
+      if (z < near[i].top && circleOverlapsObb(near[i], x, y, r)) return true;
     }
     for (const b of this.barricades) if (circleOverlapsObb(b, x, y, r)) return true;
     return false;
@@ -230,21 +247,61 @@ export class CollisionWorld {
   }
 
   /**
-   * First shot-blocking obstacle along a ray (unit direction). Barricades never block
-   * shots. @returns {number} distance or -1; details in this.index.hit
+   * Feet height (whole Z_UNITs) of the highest standable top at most `zq` high under
+   * (x, y) (within STAND_PAD of its footprint), 0 for the ground. The collider is left
+   * in this.groundOb (null on the ground).
    */
-  raycastSolid(ox, oy, dx, dy, maxT) {
-    return this.index.raycast(ox, oy, dx, dy, maxT, MASK_SOLID, 0);
+  groundQ(x, y, zq) {
+    const near = this._near;
+    const n = this.index.query(x - STAND_PAD, y - STAND_PAD, x + STAND_PAD, y + STAND_PAD, MASK_MOVE, near);
+    let best = 0, ob = null;
+    for (let i = 0; i < n; i++) {
+      const o = near[i];
+      if (o.stand && o.topQ <= zq && o.topQ > best && pointInObb(o, x, y, STAND_PAD)) {
+        best = o.topQ;
+        ob = o;
+      }
+    }
+    this.groundOb = ob;
+    return best;
   }
 
-  /** Line of sight for shots between two points. */
-  lineOfSight(x1, y1, x2, y2) {
-    return this.index.segmentClear(x1, y1, x2, y2, MASK_SOLID, 0);
+  /** groundQ in world units, for float heights (zombies): the highest top ≤ z under (x, y). */
+  groundAt(x, y, z) {
+    const near = this._near;
+    const n = this.index.query(x - STAND_PAD, y - STAND_PAD, x + STAND_PAD, y + STAND_PAD, MASK_MOVE, near);
+    let best = 0, ob = null;
+    for (let i = 0; i < n; i++) {
+      const o = near[i];
+      if (o.stand && o.top <= z + 1e-6 && o.top > best && pointInObb(o, x, y, STAND_PAD)) {
+        best = o.top;
+        ob = o;
+      }
+    }
+    this.groundOb = ob;
+    return best;
   }
 
-  /** Line of movement: a walker of radius ~2*pad could go straight from 1 to 2. */
-  lineOfMovement(x1, y1, x2, y2, pad = 0, mask = MASK_MOVE) {
-    if (!this.index.segmentClear(x1, y1, x2, y2, mask, pad)) return false;
+  /**
+   * First shot-blocking obstacle along a ray (unit direction). Barricades never block
+   * shots; from `above` (the shooter's feet height) obstacles no taller are shot over.
+   * @returns {number} distance or -1; details in this.index.hit
+   */
+  raycastSolid(ox, oy, dx, dy, maxT, above = 0) {
+    return this.index.raycast(ox, oy, dx, dy, maxT, MASK_SOLID, 0, above);
+  }
+
+  /** Line of sight for shots between two points (over obstacles no taller than `above`). */
+  lineOfSight(x1, y1, x2, y2, above = 0) {
+    return this.index.segmentClear(x1, y1, x2, y2, MASK_SOLID, 0, above);
+  }
+
+  /**
+   * Line of movement: a walker of radius ~2*pad could go straight from 1 to 2 (at feet
+   * height `above`, over whatever is no taller).
+   */
+  lineOfMovement(x1, y1, x2, y2, pad = 0, mask = MASK_MOVE, above = 0) {
+    if (!this.index.segmentClear(x1, y1, x2, y2, mask, pad, above)) return false;
     const bs = this.barricades;
     if (bs.length) {
       const dx = x2 - x1, dy = y2 - y1;
@@ -288,28 +345,149 @@ function segmentHitsBox(b, x, y, dx, dy, len, pad) {
 }
 
 /**
+ * Where a climb onto box `o` ends for a body at (x, y): the point clamped into the box
+ * `inset` in from its edges (or onto its middle line when it is too narrow). Written to out.
+ */
+export function mantleSpot(o, x, y, inset, out) {
+  const dx = x - o.x, dy = y - o.y;
+  let lx = dx * o.c + dy * o.s;
+  let ly = -dx * o.s + dy * o.c;
+  const ix = Math.max(0, o.hw - inset), iy = Math.max(0, o.hh - inset);
+  lx = lx < -ix ? -ix : lx > ix ? ix : lx;
+  ly = ly < -iy ? -iy : ly > iy ? iy : ly;
+  out.x = o.x + lx * o.c - ly * o.s;
+  out.y = o.y + lx * o.s + ly * o.c;
+  return out;
+}
+
+/**
+ * The ledge a body at (x, y) with feet at `zq` would mantle when pushing along the unit
+ * vector (dirX, dirY): a standable collider it touches and pushes into, topped higher than
+ * low cover (MANTLE_MIN) and than its feet, by at most MANTLE_REACH, with room on top.
+ * The nearest wins (then the lowest index).
+ * @returns {number} collider index (world.colliders), or -1
+ */
+export function findLedge(world, x, y, r, zq, dirX, dirY) {
+  const near = world._ledge || (world._ledge = []);
+  const reach = r + LEDGE_GAP;
+  const n = world.index.query(x - reach, y - reach, x + reach, y + reach, MASK_MOVE, near);
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const o = near[i];
+    if (!o.stand || o.topQ <= zq || o.topQ <= MIN_Q || o.topQ - zq > REACH_Q) continue;
+    const d = distToObb(o, x, y);
+    if (d > reach || d < 1e-6 || d > bestD || (d === bestD && o.ci > best)) continue;
+    closestPointOnObb(o, x, y, _cp);
+    if (((x - _cp.x) * dirX + (y - _cp.y) * dirY) / d > LEDGE_FACING) continue;
+    mantleSpot(o, x, y, MANTLE_INSET, _spot);
+    if (world.circleBlockedAt(_spot.x, _spot.y, r, o.top)) continue;
+    best = o.ci;
+    bestD = d;
+  }
+  return best;
+}
+
+/**
+ * For the HUD's "SPACE — climb" hint: a ledge just ahead of a standing player at (x, y)
+ * with feet at `zq`, facing along the unit vector (dirX, dirY), that a jump into it would
+ * mantle (the same rules as findLedge, with the jump's apex added to the reach).
+ * @returns {number} collider index, or -1
+ */
+export function ledgeAhead(world, x, y, zq, dirX, dirY, look = 40) {
+  const near = world._ledge || (world._ledge = []);
+  const r = PLAYER_RADIUS, reach = r + look;
+  const n = world.index.query(x - reach, y - reach, x + reach, y + reach, MASK_MOVE, near);
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const o = near[i];
+    if (!o.stand || o.topQ <= zq || o.topQ <= MIN_Q || o.topQ - zq > REACH_Q + APEX_Q) continue;
+    const d = distToObb(o, x, y);
+    if (d > reach || d < 1e-6 || d >= bestD) continue;
+    closestPointOnObb(o, x, y, _cp);
+    if (((x - _cp.x) * dirX + (y - _cp.y) * dirY) / d > -0.7) continue;
+    mantleSpot(o, x, y, MANTLE_INSET, _spot);
+    if (world.circleBlockedAt(_spot.x, _spot.y, r, o.top)) continue;
+    best = o.ci;
+    bestD = d;
+  }
+  return best;
+}
+
+/**
+ * One tick of a mantle (p.climbT > 0): up the side first, then over onto the top of
+ * world.colliders[p.climbTo]. No collisions on the way (the end spot was checked free).
+ * @returns {number} -1 on the tick it ends (standing on top), else 0
+ */
+function stepMantle(p, world) {
+  const o = world.colliders[p.climbTo];
+  if (!o || !o.stand) {
+    // Not a ledge on this map (a bad record): let go.
+    p.climbT = 0;
+    p.climbTo = -1;
+    p.vzq = -1;
+    return 0;
+  }
+  const k = p.climbT;
+  if (k > MANTLE_TOP_TICKS) {
+    const left = o.topQ - p.zq;
+    if (left > 0) p.zq += Math.ceil(left / (k - MANTLE_TOP_TICKS));
+  } else {
+    p.zq = o.topQ;
+  }
+  if (k <= MANTLE_OVER_TICKS) {
+    mantleSpot(o, p.x, p.y, MANTLE_INSET, _spot);
+    p.x += (_spot.x - p.x) / k;
+    p.y += (_spot.y - p.y) / k;
+  }
+  p.climbT = k - 1;
+  let ev = 0;
+  if (p.climbT === 0) {
+    p.zq = o.topQ;
+    p.climbTo = -1;
+    p.jumpCd = COOL_TICKS;
+    ev = -1;
+  }
+  p.z = p.zq * Z_UNIT;
+  return ev;
+}
+
+/**
  * Advance one player by one input command (SPEC §3.2). Mutates p.x, p.y, p.stamina,
- * p.sprintLock, p.sprinting, p.jumpT and p.z. Players collide with obstacles, water, the
- * objective, barricades and the map bounds, never with zombies or other players. While
- * jumping (jump.js) they pass over low cover their feet clear (JUMP_CLEAR); a landing
- * that leaves them inside something moves them to the nearest free spot.
+ * p.sprintLock, p.sprinting and the vertical state (jump.js: zq, vzq, jumpCd, climbT,
+ * climbTo, z). Players collide with obstacles, water, the objective, barricades and the
+ * map bounds, never with zombies or other players — except obstacles their feet are
+ * above (they jump over low cover and walk around on top of what they stand on). They
+ * stand on the highest standable top under them and fall when they walk off it; jumping
+ * (or falling) while pushing into a ledge within reach mantles onto it. A landing that
+ * leaves them inside something moves them to the nearest free spot.
  *
  * @param {object} p { x, y, state, stamina, sprintLock, speedMult, moveMult,
- *   staminaMult?, jumpT? } — staminaMult (default 1) is the class stamina perk: it slows
- *   the drain and speeds up regeneration while STAMINA_MAX stays the HUD's scale.
+ *   staminaMult?, zq?, vzq?, jumpCd?, climbT?, climbTo? } — staminaMult (default 1) is the
+ *   class stamina perk: it slows the drain and speeds up regeneration while STAMINA_MAX
+ *   stays the HUD's scale.
  * @param {object} cmd InputCmd (moveX, moveY, sprint, jump are read)
  * @param {number} dt seconds
  * @param {CollisionWorld} world
- * @returns {number} 1 = took off this tick, -1 = landed, 0 otherwise
+ * @returns {number} 1 = took off this tick, -1 = landed (or finished a climb), 2 = started
+ *   a climb, 0 otherwise
  */
 export function stepPlayerMovement(p, cmd, dt, world) {
+  normVertical(p);
   if (p.state === 'dead') {
     p.sprinting = false;
-    p.jumpT = 0;
-    p.z = 0;
+    settleVertical(p, world);
     return 0;
   }
-  const jump = stepJump(p, cmd, dt);
+  const sm = p.staminaMult > 0 ? p.staminaMult : 1;
+  let stamina = Number.isFinite(p.stamina) ? p.stamina : STAMINA_MAX;
+  if (p.climbT > 0) {
+    // Climbing: no walking or sprinting; the stamina bar recovers as usual.
+    p.stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN * sm * dt);
+    if (p.sprintLock && p.stamina >= STAMINA_MIN_TO_SPRINT) p.sprintLock = false;
+    p.sprinting = false;
+    return stepMantle(p, world);
+  }
+  const jump = stepJump(p, cmd, (x, y, zq) => world.groundQ(x, y, zq));
   const z = p.z;
   let mx = cmd && Number.isFinite(cmd.moveX) ? cmd.moveX : 0;
   let my = cmd && Number.isFinite(cmd.moveY) ? cmd.moveY : 0;
@@ -320,8 +498,6 @@ export function stepPlayerMovement(p, cmd, dt, world) {
   }
   const moving = len > 0.05;
   const downed = p.state === 'downed';
-  const sm = p.staminaMult > 0 ? p.staminaMult : 1;
-  let stamina = Number.isFinite(p.stamina) ? p.stamina : STAMINA_MAX;
   let lock = !!p.sprintLock;
   if (lock && stamina >= STAMINA_MIN_TO_SPRINT) lock = false;
   const sprinting = !!(cmd && cmd.sprint) && moving && !downed && !lock && stamina > 0;
@@ -347,8 +523,36 @@ export function stepPlayerMovement(p, cmd, dt, world) {
       : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1);
     world.moveCircle(p, PLAYER_RADIUS, mx * speed * dt, my * speed * dt, MASK_MOVE, z);
   }
+  // Walked off the edge of what we stand on: fall from the next tick.
+  if (p.vzq === 0 && p.zq > 0 && world.groundQ(p.x, p.y, p.zq) < p.zq) p.vzq = -1;
   // Coming down onto low cover wedged against something else can leave no way out by the
   // shortest push: walk out to the nearest free spot instead of staying stuck inside.
-  if (jump < 0 || (p.jumpT > 0 && z < JUMP_CLEAR_MAX)) world.unstick(p, PLAYER_RADIUS, z);
+  if (jump < 0 || p.vzq !== 0) world.unstick(p, PLAYER_RADIUS, z);
+  // Jumping or falling into a ledge within reach: climb it.
+  if (moving && p.state === 'alive' && (p.vzq !== 0 || (cmd && cmd.jump))) {
+    const l = len > 1 ? 1 : len;
+    const ci = findLedge(world, p.x, p.y, PLAYER_RADIUS, p.zq, mx / l, my / l);
+    if (ci >= 0) {
+      p.climbT = MANTLE_TICKS;
+      p.climbTo = ci;
+      p.vzq = 0;
+      p.sprinting = false;
+      return 2;
+    }
+  }
   return jump;
+}
+
+/**
+ * Drop a record that can't move any more (the dead) onto whatever is under it: a corpse
+ * on a car roof stays up there, one killed mid-jump lands.
+ */
+export function settleVertical(p, world) {
+  normVertical(p);
+  p.vzq = 0;
+  p.climbT = 0;
+  p.climbTo = -1;
+  p.jumpCd = 0;
+  p.zq = p.zq > 0 ? world.groundQ(p.x, p.y, p.zq) : 0;
+  p.z = p.zq * Z_UNIT;
 }
