@@ -297,7 +297,7 @@ export function patchDetail(mat, shared, key, opts = {}) {
     }
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + DETAIL_VERT_PARS + (rooms ? 'varying vec3 vHhP;\nvarying vec3 vHhN;\n' : ''))
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDet = aDet;\nvSurf = aSurf;' + (rooms ? '\nvHhP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvHhN = normalize(mat3(modelMatrix) * normal);' : ''));
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDet = aDet;\nvSurf = aSurf;' + (rooms ? '\nvHhP = (modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition;\nvHhN = normalize(mat3(modelMatrix) * normal);' : ''));
     let head = '#include <common>\n' + DETAIL_FRAG_PARS;
     if (paint) head = '#define HH_PAINT\n' + head;
     if (rooms) head += 'varying vec3 vHhP;\nvarying vec3 vHhN;\nuniform float uRoomAmb;\n' + INTERIOR_GLSL;
@@ -322,11 +322,12 @@ export function patchDetail(mat, shared, key, opts = {}) {
         vec3 hhRoomCol = vec3(0.0);
         float hhPx = max(fwidth(vDet.x), fwidth(vDet.y));
         if (hhPane) {
-          vec3 V = normalize(vHhP - cameraPosition);
+          vec3 V = normalize(vHhP);
           vec3 N = normalize(vHhN);
           vec3 R = normalize(vec3(N.z, 0.0, -N.x));
           vec3 dd = vec3(dot(V, R), V.y, dot(V, -N));
-          float rr = vDet.z - 100.0;
+          // (rounded: the interpolated id may be off by 1e-4, and the room hashes are chaotic in it)
+          float rr = floor(vDet.z - 99.5);
           vec2 sz = abs(vSurf) * 128.0;
           hhRoomCol = hhRoom(vDet.xy, sz, dd, rr, 0.0, uRoomAmb, 0.0, hhPx);
         }` : ''}`)
@@ -379,7 +380,7 @@ function roomMaterial(uniforms) {
       .replace('#include <common>', '#include <common>\nattribute vec3 aDet;\nattribute vec2 aSurf;\nvarying vec3 vDet;\nvarying vec2 vSurf;\nvarying vec3 vHhP;\nvarying vec3 vHhN;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vDet = aDet; vSurf = aSurf;
-        vHhP = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vHhP = (modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition;
         vHhN = normalize(mat3(modelMatrix) * normal);`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
@@ -389,11 +390,11 @@ function roomMaterial(uniforms) {
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float pxs = max(fwidth(vDet.x), fwidth(vDet.y));
-          vec3 V = normalize(vHhP - cameraPosition);
+          vec3 V = normalize(vHhP);
           vec3 N = normalize(vHhN);
           vec3 R = normalize(vec3(N.z, 0.0, -N.x));
           vec3 dd = vec3(dot(V, R), V.y, dot(V, -N));
-          diffuseColor.rgb *= hhRoom(vDet.xy, abs(vSurf) * 128.0, dd, vDet.z - 100.0, 1.0, 0.09, uTime, pxs) * uRoomK;
+          diffuseColor.rgb *= hhRoom(vDet.xy, abs(vSurf) * 128.0, dd, floor(vDet.z - 99.5), 1.0, 0.09, uTime, pxs) * uRoomK;
         }`);
   };
   m.customProgramCacheKey = () => 'hh-room-v2';
