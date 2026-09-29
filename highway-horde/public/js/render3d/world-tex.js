@@ -504,6 +504,7 @@ function paintExtraCells(g, cell, person) {
 export const LEAF_CELLS = { broadA: [0, 0, 0.5, 0.5], broadB: [0.5, 0, 1, 0.5], pine: [0, 0.5, 0.5, 1], scrub: [0.5, 0.5, 1, 1] };
 
 let leafCanvas = null;
+let leafData = null;   // straight-alpha RGBA of leafCanvas (see makeLeafTexture)
 export function makeLeafTexture(anisotropy = 4) {
   if (!leafCanvas) {
     const S = 512, H = S / 2;
@@ -566,11 +567,34 @@ export function makeLeafTexture(anisotropy = 4) {
     cluster(0, 0, 360, H * 0.44, 18, 0, true);      // pine
     cluster(H, 0, 620, H * 0.42, 13, 6, false);     // scrub
   }
-  const tex = new THREE.CanvasTexture(leafCanvas);
+  // The canvas holds premultiplied pixels: every transparent texel is black, and the
+  // mipmaps averaged that black into the needles, so a distant pine turned into dark
+  // speckles over its cone. Upload straight RGBA instead, with the transparent texels
+  // carrying the mean leaf shade (colour bleed), rows flipped like a canvas upload.
+  if (!leafData) {
+    const S = leafCanvas.width;
+    const src = leafCanvas.getContext('2d').getImageData(0, 0, S, S).data;
+    let sum = 0, n = 0;
+    for (let i = 0; i < src.length; i += 4) if (src[i + 3] > 200) { sum += src[i]; n++; }
+    const mean = n ? sum / n : 150;
+    leafData = new Uint8Array(src.length);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4, o = ((S - 1 - y) * S + x) * 4;
+        const a = src[i + 3] / 255;
+        // canvas readback is un-premultiplied already; blend the fringe toward the mean
+        for (let k = 0; k < 3; k++) leafData[o + k] = Math.round(src[i + k] * a + mean * (1 - a));
+        leafData[o + 3] = src[i + 3];
+      }
+    }
+  }
+  const tex = new THREE.DataTexture(leafData, leafCanvas.width, leafCanvas.height, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
   tex.anisotropy = anisotropy;
+  tex.needsUpdate = true;
   return tex;
 }
 

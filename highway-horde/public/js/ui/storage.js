@@ -23,6 +23,8 @@ export const DEFAULT_CLIENT_SETTINGS = {
   antialias: 'smaa',   // 'smaa' | 'fxaa' | 'off'
   filmGrain: true,
   vignette: true,
+  volumetrics: true,   // ground mist + lamps / fires glowing in the air ('high'/'ultra')
+  reflections: true,   // wet-ground and water reflections ('high'/'ultra')
   lighting: true,
   screenShake: true,
   showNames: true,
@@ -62,9 +64,9 @@ export const QUALITIES = ['ultra', 'high', 'low'];
  * existed keeps a light Low setup instead of waking up with every effect on.
  */
 export const GRAPHICS_PRESETS = {
-  ultra: { bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true },
-  high: { bloom: true, ao: false, antialias: 'smaa', filmGrain: true, vignette: true },
-  low: { bloom: false, ao: false, antialias: 'fxaa', filmGrain: false, vignette: true },
+  ultra: { bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: true },
+  high: { bloom: true, ao: false, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: false },
+  low: { bloom: false, ao: false, antialias: 'fxaa', filmGrain: false, vignette: true, volumetrics: false, reflections: false },
 };
 
 const NAME_POOL = [
@@ -183,6 +185,8 @@ export function validateSettings(s) {
     antialias: oneOf(s.antialias, ANTIALIAS_MODES, fx.antialias),
     filmGrain: bool(s.filmGrain, fx.filmGrain),
     vignette: bool(s.vignette, fx.vignette),
+    volumetrics: bool(s.volumetrics, fx.volumetrics),
+    reflections: bool(s.reflections, fx.reflections),
     lighting: bool(s.lighting, ds.lighting),
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),

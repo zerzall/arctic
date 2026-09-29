@@ -73,6 +73,8 @@ export function makeSky(amb, radius, fx, fires = []) {
     uMoonColor: { value: new THREE.Color('#dfe8ff') },
     uCloud: { value: amb.fog.clone().lerp(new THREE.Color('#000000'), 0.3) },
     uGlow: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    // bearing (sky-dome azimuth) of the distant city: across the sky from the moon
+    uCityAz: { value: Math.atan2(0.64, 0.45) },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -85,6 +87,7 @@ export function makeSky(amb, radius, fx, fires = []) {
     fragmentShader: COMMON + `
       uniform vec3 uHorizon, uZenith, uMoonDir, uMoonColor, uCloud;
       uniform vec4 uGlow[4];
+      uniform float uCityAz;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
@@ -133,6 +136,39 @@ export function makeSky(amb, radius, fx, fires = []) {
         col += uMoonColor * (pow(max(md, 0.0), 2200.0) * 1.1 + pow(max(md, 0.0), 160.0) * 0.14 + pow(max(md, 0.0), 14.0) * 0.035);
         col = mix(col, moon, disc * (1.0 - cover * 0.85));
         col = mix(col, cloud, cover * 0.92);
+        // distant silhouettes over the tree line: two mountain ridges (the far one paler in
+        // the haze, a moonlit rim toward the moon) and, on one bearing, a dead city whose
+        // few lit windows and burning blocks glow orange into the low sky
+        vec2 ac = normalize(d.xz + 1e-5);
+        float az = atan(ac.y, ac.x);
+        float moonAz = pow(max(dot(ac, normalize(uMoonDir.xz)), 0.0), 3.0);
+        float r1 = 0.045 + 0.085 * fbm(ac * 2.1 + 3.7) + 0.012 * vnoise(ac * 23.0);
+        float r2 = 0.02 + 0.06 * fbm(ac * 4.3 + 11.2) + 0.008 * vnoise(ac * 41.0);
+        vec3 haze = mix(uHorizon, uZenith, 0.25);
+        float m1 = smoothstep(r1 + 0.0015, r1 - 0.0015, h);
+        float m2 = smoothstep(r2 + 0.0015, r2 - 0.0015, h);
+        col = mix(col, haze * 0.72 + uMoonColor * 0.035 * moonAz * smoothstep(r1 - 0.012, r1, h), m1);
+        col = mix(col, haze * 0.42 + uMoonColor * 0.02 * moonAz * smoothstep(r2 - 0.008, r2, h), m2);
+        // the city: ~50° wide, centred away from the moon
+        float ca = abs(mod(az - uCityAz + 3.14159, 6.28318) - 3.14159);
+        float city = smoothstep(0.45, 0.25, ca);
+        if (city > 0.0) {
+          float bx = az * 140.0;
+          float id = floor(bx);
+          float hb = h21(vec2(id, 7.3));
+          float bh = (0.008 + 0.042 * hb * hb * hb + 0.012 * h21(vec2(floor(bx / 3.0), 1.9))) * city;
+          float inB = step(h, bh) * step(0.0, h - 0.0005);
+          // lit windows: a sparse grid, warm or cold, a few flicker
+          vec2 wg = vec2(fract(bx) * 4.0, h * 1600.0);
+          vec2 wc = floor(wg);
+          float lit = step(0.93, h21(wc + id * 13.1)) * step(0.3, fract(wg.x)) * step(0.35, fract(wg.y));
+          vec3 wcol = mix(vec3(1.0, 0.62, 0.3), vec3(0.75, 0.85, 1.0), step(0.7, h21(wc.yx + id)));
+          vec3 bcol = haze * 0.3 + wcol * lit * 1.6;
+          col = mix(col, bcol, inB);
+          // light pollution and the burning city lighting the low haze
+          float glow = exp(-max(h, 0.0) * 30.0) * city;
+          col += vec3(1.0, 0.45, 0.16) * glow * 0.05 * (1.0 - inB) * (1.0 - m1);
+        }
         gl_FragColor = vec4(col, 1.0);
       ` + TONE + '}',
     side: THREE.BackSide,
@@ -210,20 +246,28 @@ export function makeFlames(fires, fx) {
       float t = uTime + vSeed * 13.0;
       float x = (vUv.x - 0.5) * 2.0;
       float y = vUv.y;
-      x += (vnoise(vec2(y * 3.0 - t * 1.7, vSeed)) - 0.5) * 0.55 * y;
-      float n = fbm(vec2(vUv.x * 3.2 + vSeed * 5.0, y * 2.4 - t * 2.6));
+      // the whole body sways, then two noise layers rising at different speeds tear the
+      // upper part into separate licking tongues
+      x += (vnoise(vec2(y * 2.6 - t * 1.5, vSeed)) - 0.5) * 0.6 * y;
+      vec2 q = vec2(x * 1.5 + vSeed * 5.0, y * 2.3 - t * 2.7);
+      float n1 = fbm(q);
+      float n2 = vnoise(q * 2.6 + vec2(3.1, -t * 2.2));
       // teardrop: narrow at the base, widest low down, licking to a point
       float width = ((1.0 - y) * 0.95 + 0.05) * smoothstep(-0.35, 0.22, y);
-      float body = 1.0 - smoothstep(0.3 * width, width, abs(x));
-      float f = body * (1.2 - y * 1.1) - n * 0.8 + 0.2;
+      float body = 1.0 - smoothstep(0.25 * width, width, abs(x));
+      float f = body * (1.25 - y * 1.05) - (n1 * 0.75 + n2 * 0.3) * (0.6 + y * 0.55) + 0.27;
       f = clamp(f, 0.0, 1.0);
       // the base fades in: it sits in the wreck, and a saturated blob there read as a
       // glowing ball stuck to the body instead of flames licking up from it
       f *= smoothstep(0.0, 0.3, y);
-      vec3 col = mix(vec3(0.75, 0.1, 0.01), vec3(1.0, 0.42, 0.07), smoothstep(0.12, 0.55, f));
-      col = mix(col, vec3(1.0, 0.75, 0.4), smoothstep(0.85, 1.0, f));
-      float a = smoothstep(0.02, 0.45, f) * fogVis(vDepth);
-      gl_FragColor = vec4(col * 0.7, a * 0.7);
+      // temperature ramp: deep red edges and tips, orange body, a small yellow-white core
+      // bright enough (HDR) for the bloom to catch
+      float heat = smoothstep(0.12, 0.95, f);
+      vec3 col = mix(vec3(0.6, 0.07, 0.01), vec3(1.0, 0.4, 0.07), smoothstep(0.0, 0.45, heat));
+      col = mix(col, vec3(1.0, 0.7, 0.3), smoothstep(0.5, 0.85, heat));
+      col = mix(col, vec3(1.0, 0.9, 0.66), smoothstep(0.88, 1.0, heat));
+      float a = smoothstep(0.02, 0.4, f) * fogVis(vDepth);
+      gl_FragColor = vec4(col * (0.5 + 1.0 * heat * heat), a * 0.72);
     ` + TONE + '}', { side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, mat);
   mesh.name = 'fire-flames';

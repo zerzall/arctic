@@ -28,6 +28,22 @@ const FADE_IN = 3.5, FADE_OUT = 7;  // per second
 const MAX_FLASHES = 40;
 const FLASH_I = 900;
 
+// The flashlight's beam profile (the only SpotLight in the scene). three's spot is a flat
+// disc with a smoothstep rim in cosine space — close to a wall it read as a hard-edged
+// white plate that washed the texture out. A real torch has a hot centre and a soft spill
+// that fades in angle, and its irradiance stops climbing inside ~1.5 m (the reflector is
+// not a point): the profile below is that, patched once into three's light chunk (every
+// lit material, every tier; one acos per fragment for the one spot light).
+const SPOT_ATT = 'float spotAttenuation = getSpotAttenuation( spotLight.coneCos, spotLight.penumbraCos, angleCos );';
+const SPOT_DIST = 'light.color *= getDistanceAttenuation( lightDistance, spotLight.distance, spotLight.decay );';
+if (THREE.ShaderChunk.lights_pars_begin.includes(SPOT_ATT) && THREE.ShaderChunk.lights_pars_begin.includes(SPOT_DIST)) {
+  THREE.ShaderChunk.lights_pars_begin = THREE.ShaderChunk.lights_pars_begin
+    .replace(SPOT_ATT, `float hhSx = acos( clamp( angleCos, -1.0, 1.0 ) ) / max( acos( spotLight.coneCos ), 1e-3 );
+		float hhSq = max( 1.0 - hhSx * hhSx, 0.0 );
+		float spotAttenuation = hhSx < 1.0 ? 0.6 * hhSq * hhSq + 0.4 * exp( -hhSx * hhSx * 9.0 ) : 0.0;`)
+    .replace(SPOT_DIST, 'light.color *= getDistanceAttenuation( max( lightDistance, 64.0 ), spotLight.distance, spotLight.decay );');
+}
+
 /**
  * @param {object} o { scene, camera, map, quality, heightAt?(x, y) base height of fires }
  */
@@ -49,7 +65,9 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   // flashlight: warm-white, a slightly soft cone, from just right of and below the eye
   // decay a little over 1: bright enough to read zombies at 400+, without the hot spot on
   // a wall 100 away blowing out (and blooming) the middle of the screen
-  const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.44, 0.72, 1.12);
+  // (the cone is a little wider than the lit disc used to be: the patched profile above
+  // fades the spill out gradually instead of cutting it at a rim)
+  const flash = new THREE.SpotLight('#fff1dc', 0, 1500, 0.5, 0.72, 1.12);
   flash.target = new THREE.Object3D();
   group.add(flash, flash.target);
   let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
@@ -115,7 +133,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
       key: 'map' + i, x: l.x, y: l.y, h, color: color(l.color),
       // lamps reach the ground at `r` from their foot; the cut-off is the slant distance
       // fires sit right against wrecks: at 1.1 a pale tanker cap 30 units away blew out white
-      intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9,
+      intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9, lamp: isLamp,
       radius: isLamp ? Math.hypot(l.r, h) * 1.05 : l.r * (fire ? 1.25 : 1.1),
       flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0,
     };
@@ -130,6 +148,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   // ---- pool ----------------------------------------------------------------------------
   const pool = [];
   const poolLights = [];
+  // per pool slot: 1 = a street lamp under its shade (the atmosphere pass keeps its haze below it)
+  let poolKinds = new Float32Array(0);
   function buildPool(n) {
     for (const s of pool) { group.remove(s.light); s.light.dispose(); }
     pool.length = 0;
@@ -141,6 +161,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
       pool.push({ light, src: null, level: 0 });
       poolLights.push(light);
     }
+    poolKinds = new Float32Array(n);
   }
   buildPool(POOL[tier]);
 
@@ -246,8 +267,10 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     }
 
     mapLevel.fill(0);
-    for (const p of pool) {
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
       const s = p.src, L = p.light;
+      poolKinds[i] = s && s.lamp ? 1 : 0;
       if (!s || p.level <= 0) { L.intensity = 0; continue; }
       let k = p.level * flickerOf(s);
       if (s.flash) {
@@ -331,6 +354,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
     updateMoonShadow,
     /** The pool's PointLights (read-only: rain streaks are lit by them). */
     poolLights,
+    /** Per pool slot, 1 when it holds a street lamp (read-only; rebuilt with the pool). */
+    get poolKinds() { return poolKinds; },
     /** Real-light level 0..1 of map light i this frame (fake light pools fill the rest). */
     mapLevel,
     mapSources,

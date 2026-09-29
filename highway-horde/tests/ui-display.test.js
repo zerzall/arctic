@@ -107,6 +107,8 @@ test('missing effect toggles follow the preset of the stored quality', () => {
   assert.equal(low.antialias, 'fxaa');
   assert.equal(low.filmGrain, false);
   assert.equal(low.vignette, true);
+  assert.equal(low.volumetrics, false);
+  assert.equal(low.reflections, false);
   // Stored values still win, and junk falls back to the preset, not to Ultra.
   const mixed = validateSettings({ quality: 'low', renderScale: 'auto', bloom: true, ao: 'x' });
   assert.equal(mixed.bloom, true);
@@ -114,6 +116,11 @@ test('missing effect toggles follow the preset of the stored quality', () => {
   const high = validateSettings({ quality: 'high', renderScale: 1 });
   assert.equal(high.ao, false);
   assert.equal(high.bloom, true);
+  assert.equal(high.volumetrics, true, 'High keeps the cheap quarter-resolution mist');
+  assert.equal(high.reflections, false, 'screen-space reflections are an Ultra default');
+  const ultra = validateSettings({ quality: 'ultra', renderScale: 1, volumetrics: 'x', reflections: false });
+  assert.equal(ultra.volumetrics, true);
+  assert.equal(ultra.reflections, false);
 });
 
 test('graphics prefs round-trip; old builds\' unpicked "high" moves up to the new default', () => {
@@ -192,6 +199,7 @@ test('the renderer gets the graphics settings every frame, in the agreed shape',
   assert.deepEqual(out, {
     crosshair: true, screenShake: true, showNames: true, lighting: true, fov: 80,
     renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
+    volumetrics: true, reflections: true,
   });
   // Reuses the object it is given (the match loop passes the same one every frame).
   s.renderScale = 0.85;
@@ -233,6 +241,8 @@ test('presets set quality and effects; resolution is its own control; tweaks rea
   }
   assert.equal(GRAPHICS_PRESETS.ultra.ao, true);
   assert.equal(GRAPHICS_PRESETS.low.bloom, false);
+  assert.equal(GRAPHICS_PRESETS.ultra.reflections, true);
+  assert.equal(GRAPHICS_PRESETS.low.volumetrics, false);
 });
 
 test('stats readout: FPS, the renderer\'s resolution scale and GPU time, then network', () => {

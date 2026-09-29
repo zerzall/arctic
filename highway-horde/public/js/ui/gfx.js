@@ -5,7 +5,7 @@
 // preset's quality changes, and every renderer.render(view, { ..., settings }) carries
 //   { screenShake, showNames, lighting, fov, crosshair,
 //     renderScale: 'auto' | 0.5..1   // 'auto' = dynamic resolution that holds 60 fps
-//     bloom, ao, filmGrain, vignette: boolean,
+//     bloom, ao, filmGrain, vignette, volumetrics, reflections: boolean,
 //     antialias: 'smaa' | 'fxaa' | 'off' }
 // and r.stats may report renderScale (the scale in use right now) and gpuMs.
 // The top-down renderer ignores the fields it doesn't know.
@@ -16,7 +16,7 @@ import { ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, GRAPHICS_PRESETS } from '
 export { GRAPHICS_PRESETS };
 
 /** Settings a preset owns; any other value in the Advanced panel makes it "custom". */
-export const PRESET_KEYS = ['bloom', 'ao', 'antialias', 'filmGrain', 'vignette'];
+export const PRESET_KEYS = ['bloom', 'ao', 'antialias', 'filmGrain', 'vignette', 'volumetrics', 'reflections'];
 
 /**
  * Pick a preset: sets the quality and every effect toggle the preset owns. Resolution
@@ -66,6 +66,8 @@ export function rendererSettings(s, out = {}) {
   out.antialias = ANTIALIAS_MODES.includes(s.antialias) ? s.antialias : 'smaa';
   out.filmGrain = s.filmGrain !== false;
   out.vignette = s.vignette !== false;
+  out.volumetrics = s.volumetrics !== false;
+  out.reflections = s.reflections !== false;
   return out;
 }
 
