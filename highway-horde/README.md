@@ -186,7 +186,9 @@ to 100% in Settings for the sharpest picture, or pick High or Low if it stutters
 
 - **Graphics**: a preset (Ultra, High, Low), the resolution (Auto, 100%, 85%, 70% or 50%)
   and, under *Advanced*, anti-aliasing (SMAA, FXAA, off), bloom, ambient occlusion, film
-  grain, vignette and night lighting. Tweaking an effect marks the preset *Custom*.
+  grain, vignette and night lighting. Tweaking an effect marks the preset *Custom*. *Gore*
+  (On, Low, Off) is separate from the presets: Low thins out the blood and drops severed
+  limbs, Off paints dark ash instead of red and nobody is blown apart.
 - **Display & HUD**: fullscreen, *Start games in fullscreen*, the UI size (Auto scales
   the menus and HUD with your screen, from 720p up to 4K; 75% to 150% on top of that), the
   HUD safe area (on ultrawide monitors *16:9* keeps the HUD near the middle of the

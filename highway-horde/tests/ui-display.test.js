@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 import {
   loadPrefs, savePrefs, validateSettings, defaultClientSettings, DEFAULT_CLIENT_SETTINGS,
-  FOV_MAX, RENDER_SCALES, UI_SCALES,
+  FOV_MAX, RENDER_SCALES, UI_SCALES, GORE_MODES,
 } from '../public/js/ui/storage.js';
 import { autoUiScale, uiScaleFor, UI_AUTO_MAX } from '../public/js/ui/uiscale.js';
 import {
@@ -123,6 +123,32 @@ test('missing effect toggles follow the preset of the stored quality', () => {
   assert.equal(ultra.reflections, false);
 });
 
+test('gore setting: on by default at every quality, validated, stored and passed to the renderer', () => {
+  for (const q of ['ultra', 'high', 'low']) assert.equal(validateSettings({ quality: q, renderScale: 1 }).gore, 'on', `${q}: gore on`);
+  assert.equal(DEFAULT_CLIENT_SETTINGS.gore, 'on');
+  assert.deepEqual(GORE_MODES, ['on', 'low', 'off']);
+  for (const v of GORE_MODES) assert.equal(validateSettings({ gore: v }).gore, v);
+  for (const junk of ['ON', 'none', '', 0, 1, true, null, {}, [], 'red']) assert.equal(validateSettings({ gore: junk }).gore, 'on', `junk ${JSON.stringify(junk)} falls back to on`);
+  // the choice is independent of the graphics preset
+  assert.equal(validateSettings({ quality: 'low', gore: 'off' }).gore, 'off');
+  // survives a save / load
+  const store = memStore();
+  withStorage(store, () => {
+    const p = loadPrefs();
+    p.settings.gore = 'off';
+    savePrefs(p);
+    assert.equal(loadPrefs().settings.gore, 'off');
+  });
+  // and rides along in the renderer's per-frame settings
+  const s = withCoarse(false, () => defaultClientSettings());
+  s.gore = 'low';
+  assert.equal(rendererSettings(s, {}).gore, 'low');
+  s.gore = 'bogus';
+  assert.equal(rendererSettings(s, {}).gore, 'on');
+  // presets do not own it (choosing a preset never changes the gore level)
+  assert.ok(!PRESET_KEYS.includes('gore'));
+});
+
 test('graphics prefs round-trip; old builds\' unpicked "high" moves up to the new default', () => {
   const store = memStore();
   withStorage(store, () => {
@@ -199,7 +225,7 @@ test('the renderer gets the graphics settings every frame, in the agreed shape',
   assert.deepEqual(out, {
     crosshair: true, screenShake: true, showNames: true, lighting: true, fov: 80,
     renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
-    volumetrics: true, reflections: true,
+    volumetrics: true, reflections: true, gore: 'on',
   });
   // Reuses the object it is given (the match loop passes the same one every frame).
   s.renderScale = 0.85;

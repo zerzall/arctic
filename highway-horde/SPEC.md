@@ -1205,7 +1205,14 @@ lights.js       fixed pool of PointLights + the flashlight SpotLight
 zombies3d.js    instanced zombies (+ corpses, gibs)
 players3d.js    teammates (third person), their weapons and flashlight cones
 items3d.js      projectiles, pickups, turrets, barricades, hazards
-effects3d.js    particles, tracers, muzzle flashes, explosions, arcs, beams, shake requests
+effects3d.js    particles, tracers, muzzle flashes per weapon class, impacts by surface, explosions
+                (multi-stage), arcs, beams, shake requests; orchestrates blood3d / gore3d / casings3d
+fx-decals.js    the decal layer (one draw call, two ring buffers: blood etc. and marks) and its atlas
+blood3d.js      blood on walls / cars / ground: exit-wound sprays, drips, pools, footprints, drag smears
+gore3d.js       severed limbs, torsos and heads with tumbling physics that smear where they slide
+casings3d.js    ejected shell casings (pooled instanced mesh)
+surfaces.js     obstacle faces (normal, top, extent) and ground materials derived from the map data
+ambient3d.js    motes, fireflies, leaves / paper, wind-blown ash, rain splashes, far lightning, birds
 viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
 overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
                 damage-direction arcs, off-screen arrows, low-hp vignette
@@ -1385,6 +1392,41 @@ passes < 0.2 % of a surface), so a long map costs about what a short one does: t
 zombies (the old 3600-wide one: 85–107 / 510k–540k). Ground canvases keep a texel budget
 per tier (ultra 10 M, high 6 M, low 3 M texels; every other map fits at full density).
 The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).
+
+**Effects, gore and ambient life** (`effects3d.js`, `fx-core.js`, `fx-decals.js`, `blood3d.js`,
+`gore3d.js`, `casings3d.js`, `ambient3d.js`; five effect draw calls in all: particles (alpha),
+particles (additive), beams, decals, plus the bird / limb / casing meshes only while they exist).
+- **Decals** are quads lying on a surface (a wall's face normal from the map's obstacle
+  rectangles, or the ground), lit by the scene lights with the sun's and flashlight's shadows,
+  clipped to the top and the ends of the surface they are on. They live in two ring buffers
+  (`gore` 1600 / 800 / 160 and `marks` 700 / 360 / 80 on ultra / high / low): the oldest is
+  recycled, nothing is allocated. Ageing runs on the GPU from each decal's birth time: pools
+  spread over ~5 s, blood dries from bright wet red to a dark crust (~75 s) and loses its gloss,
+  drips run down walls, everything fades at the end of its life.
+- **Blood.** A hit on flesh sprays the wall / car / ground behind it along the bullet (reach
+  by weapon class), splats on it, drips; a corpse pools and leaves a drag smear where it was
+  moving; wounded zombies and anyone walking through a fresh pool leave footprints. Heavy
+  finishing hits tear a limb off; a zombie that is blown apart (`zdie.gib`) throws limbs, a
+  torso and a head (≤ 110 / 64 / 0 pieces), which trail drops, splat and smear as they slide.
+- **Impacts by surface**: concrete / stone (chips, dust, pale spall patch), metal (sparks,
+  ricochet streaks, dent; a car window shatters into glass), wood (splinters), dirt / sand
+  (puffs, clods, grains), water (splash, ring), each with a hole decal (marks ring).
+  Shell casings (brass, red shotgun hulls) eject, bounce, tumble and rest for ~40 s
+  (≤ 140 / 80 / 22).
+- **Explosions** run in stages (flash, fireball, shockwave ring + screen refraction, shrapnel
+  streaks, dust ring, black plume and cap, crater and soot decals, lingering embers and a
+  smouldering fire); fires shimmer with screen-space heat distortion (post.js).
+- **Gore setting** `settings.gore` 'on' | 'low' | 'off' (prefs default 'on', Advanced graphics
+  panel, passed to `render()` every frame): low halves the blood and drops limbs and drips; off
+  paints dark ash instead of red, no limbs, no drips, and nobody is blown apart (the renderer
+  strips `zdie.gib` before the sub-systems see it). The top-down view recolours too.
+- **Ambient life** (`ambient3d.js`): dust / pollen motes (day), fireflies over grass (night),
+  leaves and paper on a slowly turning wind, ash and embers downwind of fires, rain
+  splashes under the night rain (ultra), rare far lightning behind the clouds (night, high /
+  ultra) and birds that take off from lamp posts, trees and roofs when gunfire starts (day).
+- **Post**: lens flare of the sun / moon (only where the HDR disc is visible), heat and
+  shockwave distortion, desaturation as health runs out, per-map night grades
+  (`nightGradeFor`), a flashlight cookie with a slight flicker and hand sway.
 
 **GPU rules learned during the build** (every render3d module follows them):
 - Never toggle `visible` on a light or add/remove one: that changes the light count and

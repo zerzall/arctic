@@ -6,7 +6,7 @@
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
 // graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
-// vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections).
+// vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off.
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
 // stats(), step(n), recreate(mapId), renderer, game.
 
@@ -46,6 +46,7 @@ const gfx = {
   vignette: params.get('vignette') !== '0',
   volumetrics: params.get('vol') !== '0',
   reflections: params.get('refl') !== '0',
+  gore: ['on', 'low', 'off'].includes(params.get('gore')) ? params.get('gore') : 'on',
 };
 
 const canvas = document.getElementById('game');
@@ -315,7 +316,7 @@ function step(dt, nowS) {
     if (l > 1) { wx /= l; wy /= l; }
     const live = !opt.tour && !fixedView;
     game.setInput(1, {
-      ...idle, ...edge, seq: ++seq,
+      ...idle, ...edge, ...forced, seq: ++seq,
       moveX: live ? wx : 0, moveY: live ? wy : 0, angle: yaw,
       fire: live && !!(mouse & 1), melee: live && !!(mouse & 4), sprint: keys.has('ShiftLeft'), interact: keys.has('KeyE'),
       slot: edge.slot ?? -1,
@@ -347,6 +348,8 @@ function step(dt, nowS) {
 }
 
 let gameMod = null;
+let vnow = 0;       // virtual clock of __fps.step (deterministic screenshots)
+let forced = {};    // __fps.hold(): input merged into every tick (scripted fights)
 async function main() {
   if (!isWebGLAvailable()) {
     $stats.textContent = 'WebGL2 is not available in this browser.';
@@ -362,7 +365,11 @@ async function main() {
     get snap() { return snap; },
     stats: () => ({ ...renderer.stats, world: renderer.debug.world.stats }),
     /** Advance n frames synchronously at 60 Hz (for deterministic screenshots). */
-    step(n = 1) { for (let i = 0; i < n; i++) step(1 / 60, (performance.now() / 1000)); },
+    step(n = 1, dt = 1 / 60) { for (let i = 0; i < n; i++) { vnow += dt; step(dt, 1000 + vnow); } },
+    /** Hold scripted input (fire, slot, angle…) for the local player; hold({}) releases. */
+    hold(o) { forced = o || {}; },
+    /** Feed synthetic events to the renderer (effects tests / screenshots). */
+    events(list) { renderer.addEvents(list, { localId: 1 }); },
     recreate(mapId) { setup(mapId || opt.map); },
     /** Simulate n ticks without rendering (the local player idles; bots play). */
     advance(n = 60) {

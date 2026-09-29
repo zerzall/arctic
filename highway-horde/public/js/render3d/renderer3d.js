@@ -15,7 +15,7 @@
 //   pixel-ratio cap; 'auto' = dynamic resolution), bloom, ao (ignored on 'low'),
 //   antialias 'smaa'|'fxaa'|'off' ('low' uses FXAA), filmGrain, vignette, volumetrics
 //   (ground mist + light scattering) and reflections (wet ground / water SSR), both
-//   ignored on 'low'.
+//   ignored on 'low'; gore 'on'|'low'|'off' (blood, gibs and decals; off = dark ash, no gibs).
 
 import * as THREE from 'three';
 import { createWorld, obstacleHeight, objectiveHeight, fireBaseHeight } from './world.js';
@@ -27,14 +27,15 @@ import * as zombiesMod from './zombies3d.js';
 import * as playersMod from './players3d.js';
 import * as itemsMod from './items3d.js';
 import * as effectsMod from './effects3d.js';
+import * as ambientMod from './ambient3d.js';
 import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
 import * as zoneMod from './zone3d.js';
 import * as campaignMod from './campaign3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { terrainOf } from '../shared/terrain.js';
-import { releaseFxAtlas } from './fx-core.js';
-import { createPost, createDynRes, createGpuTimer, normPostSettings } from './post.js';
+import { releaseFxAtlas, peekFx } from './fx-core.js';
+import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor } from './post.js';
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -192,7 +193,19 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // drawing-buffer height of the world pass (points and halos are sized in its pixels)
   const world = createWorld(ctx, { renderer, lights, pixelHeight: () => Math.max(1, Math.floor(cssH * prInner)) });
   const worldMs = performance.now() - tWorld;
-  ctx.ground.decal = world.ground.decal;
+  // Blood on the ground is drawn by the effects' decal layer (it pools, dries and follows the
+  // gore setting, see blood3d.js); the ground texture keeps scorch, acid and oil stains. Should
+  // the effects not be there, 'off' turns blood into dark stains and 'low' paints half of it.
+  let goreMode = 'on';
+  ctx.ground.decal = (kind, x, y, r, angle, alpha) => {
+    if (kind === 'blood' || kind === 'gore') {
+      const fx = peekFx(ctx);
+      if (fx && fx.groundBlood) { fx.groundBlood(kind, x, y, r, angle, alpha); return; }
+      if (goreMode === 'off') { world.ground.decal('oil', x, y, r, angle, (alpha === undefined ? 1 : alpha) * 0.8); return; }
+      if (goreMode === 'low' && Math.random() < 0.45) return;
+    }
+    world.ground.decal(kind, x, y, r, angle, alpha);
+  };
 
   // ---- sub-systems ----
   let errors = 0;
@@ -202,7 +215,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['ambient3d', ambientMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {
@@ -330,7 +343,14 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   try {
     // the atmosphere pass reads the light pool, the flashlight and the ground's wet mask
     const atmosSrc = { lights: lights.poolLights, kinds: lights.poolKinds, flashlight: lights.flashlight, ambient: amb, ground: world.ground, fogDensity: amb.fogDensity };
-    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q, look: amb.grade, getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; } });
+    // the sun (day) / moon (night) direction feeds the lens flare; the shared fx pools feed the heat / shockwave distortion
+    const flareDir = (amb.sunDir ? amb.sunDir.clone() : new THREE.Vector3(-0.45, 0.62, -0.64)).normalize();
+    post = createPost(renderer, {
+      scene, camera, getViewmodel: () => vm, quality: q, look: amb.grade || nightGradeFor(map),
+      getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; },
+      getFx: () => peekFx(ctx), flareDir, flareStrength: amb.time === 'day' ? 0.11 : 0.04,
+      flareColor: amb.time === 'day' ? [1, 0.92, 0.72] : [0.7, 0.85, 1],
+    });
   } catch (err) {
     logErr('post chain', err);
     post = null;
@@ -431,6 +451,9 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       const dt = Math.max(0, Math.min(0.1, Number(opts.dt) || 0));
       const settings = opts.settings || lastSettings;
       lastSettings = settings;
+      goreMode = settings.gore === 'off' || settings.gore === 'low' ? settings.gore : 'on';
+      const fxp = peekFx(ctx);
+      if (fxp) fxp.setGore(goreMode);     // (before this frame's sub-systems update: the events already queued use it too)
       applySettings(settings);
       if ((canvas.clientWidth && canvas.clientWidth !== cssW) || (canvas.clientHeight && canvas.clientHeight !== cssH)) resize();
       const local = view && view.players ? view.players.find((p) => p.id === localId) || null : null;
@@ -568,6 +591,13 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     // sub-systems may assume well-formed events; drop junk without allocating normally
     for (let i = 0; i < events.length; i++) {
       if (!events[i] || typeof events[i] !== 'object') { events = events.filter((e) => e && typeof e === 'object'); break; }
+    }
+    // gore off: nobody is blown to pieces (the body just falls), whatever the weapon
+    if (goreMode === 'off') {
+      for (let i = 0; i < events.length; i++) {
+        const e = events[i];
+        if (e.type === 'zdie' && e.gib) { events = events.map((x) => (x.type === 'zdie' && x.gib ? { ...x, gib: false } : x)); break; }
+      }
     }
     const lid = opts.localId ?? localId;
     try {

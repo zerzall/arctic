@@ -1002,6 +1002,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     const dt = clamp(Number.isFinite(opts.dt) ? opts.dt : 1 / 60, 0, 0.1);
     time += dt;
     const settings = opts.settings || DEFAULT_SETTINGS;
+    effects.setGore(settings.gore);
     const localId = opts.localId || 0;
     roster = opts.roster || EMPTY;
     lastLocalId = localId;
