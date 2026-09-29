@@ -408,6 +408,18 @@ const scenes = {
     return { shots: [{ name: 'blast', data: h.strip({ frames: 8, every: 3, crop: [3.4, 2.2, 7.2, 5.2], scale: 0.75, cols: 2 }) }] };
   },
 
+  /** The local fighter stands in the blast of a bomb whose neighbour is chained to it: hazard marks on the whole chain, the red warning ring. */
+  alarm(o) {
+    emptyStage(o, 3);
+    stage.teleport(0, 3, 5, 2); stage.teleport(1, 7, 9, 2); stage.teleport(2, 13, 11);
+    stage.set(1, { bombsMax: 3 });
+    stage.bomb(1, 3, 1, { range: 5, fuse: 40 });     // its arms reach the bomb at (5,1), which has a long fuse of its own ...
+    stage.bomb(1, 5, 1, { range: 4, fuse: 130 });    // ... but goes off with it, so column 5 is marked as urgently as column 3
+    stage.bomb(1, 11, 9, { range: 3, fuse: 100 });   // far from going off: no marks yet
+    h.advance(3);
+    return { shots: [{ name: 'alarm', data: h.shot() }, { name: 'alarm-zoom', data: h.strip({ frames: 1, every: 1, crop: [1.5, 3.4, 4, 3], scale: 1.4, label: false }) }] };
+  },
+
   /** Bombs about to blow: the floor they will burn is tinted, blinking red bombs, a rolling one. */
   danger(o) {
     emptyStage(o, 3);

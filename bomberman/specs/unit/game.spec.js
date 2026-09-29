@@ -1537,3 +1537,36 @@ test('real Room: create, start, walk over an 80 ms +/- 40 ms link - predicted eq
   assert.ok(ann.game.stats.snapshots > 200);
   room.close();
 });
+
+// ==================================================================================================
+// Audit additions: the round that ends without a final snapshot, and shapes the client must not choke on.
+// ==================================================================================================
+
+test('ending: the server sends no snapshot once a round is OVER, so the client stops cmds, prediction and ghosts after ENDING_TICKS', () => {
+  const u = running();
+  u.game.setIntent({ bomb: true });
+  u.step(TICK_MS, {});
+  assert.equal(u.game.getView(u.t).ghostBombs.length, 1);
+  u.snap(9, { st: STATE.ENDING, ack: { 0: 0 } }, u.t);       // outcome locked: this is the last snapshot of the round for a long time
+  u.step(C.ENDING_TICKS * TICK_MS - 100, { d: 2 });
+  assert.ok(u.cmds().length > 100, 'cmds still flow while the round ends');
+  const before = u.game.seq;
+  u.step(300, { d: 2 });
+  const seqAfterOver = u.game.seq;
+  u.step(1500, { d: 2, bomb: true });
+  assert.ok(seqAfterOver - before <= 8, 'a few more ticks at the boundary at most');
+  assert.equal(u.game.seq, seqAfterOver, 'no cmds are built once the round is OVER');
+  assert.equal(u.game.getView(u.t).ghostBombs.length, 0, 'and the ghost bombs are gone');
+  assert.equal(u.game.pred === null || !u.game._predicting, true);
+});
+
+test('robustness: snapshots missing an array are ignored instead of poisoning getView; setIntent tolerates null', () => {
+  const u = running();
+  const bad = mkSnap(6);
+  delete bad.fall;
+  u.game.onSnapshot(bad, u.t);
+  assert.equal(u.game.lastK, 0, 'the malformed snapshot did not become the newest');
+  assert.doesNotThrow(() => u.game.getView(u.t));
+  assert.doesNotThrow(() => u.game.setIntent(null));
+  assert.doesNotThrow(() => u.game.setIntent());
+});

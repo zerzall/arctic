@@ -6,7 +6,10 @@ import assert from 'node:assert/strict';
 import { THEMES, STATE, PLAYER_COLORS, GRID_W, GRID_H, MAX_PLAYERS } from '../../shared/constants.js';
 import { EVENT_ARGS } from '../../shared/protocol.js';
 import { World } from '../../shared/world.js';
-import { Renderer, computeLayout } from '../../client/js/render.js';
+import { Renderer, computeLayout, tagStyleFor, tagWanted } from '../../client/js/render.js';
+import { makeRng } from '../../shared/rng.js';
+import { ClientGame } from '../../client/js/game.js';
+import { makeRoom, joinN, say, tick, startMatch } from '../helpers/room-fixtures.js';
 import { createView, fillView, roundFor } from '../../scripts/dev/render/view-adapter.js';
 import { AutoPilot } from '../../scripts/dev/render/autopilot.js';
 
@@ -274,6 +277,10 @@ test('the reduced-effects setting follows the system preference until the user o
   assert.equal(renderer.reducedEffects, false);
   renderer.setReducedEffects(null);
   assert.equal(renderer.reducedEffects, true);
+  renderer.reducedEffects = false;                       // plain assignment works too
+  assert.equal(renderer.reducedEffects, false);
+  renderer.reducedEffects = null;
+  assert.equal(renderer.reducedEffects, true);
   mql.fn({ matches: false });                            // the OS setting changes while playing
   assert.equal(renderer.reducedEffects, false);
   assert.equal(renderer.particles.cap, 400);
@@ -482,6 +489,355 @@ test('dispose releases every canvas the renderer made', () => {
   assert.ok(made.length > 10);
   const live = made.filter((c) => c.width > 0 && c.height > 0 && c !== made[0]);
   assert.deepEqual(live.map((c) => `${c.width}x${c.height}`), []);
+});
+
+// ---- Name tags -----------------------------------------------------------------------------------------------------
+
+test('name tags: a coloured pill where there is room, a small pill on phones, plain text on small screens, local-only on the tiniest', () => {
+  assert.equal(tagStyleFor(83, 1), 0, '83 css px per tile');
+  assert.equal(tagStyleFor(44, 1), 0);
+  assert.equal(tagStyleFor(43, 1), 1);
+  assert.equal(tagStyleFor(60, 2), 1, '30 css px per tile: a landscape phone');
+  assert.equal(tagStyleFor(52, 2), 2, '26 css px per tile: a portrait phone');
+  assert.equal(tagWanted(false, 46, 2), true);
+  assert.equal(tagWanted(false, 42, 2), false, '21 css px per tile: eight names would hide the arena');
+  assert.equal(tagWanted(true, 42, 2), true, 'but the local fighter always keeps theirs');
+});
+
+test('on the tiniest screens only the local fighter is tagged', () => {
+  const { renderer } = boot({ css: [320, 568], dpr: 2 });
+  const m = makeMatch({ n: 4 });
+  let now = warmUp(renderer, m.view);
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(renderer.layout.tile, 42);
+  const tagged = m.view.players.filter((p) => renderer.players.get(p.id).tag).map((p) => p.id);
+  assert.deepEqual(tagged, [m.view.players.find((p) => p.isMe).id]);
+});
+
+test('tags of fighters standing shoulder to shoulder are pushed apart instead of printing over each other', () => {
+  const { renderer } = boot({ css: [1280, 800], dpr: 1 });
+  const m = makeMatch({ n: 4 });
+  let now = warmUp(renderer, m.view);
+  m.view.players.forEach((p, i) => { p.x = 5.5 + i * 0.8; p.y = 5.5; p.alive = true; p.deadT = 0; });
+  renderer.render(m.view, 16.7, now += 16.7);
+  const r = renderer.tagRect;
+  let checked = 0;
+  for (let a = 0; a < 4; a++) {
+    for (let b = a + 1; b < 4; b++) {
+      const ox = Math.min(r[a * 4] + r[a * 4 + 2], r[b * 4] + r[b * 4 + 2]) - Math.max(r[a * 4], r[b * 4]);
+      const oy = Math.min(r[a * 4 + 1] + r[a * 4 + 3], r[b * 4 + 1] + r[b * 4 + 3]) - Math.max(r[a * 4 + 1], r[b * 4 + 1]);
+      assert.ok(ox <= 0 || oy <= 0, `tags ${a} and ${b} overlap by ${ox} x ${oy}`);
+      checked++;
+    }
+  }
+  assert.equal(checked, 6);
+  const me = m.view.players.findIndex((p) => p.isMe), home = Math.round(m.view.players[me].x * renderer.set.tile - r[me * 4 + 2] / 2);
+  assert.equal(r[renderer.tagOf.indexOf(me) * 4], home, 'the local fighter\'s tag stays where it belongs');
+});
+
+// ---- Danger marks and the local ring --------------------------------------------------------------------------------
+
+/** An open arena: border and pillars only. */
+function emptyGrid() {
+  let g = '';
+  for (let ty = 0; ty < GRID_H; ty++) for (let tx = 0; tx < GRID_W; tx++) g += (tx === 0 || ty === 0 || tx === GRID_W - 1 || ty === GRID_H - 1 || (tx % 2 === 0 && ty % 2 === 0)) ? '#' : '.';
+  return g;
+}
+const bombAt = (id, tx, ty, fuse, range, extra = {}) => ({ id, owner: 0, x: tx + 0.5, y: ty + 0.5, tx, ty, fuse, range, dir: 0, fly: null, pass: [], ...extra });
+const at = (tx, ty) => ty * GRID_W + tx;
+
+test('danger marks: a tile burns when the soonest bomb of its chain goes off, walls stop the fire and far bombs are not marked', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  m.view.grid = emptyGrid();
+  m.view.bombs = [bombAt(1, 3, 1, 40, 5), bombAt(2, 5, 1, 130, 4), bombAt(3, 11, 9, 100, 3)];
+  renderer.render(m.view, 16.7, now += 16.7);
+  const d = renderer.danger;
+  assert.equal(d[at(3, 1)], 40);
+  assert.equal(d[at(3, 6)], 40, 'range 5 reaches down to row 6');
+  assert.equal(d[at(5, 1)], 40, 'the second bomb goes off with the first');
+  assert.equal(d[at(5, 5)], 40, 'and so do the tiles ITS arms burn, though its own fuse is 130');
+  assert.equal(d[at(8, 1)], 40);
+  assert.equal(d[at(5, 6)], 1e9, 'its range is 4');
+  assert.equal(d[at(1, 1)], 40, 'the left arm runs to the border ...');
+  assert.equal(d[at(0, 1)], 1e9, '... and stops at it');
+  assert.equal(d[at(11, 9)], 1e9, 'a bomb with 100 ticks left is not marked yet');
+  m.view.bombs = [bombAt(1, 3, 1, 40, 5), bombAt(2, 3, 3, 130, 1, { fly: { fx: 3.5, fy: 3.5, tx: 7, ty: 3, left: 10, total: 26 } })];
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(renderer.danger[at(3, 3)], 40, 'the arm passes over a flying bomb: fire ignores it');
+  assert.equal(renderer.danger[at(4, 3)], 1e9, 'a bomb in the air is no bomb of the chain');
+});
+
+test('crates and pillars stop a bomb\'s marks', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  const cells = emptyGrid().split('');
+  cells[at(5, 3)] = '+';
+  m.view.grid = cells.join('');
+  m.view.bombs = [bombAt(1, 5, 1, 30, 6)];
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(renderer.danger[at(5, 2)], 30);
+  assert.equal(renderer.danger[at(5, 3)], 1e9, 'the crate absorbs the arm');
+  assert.equal(renderer.danger[at(5, 4)], 1e9);
+  assert.equal(renderer.danger[at(6, 1)], 30, 'along the row the fire goes on');
+});
+
+test('marked tiles are drawn with the hazard sprite, and the local ring turns to a warning while their own tile is about to burn', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  const hazard = renderer.set.fx.hazard;
+  let drawn = 0;
+  Object.defineProperty(hazard, 'img', { get() { drawn++; return hazard.__img; }, set(v) { hazard.__img = v; }, configurable: true });
+  hazard.__img = { fake: true };
+  const rings = [];
+  const paintRing = renderer.paintLocalRing.bind(renderer);
+  renderer.paintLocalRing = (...a) => { rings.push(a[a.length - 1]); return paintRing(...a); };
+  m.view.grid = emptyGrid();
+  const me = m.view.players.find((p) => p.isMe);
+  me.x = 3.5; me.y = 4.5; me.alive = true;
+  m.view.bombs = [];
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(drawn, 0, 'nothing to warn about');
+  m.view.bombs = [bombAt(1, 3, 1, 50, 5)];
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(drawn, 13, 'its own tile, two to the left, five to the right, five down (the border stops the arm up)');
+  assert.equal(rings.at(-2), 1e9);
+  assert.equal(rings.at(-1), 50);
+  assert.ok(rings.at(-1) > 45, 'a fuse of 50 is not yet an alarm');
+  m.view.bombs = [bombAt(1, 3, 1, 30, 5)];
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(rings.at(-1), 30);
+});
+
+test('a fighter with the team ring keeps the gold "this is you" ring around it', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 4, mode: 'teams' });
+  renderer.setPlayers(m.round);
+  let now = warmUp(renderer, m.view);
+  const args = [];
+  const paintRing = renderer.paintLocalRing.bind(renderer);
+  renderer.paintLocalRing = (...a) => { args.push(a); return paintRing(...a); };
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.equal(args.length, 1, 'once, for the local fighter only');
+  assert.equal(args[0][5], true, 'and told that there is a team ring to encircle');
+});
+
+// ---- Sprite lifecycle: failures, hints ---------------------------------------------------------------------------------
+
+test('a sprite build that fails is dropped, retried after a pause and, from the second failure on, at a lower quality; the frame still draws', () => {
+  const create = canvasFactory();
+  let fail = true, attempts = 0;
+  const flaky = (w, h) => { if (fail) { attempts++; throw new Error('out of canvas memory'); } return create(w, h); };
+  const canvas = create(300, 150);
+  const renderer = new Renderer(canvas, { createCanvas: flaky, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }), random: () => 0.5 });
+  renderer.resize(960, 780, 2);
+  const view = createView();
+  view.grid = emptyGrid();
+  let now = 1000;
+  renderer.render(view, 16.7, now += 16.7);
+  assert.equal(renderer.set, null);
+  assert.equal(renderer.buildFailures, 1);
+  assert.equal(renderer.errors.length, 1);
+  const first = attempts;
+  for (let i = 0; i < 20; i++) renderer.render(view, 16.7, now += 16.7);          // 0.33 s: inside the pause
+  assert.equal(attempts, first, 'no attempt while waiting');
+  renderer.render(view, 16.7, now += 400);
+  assert.equal(renderer.buildFailures, 2);
+  assert.equal(renderer.quality, 1, 'the second failure lowers the quality: smaller sprites need less canvas memory');
+  fail = false;
+  for (let i = 0; i < 400 && !renderer.set; i++) renderer.render(view, 16.7, now += 16.7);
+  assert.ok(renderer.set, 'the build works again once memory is back');
+  assert.equal(renderer.buildFailures, 0);
+});
+
+test('a theme hint starts the sprite build before the first View exists, and rendering nothing paints the backdrop colour', () => {
+  const { renderer, canvas } = boot();
+  renderer.setTheme('lava');
+  let now = 1000;
+  for (let i = 0; i < 400 && !renderer.set; i++) renderer.render(null, 16.7, now += 16.7);
+  assert.ok(renderer.set, 'built without a View');
+  assert.equal(renderer.set.theme, 'lava');
+  assert.ok(canvas.ctx.stats.fillRect > 0, 'and the canvas was not left black');
+  assert.deepEqual(renderer.errors, []);
+});
+
+test('items of a kind this build does not know are skipped without losing the frame', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  m.view.items = [{ id: 501, x: 3.5, y: 3.5, kind: 'banana', born: 0 }, { id: 502, x: 5.5, y: 3.5, kind: 'flame', born: 0 }];
+  renderer.render(m.view, 16.7, now += 16.7);
+  renderer.render(m.view, 16.7, now += 16.7);
+  assert.deepEqual(renderer.errors, []);
+});
+
+test('one frame with a non-finite position does not poison a fighter\'s walking animation', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  const p = m.view.players[0];
+  p.alive = true; p.x = 4.5; p.y = 3.5;
+  renderer.render(m.view, 16.7, now += 16.7);
+  p.x = NaN;
+  renderer.render(m.view, 16.7, now += 16.7);
+  for (let i = 0; i < 30; i++) { p.x = 4.5 + i * 0.06; renderer.render(m.view, 16.7, now += 16.7); }
+  const fx = renderer.players.get(p.id);
+  assert.ok(Number.isFinite(fx.speed) && Number.isFinite(fx.walk));
+  assert.equal(fx.moving, true, 'and the fighter is seen walking again');
+});
+
+// ---- Adaptive quality and 30 Hz displays -----------------------------------------------------------------------------
+
+test('a display capped to 30 Hz (steady 33.3 ms frames) does not cost quality: a lower level would not make it faster', () => {
+  const { renderer, view } = boot();
+  view.grid = emptyGrid(); view.players = []; view.bombs = []; view.flames = []; view.items = []; view.falling = []; view.ghostBombs = [];
+  let now = 0;
+  for (let i = 0; i < 1200; i++) renderer.render(view, 1000 / 30, now += 1000 / 30);
+  assert.equal(renderer.quality, 2);
+  // the same average with real jitter is a slow renderer
+  for (let i = 0; i < 400 && renderer.quality === 2; i++) renderer.render(view, i % 2 ? 24 : 42, now += i % 2 ? 24 : 42);
+  assert.equal(renderer.quality, 1);
+});
+
+test('frames while a sprite set is being built do not count as slow frames', () => {
+  const { renderer } = boot();
+  renderer.build = {};                                  // a build in progress
+  for (let i = 0; i < 600; i++) renderer.trackFrameTime(i % 2 ? 30 : 60, i * 45);
+  assert.equal(renderer.quality, 2);
+  renderer.build = null;
+  for (let i = 0; i < 400 && renderer.quality === 2; i++) renderer.trackFrameTime(i % 2 ? 30 : 60, 30000 + i * 45);
+  assert.equal(renderer.quality, 1);
+});
+
+// ---- Effects added with the polish pass ---------------------------------------------------------------------------------
+
+test('an explosion leaves soot on its tile that fades within a few seconds and is gone in the next round', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 3 });
+  let now = warmUp(renderer, m.view);
+  renderer.handleEvents([boom(6, 5, 3)], m.view, now);
+  assert.equal(renderer.scorch[at(6, 5)], now);
+  assert.equal(renderer.scorch[at(7, 5)], -1e9, 'only where the bomb stood');
+  renderer.render(m.view, 16.7, now += 16.7);
+  const after = { ...m.view, state: STATE.COUNTDOWN, countdown: 180 };
+  renderer.render({ ...m.view, state: STATE.OVER, countdown: 0 }, 16.7, now += 16.7);
+  renderer.render(after, 16.7, now += 16.7);
+  assert.equal(renderer.scorch[at(6, 5)], -1e9);
+});
+
+test('a rolling bomb kicks up dust as it travels, a resting one does not', () => {
+  const { renderer } = boot();
+  const m = makeMatch({ n: 2 });
+  let now = warmUp(renderer, m.view);
+  m.view.grid = emptyGrid();
+  let dust = 0;
+  const original = renderer.particles.dust.bind(renderer.particles);
+  renderer.particles.dust = (...a) => { dust++; return original(...a); };
+  for (let i = 0; i < 40; i++) renderer.render({ ...m.view, bombs: [bombAt(9, 3, 1, 100, 2, { x: 3.5 + i * 0.1, dir: 2 })] }, 16.7, now += 16.7);
+  assert.ok(dust >= 4, `dust puffs: ${dust}`);
+  dust = 0;
+  for (let i = 0; i < 40; i++) renderer.render({ ...m.view, bombs: [bombAt(9, 3, 1, 100, 2)] }, 16.7, now += 16.7);
+  assert.equal(dust, 0);
+});
+
+// ---- The real pipeline ---------------------------------------------------------------------------------------------------
+
+/** A bot brain for the Room made of the harness autopilot (bound to each round's World on first use). */
+const pilotBots = ({ seed }) => {
+  let pilot = null;
+  return { think(world, id) { if (!pilot || pilot.world !== world) pilot = new AutoPilot(world, { seed, bombRate: 0.1 }); return pilot.think(id); } };
+};
+
+test('the real pipeline (Room, wire snapshots, ClientGame, Renderer) draws whole rounds and matches, themes changing, without a single error', () => {
+  const room = makeRoom({ seed: 31, botFactory: pilotBots });
+  const [conn] = joinN(room, 1, { names: ['Ana'] });
+  startMatch(room, [conn], { bots: 5, level: 'normal', settings: { theme: 'random', roundTime: 60, rounds: 3 } });
+  const { renderer } = boot({ css: [900, 700], dpr: 1 });
+  let game = null, read = 0, pilot = null, ghosts = 0, rounds = 0;
+  const themes = new Set(), codes = new Set(), states = new Set();
+  let now = 0;
+  for (let frame = 0; frame < 9000; frame++) {
+    tick(room);
+    now = room.clock.now();
+    for (; read < conn.sent.length; read++) {
+      const msg = JSON.parse(conn.sent[read]);
+      if (msg.t === 'joined') { game = new ClientGame({ me: msg.id, send: (m) => say(room, conn, m), now: () => room.clock.now() }); game.setSeq(msg.seq); }
+      else if (msg.t === 'round') { game.reset(msg); renderer.setPlayers(msg); rounds++; }
+      else if (msg.t === 'snap' && game) game.onSnapshot(msg, now);
+    }
+    if (!game || game.round === null) continue;
+    const world = room.world;
+    if (world) {
+      if (!pilot || pilot.world !== world) pilot = new AutoPilot(world, { seed: 7, bombRate: 0.12 });
+      const c = pilot.think(game.me);
+      game.setIntent({ d: c.d, bomb: c.b === 1, special: c.x === 1 });
+    }
+    game.update(now);
+    const view = game.getView(now);
+    const events = game.takeEvents();
+    for (const e of events) codes.add(e[0]);
+    ghosts += view.ghostBombs.length;
+    themes.add(view.theme); states.add(view.state);
+    renderer.handleEvents(events, view);
+    renderer.render(view, 1000 / 60, now);
+    if (rounds >= 3 && world && world.state === STATE.OVER) break;
+  }
+  assert.deepEqual(renderer.errors, []);
+  assert.ok(rounds >= 3, `rounds played: ${rounds}`);
+  for (const code of ['go', 'bomb', 'boom', 'block', 'death', 'pickup', 'itemspawn']) assert.ok(codes.has(code), `saw ${code}`);
+  assert.ok(ghosts > 0, 'the local fighter\'s predicted bombs reached the renderer');
+  assert.ok(themes.size >= 2, `themes seen: ${[...themes]}`);
+  assert.deepEqual([...states].sort(), [0, 1, 2]);
+  assert.ok(renderer.stats.builds >= 2, 'the sprite set was rebuilt for a new theme without an error');
+});
+
+// ---- Fuzz ---------------------------------------------------------------------------------------------------------------
+
+test('fuzz: random Views and events never throw, and never put a non-finite number into the particle pool', () => {
+  const rng = makeRng(20240229);
+  const { renderer, view } = boot({ css: [800, 700], dpr: 1 });
+  const m = makeMatch({ n: 5 });
+  let now = warmUp(renderer, m.view);
+  const kinds = ['bomb', 'flame', 'speed', 'kick', 'glove', 'shield', 'skull', 'mystery'];
+  const codes = Object.keys(EVENT_ARGS);
+  const pickCell = () => [rng.int(GRID_W), rng.int(GRID_H)];
+  for (let frame = 0; frame < 500; frame++) {
+    const v = createView();
+    v.theme = THEMES[rng.int(THEMES.length)]; v.mode = rng.int(2) ? 'teams' : 'ffa'; v.me = rng.int(6) - 1;
+    v.state = rng.int(4); v.countdown = rng.int(200); v.timeLeft = rng.int(300) - 1; v.suddenDeath = rng.int(2) === 1;
+    v.grid = Array.from({ length: GRID_W * GRID_H }, () => '.#+X'[rng.int(4)]).join('');
+    v.players = Array.from({ length: rng.int(9) }, (_, i) => ({
+      id: i, x: rng.next() * GRID_W, y: rng.next() * GRID_H, facing: rng.int(4), moving: rng.int(2) === 1, alive: rng.int(3) > 0, shield: [0, 30, 200, 65535][rng.int(4)],
+      spawnShield: rng.int(2) * 60, curse: [null, 'slow', 'rush', 'reverse', 'nobomb', 'spam'][rng.int(6)], curseTicks: rng.int(600), deadT: rng.int(80), isMe: i === v.me,
+      color: rng.int(8), team: rng.int(2), name: ['Ana', '', 'Grandma Rosalind-Maria', '\u{1F600}'][rng.int(4)], isBot: rng.int(2) === 1,
+      bombsMax: 1 + rng.int(8), range: 2 + rng.int(9), speedLv: rng.int(7), kick: rng.int(2) === 1, glove: rng.int(2) === 1,
+    }));
+    v.bombs = Array.from({ length: rng.int(20) }, (_, i) => {
+      const [tx, ty] = pickCell();
+      return bombAt(i, tx, ty, rng.next() * 150, 1 + rng.int(10), { owner: rng.int(6) - 1, dir: rng.int(5), x: tx + rng.next(), y: ty + rng.next(),
+        fly: rng.int(4) === 0 ? { fx: tx, fy: ty, tx: rng.int(GRID_W), ty: rng.int(GRID_H), left: rng.int(26), total: 26 } : null });
+    });
+    v.flames = Array.from({ length: rng.int(40) }, () => { const [tx, ty] = pickCell(); return { x: tx + 0.5, y: ty + 0.5, mask: rng.int(16), ticksLeft: rng.next() * 40 }; });
+    v.items = Array.from({ length: rng.int(12) }, (_, i) => { const [tx, ty] = pickCell(); return { id: i, x: tx + 0.5, y: ty + 0.5, kind: kinds[rng.int(kinds.length)], born: 0 }; });
+    v.falling = Array.from({ length: rng.int(6) }, () => { const [tx, ty] = pickCell(); return { tx, ty, ticksLeft: rng.int(49) }; });
+    v.ghostBombs = Array.from({ length: rng.int(3) }, () => { const [tx, ty] = pickCell(); return { x: tx + 0.5, y: ty + 0.5 }; });
+    const events = Array.from({ length: rng.int(4) }, () => {
+      const code = codes[rng.int(codes.length)], [tx, ty] = pickCell();
+      const args = { bombId: rng.int(20), ownerId: rng.int(6), tx, ty, range: 1 + rng.int(9), tiles: [[tx, ty], [Math.min(tx + 1, GRID_W - 1), ty]], playerId: rng.int(8), killerId: rng.int(6) - 1,
+        x: rng.next() * GRID_W, y: rng.next() * GRID_H, itemId: rng.int(10), kind: kinds[rng.int(kinds.length)], dir: 1 + rng.int(4), fromTx: tx, fromTy: ty, toTx: tx, toTy: ty, fromId: rng.int(6) - 1 };
+      return [code, ...EVENT_ARGS[code].map((name) => (name === 'kind' && code === 'curse' ? ['slow', 'rush', 0][rng.int(3)] : args[name]))];
+    });
+    if (rng.int(10) === 0) renderer.resize(300 + rng.int(1500), 300 + rng.int(900), 1 + rng.int(2));
+    if (rng.int(20) === 0) renderer.showEmote(rng.int(10), rng.int(12));
+    renderer.handleEvents(events, v, now);
+    renderer.render(v, 16.7 + rng.int(20), now += 16.7);
+  }
+  assert.deepEqual(renderer.errors, []);
+  const p = renderer.particles;
+  for (let i = 0; i < p.size; i++) if (p.life[i] > 0) for (const field of [p.x, p.y, p.z, p.vx, p.vy, p.vz, p.s0, p.s1, p.age]) assert.ok(Number.isFinite(field[i]), `slot ${i}`);
 });
 
 // ---- Soak with a real World -------------------------------------------------------------------------------------------

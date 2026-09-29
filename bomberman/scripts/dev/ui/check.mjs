@@ -75,7 +75,7 @@ try {
   const helpers = await page.evaluate(async () => {
     const m = await import('/js/ui.js');
     return {
-      link: m.extractRoomCode('https://party.example/r/kqxz'), plain: m.extractRoomCode(' kqxz '), vowels: m.extractRoomCode('abcd'), web: m.extractRoomCode('https://example.com/'),
+      link: m.extractRoomCode('https://party.example/r/kqxz'), plain: m.extractRoomCode(' kqxz '), vowels: m.extractRoomCode('abcd'), web: m.extractRoomCode('https://example.com/'), sentence: m.extractRoomCode('Join me: kqxz please'),
       clock: [m.formatClock(0), m.formatClock(83), m.formatClock(120), m.formatClock(null)],
       awards: m.computeAwards([{ id: 1, name: 'A', blocks: 5, kills: 2, items: 0, deaths: 1, selfKills: 0 }, { id: 2, name: 'B', blocks: 5, kills: 1, items: 0, deaths: 2, selfKills: 3 }]).map((a) => [a.stat, a.player.id, a.value]),
       blocker: [m.startBlocker({ players: [{}], settings: {} }), m.startBlocker({ players: [{ team: 0 }, { team: 0 }], settings: { mode: 'teams' } }), m.startBlocker({ players: [{ team: 0 }, { team: 1 }], settings: { mode: 'teams' } })],
@@ -88,6 +88,7 @@ try {
   same(helpers.plain, 'KQXZ', 'code from padded text');
   same(helpers.vowels, 'BCD', 'vowels are dropped from codes');
   same(helpers.web, '', 'a foreign web address yields no code');
+  same(helpers.sentence, 'KQXZ', 'a pasted sentence yields its code-shaped word, not every consonant');
   same(helpers.clock, ['0:00', '1:23', '2:00', '∞'], 'formatClock');
   same(helpers.awards, [['blocks', 0, 0]].slice(1).concat([['kills', 1, 2], ['deaths', 1, 1], ['selfKills', 2, 3]]), 'awards need a single best holder');
   same(helpers.blocker.map((b) => !!b), [true, true, false], 'start blockers');

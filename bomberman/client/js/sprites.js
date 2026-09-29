@@ -71,9 +71,10 @@
 //                                  order: grin, laugh, angry, scream, thumbs-up, party, bomb, skull; 8..11 = GG, heart,
 //                                  cry, cool for future use)
 //     set.fx                       { shadow, dot, glowWarm, glowCool, flameGlow, spark, smoke[3], darkSmoke[3], ember, twinkle, skull, ring, star,
-//                                  confetti[6], warning, hazard }
+//                                  confetti[6], warning, hazard, scorch }
 //                                  soft blob shadow (scale it per object), particle textures, sudden-death marker, and `hazard`: the
-//                                  striped floor mark of a tile a bomb is about to burn (tile sized, anchor = the tile's top-left)
+//                                  striped floor mark of a tile a bomb is about to burn (tile sized, anchor = the tile's top-left), and
+//                                  `scorch`: the soot blot a bomb leaves behind (centre anchored, about 1.5 tiles across)
 //
 // Animation hints: walk with walkFrame(distanceWalked) (about WALK_TILES_PER_CYCLE tiles per cycle) and show
 // idle[facing] when not moving, swapping in blink[facing] for ~120 ms every 3-5 s; on death play death[] once or twice
@@ -1775,6 +1776,21 @@ function drawHazard(g) {
   g.lineWidth = 2; g.strokeStyle = 'rgba(120,10,16,0.55)'; g.stroke();
 }
 
+/** Soot left on the floor where a bomb went off (anchor = centre): an irregular blot in the shadow ink, meant to be drawn faintly and faded out. */
+function drawScorch(g) {
+  const rnd = makeRng(4242);
+  const blot = (x, y, r, a) => {
+    g.beginPath(); circle(g, x, y, r);
+    g.fillStyle = rad(g, x, y, 0, x, y, r, [[0, rgba(SHADOW_INK, a)], [0.55, rgba(SHADOW_INK, a * 0.6)], [1, rgba(SHADOW_INK, 0)]]);
+    g.fill();
+  };
+  blot(0, 0, 56, 0.5);
+  for (let i = 0; i < 9; i++) {
+    const a = rnd.next() * TAU, d = 22 + rnd.next() * 26;
+    blot(Math.cos(a) * d, Math.sin(a) * d * 0.9, 12 + rnd.next() * 14, 0.4);
+  }
+}
+
 function buildFx(atlas) {
   const fx = { smoke: [], confetti: [] };
   fx.dot = atlas.add(64, 64, 32, 32, (g) => {
@@ -1826,6 +1842,7 @@ function buildFx(atlas) {
     g.beginPath(); g.moveTo(0, -12); g.lineTo(0, 8); g.lineWidth = 7; g.strokeStyle = INK; g.lineCap = 'round'; g.stroke();
     g.beginPath(); circle(g, 0, 17, 3.8); g.fillStyle = INK; g.fill();
   });
+  fx.scorch = atlas.add(150, 150, 75, 75, drawScorch);   // soot where a bomb went off
   fx.hazard = atlas.add(100, 100, 0, 0, drawHazard);   // floor mark under the blast area of a bomb about to go off
   fx.shadow = atlas.add(104, 54, 52, 27, drawSoftShadow);
   return fx;

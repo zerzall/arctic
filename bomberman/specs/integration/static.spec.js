@@ -169,6 +169,7 @@ describe('static: the real trees', () => {
     assert.deepEqual(Object.keys(stats).sort(), ['conns', 'droppedTicks', 'heapMB', 'humans', 'loopLagMs', 'maxRooms', 'players', 'rooms', 'rssMB', 'tickMs', 'upS', 'v']);
     assert.deepEqual([stats.rooms, stats.players, stats.humans, stats.conns, stats.maxRooms, stats.v], [1, 1, 1, 1, 200, '1.0.0']);
     assert.deepEqual(Object.keys(stats.tickMs), ['avg', 'p99', 'max']);
+    assert.ok(stats.loopLagMs.p99 < 45, `an idle event loop reports its lag, not the 50 ms sampling interval (${stats.loopLagMs.p99})`);
     assert.ok(!res.body.toString().includes(host.code));
     host.ws.terminate();
     for (const path of ['/nope', '/r/ab', '/r/ABCDE', '/js/', '/index', '/manifest.json']) {

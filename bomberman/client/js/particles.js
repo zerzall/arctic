@@ -404,17 +404,22 @@ export class FloatingText {
     this.x = new Float32Array(max); this.y = new Float32Array(max);
     this.age = new Float32Array(max); this.life = new Float32Array(max);
     this.size = new Float32Array(max);
+    this.lift = new Float32Array(max);
     this.cursor = 0;
     this.fonts = new Map();
   }
 
-  /** Show `text` at ground position (x, y) tiles; `size` is the text height in tiles. The oldest label is recycled when all are busy. */
-  add(text, x, y, color, size = 0.42, life = 1.1) {
+  /**
+   * Show `text` above the fighter standing at (x, y) tiles (the centre of the body); `size` is the text height in tiles and `lift`
+   * raises the label further, past a name tag's and an emote bubble's room. Text that would rise off the top of the arena appears below
+   * the fighter instead. The oldest label is recycled when all are busy.
+   */
+  add(text, x, y, color, size = 0.42, life = 1.1, lift = 0) {
     let i = this.cursor;
     for (let tries = 0; tries < this.max && this.life[i] > 0; tries++) i = i + 1 >= this.max ? 0 : i + 1;
     this.cursor = i + 1 >= this.max ? 0 : i + 1;
     this.text[i] = text; this.color[i] = color;
-    this.x[i] = x; this.y[i] = y; this.age[i] = 0; this.life[i] = life; this.size[i] = size;
+    this.x[i] = x; this.y[i] = y; this.age[i] = 0; this.life[i] = life; this.size[i] = size; this.lift[i] = lift;
   }
 
   update(dt) {
@@ -448,7 +453,8 @@ export class FloatingText {
       if (!any) { ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; any = true; }
       const u = this.age[i] / this.life[i];
       const pop = u < 0.15 ? 0.6 + (u / 0.15) * 0.55 : u < 0.28 ? 1.15 - ((u - 0.15) / 0.13) * 0.15 : 1;
-      const px = this.x[i] * T, py = Math.max(0.35, this.y[i] - 1.35 - u * 0.5) * T;   // above the name tag, and never off the top of the arena
+      const above = this.y[i] - 1.55 - this.lift[i] - u * 0.5;                          // clear of the name tag ...
+      const px = this.x[i] * T, py = (above >= 0.4 ? above : this.y[i] + 1.05 + u * 0.5) * T;   // ... and below the fighter when there is no room above
       ctx.globalAlpha = u > 0.7 ? (1 - u) / 0.3 : 1;
       ctx.font = this.fontFor(Math.max(9, Math.round(this.size[i] * T * pop)), family);
       ctx.lineWidth = Math.max(2, this.size[i] * T * 0.22);

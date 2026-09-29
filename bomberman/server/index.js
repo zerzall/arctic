@@ -28,6 +28,7 @@ const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
 const SOFT_CLOSE_MS = 1500;                    // after this, sockets that ignored our close frame are terminated
 const HARD_EXIT_MS = 8000;
 const LAG_WINDOW_MS = 10000;
+const LAG_RESOLUTION_MS = 50;                // monitorEventLoopDelay samples include one full resolution interval: an idle loop reads ~50
 const CRASH_LIMIT = 5;
 const CRASH_WINDOW_MS = 60000;
 
@@ -81,7 +82,7 @@ export async function startServer({
   let draining = false;
 
   const manager = new RoomManager({ maxRooms, timeouts: allTimeouts, seedFn, log: logger, botFactory, build: version });
-  const lag = monitorEventLoopDelay({ resolution: 50 });
+  const lag = monitorEventLoopDelay({ resolution: LAG_RESOLUTION_MS });
   lag.enable();
   let lagWindowStart = performance.now();
 
@@ -89,7 +90,7 @@ export async function startServer({
   const stats = () => {
     const m = manager.stats();
     const mem = process.memoryUsage();
-    const lagP99 = Math.round(lag.percentile(99) / 1e6);
+    const lagP99 = Math.max(0, Math.round(lag.percentile(99) / 1e6 - LAG_RESOLUTION_MS));
     if (performance.now() - lagWindowStart > LAG_WINDOW_MS) {                // a rolling ~10 s window: forget older stalls
       lag.reset();
       lagWindowStart = performance.now();

@@ -375,10 +375,11 @@ export class Room {
   }
 
   _newToken() {
-    for (;;) {
+    for (let tries = 0; tries < 16; tries++) {                           // bounded: a broken genToken must not hang the process
       const token = this._genToken();
       if (typeof token === 'string' && token && !this.entries.some((e) => e.token === token)) return token;
     }
+    throw new Error('genToken kept returning unusable tokens');
   }
 
   /** Removes the entry from the room and tells everyone. Used by leave, kick, grace expiry. */
@@ -651,7 +652,8 @@ export class Room {
         this._log('error', 'room_error', { room: this.code, where: 'bot', stack: String(err?.stack ?? err) });
       }
     }
-    w.applyCmd(e.id, { s: ++e.botSeq, d: cmd?.d | 0, b: cmd?.b ? 1 : 0, x: cmd?.x ? 1 : 0 });
+    const d = cmd?.d;
+    w.applyCmd(e.id, { s: ++e.botSeq, d: d === 1 || d === 2 || d === 3 || d === 4 ? d : 0, b: cmd?.b ? 1 : 0, x: cmd?.x ? 1 : 0 });
   }
 
   // ---- The match ----------------------------------------------------------------------------------

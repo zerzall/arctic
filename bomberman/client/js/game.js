@@ -43,7 +43,7 @@
 //     the damage of both being forgotten to the server's queue length.
 
 import {
-  TICK_RATE, GRID_W, GRID_H, INTERP_TICKS, COUNTDOWN_TICKS, COUNTDOWN_HOLD_TICKS, IN_MAX_CMDS, STATE, START_BOMBS, START_RANGE,
+  TICK_RATE, GRID_W, GRID_H, INTERP_TICKS, COUNTDOWN_TICKS, COUNTDOWN_HOLD_TICKS, ENDING_TICKS, IN_MAX_CMDS, STATE, START_BOMBS, START_RANGE,
 } from '../../shared/constants.js';
 import { movePlayer, effectiveDir, overlapsTile, makeEnv } from '../../shared/world.js';
 import { P, PF, B } from '../../shared/protocol.js';
@@ -60,6 +60,7 @@ const ERR_SNAP_DIST2 = 2 * 2;          // a misprediction of 2 tiles or more is 
 const TELEPORT_DIST2 = 3 * 3;          // remote entities that jump farther than this between snapshots are not interpolated
 const STALE_GAP_MS = 500;              // a snapshot this late after its predecessor only delivers the important events
 const STALE_KEEP = new Set(['go', 'death', 'left', 'curse', 'sdstart', 'sdland', 'showdown']);
+const ENDING_MS = ENDING_TICKS * TICK_MS;   // the server sends no snapshot once a round is OVER, so the client counts the ENDING out itself
 const EVENTS_MAX = 200;
 const GHOST_SOUND_MS = 30 * TICK_MS;   // a server `bomb` event this soon after its ghost went away is the same bomb
 const SYNC_MIN_GAP_MS = 1000;
@@ -149,6 +150,7 @@ export class ClientGame {
     this._latest = null;
     this.lastK = -1;
     this.off = null;                    // render clock offset (server tick at wall-clock 0), 5.3
+    this._endingAt = 0;                 // arrival of the first ENDING snapshot of this round
     this.rt = null;                     // last render tick, kept monotonic
 
     // Events
@@ -235,7 +237,8 @@ export class ClientGame {
   // ---- Snapshots --------------------------------------------------------------------------------
 
   onSnapshot(snap, arrivalMs = this._now()) {
-    if (this.round === null || snap === null || typeof snap !== 'object' || !Array.isArray(snap.p) || !Array.isArray(snap.b)) return;
+    if (this.round === null || snap === null || typeof snap !== 'object') return;
+    if (!Array.isArray(snap.p) || !Array.isArray(snap.b) || !Array.isArray(snap.f) || !Array.isArray(snap.i) || !Array.isArray(snap.fall)) return;   // (a shape getView would choke on every frame)
     const k = snap.k;
     if (!(k > this.lastK)) {
       if (k === this.lastK && typeof snap.g === 'string') this._takeGrid(snap, arrivalMs);
@@ -244,6 +247,7 @@ export class ClientGame {
     const prev = this._latest;
     const stale = prev !== null && arrivalMs - prev.at > STALE_GAP_MS;
     this.lastK = k;
+    if (snap.st === STATE.ENDING && (prev === null || prev.snap.st !== STATE.ENDING)) this._endingAt = arrivalMs;
     this._takeGrid(snap, arrivalMs);
 
     const ring = this._ring;
@@ -316,7 +320,8 @@ export class ClientGame {
   // ---- Input and the fixed-step loop ------------------------------------------------------------
 
   /** `d` is overwritten each call; `bomb`/`special` latch until the tick that consumes them, so one tap is exactly one cmd with b:1. */
-  setIntent({ d = 0, bomb = false, special = false } = {}) {
+  setIntent(intent) {
+    const { d = 0, bomb = false, special = false } = intent ?? {};
     this._d = isDir(d) ? d : 0;
     if (bomb) this._tapBomb = true;
     if (special) this._tapSpecial = true;
@@ -380,7 +385,8 @@ export class ClientGame {
     const latest = this._latest;
     if (latest === null || this._meRow === null) return 0;
     const st = latest.snap.st;
-    if (st === STATE.PLAYING || st === STATE.ENDING) return SEND | PREDICT;
+    if (st === STATE.PLAYING) return SEND | PREDICT;
+    if (st === STATE.ENDING) return nowMs - this._endingAt < ENDING_MS ? SEND | PREDICT : 0;    // afterwards the round is OVER (5.2): no cmds, no ghosts
     if (st !== STATE.COUNTDOWN) return 0;
     const estCd = latest.snap.cd - (nowMs - latest.at) * TICKS_PER_MS;
     const lead = Math.min(COUNTDOWN_HOLD_TICKS, this.rtt * 0.03 + 2);     // the server holds cmds in the last 12 countdown ticks
@@ -395,6 +401,7 @@ export class ClientGame {
     if ((phase & SEND) === 0) {
       this._tapBomb = this._tapSpecial = false;
       this._predicting = false;
+      this._ghosts.length = 0;
       return;
     }
     const predict = (phase & PREDICT) !== 0;

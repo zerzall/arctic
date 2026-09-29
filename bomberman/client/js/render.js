@@ -8,16 +8,24 @@
 //   * Fit: 15 x 13 tiles centred in the container (pinned to the top in a portrait container, where the touch controls go underneath),
 //     tile = min(96, floor(min(w / 15, h / 13))) device pixels exactly as in the spec, dpr capped by the quality level, and the canvas
 //     backing store kept under 2.5 Mpx (dpr drops, below 1 if it must, and CSS scales the canvas up). The canvas fills the container; the
-//     themed backdrop (slowly drifting) surrounds the arena. The 2.5-D face of the top wall row reaches 0.3 tile above the arena: it is
-//     shown when the leftover height allows, else the canvas edge clips it. getArenaRect() tells the HUD where the arena is.
+//     themed backdrop (slowly drifting, and falling quiet towards the bottom of a portrait screen) surrounds the arena. The 2.5-D face of
+//     the top wall row reaches 0.3 tile above the arena: it is shown when the leftover height allows, else the canvas edge clips it.
+//     getArenaRect() tells the HUD where the arena is.
 //   * Sprites (sprites.js) are rebuilt for a new tile size or theme in time slices while the old set keeps drawing (scaled if the layout
 //     has already changed); the finished set is prepared in one frame and swapped in the next, so no frame carries the whole changeover.
+//     A hint (setTheme) starts the first build before any View exists. A build that throws (out of canvas memory) is retried after a pause and
+//     at a lower quality from the second failure on; it never takes the picture down.
 //   * Draw order: backdrop, arena (floor, wall shadows and border ring: baked into one layer when the canvas memory allows, else drawn
-//     piece by piece), floor-level effects (cast shadows, blast danger tint, sudden-death telegraphs, throw targets, item glows, flames),
+//     piece by piece), floor-level effects (cast shadows, soot, danger marks, sudden-death telegraphs, throw targets, item glows, flames),
 //     then walls and everything that stands up merged by depth (row by row: an entity whose feet line is above a wall row goes first),
 //     flying things, a light pass (additive flame glow), particles, and overlays (name tags, emotes, popups, banners, flash, tints).
 //   * Effects come from events (handleEvents) and from watching the View (walk cycles from distance walked, fuse pulse, item pop-in ...).
 //     Camera shake and screen flash obey the safety numbers of section 8.2 and are off in reduced-effects mode.
+//   * Danger reads at a glance: every tile a bomb is about to burn gets a striped hazard mark that strengthens as the fuse burns down (from
+//     66 ticks out), chain reactions included (a blast that reaches another bomb sets it off, so the whole chain is marked with the soonest
+//     fuse), and the local fighter's ring turns red while their own tile is about to burn.
+//   * Name tags scale with the screen: a coloured pill where tiles are 44+ css px, a small see-through pill from 27, plain outlined text below,
+//     and only the local fighter's name under 22 css px. Tags that would print over each other are pushed apart.
 //
 // PERFORMANCE RULES (measured in headless Chromium, see scripts/dev/render/perf.mjs)
 //   * Everything is an axis-aligned drawImage of an atlas sprite at integer device pixels. A scaled draw costs several times a plain one
@@ -25,26 +33,32 @@
 //     flying bombs; flames, glows and the great majority of particles are drawn 1:1.
 //   * The images a frame draws from (atlas pages, the screen canvas, the baked arena) must stay under ~10 Mpx together or Chromium's GPU
 //     texture cache thrashes: sprites.js crops its atlas to the visible pixels, and the arena bake is skipped on big screens.
-//   * Nothing allocates per frame: typed-array pools (particles), preallocated draw list, cached fonts, tags baked once.
+//   * Nothing allocates per frame: typed-array pools (particles, tag layout, danger map), preallocated draw list, cached fonts, tags baked once.
 //
 // VIEW ASSUMPTIONS (docs/SPEC.md Appendix A.2, plus what the spec does not say)
 //   * Arrays in the View are exactly as long as their content (the renderer iterates `.length`). The View is read, never written.
 //   * The View carries no tick number, so item pop-in, walk cycles, death and cheer animations run on the render clock; the renderer
-//     tracks ids across frames itself. Team mode is not in the View either: `view.mode === 'teams'` is honoured if the client adds it,
-//     else the renderer uses the `mode` of the last setPlayers(roundMsg) hint, else it draws free-for-all (no team rings).
+//     tracks ids across frames itself. Team mode: ClientGame adds `view.mode` ('ffa' | 'teams') to the View and the renderer honours it; else
+//     it uses the `mode` of the last setPlayers(roundMsg) hint, else it draws free-for-all (no team rings).
+//   * Timers may be fractional (ClientGame interpolates `fuse`, `ticksLeft` between snapshots); fighters other than the local one are drawn
+//     ~100 ms in the past, everything discrete is the newest snapshot's, and events arrive with the snapshot that carries them.
 //   * `view.ghostBombs[i]` = { x, y } tile-centre coordinates of a local bomb the server has not confirmed yet.
 //   * A new round is recognised by its countdown starting over (state 0 after another state, or the counter jumping up).
 //   * A round winner is derived from the View: during ENDING/OVER the fighters still alive cheer if they are the only one (FFA) or all on
 //     one team (teams); a timeout with several survivors in FFA is a draw and nobody cheers.
-//   * Events are trusted only when they have all the arguments of EVENT_ARGS with finite numbers; anything else is dropped.
+//   * Events are trusted only when they have all the arguments of EVENT_ARGS with finite numbers; anything else is dropped. Items of a kind
+//     the sprite set does not know are skipped, non-finite positions draw nothing.
 //
 // THINGS DECIDED WHERE THE SPEC IS SILENT
 //   * The "SUDDEN DEATH!" and "SHOWDOWN" banners are drawn here (canvas); the countdown digits, "GO!" and the winner banner are HUD (ui.js).
-//   * The tiles a bomb about to explode will burn are tinted on the floor (its own arms, chains not predicted) so danger reads at a glance.
 //   * Colour-blind help: every fighter has a different accessory (sprites.js); the local fighter also gets a golden name tag, a golden ring
-//     under the feet (a bobbing arrow during the countdown), and in team mode a team ring (solid coral = team 0, dashed teal = team 1).
+//     under the feet (a bobbing arrow during the countdown), and in team mode a team ring (solid coral = team 0, dashed teal = team 1) inside it.
+//   * Adaptive quality follows the spec (frame interval EMA above 24 ms for 120 frames lowers the level, never raises it), with two
+//     exceptions that would only make the picture worse: frames while a sprite set is being built do not count, and a window of frames that
+//     are steadily 33.3 ms apart does not either (a display capped to 30 Hz, e.g. iOS Low Power Mode: a lower level cannot speed it up).
+//   * Explosions leave soot on the floor for a few seconds; a rolling bomb kicks up dust; popups appear below a fighter on the top row.
 //   * Debug overlay (`?debug=1`): setDebug(true) draws it on the canvas (main.js can put rtt, ws state and its recent errors in
-//     renderer.debugInfo), or main.js feeds debugText() to boot.js's DOM overlay.
+//     renderer.debugInfo), or main.js feeds debugText() to boot.js's DOM overlay; renderer.errors holds the last five caught errors.
 
 import {
   GRID_W, GRID_H, PLAYER_COLORS, ITEM_KINDS, THEMES, STATE, EMOTES,
@@ -72,6 +86,7 @@ const QUALITY = [                   // index = quality level
 const REDUCED_PARTICLES = 60;
 const CANVAS_MEMORY_SOFT_LIMIT = 10e6;   // px: above this many canvas pixels alive (atlas + screen + baked arena) the GPU texture cache thrashes
 const DANGER_TICKS = 66;            // a bomb (or a chain) this close to exploding marks the floor its blast will burn
+const SCORCH_MS = 4500;              // how long the soot of an explosion stays on the floor
 const DANGER_ALERT_TICKS = 45;      // the local fighter's ring turns to a warning when their tile burns this soon
 const NO_DANGER = 1e9;
 const BOMB_CAP = 96;                // bombs considered for the danger marks (8 fighters carry at most 64)
@@ -249,7 +264,7 @@ function buildNameTag(createCanvas, probe, name, hex, isMe, T, dpr) {
 
 /** What the renderer remembers about one fighter between frames. */
 class PlayerFx {
-  constructor(id) {
+  constructor(id, rand) {
     this.id = id;
     this.seen = 0;               // frame number of the last View that contained this fighter
     this.init = false;
@@ -258,7 +273,7 @@ class PlayerFx {
     this.speed = 0;              // smoothed tiles/s
     this.moving = false;
     this.stepAcc = 0;
-    this.phase = Math.random() * TAU;
+    this.phase = rand() * TAU;
     this.blinkAt = 0;            // render-clock ms of the next/current blink
     this.dead = false;           // dying, or a ghost already
     this.deathAt = -1; this.poofed = false; this.gone = false;   // gone = left the match, only a poof remained
@@ -289,7 +304,7 @@ class BombFx {
 }
 
 class ItemFx {
-  constructor(now) { this.seen = 0; this.born = now; this.glintAcc = Math.random(); }
+  constructor(now, rand) { this.seen = 0; this.born = now; this.glintAcc = rand(); }
 }
 
 // ---- Depth-sorted entity list (preallocated) ------------------------------------------------------------------------
@@ -337,8 +352,10 @@ export class Renderer {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
+    if (!this.ctx) throw new Error('Renderer: the browser gave no 2D canvas context');   // fail loudly at start-up rather than draw nothing, silently
     this.makeCanvas = opts.createCanvas ?? defaultCreateCanvas;
     this.align = opts.align ?? 'auto';
+    this.rand = opts.random ?? Math.random;               // cosmetic randomness only (blink timing, glints); a seam for tests
     this.showNames = true;
 
     this.quality = 2;
@@ -376,6 +393,7 @@ export class Renderer {
     this.gridStr = ''; this.cells = new Uint8Array(CELLS); this.hardVersion = 0;
     this.players = new Map(); this.bombs = new Map(); this.items = new Map();
     this.tilePop = new Float64Array(CELLS).fill(-1e9); this.tileSeen = new Int32Array(CELLS).fill(-1e6); this.tilePhase = new Float32Array(CELLS);
+    this.scorch = new Float64Array(CELLS).fill(-1e9);   // render-clock ms of the last explosion centred on each tile (soot on the floor)
     this.pops = [];                                    // crates bursting apart: { tx, ty, t0 }
     this.list = new DrawList();
     this.tagRect = new Float32Array(TAG_CAP * 4); this.tagOf = new Int16Array(TAG_CAP); this.headTop = new Float32Array(TAG_CAP);   // name tag layout, reused every frame
@@ -490,6 +508,9 @@ export class Renderer {
   }
 
   get reducedEffects() { return this.reduceUser ?? this.reduceSystem; }
+
+  /** `renderer.reducedEffects = true|false` is the same as setReducedEffects (null goes back to following the system preference). */
+  set reducedEffects(value) { this.setReducedEffects(value); }
 
   /** The system's prefers-reduced-motion at this moment (for main.js to seed the "Reduce effects" setting). */
   get systemReducedMotion() { return this.reduceSystem; }
@@ -783,7 +804,7 @@ export class Renderer {
 
   fxFor(id) {
     let fx = this.players.get(id);
-    if (!fx) { fx = new PlayerFx(id); this.players.set(id, fx); }
+    if (!fx) { fx = new PlayerFx(id, this.rand); this.players.set(id, fx); }
     return fx;
   }
 
@@ -798,7 +819,7 @@ export class Renderer {
 
   /** Advance particle physics and everything that is derived from watching the View. */
   advance(view, dt) {
-    const now = this.now, pt = this.particles;
+    const now = this.now, pt = this.particles, rand = this.rand;
     const reduced = this.reducedEffects, detail = this.fxLevel.sparks;
     if (this.frameNo % 240 === 0) this.sweep();
     // fighters
@@ -863,13 +884,13 @@ export class Renderer {
     for (let i = 0; i < its.length; i++) {
       const it = its[i];
       let fx = this.items.get(it.id);
-      if (!fx) { fx = new ItemFx(now); this.items.set(it.id, fx); }
+      if (!fx) { fx = new ItemFx(now, this.rand); this.items.set(it.id, fx); }
       fx.seen = this.frameNo;
       if (!reduced && detail > 0) {
         fx.glintAcc += dt * (it.kind === 'skull' ? 1.6 : 0.9);
         if (fx.glintAcc > 1) {
-          fx.glintAcc -= 1 + Math.random() * 0.6;
-          if (it.kind === 'skull') pt.skulls(it.x, it.y, 1); else pt.glint(it.x + (Math.random() - 0.5) * 0.5, it.y - 0.1 + (Math.random() - 0.5) * 0.3, 0.15);
+          fx.glintAcc -= 1 + rand() * 0.6;
+          if (it.kind === 'skull') pt.skulls(it.x, it.y, 1); else pt.glint(it.x + (rand() - 0.5) * 0.5, it.y - 0.1 + (rand() - 0.5) * 0.3, 0.15);
         }
       }
     }
@@ -902,8 +923,8 @@ export class Renderer {
       if (b.fly) fx.spin += dt * 9;
       else if (!reduced && this.fxLevel.sparks > 0 && (fx.trail += Math.abs(dx) + Math.abs(dy)) > 0.55) {   // a rolling bomb kicks up a little dust
         fx.trail = 0;
-        const [ux, uy] = DIR4[(b.dir - 1) & 3];
-        this.particles.dust(b.x - ux * 0.25, b.y - uy * 0.25 + 0.3, 1, 0.17, 0.1, 0.12);
+        const heading = DIR4[(b.dir - 1) & 3];
+        this.particles.dust(b.x - heading[0] * 0.25, b.y - heading[1] * 0.25 + 0.3, 1, 0.17, 0.1, 0.12);
       }
     } else { fx.spin *= 0.6; fx.trail = 0; }
     fx.x = b.x; fx.y = b.y; fx.init = true;
@@ -949,6 +970,7 @@ export class Renderer {
     this.goAt = -1e9;
     this.bombs.clear(); this.items.clear();
     this.tileSeen.fill(-1e6);
+    this.scorch.fill(-1e9);
     this.players.forEach((fx) => {
       fx.init = false; fx.walk = 0; fx.speed = 0; fx.moving = false; fx.dead = false; fx.deathAt = -1; fx.poofed = false; fx.gone = false;
       fx.cheerAt = -1; fx.emote = -1; fx.placeAt = fx.kickAt = fx.throwAt = fx.pickupAt = fx.hitAt = -1e9;
@@ -1048,6 +1070,13 @@ export class Renderer {
         if (c === CELL_SOFT || c === CELL_SUDDEN) drawSprite(g, set.blockShadow, tx * T, ty * T);
       }
     }
+    for (let idx = 0; idx < CELLS; idx++) {                    // soot where bombs went off, fading over a few seconds
+      const age = (now - this.scorch[idx]) / SCORCH_MS;
+      if (age < 0 || age >= 1) continue;
+      g.globalAlpha = 0.85 * (1 - age) * (1 - age);
+      drawSprite(g, set.fx.scorch, ((idx % GRID_W) + 0.5) * T, (Math.floor(idx / GRID_W) + 0.52) * T);
+    }
+    g.globalAlpha = 1;
     this.paintDanger(g, view, T, now, reduced);
     // Sudden death: the tile darkens and a warning mark pulses as the block comes down.
     const fl = view.falling;
@@ -1261,7 +1290,7 @@ export class Renderer {
     } else if (fx.moving) {
       sprite = ch.walk[face][walkFrame(fx.walk) % WALK_FRAMES];
     } else {
-      if (now > fx.blinkAt + 130) fx.blinkAt = now + 2200 + Math.random() * 2800;
+      if (now > fx.blinkAt + 130) fx.blinkAt = now + 2200 + this.rand() * 2800;
       sprite = now >= fx.blinkAt ? ch.blink[face] : ch.idle[face];
       if (!reduced) bob = Math.sin(now * 0.0042 + fx.phase) * 0.014;
     }
@@ -1643,6 +1672,12 @@ export class Renderer {
     b.text = text; b.kind = kind; b.t0 = now; b.dur = dur;
   }
 
+  /** A floating label over fighter `p`, lifted past their emote bubble while one is showing. */
+  popup(text, p, color, size, life) {
+    const fx = this.players.get(p.id);
+    this.texts.add(text, p.x, p.y, color, size, life, fx && fx.emote >= 0 && this.now - fx.emoteAt < 2400 ? 0.9 : 0);
+  }
+
   playerById(view, id) {
     const ps = view.players;
     for (let i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i];
@@ -1696,7 +1731,7 @@ export class Renderer {
         if (fx) fx.pickupAt = now;
         if (this.spend(12)) { pt.sparkle(tx + 0.5, ty + 0.5, 0.2, 9, ki, 2.4); pt.ring(tx + 0.5, ty + 0.6, 0.05, 0.15, 0.7, 0.4, RING.WHITE, 0.8); }
         const me = this.playerById(view, playerId);
-        if (me && me.isMe && ITEM_LABELS[kind]) this.texts.add(ITEM_LABELS[kind], me.x, me.y, ITEM_COLORS[kind]);
+        if (me && me.isMe && ITEM_LABELS[kind]) this.popup(ITEM_LABELS[kind], me, ITEM_COLORS[kind]);
         break;
       }
       case 'itemgone': {
@@ -1777,6 +1812,7 @@ export class Renderer {
     const pt = this.particles;
     const [, , , tx, ty, range, tiles] = e;
     const cx = tx + 0.5, cy = ty + 0.5;
+    if (tx >= 0 && ty >= 0 && tx < GRID_W && ty < GRID_H) this.scorch[ty * GRID_W + tx] = now;
     if (this.spend(30)) {
       pt.glow(cx, cy, 0.2, 3.4, 0.32, false, 1);
       pt.ring(cx, cy, 0.15, 0.3, 1.9 + range * 0.12, 0.42, RING.FIRE, 0.95);
@@ -1806,7 +1842,7 @@ export class Renderer {
     if (!p) return;
     if (kind === 0) {
       if (this.spend(8)) { pt.sparkle(p.x, p.y, 0.4, 7, ITEM_KINDS.indexOf('speed'), 2); pt.ring(p.x, p.y + 0.2, 0.1, 0.2, 1, 0.4, RING.WHITE, 0.8); }
-      if (p.isMe && p.alive) this.texts.add('CURED!', p.x, p.y, CURE_COLOR);
+      if (p.isMe && p.alive) this.popup('CURED!', p, CURE_COLOR);
       return;
     }
     if (this.spend(10)) { pt.skulls(p.x, p.y, 4); pt.ring(p.x, p.y + 0.2, 0.1, 0.2, 1.1, 0.45, RING.CURSE, 0.9); }
@@ -1816,6 +1852,6 @@ export class Renderer {
     }
     const fx = this.players.get(id);
     if (fx) fx.hitAt = this.now;
-    this.texts.add(CURSE_LABELS[kind] ?? String(kind).toUpperCase(), p.x, p.y, CURSE_COLOR, p.isMe ? 0.46 : 0.36, 1.3);
+    this.popup(CURSE_LABELS[kind] ?? String(kind).toUpperCase(), p, CURSE_COLOR, p.isMe ? 0.46 : 0.36, 1.3);
   }
 }

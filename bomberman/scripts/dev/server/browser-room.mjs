@@ -4,33 +4,30 @@
 //
 // Starts the real server (so /shared/*.js is served exactly as in production), opens it in headless Chromium, imports
 // /shared/room.js there, drives a scripted 4-fighter match on a virtual clock and compares an FNV-1a hash of every frame
-// sent to the human with the same run in Node. Prints SKIP when Playwright or Chromium is missing.
+// sent to the human with the same run in Node. The bots are the real BotBrain, so this also proves shared/bots.js decides
+// identically in both engines. Prints SKIP when Playwright or Chromium is missing.
 
 import { startServer } from '../../../server/index.js';
 import { launchChromium } from '../../../specs/helpers/pw.js';
 import { Room } from '../../../shared/room.js';
+import { BotBrain } from '../../../shared/bots.js';
 
-const TICKS = 1500;
+const TICKS = 4000;
 
 /** The scenario, written as plain code so the very same source text runs in Node and in the page. */
-function scenario(RoomClass, ticks) {
+function scenario(RoomClass, ticks, Brain) {
   const frames = [];
   let virtualMs = 0;
-  const wander = ({ seed }) => {
-    let s = seed >>> 0;
-    const next = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
-    let dir = 0;
-    return { think: (w) => { if (w.tickNo % 15 === 0) dir = Math.floor(next() * 5); return { d: dir, b: next() < 0.01 ? 1 : 0, x: 0 }; } };
-  };
   const room = new RoomClass({
-    code: 'LOCAL', local: true, seed: 12345, now: () => virtualMs, botFactory: wander, genToken: () => 'f'.repeat(32),
+    code: 'LOCAL', local: true, seed: 12345, now: () => virtualMs, botFactory: (o) => new Brain(o), genToken: () => 'f'.repeat(32),
   });
   const conn = { send: (s) => frames.push(s), close: () => {} };
   const { id } = room.join(conn, { name: 'Practice' });
   const say = (msg) => room.receive(id, JSON.stringify(msg), conn);
   say({ t: 'addBot', level: 'easy' });
   say({ t: 'addBot', level: 'normal' });
-  say({ t: 'addBot', level: 'normal' });
+  say({ t: 'addBot', level: 'hard' });
+  say({ t: 'settings', patch: { rounds: 7, roundTime: 60 } });
   say({ t: 'start' });
   let seq = 0;
   for (let i = 0; i < ticks; i++) {
@@ -58,10 +55,12 @@ try {
   await page.route('**/dev-scenario.js', (route) => route.fulfill({ contentType: 'text/javascript', body: `export ${scenario.toString()}` }));
   await page.goto(`${app.url}/`);
   const inBrowser = await page.evaluate(async (ticks) => {
-    const [{ Room: BrowserRoom }, { scenario: run }] = await Promise.all([import('/shared/room.js'), import('/dev-scenario.js')]);
-    return run(BrowserRoom, ticks);
+    const [{ Room: BrowserRoom }, { BotBrain: BrowserBrain }, { scenario: run }] = await Promise.all([
+      import('/shared/room.js'), import('/shared/bots.js'), import('/dev-scenario.js'),
+    ]);
+    return run(BrowserRoom, ticks, BrowserBrain);
   }, TICKS);
-  const inNode = scenario(Room, TICKS);
+  const inNode = scenario(Room, TICKS, BotBrain);
   console.log('browser', inBrowser);
   console.log('node   ', inNode);
   const same = JSON.stringify(inBrowser) === JSON.stringify(inNode);

@@ -17,13 +17,15 @@
 // Clarifications where the spec leaves room:
 //  * think() also reads `world.mode` ('ffa' | 'teams'), which the §6.1 read list omits: without it a bot cannot tell allies from
 //    enemies. Teammates are never hunted and a bomb that would catch one is worth less.
-//  * Besides BotBrain the module exports DangerMap (the danger model, for specs and the developer tooling under scripts/dev/bots).
+//  * Besides BotBrain the module exports DangerMap (the danger model) and hypothetical (a bomb that is not on the board yet), for specs
+//    and the developer tooling under scripts/dev/bots.
+//  * BotBrain takes { level, seed }; the levels differ in a frozen profile of twenty parameters (PROFILES below), not in separate code.
 //  * The brain keeps its own state (plan, path, stall clock) and never writes to anything it reads; it owns a makeRng(seed) and
 //    uses no clock, so a round replays identically.
 //  * `b` and `x` are 1 only on the tick a plan starts the action; every other tick returns b:0, x:0.
 
 import {
-  GRID_W, GRID_H, DT, DIR_DX, DIR_DY, FUSE_TICKS, FLAME_TICKS, KICK_STEP_TICKS, THROW_DIST, STATE,
+  GRID_W, GRID_H, DT, DIR_DX, DIR_DY, FUSE_TICKS, FLAME_TICKS, KICK_STEP_TICKS, THROW_DIST, THROW_TICKS, SD_INTERVAL, SD_WARN_TICKS, STATE,
   MAX_BOMBS, MAX_RANGE, MAX_SPEED_LV,
 } from './constants.js';
 import { makeRng } from './rng.js';
@@ -35,10 +37,10 @@ const N = W * H;
 const INF = 1000000000;
 
 const HORIZON = 260;             // ticks: a fuse (150) + a flame (36) + slack. Only hazards inside it make a tile unfit to rest on.
-const SD_REST_HORIZON = 90;      // ticks: a tile that lands sooner than this after we arrive is no place to stand
+const PRE_SD_TICKS = 420;        // ticks before sudden death in which bots already take position for it
+const SD_NEAR = 90;              // ticks: a sudden-death tile that lands this soon after we arrive is no place to stand
 const SLOTS = 6;                 // lethal intervals remembered per tile (overflow merges into the last one, which only adds caution)
 const MAX_WAIT = 60;             // ticks a bot will stand still to let a flame die out on its route
-const GOAL_SLACK = 24;           // ticks a calm bot wants between leaving a tile and the next flame there (only fleeing may cut it fine)
 const WAIT_TOL = 3;              // ticks of early arrival that are not worth standing still for
 const REBUILD_EVERY = 24;        // ticks after which the danger map is rebuilt even if the board looks unchanged
 const HYP_ID = 1000000;          // id of the hypothetical bomb of an escape check
@@ -47,15 +49,15 @@ const HYP_ID = 1000000;          // id of the hypothetical bomb of an escape che
 // at once, `margin` the safety slack in ticks around every step of a route (easy cuts it fine and pays for it).
 const PROFILES = Object.freeze({
   easy: Object.freeze({
-    interval: 14, instant: false, margin: 1, mistake: 0.08, react: 12, itemSteps: 3, sight: 1, curses: false,
+    interval: 14, instant: false, margin: 1, near: 90, sdNear: 45, mistake: 0.08, react: 12, itemSteps: 2, sight: 1, curses: false, itemBias: {}, shun: false,
     kick: false, glove: false, trap: false, camp: false, careful: 0, skull: 0.6, hunt: 0, stall: 360,
   }),
   normal: Object.freeze({
-    interval: 7, instant: true, margin: 3, mistake: 0, react: 0, itemSteps: 12, sight: 9, curses: true,
-    kick: true, glove: false, trap: false, camp: false, careful: 1, skull: 0.3, hunt: 1.2, stall: 300,
+    interval: 7, instant: true, margin: 3, near: 120, sdNear: 70, mistake: 0, react: 0, itemSteps: 12, sight: 9, curses: true, itemBias: {}, shun: false,
+    kick: true, glove: false, trap: false, camp: false, careful: 2, skull: 0.3, hunt: 1.2, stall: 300,
   }),
   hard: Object.freeze({
-    interval: 3, instant: true, margin: 4, mistake: 0, react: 0, itemSteps: 40, sight: 99, curses: true,
+    interval: 3, instant: true, margin: 4, near: 150, sdNear: 90, mistake: 0, react: 0, itemSteps: 40, sight: 99, curses: true, itemBias: { shield: 1.4, speed: 1.4 }, shun: true,
     kick: true, glove: true, trap: true, camp: true, careful: 2, skull: -1, hunt: 2.0, stall: 240,
   }),
 });
@@ -65,12 +67,18 @@ const BLOCK_VALUE = 1.0;         // per soft block a bomb opens (capped, see BLO
 const BLOCK_CAP = 3;
 const ENEMY_HIT_VALUE = 1.6;     // a bomb whose flames cover an enemy: it has to run, and a slow one dies
 const ALLY_HIT_PENALTY = 2.5;
-const CLAIM_LEAD = 10;           // ticks we must be ahead of every rival to claim a tile
-const SEAL_WINDOW = 120;         // ticks before the last tile lands in which a bomb on it cannot explode first (the fuse is 150)
+const HOLD_TICKS = 20;           // ticks a rival must stand still on a tile before it counts as holding it
+const SEAL_WINDOW = 138;         // ticks before the last tile lands in which a bomb on it cannot explode first (the fuse is 150)
+const RESCUE_VALUE = 12;         // a kick or throw that frees a bot with no way out beats any attack
+const RELOCATE_MIN = 1.5;        // the least a kicked or thrown bomb must promise (one rival under its flames)
+const KICK_PATIENCE = 24;        // ticks a bot keeps pushing at a bomb before it gives up (it has to walk up to it first)
+const SPAM_LOOK = 34;            // ticks before the next automatic bomb from which a cursed bot starts to look for a safe place to be
 const KILL_VALUE = 10;           // a bomb that leaves an enemy with no way out
 const TRAP_RANGE = 8;            // tiles: rivals farther away than this are not worth a trap check
 const TRAP_ROOM = 14;            // a rival with more safe tiles than this in reach cannot be trapped by one bomb
 const SEAL_REACH = 5;            // tiles: a rival farther than this from a tile of our escape route cannot close it in time
+const SHUN_RANGE = 3;            // tiles: how close a cursed player may come before a careful bot backs off
+const HUNT_SLACK = 4;            // cost units by which the old hunting spot may be worse than the best one before we switch
 const POCKET = 4;                // a dead end of at most this many tiles counts as a pocket
 const POCKET_RIVAL = 6;          // tiles: how close a rival must be to the mouth of a pocket for it to be a risk
 const STICK = 1.35;              // score bonus of the goal already being pursued: no dithering between equal goals
@@ -107,6 +115,26 @@ const manhattan = (a, b) => Math.abs((a % W) - (b % W)) + Math.abs(Math.floor(a 
 // DangerMap: when is each tile lethal?
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * The order in which sudden death drops tiles, for a grid that has not started it yet: clockwise rings from the top-left of each ring,
+ * every non-wall cell once (docs/SPEC.md §3.2.1). Returns the tile index per landing rank.
+ */
+function spiralOrder(grid) {
+  const order = [];
+  for (let r = 1; ; r++) {
+    const x0 = r;
+    const y0 = r;
+    const x1 = W - 1 - r;
+    const y1 = H - 1 - r;
+    if (x0 > x1 || y0 > y1) break;
+    for (let x = x0; x <= x1; x++) order.push(y0 * W + x);
+    for (let y = y0 + 1; y <= y1; y++) order.push(y * W + x1);
+    if (y1 > y0) for (let x = x1 - 1; x >= x0; x--) order.push(y1 * W + x);
+    if (x1 > x0) for (let y = y1 - 1; y >= y0 + 1; y--) order.push(y * W + x0);
+  }
+  return order.filter((t) => grid[t] !== '#' && grid[t] !== 'X');
+}
+
 /** A bomb as the danger model sees it: `at` = the tick it explodes, `land` = the tick it starts to exist on its tile (thrown bombs). */
 function virtualBomb(b, T) {
   const flying = b.fly !== null && b.fly !== undefined && b.fly !== 0;
@@ -117,12 +145,14 @@ function virtualBomb(b, T) {
 export class DangerMap {
   constructor() {
     this.T = 0;
+    this.sdNear = SD_NEAR;                        // a sudden-death tile that lands sooner than this after we get there is no place to stand
     this.cnt = new Uint8Array(N);                 // lethal intervals per tile
     this.lo = new Int32Array(N * SLOTS);          // [lo, hi] in absolute ticks, inclusive
     this.hi = new Int32Array(N * SLOTS);
     this.land = new Int32Array(N);                // tick at which a sudden-death tile lands (INF: never); lethal from then on, forever
     this.rest = new Int32Array(N);                // first tick after the last lethal tick inside the horizon (0: nothing to fear)
-    this.solid = new Uint8Array(N);               // walls, blocks and bombs: cannot be walked through
+    this.solid = new Uint8Array(N);               // walls, blocks and bombs that move: cannot be walked through, ever
+    this.hold = new Int32Array(N);                // a bomb that stays put blocks its tile until the tick it explodes (0: not blocked)
     this._grid = new Array(N);
     this._bombs = [];
     this._batch = [];
@@ -131,31 +161,30 @@ export class DangerMap {
   }
 
   /**
-   * Rebuilds the map from `world`; `extra` are hypothetical bombs (virtual bombs, see `hypothetical`) that are added to the board.
+   * Rebuilds the map from `world`; `extra` are hypothetical bombs (virtual bombs, see `hypothetical`) that are added to the board and
+   * the real bomb `without` (an id) is left out, so that a kicked or thrown bomb can be shown where it would end up.
    * @returns {DangerMap} this
    */
-  build(world, extra = null) {
+  build(world, extra = null, without = -1) {
     const T = world.tickNo;
     const grid = world.grid;
     this.T = T;
     this.cnt.fill(0);
     this.land.fill(INF);
     for (let i = 0; i < N; i++) this.solid[i] = grid[i] === '.' ? 0 : 1;
+    this.hold.fill(0);
+    this._schedule(world, T);
 
     const bombs = this._bombs;
     bombs.length = 0;
-    for (const b of world.bombs) bombs.push(virtualBomb(b, T));
+    for (const b of world.bombs) if (b.id !== without) bombs.push(virtualBomb(b, T));
     if (extra) for (const e of extra) bombs.push(e);
-    for (const b of bombs) this.solid[b.ty * W + b.tx] = 1;
-
     for (const f of world.flames) this._add(f.ty * W + f.tx, T + 1, T + f.ticks);
     if (bombs.length > 0) this._explode(grid, bombs);
-    if (world.suddenDeath) {
-      for (let i = 0; i < N; i++) {
-        if (grid[i] === '#' || grid[i] === 'X') continue;
-        const t = world.landTick(i % W, Math.floor(i / W));
-        if (t !== Infinity) this.land[i] = t;
-      }
+    for (const b of bombs) {
+      const i = b.ty * W + b.tx;
+      if (b.dir !== 0 || b.land > T) this.solid[i] = 1;                      // sliding and flying bombs are not where they will be
+      else this.hold[i] = Math.min(b.at, this.land[i]);
     }
     for (let i = 0; i < N; i++) {
       let r = 0;
@@ -164,6 +193,25 @@ export class DangerMap {
       this.rest[i] = r;
     }
     return this;
+  }
+
+  /**
+   * Fills `land`: the real schedule once sudden death runs; in the last PRE_SD_TICKS before it starts the schedule that will come (the
+   * spiral is a public rule), so that bots can take position for the last stand.
+   */
+  _schedule(world, T) {
+    const grid = world.grid;
+    if (world.suddenDeath) {
+      for (let i = 0; i < N; i++) {
+        if (grid[i] === '#' || grid[i] === 'X') continue;
+        const t = world.landTick(i % W, Math.floor(i / W));
+        if (t !== Infinity) this.land[i] = t;
+      }
+    } else if (world.timeLeft > 0 && world.timeLeft <= PRE_SD_TICKS) {
+      const start = T + world.timeLeft;
+      const order = spiralOrder(grid);
+      for (let k = 0; k < order.length; k++) this.land[order[k]] = start + k * SD_INTERVAL + SD_WARN_TICKS;
+    }
   }
 
   _add(i, a, b) {
@@ -205,10 +253,11 @@ export class DangerMap {
       for (const b of bombs) {
         if (b.done) continue;
         if (b.at === e) batch.push(b);
-        if (b.land <= e) present.push(b);
+        if (b.land <= e && this.land[b.ty * W + b.tx] > e) present.push(b);      // a landed tile takes its bomb along (bombgone)
       }
       for (let qi = 0; qi < batch.length; qi++) {
         const b = batch[qi];
+        if (this.land[b.ty * W + b.tx] <= e) continue;                             // ... which then never goes off
         const blast = computeBlast(g, present, b);
         for (const t of blast.tiles) this._add(t[1] * W + t[0], e, e + FLAME_TICKS - 1);
         for (const t of blast.blocks) opened.push(t[1] * W + t[0]);
@@ -264,9 +313,9 @@ export class DangerMap {
     return e;
   }
 
-  /** First lethal tick at or after `a` on tile i (INF: never). */
-  nextLethal(i, a) {
-    let e = this.land[i];
+  /** First tick at or after `a` at which a flame is lethal on tile i (INF: never). */
+  nextFlame(i, a) {
+    let e = INF;
     const base = i * SLOTS;
     for (let k = 0, n = this.cnt[i]; k < n; k++) {
       if (this.hi[base + k] < a) continue;
@@ -276,9 +325,20 @@ export class DangerMap {
     return e;
   }
 
+  /** First tick at or after `a` at which tile i is lethal, flame or landing (INF: never). */
+  nextLethal(i, a) {
+    const f = this.nextFlame(i, a);
+    return this.land[i] < f ? this.land[i] : f;
+  }
+
   /** Convenience for specs and tools: is tile (tx, ty) lethal on any tick of [from, to]? */
   lethal(tx, ty, from, to = from) {
     return this.hits(ty * W + tx, from, to);
+  }
+
+  /** Is tile i closed to walkers at tick t (wall, block, moving bomb, or a bomb that has not gone off yet)? */
+  closed(i, t) {
+    return this.solid[i] !== 0 || this.hold[i] > t;
   }
 
   /** Walkable neighbours of tile i. */
@@ -286,7 +346,7 @@ export class DangerMap {
     let n = 0;
     for (let d = 0; d < 4; d++) {
       const j = NB[i * 4 + d];
-      if (j >= 0 && this.solid[j] === 0) n++;
+      if (j >= 0 && this.solid[j] === 0 && this.hold[j] === 0) n++;
     }
     return n;
   }
@@ -302,9 +362,12 @@ export class DangerMap {
   }
 }
 
-/** A hypothetical bomb on tile (tx, ty) for DangerMap.build: explodes `fuse` ticks after `T`. */
-export function hypothetical(tx, ty, range, T, fuse = FUSE_TICKS) {
-  return { id: HYP_ID, tx, ty, range, at: T + fuse, land: -INF, fly: null, done: false, dir: 0, step: 0 };
+/**
+ * A hypothetical bomb on tile (tx, ty) for DangerMap.build: explodes `fuse` ticks after `T`; `lands` ticks from now it arrives there
+ * when it is a thrown one.
+ */
+export function hypothetical(tx, ty, range, T, fuse = FUSE_TICKS, lands = 0) {
+  return { id: HYP_ID, tx, ty, range, at: T + lands + fuse, land: lands > 0 ? T + lands : -INF, fly: null, done: false, dir: 0, step: 0 };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -329,7 +392,7 @@ function firstHop(dz, c, n, d, x, y, sp) {
   if (lateral > 0.16) {
     const side = d === 2 || d === 4 ? (off > 0 ? 3 : 1) : (off > 0 ? 2 : 4);
     const beside = NB[n * 4 + side - 1];
-    if (beside < 0 || dz.solid[beside]) j += Math.ceil((lateral - 0.16) / sp);
+    if (beside < 0 || dz.solid[beside] || dz.hold[beside] > 0) j += Math.ceil((lateral - 0.16) / sp);
   }
   return j;
 }
@@ -387,7 +450,8 @@ class Reach {
     this._held = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (t - T > HORIZON) return -1;
-      const e = dz.blockEnd(n, t - margin, t + inv - 1 + margin + slack);
+      let e = dz.blockEnd(n, t - margin, t + inv - 1 + margin + slack);
+      if (dz.hold[n] >= t - margin && dz.hold[n] > e) e = dz.hold[n];              // a bomb sits there until it goes off
       if (e < 0) return t;
       if (e >= INF) return -1;
       const nt = e + 1 + margin;
@@ -410,7 +474,7 @@ class Reach {
   /** Can a walker that arrives on tile i stay there? */
   restOK(dz, i, margin) {
     const a = this.arr[i];
-    return a < INF && dz.rest[i] <= a - margin && dz.land[i] - a >= SD_REST_HORIZON;
+    return a < INF && dz.rest[i] <= a - margin && dz.land[i] - a >= dz.sdNear;
   }
 }
 
@@ -436,6 +500,30 @@ function blocksHit(grid, i, range) {
   return n;
 }
 
+/**
+ * Where the World lands a bomb thrown from tile (cx, cy) towards `dir` (docs/SPEC.md §3.6b): three tiles away, then farther out to the edge of
+ * the board, then two, one, none. A tile qualifies when it is floor without another bomb (or another bomb's landing).
+ */
+function throwDestination(grid, bombs, cx, cy, dir, bomb) {
+  const dx = DIR_DX[dir];
+  const dy = DIR_DY[dir];
+  const free = (tx, ty) => {
+    if (tx < 0 || ty < 0 || tx >= W || ty >= H || grid[ty * W + tx] !== '.') return false;
+    for (const o of bombs) {
+      if (o === bomb) continue;
+      if (o.fly ? o.fly.tx === tx && o.fly.ty === ty : o.tx === tx && o.ty === ty) return false;
+    }
+    return true;
+  };
+  for (let dist = THROW_DIST; cx + dx * dist >= 0 && cy + dy * dist >= 0 && cx + dx * dist < W && cy + dy * dist < H; dist++) {
+    if (free(cx + dx * dist, cy + dy * dist)) return (cy + dy * dist) * W + cx + dx * dist;
+  }
+  for (let dist = THROW_DIST - 1; dist >= 0; dist--) {
+    if (free(cx + dx * dist, cy + dy * dist)) return (cy + dy * dist) * W + cx + dx * dist;
+  }
+  return bomb.ty * W + bomb.tx;
+}
+
 /** Ticks until the centre of a walker at (x, y) has crossed the boundary of tile `c` in direction d. */
 function ticksToCross(c, d, x, y, sp) {
   const dist = d === 2 ? (c % W) + 1 - x : d === 4 ? x - (c % W) : d === 3 ? Math.floor(c / W) + 1 - y : y - Math.floor(c / W);
@@ -451,6 +539,7 @@ export class BotBrain {
 
     this.dz = new DangerMap();                    // the board as it is
     this.dzH = new DangerMap();                   // the board plus one hypothetical bomb
+    this.dz.sdNear = this.dzH.sdNear = this.prof.sdNear;
     this.sr = new Reach();                        // our own reach on `dz`
     this.srH = new Reach();                       // our escape on `dzH`
     this.srE = new Reach();                       // an enemy's reach, for trap checks
@@ -476,6 +565,7 @@ export class BotBrain {
     this.act = 0;                                 // bit 1: place a bomb this tick, bit 2: use the glove
     this.actDir = 0;                              // direction to press together with the action
     this.kickDir = 0;                             // keep pressing this way until the bomb in front has been kicked
+    this.kickBomb = -1;
     this.kickUntil = 0;
     this.foes = [];
     this.allies = [];
@@ -484,9 +574,17 @@ export class BotBrain {
     this.envWorld = null;
     this._pool = [];
     this._seen = new Uint8Array(N);
-    this._rivalTicks = new Int32Array(N);         // sudden death: tiles a rival needs to reach each tile
+    this._held = new Uint8Array(N);               // sudden death: tiles a rival holds
+    this._mine = new Int32Array(N);               // sudden death: steps from us / from the nearest rival to each tile, and who that rival is
+    this._rivalDist = new Int32Array(N);
+    this._owner = new Int32Array(N);
+    this._queue = [];
+    this._track = new Map();                      // rival id -> { tile, since }: how long it has stood where it is
+    this.tile = -1;                               // the tile we are on, and since when
+    this.tileSince = 0;
     this._bombList = [];
     this._verdict = { safe: false, kill: false };
+    this._victims = [];                           // enemies the bomb under evaluation would trap
   }
 
   /**
@@ -543,10 +641,15 @@ export class BotBrain {
     foes.length = 0;
     allies.length = 0;
     const teams = world.mode === 'teams';
+    const T = world.tickNo;
     for (const o of world.players) {
       if (o === me || !o.alive || o.removed) continue;
       if (teams && o.team === me.team) allies.push(o);
       else foes.push(o);
+      const tile = tileOf(o);
+      const rec = this._track.get(o.id);
+      if (!rec) this._track.set(o.id, { tile, since: T });
+      else if (rec.tile !== tile) { rec.tile = tile; rec.since = T; }
     }
   }
 
@@ -556,17 +659,23 @@ export class BotBrain {
     const prof = this.prof;
     const c = tileOf(me);
     const threatened = !this._safeHere(c, T);
-    this.sr.run(this.dz, T, me.x, me.y, effectiveSpeed(me), prof.margin, threatened ? 0 : GOAL_SLACK);
+    this.sr.run(this.dz, T, me.x, me.y, effectiveSpeed(me), prof.margin, threatened ? 0 : prof.near + 10);
     this.planned = true;
     this.planAt = T + prof.interval;
     this.pathLen = 0;
     this.pathPos = 0;
     this.act = 0;
     this.actDir = 0;
+    if (c !== this.tile) {
+      this.tile = c;
+      this.tileSince = T;
+    }
     this._sortPlayers(world, me);
+    this._markHeld(world, me, T);
     this._trackProgress(world, T, c);
 
     if (world.suddenDeath && prof.camp && this._trySeal(world, me, T, c)) return;
+    if (this._held[c] && this._giveWay(me, T)) return;
     if (threatened) {
       this.kickDir = 0;
       if (this.threatAt < 0) this.threatAt = T + (prof.react > 0 ? this.rng.int(prof.react) : 0);
@@ -583,6 +692,7 @@ export class BotBrain {
       this._planWander(me, T, 1, 4, 'mistake');
       return;
     }
+    if (prof.shun && this._shunCursed(me, T, c)) return;
     if (this._planOffence(world, me, T, c)) return;
     this._planGoal(world, me, T, c);
   }
@@ -605,9 +715,12 @@ export class BotBrain {
     return true;
   }
 
-  /** May we stand on tile c from now on? */
+  /**
+   * Is nothing going to be lethal on tile c soon? "Soon" is the level's `near`: a careful bot leaves a zone that will burn at once, a
+   * carefree one carries on until the flames are close. (Routes keep `near` + 10 ticks clear of every flame, so the two never disagree.)
+   */
   _safeHere(c, T) {
-    return this.dz.rest[c] <= T - this.prof.margin && this.dz.land[c] - T >= SD_REST_HORIZON;
+    return this.dz.nextFlame(c, T + 1) - T > this.prof.near && this.dz.land[c] - T > this.prof.sdNear;
   }
 
   /** Stall breaker: standing around in one corner of the board for too long asks for a risk-free action. */
@@ -616,7 +729,7 @@ export class BotBrain {
       this.anchor = c;
       this.anchorAt = T;
       this.urge = 0;
-    } else if (T - this.anchorAt > this.prof.stall && !world.suddenDeath) {
+    } else if (T - this.anchorAt > this.prof.stall && !world.suddenDeath && !(world.timeLeft > 0 && world.timeLeft <= PRE_SD_TICKS)) {
       this.urge = 1;
       this.anchorAt = T;
     }
@@ -632,10 +745,11 @@ export class BotBrain {
     let bestScore = -INF;
     for (let k = 1; k < sr.n; k++) {
       const i = sr.list[k];
-      if (!sr.restOK(dz, i, prof.margin)) continue;
-      let s = -(sr.arr[i] - T) * sp + 0.4 * dz.openCount(i) - dz.hazardCount(i);
+      if (!sr.restOK(dz, i, prof.margin) || this._held[i]) continue;
+      const steps = (sr.arr[i] - T) * sp;
+      let s = -steps + 0.4 * dz.openCount(i) - 0.5 * dz.hazardCount(i);
       if (prof.careful > 0) {
-        s -= 0.5 * Math.max(0, 5 - this._foeDistance(i));                            // do not run to where a rival can seal us in
+        s -= 1.5 * Math.max(0, steps + 2 - this._foeDistance(i));                  // a rival who gets there first can seal the way out
         if (this._inPocket(i, sr.par[i])) s -= 3;
       }
       if (this.goal.kind === 'flee' && this.goal.tile === i) s += 1.5;
@@ -679,11 +793,15 @@ export class BotBrain {
   _planPanic(world, me, T) {
     const { dz, sr, prof } = this;
     const sp = effectiveSpeed(me) * DT;
+    const c = tileOf(me);
+    if (prof.glove && me.glove && this._tryThrow(world, me, T, c)) return;             // the last resorts of a bot with no way out
+    if (prof.kick && me.kick && this._tryKick(world, me, T, c)) return;
     let best = -1;
     let bestAt = -1;
     for (let k = 0; k < sr.n; k++) {
       const i = sr.list[k];
       if (!prof.camp && (sr.arr[i] - T) * sp > 2) continue;      // a bot that does not plan for the last stand only looks a tile or two around
+      if (this._held[i] && i !== c) continue;
       const at = dz.nextLethal(i, sr.arr[i]);
       if (at > bestAt) { bestAt = at; best = i; }
     }
@@ -713,7 +831,7 @@ export class BotBrain {
       const t = queue[qi];
       for (let d = 0; d < 4; d++) {
         const n = NB[t * 4 + d];
-        if (n < 0 || seen[n] || this.dz.solid[n]) continue;
+        if (n < 0 || seen[n] || this.dz.solid[n] || this.dz.hold[n] > 0) continue;
         seen[n] = 1;
         queue.push(n);
         if (queue.length > POCKET) return false;
@@ -722,10 +840,11 @@ export class BotBrain {
     return true;
   }
 
-  /** Distance from tile i to the nearest enemy (99 when there is none). */
-  _foeDistance(i) {
+  /** Distance from tile i to the nearest enemy (99 when there is none); `spareVictims` leaves out the ones a bomb is about to trap. */
+  _foeDistance(i, spareVictims = false) {
     let best = 99;
     for (const e of this.foes) {
+      if (spareVictims && this._victims.includes(e)) continue;
       const d = manhattan(i, tileOf(e));
       if (d < best) best = d;
     }
@@ -770,7 +889,20 @@ export class BotBrain {
   }
 
   _planOffence(world, me, T, c) {
+    if (me.curse === 'spam' && this._planSpam(world, me, T, c)) return true;
+    if (this.prof.glove && me.glove && this._tryThrow(world, me, T, c)) return true;
+    if (this.prof.kick && me.kick && this._tryKick(world, me, T, c)) return true;
     return this._tryBomb(world, me, T, c);
+  }
+
+  /** The flames of a bomb of `range` on (tx, ty), with the real bomb `without` taken off the board. */
+  _blastAt(world, tx, ty, range, without) {
+    const list = this._bombList;
+    list.length = 0;
+    for (const b of world.bombs) if (b.id !== without) list.push(b);
+    const mine = { id: HYP_ID, tx, ty, range, fly: null };
+    list.push(mine);
+    return computeBlast(world.grid, list, mine);
   }
 
   /**
@@ -782,14 +914,7 @@ export class BotBrain {
     if (T < this.bombNext || !this._canBomb(world, me, c)) return false;
     if (this.dz.hits(c, T + 1, T + FLAME_TICKS)) return false;
 
-    const tx = c % W;
-    const ty = (c - tx) / W;
-    const list = this._bombList;
-    list.length = 0;
-    for (const b of world.bombs) list.push(b);
-    const mine = { id: HYP_ID, tx, ty, range: me.range, fly: null };
-    list.push(mine);
-    const blast = computeBlast(world.grid, list, mine);
+    const blast = this._blastAt(world, c % W, Math.floor(c / W), me.range, -1);
 
     let value = Math.min(blast.blocks.length, BLOCK_CAP) * BLOCK_VALUE;
     let near = false;
@@ -806,6 +931,7 @@ export class BotBrain {
     const wantKill = prof.trap && near;
     const need = this.urge ? 0 : 1;
     if (value < need && !wantKill) return false;
+    const lastStand = prof.camp && (world.suddenDeath || (world.timeLeft > 0 && world.timeLeft <= PRE_SD_TICKS));
 
     this.bombNext = T + 8;
     const verdict = this._evaluateBomb(world, me, T, c, 0, wantKill);
@@ -814,6 +940,7 @@ export class BotBrain {
       this.banned[c] = T + 90;                    // do not wait around here: try another spot
       return false;
     }
+    if (lastStand && !verdict.kill) return false;                // a camper leaves its pocket for a sure kill only
     if (verdict.kill) value += KILL_VALUE;
     if (value < need) return false;
     this.act |= 1;
@@ -845,10 +972,14 @@ export class BotBrain {
     sr.run(dz, T + delay, x, y, speed, prof.margin);
     let exits = 0;
     for (let k = 1; k < sr.n; k++) if (sr.restOK(dz, sr.list[k], prof.margin)) exits++;
-    if (exits < (prof.careful > 0 ? 2 : 1)) return verdict;
-    if (prof.careful > 1 && !this._escapeIsRobust(dz, T + delay, x, y, speed)) return verdict;
+    if (exits === 0) return verdict;
+    const victims = this._victims;
+    victims.length = 0;
+    if (wantKill) this._trapped(dz, T, victims);
+    verdict.kill = victims.length > 0;
+    if (exits < (verdict.kill || prof.careful === 0 ? 1 : 2)) { verdict.kill = false; return verdict; }
+    if (prof.careful > 1 && !this._escapeIsRobust(dz, T + delay, x, y, speed)) { verdict.kill = false; return verdict; }
     verdict.safe = true;
-    if (wantKill) verdict.kill = this._trapsSomeone(dz, T);
     return verdict;
   }
 
@@ -867,7 +998,7 @@ export class BotBrain {
     for (let i = target; i >= 0 && i !== sr.start; i = sr.par[i]) route.push(i);
     for (let r = route.length - 1, cut = 0; r >= 0 && cut < 2; r--, cut++) {       // the first two tiles of the route
       const t = route[r];
-      if (this._foeDistance(t) > SEAL_REACH) continue;                              // nobody is near enough to close that door
+      if (this._foeDistance(t, true) > SEAL_REACH) continue;                        // nobody is near enough to close that door
       dz.solid[t] = 1;
       sr.run(dz, t0, x, y, speed, prof.margin);
       let alive = false;
@@ -878,17 +1009,147 @@ export class BotBrain {
     return true;
   }
 
-  /** With `dz` (the hypothetical board): is a nearby enemy standing in the flames with no safe tile in reach? */
-  _trapsSomeone(dz, T) {
+  /** With `dz` (the hypothetical board): collects the enemies that stand in the flames with no safe tile in reach. */
+  _trapped(dz, T, out) {
     for (const e of this.foes) {
-      if (manhattan(tileOf(e), tileOf(this.sim)) > 99 || Math.max(e.shield, e.spawnShield) > 100) continue;
       const ei = tileOf(e);
-      if (dz.rest[ei] <= T - 1 && dz.land[ei] - T >= SD_REST_HORIZON) continue;          // it is not even threatened
+      if (Math.max(e.shield, e.spawnShield) > 100) continue;                                // a shield outlives the bomb
+      if (dz.rest[ei] <= T - 1 && dz.land[ei] - T >= SD_NEAR) continue;            // it is not even threatened
       const sr = this.srE;
       sr.run(dz, T, e.x, e.y, effectiveSpeed(e), 1);
-      let out = false;
-      for (let k = 0; k < sr.n && !out; k++) out = sr.restOK(dz, sr.list[k], 1);
-      if (!out) return true;
+      let out1 = false;
+      for (let k = 0; k < sr.n && !out1; k++) out1 = sr.restOK(dz, sr.list[k], 1);
+      if (!out1) out.push(e);
+    }
+  }
+
+  // ---- Kick and glove -------------------------------------------------------------------------
+
+  /** The bomb that sits still on tile i (the only kind a fighter can kick or throw). */
+  _bombOn(world, i) {
+    const tx = i % W;
+    const ty = (i - tx) / W;
+    for (const b of world.bombs) if (b.tx === tx && b.ty === ty && !b.fly && b.dir === 0) return b;
+    return undefined;
+  }
+
+  _fighterOn(world, i) {
+    const tx = i % W;
+    const ty = (i - tx) / W;
+    for (const p of world.players) if (p.alive && overlapsTile(p, tx, ty)) return true;
+    return false;
+  }
+
+  /**
+   * What is it worth to have `bomb` explode on `dest` instead of where it is? (A kick puts it there by the time it goes off, a throw
+   * `lands` ticks from now.) Rivals under its flames count, a rival with no way out counts a lot, and so does getting ourselves out of
+   * a spot with no safe tile. 0 when the change would leave us in danger.
+   */
+  _relocationValue(world, me, T, bomb, dest, lands) {
+    const prof = this.prof;
+    const tx = dest % W;
+    const ty = (dest - tx) / W;
+    const dz = this.dzH.build(world, [hypothetical(tx, ty, bomb.range, T, bomb.fuse, lands)], bomb.id);
+    if (prof.skull < 0) this._avoidSkulls(world, dz);
+    const c = tileOf(me);
+    const wasSafe = this._safeHere(c, T);
+    const sr = this.srH;
+    sr.run(dz, T, me.x, me.y, effectiveSpeed(me), prof.margin);
+    let exits = 0;
+    for (let k = 1; k < sr.n; k++) if (sr.restOK(dz, sr.list[k], prof.margin)) exits++;
+    const safeNow = dz.rest[c] <= T - prof.margin && dz.land[c] - T >= prof.sdNear;
+    if (!safeNow && exits === 0) return 0;
+
+    let value = wasSafe ? 0 : RESCUE_VALUE;
+    const blast = this._blastAt(world, tx, ty, bomb.range, bomb.id);
+    const victims = this._victims;
+    victims.length = 0;
+    if (prof.trap) this._trapped(dz, T, victims);
+    if (victims.length > 0) value += KILL_VALUE;
+    for (const e of this.foes) {
+      const ei = tileOf(e);
+      if (!victims.includes(e) && blast.tiles.some((t) => t[1] * W + t[0] === ei)) value += ENEMY_HIT_VALUE;
+    }
+    for (const a of this.allies) {
+      const ai = tileOf(a);
+      if (blast.tiles.some((t) => t[1] * W + t[0] === ai)) value -= ALLY_HIT_PENALTY;
+    }
+    return value;
+  }
+
+  /** Walk into a bomb next to us so that it slides towards where it does the most good. */
+  _tryKick(world, me, T, c) {
+    if (this.kickDir !== 0) return true;
+    let bestValue = RELOCATE_MIN - 0.01;
+    let best = null;
+    for (let d = 1; d <= 4; d++) {
+      const a = NB[c * 4 + d - 1];
+      if (a < 0) continue;
+      const bomb = this._bombOn(world, a);
+      if (!bomb || bomb.pass.length > 0) continue;
+      let run = 0;                                                     // tiles it can slide: floor, no bomb, no fighter in the way
+      let dest = a;
+      for (let n = NB[dest * 4 + d - 1]; run < 14 && n >= 0 && world.grid[n] === '.' && !this._bombOn(world, n) && !this._fighterOn(world, n); n = NB[dest * 4 + d - 1]) {
+        dest = n;
+        run++;
+      }
+      const advances = bomb.fuse > 2 ? Math.floor((bomb.fuse - 2) / KICK_STEP_TICKS) + 1 : 0;
+      if (run === 0 || advances === 0) continue;
+      let there = a;
+      for (let k = Math.min(run, advances); k > 0; k--) there = NB[there * 4 + d - 1];
+      const value = this._relocationValue(world, me, T, bomb, there, 0);
+      if (value > bestValue) { bestValue = value; best = { d, id: bomb.id }; }
+    }
+    if (!best) return false;
+    this.kickDir = best.d;
+    this.kickBomb = best.id;
+    this.kickUntil = T + KICK_PATIENCE;
+    this.status = 'kick';
+    this.planAt = T + 2;
+    return true;
+  }
+
+  /** Pick a bomb up (the one under us, or next to us if we cannot kick it instead) and throw it where it does the most good. */
+  _tryThrow(world, me, T, c) {
+    let bestValue = RELOCATE_MIN - 0.01;
+    let best = null;
+    const consider = (bomb, w) => {
+      const dest = throwDestination(world.grid, world.bombs, c % W, Math.floor(c / W), w, bomb);
+      if (dest === bomb.ty * W + bomb.tx) return;
+      const value = this._relocationValue(world, me, T, bomb, dest, THROW_TICKS);
+      if (value > bestValue) { bestValue = value; best = w; }
+    };
+    const under = this._bombOn(world, c);
+    for (let w = 1; w <= 4; w++) {
+      if (under) consider(under, w);
+      const a = NB[c * 4 + w - 1];
+      const front = a >= 0 && !me.kick ? this._bombOn(world, a) : undefined;      // with a kick, walking into a bomb kicks it
+      if (front) consider(front, w);
+    }
+    if (best === null) return false;
+    this.act |= 2;
+    this.actDir = best;
+    this.status = 'throw';
+    this.planAt = T + 2;
+    return true;
+  }
+
+  /** The `spam` curse drops a bomb every SPAM_INTERVAL ticks wherever we stand: make sure that place is one we can leave. */
+  _planSpam(world, me, T, c) {
+    const due = Math.max(1, me.spamCd);
+    if (due > SPAM_LOOK || !this._hasBombs(world, me)) return false;
+    const { dz, sr, prof } = this;
+    if (this._evaluateBomb(world, me, T, c, due, false).safe) return false;
+    for (let k = 1; k < sr.n; k++) {
+      const i = sr.list[k];
+      if (sr.arr[i] - T > due + 12 || !sr.restOK(dz, i, prof.margin) || !this._canBombTile(world, i)) continue;
+      if (this._evaluateBomb(world, me, T, i, Math.max(due, Math.ceil(sr.arr[i] - T)), false).safe) {
+        this.goal.kind = 'spam';
+        this.goal.tile = i;
+        this.status = 'spam';
+        this._setPath(i);
+        return true;
+      }
     }
     return false;
   }
@@ -896,6 +1157,10 @@ export class BotBrain {
   // ---- Goals ----------------------------------------------------------------------------------
 
   _itemValue(me, kind) {
+    return this._baseItemValue(me, kind) * (this.prof.itemBias[kind] ?? 1);
+  }
+
+  _baseItemValue(me, kind) {
     switch (kind) {
       case 'bomb': return me.bombsMax >= MAX_BOMBS ? 0.2 : ITEM_VALUE.bomb * (me.bombsMax >= 5 ? 0.5 : 1);
       case 'flame': return me.range >= MAX_RANGE ? 0.2 : ITEM_VALUE.flame * (me.range >= 7 ? 0.5 : 1);
@@ -950,12 +1215,16 @@ export class BotBrain {
         if (manhattan(ei, c) > prof.sight + 8) continue;
         let near = -1;
         let nearCost = INF;
+        let keep = -1;
+        let keepCost = INF;
         for (let k = 1; k < sr.n; k++) {
           const i = sr.list[k];
           if (!sr.restOK(dz, i, prof.margin)) continue;
           const cost = manhattan(i, ei) * 3 + stepsTo(i);
           if (cost < nearCost) { nearCost = cost; near = i; }
+          if (this.goal.kind === 'hunt' && i === this.goal.tile) { keep = i; keepCost = cost; }
         }
+        if (keep >= 0 && keepCost <= nearCost + HUNT_SLACK) near = keep;          // the rival moved a little: do not swerve after it
         if (near >= 0 && near !== c) consider(near, 'hunt', keen / (1 + 0.15 * stepsTo(near)));
       }
     }
@@ -963,10 +1232,10 @@ export class BotBrain {
     if (prof.trap && T >= this.trapNext) {
       this.trapNext = T + 9;
       const spot = this._findTrapSpot(world, me, T, c);
-      if (spot >= 0) consider(spot, 'trap', 20);
+      if (spot >= 0) consider(spot, 'trap', 60);
     }
 
-    if (world.suddenDeath && prof.camp) {
+    if (prof.camp && (world.suddenDeath || (world.timeLeft > 0 && world.timeLeft <= PRE_SD_TICKS))) {
       const spot = this._campSpot(me, T);
       if (spot === c) {                           // already on the tile we can hold: stay
         this.goal.kind = 'camp';
@@ -988,46 +1257,146 @@ export class BotBrain {
   }
 
   /**
-   * Sudden death: the tile that lands latest among those we can reach before any rival can. Claiming only what we can get first keeps
-   * the survivors from all piling onto the very last tile (nobody could be beaten there), so the round is decided while it still can be.
-   * With no such tile we take the latest one we can reach at all.
+   * Sudden death, the last stand: which tiles are not ours to take? Every level follows the same convention, so that the survivors do
+   * not all pile onto the last tile and go down together:
+   *  - a tile belongs to the bot that is closest to it, but a rival that is only one step closer does not shut us out (we may still
+   *    win the race, and yielding that much cost 1v1 endings against a random walker): it counts as held only when the rival is at
+   *    least two steps closer, or one step closer with the lower id. Two bots on one tile: the one that got there first stays;
+   *  - a rival that has stood still on a tile for a while holds it.
    */
-  _campSpot(me, T) {
-    const { dz, sr, prof } = this;
-    const rival = this._rivalTicks;
+  _markHeld(world, me, T) {
+    const held = this._held;
+    held.fill(0);
+    if (!world.suddenDeath) return;
+    const here = tileOf(me);
+    this._distances(this._mine, [here], this.dz);
+    const sources = this._pool;
+    sources.length = 0;
+    for (const e of this.foes) sources.push(tileOf(e));
+    const rival = this._rivalDist;
+    const owner = this._owner;
     rival.fill(INF);
-    const queue = this._pool;
+    owner.fill(INF);
+    const queue = this._queue;
     queue.length = 0;
-    let fastest = 0;
+    this.foes.forEach((e, k) => {
+      const i = sources[k];
+      if (rival[i] === INF) { rival[i] = 0; owner[i] = e.id; queue.push(i); }
+    });
+    for (let qi = 0; qi < queue.length; qi++) {
+      const t = queue[qi];
+      for (let d = 0; d < 4; d++) {
+        const n = NB[t * 4 + d];
+        if (n < 0 || this.dz.solid[n] || rival[n] !== INF) continue;
+        rival[n] = rival[t] + 1;
+        owner[n] = owner[t];
+        queue.push(n);
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      if (i === here) continue;
+      if (rival[i] + 1 < this._mine[i] || (rival[i] + 1 === this._mine[i] && owner[i] < me.id)) held[i] = 1;
+    }
     for (const e of this.foes) {
       const i = tileOf(e);
-      if (rival[i] === INF) { rival[i] = 0; queue.push(i); }
-      fastest = Math.max(fastest, effectiveSpeed(e));
+      const since = this._stillSince(e, T);
+      if (i === here) {
+        if (since < this.tileSince || (since === this.tileSince && e.id < me.id)) held[i] = 1;      // it was here first
+      } else if (T - since >= HOLD_TICKS) {
+        held[i] = 1;
+      }
+    }
+  }
+
+  /** Steps from the tiles in `from` to every tile over floor without walls, blocks or moving bombs (INF: unreachable). */
+  _distances(out, from, dz) {
+    out.fill(INF);
+    const queue = this._queue;
+    queue.length = 0;
+    for (const i of from) {
+      out[i] = 0;
+      queue.push(i);
     }
     for (let qi = 0; qi < queue.length; qi++) {
       const t = queue[qi];
       for (let d = 0; d < 4; d++) {
         const n = NB[t * 4 + d];
-        if (n < 0 || dz.solid[n] || rival[n] !== INF) continue;
-        rival[n] = rival[t] + 1;
+        if (n < 0 || dz.solid[n] || out[n] !== INF) continue;
+        out[n] = out[t] + 1;
         queue.push(n);
       }
     }
-    const perTile = fastest > 0 ? 1 / (fastest * DT) : INF;
-    let claimed = -1;
-    let claimedLand = -1;
-    let any = -1;
-    let anyLand = -1;
+  }
+
+  /** Sharing a tile with a rival who has more right to it (sudden death): walk to the free tile that lands latest, however soon that is. */
+  _giveWay(me, T) {
+    const { dz, sr } = this;
+    let best = -1;
+    let bestLand = -1;
+    for (let k = 1; k < sr.n; k++) {
+      const i = sr.list[k];
+      if (this._held[i]) continue;
+      const land = dz.land[i] >= INF ? T + 4000 : dz.land[i];
+      if (land > bestLand) { bestLand = land; best = i; }
+    }
+    if (best < 0) return false;
+    this.goal.kind = 'camp';
+    this.goal.tile = best;
+    this.status = 'camp';
+    this._setPath(best);
+    return true;
+  }
+
+  /** The tile that lands latest among those we can reach and that no rival holds. */
+  _campSpot(me, T) {
+    const { dz, sr, prof } = this;
+    const held = this._held;
+    let best = -1;
+    let bestLand = -1;
     for (let k = 0; k < sr.n; k++) {
       const i = sr.list[k];
-      if (!sr.restOK(dz, i, prof.margin)) continue;
+      if (!sr.restOK(dz, i, prof.margin) || held[i]) continue;
       const land = dz.land[i] >= INF ? T + 4000 : dz.land[i];
-      if (land > anyLand) { anyLand = land; any = i; }
-      if (rival[i] === INF || (sr.arr[i] - T) + CLAIM_LEAD < rival[i] * perTile) {
-        if (land > claimedLand) { claimedLand = land; claimed = i; }
-      }
+      if (land > bestLand) { bestLand = land; best = i; }
     }
-    return claimed >= 0 ? claimed : any;
+    return best;
+  }
+
+  /**
+   * A cursed player passes its curse on to whoever it touches (CURSE_TOUCH_RADIUS, 0.7 tiles). A healthy bot keeps its distance from
+   * anybody who carries one and can hand it over: it walks to the safe tile within reach that is farthest from them.
+   */
+  _shunCursed(me, T, c) {
+    if (me.curse !== null) return false;
+    let carrier = null;
+    for (const e of this.foes.concat(this.allies)) {
+      if (e.curse !== null && e.curseCooldown === 0 && manhattan(tileOf(e), c) <= SHUN_RANGE) { carrier = e; break; }
+    }
+    if (!carrier) return false;
+    const { dz, sr, prof } = this;
+    const sp = effectiveSpeed(me) * DT;
+    const from = tileOf(carrier);
+    let best = -1;
+    let bestScore = manhattan(c, from) * 2;                                    // only move if it gets us clearly farther away
+    for (let k = 1; k < sr.n; k++) {
+      const i = sr.list[k];
+      const steps = (sr.arr[i] - T) * sp;
+      if (steps > 4 || !sr.restOK(dz, i, prof.margin)) continue;
+      const score = manhattan(i, from) * 2 - steps * 0.5;
+      if (score > bestScore) { bestScore = score; best = i; }
+    }
+    if (best < 0) return false;
+    this.goal.kind = 'shun';
+    this.goal.tile = best;
+    this.status = 'shun';
+    this._setPath(best);
+    return true;
+  }
+
+  /** Since when has this rival been standing on its tile? (Updated by _sortPlayers.) */
+  _stillSince(e, T) {
+    const rec = this._track.get(e.id);
+    return rec ? rec.since : T;
   }
 
   /** A tile within a few steps where a bomb of ours would leave a nearby enemy nowhere to go, or -1. */
@@ -1092,7 +1461,7 @@ export class BotBrain {
     let b = 0;
     let x = 0;
     if (this.act & 1) { b = 1; want = 0; }
-    if (this.act & 2) x = 1;
+    if (this.act & 2) { x = 1; want = this.actDir; }
     this.act = 0;
     const d = this._finalDir(world, me, T, want);
     return { d, b, x };
@@ -1100,7 +1469,13 @@ export class BotBrain {
 
   /** The direction (1..4) that follows the planned path from where we are, 0 when we are there. */
   _steer(world, me) {
-    if (this.pathLen === 0) return this._settle(world, me);
+    if (this.kickDir !== 0) {                                   // keep pushing until the bomb has budged
+      const bomb = world.bombs.find((o) => o.id === this.kickBomb);
+      if (bomb && bomb.dir === 0 && !bomb.fly && world.tickNo < this.kickUntil) return this.kickDir;
+      this.kickDir = 0;
+      this.planned = false;
+    }
+    if (this.pathLen === 0) return this._centre(world, me);
     const c = tileOf(me);
     if (this.path[this.pathPos] !== c) {
       let found = -1;
@@ -1108,7 +1483,7 @@ export class BotBrain {
       if (found < 0) { this.planned = false; return 0; }        // knocked off the route
       this.pathPos = found;
     }
-    if (this.pathPos >= this.pathLen - 1) return this._settle(world, me);
+    if (this.pathPos >= this.pathLen - 1) return this._centre(world, me);
     const next = this.path[this.pathPos + 1];
     if (this.dz.solid[next]) { this.planned = false; return 0; }
     const d = dirOf(c, next);
@@ -1118,7 +1493,7 @@ export class BotBrain {
   }
 
   /** Arrived: in sudden death stand on the middle of the tile, so that a neighbour landing cannot clip the hitbox. */
-  _settle(world, me) {
+  _centre(world, me) {
     if (world.falling.length === 0 && !world.suddenDeath) return 0;
     const cx = Math.floor(me.x) + 0.5;
     const cy = Math.floor(me.y) + 0.5;
@@ -1152,12 +1527,13 @@ export class BotBrain {
   /** Under rush a zero cmd means "keep running"; pressing into a wall is the only way to stand still. */
   _brake(me) {
     const c = tileOf(me);
+    const T = this.dz.T;
     let d = me.facing + 1;
     let n = NB[c * 4 + d - 1];
-    if (n < 0 || this.dz.solid[n]) return 0;
+    if (n < 0 || this.dz.closed(n, T)) return 0;
     for (d = 1; d <= 4; d++) {
       n = NB[c * 4 + d - 1];
-      if (n < 0 || this.dz.solid[n]) return d;
+      if (n < 0 || this.dz.closed(n, T)) return d;
     }
     return 0;
   }

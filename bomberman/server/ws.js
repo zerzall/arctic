@@ -31,6 +31,9 @@ const STATUS_TEXT = { 403: 'Forbidden', 404: 'Not Found', 429: 'Too Many Request
 export function normalizeIp(addr) {
   if (typeof addr !== 'string' || addr === '') return 'unknown';
   let ip = addr.trim().toLowerCase().replace(/%.*$/, '');
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(ip);                  // "[::1]:5678", as some proxies write X-Forwarded-For
+  if (bracketed) ip = bracketed[1];
+  else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(ip)) ip = ip.slice(0, ip.lastIndexOf(':'));
   if (ip.startsWith('::ffff:') && ip.includes('.')) return ip.slice(7);
   if (!isIPv6(ip)) return ip;
   const [head, tail = null] = ip.split('::');

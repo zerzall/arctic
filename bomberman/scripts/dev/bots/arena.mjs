@@ -8,6 +8,8 @@
 // here), then world.tick(). Rounds are independent and seeded, so every number is reproducible and a bad round can be replayed with
 // replay.mjs. The same library backs specs/unit/bots.spec.js.
 //
+//   node scripts/dev/bots/arena.mjs --gates [--rounds 60]      # the spec's quality gates (docs/SPEC.md §6) with their verdicts
+//
 // Options: --rounds N  --seed S (first round seed)  --levels a,b,c,d  --duel hard,easy (two fighters)  --mode ffa|teams
 //          --layout classic|open  --blocks few|normal|many  --items none|few|normal|many  --roundTime SECONDS  --no-sd
 //          --workers N (default: cores - 1)  --json FILE (raw round records)  --list self|enemy|sd|team [--max 30] (deaths with their seeds)
@@ -56,8 +58,10 @@ export function playRound(cfg) {
   const rec = {
     seed, levels: levels.slice(), teams: teams.slice(), mode, layout, ticks: 0, outcome: null, sdStart: -1, sdDone: -1, endedBeforeSdDone: true,
     deaths: [], thinkNs: { easy: 0, normal: 0, hard: 0 }, thinkCalls: { easy: 0, normal: 0, hard: 0 }, thinkMaxNs: 0,
-    idle: new Array(n).fill(0), errors: [], stats: null, status: {},
+    idle: new Array(n).fill(0), errors: [], stats: null, status: {}, moves: { easy: 0, normal: 0, hard: 0 }, reversals: { easy: 0, normal: 0, hard: 0 },
   };
+  const lastDir = new Array(n).fill(0);
+  const lastDirAt = new Array(n).fill(-99);
   const lastTile = new Array(n).fill(-1);
   const sameSince = new Array(n).fill(0);
   const curseOf = new Array(n).fill(null);
@@ -82,6 +86,12 @@ export function playRound(cfg) {
         rec.thinkCalls[levels[i]]++;
         if (ns > rec.thinkMaxNs) rec.thinkMaxNs = ns;
         cmds[i] = { s: ++seq[i], d: cmd?.d | 0, b: cmd?.b ? 1 : 0, x: cmd?.x ? 1 : 0 };
+        if (cmds[i].d !== 0) {
+          rec.moves[levels[i]]++;
+          if (lastDir[i] !== 0 && cmds[i].d !== lastDir[i] && (cmds[i].d + lastDir[i]) % 2 === 0 && world.tickNo - lastDirAt[i] <= 3) rec.reversals[levels[i]]++;
+          lastDir[i] = cmds[i].d;
+          lastDirAt[i] = world.tickNo;
+        }
         world.applyCmd(i, cmds[i]);
         curseOf[i] = p.curse;
         const st = brains[i].status;
@@ -170,14 +180,19 @@ export function summarize(records) {
       if (d.cause === 'self') e.selfByCurse[d.curse ?? 'none'] = (e.selfByCurse[d.curse ?? 'none'] ?? 0) + 1;
     }
   }
+  let thinkMax = 0;
+  for (const r of records) thinkMax = Math.max(thinkMax, r.thinkMaxNs);
   const total = { deaths: 0, self: 0, enemy: 0, sd: 0, team: 0 };
+  const moves = {};
+  const reversals = {};
+  for (const r of records) for (const l of Object.keys(r.moves)) { moves[l] = (moves[l] ?? 0) + r.moves[l]; reversals[l] = (reversals[l] ?? 0) + r.reversals[l]; }
   const status = {};
   for (const r of records) for (const [l, h] of Object.entries(r.status)) for (const [k, v] of Object.entries(h)) ((status[l] ??= {})[k] = (status[l][k] ?? 0) + v);
   const selfStatus = {};
   for (const r of records) for (const d of r.deaths) if (d.cause === 'self') selfStatus[d.status] = (selfStatus[d.status] ?? 0) + 1;
   for (const e of Object.values(byLevel)) for (const k of Object.keys(total)) total[k] += e[k];
   return {
-    rounds, draws, timeouts, errors, byLevel, total, selfStatus, status,
+    rounds, draws, timeouts, errors, byLevel, total, selfStatus, status, moves, reversals, thinkMaxUs: thinkMax / 1000,
     length: { mean: lens.reduce((a, b) => a + b, 0) / Math.max(1, rounds), p10: quantile(lens, 0.1), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: lens[lens.length - 1] ?? 0 },
     sdRounds, endedBeforeSdDone: sdRounds ? before : 0,
     endedBeforeSdDonePct: rounds ? pct(rounds - sdRounds + before, rounds) : 100,
@@ -188,7 +203,7 @@ export function summarize(records) {
 export function formatSummary(sum, title = '') {
   const s = (t) => (t / TICK_RATE).toFixed(1);
   const out = [];
-  out.push(`${title ? `${title}: ` : ''}${sum.rounds} rounds, ${sum.draws} draws, ${sum.timeouts} timeouts, ${sum.errors.length} exceptions`);
+  out.push(`${title ? `${title}: ` : ''}${sum.rounds} rounds, ${sum.draws} draws, ${sum.timeouts} timeouts, ${sum.errors.length} exceptions, slowest think ${sum.thinkMaxUs.toFixed(0)}us`);
   out.push(`  round length (s): mean ${s(sum.length.mean)}  p10 ${s(sum.length.p10)}  median ${s(sum.length.median)}  p90 ${s(sum.length.p90)}  max ${s(sum.length.max)}   sudden death reached in ${sum.sdRounds} rounds; ${sum.endedBeforeSdDonePct.toFixed(1)}% ended before it completed`);
   out.push(`  deaths ${sum.total.deaths}: self ${sum.total.self} (${sum.selfKillPct.toFixed(1)}%)  enemy ${sum.total.enemy}  sudden death ${sum.total.sd}  teammate ${sum.total.team}`);
   for (const [l, e] of Object.entries(sum.byLevel)) {
@@ -196,6 +211,7 @@ export function formatSummary(sum, title = '') {
     out.push(`  ${l.padEnd(6)} fighters ${String(e.fighters).padStart(4)}  wins ${String(e.wins).padStart(4)} (${pct(e.wins, e.fighters).toFixed(1)}%)  deaths ${String(e.deaths).padStart(4)}  self ${pct(e.self, e.deaths).toFixed(1)}%  enemy ${pct(e.enemy, e.deaths).toFixed(1)}%  sd ${pct(e.sd, e.deaths).toFixed(1)}%  kills/round ${(e.kills / Math.max(1, e.fighters)).toFixed(2)}  blocks ${(e.blocks / Math.max(1, e.fighters)).toFixed(1)}  items ${(e.items / Math.max(1, e.fighters)).toFixed(1)}`
       + `  think ${(e.thinkNs / Math.max(1, e.thinkCalls) / 1000).toFixed(1)}us  idle>=10s ${e.idleFlags} (max ${s(e.idleMax)}s)${causes ? `  selfByCurse {${causes}}` : ''}`);
   }
+  for (const [l, m] of Object.entries(sum.moves)) if (m > 0) out.push(`  ${l.padEnd(6)} direction reversals within 3 ticks: ${(1000 * sum.reversals[l] / m).toFixed(1)} per 1000 moving ticks`);
   for (const [l, h] of Object.entries(sum.status)) {
     const all = Object.values(h).reduce((a, b) => a + b, 0);
     out.push(`  ${l.padEnd(6)} time in: ${Object.entries(h).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(100 * v / all).toFixed(0)}%`).join('  ')}`);
@@ -234,6 +250,38 @@ if (!isMainThread && workerData?.ids) {
   parentPort.postMessage(ids.map((n) => playRound({ ...cfg, seed: roundSeedOf(baseSeed, n) })));
 }
 
+
+// ---- The quality gates of docs/SPEC.md §6 ---------------------------------------------------------------
+
+/**
+ * Runs the battery behind the spec's gates and returns one verdict per gate:
+ *   no exception; self-kills < 12 % of deaths (hard) and < 25 % (easy); 90 % of 4-bot rounds end before sudden death completes;
+ *   a hard bot beats an easy one in more than 65 % of 1v1 rounds.
+ * `count` is the number of rounds per configuration (the spec says 30).
+ */
+export async function runGates({ count = 30, baseSeed = 1, workers = 1 } = {}) {
+  const run = (levels, extra = {}) => playParallel({ count, baseSeed, levels, workers, ...extra });
+  const hard4 = summarize(await run(['hard', 'hard', 'hard', 'hard']));
+  const easy4 = summarize(await run(['easy', 'easy', 'easy', 'easy']));
+  const normal4 = summarize(await run(['normal', 'normal', 'normal', 'normal']));
+  const mixed4 = summarize(await run(['hard', 'normal', 'normal', 'easy']));
+  const duels = await run(['hard', 'easy']);
+  const duel = summarize(duels);
+  const hardWins = duels.filter((r) => winnerLevel(r) === 'hard').length;
+  const errors = [hard4, easy4, normal4, mixed4, duel].reduce((n, s) => n + s.errors.length, 0);
+  const verdicts = [
+    { gate: 'no exceptions', value: errors, limit: 0, pass: errors === 0 },
+    { gate: 'hard self-kills / deaths', value: hard4.selfKillPct, limit: 12, pass: hard4.selfKillPct < 12, unit: '%' },
+    { gate: 'easy self-kills / deaths', value: easy4.selfKillPct, limit: 25, pass: easy4.selfKillPct < 25, unit: '%' },
+    { gate: 'rounds ending before sudden death completes (4 hard)', value: hard4.endedBeforeSdDonePct, limit: 90, pass: hard4.endedBeforeSdDonePct >= 90, unit: '%' },
+    { gate: 'rounds ending before sudden death completes (4 easy)', value: easy4.endedBeforeSdDonePct, limit: 90, pass: easy4.endedBeforeSdDonePct >= 90, unit: '%' },
+    { gate: 'rounds ending before sudden death completes (4 normal)', value: normal4.endedBeforeSdDonePct, limit: 90, pass: normal4.endedBeforeSdDonePct >= 90, unit: '%' },
+    { gate: 'rounds ending before sudden death completes (hard, 2 normal, easy)', value: mixed4.endedBeforeSdDonePct, limit: 90, pass: mixed4.endedBeforeSdDonePct >= 90, unit: '%' },
+    { gate: 'hard beats easy in 1v1', value: 100 * hardWins / duels.length, limit: 65, pass: hardWins / duels.length > 0.65, unit: '%' },
+  ];
+  return { verdicts, sums: { hard4, easy4, normal4, mixed4, duel } };
+}
+
 // ---- CLI ----------------------------------------------------------------------------------------------
 
 function parseArgs(argv) {
@@ -256,6 +304,14 @@ if (isMainThread && process.argv[1] && import.meta.url === pathToFileURL(process
     workers: Number(o.workers ?? Math.max(1, availableParallelism() - 1)),
   };
   const t0 = Date.now();
+  if (o.gates) {
+    const { verdicts, sums } = await runGates({ count: Number(o.rounds ?? 30), baseSeed: Number(o.seed ?? 1), workers: cfg.workers });
+    for (const [name, sum] of Object.entries(sums)) console.log(formatSummary(sum, name));
+    console.log('\nGATES');
+    for (const v of verdicts) console.log(`  ${v.pass ? 'PASS' : 'FAIL'}  ${v.gate}: ${typeof v.value === 'number' ? v.value.toFixed(1) : v.value}${v.unit ?? ''} (limit ${v.limit}${v.unit ?? ''})`);
+    console.log(`  wall ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    process.exit(verdicts.every((v) => v.pass) ? 0 : 1);
+  }
   const records = await playParallel(cfg);
   const sum = summarize(records);
   console.log(formatSummary(sum, `${levels.join(',')} ${cfg.mode} ${cfg.layout}`));

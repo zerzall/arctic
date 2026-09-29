@@ -219,6 +219,9 @@ const fakeReq = (remoteAddress, headers = {}) => ({ socket: { remoteAddress }, h
 test('normalizeIp: IPv4-mapped addresses lose the prefix, IPv6 is keyed by its /64', () => {
   assert.equal(normalizeIp('::ffff:203.0.113.7'), '203.0.113.7');
   assert.equal(normalizeIp('203.0.113.7'), '203.0.113.7');
+  assert.equal(normalizeIp('203.0.113.7:51234'), '203.0.113.7', 'a port some proxies append to X-Forwarded-For is not part of the address');
+  assert.equal(normalizeIp('[2001:db8:1:2::9]:443'), '2001:db8:1:2::/64');
+  assert.equal(normalizeIp('[::ffff:203.0.113.7]:80'), '203.0.113.7');
   assert.equal(normalizeIp('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), '2001:db8:1:2::/64');
   assert.equal(normalizeIp('2001:DB8:1:2::1'), normalizeIp('2001:db8:1:2:ffff::9'));
   assert.equal(normalizeIp('2001:db8::1'), '2001:db8:0:0::/64');

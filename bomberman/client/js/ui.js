@@ -90,6 +90,11 @@ export function extractRoomCode(raw) {
   const text = String(raw ?? '');
   const link = /\/r\/([A-Za-z]{4})(?![A-Za-z])/.exec(text);
   if (!link && text.includes('://')) return '';   // some other web address: nothing to salvage
+  if (!link && /[^A-Za-z]/.test(text.trim())) {
+    // A pasted sentence ("Join me: KQXZ"): take a standalone code-shaped word instead of every consonant in the text.
+    const word = /(?:^|[^A-Za-z])([A-Za-z]{4})(?![A-Za-z])/g;
+    for (let m = word.exec(text); m; m = word.exec(text)) if (CODE_RE.test(m[1].toUpperCase())) return m[1].toUpperCase();
+  }
   let code = '';
   for (const ch of (link ? link[1] : text).toUpperCase()) {
     if (CODE_LETTERS.includes(ch)) code += ch;
@@ -1384,7 +1389,7 @@ class GameScreen {
         bdi(p.name, 'chip-name'),
         el('span', { class: 'chip-wins', title: 'Round wins' }, icon('star'), winsText),
         el('span', { class: 'chip-stats' }, stats.bomb.node, stats.flame.node, stats.speed.node, kick, glove)));
-    return { li, status, teamBadge, winsText, stats, kick, glove, last: {}, name: p.name };
+    return { li, status, teamBadge, winsText, stats, kick, glove, last: {}, name: p.name, color: p.color, team: p.team };
   }
 
   updateChip(chip, p, teams) {
@@ -1554,6 +1559,8 @@ class GameScreen {
       return;
     }
     const byId = new Map(records(players ?? this.ui.lobbyMsg?.players).map((p) => [p.id, p]));
+    // Somebody who left since the lobby message was sent is still on the scoreboard: the round's own roster remembers them.
+    for (const [id, chip] of this.chips) if (!byId.has(id)) byId.set(id, { id, name: chip.name, color: chip.color, team: chip.team });
     const scores = records(msg.scores);
     const teams = this.ui.lobbyMsg?.settings?.mode === 'teams' || (msg.winnerTeam != null && msg.winnerId == null);
     const winner = msg.winnerId != null ? byId.get(msg.winnerId) : null;

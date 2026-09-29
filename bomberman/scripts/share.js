@@ -356,7 +356,10 @@ export function createShare(options = {}) {
 
   /** Starts a child with piped output and tracks it. `tunnel` makes it look for a public URL in that output. */
   function launch(command, args, spawnOptions, tunnel = null) {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...spawnOptions });
+    // A tunnel keeps stdin open (never written to): ssh reads its session from it, and an immediate EOF could end the
+    // session, and with it the forwarding, before the link is used.
+    const child = spawn(command, args, { stdio: [tunnel ? 'pipe' : 'ignore', 'pipe', 'pipe'], windowsHide: true, ...spawnOptions });
+    child.stdin?.on?.('error', () => {});
     const proc = { child, output: '', url: null, running: true };
     let urlFound;
     proc.urlFound = new Promise((resolve) => {

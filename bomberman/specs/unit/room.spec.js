@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Room, roundSeed, errorFrame } from '../../shared/room.js';
 import { makeRng } from '../../shared/rng.js';
+import { BotBrain } from '../../shared/bots.js';
 import { STATE, SETTINGS_DEFS, TIMEOUTS, MAX_PLAYERS, INPUT_QUEUE_MAX, OVER_HOLD_TICKS, COUNTDOWN_TICKS } from '../../shared/constants.js';
 import { FakeConn } from '../helpers/fake-conn.js';
 import { FakeClock } from '../helpers/fake-clock.js';
@@ -1321,6 +1322,44 @@ test('a throwing botFactory does not break the round', () => {
   assert.equal(room.phase, 'match');
   ticks(room, COUNTDOWN_TICKS + 20);
   assert.equal(room.world.state, STATE.PLAYING);
+});
+
+test('a bot that answers with an impossible direction stands still instead of walking off the map of legal moves', () => {
+  for (const d of [9, -1, NaN, 'up', 2.5, null, undefined]) {
+    const { room } = setup({ humans: 1, bots: 1, start: true, botFactory: () => ({ think: () => ({ d, b: 0, x: 0 }) }) });
+    runUntil(room, (r) => r.world?.state === STATE.PLAYING);
+    const bot = room.world.players.find((p) => p.isBot);
+    const at = [bot.x, bot.y];
+    ticks(room, 90);
+    assert.deepEqual([bot.x, bot.y], at, `direction ${String(d)} must be treated as "no move"`);
+  }
+});
+
+test('a genToken that keeps returning the same value cannot hang the process: the second join fails cleanly', () => {
+  const logs = [];
+  const room = makeRoom({ genToken: () => 'same', log: (...a) => logs.push(a) });
+  assert.equal(room.join(new FakeConn(), { name: 'A' }).ok, true);
+  assert.equal(room.join(new FakeConn(), { name: 'B' }).ok, false);
+  assert.ok(logs.some(([lvl, ev]) => lvl === 'error' && ev === 'room_error'));
+  assert.equal(room.entries.length, 1);
+});
+
+test('with the real BotBrain: full matches in ffa and teams finish without a logged error, inside the snapshot budget', () => {
+  for (const mode of ['ffa', 'teams']) {
+    const logs = [];
+    const room = makeRoom({ seed: 21, botFactory: (o) => new BotBrain(o), log: (...a) => logs.push(a) });
+    const conns = joinN(room, 2);
+    for (const level of ['easy', 'normal', 'hard', 'hard', 'normal', 'easy']) say(room, conns[0], { t: 'addBot', level });
+    say(room, conns[0], { t: 'settings', patch: { rounds: 1, roundTime: 60, mode } });
+    say(room, conns[0], { t: 'start' });
+    runUntil(room, (r) => r.phase === 'results', 40000);
+    assert.deepEqual(logs.filter(([lvl]) => lvl === 'error'), [], mode);
+    const end = conns[0].last('matchEnd');
+    assert.ok(end && end.standings.length === 8 && end.standings.every((row) => row.place >= 1), mode);
+    const sizes = conns[0].sent.filter((raw) => raw.startsWith('{"t":"snap"')).map((raw) => raw.length).sort((a, b) => a - b);
+    assert.ok(sizes.reduce((a, b) => a + b, 0) / sizes.length <= 1200, `${mode}: mean snapshot`);
+    assert.ok(sizes[Math.floor(sizes.length * 0.99)] <= 4096, `${mode}: p99 snapshot`);
+  }
 });
 
 // ---- Chaos ---------------------------------------------------------------------------------------------------------------------

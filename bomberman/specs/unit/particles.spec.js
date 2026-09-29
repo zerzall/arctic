@@ -171,3 +171,15 @@ test('FloatingText labels rise, expire and recycle the oldest when all slots are
   ft.clear();
   assert.equal(ft.count, 0);
 });
+
+test('FloatingText rises clear of the name tag, higher when lifted past an emote, and drops below a fighter with no room above', () => {
+  const ft = new FloatingText(4);
+  ft.add('PLAIN', 5, 6.5, '#fff', 0.4, 1.1, 0);
+  ft.add('LIFTED', 5, 6.5, '#fff', 0.4, 1.1, 0.9);
+  ft.add('TOP ROW', 5, 1.5, '#fff');
+  const drawn = {};
+  ft.draw({ globalAlpha: 1, strokeText() {}, fillText(text, x, y) { drawn[text] = y; } }, 100, 'sans-serif');
+  assert.ok(Math.abs(drawn.PLAIN - 495) < 1, `1.55 tiles above the centre: ${drawn.PLAIN}`);
+  assert.ok(Math.abs(drawn.LIFTED - 405) < 1, `and 0.9 tile higher when lifted: ${drawn.LIFTED}`);
+  assert.ok(Math.abs(drawn['TOP ROW'] - 255) < 1, `below the fighter when it would leave the arena: ${drawn['TOP ROW']}`);
+});

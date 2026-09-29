@@ -160,6 +160,34 @@ class Live {
 
   shot() { return this.canvas.toDataURL('image/png'); }
 
+  /**
+   * Run until an event with code `until` arrives, then film the place it happened: `frames` pictures `every` frames apart, each a `size`
+   * (tiles) crop around the event's position (a death's x, y, a blast's tile, else the local fighter).
+   */
+  strip({ until = 'death', frames = 10, every = 4, size = [4, 4], scale = 1, cols = 5, max = 20000, skip = 0 } = {}) {
+    let hit = null;
+    for (let i = 0, seen = 0; i < max && !hit; i++) {
+      this.frame();
+      for (const e of this.lastEvents) if (e[0] === until && seen++ >= skip) { hit = e; break; }
+    }
+    if (!hit) return null;
+    const me = this.view.players.find((p) => p.isMe) ?? this.view.players[0];
+    const [cx, cy] = until === 'death' ? [hit[3], hit[4]] : until === 'boom' ? [hit[3] + 0.5, hit[4] + 0.5] : [me.x, me.y];
+    const L = this.renderer.layout, T = L.tile, w = Math.round(size[0] * T * scale), h = Math.round(size[1] * T * scale), rows = Math.ceil(frames / cols);
+    const out = document.createElement('canvas');
+    out.width = w * cols + (cols - 1) * 4; out.height = h * rows + (rows - 1) * 4;
+    const g = out.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, out.width, out.height);
+    for (let f = 0; f < frames; f++) {
+      if (f > 0) this.run(every);
+      const col = f % cols, row = Math.floor(f / cols);
+      g.drawImage(this.canvas, L.ox + (cx - size[0] / 2) * T, L.oy + (cy - size[1] / 2) * T, size[0] * T, size[1] * T, col * (w + 4), row * (h + 4), w, h);
+      g.font = '14px monospace'; g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3;
+      g.strokeText(`+${f * every}`, col * (w + 4) + 4, row * (h + 4) + 14); g.fillText(`+${f * every}`, col * (w + 4) + 4, row * (h + 4) + 14);
+    }
+    return out.toDataURL('image/png');
+  }
+
   info() {
     const r = this.renderer, v = this.view;
     return {
@@ -204,6 +232,7 @@ const api = {
     return api.live.until(preds[name](arg), max);
   },
   shot: () => api.live.shot(),
+  strip: (o) => api.live.strip(o),
   info: () => api.live.info(),
 
   /**

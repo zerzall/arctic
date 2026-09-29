@@ -1,11 +1,12 @@
 // LIVE renderer harness runner (developer tooling, not part of the game).
 //
 //   node scripts/dev/render/live.mjs [--size 1080p] [--seconds 30] [--shots 6] [--theme meadow] [--n 6] [--seed 7] [--out DIR]
-//                                    [--perf] [--frames 300] [--throttle 4] [--set key=value ...]
+//                                    [--perf] [--frames 300] [--throttle 4] [--strip death|boom|... [--skip N]] [--set key=value ...]
 //
 // Plays a Practice match through the REAL pipeline (Room + autopilot bots -> ClientGame -> Renderer, see live.js) in headless Chromium.
 // Default: runs `seconds` of virtual time, writes `shots` evenly spaced pictures and reports renderer errors and stats.
 // With --perf it measures the frame cost of the whole client loop under requestAnimationFrame (optionally CPU-throttled through CDP).
+// With --strip CODE it plays until the first event with that code (--skip N: the N+1th) and films the place it happened, frame by frame.
 // Output goes to --out, else $RENDER_OUT, else <tmpdir>/blast-party-render.
 import os from 'node:os';
 import fs from 'node:fs/promises';
@@ -20,7 +21,7 @@ const { chromium } = require('playwright');
 const parseValue = (v) => (v === 'true' ? true : v === 'false' ? false : v !== '' && !Number.isNaN(Number(v)) ? Number(v) : v);
 
 function parseArgs(argv) {
-  const opts = { size: '1080p', seconds: 30, shots: 6, out: process.env.RENDER_OUT ?? path.join(os.tmpdir(), 'blast-party-render'), perf: false, frames: 300, throttle: 1, set: {} };
+  const opts = { size: '1080p', seconds: 30, shots: 6, out: process.env.RENDER_OUT ?? path.join(os.tmpdir(), 'blast-party-render'), perf: false, frames: 300, throttle: 1, strip: '', skip: 0, set: {} };
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'perf') { opts.perf = true; continue; }
@@ -52,7 +53,13 @@ try {
   const [w, h, dpr] = parseSize(opts.size);
   const start = await page.evaluate((o) => window.live.start(o), { css: [w, h], dpr, ...opts.set });
   console.log(`started: tile ${start.tile}px, theme ${start.theme}, errors ${start.errors.length}`);
-  if (opts.perf) {
+  if (opts.strip) {
+    const data = await page.evaluate((o) => window.live.strip(o), { until: opts.strip, skip: opts.skip, size: [4, 4], frames: 10, every: 4 });
+    if (!data) throw new Error(`no ${opts.strip} event within 20000 frames`);
+    const file = path.join(opts.out, `strip-${opts.strip}${opts.skip || ''}-${opts.set.theme ?? 'meadow'}-${opts.size}.png`);
+    await fs.writeFile(file, Buffer.from(data.split(',')[1], 'base64'));
+    console.log(`wrote ${file}`);
+  } else if (opts.perf) {
     const r = await page.evaluate((o) => window.live.perf(o), { frames: opts.frames });
     const f = (s) => `mean ${s.mean.toFixed(2)}  p50 ${s.p50.toFixed(2)}  p95 ${s.p95.toFixed(2)}  max ${s.max.toFixed(2)} ms`;
     console.log(`${opts.size} throttle ${opts.throttle}x`);

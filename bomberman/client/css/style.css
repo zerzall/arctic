@@ -1744,7 +1744,7 @@ bdi {
 
   .chip-body { align-items: flex-start; flex: 1; }
   .chip-name { display: block; }
-  .chip-stats { display: inline-flex; gap: .35rem; }
+  .chip-stats { display: inline-flex; flex-wrap: wrap; gap: .1rem .35rem; max-width: 100%; }   /* maxed stats plus larger text wrap instead of leaving the chip */
 
   .hud-feed {
     position: static;
@@ -1859,7 +1859,7 @@ bdi {
 .podium-step.step-1 { order: 2; }
 .podium-step.step-2 { order: 1; }
 .podium-step.step-3 { order: 3; }
-.podium-people { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: .5rem; margin-bottom: .4rem; }
+.podium-people { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: .5rem; margin-bottom: .4rem; min-width: 0; max-width: 100%; }   /* a team step holds up to four fighters: names must shrink to it, not push the page wider */
 
 .podium-person {
   position: relative;
@@ -1867,6 +1867,7 @@ bdi {
   flex-direction: column;
   align-items: center;
   gap: .1rem;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   animation: podium-drop .8s var(--spring) both;
