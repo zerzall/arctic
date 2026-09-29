@@ -169,6 +169,7 @@ export const WAVE_OPTIONS = [10, 15, 20, 0];  // 0 = endless
 export const DEFAULT_SETTINGS = {
   mapId: 'highway',
   mode: 'defend',                          // 'defend' | 'zone' (Evac Run, shared/zone.js)
+  time: 'night',                           // 'night' | 'day' (shared/timeofday.js)
   difficulty: 'normal',
   waves: 15,
   objective: true,

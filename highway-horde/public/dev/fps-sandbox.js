@@ -3,7 +3,7 @@
 // keyboard + mouse (pointer lock), or watch a scripted flythrough (?tour=1).
 //
 // URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=ultra|high|low, bots=N (0..5),
-// tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
+// time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
 // graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections).
@@ -28,6 +28,7 @@ const opt = {
   zombies: params.get('zombies') !== '0',
   // paused=1: no animation loop, frames only via __fps.step() (screenshots on software GL)
   paused: params.get('paused') === '1',
+  time: params.get('time') === 'day' ? 'day' : 'night',
 };
 if (params.get('clean') === '1') document.body.classList.add('clean');
 // graphics settings passed to render() every frame (the object is reused, like ui/match.js)
@@ -59,8 +60,9 @@ let quality = opt.quality;
  * Named viewpoints for a map: at the objective, at the supply station, down the main road,
  * at the map edge, plus per-map spots (bridge deck, river bank, checkpoint compound).
  */
-function viewpoints(map) {
-  const ob = map.objective, sp = map.supply;
+function viewpoints(map, zone) {
+  // (an Evac Run map has no objective: its first point of interest stands in)
+  const ob = map.objective || (map.pois && map.pois[0]) || { x: map.width / 2, y: map.height / 2 }, sp = map.supply || ob;
   const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
   const v = [];
   // a clear spot 300..460 from the objective (not inside or hugging an obstacle)
@@ -100,6 +102,13 @@ function viewpoints(map) {
     v.push(at('road', x0, y0 + (horiz ? road.h * 0.15 : 0), horiz ? road.x + L : road.x, horiz ? road.y : road.y + L));
     v.push(at('road-back', horiz ? road.x + L * 0.35 : road.x, horiz ? road.y - road.h * 0.2 : road.y + L * 0.35, horiz ? road.x - L : road.x, horiz ? road.y : road.y - L));
   }
+  if (zone) {
+    // Evac Run: the safe-zone wall from outside and from inside the circle
+    const edge = (k) => ({ x: zone.x + Math.cos(0.6) * (zone.r + k), y: zone.y + Math.sin(0.6) * (zone.r + k) });
+    const o = edge(300), i = edge(-260);
+    v.push(at('zone-out', o.x, o.y, zone.x, zone.y, 0.04));
+    v.push(at('zone-in', i.x, i.y, zone.x + Math.cos(0.6) * (zone.r + 400), zone.y + Math.sin(0.6) * (zone.r + 400), 0.03));
+  }
   v.push(at('edge', map.width * 0.5, 120, map.width * 0.5, -600, 0.05));
   v.push(at('overview', ob.x - 900, ob.y + 500, ob.x, ob.y, -0.12));
   if (map.id === 'bridge') {
@@ -127,7 +136,7 @@ function setup(mapId) {
   const { Game } = gameMod;
   const players = [{ id: 1, name: 'You', color: 0, cls: 'soldier' }];
   for (let i = 0; i < opt.bots; i++) players.push({ id: i + 2, name: ['Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][i], color: i + 1, cls: CLASS_IDS[(i + 1) % CLASS_IDS.length], bot: true });
-  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false } });
+  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time } });
   roster = players.map((p) => ({ ...p, ready: true, ping: 0, host: p.id === 1 }));
   if (opt.wave && opt.zombies) for (let t = 0; t < 60 * 30 && game.phase === 'prep'; t++) game.step();
   snap = game.snapshot();
@@ -135,9 +144,9 @@ function setup(mapId) {
   yaw = me ? me.angle : 0;
   pitch = 0;
   const t0 = performance.now();
-  renderer = createRenderer3D(canvas, { map: game.map, quality });
+  renderer = createRenderer3D(canvas, { map: game.map, quality, time: opt.time, mode: game.mode });
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
-  window.__fps.views = viewpoints(game.map);
+  window.__fps.views = viewpoints(game.map, snap && snap.zone);
   if (opt.view) setView(opt.view);
 }
 

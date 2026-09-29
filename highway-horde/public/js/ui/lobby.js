@@ -7,6 +7,7 @@ import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
 import { MODE_LIST, mapModes } from '../shared/zone.js';
+import { TIME_LIST, mapTimes, resolveTime } from '../shared/timeofday.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
@@ -36,6 +37,7 @@ export function createLobby(ctx) {
   const rosterEl = $('#roster');
   const mapCards = $('#map-cards');
   const segMode = $('#opt-mode');
+  const segTime = $('#opt-time');
   const modeDesc = $('#mode-desc');
   const segDiff = $('#opt-difficulty');
   const segWaves = $('#opt-waves');
@@ -54,6 +56,7 @@ export function createLobby(ctx) {
 
   let session = null;
   let unsubChat = null;
+  let previewTime = null;
   const rosterRows = new Map();
   const mapBtns = new Map();
 
@@ -85,11 +88,12 @@ export function createLobby(ctx) {
     session.setSettings(partial);
     // (the session may have changed the other half of an incompatible map/mode pick)
     const s = session.settings;
-    Object.assign(prefs.lobby, partial, { mapId: s.mapId, mode: s.mode });
+    Object.assign(prefs.lobby, partial, { mapId: s.mapId, mode: s.mode, time: s.time || 'night' });
     ctx.savePrefs();
   }
 
   seg(segMode, MODE_LIST.map((m) => ({ value: m.id, label: m.name, title: m.short })), (v) => change({ mode: v }));
+  seg(segTime, TIME_LIST.map((t) => ({ value: t.id, label: t.name, title: t.short })), (v) => change({ time: v }));
   seg(segDiff, DIFFICULTY_IDS.map((id) => ({ value: id, label: DIFFICULTIES[id].name, title: DIFF_HINT[id] })), (v) => change({ difficulty: v }));
   seg(segWaves, WAVE_OPTIONS.map((n) => ({ value: n, label: n === 0 ? 'Endless' : String(n) })), (v) => change({ waves: v }));
   seg(segObj, [{ value: true, label: 'On' }, { value: false, label: 'Off', title: 'No objective: just survive' }], (v) => change({ objective: v }));
@@ -105,6 +109,10 @@ export function createLobby(ctx) {
         // maps that only play some modes say so (picking one switches the mode)
         mapModes(m).length < MODE_LIST.length
           ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
+          : null,
+        // maps that only play some times of day say so (picking one switches the time)
+        mapTimes(m).length < TIME_LIST.length
+          ? h('span.map-modes.map-times', { text: mapTimes(m).map((id) => TIME_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
           : null,
       ].filter(Boolean)),
     ]);
@@ -128,13 +136,17 @@ export function createLobby(ctx) {
       if (i >= pending.length) return;
       const [id, v] = pending[i++];
       try {
-        const key = `${id}:${v.canvas.width}x${v.canvas.height}`;
+        // (by day the preview gets the daylight tint instead of the night's)
+        const t = session ? resolveTime(id, session.settings.time) : 'night';
+        const key = `${id}:${t}:${v.canvas.width}x${v.canvas.height}`;
         let src = previewCache.get(key);
         if (!src) {
           src = document.createElement('canvas');
           src.width = v.canvas.width;
           src.height = v.canvas.height;
-          deps.renderMapPreview(src, deps.buildMap(id, 1));
+          const pm = deps.buildMap(id, 1);
+          if (t === 'day') pm.time = 'day';
+          deps.renderMapPreview(src, pm);
           previewCache.set(key, src);
         }
         const g = v.canvas.getContext('2d');
@@ -380,7 +392,19 @@ export function createLobby(ctx) {
     setSeg(segMode, s.mode || 'defend', editable);
     const md = MODE_LIST.find((m) => m.id === (s.mode || 'defend'));
     setText(modeDesc, md ? md.description : '');
-    for (const [id, v] of mapBtns) v.btn.classList.toggle('mode-other', !mapModes(id).includes(s.mode || 'defend'));
+    setSeg(segTime, s.time || 'night', editable);
+    if (previewTime !== (s.time || 'night')) {
+      // the map cards show the map by night or by day
+      const first = previewTime === null;
+      previewTime = s.time || 'night';
+      if (!first) {
+        for (const v of mapBtns.values()) v.drawn = false;
+        drawPreviews();
+      }
+    }
+    for (const [id, v] of mapBtns) {
+      v.btn.classList.toggle('mode-other', !mapModes(id).includes(s.mode || 'defend') || !mapTimes(id).includes(s.time || 'night'));
+    }
     setSeg(segDiff, s.difficulty, editable);
     setSeg(segWaves, s.waves, editable);
     // Evac Run has no objective to defend
@@ -459,6 +483,8 @@ export function createLobby(ctx) {
     reset() {
       this.hide();
       session = null;
+      previewTime = null;
+      for (const v of mapBtns.values()) v.drawn = false;
       for (const row of rosterRows.values()) row.el.remove();
       rosterRows.clear();
       rosterEl.replaceChildren();

@@ -20,6 +20,8 @@
 import * as THREE from 'three';
 import { createWorld, obstacleHeight, objectiveHeight, fireBaseHeight } from './world.js';
 import { createLights, ambientFor } from './lights.js';
+import { resolveTime } from '../shared/timeofday.js';
+import * as sunShadowMod from './sunshadow.js';
 import { WEAPONS } from '../shared/weapons.js';
 import * as zombiesMod from './zombies3d.js';
 import * as playersMod from './players3d.js';
@@ -91,10 +93,11 @@ function normQuality(v) {
 /**
  * Create the first-person renderer on `canvas`.
  * @param {HTMLCanvasElement} canvas
- * @param {{ map: object, quality?: 'ultra'|'high'|'low', mode?: 'defend'|'zone' }} opts
- *   mode 'zone' (Evac Run) builds the safe-zone wall and markers (zone3d.js)
+ * @param {{ map: object, quality?: 'ultra'|'high'|'low', mode?: 'defend'|'zone', time?: 'night'|'day' }} opts
+ *   mode 'zone' (Evac Run) builds the safe-zone wall and markers (zone3d.js);
+ *   time 'day' renders the sunny variant of the map (SPEC §7.5.1; default: the map's own time, else night)
  */
-export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend' } = {}) {
+export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend', time } = {}) {
   const tCreate = performance.now();
   let q = normQuality(quality);
   // No MSAA on the canvas: the world is drawn into the post chain's HDR target and only a
@@ -114,10 +117,14 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // UNPACK_FLIP_Y), so start from known defaults (and leave them again in destroy()).
   renderer.resetState();
 
-  const amb = ambientFor(map);
+  const tod = resolveTime(map, time || map.time);
+  const amb = ambientFor(map, tod);
+  renderer.toneMappingExposure = amb.exposure || 1.15;
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(amb.fog.getHex(), amb.fogDensity);
   scene.background = amb.fog.clone();
+  // (the day sky is bright: the probe would double the sun's fill on every surface)
+  if (amb.time === 'day') scene.environmentIntensity = 0.7;
   const far = Math.hypot(map.width, map.height) + 1400;
   const camera = new THREE.PerspectiveCamera(verticalFov(80), 16 / 9, NEAR, far);
   camera.rotation.order = 'YXZ';
@@ -134,7 +141,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const overlay = overlayCanvas.getContext('2d');
 
   // ---- light pool + ctx ----
-  const lights = createLights({ scene, camera, map, quality: q, fireBase: (x, y) => fireBaseHeight(map, x, y) });
+  const lights = createLights({ scene, camera, map, quality: q, time: tod, fireBase: (x, y) => fireBaseHeight(map, x, y) });
   let trauma = 0;
   let cssW = 1, cssH = 1, dpr = 1;
   // prFull = the tier's pixel-ratio cap (canvas), prInner = prFull × renderScale (world pass)
@@ -158,7 +165,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   rng.pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   const ctx = {
-    THREE, scene, camera, map, quality: q, mode,
+    THREE, scene, camera, map, quality: q, mode, time: tod, amb,
     overlay,
     lights: { flash: lights.flash, steady: lights.steady },
     ground: { decal() {} },
@@ -187,7 +194,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {
@@ -308,7 +315,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   try {
     // the atmosphere pass reads the light pool, the flashlight and the ground's wet mask
     const atmosSrc = { lights: lights.poolLights, kinds: lights.poolKinds, flashlight: lights.flashlight, ambient: amb, ground: world.ground, fogDensity: amb.fogDensity };
-    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q, getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; } });
+    post = createPost(renderer, { scene, camera, getViewmodel: () => vm, quality: q, look: amb.grade, getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; } });
   } catch (err) {
     logErr('post chain', err);
     post = null;

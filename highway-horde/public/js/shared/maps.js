@@ -215,6 +215,9 @@ function createBuilder(meta, seed) {
   };
   // Modes the map plays (absent = every mode, shared/zone.js mapModes).
   if (meta.modes) map.modes = meta.modes.slice();
+  // Times of day the map plays (SPEC §7.5.1): a fixed `time` ('day') or a `times` list; absent = both.
+  if (meta.time) map.time = meta.time;
+  if (meta.times) map.times = meta.times.slice();
   // Two independent streams: layout jitter never shifts because decor changed, and vice versa.
   const rng = createRng(hashString(`${meta.id}:layout:${seed}`));
   const drng = createRng(hashString(`${meta.id}:decor:${seed}`));

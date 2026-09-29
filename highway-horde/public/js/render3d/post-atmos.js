@@ -154,7 +154,7 @@ uniform sampler2D tColor;
 uniform sampler2D tDetail;      // ground.js detail map (puddle noise)
 uniform sampler2D tMask;        // ground surface mask
 uniform vec4 uMaskRect;
-uniform float uWet, uTime, uSteps, uMaxDist, uWaterY, uRain;
+uniform float uWet, uTime, uSteps, uMaxDist, uWaterY, uRain, uCap;
 uniform mat4 uProj, uView;
 varying vec2 vUv;
 
@@ -253,7 +253,7 @@ void main() {
     col = skyMax;
   }
   // HDR caps: a lamp lens mirrored in a puddle blooms, but never into a white sheet
-  col = min(col, vec3(12.0));
+  col = min(col, vec3(uCap));
   gl_FragColor = vec4(col * F * strength * fade, rough);
 }`;
 
@@ -367,7 +367,7 @@ export class AtmosPass extends Pass {
     this.ssrMat = mat(SSR_FRAG, {
       ...depthU(),
       tColor: { value: null }, tDetail: { value: null }, tMask: { value: null }, uMaskRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uWet: { value: 1 }, uTime: { value: 0 }, uSteps: { value: 28 }, uMaxDist: { value: 2600 }, uWaterY: { value: -16 }, uRain: { value: 0 },
+      uWet: { value: 1 }, uTime: { value: 0 }, uSteps: { value: 28 }, uMaxDist: { value: 2600 }, uWaterY: { value: -16 }, uRain: { value: 0 }, uCap: { value: 12 },
       uProj: { value: new THREE.Matrix4() }, uView: { value: new THREE.Matrix4() },
     });
     this.compMat = mat(COMP_FRAG, {
@@ -438,6 +438,8 @@ export class AtmosPass extends Pass {
         u.uProj.value.copy(this.camera.projectionMatrix);
         u.uView.value.copy(this.camera.matrixWorldInverse);
         u.uTime.value = this.time;
+        // by day the escaping rays pick up the bright sky (and the sun): keep it a reflection, not a mirror flash
+        u.uCap.value = src && src.ambient && src.ambient.time === 'day' ? 3.0 : 12;
         u.uSteps.value = ultra ? 28 : 16;
         const g = src && src.ground;
         if (g && g.uniforms) {
@@ -484,12 +486,18 @@ export class AtmosPass extends Pass {
     u.uFog.value = fog;
     // darker maps: thicker mist, and the lamps' haze reads stronger against the dark
     const dark = amb ? amb.darkness : 0.65;
-    u.uMist.value = 0.00045 + dark * 0.0003;
-    u.uMistH.value = 36;
-    u.uScatter.value = 1.2e-5;
-    u.uMistScatter.value = 5.5e-5;
+    const day = !!amb && amb.time === 'day';
+    // by day: a thin, low haze of the horizon colour (heat and dust near the ground), and
+    // almost no in-scatter for the few lights still on (they are weak against the sun)
+    u.uMist.value = day ? 0.00016 * (amb.mist ?? 0.6) : 0.00045 + dark * 0.0003;
+    u.uMistH.value = day ? 55 : 36;
+    u.uScatter.value = day ? 2e-6 : 1.2e-5;
+    u.uMistScatter.value = day ? 1.2e-5 : 5.5e-5;
     u.uSkyDist.value = Math.min(3200, this.camera.far * 0.9);
-    if (amb) u.uMistCol.value.copy(amb.fog).lerp(amb.sky, 0.08).multiplyScalar(1.35);
+    if (amb) {
+      if (day) u.uMistCol.value.copy(amb.fog).multiplyScalar(1.02);
+      else u.uMistCol.value.copy(amb.fog).lerp(amb.sky, 0.08).multiplyScalar(1.35);
+    }
     const fl = src && src.flashlight;
     const beam = this.tier === 'ultra' && fl && fl.intensity > 0;
     if (beam) {

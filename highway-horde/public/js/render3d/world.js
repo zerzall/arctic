@@ -143,6 +143,7 @@ export function createWorld(ctx, deps) {
   const ground = createGround({ scene, map, quality: ctx.quality, renderer: deps.renderer, detail: detailTex });
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
+  const day = amb.time === 'day';
   const fx = createFxUniforms();
   fx.uFog.value = amb.fogDensity;
   fx.uFogColor.value.copy(amb.fog);
@@ -153,6 +154,14 @@ export function createWorld(ctx, deps) {
   const chainTex = track(makeChainLinkTexture());
   const leafTex = track(makeLeafTexture(Math.min(4, maxAniso)));
   const mats = createWorldMaterials({ detail: detailTex, atlas: atlasTex, chain: chainTex, leaves: leafTex });
+  if (day) {
+    // by day the lit windows, street lamps, tubes and signs are just dim glass and paint
+    // (the unlit emissive pieces are multiplied down; beacons and vehicle lamps stay a bit)
+    mats.hi.glow.color.setRGB(0.11, 0.14, 0.19);
+    mats.hi.flicker.color.setScalar(0.16);
+    mats.hi.blink.color.setScalar(0.55);
+    ground.uniforms.wetness.value = amb.wet;
+  }
   // a long map (the highway) cuts its heavy buckets finer: looking down the road, the
   // frustum and the fog then drop most of the pileup behind and beside the camera
   const fine = map.width > 6000 ? 1000 : undefined;
@@ -288,7 +297,7 @@ export function createWorld(ctx, deps) {
   const waterMat = track(new THREE.MeshStandardMaterial({
     // near-black water: the lamps' glints (light pool specular) and a dim, rippled copy of
     // the probe; a strong probe reflection smeared the far bank's colours across the river
-    color: '#03080a', roughness: 0.04, metalness: 0.1, normalMap: waterNormal, normalScale: new THREE.Vector2(0.22, 0.22), envMapIntensity: 0.45,
+    color: day ? '#16404f' : '#03080a', roughness: 0.04, metalness: 0.1, normalMap: waterNormal, normalScale: new THREE.Vector2(day ? 0.3 : 0.22, day ? 0.3 : 0.22), envMapIntensity: day ? 1.0 : 0.45,
   }));
   const waterMeshes = [];
   for (const w of ground.waters) {
@@ -319,8 +328,10 @@ export function createWorld(ctx, deps) {
     addFx(makeEmbers(fires, fx));
     addFx(makeSmoke(fires, fx));
   }
-  if (halos.length) addFx(makeHalos(halos, fx));
-  if (shafts.length) addFx(makeShafts(shafts, fx));
+  // (by day: no lamp halos or light shafts; fires and mast beacons keep a faint glow)
+  const dayHalos = day ? halos.filter((h) => h.flicker > 0 || h.blink > 0).map((h) => ({ ...h, strength: (h.strength ?? 1) * 0.25 })) : halos;
+  if (dayHalos.length) addFx(makeHalos(dayHalos, fx));
+  if (shafts.length && !day) addFx(makeShafts(shafts, fx));
   const poolList = map.lights.map((l, i) => {
     const src = deps.lights.mapSources[i];
     const fire = l.flicker >= 0.5;
@@ -331,7 +342,7 @@ export function createWorld(ctx, deps) {
   });
   // the canopies' fluorescent strips light the forecourt under them
   for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: 0 });
-  const pools = poolList.length ? makePools(poolList, fx) : null;
+  const pools = poolList.length && !day ? makePools(poolList, fx) : null;
   if (pools) addFx(pools.mesh);
   const poolLevels = new Float32Array(poolList.length).fill(1);
   const marker = ob ? addFx(makeMarker(ob, fx)) : null;
@@ -346,7 +357,7 @@ export function createWorld(ctx, deps) {
   // ---- light rain ('ultra' only): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
   const setRain = () => {
-    const on = tier === 'ultra';
+    const on = tier === 'ultra' && !day;   // (a sunny day is dry)
     if (on && !rain) {
       rain = makeRain(fx, 5000);
       rain.setRoofs(deckRoofs(map));
@@ -440,7 +451,7 @@ export function createWorld(ctx, deps) {
   setRain();   // after the probe: rain must not be baked into the reflections
 
   let time = 0;
-  const neonBase = new THREE.Color(1, 1, 1);
+  const neonBase = new THREE.Color(1, 1, 1).multiplyScalar(day ? 0.25 : 1);
 
   // Static meshes and ground tiles wholly past the fog are skipped: every world material
   // fogs, and beyond this range the fog lets through < 0.2 % of a surface (a long map

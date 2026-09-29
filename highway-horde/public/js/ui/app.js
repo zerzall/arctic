@@ -198,6 +198,7 @@ export function startApp(deps) {
       s.setSettings({
         mapId: l.mapId,
         mode: l.mode,
+        time: l.time,
         difficulty: DIFFICULTY_IDS.includes(l.difficulty) ? l.difficulty : 'normal',
         waves: WAVE_OPTIONS.includes(l.waves) ? l.waves : 15,
         objective: !!l.objective,

@@ -72,8 +72,10 @@ Data tables already written (read them — they are the source of truth):
 ## 2. Maps — `shared/maps.js`
 
 ```js
-export const MAP_LIST;              // [{ id, name, description, modes? }] in lobby order;
-                                    // modes: the game modes it plays (absent = every mode)
+export const MAP_LIST;              // [{ id, name, description, modes?, time?, times? }] in lobby order;
+                                    // modes: the game modes it plays (absent = every mode);
+                                    // time: 'day' = a fixed time of day, times: [...] = a list of
+                                    // them (absent = night and day, §7.5.1)
 export function buildMap(id, seed); // → MapDef, deterministic for (id, seed); unknown id → throws
 ```
 
@@ -115,6 +117,8 @@ MapDef = {
   pois: [ { name, x, y, r } ],           // points of interest: the Evac Run's safe-zone centres and
                                          // radii (§3.7), fixed layout; every map has ≥ 5
   modes?: ['zone'],                      // only on maps that don't play every mode (copied from MAP_LIST)
+  time?: 'day', times?: ['day'],         // only on maps that fix the time of day (copied from MAP_LIST);
+                                         // `time: 'day'` is all a day-only map has to declare (§7.5.1)
   overpass: null | {                     // elevated roads (visual; the sim sees only their piers
                                          // and ramp walls, which are ordinary obstacles)
     decks: [ { kind, w, pts: [[x, y, z], ...] } ], // kind 'viaduct'|'ramp'; road surface at height z
@@ -178,8 +182,10 @@ Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
 import { Game } from './sim.js';
 const game = new Game({
   mapId, seed,                            // map built internally with buildMap(mapId, seed)
-  settings: { difficulty, waves, objective, friendlyFire, mode },   // see DEFAULT_SETTINGS;
-                                          // mode 'defend' (default) | 'zone' (§3.7)
+  settings: { difficulty, waves, objective, friendlyFire, mode, time },   // see DEFAULT_SETTINGS;
+                                          // mode 'defend' (default) | 'zone' (§3.7);
+                                          // time 'night' (default) | 'day' (§7.5.1; cosmetic: the
+                                          // sim ignores it but `game.settings.time` is the resolved one)
   players: [ { id, name, color, cls, bot } ],  // id: 1..255 (host = 1), color: 0..5, cls: CLASS_IDS
                                           // bot: true = AI survivor (§3.6), optional;
                                           // botSkill: 0..1 (default 1) how well it plays
@@ -731,8 +737,9 @@ export async function joinGame({ code, via, name, color, cls })  // → Session;
 session.isHost, session.localId, session.code, session.inviteUrl, session.transport
 session.roster      // [{ id, name, color, cls, ready, ping, host, bot? }]  (lobby + in game;
                     //   bot: true on AI survivors, see "Bots" below)
-session.settings    // { mapId, mode, difficulty, waves, objective, friendlyFire } (mergeSettings
-                    //   in net/lobby-rules.js keeps map + mode compatible: the pick wins)
+session.settings    // { mapId, mode, time, difficulty, waves, objective, friendlyFire } (mergeSettings
+                    //   in net/lobby-rules.js keeps map + mode and map + time compatible: the pick wins;
+                    //   travels as JSON in the settings / start control messages: no wire change)
 session.inGame      // true between 'start' and 'lobby'
 session.on(event, fn) / session.off(event, fn)
    // 'roster' (roster), 'settings' (settings), 'chat' ({ pid, name, text, system }),
@@ -813,7 +820,8 @@ carried into the next produced cmd (never lost, never duplicated).
 ### 7.1 Classic top-down renderer — `render/renderer.js`
 
 ```js
-export function createRenderer(canvas, { map, quality, mode })  // quality 'high'|'low'; mode 'zone' (§3.7)
+export function createRenderer(canvas, { map, quality, mode, time })  // quality 'high'|'low'; mode 'zone' (§3.7);
+                                                                       // time 'day' (§7.5.1): sunlit haze, no darkness
 r.render(view, { localId, roster, now, dt, cursor /*{x,y} screen px*/, settings })
    // settings: { screenShake: bool, showNames: bool, lighting: bool }
 r.addEvents(events, { localId })     // particles, decals, tracers, shake, hit markers
@@ -905,7 +913,9 @@ survivor's pistol).
 Lobby: a Mode row (Defend / Evac Run, with the mode's description) above difficulty; a map
 card that plays only some modes carries a tag ("Evac Run only") and picking it switches the
 mode; the objective toggle is disabled (Off) in Evac Run; `prefs.lobby.mode` is stored and
-validated (`ui/storage.js`).
+validated (`ui/storage.js`). A Time segmented control (Night / Day, `#opt-time`) sits next to the
+Mode row, works like it (a day-only map card carries a "Day only" tag, picking it switches the time,
+picking Night leaves it for a night map) and is stored in `prefs.lobby.time`.
 Evac Run HUD (`ui/zonehud.js`, `createHud(…, { mode: 'zone' })`): a panel under the compass
 ("MOVE TO GAS-N-GO · Zone locks in 42 s · 80 m away", "HOLD …", "THE ZONE IS SHRINKING",
 "FINAL CIRCLE", with a timer bar; green once you're in), a banner + sting for each new zone
@@ -1086,7 +1096,8 @@ frame = { dt, now, localId, roster, local /* view record of the local player or 
 **Public API** (same shape as §7.1 so `ui/match.js` can use either renderer):
 ```js
 import { createRenderer3D } from './render3d/renderer3d.js';
-const r = createRenderer3D(canvas, { map, quality, mode });   // mode 'defend' | 'zone' (→ ctx.mode)
+const r = createRenderer3D(canvas, { map, quality, mode, time });   // mode 'defend' | 'zone' (→ ctx.mode);
+                                                                     // time 'night' | 'day' (→ ctx.time, §7.5.1; default: the map's own time, else night)
 r.render(view, { localId, roster, now, dt, look: { yaw, pitch }, settings })
    // settings: { screenShake, showNames, lighting,
    //   fov: horizontal degrees measured on a 4:3 frame (Hor+; default 80 → 64.4° vertical,
@@ -1231,6 +1242,58 @@ pan by the angle between the sound and the facing direction and muffle/soften so
 behind the listener; without `yaw` (top-down) keep screen-relative panning. The listener
 is `r.getCamera()` (the spectated teammate's chase camera while dead).
 
+### 7.5.1 Time of day — `settings.time` 'night' | 'day' (`shared/timeofday.js`, `render3d/daylight*.js`)
+
+Every map has a **night** look (the original: moon, stars, darkness, flashlights, lamps and
+fires) and a **day** look, a lobby setting next to the mode. Day is cosmetic: the simulation,
+bots and balance are identical (`tests/timeofday.test.js` checks it), only the two renderers
+change.
+
+**Data and rules.** `DEFAULT_SETTINGS.time = 'night'` (every existing map keeps it).
+`shared/timeofday.js`: `TIME_LIST`/`TIME_IDS`, `mapTimes(map)` (a MAP_LIST entry, MapDef or id;
+`time: 'day'` = fixed, `times: [...]` = list, none = both), `mapSupportsTime`, `fixTimeCombo(mapId,
+time, changed)` (mirrors `fixModeCombo`: picking a map that doesn't play the time switches the time,
+picking a time the map doesn't play switches to the first map that does), `resolveTime(map,
+requested)` (what a game really plays; `Game` stores it in `game.settings.time`).
+**A day-only map** (e.g. the daytime campaign map) just declares `time: 'day'` in its `MAP_LIST`
+entry (or `times: ['day']`); `buildMap` copies it onto the MapDef, `mergeSettings` keeps
+map + time compatible, the lobby card shows a "Day only" tag, and both renderers read `map.time`
+when no `time` option is given. Settings travel as JSON (`settings` / `start` control messages),
+so there is **no PROTOCOL_VERSION bump**; old peers without a time read `night`. `ui/match.js`
+passes `resolveTime(map, session.settings.time)` to `createRenderer(3D)`.
+
+**First person by day** (`ctx.time === 'day'`; `lights.js` `ambientFor(map, time)` returns
+`daylight.js` `dayAmbientFor(map)`, whose per-map numbers are plain data in `daylight-look.js`;
+a map without an entry gets the default look tinted by its `ambient.tint`):
+- **Sky** (`world-sky-day.js`, used by `makeSky` and the reflection probe): gradient dome with a
+  pale horizon band that equals the fog colour, HDR sun disc + glow, two moving cloud layers
+  (fair-weather clouds lit from the sun's side + thin cirrus), two mountain ridges tinted by the
+  haze, optional horizon shimmer. No stars, no moon.
+- **Light**: the "moon" DirectionalLight is the sun (low angle, warm, ~4 lux; the same shadow map
+  that follows the camera and is re-rendered on demand for the static world, so the cost is the
+  night's), a HemisphereLight from the blue sky / warm ground, `scene.environmentIntensity` 0.7 for the
+  sky probe. The flashlight is off (and its shadow pass dropped). Street lamps are ~off, fires
+  weaker (`fireK`), muzzle flashes and explosions keep 80 %. `sunshadow.js` lays one instanced
+  streak per zombie / survivor away from the sun (the sun map only holds the static world).
+- **Fog / haze**: exp² fog of the haze colour (0.00022–0.0003: aerial perspective, ~2.5x thinner
+  than night), the atmosphere pass runs a thin low mist of the same colour and almost no light
+  scattering; puddles and wet asphalt reflect the (capped) sky; ground wetness is per map (`wet`).
+- **Grade**: exposure 1.0 (night 1.15), saturation 1.08, light vignette, less grain, bloom 0.2 with a
+  1.6 threshold (only the sun and flames glow).
+- **World**: lit windows, neon, tubes and lamp heads are multiplied down (dark glass), no lamp halos,
+  light shafts or fake light pools (fires and mast beacons keep faint halos), no rain on 'ultra',
+  water is teal and reflects the sky, per-map skies (`daylight-look.js`: highway hazy tarmac, truck
+  stop bleached desert, bridge cool river valley, checkpoint more cloud, Harlan deep blue with
+  cumulus and green haze).
+- Cost: same tiers; the far cull distance follows the thinner fog, so the longest views on the
+  highway draw ~1.6x the night's calls (about 170 vs 105; triangles 0.78 M vs 0.49 M).
+
+**Top-down by day** (`render/renderer.js`, `time` option): no darkness overlay and no light holes,
+one warm haze + vignette gradient; the map preview of a day-only map is drawn without the night tint.
+
+Sandbox: `public/dev/fps-sandbox.html?time=day` (`__fps` views incl. `zone-out` / `zone-in` on an
+Evac Run map). Possible follow-up: a `dusk` time (the sun parameters and `lampK` already allow it).
+
 ## 8. Deployment
 - Static: `public/` can be served by any static host (Netlify: `netlify.toml` publishes
   `public`). Uses the PeerJS cloud for signalling. Friends open the link, host clicks
@@ -1244,7 +1307,7 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through nine scenarios in fresh browser contexts (a–f force the classic
+  Chromium through ten scenarios in fresh browser contexts (a–f force the classic
   top-down view in localStorage; g and h play first person at quality 'low', 960x540): solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
   prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
@@ -1276,6 +1339,9 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
   (quality 'low') checks the 3D zone wall on the announced circle, the compass and the panel.
   (Software WebGL draws the big map well under 1 fps here, and a host rendering that rarely
   feeds its own survivor idle input, so the walking part plays top-down.)
+  Scenario j (day): the lobby's Time row (Night first, Day, saved in `prefs.lobby.time`, kept across a
+  map change), a first-person solo game by day (`ctx.time` 'day', sun on, flashlight off) and a
+  top-down one, no console errors.
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,

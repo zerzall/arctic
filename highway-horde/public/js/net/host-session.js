@@ -173,7 +173,7 @@ export class HostSession extends Emitter {
     this.game = createGame({
       mapId: s.mapId,
       seed: this.seed,
-      settings: { difficulty: s.difficulty, waves: s.waves, objective: s.objective, friendlyFire: s.friendlyFire, mode: s.mode },
+      settings: { difficulty: s.difficulty, waves: s.waves, objective: s.objective, friendlyFire: s.friendlyFire, mode: s.mode, time: s.time },
       players: this.roster.map((r) => ({ id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot })),
     });
     // Bots are ready by definition (the in-game ready vote is theirs to cast).

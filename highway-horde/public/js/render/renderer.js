@@ -23,6 +23,7 @@ import { createEffects } from './effects.js';
 import { createDecals } from './decals.js';
 import { createCamera, zoomFor } from './camera.js';
 import { createLighting, nightFor } from './lighting.js';
+import { resolveTime } from '../shared/timeofday.js';
 import { createZone2D, drawPoiRings } from './zone2d.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
@@ -97,9 +98,9 @@ function normalizeView(view) {
 /**
  * Create the game renderer bound to a canvas.
  * @param {HTMLCanvasElement} canvas
- * @param {{map: object, quality?: 'high'|'low'}} options
+ * @param {{map: object, quality?: 'high'|'low', mode?: string, time?: 'night'|'day'}} options (time 'day': sunlit haze instead of the night's darkness, SPEC §7.5.1)
  */
-export function createRenderer(canvas, { map, quality = 'high' } = {}) {
+export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay } = {}) {
   if (!map) throw new Error('createRenderer: map is required');
   const ctx = canvas.getContext('2d', { alpha: false });
   let q = quality === 'low' ? 'low' : 'high';
@@ -119,6 +120,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
   const camera = createCamera(map);
   const lighting = createLighting();
   const amb0 = map.ambient || { darkness: 0.6, tint: '#223344' };
+  // daytime (SPEC §7.5.1): no darkness to cut lights out of, just a warm sunlit haze + vignette
+  const day = resolveTime(map, timeOfDay || map.time) === 'day';
   const night = nightFor(amb0.tint || '#223344', amb0.darkness ?? 0.6);
   let lowTint = null, lowTintKey = 0;
   const overlay = createOverlay();
@@ -900,7 +903,7 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
 
   // ---- lighting -----------------------------------------------------------------------------
   function drawLighting(view, lightingOn) {
-    if (!lightingOn) {
+    if (day || !lightingOn) {
       // cheap night mood for low quality / lighting off: one flat translucent fill
       // (tint + vignette in the same gradient so it costs a single full-screen fill)
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -908,10 +911,15 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
         lowTintKey = W * 100000 + H;
         const r = Math.hypot(W, H) / 2;
         lowTint = ctx.createRadialGradient(W / 2, H / 2, r * 0.35, W / 2, H / 2, r);
-        const base = mix(amb0.tint || '#223344', '#02030a', 0.72);
-        const a = clamp((amb0.darkness ?? 0.6) * 0.42, 0, 0.5);
-        lowTint.addColorStop(0, rgba(base, a));
-        lowTint.addColorStop(1, rgba(base, Math.min(0.85, a + 0.35)));
+        if (day) {
+          lowTint.addColorStop(0, rgba('#fff2d0', 0.05));
+          lowTint.addColorStop(1, rgba('#3a3020', 0.22));
+        } else {
+          const base = mix(amb0.tint || '#223344', '#02030a', 0.72);
+          const a = clamp((amb0.darkness ?? 0.6) * 0.42, 0, 0.5);
+          lowTint.addColorStop(0, rgba(base, a));
+          lowTint.addColorStop(1, rgba(base, Math.min(0.85, a + 0.35)));
+        }
       }
       ctx.fillStyle = lowTint;
       ctx.fillRect(0, 0, W, H);
@@ -1214,7 +1222,8 @@ export function createRenderer(canvas, { map, quality = 'high' } = {}) {
 
 /**
  * Static thumbnail of a map for the lobby: ground, roads, obstacles, objective (glowing),
- * supply station and zombie spawn zones, with a night tint.
+ * supply station and zombie spawn zones, with a night tint (a warm daylight one when
+ * `map.time === 'day'`).
  * @param {HTMLCanvasElement} canvas drawn at its current width/height
  * @param {object} map MapDef
  */
@@ -1286,11 +1295,12 @@ export function renderMapPreview(canvas, map) {
   if (!zoneOnly) for (const z of map.zombieSpawns || []) g.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
   // night tint
   const amb = map.ambient || { darkness: 0.6, tint: '#223344' };
-  g.fillStyle = rgba(mix(amb.tint, '#02030a', 0.7), clamp(amb.darkness * 0.45, 0, 0.5));
+  const dayMap = map.time === 'day';   // (the lobby sets it on the map it previews by day)
+  g.fillStyle = dayMap ? rgba('#fff2d0', 0.06) : rgba(mix(amb.tint, '#02030a', 0.7), clamp(amb.darkness * 0.45, 0, 0.5));
   g.fillRect(vx0, 0, vw, map.height);
   // lights
   g.globalCompositeOperation = 'lighter';
-  for (const L of map.lights) {
+  for (const L of dayMap ? [] : map.lights) {
     g.globalAlpha = 0.28;
     g.drawImage(tintedGlow(L.color), L.x - L.r * 0.6, L.y - L.r * 0.6, L.r * 1.2, L.r * 1.2);
   }

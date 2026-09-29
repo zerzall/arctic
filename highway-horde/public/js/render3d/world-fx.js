@@ -5,6 +5,7 @@
 // beyond a few uniform writes. Additive pieces fade with the scene's exp² fog.
 
 import * as THREE from 'three';
+import { makeDaySky } from './world-sky-day.js';
 
 /** Uniforms shared by every world effect shader. */
 export function createFxUniforms() {
@@ -58,6 +59,7 @@ function additive(uniforms, vertexShader, fragmentShader, extra = {}) {
  * @param {Array<{x, y, r}>} [fires] burning spots: their glow tints the clouds above them
  */
 export function makeSky(amb, radius, fx, fires = []) {
+  if (amb.time === 'day') return makeDaySky(amb, radius, fx);
   // the biggest fires, merged when close: at most 4 glow sources
   const clusters = [];
   for (const f of [...fires].sort((a, b) => b.r - a.r)) {

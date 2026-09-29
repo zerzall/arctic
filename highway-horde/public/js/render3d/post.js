@@ -273,7 +273,7 @@ const UPSCALE_SHADER = {
  *   internal targets at prInner), configure(settings, quality), warm(), target (the world
  *   render target), readBuffer, passes, sceneInfo (world pass calls / triangles), dispose() }
  */
-export function createPost(renderer, { scene, camera, getViewmodel, quality, getAtmos }) {
+export function createPost(renderer, { scene, camera, getViewmodel, quality, getAtmos, look }) {
   const ext = renderer.extensions;
   // HDR needs a renderable float target; without one (rare mobile GPUs) fall back to 8-bit
   // and lower the bloom threshold so lights still glow
@@ -332,6 +332,15 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
   const fxaaPass = new FXAAPass();
   const upscalePass = new ShaderPass(UPSCALE_SHADER);
   for (const p of [worldPass, aoPass, atmosPass, vmPass, bloomPass, gradePass, smaaPass, fxaaPass, upscalePass]) composer.addPass(p);
+  if (look) {
+    const gu = gradePass.uniforms;
+    gu.uContrast.value = look.contrast;
+    gu.uSaturation.value = look.saturation;
+    gu.uLift.value.set(...look.lift);
+    gu.uGamma.value.set(...look.gamma);
+    gu.uGain.value.set(...look.gain);
+    bloomPass.threshold = look.bloomThreshold;
+  }
 
   let q = quality;
   let cur = null;
@@ -371,14 +380,15 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
       bloomPass.lowRes = wantLowBloom;
       bloomPass.setSize(Math.max(1, Math.floor(cssW * prInner)), Math.max(1, Math.floor(cssH * prInner)));
     }
-    bloomPass.strength = low ? 0.42 : 0.5;
+    // (by day the grade is brighter and the bloom subtler: `look` from daylight.js)
+    bloomPass.strength = look ? look.bloom * (low ? 0.85 : 1) : low ? 0.42 : 0.5;
     bloomPass.radius = low ? 0.35 : 0.5;
     // 'low' never pays for SMAA's three passes: FXAA instead (or nothing)
     const aa = s.antialias === 'off' ? 'off' : low ? 'fxaa' : s.antialias;
     smaaPass.enabled = aa === 'smaa';
     fxaaPass.enabled = aa === 'fxaa';
-    gradePass.uniforms.uGrain.value = s.filmGrain ? 0.04 : 0;
-    gradePass.uniforms.uVignette.value = s.vignette ? 0.34 : 0;
+    gradePass.uniforms.uGrain.value = s.filmGrain ? (look ? look.grain : 0.04) : 0;
+    gradePass.uniforms.uVignette.value = s.vignette ? (look ? look.vignette : 0.34) : 0;
     return true;
   }
 

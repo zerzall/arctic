@@ -15,6 +15,7 @@
 // flash or an explosion. `radius` is the reach in world units (the light is cut there).
 
 import * as THREE from 'three';
+import { dayAmbientFor } from './daylight.js';
 
 // flame light height above its base: well up in the flames, so a wreck's own flanks and a
 // tanker's end cap under the fire are lit at a grazing angle instead of blown out white
@@ -45,10 +46,13 @@ if (THREE.ShaderChunk.lights_pars_begin.includes(SPOT_ATT) && THREE.ShaderChunk.
 }
 
 /**
- * @param {object} o { scene, camera, map, quality, heightAt?(x, y) base height of fires }
+ * @param {object} o { scene, camera, map, quality, heightAt?(x, y) base height of fires, time: 'night'|'day' }
+ *   By day the "moon" is the sun (same directional light and shadow map, warm and strong),
+ *   the flashlight is off and the street lamps are (nearly) dark.
  */
-export function createLights({ scene, camera, map, quality, fireBase }) {
-  const amb = ambientFor(map);
+export function createLights({ scene, camera, map, quality, fireBase, time: timeOfDay }) {
+  const amb = ambientFor(map, timeOfDay);
+  const day = amb.time === 'day';
   const group = new THREE.Group();
   group.name = 'lights';
   scene.add(group);
@@ -56,7 +60,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   const hemi = new THREE.HemisphereLight(amb.sky, amb.ground, amb.hemi);
   group.add(hemi);
   const moon = new THREE.DirectionalLight(amb.moon, amb.moonI);
-  const MOON_DIR = new THREE.Vector3(-0.45, 0.62, -0.64).normalize();
+  const MOON_DIR = (amb.sunDir ? amb.sunDir.clone() : new THREE.Vector3(-0.45, 0.62, -0.64)).normalize();
   moon.position.copy(MOON_DIR).multiplyScalar(1000);
   moon.target.position.set(0, 0, 0);
   group.add(moon, moon.target);
@@ -74,7 +78,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   let high = tier !== 'low';
   const POOL = { ultra: 12, high: 8, low: 4 };
   const setShadows = () => {
-    flash.castShadow = high;
+    // (no flashlight by day: its shadow pass over the actors would draw nothing)
+    flash.castShadow = high && !day;
     const size = tier === 'ultra' ? 2048 : 1024;
     if (flash.shadow.mapSize.x !== size && flash.shadow.map) {
       flash.shadow.map.dispose();
@@ -196,7 +201,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
 
     // flashlight from the camera
     camera.getWorldDirection(_fwd);
-    const on = f.flashlight !== false;
+    const on = f.flashlight !== false && !day;
     // Off = zero intensity, never visible = false: hiding the light changes the scene's
     // spot-light count, which recompiled every lit material (a hitch of ~12 programs) the
     // moment the player died and again on respawn.
@@ -280,7 +285,7 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
       L.position.set(s.x, s.h, s.y);
       L.color.copy(s.color);
       L.distance = s.radius;
-      L.intensity = s.intensity * E0 * k;
+      L.intensity = s.intensity * E0 * k * (day ? (s.flash ? amb.flashK : s.lamp ? amb.lampK : amb.fireK) : 1);
       if (s.index !== undefined) mapLevel[s.index] = p.level;
     }
   }
@@ -420,7 +425,8 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
  * Night mood per map: fog colour, sky colours and ambient light from map.ambient
  * ({ darkness 0..1, tint }). Darker maps get less ambient and denser fog.
  */
-export function ambientFor(map) {
+export function ambientFor(map, time) {
+  if (time === 'day') return dayAmbientFor(map);
   const a = map.ambient || { darkness: 0.65, tint: '#2c4a7a' };
   const d = Math.max(0, Math.min(1, a.darkness));
   const tint = new THREE.Color(a.tint);
@@ -432,6 +438,7 @@ export function ambientFor(map) {
   // backlit by its own fire) keep a little value instead of crushing to flat black
   const ground = new THREE.Color('#3a3226').lerp(tint, 0.18);
   return {
+    time: 'night',
     darkness: d,
     fog,
     fogDensity: 0.00085 + d * 0.0006,

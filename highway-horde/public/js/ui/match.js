@@ -15,6 +15,7 @@
 // other kind is swapped for a fresh clone.
 
 import { DIFFICULTIES } from '../shared/constants.js';
+import { resolveTime } from '../shared/timeofday.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
@@ -84,22 +85,22 @@ function gameCanvas(kind, fresh = false) {
 }
 
 /** First-person renderer when the view setting asks for it and it can run, else top-down. */
-function createViewRenderer(ctx, map, mode) {
+function createViewRenderer(ctx, map, mode, time) {
   const { deps, prefs } = ctx;
   const quality = prefs.settings.quality;
   if (prefs.settings.view !== 'topdown' && typeof deps.createRenderer3D === 'function' && webglOk(ctx)) {
     const canvas = gameCanvas('webgl');
     try {
-      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality, mode }) };
+      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality, mode, time }) };
     } catch (err) {
       console.warn('[game] the first-person view failed to start, using the classic view', err);
       ctx.webgl = false;
       const c2 = gameCanvas('2d', true);
-      return { fps: false, canvas: c2, renderer: deps.createRenderer(c2, { map, quality, mode }), fellBack: true };
+      return { fps: false, canvas: c2, renderer: deps.createRenderer(c2, { map, quality, mode, time }), fellBack: true };
     }
   }
   const canvas = gameCanvas('2d');
-  return { fps: false, canvas, renderer: deps.createRenderer(canvas, { map, quality, mode }), fellBack: prefs.settings.view !== 'topdown' };
+  return { fps: false, canvas, renderer: deps.createRenderer(canvas, { map, quality, mode, time }), fellBack: prefs.settings.view !== 'topdown' };
 }
 
 /**
@@ -134,7 +135,8 @@ export function startMatch(ctx, session) {
 
   // Evac Run (SPEC §3.7): the renderers build the zone wall, the HUD its zone panel
   const mode = (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
-  const made = createViewRenderer(ctx, map, mode);
+  const time = resolveTime(map, session.settings && session.settings.time);
+  const made = createViewRenderer(ctx, map, mode, time);
   const { renderer, canvas, fps } = made;
   screen.classList.toggle('view-fps', fps);
   const input = createInput(canvas, {

@@ -29,6 +29,8 @@
 //                   (panel), the player walks toward it, and once the wave locks the circle
 //                   the player outside gets the warning and loses health to the blight
 //                   (top-down); then a first-person game shows the zone wall, compass, panel
+//   j  day          the lobby's Time row (Night default, Day, persisted in the prefs), a
+//                   first-person solo game by day (sun on, flashlight off) and a top-down one
 //
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
 // localStorage before every page load); g and h play first person at quality 'low', i both.
@@ -1561,6 +1563,71 @@ async function scenarioZone(sc) {
   await sc.screenshots('-fps', FPS_SHOT_MS);
 }
 
+/**
+ * j: time of day. The lobby's Time row (Night default, Day), the choice persisted in the
+ * prefs, then a first-person solo game by day (no console errors, the day atmosphere in
+ * the scene: sun on, flashlight off) and a classic top-down game by day.
+ */
+async function scenarioDay(sc) {
+  const pl = await sc.player('day', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Sunny', cls: 'soldier' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
+  expect((await settings()).time === 'night', 'the lobby should start at Night');
+  const labels = await pl.page.$$eval('#opt-time .seg-btn', (bs) => bs.map((b) => b.textContent.trim()));
+  expect(labels.join() === 'Night,Day', `the Time row should offer Night and Day: ${labels}`);
+  expect((await pl.page.$eval('#opt-time .seg-btn[data-value="night"]', (b) => b.getAttribute('aria-checked'))) === 'true', 'Night should be selected first');
+  await pl.page.click('#opt-time .seg-btn[data-value="day"]');
+  await waitFor(pl, () => window.__HH.session.settings.time === 'day', null, 'Day picked');
+  expect((await pl.page.$eval('#opt-time .seg-btn[data-value="day"]', (b) => b.getAttribute('aria-checked'))) === 'true', 'Day should show as selected');
+  const saved = await pl.page.evaluate((k) => JSON.parse(localStorage.getItem(k)).lobby.time, PREFS_KEY);
+  expect(saved === 'day', `the choice should be saved in the prefs (${saved})`);
+  await pl.page.click('#opt-time .seg-btn[data-value="night"]');
+  await waitFor(pl, () => window.__HH.session.settings.time === 'night', null, 'Night picked again');
+  await pl.page.click('#opt-time .seg-btn[data-value="day"]');
+  await waitFor(pl, () => window.__HH.session.settings.time === 'day', null, 'Day picked again');
+  await pl.page.click('.map-card[data-map="checkpoint"]');
+  await waitFor(pl, () => window.__HH.session.settings.mapId === 'checkpoint', null, 'Checkpoint Delta picked');
+  expect((await settings()).time === 'day', 'the time should survive a map change');
+  await sc.screenshots('-lobby');
+  await pl.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
+  await waitFor(pl, () => {
+    const H = window.__HH;
+    const L = H.getLook && H.getLook();
+    return !document.querySelector('#screen-game').hidden && !!(H.getView && H.getView()) && !!L && L.ready && L.frames >= 3;
+  }, null, 'the first-person day game', 180e3);
+  const info = await pl.page.evaluate(() => {
+    const H = window.__HH;
+    const d = H.renderer.debug;
+    const sc3 = d && d.scene;
+    return {
+      view: H.view, time: d && d.ctx.time, fog: sc3 && sc3.fog && sc3.fog.color.getHexString(),
+      flash: d && d.lights.flashlight.intensity, sun: d && d.lights.moon.intensity, game: H.session.game.settings.time,
+    };
+  });
+  log(`    day fps: view ${info.view}, time ${info.time}, fog #${info.fog}, sun ${info.sun}, flashlight ${info.flash}`);
+  expect(info.view === 'fps' && info.time === 'day' && info.game === 'day', `the game should render the day: ${JSON.stringify(info)}`);
+  expect(info.flash === 0, 'the flashlight should be off by day');
+  expect(info.sun > 2, 'the sun should be bright');
+  await sc.screenshots('-fps', FPS_SHOT_MS);
+  await sc.close(pl);
+
+  // The same choice in the classic top-down view
+  const td = await sc.player('day-td');
+  td.url = sc.env.relay.url;
+  await titleSetup(td, { name: 'Sunny', cls: 'medic' });
+  await td.page.click('#btn-solo');
+  await waitFor(td, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby (top-down)');
+  await td.page.click('#opt-time .seg-btn[data-value="day"]');
+  await waitFor(td, () => window.__HH.session.settings.time === 'day', null, 'Day picked (top-down)');
+  await td.page.click('#btn-start');
+  await waitFor(td, () => !document.querySelector('#screen-game').hidden && !!window.__HH.getView() && window.__HH.getView().players.length >= 1, null, 'the top-down day game', 60e3);
+  await sleep(1500);
+  await sc.screenshots('-topdown');
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -1571,6 +1638,7 @@ const SCENARIOS = [
   ['g', 'fps-solo', scenarioFpsSolo, 330e3],
   ['h', 'fps-relay', scenarioFpsRelay, 200e3],
   ['i', 'zone', scenarioZone, 360e3],
+  ['j', 'day', scenarioDay, 300e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

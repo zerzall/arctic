@@ -30,6 +30,7 @@ import {
 import { createBrain, updateBots } from './bots.js';
 import { ZoneDirector } from './zone.js';
 import { mapModes } from '../zone.js';
+import { resolveTime } from '../timeofday.js';
 
 /** Events that are pure presentation and may be dropped when a snapshot overflows. */
 const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch', 'freeze']);
@@ -92,6 +93,8 @@ export class GameCore {
     if (mode === 'zone' && !(map.pois && map.pois.length >= 2)) mode = 'defend';
     this.mode = mode;
     this.settings.mode = mode;
+    // Time of day (SPEC §7.5.1): cosmetic only (lighting); a day-only map plays day whatever was asked.
+    this.settings.time = resolveTime(map, this.settings.time);
     if (mode === 'zone') this.settings.objective = false;
     this.rng = createRng((this.seed ^ hashString('highway-horde-sim')) >>> 0);
 

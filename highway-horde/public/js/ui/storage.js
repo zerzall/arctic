@@ -6,6 +6,7 @@ import { CLASS_IDS } from '../shared/classes.js';
 import { SENS_MIN, SENS_MAX } from './look.js';
 import { NAME_MAX_LENGTH, DEFAULT_SETTINGS, DIFFICULTY_IDS, WAVE_OPTIONS } from '../shared/constants.js';
 import { MODE_IDS } from '../shared/zone.js';
+import { TIME_IDS } from '../shared/timeofday.js';
 
 const KEY = 'highway-horde:prefs:v1';
 
@@ -225,6 +226,7 @@ export function loadPrefs() {
   out.lobby = {
     mapId: typeof l.mapId === 'string' ? l.mapId : DEFAULT_SETTINGS.mapId,
     mode: oneOf(l.mode, MODE_IDS, DEFAULT_SETTINGS.mode),
+    time: oneOf(l.time, TIME_IDS, DEFAULT_SETTINGS.time),
     difficulty: DIFFICULTY_IDS.includes(l.difficulty) ? l.difficulty : DEFAULT_SETTINGS.difficulty,
     waves: WAVE_OPTIONS.includes(l.waves) ? l.waves : DEFAULT_SETTINGS.waves,
     objective: bool(l.objective, DEFAULT_SETTINGS.objective),

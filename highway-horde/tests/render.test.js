@@ -159,7 +159,7 @@ test('fixture scene exercises every zombie type/flag, projectile, pickup and eve
 
 function runScene(map, quality, frames, opts = {}) {
   const canvas = mockCanvas(1280, 720);
-  const r = createRenderer(canvas, { map, quality });
+  const r = createRenderer(canvas, { map, quality, time: opts.time });
   const scene = createFixtureScene(map, { zombies: 250, spam: true, seed: 11 });
   const cursor = { x: 900, y: 300 };
   noRenderErrors(() => {
@@ -238,6 +238,17 @@ test('renderer draws the fixture scene in both qualities without errors', () => 
   assert.ok(counters.drawImage > 1000, 'something was drawn');
   assert.ok(st.visibleZombies > 50, `visible zombies ${st.visibleZombies}`);
   runScene(map, 'low', 120);
+});
+
+test('daytime (time: day): no darkness overlay, both qualities and the map preview draw without errors', () => {
+  const map = createFixtureMap('bus');
+  counters.drawImage = 0;
+  runScene(map, 'high', 120, { time: 'day' });
+  assert.ok(counters.drawImage > 500, 'something was drawn');
+  runScene(map, 'low', 60, { time: 'day' });
+  // a map that plays only the day is previewed in daylight
+  const dayMap = { ...createFixtureMap('bus'), time: 'day' };
+  noRenderErrors(() => renderMapPreview(mockCanvas(320, 180), dayMap));
 });
 
 test('renderer handles every objective kind, spectating and odd input', () => {

@@ -49,6 +49,14 @@ else opens the invite link.
     shrinks to a smaller one inside it. Outside it the blight takes more and more health
     every second (armour doesn't help, downed survivors bleed out faster), and late in the
     wave zombies walk out of it. Clear the wave and the next zone is announced.
+- **Night or day.** The lobby's **Time** row (next to Mode) sets Night (the original moonlit,
+  flashlight-and-fire-light look, the default) or Day: a bright sunny variant of every map with a
+  gradient sky, sun and drifting clouds, long soft shadows, haze in the distance, the lamps off and
+  the flashlights not needed. Each map has its own day: hazy tarmac heat on the highway, bleached
+  desert at the truck stop, a glittering river at the bridge, a cloudier checkpoint, and green farm
+  country with a deep blue sky at Harlan County. The choice is saved with your other lobby settings
+  and changes nothing about the fight; a map made for the daytime only (like a hilltop or rooftop
+  map) plays Day whatever you pick, the way Harlan County only plays the Evac Run.
 - **5 maps**: four built around something to defend — a school bus in a pileup that
   stretches for miles down Highway 9 (two crossroads with dead traffic lights, a gas
   station and a motel, and the I-44 overpass crossing overhead on its piers, with the horde
@@ -65,7 +73,8 @@ else opens the invite link.
   you with their name tags overhead. A compass strip points to the objective and the supply station, a
   rotating radar shows the horde around you, and red arcs show where a hit came from.
   Sounds come from where they happen: a groan behind you is quieter and muffled.
-- Night-time lighting with flashlights, muzzle flashes, burning wrecks and explosions.
+- Night-time lighting with flashlights, muzzle flashes, burning wrecks and explosions (or a
+  full daylight variant with sun shadows, haze and clouds).
   Blood and scorch marks stay on the ground, and all the sound (every gun, every zombie,
   the music) is synthesised in the browser. All the art is built in code: no model or
   texture files.
