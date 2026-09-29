@@ -4,6 +4,7 @@
 // entities (tree canopies, lamp heads, flags) and animated bits (water shimmer) are
 // drawn live from small cached sprites.
 
+import { paintDress2D } from './dress2d.js';
 import {
   makeCanvas, releaseCanvas, createRng, mix, fillCircle, fillEllipse, blobPath,
   fillRoundRect, hash01,
@@ -174,6 +175,9 @@ export function paintGround(g, prep, rect, detail = 1) {
     if (detail < 1 && (d.kind === 'grass_tuft' || d.kind === 'paper' || d.kind === 'debris')) continue;
     paintDecor(g, d, createRng((seed * 131 + i * 7919 + 3) >>> 0));
   }
+
+  // set dressing (the classic view attaches it as prep.dress; the 3D ground never does)
+  if (prep.dress) paintDress2D(g, prep.dress, rect);
 
   // soft shadows of everything that stands up
   for (const o of map.obstacles) {

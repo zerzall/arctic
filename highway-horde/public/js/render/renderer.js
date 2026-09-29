@@ -5,6 +5,7 @@
 // projectiles & particles → canopies/lamps → darkness (lighting) → emissive pass
 // (additive: flames, flashes, tracers, eyes, glows) → screen overlays.
 
+import { buildDress } from '../shared/dress.js';
 import { PLAYER_COLORS, PLAYER_SPEED, BARRICADE, JUMP_HEIGHT } from '../shared/constants.js';
 import { ZOMBIES, ZOMBIE_IDS, ZFLAG } from '../shared/zombies.js';
 import { WEAPONS } from '../shared/weapons.js';
@@ -30,6 +31,16 @@ import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
 const TAU = Math.PI * 2;
+
+/** The set dressing of a map, or nothing if the map is odd (the dressing must never stop a match). */
+function safeDress(map) {
+  try {
+    return buildDress(map);
+  } catch (err) {
+    console.warn('dress: placement failed', err);
+    return [];
+  }
+}
 
 const QUALITY = {
   high: {
@@ -108,6 +119,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   let Q = QUALITY[q];
   const seed = map.seed | 0;
   const prep = prepareMap(map);
+  prep.dress = safeDress(map);   // (flat marks and prop glyphs, render/dress2d.js)
   let ground = createGroundLayer(prep, Q.groundBudget, Q.groundMax);
   const overhead = createOverheadLayer(map);
   const water = createWaterLayer(prep);

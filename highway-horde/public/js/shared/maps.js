@@ -100,6 +100,8 @@ const SEMI_COLORS = ['#8a2f2a', '#2f4f6f', '#d0cbc0', '#3f5a3a', '#6b6f73', '#a8
 const TRAILER_COLORS = ['#cfcac0', '#b7b3aa', '#9aa3a8', '#c4b89c', '#8d9aa0'];
 const CONTAINER_COLORS = ['#7a3b2e', '#2f5a78', '#3d6b45', '#8a6d2f', '#6b3f5e', '#5b6770'];
 const TRUNK_COLOR = '#4a3826';
+/** A 'truck' in this paint is a fire engine in the 3D view (a military truck otherwise). */
+export const FIRE_ENGINE = '#b01818';
 
 const KIND_DEFAULTS = {
   // Sedans and rocks sit below eye level: shots fly over them (first-person view).
@@ -886,7 +888,7 @@ function buildHighway(B) {
   B.vehicle('car', 2660, 940, WEST + 0.4, { wrecked: true, burning: rng.chance(0.5) });
   B.vehicle('suv', 2420, 1010, WEST - 0.1);
   B.vehicle('truck', 1560, 935, WEST + 0.15, { jitter: 0, wrecked: true });
-  B.vehicle('truck', 1730, 1015, WEST - 0.2, { jitter: 0 });
+  B.vehicle('truck', 1730, 1015, WEST - 0.2, { jitter: 0 }).color = FIRE_ENGINE;   // the county's fire engine
   B.vehicle('car', 1320, NORTH[1], WEST);
   B.vehicle('van', 1330, NORTH[2], WEST, { wrecked: rng.chance(0.3) });
   B.vehicle('car', 760, 900, WEST + 0.5, { wrecked: true, burning: rng.chance(0.5) });
@@ -1454,7 +1456,7 @@ function buildCheckpoint(B) {
   B.ob('container', IN0 + 56 + 75, IN1 - 28, 150, 56, 0, { color: rng.pick(CONTAINER_COLORS) });
   B.ob('container', IN0 + 56 + 75, IN1 - 84, 150, 56, 0.02, { color: rng.pick(CONTAINER_COLORS) });
   B.ob('container', IN0 + 160, C + 250, 60, 42, 0, { color: '#4a4f35', roof: '#3f432d' });   // generator
-  B.vehicle('truck', R1 + 110, C + 300, Math.PI / 2, { jitter: 0 });
+  B.vehicle('truck', R1 + 110, C + 300, Math.PI / 2, { jitter: 0 }).color = FIRE_ENGINE;   // (a red truck is drawn as a fire engine, render3d/world-veh-extras.js)
   B.vehicle('truck', R1 + 220, C + 290, Math.PI / 2 + 0.08, { jitter: 0, wrecked: rng.chance(0.3) });
   B.ob('tent', R1 + 170, IN1 - 30, 130, 60, 0, { color: '#50593a', roof: '#606a42' });
 
