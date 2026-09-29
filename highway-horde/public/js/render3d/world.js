@@ -25,6 +25,7 @@ import {
 } from './world-props.js';
 import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField } from './world-veg.js';
+import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import {
   createFxUniforms, makeSky, makeFlames, makeEmbers, makeSmoke, makeHalos, makeShafts, makePools, makeMarker, makeRain,
 } from './world-fx.js';
@@ -70,6 +71,8 @@ export function obstacleHeight(kind, o) {
     case 'pier': return o && Number.isFinite(o.top) ? o.top : 138;
     case 'ramp': return o && Number.isFinite(o.top) ? o.top : 100;
     case 'building': return o ? buildingHeight(o) : 180;
+    case 'silo': return RURAL_HEIGHT.silo;
+    case 'grave': return RURAL_HEIGHT.grave;
     default: return 40;
   }
 }
@@ -616,6 +619,8 @@ function buildObstacle(B, o, sign, overpass) {
     case 'booth': booth(B, L, W, o.color, o.roof); break;
     case 'tree': trunk(B, L, o); break;
     case 'rock': rock(B, L, W, o.color || '#6d6a63', obstacleHeight('rock', o)); break;
+    case 'silo': silo(B, L, W, o.color || '#b8bcbf'); break;
+    case 'grave': headstone(B, L, W, o.color || '#8e8c86', o.id); break;
     default: B.block('std', 0, 0, 0, L, 40, W, o.color || '#777');
   }
 }

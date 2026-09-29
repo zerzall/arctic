@@ -979,6 +979,25 @@ export const SOUNDS = {
     return S.mix(out, S.env(S.filter(S.noise(sr, 2.2, rng), sr, 'highpass', 3500, 0.7), sr, 0.004, 2), sr, 0.12, 0.45);
   } },
 
+  // Evac Run (SPEC §3.7): a new safe zone is announced — a radio click, then a bright two-note
+  // call over a warm major chord (heroic, not horror); and the short double beep that
+  // repeats while you stand in the blight.
+  zone_call: { srate: 0.5, cat: 'stinger', v: 1, g: 0.55, prio: 100, wet: 0.45, group: 'st_zone', lim: [1.5, 1], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 2.2);
+    S.mix(out, click(sr, rng, 2600, 0.012, 3), sr, 0.5);
+    S.mix(out, S.env(S.filter(S.pink(sr, 0.12, rng), sr, 'bandpass', 2200, 1.2), sr, 0.005, 0.1), sr, 0.25);
+    const pad = S.filter(chord(sr, 1.9, [146.83, 220, 293.66, 369.99], 0), sr, 'lowpass', S.curve([[0, 500], [0.35, 2600], [1.9, 900]]));
+    S.mix(out, S.env(pad, sr, 0.08, 1.3, 0.5), sr, 0.6, 0.12);
+    S.mix(out, S.fmBell(sr, 1.2, 587.33, { ratio: 2, index: 1.6, decay: 1 }), sr, 0.55, 0.1);
+    S.mix(out, S.fmBell(sr, 1.4, 880, { ratio: 2, index: 1.6, decay: 1.2 }), sr, 0.55, 0.42);
+    return S.mix(out, thud(sr, 110, 70, 0.4, 0.04), sr, 0.35, 0.1);
+  } },
+  zone_warn: { cat: 'ui', v: 1, g: 0.22, prio: 100, wet: 0.05, lim: [0.8, 1], render: (sr) => {
+    const out = S.makeBuf(sr, 0.4);
+    S.mix(out, S.filter(blip(sr, 523.25, 0.1, 'square'), sr, 'lowpass', 1800), sr, 0.5);
+    return S.mix(out, S.filter(blip(sr, 440, 0.14, 'square'), sr, 'lowpass', 1600), sr, 0.5, 0.16);
+  } },
+
   // UI. --------------------------------------------------------------------------------------
   ui_click: { cat: 'ui', v: 1, g: 0.3, prio: 100, wet: 0, lim: [0.03, 2], render: (sr, rng) =>
     S.mix(S.mix(S.makeBuf(sr, 0.05), click(sr, rng, 2000, 0.01, 2), sr), S.env(S.osc(sr, 0.04, 'sine', 1400), sr, 0.001, 0.03), sr, 0.3) },

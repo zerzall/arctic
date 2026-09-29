@@ -41,6 +41,8 @@ const ELITE_CHANCE = 0.02;
 const ELITE_FROM_WAVE = 4;
 const STUCK_TELEPORT_AFTER = 12;
 const STUCK_FAR = 650;
+/** Evac Run: a zombie stuck out in the blight re-enters unless a survivor is this close. */
+const STUCK_FAR_BLIGHT = 300;
 const BIG_RADIUS = 20;          // zombies this big are heavies: over low cover, wide-gap field
 /**
  * Collision radius of heavies against the world. The boss is drawn and fights at 44 px
@@ -132,13 +134,19 @@ function pickType(game, w) {
  * wave doesn't trickle in from miles away); without weights the pick is uniform.
  */
 export function pickSpawnRect(game) {
-  const rects = game.map.zombieSpawns;
+  let rects = game.map.zombieSpawns, farD = 700;
+  // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges.
+  const zr = game.zone ? game.zone.spawnRects() : null;
+  if (zr) {
+    rects = zr.rects;
+    farD = zr.far;
+  }
   const far = [];
   for (const r of rects) {
     let ok = true;
     for (const p of game.players) {
       if (p.state === 'dead') continue;
-      if (Math.hypot(p.x - r.x, p.y - r.y) < 700) {
+      if (Math.hypot(p.x - r.x, p.y - r.y) < farD) {
         ok = false;
         break;
       }
@@ -971,8 +979,11 @@ function stuckCheck(game, z, inReach, dirX, dirY) {
   }
   if (z.stuckT >= STUCK_TELEPORT_AFTER) {
     let far = true;
+    // (Evac Run: the team stays in the circle, so one stuck outside it would stall the wave)
+    const zc = game.zone && game.phase === 'wave' && game.zone.stage > 0 ? game.zone.circle : null;
+    const farR = zc && Math.hypot(z.x - zc.x, z.y - zc.y) > zc.r + 60 ? STUCK_FAR_BLIGHT : STUCK_FAR;
     for (const p of game.players) {
-      if (p.state !== 'dead' && Math.hypot(p.x - z.x, p.y - z.y) < STUCK_FAR) {
+      if (p.state !== 'dead' && Math.hypot(p.x - z.x, p.y - z.y) < farR) {
         far = false;
         break;
       }

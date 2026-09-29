@@ -61,6 +61,8 @@ const PICKUPS = { ammo: 'pick_ammo', health: 'pick_health', cash: 'pick_cash', a
 const UI = {
   click: 'ui_click', hover: 'ui_hover', buy: 'buy', deny: 'deny', chat: 'ui_chat', join: 'ui_join', leave: 'ui_leave',
   wave: 'siren', waveclear: 'waveclear', gameover: 'gameover', victory: 'victory', countdown: 'ui_countdown', ready: 'ui_ready',
+  // Evac Run: a new safe zone announced / the warning while standing in the blight
+  zone: 'zone_call', zonewarn: 'zone_warn',
 };
 
 // Reload choreography per weapon: [sound, fraction of the reload time, playback rate].
@@ -1249,7 +1251,7 @@ export function createAudio(options = {}) {
     addEvents: safe((events, opts) => eng.addEvents(events, opts)),
     /** Per-frame: loops (minigun, flamethrower, horde, fire), heartbeat, muffle, music. opts: { localId, dt, x?, y?, yaw? } */
     update: safe((view, opts) => eng.update(view, opts)),
-    /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'. */
+    /** Interface sounds: 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'|'gameover'|'victory'|'countdown'|'ready'|'zone'|'zonewarn'. */
     ui: safe((name) => eng.ui(name)),
     /** Volumes 0..1 (any subset of master, sfx, music). Kept across unlock. */
     setVolume: safe((v) => eng.setVolume(v)),

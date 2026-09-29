@@ -27,6 +27,7 @@ import * as itemsMod from './items3d.js';
 import * as effectsMod from './effects3d.js';
 import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
+import * as zoneMod from './zone3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { releaseFxAtlas } from './fx-core.js';
 import { createPost, createDynRes, createGpuTimer, normPostSettings } from './post.js';
@@ -90,9 +91,10 @@ function normQuality(v) {
 /**
  * Create the first-person renderer on `canvas`.
  * @param {HTMLCanvasElement} canvas
- * @param {{ map: object, quality?: 'ultra'|'high'|'low' }} opts
+ * @param {{ map: object, quality?: 'ultra'|'high'|'low', mode?: 'defend'|'zone' }} opts
+ *   mode 'zone' (Evac Run) builds the safe-zone wall and markers (zone3d.js)
  */
-export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
+export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend' } = {}) {
   const tCreate = performance.now();
   let q = normQuality(quality);
   // No MSAA on the canvas: the world is drawn into the post chain's HDR target and only a
@@ -156,7 +158,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   rng.pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   const ctx = {
-    THREE, scene, camera, map, quality: q,
+    THREE, scene, camera, map, quality: q, mode,
     overlay,
     lights: { flash: lights.flash, steady: lights.steady },
     ground: { decal() {} },
@@ -185,7 +187,7 @@ export function createRenderer3D(canvas, { map, quality = 'high' } = {}) {
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['effects3d', effectsMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {

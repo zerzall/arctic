@@ -25,9 +25,11 @@ import {
   updateProjectiles, updateHazards, updateTurrets, rebuildBarricades,
 } from './combat.js';
 import {
-  updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, HEAVY_BODY_RADIUS,
+  updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, spawnZombie, HEAVY_BODY_RADIUS,
 } from './zombies.js';
 import { createBrain, updateBots } from './bots.js';
+import { ZoneDirector } from './zone.js';
+import { mapModes } from '../zone.js';
 
 /** Events that are pure presentation and may be dropped when a snapshot overflows. */
 const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch', 'freeze']);
@@ -83,6 +85,14 @@ export class GameCore {
     this.settings = { ...DEFAULT_SETTINGS, ...settings };
     this.settings.waves = Math.max(0, Math.floor(Number(this.settings.waves) || 0));
     this.diff = DIFFICULTIES[this.settings.difficulty] || DIFFICULTIES.normal;
+    // Game mode (SPEC §3.7): 'zone' needs the map's points of interest; a map that only
+    // plays 'zone' plays it whatever was asked. The zone mode has no objective to defend.
+    const modes = mapModes(map);
+    let mode = modes.includes(this.settings.mode) ? this.settings.mode : modes[0];
+    if (mode === 'zone' && !(map.pois && map.pois.length >= 2)) mode = 'defend';
+    this.mode = mode;
+    this.settings.mode = mode;
+    if (mode === 'zone') this.settings.objective = false;
     this.rng = createRng((this.seed ^ hashString('highway-horde-sim')) >>> 0);
 
     this.world = createCollisionWorld(map);
@@ -94,6 +104,8 @@ export class GameCore {
     // "fits along the centre line".
     this.flowBig = new FlowField(map, { colliders, pad: HEAVY_BODY_RADIUS, mask: MASK_HEAVY });
     this.zgrid = new SpatialHash(map.width, map.height, 64);
+    /** The moving safe zone of an Evac Run (sim/zone.js), else null. */
+    this.zone = mode === 'zone' ? new ZoneDirector(this) : null;
 
     this.tick = 0;
     this.time = 0;
@@ -155,6 +167,10 @@ export class GameCore {
     for (const p of players) this._addPlayer(p, 'alive');
     // Solo would otherwise end at the first knock-down (SPEC §3.4): start with a kit.
     if (this.players.length === 1) this.players[0].selfRevive = true;
+    // Evac Run: the first zone is announced at once; getting there is the prep phase.
+    if (this.zone) this.timer = this.zone.begin();
+    /** Set once the constructor is done: later players join at the zone (zone mode). */
+    this.started = true;
     this._rebuildFlow('all');
   }
 
@@ -253,6 +269,7 @@ export class GameCore {
     if (this.objHitCd > 0) this.objHitCd -= DT;
 
     this._updatePhase();
+    if (this.zone) this.zone.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
     // AI survivors decide now and queue their cmds like everyone else's input.
@@ -303,6 +320,7 @@ export class GameCore {
       bossHp: bossMax > 0 ? clamp01(bossHp / bossMax) : -1,
       objective: this.objective ? { hp: Math.max(0, Math.round(this.objective.hp)), maxHp: this.objective.maxHp } : null,
       readyCount,
+      zone: this.zone ? this.zone.snapshot() : null,
       players: this.players.map((p) => playerSnapshot(this, p)),
       zombies: zs,
       projectiles: this.projectiles.filter((pr) => !pr.dead).map((pr) => ({
@@ -328,6 +346,11 @@ export class GameCore {
     let alive = 0;
     for (const z of this.zombies) if (!z.dead) alive++;
     return alive + this.spawnQueue + this.bossQueue;
+  }
+
+  /** Spawn a zombie of `type` at (x, y) scaled for the current wave (zone harassers, tools). */
+  spawnZombieAt(type, x, y, elite = false) {
+    return spawnZombie(this, type, x, y, elite);
   }
 
   // ---------------------------------------------------------------------------------
@@ -407,6 +430,8 @@ export class GameCore {
       this.timer -= DT;
       let allReady = this.players.length > 0;
       for (const p of this.players) if (!p.ready) { allReady = false; break; }
+      // Evac Run: the vote only skips the rest of the move once everyone is in the zone.
+      if (allReady && this.zone && !this.zone.everyoneIn()) allReady = false;
       if (this.timer <= 0 || allReady) this._startWave(this.wave + 1);
     }
   }
@@ -424,6 +449,7 @@ export class GameCore {
     this.bossQueue = this.waveBosses;
     this.bossTimer = 10;
     startWaveSpawns(this);
+    if (this.zone) this.zone.lock();
     this.emit({ type: 'wave', wave: w, boss });
   }
 
@@ -442,7 +468,8 @@ export class GameCore {
     // on their own and the survivors' own grenades/rockets still land.
     for (const h of this.hazards) if (h.kind === 'acid') h.life = 0;
     for (const pr of this.projectiles) if (pr.kind === 'acid' || !pr.owner) pr.dead = true;
-    dropCrate(this);
+    // (Evac Run: the reward is the supply drop waiting in the next zone.)
+    if (!this.zone) dropCrate(this);
     if (this.settings.waves > 0 && w >= this.settings.waves) {
       this.phase = 'victory';
       this.over = 'victory';
@@ -450,7 +477,7 @@ export class GameCore {
       return;
     }
     this.phase = 'intermission';
-    this.timer = INTERMISSION_TIME;
+    this.timer = this.zone ? this.zone.next() : INTERMISSION_TIME;
   }
 
   _gameOver(reason) {

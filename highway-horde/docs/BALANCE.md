@@ -311,7 +311,66 @@ Demo is understated because bots don't use its explosives.
 The objective takes 59% of its damage from walkers, 18% from runners and 10% from crawlers,
 which is the small fry by design: heavies hunt people.
 
+## Evac Run (the moving safe zone, SPEC §3.7)
+
+```
+node scripts/balance.js --mode zone --maps harlan --diffs normal --sizes 1,4 --profiles average,skilled --seeds 3 --no-mono
+node scripts/balance.js --mode zone --maps highway,truckstop --diffs normal --sizes 1,4 --profiles average --seeds 4 --no-mono
+```
+
+The per-wave tables get zone columns: `move s` = the break before the wave (it ends early
+once everyone is inside and ready), `all in s` = when the whole team was inside the circle,
+`harassers` / `move kills` / `move dmg/pl` = the zombies sent at the team on the way, and
+`blight dmg/pl` = damage taken outside the circle during the wave (also a `blight` row in
+the damage-by-source table). Defend on normal for comparison: average solo median 7.5,
+average 4p 33% finish 15.
+
+| team (normal) | first pass (Harlan) | Harlan County, final | highway + truck stop, final |
+|---|---|---|---|
+| average 1p | median 4, 33% clear 5 | median 7, 100% clear 5, 33% clear 10 | median 9, 75% clear 5, 25% clear 10 |
+| average 4p | median 14, 33% finish 15 | median 15, 67% finish 15 | median 14.5, 50% finish 15 |
+| skilled 1p | median 4 | median 11, 67% clear 10 | |
+| skilled 4p | 67% finish 15 | median 15, 67% finish 15 | |
+
+* **Travel.** Hops between zones (20 seeds × 15 waves): Harlan County 3200-5700 px (median
+  4500, ~140 m), countdown 31-45 s; highway 2200-5700 px, 25-46 s; the small maps 1000-2700
+  px, 22-28 s. Bot teams were all inside after 11-13 s on the first move (from the town) and
+  13-31 s after that on Harlan, so a walking team makes it with 10-20 s to spare and a team
+  that stops to shop or fight still does.
+* **Harassment on the way:** 4-7 zombies on the first move, 10-20 from wave 10, the first
+  group 4 s after the announcement and then one every 3.5-6.5 s (walkers, runners and
+  crawlers in groups of 2-5, 620-950 px ahead of a random survivor, a third of the groups
+  from a flank; count = (4 + 1.4 × wave) × team and difficulty scaling, capped at 20). Bot
+  teams kill most of them before the wave (70-90%; fewer on the short first move) and take
+  ~0 damage on the way; they stop the team, pull it off the road and follow it into the
+  circle, which is what they are for.
+* **The blight** is ~3-11% of the damage taken (the rest is the usual acid, bosses and
+  brutes) and shows up on boss waves and late waves: 0-5 hp per player on most waves, 10-80
+  on a few boss waves when a bot is pushed out while kiting.
+* **What changed from the first pass:**
+  - The solo boss fight: in a small circle the Abomination got a lone bot (100+ blight
+    damage per boss wave, and cornered: solo median 4 on Harlan, 4 on the highway). Boss
+    waves now shrink only to 75% and never below `ZONE.bossMinR` (480 px), the highway's
+    zones grew from 440 to 520 px and the small maps' from 380 to 440 px, and bots near the
+    edge slide along it (circle-kite) instead of backing into the blight. Highway solo went
+    from median 4 to 9.
+  - Bots stop hunting, looting and reviving deep in the blight and score steps out of the
+    circle as bad.
+  - The harassers: groups straight ahead were shot down at range before they mattered; now
+    half of each group are runners and a third of the groups flank.
+  - Small maps: with no POI 3000+ px away, the next zone was any other one, often the
+    neighbour (3 s moves on the truck stop); it is now drawn from the farther half, and
+    never straight back to the one before.
+  - A stall (one of 16 truck stop runs): two walkers wedged by the motel, 450 px out in the
+    blight, never came in, and the bots won't go out for them. A zombie stuck for 12 s out
+    in the blight now re-enters from a spawn box unless a survivor is within 300 px.
+
 ## Open issues
+* **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
+  15, against 33% in defend) and the harassers never really hurt a bot team. Human players,
+  who walk and shoot worse at the same time, should feel them more; if playtests agree it is
+  easy, the levers are `ZONE.harass` (group size, cap) and `ZONE.fog` (blight damage) in
+  shared/zone.js. Samples are small (3-4 runs per cell).
 * **6-player teams have it easiest:** 75% of average 6p teams finish 15, against 33% for 4p.
   More zombies per player (0.7) and faster spawns for big crowds (`SPAWN_PACING.crowdExp`
   0.75) didn't change it; the edge is structural (every class including the medic, and six

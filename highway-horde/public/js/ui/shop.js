@@ -8,6 +8,7 @@ import { perksFor } from '../shared/classes.js';
 import {
   SUPPLY_RADIUS, FRAG_MAX, MOLOTOV_MAX, TURRET, BARRICADE, ARMOR_MAX,
 } from '../shared/constants.js';
+import { nearSupply } from '../shared/zone.js';
 import { h, setText, setClass, setAttr, formatCash } from './dom.js';
 
 const GUN_IDS = WEAPON_IDS.filter((id) => WEAPONS[id].price > 0);
@@ -97,11 +98,11 @@ export function shopState(view, me, map) {
   if (me.state === 'dead') return { open: false, text: 'You can shop again after you respawn', mid: false };
   if (view.phase === 'prep') return { open: true, text: 'Stock up before the first wave', mid: false };
   if (view.phase === 'intermission') return { open: true, text: 'Between waves — everything is on sale', mid: false };
-  const s = map && map.supply;
-  const near = !!s && Math.hypot(me.x - s.x, me.y - s.y) <= SUPPLY_RADIUS;
+  const near = nearSupply(map, view.zone, me.x, me.y, SUPPLY_RADIUS);
+  const where = view.zone ? 'the supply drop in the zone' : 'the supply station';
   return near
-    ? { open: true, text: 'Supply station — shopping mid-wave. Watch your back!', mid: true }
-    : { open: false, text: 'Wave in progress — go to the supply station (green + on the minimap) to shop', mid: true };
+    ? { open: true, text: `${view.zone ? 'Supply drop' : 'Supply station'} — shopping mid-wave. Watch your back!`, mid: true }
+    : { open: false, text: `Wave in progress — go to ${where} (green + on the minimap) to shop`, mid: true };
 }
 
 function ownedSlot(me, id) {

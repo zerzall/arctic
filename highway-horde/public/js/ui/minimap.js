@@ -6,6 +6,10 @@
 // the camera, so up is always where you look. A north marker rides the rim, and the
 // objective, supply station and teammates beyond the window are pinned to the rim so
 // you can always turn toward them.
+//
+// Evac Run (opts.zone): no objective or edge spawns; the safe circle (and the smaller one
+// it shrinks to) is drawn over the map, the blight outside it tinted, and the zone's centre
+// and supply drop pinned to the radar's rim like the objective.
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { currentUiScale } from './uiscale.js';
@@ -17,7 +21,7 @@ const AREA_COLORS = {
 };
 /** Radar mode: world px from the player to the nearer edge of the window. */
 const RADAR_RANGE = 900;
-const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco', 'pier', 'ramp']);
+const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco', 'pier', 'ramp', 'silo']);
 /** North-up mode: maps wider than this (width / height) scroll with the player instead of shrinking to a strip. */
 const SCROLL_ASPECT = 2.6;
 
@@ -37,6 +41,7 @@ function rotRect(g, x, y, w, h, a) {
 export function createMinimap(canvas, map, opts = {}) {
   const g = canvas.getContext('2d');
   let radar = !!opts.radar;
+  const zoneMode = !!opts.zone;
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // markers and labels grow with the rem-sized minimap on big screens.
   let W = 0, H = 0, dpr = 1, u = 1, scale = 1, ox = 0, oy = 0;
@@ -81,8 +86,8 @@ export function createMinimap(canvas, map, opts = {}) {
     }
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
-    for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
-    const ob = map.objective;
+    if (!zoneMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
+    const ob = zoneMode ? null : map.objective;
     if (ob) {
       b.fillStyle = 'rgba(255,196,0,0.35)';
       rotRect(b, ob.x, ob.y, ob.w, ob.h, ob.a);
@@ -171,6 +176,7 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fillRect(sx - 1 * u, sy - 4 * u, 2 * u, 8 * u);
       g.fillRect(sx - 4 * u, sy - 1 * u, 8 * u, 2 * u);
     }
+    if (view.zone) drawZone(view.zone, X(view.zone.x), Y(view.zone.y), X(view.zone.nx), Y(view.zone.ny), k, false);
     // objective pulse when damaged
     if (view.objective && map.objective && view.objective.hp < view.objective.maxHp * 0.35) {
       const a = 0.35 + 0.35 * Math.sin(pulse * 8);
@@ -273,6 +279,8 @@ export function createMinimap(canvas, map, opts = {}) {
     g.translate(-c.x * k, -c.y * k);
     g.drawImage(base, 0, 0);
     g.restore();
+    const zn = view && view.zone;
+    if (zn) drawZone(zn, rx(zn.x, zn.y), ry(zn.x, zn.y), rx(zn.nx, zn.ny), ry(zn.nx, zn.ny), k, true);
     const inside = (x, y, m) => x >= m && x <= W - m && y >= m && y <= H - m;
     // Pin a point outside the window to its rim (along the ray from the centre).
     const pin = (x, y, m) => {
@@ -315,8 +323,31 @@ export function createMinimap(canvas, map, opts = {}) {
         g.fillRect(x - 2 * u, y - 2 * u, 4 * u, 4 * u);
       }
     }
+    // the safe zone's centre and its supply drop, pinned to the rim like the objective
+    if (zn) {
+      let x = rx(zn.x, zn.y), y = ry(zn.x, zn.y);
+      const off = !inside(x, y, 7 * u);
+      if (off) ({ x, y } = pin(x, y, 7 * u));
+      if (off || Math.hypot(x - cx, y - cy) > zn.r * k) {
+        g.strokeStyle = '#000';
+        g.lineWidth = 4 * u;
+        g.beginPath();
+        g.arc(x, y, 5 * u, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = '#4fe3d0';
+        g.lineWidth = 2.2 * u;
+        g.beginPath();
+        g.arc(x, y, 5 * u, 0, Math.PI * 2);
+        g.stroke();
+      }
+      let sx = rx(zn.sx, zn.sy), sy = ry(zn.sx, zn.sy);
+      if (!inside(sx, sy, 5 * u)) ({ x: sx, y: sy } = pin(sx, sy, 5 * u));
+      g.fillStyle = '#56d67a';
+      g.fillRect(sx - 1.2 * u, sy - 4.5 * u, 2.4 * u, 9 * u);
+      g.fillRect(sx - 4.5 * u, sy - 1.2 * u, 9 * u, 2.4 * u);
+    }
     // objective + supply: pinned to the rim when out of range
-    const ob = map.objective;
+    const ob = zoneMode ? null : map.objective;
     if (ob) {
       let x = rx(ob.x, ob.y), y = ry(ob.x, ob.y);
       if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));
@@ -400,6 +431,51 @@ export function createMinimap(canvas, map, opts = {}) {
     g.strokeStyle = 'rgba(255,255,255,0.14)';
     g.lineWidth = u;
     g.strokeRect(0.5, 0.5, W - 1, H - 1);
+  }
+
+  /**
+   * The safe circle at screen (x, y) with world radius z.r (k = screen px per world px), the
+   * circle it shrinks to at (nx, ny), and a tint over the blight outside while it is live.
+   */
+  function drawZone(z, x, y, nx, ny, k, isRadar) {
+    const r = Math.max(2, z.r * k);
+    if (z.stage > 0) {
+      g.save();
+      g.beginPath();
+      g.rect(0, 0, W, H);
+      g.arc(x, y, r, 0, Math.PI * 2, true);
+      g.fillStyle = 'rgba(150,60,110,0.26)';
+      g.fill('evenodd');
+      g.restore();
+    }
+    g.save();
+    if (z.stage === 0) {
+      // announced: a pulsing dashed ring
+      g.setLineDash([5 * u, 4 * u]);
+      g.lineDashOffset = -pulse * 12 * u;
+      g.strokeStyle = `rgba(79,227,208,${0.75 + 0.25 * Math.sin(pulse * 5)})`;
+      g.lineWidth = 2.2 * u;
+    } else {
+      g.strokeStyle = '#4fe3d0';
+      g.lineWidth = 2 * u;
+    }
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
+    if (z.stage >= 1 && (z.nr !== z.r || nx !== x || ny !== y)) {
+      g.strokeStyle = 'rgba(255,255,255,0.85)';
+      g.lineWidth = 1.2 * u;
+      g.beginPath();
+      g.arc(nx, ny, Math.max(2, z.nr * k), 0, Math.PI * 2);
+      g.stroke();
+    }
+    if (!isRadar) {
+      g.fillStyle = '#56d67a';
+      const sx = ox + z.sx * k, sy = oy + z.sy * k;
+      g.fillRect(sx - 1 * u, sy - 4 * u, 2 * u, 8 * u);
+      g.fillRect(sx - 4 * u, sy - 1 * u, 8 * u, 2 * u);
+    }
   }
 
   return {

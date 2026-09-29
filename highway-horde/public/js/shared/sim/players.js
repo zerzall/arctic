@@ -96,6 +96,8 @@ function setSlot(p, i, id) {
 
 /** A clear player spawn point, preferring index i. */
 export function spawnPointFor(game, i) {
+  // Evac Run: late joiners and respawns come back inside the safe zone.
+  if (game.zone && game.started) return game.zone.spawnPoint(i);
   const sp = game.map.playerSpawns;
   if (!sp || !sp.length) return { x: game.map.width / 2, y: game.map.height / 2 };
   for (let k = 0; k < sp.length; k++) {
@@ -858,7 +860,10 @@ function shopOpen(game, p) {
   if (game.phase === 'prep' || game.phase === 'intermission') return true;
   if (game.phase !== 'wave') return false;
   const s = game.map.supply;
-  return !!s && Math.hypot(p.x - s.x, p.y - s.y) <= SUPPLY_RADIUS;
+  if (s && Math.hypot(p.x - s.x, p.y - s.y) <= SUPPLY_RADIUS) return true;
+  // Evac Run: the zone's supply drop is a shop too.
+  const z = game.zone && game.zone.supply;
+  return !!z && Math.hypot(p.x - z.x, p.y - z.y) <= SUPPLY_RADIUS;
 }
 
 /** Wave whose shop stock is on sale: the current wave, or the next one between waves. */

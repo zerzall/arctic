@@ -15,6 +15,8 @@ export function obstaclePad(o) {
   switch (o.kind) {
     case 'tent': return 10;
     case 'tree': return 6;
+    case 'silo': return 8;
+    case 'grave': return 28;
     case 'car': case 'suv': case 'pickup': case 'van': return 5;
     default: return 4;
   }
@@ -53,6 +55,8 @@ export function drawObstacle(g, o, seed = 0) {
     case 'pillar': drawPillar(g, L, W, o.color); break;
     case 'pier': drawPier(g, L, W, o.color); break;
     case 'ramp': drawRamp(g, L, W, o.color, o.solid); break;
+    case 'silo': drawSilo(g, L, W, o.color, rng); break;
+    case 'grave': drawGrave(g, L, W, o.color, rng); break;
     default:
       fillRoundRect(g, -L / 2, -W / 2, L, W, 3, o.color || '#777');
   }
@@ -841,6 +845,56 @@ function drawRock(g, L, W, color, rng) {
   g.fillStyle = 'rgba(70,95,50,0.35)';
   blobPath(g, rng.range(-rx, rx) * 0.4, rng.range(-ry, ry) * 0.4, r * 0.3, rng, 7, 0.5);
   g.fill();
+}
+
+/** Grain silo from above: a round domed roof with its ribbing, a ladder cage and a vent. */
+function drawSilo(g, L, W, color, rng) {
+  const r = Math.min(L, W) / 2;
+  g.fillStyle = 'rgba(0,0,0,0.35)';
+  fillCircle(g, 3, 4, r + 2);
+  const grad = g.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r);
+  grad.addColorStop(0, shade(color, 0.45));
+  grad.addColorStop(0.6, color);
+  grad.addColorStop(1, shade(color, -0.45));
+  g.fillStyle = grad;
+  fillCircle(g, 0, 0, r);
+  g.strokeStyle = 'rgba(0,0,0,0.3)';
+  g.lineWidth = 1;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    g.beginPath();
+    g.moveTo(Math.cos(a) * r * 0.2, Math.sin(a) * r * 0.2);
+    g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(0,0,0,0.6)';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.arc(0, 0, r - 0.5, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = shade(color, -0.3);
+  fillCircle(g, 0, 0, r * 0.18);
+  g.fillStyle = '#3a3c3e';
+  g.fillRect(r * 0.72, -3, r * 0.4, 6);
+  if (rng.chance(0.5)) {
+    g.fillStyle = 'rgba(120,70,40,0.35)';
+    blobPath(g, rng.range(-r, r) * 0.4, rng.range(-r, r) * 0.4, r * 0.35, rng, 7, 0.5);
+    g.fill();
+  }
+}
+
+/** Headstone from above: a slim slab (length along x) with a lichen spot and its shadow. */
+function drawGrave(g, L, W, color, rng) {
+  g.fillStyle = 'rgba(0,0,0,0.35)';
+  g.fillRect(-L / 2 + 2, -W / 2 + 3, L, W);
+  fillRoundRect(g, -L / 2, -W / 2, L, W, Math.min(4, W / 2), color);
+  g.fillStyle = shade(color, 0.3);
+  g.fillRect(-L / 2 + 2, -W / 2 + 1, L - 4, 2);
+  g.fillStyle = 'rgba(80,100,60,0.4)';
+  fillCircle(g, rng.range(-L, L) * 0.25, 0, W * 0.3);
+  // the grave mound in front of it
+  g.fillStyle = 'rgba(40,34,24,0.35)';
+  fillEllipse(g, 0, W / 2 + 14, L * 0.45, 12);
 }
 
 function drawTent(g, L, W, color, roof, rng) {

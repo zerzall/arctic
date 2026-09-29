@@ -197,6 +197,7 @@ export function startApp(deps) {
       const l = prefs.lobby;
       s.setSettings({
         mapId: l.mapId,
+        mode: l.mode,
         difficulty: DIFFICULTY_IDS.includes(l.difficulty) ? l.difficulty : 'normal',
         waves: WAVE_OPTIONS.includes(l.waves) ? l.waves : 15,
         objective: !!l.objective,

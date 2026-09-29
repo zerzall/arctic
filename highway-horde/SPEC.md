@@ -72,12 +72,14 @@ Data tables already written (read them — they are the source of truth):
 ## 2. Maps — `shared/maps.js`
 
 ```js
-export const MAP_LIST;              // [{ id, name, description }] in lobby order
+export const MAP_LIST;              // [{ id, name, description, modes? }] in lobby order;
+                                    // modes: the game modes it plays (absent = every mode)
 export function buildMap(id, seed); // → MapDef, deterministic for (id, seed); unknown id → throws
 ```
 
-Four maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Truck Stop),
-`bridge` (Blackwater Bridge), `checkpoint` (Checkpoint Delta).
+Five maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Truck Stop),
+`bridge` (Blackwater Bridge), `checkpoint` (Checkpoint Delta) and `harlan` (Harlan County,
+`modes: ['zone']`: the Evac Run map, §3.7, built in `shared/maps-harlan.js`).
 
 ```js
 MapDef = {
@@ -110,6 +112,9 @@ MapDef = {
   objective: { kind, name, x, y, w, h, a, hp },  // thing the team defends; also a collider
                                          // kind: 'bus'|'diner'|'apc'|'radio'
   supply: { x, y },                      // supply station (ammo crates + shop mid-wave)
+  pois: [ { name, x, y, r } ],           // points of interest: the Evac Run's safe-zone centres and
+                                         // radii (§3.7), fixed layout; every map has ≥ 5
+  modes?: ['zone'],                      // only on maps that don't play every mode (copied from MAP_LIST)
   overpass: null | {                     // elevated roads (visual; the sim sees only their piers
                                          // and ramp walls, which are ordinary obstacles)
     decks: [ { kind, w, pts: [[x, y, z], ...] } ], // kind 'viaduct'|'ramp'; road surface at height z
@@ -125,13 +130,14 @@ Obstacle = {
   kind,                                  // 'car'|'suv'|'pickup'|'van'|'truck'|'semi'|'bus'|'tanker'
                                          // |'barrier'|'sandbags'|'building'|'wall'|'container'
                                          // |'pump'|'tree'|'rock'|'hesco'|'tent'|'booth'|'guardrail'|'pillar'
-                                         // |'pier'|'ramp'
+                                         // |'pier'|'ramp'|'silo'|'grave'
   x, y, w, h, a,                         // oriented rectangle: centre, full width/height, angle
   color,                                 // body colour (vehicles/buildings)
   solid,                                 // true = blocks bullets/beams/projectiles; false = low cover
   wrecked,                               // vehicles: burnt-out look
   roof,                                  // buildings: roof colour
-  top,                                   // 'pier'/'ramp' only: height of the piece (units)
+  top,                                   // 'pier'/'ramp': height of the piece (units); 'building':
+                                         // optional explicit height (the church tower)
 }
 ```
 
@@ -142,10 +148,12 @@ yellow); 'container' also covers dumpsters, a propane cage and a generator; 'wal
 h ≤ 8 is a thin fence (solid:false), thicker is masonry; 'pillar' = canopy posts ('pier' =
 an overpass column up to its pier cap, `top` high; 'ramp' = a piece of ramp embankment, +x
 climbing toward the deck, solid:false while it is below the eye); 'tree' is
-the trunk with a 'tree_canopy' decor centred on it. Crosswalk lines run across the road
+the trunk with a 'tree_canopy' decor centred on it; 'silo' is a round grain silo (the smaller
+side is its diameter, 300 high, solid); 'grave' a headstone (30 high, solid:false, low cover
+heavies can't trample). Crosswalk lines run across the road
 and `w` is the stripe length. `roof` is null for kinds without a roof. Water areas are
 axis-aligned. Map sizes are within 2400..4000 x 1600..3000 (checkpoint is 3000 x 3000),
-except the long highway (7600 x 2200). `OVERPASS` (maps.js) holds the deck structure depths:
+except the long highway (7600 x 2200) and Harlan County (7200 x 7200). `OVERPASS` (maps.js) holds the deck structure depths:
 a deck of height z has slab + girders down to z − depth (36) and pier caps down to
 z − depth − cap (62); a ramp embankment blocks walking from `walk` (8) units of rise and
 shots from `low` (44). Walkable ground under a deck keeps ≥ 130 units of headroom.
@@ -153,8 +161,11 @@ shots from `low` (44). Walkable ground under a deck keeps ≥ 130 units of headr
 Rules: every `playerSpawn` and the `supply` point must be reachable from every
 `zombieSpawn` for a 28 px-diameter walker; nothing spawns inside an obstacle or water;
 the objective sits roughly central with open ground around it; 60–160 obstacles per map
-(the long highway: up to 300). Zombie spawn rects hug the map edges or sit at the foot of an
-overpass ramp.
+(the long highway: up to 300, Harlan County: up to 900). Zombie spawn rects hug the map edges
+or sit at the foot of an overpass ramp. Evac Run maps (`modes: ['zone']`) skip the
+defend-layout rules (central objective, supply 250–450 px from it); Harlan County's radio mast
+is its objective collider and landmark, the team starts on Main Street next to the supply
+station, and every POI is reachable from every other.
 Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
 
 ---------------------------------------------------------------------------------------
@@ -167,7 +178,8 @@ Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
 import { Game } from './sim.js';
 const game = new Game({
   mapId, seed,                            // map built internally with buildMap(mapId, seed)
-  settings: { difficulty, waves, objective, friendlyFire },   // see DEFAULT_SETTINGS
+  settings: { difficulty, waves, objective, friendlyFire, mode },   // see DEFAULT_SETTINGS;
+                                          // mode 'defend' (default) | 'zone' (§3.7)
   players: [ { id, name, color, cls, bot } ],  // id: 1..255 (host = 1), color: 0..5, cls: CLASS_IDS
                                           // bot: true = AI survivor (§3.6), optional;
                                           // botSkill: 0..1 (default 1) how well it plays
@@ -426,6 +438,10 @@ so they prefer nearby players and chew on the objective when nobody is close.
 end at the first knock-down); only at game start, respawns never hand out a kit. Nobody
 fires once the game is over (`gameover`/`victory`); clients' shot prediction agrees.
 
+**Flow field range.** `FlowField.maxDist` (default Infinity) stops a rebuild's expansion at
+that path distance; cells beyond stay unreached and lead to the nearest reached cell
+(`sample`), so a very big map rebuilds only around its targets (§3.7 sets it).
+
 ### 3.5 Required tests (`tests/sim.test.js`, `tests/movement.test.js`, `tests/flowfield.test.js`)
 - Determinism: two Games with the same seed and scripted inputs produce identical snapshots
   after 3000 ticks.
@@ -486,6 +502,62 @@ average human in `scripts/balance.js` (docs/BALANCE.md). Behaviour:
   per tick. Tests: `tests/bots.test.js` (brain, every map with an idle human + 3 bots
   clearing waves 1–3 with no bot stuck, determinism, cost), `tests/bots-session.test.js`.
 
+### 3.7 Evac Run — settings.mode 'zone' (`shared/zone.js`, `shared/sim/zone.js`)
+
+`shared/zone.js` holds the shared part: `MODE_LIST` / `MODE_IDS` (`'defend'` first, the
+default), `mapModes(map)`, `mapSupportsMode`, `fixModeCombo(mapId, mode, changed)`, the tuning
+table `ZONE`, `moveTime(d, first)`, `fogDps(outside, wave)`, `shrinkCircle`, and the view
+helpers `zoneEdgeDist`, `insideZone`, `zoneName`, `nearSupply`. `game.mode` is the mode
+played: the one asked for when the map plays it (else the map's first) and 'defend' on a map
+without ≥ 2 POIs; a zone game has no objective (`settings.objective` false). `game.zone` is a
+`ZoneDirector` (null in defend):
+
+- **Sequence.** The team starts at the POI nearest the first player spawn. Each announcement
+  picks the next POI from the director's own seeded stream (`zoneSequence(map, seed, start, n)`
+  gives the same order): never the current one, uniformly among POIs `ZONE.pick.near..far`
+  (3000..6200) px away, or (a small map with none that far) among the farther half of the
+  others; never straight back to the zone before the current one unless nothing else is left.
+- **Move** (prep and every intermission, zone stage 0): the announced circle is the POI's
+  (x, y, r); the phase lasts `moveTime(d)` = clamp(12 + d / 170, 22, 60) s rounded (+12 s
+  before wave 1), d = distance from the last zone. The ready vote only ends it early when
+  every living survivor is inside the circle. A supply drop lands at an open spot near the
+  centre (`zone.supply`, a 'drop' event): a weapon crate (next wave's pool), armour, a frag,
+  1 + ⌊n/2⌋ ammo and 1 + ⌊n/3⌋ first-aid pickups that last the move + 60 s; mid-wave the
+  shop also works within SUPPLY_RADIUS of it. Harassers: from 4 s in, every ~5 s a group of
+  2–5 walkers/runners/crawlers 620–950 px from a random living survivor (toward the zone, a
+  third of the groups from a flank, ≥ 600 px from everyone), round((4 + 1.4 × wave) × crowd) of them per move (crowd = (1 + 0.3 (n − 1))
+  × difficulty.count), at most 20. No blight while moving.
+- **Hold** (the wave starts: stage 1): the circle locks for `ZONE.hold` (38) s, then
+  **shrinks** (stage 2) over `ZONE.shrink` (22) s, eased, to `shrinkTo` (0.58; on boss
+  waves 0.75 but never below `bossMinR` 480 px, the Abomination needs room) × r around a
+  new open, connected centre inside it; then **final** (stage 3) until the clear.
+- **Blight** (wave phase only): outside the live circle a survivor loses
+  `fogDps(t, wave)` = min(22, 4 + 1.6 t) × (1 + 0.05 (wave − 1)) hp/s, t = seconds outside
+  (decays 2× as fast inside), straight off hp (armour doesn't absorb it), reported like acid;
+  a downed survivor outside bleeds out 1.5× as fast instead (never instantly).
+- **Spawns.** Wave zombies and bosses (and stuck zombies' re-entries) use spawn boxes on
+  open, connected ground in a ring 380–880 px past the circle the team heads for (28
+  bearings), preferring boxes ≥ 700 px from every survivor; from the shrink on, 35 % of the
+  groups use a ring 140–320 px past the new circle's edge (≥ 420 px from survivors).
+  A zombie stuck for 12 s out in the blight (> 60 px past the live circle) re-enters that
+  way unless a survivor is within 300 px (650 elsewhere), so a wave can't stall on it.
+- **Respawn / late join.** `spawnPointFor` puts respawns and late joiners on free spots
+  inside the live circle (players built with the game still start at the map's spawns).
+  The wave clear drops no weapon crate at the station (the drop is the reward).
+- **Nav.** On maps over 30 M px² the zombie fields get `maxDist = ZONE.navRange` (2800).
+- **Bots**: during the move they shop wherever they are, then head for a spot in the circle
+  (sprinting; pickups only inside it, or when time allows), anchor on the circle (a human
+  well inside it is anchored on instead), follow the shrink target, never hunt or revive deep
+  in the blight, never kite out of the circle (near its edge they slide along it; mid-wave
+  they keep inside the shrink target),
+  and resupply at the nearest of the station and the drop inside the circle.
+- Events: `zone` (stage 'next' | 'lock' | 'shrink', poi, x, y, r, time in whole s).
+  `game.zone.stats` = { fog, harassed } running totals for tools.
+- Tests: `tests/zone.test.js` (modes, POIs and their reachability on every map, the sequence,
+  move time, lock/shrink timing, the blight, spawn rings, stuck re-entry, the drop, respawns,
+  harassers, the wire, lobby rules and prefs, bot teams through the zones, determinism, the
+  host tick on Harlan County vs the highway).
+
 ---------------------------------------------------------------------------------------
 
 ## 4. Snapshot (render state)
@@ -505,6 +577,11 @@ Snapshot = {
   bossHp,                   // 0..1 combined hp of living bosses, or -1 if none
   objective,                // { hp, maxHp } or null when disabled
   readyCount,               // players ready to skip intermission
+  zone,                     // Evac Run (§3.7), else null: { stage 0 move|1 hold|2 shrink|3 final,
+                            //   poi (announced/locked POI index), from (the previous one),
+                            //   x, y, r (live circle; while moving the announced one),
+                            //   nx, ny, nr (the circle it heads for: the shrink target),
+                            //   t, total (s left in the stage and its length), sx, sy (supply drop) }
   players: [ {
     id, x, y, angle,
     state,                  // 'alive'|'downed'|'dead'
@@ -578,7 +655,8 @@ All events carry the fields listed; consumers ignore unknown types.
 | `wave` | wave, boss | wave started (boss = boss wave) |
 | `bossspawn` | id, x, y | boss appeared |
 | `waveclear` | wave, bonus | wave cleared |
-| `drop` | x, y | supply crate landed |
+| `drop` | x, y | supply crate landed (Evac Run: the zone's supply drop) |
+| `zone` | stage, poi, x, y, r, time | Evac Run: a zone was announced ('next'), locked ('lock') or started to shrink ('shrink') |
 | `gameover` | reason | 'wiped'|'objective' |
 | `victory` | — | all waves cleared |
 
@@ -604,9 +682,12 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 6 (3 added the jump state and, separately, the new guns' fields; both
-together are 4; 5 appends the belt-fed HMG to the weapon table; 6 replaces the jump byte
-with the climbing vertical state): an InputCmd's buttons carry a `jump` bit (the climb key
+u8. PROTOCOL_VERSION 7 (3 added the jump state and, separately, the new guns' fields; both
+together are 4; 5 appends the belt-fed HMG to the weapon table; 6 was used twice, by
+the Evac Run zone and by climbing, which merged as 7). The Evac Run zone: a header flag and
+a 25-byte block after the objective — stage, poi, from u8, the two circles' centres as
+positions and radii at 0.25 px, the stage timer and length at 0.01 s, the drop's position —
+and the binary `zone` event. Climbing: an InputCmd's buttons carry a `jump` bit (the climb key
 too); each snapshot player ends with its vertical state, exact — `zq` u16, `vzq` i8,
 `jumpCd` u8, `climbT` u8 and, only while climbing, `climbTo` u16 (`z` = zq × Z_UNIT on
 decode); a zombie off the ground sets bit 128 of its flags byte (above every ZFLAG) and
@@ -650,7 +731,8 @@ export async function joinGame({ code, via, name, color, cls })  // → Session;
 session.isHost, session.localId, session.code, session.inviteUrl, session.transport
 session.roster      // [{ id, name, color, cls, ready, ping, host, bot? }]  (lobby + in game;
                     //   bot: true on AI survivors, see "Bots" below)
-session.settings    // { mapId, difficulty, waves, objective, friendlyFire }
+session.settings    // { mapId, mode, difficulty, waves, objective, friendlyFire } (mergeSettings
+                    //   in net/lobby-rules.js keeps map + mode compatible: the pick wins)
 session.inGame      // true between 'start' and 'lobby'
 session.on(event, fn) / session.off(event, fn)
    // 'roster' (roster), 'settings' (settings), 'chat' ({ pid, name, text, system }),
@@ -731,7 +813,7 @@ carried into the next produced cmd (never lost, never duplicated).
 ### 7.1 Classic top-down renderer — `render/renderer.js`
 
 ```js
-export function createRenderer(canvas, { map, quality })  // quality 'high'|'low'
+export function createRenderer(canvas, { map, quality, mode })  // quality 'high'|'low'; mode 'zone' (§3.7)
 r.render(view, { localId, roster, now, dt, cursor /*{x,y} screen px*/, settings })
    // settings: { screenShake: bool, showNames: bool, lighting: bool }
 r.addEvents(events, { localId })     // particles, decals, tracers, shake, hit markers
@@ -761,7 +843,12 @@ vignette for the local player. Overhead, above the entities: tree canopies, lamp
 traffic-signal arms, and the overpass decks (MapDef.overpass) as a see-through layer with
 their shadow, lane paint, parapets and deck wrecks, fading further while a player stands
 under a deck so everyone beneath stays visible. `renderMapPreview` shows a very long map
-(the highway) as the stretch around its objective.
+(the highway) as the stretch around its objective, and an Evac Run map with its POI rings
+instead of the objective and the spawn zones. Evac Run (`render/zone2d.js`, from
+`view.zone`): the safe circle as a glowing teal ring (dashed while only announced), the white
+dashed circle it shrinks to, a violet haze over the blight during a wave, the supply drop
+with a pulsing beacon (and a light), and while the player is outside the circle an edge
+arrow with the zone's name and distance; the objective's corner brackets are not drawn.
 
 ### 7.2 Input — `ui/input.js`
 ```js
@@ -815,6 +902,18 @@ everything but that button through. A touch button that opens the shop or pause 
 swallows the tap's trailing click (it would land on what just opened, e.g. buy a card).
 The HUD weapon panel shows the weapon actually in hand (`activeWeapon()`: a downed
 survivor's pistol).
+Lobby: a Mode row (Defend / Evac Run, with the mode's description) above difficulty; a map
+card that plays only some modes carries a tag ("Evac Run only") and picking it switches the
+mode; the objective toggle is disabled (Off) in Evac Run; `prefs.lobby.mode` is stored and
+validated (`ui/storage.js`).
+Evac Run HUD (`ui/zonehud.js`, `createHud(…, { mode: 'zone' })`): a panel under the compass
+("MOVE TO GAS-N-GO · Zone locks in 42 s · 80 m away", "HOLD …", "THE ZONE IS SHRINKING",
+"FINAL CIRCLE", with a timer bar; green once you're in), a banner + sting for each new zone
+and each shrink, and while you stand in the blight a pulsing "YOU ARE OUTSIDE THE SAFE ZONE"
+warning with the distance, a violet screen edge and a warning tone every 1.6 s. The compass
+shows the zone as a teal ring with the distance to its edge (no objective ◆) and the drop as a
+green +; the minimap/radar draws the live circle (dashed while announced), the shrink
+target, the tinted blight and the drop, pinning the zone and the drop to the radar's rim.
 HUD: health/armour/stamina, weapon slots with ammo, cash, wave + remaining + phase timer,
 objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed, chat,
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
@@ -858,6 +957,8 @@ audio.update(view, { localId, dt })          // loops: minigun spin, flamethrowe
                                              // ambience by nearby zombie count, low-hp heartbeat
 audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'
                 //  |'gameover'|'victory'|'countdown'|'ready'
+                //  |'zone' (a new safe zone / the shrink: radio click + bright two-note call)
+                //  |'zonewarn' (short double beep while standing in the blight)
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
@@ -939,6 +1040,16 @@ effects3d.js    particles, tracers, muzzle flashes, explosions, arcs, beams, sha
 viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
 overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
                 damage-direction arcs, off-screen arrows, low-hp vignette
+zone3d.js       Evac Run (ctx.mode 'zone', built at creation so the warm-up compiles it): the
+                zone wall (a 560-unit teal curtain on the circle with rising streaks and a
+                bright ground seam, fading to 10 % within ~50–520 units of the camera and
+                ignoring most of the fog), the low white curtain of the shrink target, the
+                violet blight haze on the ground outside during a wave, light columns over
+                the announced zone and the supply drop (+ the crate, lit through the pool),
+                violet thicker fog while the player stands in the blight (the HUD adds the violet edge), and
+                overlay markers: the zone (name + distance, pinned to the screen edge with an
+                arrow) and a SUPPLY tag; hides the objective marker
+world-rural.js  Harlan County's kinds: grain silos (300) and headstones (30)
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
 world-tex.js    procedural world textures (window/neon atlas, chain-link mask, water normals)
@@ -975,7 +1086,7 @@ frame = { dt, now, localId, roster, local /* view record of the local player or 
 **Public API** (same shape as §7.1 so `ui/match.js` can use either renderer):
 ```js
 import { createRenderer3D } from './render3d/renderer3d.js';
-const r = createRenderer3D(canvas, { map, quality });
+const r = createRenderer3D(canvas, { map, quality, mode });   // mode 'defend' | 'zone' (→ ctx.mode)
 r.render(view, { localId, roster, now, dt, look: { yaw, pitch }, settings })
    // settings: { screenShake, showNames, lighting,
    //   fov: horizontal degrees measured on a 4:3 frame (Hor+; default 80 → 64.4° vertical,
@@ -1133,7 +1244,7 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through eight scenarios in fresh browser contexts (a–f force the classic
+  Chromium through nine scenarios in fresh browser contexts (a–f force the classic
   top-down view in localStorage; g and h play first person at quality 'low', 960x540): solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
   prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
@@ -1157,6 +1268,14 @@ is `r.getCamera()` (the spectated teammate's chase camera while dead).
   relay in first person — each camera sees the other, the client's W moves it along
   its own yaw on the host, and the host sees the client jump. Headless Chromium renders WebGL with SwiftShader (software), so
   g/h are written to hold at a few frames per second.
+  Scenario i (zone): Play Solo (top-down), the lobby's Mode row and the Evac Run-only Harlan
+  County card keep map and mode compatible (the pick wins), two bots; the zone is announced
+  (snapshot, zone panel), the player walks toward it with the WASD combination the shared
+  movement code says gets closest, the wave locks the circle and the player, still outside,
+  gets the warning and loses health to the blight; then a first-person game on Harlan County
+  (quality 'low') checks the 3D zone wall on the announced circle, the compass and the panel.
+  (Software WebGL draws the big map well under 1 fps here, and a host rendering that rarely
+  feeds its own survivor idle input, so the walking part plays top-down.)
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,

@@ -2,8 +2,9 @@
 
 A first-person co-op zombie shooter for 1–6 players that runs in the browser. Pick a
 survivor, hold the line on a jammed highway, a desert truck stop, a river bridge or an
-army checkpoint, and gun down wave after wave of the dead with your friends. Nothing to
-install: one person hosts, everyone else opens the invite link.
+army checkpoint — or run for the next safe zone across Harlan County — and gun down wave
+after wave of the dead with your friends. Nothing to install: one person hosts, everyone
+else opens the invite link.
 
 ![First-person view: survivors holding Highway 9 as the horde comes up the road](docs/screenshot.jpg)
 
@@ -37,11 +38,28 @@ install: one person hosts, everyone else opens the invite link.
   | Boom | Demolitions | Bigger explosions and extra grenades |
   | Tank | Heavy | 150 health and a vest |
 
-- **4 maps**, each built around something to defend: a school bus in a pileup that
+- **2 game modes**:
+  - **Defend** (the classic): hold one spot against every wave, guarding the objective
+    (or just surviving with it switched off).
+  - **Evac Run**: every wave the safe zone moves to a new place on the map, a bit like a
+    battle royale's circle. A countdown shows where to go (a teal ring on the compass, the
+    minimap and a glowing wall you can see from across the map) and how long you have;
+    a supply drop with ammo, first aid, armour and a weapon crate waits inside, and
+    stragglers harass you on the way. When the wave starts the circle locks; later it
+    shrinks to a smaller one inside it. Outside it the blight takes more and more health
+    every second (armour doesn't help, downed survivors bleed out faster), and late in the
+    wave zombies walk out of it. Clear the wave and the next zone is announced.
+- **5 maps**: four built around something to defend — a school bus in a pileup that
   stretches for miles down Highway 9 (two crossroads with dead traffic lights, a gas
   station and a motel, and the I-44 overpass crossing overhead on its piers, with the horde
   coming down the ramps), a diner full of survivors, an APC broken down in the middle of a
-  bridge, and a radio tower at a crossroads checkpoint.
+  bridge, and a radio tower at a crossroads checkpoint (each also plays the Evac Run over
+  its own spots) — and **Harlan County**, a big square of farm country made for the Evac
+  Run: Main Street in the town of Harlan, the Gas-N-Go, Haskell Farm with its barns and
+  silos, St. Jude's church and graveyard, a field hospital behind HESCO walls, the I-70
+  interchange with its ramps, Miller Quarry & Lumber, the radio mast on Radio Hill, the
+  Shady Pines trailer park and the marina on Lake Harlan, joined by county roads through
+  fields and woods.
 - **First person, in 3D.** You see the road over your own gun: your flashlight
   cutting through the dark, the horde coming out of the fog, teammates fighting beside
   you with their name tags overhead. A compass strip points to the objective and the supply station, a
@@ -183,7 +201,10 @@ In the classic top-down view the mouse points where you shoot and nothing is cap
   get down. It buys you time, not safety: zombies grab your legs on a car roof, runners
   and walkers climb up after you, brutes knock you off and spitters still lob acid.
   Buildings, tall walls and trucks are too high (trucks only from a roof next to them).
-- The shop is open between waves. Mid-wave, you can only buy at the supply station.
+- The shop is open between waves. Mid-wave, you can only buy at the supply station (in
+  an Evac Run also at the zone's supply drop).
+- Evac Run: leave for the next zone as soon as it's announced, and press N once you're
+  in to start the wave early. When the circle shrinks, head for the white ring.
 - Every fifth wave brings a boss. Save a frag or two for it.
 
 ## Development
@@ -195,8 +216,9 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 ```bash
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
-                            #   first-person solo and first-person 2-player relay
+                            #   first-person solo, first-person 2-player relay and an Evac Run
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
+node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 ```
 
 The simulation is 2D and deterministic (a flat ground plane, like classic Doom-style

@@ -87,6 +87,7 @@ export function interpolateSnapshots(a, b, u) {
     bossHp: b.bossHp,
     objective: b.objective ? { ...b.objective } : null,
     readyCount: b.readyCount,
+    zone: blendZone(useA, b, u),
     players: blendList(useA, b, 'players', u, true, true),
     zombies: blendList(useA, b, 'zombies', u, true, true),
     projectiles: blendList(useA, b, 'projectiles', u, false),
@@ -95,5 +96,21 @@ export function interpolateSnapshots(a, b, u) {
     barricades: b.barricades,
     hazards: b.hazards,
     events: [],
+  };
+}
+
+/** Evac Run zone (SPEC §4): the shrinking circle and the timers glide between snapshots. */
+function blendZone(a, b, u) {
+  const zb = b.zone;
+  if (!zb) return null;
+  const za = a && a.zone;
+  if (!za || za.stage !== zb.stage || za.poi !== zb.poi) return { ...zb };
+  const k = Math.max(0, Math.min(1, u));
+  return {
+    ...zb,
+    x: za.x + (zb.x - za.x) * k,
+    y: za.y + (zb.y - za.y) * k,
+    r: za.r + (zb.r - za.r) * k,
+    t: za.t + (zb.t - za.t) * k,
   };
 }

@@ -84,22 +84,22 @@ function gameCanvas(kind, fresh = false) {
 }
 
 /** First-person renderer when the view setting asks for it and it can run, else top-down. */
-function createViewRenderer(ctx, map) {
+function createViewRenderer(ctx, map, mode) {
   const { deps, prefs } = ctx;
   const quality = prefs.settings.quality;
   if (prefs.settings.view !== 'topdown' && typeof deps.createRenderer3D === 'function' && webglOk(ctx)) {
     const canvas = gameCanvas('webgl');
     try {
-      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality }) };
+      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality, mode }) };
     } catch (err) {
       console.warn('[game] the first-person view failed to start, using the classic view', err);
       ctx.webgl = false;
       const c2 = gameCanvas('2d', true);
-      return { fps: false, canvas: c2, renderer: deps.createRenderer(c2, { map, quality }), fellBack: true };
+      return { fps: false, canvas: c2, renderer: deps.createRenderer(c2, { map, quality, mode }), fellBack: true };
     }
   }
   const canvas = gameCanvas('2d');
-  return { fps: false, canvas, renderer: deps.createRenderer(canvas, { map, quality }), fellBack: prefs.settings.view !== 'topdown' };
+  return { fps: false, canvas, renderer: deps.createRenderer(canvas, { map, quality, mode }), fellBack: prefs.settings.view !== 'topdown' };
 }
 
 /**
@@ -132,7 +132,9 @@ export function startMatch(ctx, session) {
     flashToast(ok ? 'Invite link copied' : 'Couldn\'t copy — share the room code instead', ok ? 'good' : 'bad');
   }
 
-  const made = createViewRenderer(ctx, map);
+  // Evac Run (SPEC §3.7): the renderers build the zone wall, the HUD its zone panel
+  const mode = (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
+  const made = createViewRenderer(ctx, map, mode);
   const { renderer, canvas, fps } = made;
   screen.classList.toggle('view-fps', fps);
   const input = createInput(canvas, {
@@ -141,7 +143,7 @@ export function startMatch(ctx, session) {
   });
   const hud = createHud(hudEl, {
     map, renderClassPortrait: deps.renderClassPortrait, audio, invite,
-    view: fps ? 'fps' : 'topdown', minimapRotate: prefs.settings.minimapRotate,
+    view: fps ? 'fps' : 'topdown', minimapRotate: prefs.settings.minimapRotate, mode,
   });
   hud.setRoster(session.roster, session.localId);
   audio.setMap(map);

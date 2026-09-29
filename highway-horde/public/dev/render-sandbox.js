@@ -32,7 +32,7 @@ const opt = {
   paused: params.get('pause') === '1',
 };
 
-const REAL_MAPS = ['highway', 'truckstop', 'bridge', 'checkpoint'];
+const REAL_MAPS = ['highway', 'truckstop', 'bridge', 'checkpoint', 'harlan'];
 
 async function loadMaps() {
   try {

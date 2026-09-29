@@ -1179,7 +1179,8 @@ describe('balance and robustness', () => {
 
 // -------------------------------------------------------------------------------------
 describe('every map', { skip: !Game && 'shared/maps.js not available' }, () => {
-  for (const { id } of MAP_LIST) {
+  // (Maps that only play the Evac Run have their own tests: tests/zone.test.js.)
+  for (const { id } of MAP_LIST.filter((m) => !m.modes || m.modes.includes('defend'))) {
     test(`${id}: zombies from every spawn reach a player within 60 s (nobody stuck)`, () => {
       const g = new Game({ mapId: id, seed: 4242, settings: { difficulty: 'normal', waves: 15, objective: false }, players: [{ id: 1, name: 'Bait', color: 0, cls: 'soldier' }] });
       g.phase = 'intermission';

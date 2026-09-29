@@ -2,7 +2,9 @@
 // intercardinals, the numeric heading under a centre notch, and markers for the objective
 // (yellow diamond + distance), the supply station (green +) and teammates (their colour;
 // downed ones blink red). A marker outside the visible arc sticks to the nearer edge with
-// an arrow, so "which way is the bus?" always has an answer.
+// an arrow, so "which way is the bus?" always has an answer. In an Evac Run the safe zone
+// takes the objective's place: a big teal ring marker with the distance to its edge, and
+// the supply drop gets its own green +.
 //
 // Drawn into a small canvas; skipped when nothing it shows changed (heading, markers).
 
@@ -20,7 +22,8 @@ const PX_PER_M = 32;
  * @param {HTMLCanvasElement} canvas sized by CSS
  * @param {object} map MapDef (objective, supply)
  */
-export function createCompass(canvas, map) {
+export function createCompass(canvas, map, opts = {}) {
+  const zoneMode = !!opts.zone;
   const g = canvas.getContext('2d');
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // labels grow with the rem-sized strip on big screens.
@@ -86,6 +89,8 @@ export function createCompass(canvas, map) {
       marks.push({ delta: angleDelta(yaw, Math.atan2(dy, dx)), kind, color, label, d });
     };
     if (map.supply) add(map.supply.x, map.supply.y, 'supply', '#56d67a');
+    const z = view && view.zone;
+    if (z) add(z.sx, z.sy, 'supply', '#56d67a');
     if (view) {
       for (const p of view.players || []) {
         if (p.id === localId || p.state === 'dead') continue;
@@ -94,7 +99,12 @@ export function createCompass(canvas, map) {
         add(p.x, p.y, 'mate', p.state === 'downed' ? '#ff5252' : PLAYER_COLORS[r ? r.color : 0] || '#fff');
       }
     }
-    if (map.objective) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
+    if (map.objective && !zoneMode) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
+    if (z && pos) {
+      add(z.x, z.y, 'zone', '#4fe3d0');
+      const zm = marks[marks.length - 1];
+      if (zm && zm.kind === 'zone') zm.d = Math.max(0, Math.hypot(z.x - pos.x, z.y - pos.y) - z.r);
+    }
     let key = `${W}:${H}:${yaw.toFixed(3)}`;
     for (const m of marks) key += `|${m.kind}${m.color}${m.delta.toFixed(2)}${Math.round(m.d / PX_PER_M)}`;
     if (key === lastKey) return;
@@ -151,6 +161,21 @@ export function createCompass(canvas, map) {
           g.closePath();
           g.stroke();
           g.fill();
+        } else if (m.kind === 'zone') {
+          // safe zone: a teal ring with a dot, bigger than everything else
+          g.strokeStyle = 'rgba(0,0,0,0.85)';
+          g.lineWidth = 4.5 * u;
+          g.beginPath();
+          g.arc(0, 0, 7 * u, 0, Math.PI * 2);
+          g.stroke();
+          g.strokeStyle = m.color;
+          g.lineWidth = 2.5 * u;
+          g.beginPath();
+          g.arc(0, 0, 7 * u, 0, Math.PI * 2);
+          g.stroke();
+          g.beginPath();
+          g.arc(0, 0, 2.2 * u, 0, Math.PI * 2);
+          g.fill();
         } else if (m.kind === 'supply') {
           g.strokeRect(-1.5 * u, -5 * u, 3 * u, 10 * u);
           g.strokeRect(-5 * u, -1.5 * u, 10 * u, 3 * u);
@@ -177,12 +202,12 @@ export function createCompass(canvas, map) {
     g.fillStyle = '#f3efe6';
     g.textBaseline = 'bottom';
     g.fillText(String(hd).padStart(3, '0'), cx, H - 1 * u);
-    // objective distance, next to its marker when it's roughly ahead
-    const obj = marks.find((m) => m.kind === 'objective');
+    // objective (or safe zone) distance, next to its marker when it's roughly ahead
+    const obj = marks.find((m) => m.kind === 'zone') || marks.find((m) => m.kind === 'objective');
     if (obj && Math.abs(obj.delta) <= HALF_ARC) {
       const x = xOf(obj.delta);
       g.font = `700 ${Math.round(10.5 * u)}px "Barlow Condensed", system-ui, sans-serif`;
-      g.fillStyle = '#ffd766';
+      g.fillStyle = obj.kind === 'zone' ? '#8ff3e6' : '#ffd766';
       g.textBaseline = 'middle';
       g.textAlign = x > W - 40 * u ? 'right' : 'left';
       g.fillText(`${Math.round(obj.d / PX_PER_M)}m`, x + (g.textAlign === 'left' ? 9 : -9) * u, H * 0.3);
