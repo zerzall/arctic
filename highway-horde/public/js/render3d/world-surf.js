@@ -18,8 +18,10 @@ export const DET = Object.freeze({
   none: 0, brick: 1, concrete: 2, siding: 3, corrugated: 4, panel: 5, char: 6, wood: 7, fabric: 8,
   bark: 9, rubber: 10, shingle: 11, hesco: 12, stucco: 13, rock: 14, glass: 15, asphalt: 16,
   slab: 17, grass: 18, gravel: 19, rust: 20, plastic: 21, dirt: 22,
+  // (macro: raw noise fields for the world-space weathering, not a surface)
+  macro: 23, plaster: 24, tile: 25, metalroof: 26, paver: 27, cracked: 28, strata: 29, crackmacro: 30, sand: 31,
 });
-const LAYERS = 23;
+const LAYERS = 32;
 
 /**
  * World units covered by one repeat of each layer (1 unit ≈ 3 cm): brick courses ≈ 9 cm,
@@ -30,6 +32,7 @@ Object.entries({
   none: 64, brick: 48, concrete: 96, siding: 64, corrugated: 36, panel: 48, char: 40, wood: 40, fabric: 14,
   bark: 36, rubber: 18, shingle: 56, hesco: 30, stucco: 40, rock: 60, glass: 44, asphalt: 30,
   slab: 128, grass: 40, gravel: 26, rust: 44, plastic: 20, dirt: 44,
+  macro: 256, plaster: 64, tile: 40, metalroof: 64, paver: 64, cracked: 90, strata: 70, crackmacro: 240, sand: 44,
 }).forEach(([k, v]) => { DET_TILE[DET[k]] = v; });
 
 // ---- tileable noise on the N×N grid --------------------------------------------------------
@@ -410,6 +413,183 @@ function recipes(F) {
       }
       return 2.6;
     },
+
+    macro(h, a, r) {
+      // not a surface: four raw tileable noise fields (R broad, G mid, B vertical streaks, A blotches)
+      // the world-space weathering of the lit materials samples (world-mat.js)
+      h.set(F.f4); a.set(F.f8); r.set(F.f16);
+      return 0;
+    },
+
+    plaster(h, a, r) {
+      // painted plaster: hairline cracks, and patches where the paint has peeled off
+      for (let i = 0; i < N * N; i++) {
+        const m = F.f8[i] * 0.55 + F.f32[i] * 0.45;
+        const peel = smooth(0.625, 0.645, m);
+        const rim = smooth(0.615, 0.63, m) - smooth(0.65, 0.67, m);
+        const crack = smooth(0.03, 0.0, F.w16.f2[i] - F.w16.f1[i]) * (F.w16.id[i] > 0.5 ? 1 : 0);
+        h[i] = 0.55 - peel * 0.22 + rim * 0.1 - crack * 0.3 + (F.f64[i] - 0.5) * 0.06;
+        a[i] = 0.5 + (F.f4[i] - 0.5) * 0.12 - peel * 0.05 + rim * 0.04 - crack * 0.16 - smooth(0.6, 0.85, F.streak[i]) * 0.1 + (F.f64[i] - 0.5) * 0.05;
+        r[i] = 0.6 + peel * 0.22 + (F.f16[i] - 0.5) * 0.1;
+      }
+      return 1.6;
+    },
+
+    tile(h, a, r) {
+      // barrel clay roof tiles in columns, each row overlapping the one below
+      const cols = 8, rows = 8, cw = N / cols, rh = N / rows;
+      for (let y = 0; y < N; y++) {
+        const row = Math.floor(y / rh), fy = (y - row * rh) / rh;
+        for (let x = 0; x < N; x++) {
+          const i = y * N + x;
+          const col = Math.floor(x / cw), fx = (x - col * cw) / cw;
+          const curve = Math.sin(fx * Math.PI);
+          const tone = hash2(col + row * 7, 11) - 0.5;
+          h[i] = 0.15 + curve * (0.35 + 0.25 * fy) + fy * 0.3 + (F.f64[i] - 0.5) * 0.06;
+          a[i] = 0.5 + tone * 0.26 + (F.f16[i] - 0.5) * 0.14 - (1 - curve) * 0.16 - (fy < 0.14 ? 0.16 * (1 - fy / 0.14) : 0) - smooth(0.62, 0.82, F.f8[i]) * 0.14;
+          r[i] = 0.72 + (F.f8[i] - 0.5) * 0.15;
+        }
+      }
+      return 2.8;
+    },
+
+    metalroof(h, a, r) {
+      // standing-seam metal: raised seams every panel, rust blooming from the seams and fasteners
+      const pw = N / 4;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const i = y * N + x;
+          const sx = x % pw, seam = smooth(5.5, 0.6, Math.min(sx, pw - sx));
+          const rust = smooth(0.55, 0.78, F.f8[i] * 0.55 + F.streak[i] * 0.45 + seam * 0.1);
+          h[i] = 0.4 + seam * 0.55 + (F.f16[i] - 0.5) * 0.06 - rust * 0.05;
+          a[i] = 0.5 - rust * 0.2 + (F.streak[i] - 0.5) * 0.16 - seam * 0.05 + (F.f64[i] - 0.5) * 0.05;
+          r[i] = 0.4 + rust * 0.42 + (F.f16[i] - 0.5) * 0.1;
+        }
+      }
+      return 1.8;
+    },
+
+    paver(h, a, r) {
+      // sidewalk slabs (4 x 4 per tile): dark joints, stained and chipped slab by slab
+      const s = N / 4;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const i = y * N + x;
+          const jx = Math.min(x % s, s - 1 - (x % s)), jy = Math.min(y % s, s - 1 - (y % s));
+          const joint = smooth(2.6, 0.7, Math.min(jx, jy));
+          const tone = hash2(Math.floor(x / s), Math.floor(y / s)) - 0.5;
+          h[i] = 0.62 - joint * 0.5 + (F.f64[i] - 0.5) * 0.07 + (F.f16[i] - 0.5) * 0.05;
+          a[i] = 0.5 + tone * 0.18 + (F.f4[i] - 0.5) * 0.12 - joint * 0.3 - smooth(0.6, 0.8, F.f8[i]) * 0.1 + (F.f64[i] - 0.5) * 0.06;
+          r[i] = 0.62 + (F.f16[i] - 0.5) * 0.14 + joint * 0.1;
+        }
+      }
+      return 1.9;
+    },
+
+    cracked(h, a, r) {
+      // dry earth: curling plates split by cracks
+      for (let i = 0; i < N * N; i++) {
+        const edge = F.w16.f2[i] - F.w16.f1[i];
+        const crack = smooth(0.1, 0.0, edge);
+        const plate = F.w16.id[i];
+        h[i] = 0.42 + smooth(0.02, 0.4, edge) * (0.3 + 0.12 * plate) - crack * 0.2 + (F.f64[i] - 0.5) * 0.07 + (F.f32[i] - 0.5) * 0.1;
+        a[i] = 0.5 + (plate - 0.5) * 0.14 - crack * 0.3 + (F.f4[i] - 0.5) * 0.14 + smooth(0.15, 0.6, edge) * 0.05 + (F.f64[i] - 0.5) * 0.06;
+        r[i] = 0.86 - crack * 0.1;
+      }
+      return 3.2;
+    },
+
+    strata(h, a, r) {
+      // sedimentary rock: horizontal beds of alternating hardness, wavy, split by vertical joints
+      const bands = 12, bh = N / bands;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const i = y * N + x;
+          const yy = y + (F.f8[i] - 0.5) * 26 + (F.f32[i] - 0.5) * 6;
+          const yn = (((yy % N) + N) % N) / bh;
+          const b = Math.floor(yn), fb = yn - b;
+          const hb = hash2(b, 41);
+          const joint = smooth(0.04, 0.0, Math.abs(F.w8.f2[i] - F.w8.f1[i])) * (hash2(b, Math.floor(x / 20)) > 0.6 ? 1 : 0);
+          h[i] = 0.3 + hb * 0.4 + fb * 0.15 * (hb > 0.5 ? 1 : 0.3) - (fb < 0.1 ? 0.12 : 0) + (F.f64[i] - 0.5) * 0.12 - joint * 0.25;
+          a[i] = 0.5 + (hb - 0.5) * 0.36 + (F.f16[i] - 0.5) * 0.14 - (fb < 0.1 ? 0.1 : 0) - joint * 0.14 + (F.f4[i] - 0.5) * 0.06;
+          r[i] = 0.72 + (hb - 0.5) * 0.2;
+        }
+      }
+      return 2.6;
+    },
+
+    crackmacro(h, a, r) {
+      // a slab of old road at a large scale: cracks, tar seams, patches, oil stains
+      const idx = (x, y) => (((Math.floor(y) % N) + N) % N) * N + (((Math.floor(x) % N) + N) % N);
+      const crk = new Float32Array(N * N), tar = new Float32Array(N * N), oil = new Float32Array(N * N), patch = new Float32Array(N * N), edge = new Float32Array(N * N);
+      const rs = rngOf(4711);
+      const dot = (arr, x, y, w, v) => {
+        for (let j = -w; j <= w; j++) for (let k = -w; k <= w; k++) {
+          const d = Math.hypot(j, k);
+          if (d <= w + 0.5) { const o = idx(x + k, y + j); arr[o] = Math.max(arr[o], v * (1 - d / (w + 1))); }
+        }
+      };
+      const crack = (x, y, ang, len, w, depth) => {
+        for (let s = 0; s < len; s++) {
+          dot(crk, x, y, w, 1);
+          ang += (rs() - 0.5) * 0.5;
+          x += Math.cos(ang); y += Math.sin(ang);
+          if (depth > 0 && rs() < 0.035) crack(x, y, ang + (rs() < 0.5 ? -1 : 1) * (0.5 + rs() * 0.8), Math.floor(len * (0.3 + rs() * 0.4)), Math.max(0, w - 1), depth - 1);
+        }
+      };
+      for (let k = 0; k < 16; k++) crack(rs() * N, rs() * N, rs() * Math.PI * 2, 50 + rs() * 110, rs() < 0.35 ? 1 : 0, 2);
+      // alligator cracking: a tight net in two wheel-path-like patches
+      for (const [cx, cy] of [[70, 190], [190, 60]]) {
+        for (let y = -28; y <= 28; y++) for (let x = -34; x <= 34; x++) {
+          const o = idx(cx + x, cy + y);
+          const e = F.w32.f2[o] - F.w32.f1[o];
+          const fall = 1 - Math.min(1, Math.hypot(x / 34, y / 28));
+          if (e < 0.06 && fall > 0.25 + F.f16[o] * 0.4) crk[o] = Math.max(crk[o], 0.8);
+        }
+      }
+      // tar-filled seams: one straight joint each way, slightly wandering
+      for (let x = 0; x < N; x++) { const wy = 62 + Math.sin(x / N * Math.PI * 6) * 1.6; dot(tar, x, wy, 1, 1); dot(tar, x, wy + 3, 0, 0.6); }
+      for (let y = 0; y < N; y++) { const wx = 168 + Math.sin(y / N * Math.PI * 4 + 1) * 1.8; dot(tar, wx, y, 1, 1); }
+      // patches: rectangles of newer / older asphalt with a tarred edge
+      for (const [px, py, pw, ph, tone] of [[20, 120, 64, 34, 0.09], [176, 196, 52, 40, -0.07], [120, 20, 40, 26, 0.06]]) {
+        for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) {
+          const o = idx(x, y);
+          patch[o] = tone;
+          if (x < px + 2 || x >= px + pw - 2 || y < py + 2 || y >= py + ph - 2) edge[o] = 1;
+        }
+      }
+      // oil drips: dark, glossy blotches
+      for (let k = 0; k < 7; k++) {
+        const ox = rs() * N, oy = rs() * N, rad = 6 + rs() * 12;
+        for (let y = -rad * 1.6; y <= rad * 1.6; y++) for (let x = -rad * 1.6; x <= rad * 1.6; x++) {
+          const o = idx(ox + x, oy + y);
+          const d = Math.hypot(x, y) / rad + (F.f16[o] - 0.5) * 0.9;
+          if (d < 1) oil[o] = Math.max(oil[o], 1 - d);
+        }
+      }
+      for (let i = 0; i < N * N; i++) {
+        const worn = (F.f4[i] - 0.5) * 0.1 + (F.f16[i] - 0.5) * 0.06;
+        h[i] = 0.5 - crk[i] * 0.42 - tar[i] * 0.16 + edge[i] * 0.05 + (F.f64[i] - 0.5) * 0.04;
+        a[i] = 0.5 + worn + patch[i] - crk[i] * 0.38 - tar[i] * 0.3 - oil[i] * 0.24 - edge[i] * 0.12;
+        r[i] = 0.55 + crk[i] * 0.35 - tar[i] * 0.2 - oil[i] * 0.32 + (patch[i] !== 0 ? 0.06 : 0);
+      }
+      return 1.6;
+    },
+
+    sand(h, a, r) {
+      // wind ripples, wandering slightly, with a fine grain
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const i = y * N + x;
+          const ph = ((x * 3 + y) / N) * Math.PI * 2 * 3 + (F.f8[i] - 0.5) * 7 + (F.f32[i] - 0.5) * 1.6;
+          const rip = 0.5 + 0.5 * Math.sin(ph);
+          h[i] = 0.45 + rip * 0.35 + (F.f64[i] - 0.5) * 0.12;
+          a[i] = 0.5 + (rip - 0.5) * 0.1 + (F.f4[i] - 0.5) * 0.14 + (F.f64[i] - 0.5) * 0.07;
+          r[i] = 0.9;
+        }
+      }
+      return 1.5;
+    },
   };
 }
 
@@ -419,6 +599,7 @@ let cpuData = null;
 function generate() {
   if (cpuData) return cpuData;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const tF = typeof performance !== 'undefined' ? performance.now() : 0;
   const F = {
     f4: fbm(4, 4, 5, 11), f8: fbm(8, 8, 4, 23), f16: fbm(16, 16, 4, 37), f32: fbm(32, 32, 3, 41), f64: fbm(64, 64, 2, 53),
     streak: fbm(24, 2, 4, 61),          // vertical streaks (stretched along v)
@@ -440,15 +621,30 @@ function generate() {
       x += Math.cos(ang); y += Math.sin(ang);
     }
   }
+  if (tF) generate.fieldsMs = Math.round(performance.now() - tF);
   const R = recipes(F);
   const data = new Uint8Array(N * N * 4 * LAYERS);
   const h = new Float32Array(N * N), a = new Float32Array(N * N), r = new Float32Array(N * N);
+  generate.layerMs = {};
   for (const [name, id] of Object.entries(DET)) {
     const fn = R[name];
     if (!fn) continue;
+    const tl = typeof performance !== 'undefined' ? performance.now() : 0;
     h.fill(0.5); a.fill(0.5); r.fill(0.5);
     const k = fn(h, a, r);
+    if (tl) generate.layerMs[name] = Math.round(performance.now() - tl);
     const base = id * N * N * 4;
+    if (name === 'macro') {
+      // raw fields, no normal: R broad, G mid, B streaks, A blotches
+      for (let i = 0; i < N * N; i++) {
+        const o = base + i * 4;
+        data[o] = Math.round(clamp01(h[i]) * 255);
+        data[o + 1] = Math.round(clamp01(a[i]) * 255);
+        data[o + 2] = Math.round(clamp01(F.streak[i]) * 255);
+        data[o + 3] = Math.round(clamp01(r[i]) * 255);
+      }
+      continue;
+    }
     for (let y = 0; y < N; y++) {
       const ym = ((y + N - 1) % N) * N, yp = ((y + 1) % N) * N, yc = y * N;
       for (let x = 0; x < N; x++) {
@@ -491,3 +687,5 @@ export function makeDetailArray(anisotropy = 1) {
 
 /** Milliseconds the one-time generation took (0 once cached). */
 export function detailGenMs() { return generate.ms || 0; }
+/** Per-layer generation times (ms) and the noise-field time, for the dev tools. */
+export function detailGenBreakdown() { return { fields: generate.fieldsMs || 0, layers: generate.layerMs || {} }; }

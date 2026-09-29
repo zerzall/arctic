@@ -16,6 +16,8 @@
 import * as THREE from 'three';
 import { DET_TILE } from './world-surf.js';
 
+// dev switch: set globalThis.__geoDebug before importing to make a NaN vertex throw where it is written
+const GEO_DEBUG = !!globalThis.__geoDebug;
 const _m = new THREE.Matrix4();
 const _local = new THREE.Matrix4();
 const _obj = new THREE.Matrix4();
@@ -27,6 +29,9 @@ const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _s = new THREE.Vector3();
 const _p = new THREE.Vector3();
+const _qa = new THREE.Vector3();
+const _qb = new THREE.Vector3();
+const _qc = new THREE.Vector3();
 
 const colorCache = new Map();
 /** Linear THREE.Color for '#rrggbb' (cached; never mutate the result). */
@@ -359,8 +364,10 @@ export function createGeoBuilder(opts) {
      *   map: 'box' | 'cyl' | 'uv' (how detail coordinates are projected; default box) }
      */
     add(bucket, g, p, s, r, color, o = null) {
-      _e.set(r ? r[0] : 0, r ? r[1] : 0, r ? r[2] : 0);
-      _q.setFromEuler(_e);
+      // r: [rx, ry, rz] (XYZ order), a THREE.Euler (its own order) or a Quaternion
+      if (r && r.isEuler) _q.setFromEuler(r);
+      else if (r && r.isQuaternion) _q.copy(r);
+      else { _e.set(r ? r[0] : 0, r ? r[1] : 0, r ? r[2] : 0); _q.setFromEuler(_e); }
       _s.set(s[0], s[1], s[2]);
       _p.set(p[0], p[1], p[2]);
       _local.compose(_p, _q, _s);
@@ -371,6 +378,20 @@ export function createGeoBuilder(opts) {
     /** Append a template with a full world matrix (detail coordinates in world space). */
     addMatrix(bucket, g, m, color, o = null) {
       write(bucket, g, m, color, o, null, null);
+    },
+
+    /**
+     * A flat quad in the object frame: centre `c`, width vector `e1`, height vector `e2`
+     * (orthogonal); it faces along e1 x e2. Detail coordinates are projected in world space,
+     * so a wall cut into pieces keeps one continuous brick pattern.
+     */
+    quad(bucket, c, e1, e2, color, o = null) {
+      _qa.set(e1[0], e1[1], e1[2]);
+      _qb.set(e2[0], e2[1], e2[2]);
+      _qc.crossVectors(_qa, _qb).normalize();
+      _local.makeBasis(_qa, _qb, _qc).setPosition(c[0], c[1], c[2]);
+      _m.multiplyMatrices(_obj, _local);
+      write(bucket, T.plane(), _m, color, o, null, null);
     },
 
     // ---- conveniences (all in the object's local frame) ----
@@ -465,6 +486,7 @@ export function createGeoBuilder(opts) {
     if (t.uv) t.uv.need(n * 2);
     let layer = sLayer, rough = sRough, metal = sMetal;
     if (o && o.surf) { layer = o.surf[0]; rough = o.surf[1] ?? -1; metal = o.surf[2] ?? -1; }
+    const pane = t.det && o && o.pane;
     const det = t.det && layer > 0;
     if (t.det) { t.det.need(n3); t.surf.need(n * 2); }
     const tile = DET_TILE[layer] || 64;
@@ -484,6 +506,7 @@ export function createGeoBuilder(opts) {
       _v.set(x, y, z).applyMatrix4(m);
       _n.set(na[i * 3], na[i * 3 + 1], na[i * 3 + 2]).applyMatrix3(_nm).normalize();
       P[pi] = _v.x; P[pi + 1] = _v.y; P[pi + 2] = _v.z;
+      if (GEO_DEBUG && !(_v.x === _v.x && _v.y === _v.y && _v.z === _v.z)) throw new Error('geo: NaN vertex in bucket ' + bucket);
       NN[pi] = _n.x; NN[pi + 1] = _n.y; NN[pi + 2] = _n.z;
       let ao = 1;
       if (useAO && aoH > 0) {
@@ -502,8 +525,19 @@ export function createGeoBuilder(opts) {
       if (t.det) {
         const D = t.det.a, di = t.det.n, S = t.surf.a, si = t.surf.n;
         let du = 0, dv = 0;
+        if (pane) {
+          // an interior-mapped window pane: (u, v) in 0..1 across the pane, room id, size in units
+          D[di] = ua ? ua[i * 2] : 0; D[di + 1] = ua ? ua[i * 2 + 1] : 0; D[di + 2] = 100 + pane.id;
+          S[si] = Math.min(1, pane.w / 128); S[si + 1] = Math.min(1, pane.h / 128);
+          t.det.n += 3; t.surf.n += 2;
+          pi += 3;
+          continue;
+        }
         if (det) {
-          if (mode === 'uv' && ua) {
+          if (o && o.dp) {
+            // planar coordinates given by the caller (a wall piece: bricks run on across its neighbours)
+            du = o.dp[0] + x * sx; dv = o.dp[1] + y * sy;
+          } else if (mode === 'uv' && ua) {
             // template uv already in units (lofts), scaled by the part's scale
             du = ua[i * 2] * sx; dv = ua[i * 2 + 1] * sy;
           } else if (mode === 'cyl') {

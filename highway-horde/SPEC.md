@@ -1238,7 +1238,28 @@ world-ridge.js  the campaign's kinds and dressing: the palisade, watchtower, tow
   (`effects3d.js` / `items3d.js` wrappers, gibs and corpses in `zombies3d.js`).
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
-world-tex.js    procedural world textures (window/neon atlas, chain-link mask, water normals)
+world-tex.js    procedural world textures (window/neon atlas incl. 24 painted shop signs, 8 neon signs and
+                graffiti cells; chain-link mask; leaf-card atlas: oak/pine/scrub/palm/birch/fern/ivy;
+                water normals)
+world-surf.js   the 32-layer detail texture array (brick ... plaster, roof tile, standing-seam metal,
+                paving, cracked earth, rock strata, a road-wear layer with cracks / tar seams /
+                patches / oil, wind-rippled sand, and layer 23 'macro', four raw noise fields the
+                world-space weathering samples)
+world-mat.js    world materials: PBR with per-vertex detail + a world-space weathering pass (rain
+                streaks, stains, dust, moss on north sides, rust, brushed-metal roughness, edge
+                wear); interior-mapped rooms behind window panes ('glass' dark rooms, 'room' lit
+                rooms: a procedural ray-box room per pane with curtains, blinds, furniture, people,
+                a TV's flicker); the 'stain' bucket (blended graffiti)
+world-arch.js   architectural pieces: Face (wall coordinates), wall skins with real openings,
+                recessed windows (reveals, frame, sill, lintel), doors, shop fronts (signs, awnings,
+                shutters), cornices, balconies, fire escapes, roof plant; DETAIL.level 0/1/2 =
+                low/high/ultra geometry detail
+world-bld.js    buildings by archetype (shops, apartment, house, shack, barn, church, steeple,
+                motel, industrial), the diner, the radio mast
+world-flora.js  tree species (oak, maple, birch, pine, spruce, dead, palm, acacia), bushes, desert
+                plants, undergrowth scatter (ferns, logs, weeds, ivy, verge grass)
+ground-extra.js ground canvas extras: tyre tracks, oil drips, lane arrows / STOP, storm drains, ruts,
+                leaf litter
 world-overpass.js  MapDef.overpass: decks (slab, girders, parapets, lane paint, deck lamps),
                 pier bents, ramp embankments, fascia signs, fixtures under the deck, deck wrecks;
                 deckHeightAt(map, x, y) (fires on a deck burn up there), deckRoofs(map) (no rain
