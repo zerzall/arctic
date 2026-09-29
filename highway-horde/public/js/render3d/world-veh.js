@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { T, mixHex, shadeHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
+import { ROLE_COLOR, roleFor, damageFor, vehicleExtras, fireTruck, busLettering, trailerLivery } from './world-veh-extras.js';
 
 const TIRE = '#1b1b1c';
 const RIM = '#9aa0a6';
@@ -303,6 +304,13 @@ function wheel(B, x, r, z, width, sd, o = {}) {
     B.add('std', rimTemplate(0), [x, r * 0.66, z], [r * 0.66, width * 0.9, r * 0.66], [rot[0], 0, (B.rng.next() - 0.5) * 0.2], STEEL_RIM, { surf: [DET.char, 0.9, 0.5], map: 'cyl' });
     return;
   }
+  if (o.flat) {
+    // a flat tyre: squashed onto the rim, bulging out at the sidewall
+    B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [x, r * 0.7, z], [r * 1.02, width * 1.08, r * 0.72], rot, TIRE, { surf: [DET.rubber, 0.82, 0], map: 'cyl' });
+    const rf = r * 0.56;
+    B.add('std', rimTemplate(o.spokes ?? 5), [x, r * 0.66, z + sd * width * 0.05], [rf, width * 0.9, rf], rot, o.rim || RIM, { surf: [DET.panel, 0.32, 0.85], map: 'cyl' });
+    return;
+  }
   B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [x, r, z], [r, width, r], rot, TIRE, { surf: [DET.rubber, 0.82, 0], map: 'cyl' });
   const rr = r * 0.6;
   B.add('std', rimTemplate(o.spokes ?? 5), [x, r, z + sd * width * 0.02], [rr, width * 0.9, rr], rot, o.rim || RIM, { surf: [DET.panel, 0.32, 0.85], map: 'cyl' });
@@ -370,6 +378,7 @@ export function buildVehicle(B, o) {
       if (!o.wrecked) handles(B, body, [0.2 * L, -0.08 * L], 25 + sag, v.color);
       finishBody(B, body, v, L, W, { frontY: 18 + sag, rearY: 21 + sag, spread: W * 0.34, plateY: 13 + sag, bumperY: 12 + sag, mirrorX: 0.2 * L, mirrorY: 30 + sag });
       wheels4(B, [-wx, wx], W, R, 7, v);
+      vehicleExtras(B, o, v);
       if (o.wrecked && r.chance(0.5)) B.rbox('std', 0.33 * L, 31 + sag, 0, 0.28 * L, 1.4, W * 0.86, 0.5, v.color, [0, 0, 0.55], { surf: [DET.char, 0.9, 0.3] });
       if (!o.wrecked && v.doorOpen) door(B, 0.02 * L, 0.21 * L, 12 + sag, 28 + sag, W, v);
       break;
@@ -389,6 +398,7 @@ export function buildVehicle(B, o) {
       if (!o.wrecked) handles(B, body, [0.22 * L, -0.06 * L], 32 + sag, v.color);
       finishBody(B, body, v, L, W, { frontY: 26 + sag, rearY: 38 + sag, spread: W * 0.35, plateY: 18 + sag, bumperY: 15 + sag, mirrorX: 0.26 * L, mirrorY: 38 + sag });
       wheels4(B, [-wx, wx], W, R, 8, v);
+      vehicleExtras(B, o, v);
       if (!o.wrecked && r.chance(0.45)) roofRack(B, -0.15 * L, 55.4 + sag, 0.5 * L, W * 0.76, r);
       // spare wheel on the tailgate
       if (r.chance(0.5)) B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [-0.5 * L - 3.4, 30 + sag, 0], [8, 5, 8], [0, 0, Math.PI / 2], o.wrecked ? '#1a1614' : TIRE, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
@@ -418,6 +428,7 @@ export function buildVehicle(B, o) {
         else for (let k = 0; k < 3; k++) B.rblock('std', -0.36 * L + k * 9, 23 + sag, r.range(-8, 8), 10, 8 + k * 2, 11, 0.5, '#7a5a32', [0, r.range(-0.3, 0.3), 0], { surf: [DET.wood, 0.8, 0] });
       }
       wheels4(B, [-wx, wx], W, R, 8, v);
+      vehicleExtras(B, o, v);
       if (!o.wrecked && v.doorOpen) door(B, -0.1 * L, 0.2 * L, 15 + sag, 36 + sag, W, v);
       break;
     }
@@ -441,6 +452,7 @@ export function buildVehicle(B, o) {
         for (const sd of [-1, 1]) B.box('paint', -0.05 * L, 47 + sag, sd * (W * 0.492), 0.8 * L, 5, 0.4, shadeHex(v.color, 0.45), null, { surf: v.paintSurf });
       }
       wheels4(B, [-wx, wx], W, R, 8, v);
+      vehicleExtras(B, o, v);
       if (!o.wrecked && v.doorOpen) {
         // sliding side door pulled back: a dark opening and the door outside the body line
         B.box('std', 0.05 * L, 40 + sag, W / 2 + 0.2, 0.26 * L, 44, 0.4, INTERIOR, null, { surf: [0, 0.95, 0] });
@@ -481,6 +493,11 @@ function vehicleLook(B, o) {
     cracked: !wrecked && hash01(o.id * 17 + 9) < 0.3,
     brake: false,
   };
+  // special jobs (taxi, police, ambulance, deliveries...) repaint the body; damage picks (flat tyre, open hood, dents)
+  v.role = roleFor(o);
+  if (v.role && ROLE_COLOR[v.role]) v.color = ROLE_COLOR[v.role];
+  v.dmg = damageFor(o);
+  if (v.role === 'police' || v.role === 'ambulance' || v.role === 'fire') v.lightsOn = hash01(o.id * 3 + 11) < 0.6;
   return v;
 }
 
@@ -502,7 +519,8 @@ function finishBody(B, body, v, L, W, o) {
 }
 
 function wheels4(B, xs, W, R, width, v) {
-  for (const x of xs) for (const sd of [-1, 1]) wheel(B, x, R, sd * (W / 2 - width / 2 - 0.6), width, sd, { wrecked: v.wrecked, spokes: 5 });
+  let i = 0;
+  for (const x of xs) for (const sd of [-1, 1]) wheel(B, x, R, sd * (W / 2 - width / 2 - 0.6), width, sd, { wrecked: v.wrecked, spokes: 5, flat: v.dmg && v.dmg.flat === i++ });
 }
 
 /** A door swung open at ~50° from its front hinge. */
@@ -526,6 +544,7 @@ function roofRack(B, x, y, len, w, r) {
 // ---- military truck --------------------------------------------------------------------------
 
 function militaryTruck(B, o, v, L, W, sag) {
+  if (v.role === 'fire') { fireTruck(B, o, v, L, W, wheel); return; }
   const r = B.rng;
   const olive = v.wrecked ? v.color : o.color;
   const bb = v.paintBucket;
@@ -641,6 +660,7 @@ export function buildTrailer(B, o) {
     for (let x = -0.45; x <= 0.45; x += 0.3) B.box('glow', x * L, 27 + sag, sd * (W / 2 + 0.9), 2, 1.6, 0.4, AMBER, null, { emissive: v.wrecked ? 0.2 : 1.6, uv: atlasUV('white') });
     if (!v.wrecked) B.box('glow', 0, 30 + sag, sd * (W / 2 + 0.95), L * 0.94, 1.4, 0.3, '#ffffff', null, { emissive: 0.5, uv: atlasUV('stripeRW') });
   }
+  if (!v.wrecked) trailerLivery(B, o, L, W, sag);
   if (!v.wrecked && r.chance(0.6)) {
     // a faded company livery along the side
     const lc = r.pick(['#8a2f2a', '#2f4f6f', '#3f5a3a', '#6a5a2a']);
@@ -750,6 +770,7 @@ export function buildBus(B, o, objective) {
   B.rbox('std', -L / 2 - 1, 18 + sag, 0, 3, 8, W * 0.98, 1, '#161616', null, { surf: [DET.plastic, 0.5, 0.2] });
   if (objective) B.add('glow', T.plane(), [fx + 0.75, 88 + sag, 0], [W * 0.6, 7, 1], [0, Math.PI / 2, 0], '#ffcf6a', { emissive: 1.6, uv: atlasUV('white') });
   if (school) {
+    busLettering(B, L, W, hood, sag);
     B.cyl('std', 0.34 * L, 50 + sag, -W / 2 - 3, 7, 1.2, '#b01818', 12, 1, [Math.PI / 2, 0, 0], { surf: [0, 0.5, 0.1] });
     // eight-way flashers on the roof cap
     for (const x of [-1, 1]) for (const z of [-1, 1]) B.box(objective ? 'blink' : 'glow', (x * L) / 2 * 0.97 - (x > 0 ? hood : 0), 92 + sag, z * W * 0.3, 1.4, 4, 6, x > 0 ? AMBER : '#ff2a1a', null, objective ? { emissive: 3.2 } : { emissive: 0.6, uv: atlasUV('white') });

@@ -26,6 +26,7 @@ import {
 import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField } from './world-veg.js';
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
+import { createDress } from './world-dress.js';
 import { terrainHeight } from '../shared/terrain.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
@@ -187,7 +188,7 @@ export function createWorld(ctx, deps) {
     buckets: {
       std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
       glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
-      fence: { uv: true }, leaves: { uv: true, ao: false },
+      fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
     },
   });
 
@@ -261,6 +262,15 @@ export function createWorld(ctx, deps) {
     halos.push({ x: f.x, y: f.y, h: f.base + f.r * 0.9, color: '#ff7a2a', size: f.r * 5.5, flicker: 0.8, strength: 0.55, base: f.base });
   });
 
+  // ---- set dressing (world-dress.js): props laid over the layout, rebuilt per quality tier ----
+  const cullDistFog = Math.sqrt(-Math.log(0.002)) / Math.max(1e-5, amb.fogDensity);
+  let dress = null;
+  try {
+    dress = createDress(ctx, { root, mats, fx, halos, tier, aniso, day, gy, hasTerrain, cullDist: cullDistFog });
+  } catch (err) {
+    console.warn('world: set dressing failed', err);
+  }
+
   // ---- the campaign's floors, roof, zip line and landing (world-ridge.js) ----
   let ridge = null;
   if (map.campaign) {
@@ -303,12 +313,14 @@ export function createWorld(ctx, deps) {
   }
 
   // ---- build static meshes ----
+  // ('sign': vehicle liveries and lettering, painted in the set dressing's atlas, dress-atlas.js)
+  const matOf = (bucket, t) => (bucket === 'sign' ? (dress ? dress.signMaterial(t) : mats.get('decal', t)) : mats.get(bucket, t));
   const staticMeshes = [];
   const moonCasters = [];
   const built = B.finish();
   const tGeo = performance.now() - tA - tGround - tDetail;
   for (const { bucket, geometry } of built) {
-    const mesh = new THREE.Mesh(geometry, mats.get(bucket, tier));
+    const mesh = new THREE.Mesh(geometry, matOf(bucket, tier));
     mesh.matrixAutoUpdate = false;
     // The only shadow-casting light is the flashlight, 7 units off the eye: the shadow of a
     // wall or a car falls almost exactly behind it as seen from the camera, so static casters
@@ -475,6 +487,8 @@ export function createWorld(ctx, deps) {
         const hide = (m) => { if (m && m.visible) { m.visible = false; hidden.push(m); } };
         hide(grass.mesh);
         for (const m of staticMeshes) if (m.userData.bucket === 'blink') hide(m);
+        // set dressing is a few hundred thousand triangles of small props: invisible in a 128 px blurred probe, costly to draw six times
+        if (dress) for (const m of dress.meshes) hide(m);
         for (const m of fxMeshes) if (m.name === 'halos' || m.name === 'light-shafts' || m.name === 'light-pools' || m.name === 'objective-marker' || m.name === 'fire-embers') hide(m);
         for (const c of scene.children) if (c !== root && c !== cubeCam && c.name !== 'lights' && !c.isLight && !c.isCamera) hide(c);
         if (rain) hide(rain.mesh);
@@ -531,6 +545,7 @@ export function createWorld(ctx, deps) {
     mats.uniforms.uTime.value = time;
     const cam = ctx.camera;
     cullFar(cam);
+    if (dress) { dress.cull(cam); dress.update(view, frame); }
     sky.position.copy(cam.position);
     sky.userData.updateGlow(cam.position.x, cam.position.z);
     // points sizing: drawing-buffer pixels per world unit at distance 1
@@ -580,9 +595,10 @@ export function createWorld(ctx, deps) {
         mats.shared.uDetail.value = detailTex;
         ground.uniforms.uDetail.value = detailTex;
       }
-      for (const m of staticMeshes) m.material = mats.get(m.userData.bucket, tier);
+      for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
       grass.setQuality(tier);
       ground.setQuality(tier);
+      if (dress) dress.setQuality(tier);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();
@@ -591,6 +607,7 @@ export function createWorld(ctx, deps) {
       return {
         staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
         grass: grass.instances,
+        dress: dress ? dress.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
           obstacles: Math.round(tObsMs), decor: Math.round(tDecMs), treeLine: Math.round(tTlMs),
@@ -598,6 +615,7 @@ export function createWorld(ctx, deps) {
       };
     },
     dispose() {
+      if (dress) dress.dispose();
       ground.dispose();
       grass.dispose();
       mats.dispose();

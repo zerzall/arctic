@@ -1226,6 +1226,12 @@ zone3d.js       Evac Run (ctx.mode 'zone', built at creation so the warm-up comp
                 overlay markers: the zone (name + distance, pinned to the screen edge with an
                 arrow) and a SUPPLY tag; hides the objective marker
 world-rural.js  Harlan County's kinds: grain silos (300) and headstones (30)
+world-dress.js  set dressing (§7.5.2): the props of shared/dress.js as merged meshes per quality
+                tier, plus dress-life.js (crows, fireflies, butterflies, wind-blown litter);
+                prop models in dress-debris / -street / -life-props / -industrial / -nature /
+                -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js
+world-veh-extras.js  vehicle jobs (taxi, police, ambulance, delivery, news, tow, contractor,
+                fire engine), lettering, damage (open hood, flat tyre, dents)
 campaign3d.js   the Campaign (built whenever the map has `campaign`; ctx.mode 'campaign'): an
                 amber (green once the line is live) ring and a soft light column over the stage's
                 circle (thin near the eye, never a slab when you stand in it), the tower's blue
@@ -1536,6 +1542,53 @@ one warm haze + vignette gradient; the map preview of a day-only map is drawn wi
 
 Sandbox: `public/dev/fps-sandbox.html?time=day` (`__fps` views incl. `zone-out` / `zone-in` on an
 Evac Run map). Possible follow-up: a `dusk` time (the sun parameters and `lampK` already allow it).
+
+### 7.5.2 Set dressing — `shared/dress.js`, `render3d/world-dress.js` (+ `dress-*.js`), `render/dress2d.js`
+
+The maps are dressed with ~110 kinds of small and mid-size props that are not part of the
+simulation at all: `buildDress(map)` is a pure function of a finished MapDef (so every peer
+computes the same list from `(id, seed[, mode])`; nothing is sent and the host's tick is
+unchanged) returning `Item = { k, x, y, a, s, v, q, w?, x2?, y2?, g? }`. Nothing here collides,
+blocks a shot or a spawn, so the sim, the flow field and the map validity rules never see it.
+The placement obeys: nothing inside an obstacle (flat marks may lie under a wreck), water, the
+objective, the supply station, a player / zombie / campaign spawn or a campaign annex floor;
+nothing tall (`DRESS_KINDS` flag `t`) under a viaduct deck; the pieces attached to a wall, post
+or line (graffiti, posters, fences, wires, tape) hang on their anchor. Families: road debris
+(skid marks, luggage, shoes, car doors, boxes, bags, newspapers, cones, triangles, burning flares,
+litter, spilled loads...), abandoned belongings (strollers, bicycles, carts, picnics, camps with
+tents / chairs / coolers / grills / campfires, gnomes, laundry lines, wheelchairs, gurneys),
+street furniture (benches, bus stops with ads, mailboxes, phone booths, bins, meters, hydrants,
+vending machines, billboards, ~25 road signs, barrels, chain-link and picket fences, utility
+poles with sagging wires, flag poles), industrial and farm (pallets, stencilled crates, drums,
+pipes, generators, forklifts, hay bales, tractors, a water tower...), signs of the apocalypse
+(barricades, plywood and boarded doors with messages, graffiti, posters, body bags, military
+gear, sandbag arcs, tarps, field-hospital tents, tape and quarantine banners, memorials, sawhorse
+roadblocks) and nature (logs, boulders, shrubs, ferns, flowers, tall grass, mushrooms, reeds,
+dead trees, lily pads, a rowboat; cacti, tumbleweeds and bones on the desert map). Recipes: scatter by surface, around vehicles / buildings /
+containers / trees / water, along the long roads, point-of-interest set pieces by name, and
+clutter piled up around the objective, the supply station and the team's start.
+
+**Tiers.** Every item has a rank `q` spread evenly over [0, 1) (important props first);
+`DRESS_DENSITY` = ultra 1, high 0.6, low 0.25 shows the items with `q < density`, so the thinned
+sets are nested. `world-dress.js` builds its own geo builder (big cells; buckets `std`, `leaves`,
+`glow`, `blink`, `fence` plus its own `sign` (the text atlas of `dress-atlas.js`, alpha-tested),
+`lit` (unlit dim ad / machine fronts), `flat` and `wet` (blended, polygon-offset marks) and
+`cloth` (tarps, flags, laundry, waved on the GPU)) and rebuilds it when the tier's density
+changes. The world's own `sign` bucket (`world.js`) carries vehicle lettering. Flares push halos;
+crows (an InstancedMesh: perched on lamps / wrecks / trees, they take off when you come within
+200 units; a few circle high over the action), fireflies (night) and butterflies (day) over the
+vegetation, and leaves / newspapers / bags tumbling in the wind are one draw call each
+(`dress-life.js`). Dev tool: `fps-sandbox.html?gallery=<kind,kind|all>&gv=<variants>` lays the
+listed props in a row (facing +x at x = 1000) on an empty map. `map.dressItems` overrides the
+list (dev only). Top-down: `render/dress2d.js` paints the flat marks and prop glyphs into the
+ground chunks (`prep.dress`).
+
+**Vehicles** (`world-veh-extras.js`): a car may be a taxi or police cruiser, an SUV a police
+cruiser or news vehicle, a van an ambulance / delivery / plumber / news van, a pickup a tow truck
+or contractor's pickup (paint, lettering, light bars on the blinking bucket, ladders, dishes),
+picked from the obstacle id; a 'truck' painted `FIRE_ENGINE` (`#b01818`, maps.js) is a fire
+engine; the school bus and box trailers carry lettering; any vehicle may have an open hood, a
+flat tyre, dents, an antenna or luggage on the roof.
 
 ## 8. Deployment
 - Static: `public/` can be served by any static host (Netlify: `netlify.toml` publishes

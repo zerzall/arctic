@@ -6,13 +6,16 @@
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
 // graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
-// vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off.
+// vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
+// gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
+// set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
 // stats(), step(n), recreate(mapId), renderer, game.
 
 import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
 import { MAP_LIST } from '../js/shared/maps.js';
+import { DRESS_KINDS } from '../js/shared/dress.js';
 import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
 
@@ -226,11 +229,57 @@ function setup(mapId) {
     const [dk, tint] = params.get('ambient').split(',');
     game.map.ambient = { darkness: Number(dk), tint: tint || game.map.ambient.tint };
   }
+  // gallery=<kind,kind,...>|all: the map is emptied and the listed set-dressing props stand in a
+  // row (facing +x) at x = 1000, for reviewing models: view {x: 1000 + d, yaw: PI} (URL gd=<d>)
+  if (params.get('gallery')) galleryMap(game.map, params.get('gallery'));
   const t0 = performance.now();
   renderer = createRenderer3D(canvas, { map: game.map, quality, time: opt.time, mode: game.mode });
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
   window.__fps.views = viewpoints(game.map, snap && snap.zone);
   if (opt.view) setView(opt.view);
+}
+
+function galleryMap(map, spec) {
+  if (spec.startsWith('veh:')) {
+    // veh:car@7,suv@34,van@7,...: road vehicles (kind@obstacle id: the id picks the job and the damage) in a row, front toward +x
+    const SIZE = { car: [84, 42], suv: [92, 46], pickup: [100, 46], van: [104, 50], truck: [136, 56], bus: [250, 62] };
+    map.obstacles = []; map.decor = []; map.fires = []; map.lights = []; map.overpass = null; map.lines = [];
+    map.areas = [{ kind: 'concrete', x: 1000, y: 1000, w: 1800, h: 4000, a: 0 }];
+    let x = 300;
+    for (const part of spec.slice(4).split(',')) {
+      const [kind, idStr] = part.split('@');
+      const wr = idStr && idStr.endsWith('w');
+      const [w, h] = SIZE[kind] || SIZE.car;
+      x += w / 2 + 24;
+      map.obstacles.push({ id: parseInt(idStr, 10) || 0, kind, x, y: 1000, w, h, a: 0, color: kind === 'truck' ? '#b01818' : (params.get('vcolor') || '#5b5f63'), solid: true, wrecked: !!wr, roof: null });
+      x += w / 2 + 24;
+    }
+    map.dressItems = [];
+    window.__galleryVeh = true;
+    return;
+  }
+  const kinds = spec === 'all' ? Object.keys(DRESS_KINDS) : spec.split(',');
+  map.obstacles = []; map.decor = []; map.fires = []; map.lights = []; map.overpass = null; map.lines = [];
+  map.areas = [{ kind: 'concrete', x: 1000, y: 1000, w: 1800, h: 4000, a: 0 }];
+  const items = [];
+  let y = 300;
+  const first = y;
+  for (const k of kinds) {
+    const def = DRESS_KINDS[k];
+    if (!def) { console.warn('gallery: unknown kind', k); continue; }
+    const step = Math.max(34, def[0] * 2 + 10);
+    const isLine = (def[2] || '').includes('l');
+    const n = Number(params.get('gv') || 1);
+    for (let i = 0; i < n; i++) {
+      const yy = y + step / 2;
+      const it = { k, x: 1000, y: yy, a: 0, s: 1, v: 1234 + i * 977 + k.length * 31, q: 0 };
+      if (isLine) { it.w = 120; it.x2 = 1000; it.y2 = yy + 120; it.a = Math.PI / 2; y += 120; }
+      items.push(it);
+      y += step;
+    }
+  }
+  map.dressItems = items;
+  window.__galleryCenter = { x: 1000, y: (first + y) / 2, w: y - first };
 }
 
 function setView(v) {
@@ -331,7 +380,7 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0 } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });

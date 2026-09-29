@@ -292,7 +292,7 @@ export function buildHarlan(B) {
   B.ob('sandbags', K0 + 150, C9 - RW - 60, 24, 90, 0);
   B.ob('sandbags', K1 - 150, C9 + RW + 60, 24, 90, 0);
   B.ob('sandbags', 6160, KN + 120, 110, 22, 0);
-  B.vehicle('truck', 6380, 3860, Math.PI / 2, { jitter: 0 });
+  B.vehicle('truck', 6380, 3860, Math.PI / 2, { jitter: 0 }).color = '#b01818';   // the rescue engine (a red truck is a fire engine in the 3D view)
   B.vehicle('truck', 6470, 3860, Math.PI / 2 + 0.06, { jitter: 0, wrecked: rng.chance(0.3) });
   B.ob('container', 6300, 3480, 60, 42, 0, { color: '#4a4f35', roof: '#3f432d' });   // generator
   B.ob('container', 5850, 3470, 150, 56, 0, { color: rng.pick(L.CONTAINER_COLORS) });
