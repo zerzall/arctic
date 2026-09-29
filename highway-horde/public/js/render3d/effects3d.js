@@ -6,7 +6,7 @@
 // tesla arcs, rail beams with a smoke trail, acid spit, screams, boss slams, brute charge
 // dust, pickup sparkle, place/destroy puffs, the supply crate drop and damage feedback.
 // Everything is drawn through the shared pools in fx-core.js (four draw calls for all of
-// it) plus the renderer's light pool (ctx.lights.flash) and ground decals (ctx.ground).
+// it) plus the renderer's light pool (lights.flash) and ground decals (ctx.ground).
 //
 // Shot rules (SPEC §4.1): `echo` shots are never drawn again; the local player's shots
 // (predicted on clients) start at the viewmodel muzzle, which viewmodel.js publishes in
@@ -34,15 +34,33 @@ function hdr(hex, k) {
  * @param {object} ctx renderer ctx (SPEC §7.5)
  */
 export function createEffects3D(ctx) {
-  const fx = acquireFx(ctx);
+  const fx0 = acquireFx(ctx);
   // cross-module publishing points (see file header)
-  if (!fx.localMuzzle) fx.localMuzzle = { x: 0, h: 0, y: 0, now: -1, valid: false };
-  if (!fx.muzzles) fx.muzzles = new Map();
+  if (!fx0.localMuzzle) fx0.localMuzzle = { x: 0, h: 0, y: 0, now: -1, valid: false };
+  if (!fx0.muzzles) fx0.muzzles = new Map();
+  // Terrain (campaign maps): effects are written for a flat ground at y = 0. `gOff` is the
+  // ground height under the effect being emitted; the wrappers below add it to every height.
+  // Shots use absolute heights (muzzles, aim), so their handler runs with gOff = 0.
+  const G = ctx.groundY || (() => 0);
+  const rough = !!ctx.terrain && !ctx.terrain.flat;
+  let gOff = 0;
+  const fx = rough ? Object.create(fx0) : fx0;
+  const L = ctx.lights;
+  const lights = rough ? {
+    flash: (x, y, h, ...a) => L.flash(x, y, h + gOff, ...a),
+    steady: (key, x, y, h, ...a) => L.steady(key, x, y, h + gOff, ...a),
+  } : L;
+  if (rough) {
+    fx.spawn = (x, h, y, ...a) => fx0.spawn(x, h + gOff, y, ...a);
+    fx.glow = (x, h, y, ...a) => fx0.glow(x, h + gOff, y, ...a);
+    fx.decal = (x, h, y, ...a) => fx0.decal(x, h + gOff, y, ...a);
+    fx.beam = (ax, ah, ay, bx, bh, by, ...a) => fx0.beam(ax, ah + gOff, ay, bx, bh + gOff, by, ...a);
+  }
   let high = ctx.quality !== 'low';
   let ultra = ctx.quality === 'ultra';
   let localId = 0;
   let now = 0;
-  let camX = 0, camY = 0, pitch = 0;
+  let camX = 0, camY = 0, camH = EYE, pitch = 0;
   const R = fx.rng;
   const surf = surfaceIndex(ctx);
 
@@ -167,7 +185,7 @@ export function createEffects3D(ctx) {
     const extra = e.pid ? 10 : 8;
     _org.x = e.x + Math.cos(e.angle) * extra;
     _org.y = e.y + Math.sin(e.angle) * extra;
-    _org.h = e.turret ? 34 : 38;
+    _org.h = (e.turret ? 34 : 38) + G(e.x, e.y);
     return _org;
   }
 
@@ -176,11 +194,12 @@ export function createEffects3D(ctx) {
       // tracers go where the camera aims: bullets are horizontal in the sim, but the
       // player looks up/down at what they shoot
       const d = Math.hypot(r.x - camX, r.y - camY);
-      const h = EYE + Math.tan(pitch) * d;
-      if (r.hit === 1) return Math.max(10, Math.min(70, h));
-      return Math.max(1, Math.min(260, h));
+      const g = G(r.x, r.y);
+      const h = camH + Math.tan(pitch) * d - g;
+      if (r.hit === 1) return g + Math.max(10, Math.min(70, h));
+      return g + Math.max(1, Math.min(260, h));
     }
-    return r.hit === 1 ? 34 : org.h;
+    return r.hit === 1 ? 34 + G(r.x, r.y) : org.h;
   }
 
   // ---- impacts ----------------------------------------------------------------------------
@@ -191,7 +210,7 @@ export function createEffects3D(ctx) {
     let nx = -Math.cos(a), ny = -Math.sin(a), nh = 0;
     const s = surf(x, y, _s);
     let onSurface = false;
-    if (s && h < s.top - 1) { nx = s.nx; ny = s.ny; onSurface = true; } else if (h < 1.5) { nx = 0; ny = 0; nh = 1; onSurface = true; }
+    if (s && h < s.top - 1) { nx = s.nx; ny = s.ny; onSurface = true; } else if (h < G(x, y) + 1.5) { nx = 0; ny = 0; nh = 1; onSurface = true; }
     const out = Math.atan2(ny, nx);
     sparks(x, h, y, out, 2.0, high ? (big ? 10 : 6) : 3, big ? 420 : 320);
     glowPuff(x, h, y, big ? 9 : 6, 0.06, hdr('#ffcf80', 2.2), 0.9);
@@ -218,8 +237,8 @@ export function createEffects3D(ctx) {
       const end = rays.length ? rays[0] : { x: ox + ca * w.range, y: oy + sa * w.range, hit: 0 };
       const bh = endHeight(isLocal, end, org);
       rails.push({ ax: ox, ah: oh, ay: oy, bx: end.x, bh, by: end.y, age: 0, life: 0.6, color: hdr(w.tracer, 4) });
-      ctx.lights.flash(ox, oy, oh, '#b388ff', 3, 320, 0.3);
-      ctx.lights.flash(end.x, end.y, bh, '#b388ff', 2, 240, 0.3);
+      lights.flash(ox, oy, oh, '#b388ff', 3, 320, 0.3);
+      lights.flash(end.x, end.y, bh, '#b388ff', 2, 240, 0.3);
       sparks(end.x, bh, end.y, e.angle + Math.PI, 2.4, high ? 16 : 8, 420, hdr('#d8c0ff', 3));
       if (end.hit === 2) impact(end.x, bh, end.y, e.angle, true);
       // a helix of motes and a thin smoke trail left in the air
@@ -319,7 +338,7 @@ export function createEffects3D(ctx) {
       const kind = w.projectile && w.projectile.kind;
       if (kind === 'flare') {
         if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.0, '#ff5a3a');
-        ctx.lights.flash(ox, oy, oh, '#ff4a2a', 2.4, 320, 0.25);
+        lights.flash(ox, oy, oh, '#ff4a2a', 2.4, 320, 0.25);
         smoke(ox, oh, oy, high ? 4 : 2, 5, 1.2, C('#b0483a'), 0.3, 14, 3);
         sparks(ox, oh, oy, e.angle, 0.6, high ? 8 : 3, 300, HOT_SPARK);
       } else if (kind === 'harpoon') {
@@ -332,7 +351,7 @@ export function createEffects3D(ctx) {
         if (isLocal) ctx.shake(0.12);
       } else if (kind === 'rocket') {
         if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.6, '#ffb050');
-        ctx.lights.flash(ox, oy, oh, '#ffb050', 3, 300, 0.15);
+        lights.flash(ox, oy, oh, '#ffb050', 3, 300, 0.15);
         // back-blast out of the rear of the tube
         const bx = ox - ca * 40, by = oy - sa * 40;
         smoke(bx, oh, by, high ? 12 : 5, 10, 1.6, C('#9a968e'), 0.4, 12, 8, true);
@@ -342,7 +361,7 @@ export function createEffects3D(ctx) {
         }
       } else if (kind === 'grenade') {
         if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.1, '#ffc070');
-        ctx.lights.flash(ox, oy, oh, '#ffc070', 1.8, 200, 0.08);
+        lights.flash(ox, oy, oh, '#ffc070', 1.8, 200, 0.08);
         smoke(ox, oh, oy, 3, 6, 0.9, C('#a09a90'), 0.3, 10, 4);
       }
       return;
@@ -360,7 +379,7 @@ export function createEffects3D(ctx) {
     const last = lightGate.get(key);
     if (last !== undefined && now >= last && now - last < gap) return;
     lightGate.set(key, now);
-    ctx.lights.flash(x, y, h, color, intensity, radius, life);
+    lights.flash(x, y, h, color, intensity, radius, life);
   }
 
   function muzzleFlash(x, h, y, a, size, color, key = null) {
@@ -374,7 +393,7 @@ export function createEffects3D(ctx) {
     // lights everything inside its radius equally: at 1.5 over 220 units a teammate beside a
     // firing gun went white under the night exposure. Smaller and dimmer reads as a flash.
     const li = 0.9 * Math.min(1.4, size), lr = 110 + 40 * size;
-    if (key === null) ctx.lights.flash(x, y, h, color, li, lr, 0.06);
+    if (key === null) lights.flash(x, y, h, color, li, lr, 0.06);
     else gatedFlash(key, 0.06, x, y, h, color, li, lr, 0.07);
   }
 
@@ -383,7 +402,7 @@ export function createEffects3D(ctx) {
     const d = distCam(x, y);
     if (bloat) {
       // gore burst: green-grey mist, acid glow, chunks (zombies3d throws the gibs)
-      ctx.lights.flash(x, y, 30, '#b8ff6a', 2.4, r * 2.6, 0.35);
+      lights.flash(x, y, 30, '#b8ff6a', 2.4, r * 2.6, 0.35);
       fx.spawn(x, 26, y, 0, 0, 0, 0.25, r * 0.6, r * 1.5, hdr('#c8ff8a', 2), 0.8, FR.GLOW, F_ADD, 0, 0);
       for (let k = 0; k < (high ? 18 : 8); k++) {
         const a = R() * TAU, s = 80 + R() * 160;
@@ -401,7 +420,7 @@ export function createEffects3D(ctx) {
       return;
     }
     const rocket = kind === 'rocket';
-    ctx.lights.flash(x, y, 50, '#ffb060', rocket ? 4.5 : 3.6, r * 3.2, 0.45);
+    lights.flash(x, y, 50, '#ffb060', rocket ? 4.5 : 3.6, r * 3.2, 0.45);
     // white-hot core flash (blooms hard for a few frames), then the fireball
     fx.spawn(x, 26, y, 0, 0, 0, 0.1, r * 0.35, r * 0.9, HOT_CORE, 1, FR.GLOW, F_ADD, 0, 0);
     fx.spawn(x, 26, y, 0, 0, 0, 0.08, r * 0.5, r * 0.9, hdr('#fff0d0', 2), 0.7, FR.STAR, F_ADD, 0, 0);
@@ -431,6 +450,12 @@ export function createEffects3D(ctx) {
   }
 
   function handle(e) {
+    gOff = rough && e.type !== 'shot' && e.type !== 'chain' ? G(e.x || 0, e.y || 0) : 0;
+    handle0(e);
+    gOff = 0;
+  }
+
+  function handle0(e) {
     switch (e.type) {
       case 'shot': shot(e); break;
       case 'chain': {
@@ -439,8 +464,8 @@ export function createEffects3D(ctx) {
         const isLocal = e.pid && e.pid === localId;
         const arr = [];
         for (let k = 0; k < pts.length; k++) {
-          let h = 36;
           let x = pts[k].x, y = pts[k].y;
+          let h = 36 + G(x, y);
           if (k === 0) {
             const o = shotOrigin({ pid: e.pid, x, y, angle: Math.atan2(pts[1].y - y, pts[1].x - x) }, isLocal);
             x = o.x; y = o.y; h = o.h;
@@ -449,12 +474,13 @@ export function createEffects3D(ctx) {
         }
         arcs.push({ pts: arr, age: 0, life: 0.22, seed: R() * 100 });
         for (let k = 1; k < pts.length; k++) {
-          sparks(pts[k].x, 36, pts[k].y, 0, TAU, high ? 8 : 3, 280, hdr('#a0e8ff', 3));
-          glowPuff(pts[k].x, 36, pts[k].y, 18, 0.15, hdr('#80d8ff', 2), 0.8);
+          const g = G(pts[k].x, pts[k].y);
+          sparks(pts[k].x, 36 + g, pts[k].y, 0, TAU, high ? 8 : 3, 280, hdr('#a0e8ff', 3));
+          glowPuff(pts[k].x, 36 + g, pts[k].y, 18, 0.15, hdr('#80d8ff', 2), 0.8);
         }
-        ctx.lights.flash(pts[0].x, pts[0].y, 40, '#80d8ff', 2.6, 260, 0.12);
+        lights.flash(pts[0].x, pts[0].y, 40 + G(pts[0].x, pts[0].y), '#80d8ff', 2.6, 260, 0.12);
         const m = pts[Math.min(pts.length - 1, 2)];
-        ctx.lights.flash(m.x, m.y, 36, '#80d8ff', 2, 220, 0.14);
+        lights.flash(m.x, m.y, 36 + G(m.x, m.y), '#80d8ff', 2, 220, 0.14);
         break;
       }
       case 'melee': {
@@ -474,7 +500,7 @@ export function createEffects3D(ctx) {
           fx.velStretch(i, 0.03);
         }
         fx.spawn(x, 50, y, Math.cos(a) * 30, 5, Math.sin(a) * 30, 0.5, 5, 14, C('#5a8a20'), 0.3, FR.SMOKE2, 0, 0, 2);
-        ctx.lights.flash(x, y, 48, '#a6ff4a', 1.2, 140, 0.25);
+        lights.flash(x, y, 48, '#a6ff4a', 1.2, 140, 0.25);
         break;
       }
       case 'scream':
@@ -496,7 +522,7 @@ export function createEffects3D(ctx) {
         dust(e.x, 4, e.y, high ? 28 : 12, 34, C('#5a5044'), r * 1.2, 1.4, 0.5);
         debris(e.x, 4, e.y, high ? 20 : 8, C('#5d5a55'), 300, 3.2);
         ctx.ground.decal('scorch', e.x, e.y, r * 0.35, R() * TAU, 0.5);
-        ctx.lights.flash(e.x, e.y, 20, '#ffdcb0', 1.5, r * 2, 0.2);
+        lights.flash(e.x, e.y, 20, '#ffdcb0', 1.5, r * 2, 0.2);
         shakeAt(e.x, e.y, 0.9, 1400);
         break;
       }
@@ -511,7 +537,7 @@ export function createEffects3D(ctx) {
         glowPuff(e.x, 30, e.y, 30, 0.25, hdr('#9ae8ff', 1.6), 0.7);
         ring(e.x, 2, e.y, 60, 0.4, hdr('#cfeeff', 1.2), 0.6);
         dust(e.x, 10, e.y, high ? 4 : 2, 14, FROST_MIST, 30, 1.2, 0.3);
-        ctx.lights.flash(e.x, e.y, 30, '#9ae8ff', 1.2, 140, 0.3);
+        lights.flash(e.x, e.y, 30, '#9ae8ff', 1.2, 140, 0.3);
         break;
       }
       case 'ignite': {
@@ -523,7 +549,7 @@ export function createEffects3D(ctx) {
         }
         glowPuff(e.x, 20, e.y, r * 1.2, 0.3, hdr('#ff9a40', 2), 0.9);
         smoke(e.x, 20, e.y, high ? 8 : 3, 16, 2.4, C('#241f1b'), 0.45, 40, r * 0.4, true);
-        ctx.lights.flash(e.x, e.y, 30, '#ff9a40', 3, r * 3, 0.6);
+        lights.flash(e.x, e.y, 30, '#ff9a40', 3, r * 3, 0.6);
         ctx.ground.decal('scorch', e.x, e.y, r * 0.55, R() * TAU, 0.6);
         shakeAt(e.x, e.y, 0.18, 900);
         break;
@@ -552,7 +578,7 @@ export function createEffects3D(ctx) {
           const c = hdr(e.type === 'revived' ? '#7dff9a' : '#dfefff', 1.8);
           ring(p.x, 2, p.y, 140, 0.6, c, 0.9);
           sparkles(p.x, p.y, high ? 22 : 10, c, 10);
-          ctx.lights.flash(p.x, p.y, 30, e.type === 'revived' ? '#7dff9a' : '#dfefff', 1.8, 200, 0.6);
+          lights.flash(p.x, p.y, 30, e.type === 'revived' ? '#7dff9a' : '#dfefff', 1.8, 200, 0.6);
         }
         break;
       }
@@ -599,7 +625,7 @@ export function createEffects3D(ctx) {
         debris(e.x, 6, e.y, high ? 16 : 8, C('#55524c'), 320, 3.5);
         ring(e.x, 2, e.y, 520, 0.7, hdr('#c080ff', 1.5), 0.8, true, FR.SHOCK);
         ctx.ground.decal('scorch', e.x, e.y, 70, R() * TAU, 0.8);
-        ctx.lights.flash(e.x, e.y, 40, '#c080ff', 3, 420, 0.8);
+        lights.flash(e.x, e.y, 40, '#c080ff', 3, 420, 0.8);
         shakeAt(e.x, e.y, 0.7, 1600);
         break;
       default:
@@ -616,6 +642,7 @@ export function createEffects3D(ctx) {
     now = frame.now || 0;
     localId = frame.localId || localId;
     camX = frame.camX; camY = frame.camY;
+    camH = frame.camH || EYE;
     pitch = frame.pitch || 0;
     tracerBudget = high ? 48 : 20;
     players.clear();
@@ -692,13 +719,15 @@ export function createEffects3D(ctx) {
       if (em.age > em.life) continue;
       emitters[w++] = em;
       if (em.kind === 'flare') {
+        gOff = rough ? G(em.x, em.y) : 0;
         em.acc += dt * (high ? 14 : 7);
         while (em.acc >= 1) {
           em.acc -= 1;
           fx.spawn(em.x + (R() - 0.5) * 4, 4, em.y + (R() - 0.5) * 4, (R() - 0.5) * 10, 40 + R() * 20, (R() - 0.5) * 10, 3 + R(), 5, 34, C('#c83a2a'), 0.35, SMOKES[(R() * 5) | 0], 0, -4, 0.3);
         }
         fx.glow(em.x, 5, em.y, 14 + Math.sin(now * 30) * 2, hdr('#ff5a3a', 3), 1);
-        ctx.lights.steady('flare' + k, em.x, em.y, 12, '#ff4a2a', 1.4 * Math.min(1, (em.life - em.age) / 1.5), 220);
+        lights.steady('flare' + k, em.x, em.y, 12, '#ff4a2a', 1.4 * Math.min(1, (em.life - em.age) / 1.5), 220);
+        gOff = 0;
       }
     }
     emitters.length = w;
@@ -777,6 +806,7 @@ function hashf(n) {
  * to one, its outward face normal (sim axes) and height. A uniform grid keeps it cheap.
  */
 function surfaceIndex(ctx) {
+  const ground = ctx.groundY || (() => 0);
   const obs = (ctx.map && ctx.map.obstacles) || [];
   const CELL = 128;
   const grid = new Map();
@@ -822,7 +852,7 @@ function surfaceIndex(ctx) {
       out.ny = nlx * s + nly * c;
     }
     if (!best) return null;
-    out.top = heightOf(best);
+    out.top = heightOf(best) + ground(best.x, best.y);
     out.kind = best.kind;
     return out;
   };

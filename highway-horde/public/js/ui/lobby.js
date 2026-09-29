@@ -6,7 +6,7 @@ import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
-import { MODE_LIST, mapModes } from '../shared/zone.js';
+import { MODE_LIST, STANDARD_MODES, mapModes } from '../shared/zone.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
@@ -103,7 +103,7 @@ export function createLobby(ctx) {
         h('span.map-name', { text: m.name }),
         h('span.map-desc', { text: m.description }),
         // maps that only play some modes say so (picking one switches the mode)
-        mapModes(m).length < MODE_LIST.length
+        !STANDARD_MODES.every((id) => mapModes(m).includes(id))
           ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
           : null,
       ].filter(Boolean)),
@@ -113,8 +113,10 @@ export function createLobby(ctx) {
       audio.ui('click');
       change({ mapId: m.id });
     });
+    // maps with a campaign extension carry a badge (the extension is picked with the mode)
+    if (mapModes(m).includes('campaign')) btn.querySelector('.map-preview-wrap').appendChild(h('span.map-badge', { text: 'CAMPAIGN', title: 'Has the Campaign mode: hilltop, tower, zip line' }));
     mapCards.appendChild(btn);
-    mapBtns.set(m.id, { btn, canvas, drawn: false });
+    mapBtns.set(m.id, { btn, canvas, drawn: false, campaign: false });
   }
 
   function drawPreviews() {
@@ -128,13 +130,15 @@ export function createLobby(ctx) {
       if (i >= pending.length) return;
       const [id, v] = pending[i++];
       try {
-        const key = `${id}:${v.canvas.width}x${v.canvas.height}`;
+        // the Campaign mode previews the campaign variant (hill, tower) of a map that has one
+        const camp = v.campaign && mapModes(id).includes('campaign');
+        const key = `${id}${camp ? ':campaign' : ''}:${v.canvas.width}x${v.canvas.height}`;
         let src = previewCache.get(key);
         if (!src) {
           src = document.createElement('canvas');
           src.width = v.canvas.width;
           src.height = v.canvas.height;
-          deps.renderMapPreview(src, deps.buildMap(id, 1));
+          deps.renderMapPreview(src, camp ? deps.buildMap(id, 1, { mode: 'campaign' }) : deps.buildMap(id, 1));
           previewCache.set(key, src);
         }
         const g = v.canvas.getContext('2d');
@@ -377,15 +381,20 @@ export function createLobby(ctx) {
       v.btn.tabIndex = editable ? 0 : id === s.mapId ? 0 : -1;
     }
     const zone = s.mode === 'zone';
+    const campaign = s.mode === 'campaign';
     setSeg(segMode, s.mode || 'defend', editable);
+    if (campaign !== !!mapBtns.values().next().value.campaign) {
+      for (const v of mapBtns.values()) { v.campaign = campaign; v.drawn = false; }
+      drawPreviews();
+    }
     const md = MODE_LIST.find((m) => m.id === (s.mode || 'defend'));
     setText(modeDesc, md ? md.description : '');
     for (const [id, v] of mapBtns) v.btn.classList.toggle('mode-other', !mapModes(id).includes(s.mode || 'defend'));
     setSeg(segDiff, s.difficulty, editable);
     setSeg(segWaves, s.waves, editable);
     // Evac Run has no objective to defend
-    setSeg(segObj, zone ? false : s.objective, editable && !zone);
-    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : '';
+    setSeg(segObj, zone || campaign ? false : s.objective, editable && !zone && !campaign);
+    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : campaign ? 'No objective in the Campaign: the goal changes every stage' : '';
     setSeg(segFF, s.friendlyFire, editable);
     setText($('#settings-owner'), editable ? 'You pick the mission' : 'The host picks the mission');
     screen.classList.toggle('readonly', !editable);

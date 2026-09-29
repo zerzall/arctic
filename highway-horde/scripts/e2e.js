@@ -1430,7 +1430,7 @@ async function scenarioZone(sc) {
   await waitFor(pl, () => window.__HH.session.settings.mapId === 'harlan', null, 'Harlan County picked');
   expect((await settings()).mode === 'zone', 'picking Harlan County should switch to Evac Run');
   const tag = await pl.page.textContent('.map-card[data-map="harlan"] .map-modes');
-  expect(/evac run only/i.test(tag), `the Harlan County card should say it is Evac Run only ("${tag}")`);
+  expect(/evac run . campaign only/i.test(tag), `the Harlan County card should say it plays Evac Run and Campaign only ("${tag}")`);
   await pl.page.click('#opt-mode .seg-btn[data-value="defend"]');
   await waitFor(pl, () => window.__HH.session.settings.mode === 'defend', null, 'Defend on Harlan County');
   expect((await settings()).mapId !== 'harlan', 'Defend should leave Harlan County for a defend map');
@@ -1561,6 +1561,202 @@ async function scenarioZone(sc) {
   await sc.screenshots('-fps', FPS_SHOT_MS);
 }
 
+/**
+ * The Campaign (SPEC §3.8): the lobby (mode row, CAMPAIGN badges, previews), the stages on the
+ * classic view driven through the host's game (hill, breakout, floor, roof, zip line, escape,
+ * the "Escaped" end screen), then the first-person view of the tower interior and the roof.
+ */
+async function scenarioCampaign(sc) {
+  const pl = await sc.player('campaign');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Climber', cls: 'soldier' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
+  // The Mode row: three modes; Campaign plays on the highway, Checkpoint Delta and Harlan County.
+  const modes = await pl.page.$$eval('#opt-mode .seg-btn', (bs) => bs.map((b) => b.dataset.value));
+  expect(modes.join() === 'defend,zone,campaign', `the mode row should list defend, zone, campaign (got ${modes.join()})`);
+  await pl.page.click('#opt-mode .seg-btn[data-value="campaign"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'campaign', null, 'Campaign picked');
+  expect((await settings()).mapId === 'highway', 'Campaign should keep the highway');
+  const objDisabled = await pl.page.$$eval('#opt-objective .seg-btn', (bs) => bs.every((b) => b.getAttribute('aria-disabled') === 'true'));
+  expect(objDisabled, 'the objective toggle should be disabled in the Campaign');
+  const badges = await pl.page.$$eval('.map-card', (cs) => cs.map((c) => [c.dataset.map, !!c.querySelector('.map-badge')]));
+  expect(badges.filter(([, b]) => b).map(([m]) => m).sort().join() === 'checkpoint,harlan,highway', `CAMPAIGN badges on the three extended maps only: ${JSON.stringify(badges)}`);
+  await pl.page.click('.map-card[data-map="truckstop"]');
+  await waitFor(pl, () => window.__HH.session.settings.mapId === 'truckstop', null, 'the truck stop picked');
+  expect((await settings()).mode !== 'campaign', 'a map without the extension should leave the Campaign');
+  await pl.page.click('#opt-mode .seg-btn[data-value="campaign"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'campaign', null, 'Campaign picked again');
+  expect((await settings()).mapId !== 'truckstop', 'Campaign should move off the truck stop');
+  await pl.page.click('.map-card[data-map="checkpoint"]');
+  await waitFor(pl, () => window.__HH.session.settings.mapId === 'checkpoint' && window.__HH.session.settings.mode === 'campaign', null, 'Checkpoint Delta in the Campaign');
+  await sleep(1200);
+  await sc.screenshots('-lobby');
+  for (let i = 0; i < 2; i++) await pl.page.click('#btn-add-bot');
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 3, null, 'three roster rows');
+  await pl.page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH.getView() && window.__HH.getView().players.length === 3, null, 'the Campaign game', 60e3);
+
+  // Stage 1: the hill. The HUD names it, the snapshot carries the block, the team starts up the hill.
+  const s1 = await waitFor(pl, () => {
+    const H = window.__HH;
+    const v = H.getView();
+    const el = document.querySelector('#hud .hud-camp');
+    return v && v.campaign && el && !el.hidden && el.textContent.length > 8 ? { c: v.campaign, text: el.textContent, z: v.players.map((p) => p.z), total: v.totalWaves } : false;
+  }, null, 'the campaign panel', 20e3);
+  expect(s1.c.stage === 1, `the game should start on the hill (stage ${s1.c.stage})`);
+  expect(/HILLTOP/i.test(s1.text), `the panel should name the hilltop: "${s1.text}"`);
+  expect(s1.z.every((z) => z > 60), `the team should start up on the hill (heights ${s1.z.map((z) => Math.round(z)).join(',')})`);
+  log(`    campaign: hill, panel "${s1.text.replace(/\s+/g, ' ').trim()}", ${s1.total} waves in all`);
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game;
+    window.__e2eGod = setInterval(() => { for (const p of g.players) p.hp = p.maxHp; }, 200);
+  });
+  await pl.page.evaluate(() => { window.__HH.session.game.timer = 0; });
+  await waitFor(pl, () => window.__HH.getView().phase === 'wave' && window.__HH.getView().zombies.length > 3, null, 'a hill wave with zombies', 40e3);
+  await sc.screenshots('-hill', 1500);
+
+  // Stage 2: the breakout. The horde front appears behind the team.
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game, c = g.campaign;
+    for (const z of g.zombies) z.dead = true;
+    g.spawnQueue = 0;
+    g.bossQueue = 0;
+    g.wave = c.plan.breakout - 1;
+    g.phase = 'intermission';
+    g.timer = 0;
+  });
+  const s2 = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const el = document.querySelector('#hud .hud-camp');
+    return v.campaign && v.campaign.stage === 2 && v.campaign.front > -1e8 && el ? { c: v.campaign, text: el.textContent } : false;
+  }, null, 'the breakout with a horde front', 20e3);
+  expect(/BREAKOUT/i.test(s2.text) || /TOWER/i.test(s2.text), `the panel should name the breakout: "${s2.text}"`);
+  await sleep(2500);
+  await sc.screenshots('-breakout', 1500);
+  // The team reaches the tower door: the ascent starts on floor 1 with a title card.
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game, e = g.map.campaign.entrance;
+    for (const p of g.players) { p.x = e.x; p.y = e.y; }
+  });
+  const s3 = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const card = document.querySelector('#hud .camp-card');
+    return v.campaign && v.campaign.stage === 3 && v.campaign.floor === 1 ? { c: v.campaign, card: card && !card.hidden ? card.textContent : '' } : false;
+  }, null, 'floor 1', 20e3);
+  expect(/FLOOR 1/i.test(s3.card), `a title card for floor 1: "${s3.card}"`);
+  log(`    campaign: at the door -> ${s3.card.replace(/\s+/g, ' ').trim()}`);
+  await sleep(1500);
+  await sc.screenshots('-floor1', 1500);
+
+  // Up the stairs to the roof.
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game, c = g.campaign;
+    for (const z of g.zombies) z.dead = true;
+    g.spawnQueue = 0;
+    c.moveUp();
+    c.moveUp();
+    c.moveUp();
+    g.wave = c.plan.roof - 1;
+    g.timer = 0;
+  });
+  const s4 = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    return v.campaign && v.campaign.stage === 4 && v.phase === 'wave' ? { c: v.campaign, text: document.querySelector('#hud .hud-camp').textContent } : false;
+  }, null, 'the roof', 30e3);
+  expect(/ROOFTOP/i.test(s4.text), `the panel should name the rooftop: "${s4.text}"`);
+  log(`    campaign: roof, quota ${s4.c.quota}, panel "${s4.text.replace(/\s+/g, ' ').trim()}"`);
+  // The quota wakes the zip line; ride it.
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game, c = g.campaign;
+    c.kills = c.quota - 1;
+    c.onKill();
+    const z = g.map.campaign.roof.zip;
+    for (const p of g.players) { p.x = z.ix + (p.id - 1) * 12; p.y = z.iy; }
+  });
+  await waitFor(pl, () => { const v = window.__HH.getView(); return v.campaign && v.campaign.zip === 1; }, null, 'the zip line live', 10e3);
+  const banner = await waitFor(pl, () => {
+    const b = document.querySelector('#hud .hud-banner');
+    return b && !b.hidden && /ZIP LINE/i.test(b.textContent) ? b.textContent : false;
+  }, null, 'the zip line banner', 10e3);
+  log(`    campaign: zip line online, banner "${banner.replace(/\s+/g, ' ').trim()}"`);
+  const prompt = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-prompt');
+    return el && !el.hidden && /zip line/i.test(el.textContent) ? el.textContent : false;
+  }, null, 'the ride prompt', 10e3);
+  expect(/zip line/i.test(prompt), `a prompt to ride: "${prompt}"`);
+  await pl.page.keyboard.press('e');
+  await waitFor(pl, () => { const v = window.__HH.getView(); const me = v.players.find((p) => p.id === window.__HH.session.localId); return me.ride > 0; }, null, 'the local player riding', 10e3);
+  await sleep(1500);
+  await sc.screenshots('-zip', 1500);
+  // The bots ride too.
+  await pl.page.evaluate(() => {
+    const g = window.__HH.session.game;
+    for (const p of g.players) if (p.bot && !p.escaped && !(p.riding > 0)) g.campaign.tryZip(p);
+  });
+  await waitFor(pl, () => window.__HH.getView().phase === 'victory', null, 'victory once everyone escaped', 40e3);
+  const end = await waitFor(pl, () => {
+    const el = document.querySelector('#endscreen');
+    return el && !el.hidden ? { title: document.querySelector('#end-title').textContent, sub: document.querySelector('#end-sub').textContent } : false;
+  }, null, 'the end screen', 20e3);
+  expect(/escaped/i.test(end.title), `the end screen should say Escaped: "${end.title}"`);
+  log(`    campaign: victory "${end.title}" / "${end.sub}"`);
+  await sc.screenshots('-victory');
+  await pl.page.evaluate(() => clearInterval(window.__e2eGod));
+  await sc.close(pl);
+
+  // First person: the campaign sub-system in the scene, the tower's interior, the roof.
+  const fp = await sc.player('campaign-fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  fp.url = sc.env.relay.url;
+  await titleSetup(fp, { name: 'Pointman', cls: 'soldier' });
+  await fp.page.click('#btn-solo');
+  await waitFor(fp, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  await fp.page.click('#opt-mode .seg-btn[data-value="campaign"]');
+  await fp.page.click('.map-card[data-map="checkpoint"]');
+  await waitFor(fp, () => window.__HH.session.settings.mapId === 'checkpoint' && window.__HH.session.settings.mode === 'campaign', null, 'Checkpoint Delta in the Campaign');
+  // (building the big map's 3D world blocks the page for a while: don't wait on the click)
+  await fp.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
+  await waitFor(fp, () => {
+    const H = window.__HH;
+    const L = H.getLook && H.getLook();
+    return !document.querySelector('#screen-game').hidden && !!(H.getView && H.getView()) && !!L && L.ready && L.frames >= 3;
+  }, null, 'the first-person Campaign', 180e3);
+  const f1 = await fp.page.evaluate(() => {
+    const H = window.__HH;
+    const scene = H.renderer.debug && H.renderer.debug.scene;
+    return {
+      view: H.view, group: !!(scene && scene.getObjectByName('campaign')), calls: H.renderer.stats.drawCalls,
+      panel: (document.querySelector('#hud .hud-camp') || {}).textContent || '', z: H.getView().players.map((p) => Math.round(p.z)),
+    };
+  });
+  log(`    campaign fps: hill, ${f1.calls} draw calls, campaign group ${f1.group}, z ${f1.z.join()}`);
+  expect(f1.view === 'fps' && f1.group, `the first-person view should carry the campaign group: ${JSON.stringify(f1)}`);
+  expect(/HILLTOP/i.test(f1.panel), `the first-person panel: "${f1.panel}"`);
+  await sc.screenshots('-fps-hill', FPS_SHOT_MS);
+  await fp.page.evaluate(() => {
+    const g = window.__HH.session.game, c = g.campaign;
+    c.stage = 3;
+    c.floor = 0;
+    c.moveUp();
+  });
+  await waitFor(fp, () => { const v = window.__HH.getView(); return v.campaign && v.campaign.floor === 1; }, null, 'floor 1 in first person', 20e3);
+  await sleep(2500);
+  await sc.screenshots('-fps-floor', FPS_SHOT_MS);
+  await fp.page.evaluate(() => {
+    const c = window.__HH.session.game.campaign;
+    c.moveUp();
+    c.moveUp();
+    c.moveUp();
+  });
+  await waitFor(fp, () => { const v = window.__HH.getView(); return v.campaign && v.campaign.stage === 4; }, null, 'the roof in first person', 20e3);
+  await sleep(2500);
+  const f2 = await fp.page.evaluate(() => ({ calls: window.__HH.renderer.stats.drawCalls, z: window.__HH.getView().players.map((p) => Math.round(p.z)) }));
+  log(`    campaign fps: roof, ${f2.calls} draw calls, z ${f2.z.join()}`);
+  expect(f2.z[0] > 300, `standing on the roof (z ${f2.z[0]})`);
+  await sc.screenshots('-fps-roof', FPS_SHOT_MS);
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -1571,6 +1767,7 @@ const SCENARIOS = [
   ['g', 'fps-solo', scenarioFpsSolo, 330e3],
   ['h', 'fps-relay', scenarioFpsRelay, 200e3],
   ['i', 'zone', scenarioZone, 360e3],
+  ['k', 'campaign', scenarioCampaign, 420e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

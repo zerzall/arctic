@@ -15,6 +15,7 @@
 // other kind is swapped for a fresh clone.
 
 import { DIFFICULTIES } from '../shared/constants.js';
+import { STAGE_SHORT } from '../shared/campaign.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
@@ -133,7 +134,9 @@ export function startMatch(ctx, session) {
   }
 
   // Evac Run (SPEC §3.7): the renderers build the zone wall, the HUD its zone panel
-  const mode = (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
+  // The Campaign (SPEC §3.8): a map built with the campaign extension (map.campaign) plays it
+  const mode = map.campaign ? 'campaign'
+    : (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
   const made = createViewRenderer(ctx, map, mode);
   const { renderer, canvas, fps } = made;
   screen.classList.toggle('view-fps', fps);
@@ -344,10 +347,13 @@ export function startMatch(ctx, session) {
     const victory = view.phase === 'victory';
     endEl.classList.toggle('victory', victory);
     endEl.classList.toggle('defeat', !victory);
-    $('#end-title').textContent = victory ? 'Victory' : 'Overrun';
+    const camp = map.campaign && view.campaign ? view.campaign : null;   // the Campaign's own end texts
+    $('#end-title').textContent = camp && victory ? 'Escaped' : victory ? 'Victory' : 'Overrun';
     const objName = (map.objective && map.objective.name) || 'objective';
     let sub;
-    if (victory) sub = `All ${view.totalWaves} waves survived. The road is yours.`;
+    if (camp && victory) sub = 'Every survivor rode the zip line out. The horde stays behind.';
+    else if (camp) sub = `The team fell ${['', 'on the hilltop', 'on the breakout', `on floor ${camp.floor}`, 'on the rooftop'][camp.stage] || ''}.`;
+    else if (victory) sub = `All ${view.totalWaves} waves survived. The road is yours.`;
     else if (gameoverReason === 'objective' || (!gameoverReason && view.objective && view.objective.hp <= 0)) sub = `The ${objName} was destroyed on wave ${view.wave}.`;
     else sub = `Nobody was left standing on wave ${view.wave}.`;
     $('#end-sub').textContent = sub;
@@ -357,7 +363,8 @@ export function startMatch(ctx, session) {
     const diff = DIFFICULTIES[session.settings.difficulty];
     const survived = victory ? view.wave : Math.max(0, view.wave - 1);
     $('#end-summary').replaceChildren(
-      chip('Waves survived', view.totalWaves ? `${survived} / ${view.totalWaves}` : String(survived)),
+      camp ? chip('Stage reached', victory ? 'Escaped' : STAGE_SHORT[camp.stage] || String(camp.stage))
+        : chip('Waves survived', view.totalWaves ? `${survived} / ${view.totalWaves}` : String(survived)),
       chip('Zombies killed', formatShort(kills)),
       chip('Map', mapName),
       chip('Difficulty', diff ? diff.name : session.settings.difficulty),

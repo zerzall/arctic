@@ -18,8 +18,16 @@ export const MODE_LIST = [
     short: 'Move to each new safe zone',
     description: 'Every wave the safe zone moves to a new spot on the map. Get there before the blight rolls in, grab the supply drop, and hold the circle while it shrinks.',
   },
+  {
+    id: 'campaign',
+    name: 'Campaign',
+    short: 'Hilltop stand, breakout, tower, zip line',
+    description: 'A four-stage campaign on a daylit map: hold the hilltop against the horde, break out across the wrecked street to the tall tower, fight up floor by floor to the roof, kill the quota and escape down the zip line.',
+  },
 ];
 export const MODE_IDS = MODE_LIST.map((m) => m.id);
+/** The modes every map plays unless its `modes` list says otherwise (the campaign is opt-in per map). */
+export const STANDARD_MODES = Object.freeze(['defend', 'zone']);
 
 /**
  * Tuning of the moving safe zone. Distances in world px, times in seconds.
@@ -61,13 +69,13 @@ export const ZONE = Object.freeze({
 export const ZONE_STAGES = ['move', 'hold', 'shrink', 'final'];
 
 /**
- * Modes a map supports (MAP_LIST entry or MapDef; every map without a list plays both).
+ * Modes a map supports (MAP_LIST entry or MapDef; a map without a list plays defend and the Evac Run).
  * @param {object|string} map MAP_LIST entry, MapDef or map id
  * @returns {string[]}
  */
 export function mapModes(map) {
   const meta = typeof map === 'string' ? MAP_LIST.find((m) => m.id === map) : map;
-  return meta && Array.isArray(meta.modes) && meta.modes.length ? meta.modes : MODE_IDS;
+  return meta && Array.isArray(meta.modes) && meta.modes.length ? meta.modes : STANDARD_MODES;
 }
 
 /** True if `mapId` can be played in `mode`. */

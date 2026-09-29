@@ -69,6 +69,8 @@ export function damageZombie(game, z, amount, by, gib = false) {
   if (z.dead || !(amount > 0)) return false;
   // Frozen solid: brittle.
   if (z.frozenT > 0) amount *= FROST.brittle;
+  // Campaign: zombies climbing the hill are exposed, shooters on the high ground hit harder.
+  if (game.campaign) amount *= game.campaign.damageMult(z, by ? game.getPlayer(by) : null);
   const dealt = amount < z.hp ? amount : Math.max(0, z.hp);
   z.hp -= amount;
   // Stats are final once the game is over (a frag landing late scores nothing).
@@ -124,6 +126,7 @@ export function killZombie(game, z, by, gib) {
   if (z.dead) return;
   z.dead = true;
   z.hp = 0;
+  if (game.campaign) game.campaign.onKill();
   game.emit({
     type: 'zdie', id: z.id, ztype: z.type, x: Math.round(z.x), y: Math.round(z.y), angle: z.angle,
     by: by || 0, gib: !!gib,

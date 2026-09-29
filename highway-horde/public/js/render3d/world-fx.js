@@ -452,7 +452,7 @@ export function makeShafts(list, fx) {
       ctr.push(l.x, l.y, l.radius);
       const top = tp[i * 3 + 1] > 0;
       const r = top ? 7 : l.radius;
-      pos.push(l.x + tp[i * 3] * r, top ? l.h : 0, l.y + tp[i * 3 + 2] * r);
+      pos.push(l.x + tp[i * 3] * r, top ? l.h : (l.base || 0), l.y + tp[i * 3 + 2] * r);
       nor.push(tn[i * 3], 0, tn[i * 3 + 2]);
       col.push(c.r, c.g, c.b);
       hh.push(top ? 0 : 1);

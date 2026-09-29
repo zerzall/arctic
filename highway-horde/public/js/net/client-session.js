@@ -449,7 +449,7 @@ export class ClientSession extends Emitter {
     const build = this.hooks.buildMap || buildMap;
     let map;
     try {
-      map = build(msg.mapId, msg.seed);
+      map = build(msg.mapId, msg.seed, { mode: msg.settings && msg.settings.mode });
     } catch (err) {
       console.error('[net] could not build map', err);
       this._disconnect('Game version mismatch');
@@ -937,7 +937,8 @@ export class ClientSession extends Emitter {
     }
     this._forgetBefore(acked);
     if (sp && sp.state === 'dead') this.ackState = 'dead';
-    if (!sp || sp.state === 'dead') {
+    // (dead, or riding the campaign's zip line: the host moves the body, nothing to predict)
+    if (!sp || sp.state === 'dead' || sp.ride > 0) {
       this.pred = null;
       this.offX = this.offY = 0;
       return;

@@ -25,6 +25,7 @@ import { activeWeapon } from '../shared/sim/players.js';
 import { createCollisionWorld, ledgeAhead } from '../shared/movement.js';
 import { nearSupply } from '../shared/zone.js';
 import { createZoneHud } from './zonehud.js';
+import { createCampaignHud } from './campaignhud.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
@@ -75,12 +76,13 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   // ---- build DOM -----------------------------------------------------------------------
 
   // wave / phase (top-left)
+  const waveLabel = h('span.wave-label', { text: 'WAVE' });
   const waveNum = h('span.wave-num');
   const waveTotal = h('span.wave-total');
   const waveLeft = h('div.wave-left');
   const phaseLine = h('div.phase-line');
   const wavePanel = h('div.hud-wave.hud-box', null, [
-    h('div.wave-line', null, [h('span.wave-label', { text: 'WAVE' }), waveNum, waveTotal]),
+    h('div.wave-line', null, [waveLabel, waveNum, waveTotal]),
     waveLeft,
     phaseLine,
   ]);
@@ -186,10 +188,15 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   // Mounted next to the HUD, above the touch layer, so the invite button can be tapped.
   const scoreboard = createScoreboard(root.parentElement || root, { invite });
   const zoneMode = mode === 'zone';
-  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode });
-  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode }) : null;
+  const campMode = mode === 'campaign' && !!map.campaign;
+  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode, campaign: campMode });
+  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode, campaign: campMode }) : null;
   // Evac Run: the zone panel under the compass, the outside warning (SPEC §3.7)
   const zoneHud = zoneMode ? createZoneHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a) }) : null;
+  // The Campaign: the stage panel, the horde warning, the title card (SPEC §3.8)
+  const campaignHud = campMode
+    ? createCampaignHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id) })
+    : null;
 
   // ---- state -----------------------------------------------------------------------------
 
@@ -330,6 +337,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const me = localPlayer(lastView);
     for (const e of events) {
       if (zoneHud) zoneHud.addEvent(e);
+      if (campaignHud && campaignHud.addEvent(e, lastView, localId)) continue;
       switch (e.type) {
         case 'zdie': {
           const common = COMMON_ZOMBIES.has(e.ztype);
@@ -383,7 +391,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
             const need = priceOf(e.item, me, clsOf(localId)) - (me ? me.cash : 0);
             toast(need > 0 ? `You need ${formatCash(need)} more` : 'Not enough cash', 'danger', 2.4);
           } else if (e.reason === 'closed') {
-            toast(zoneMode ? 'Shop closed — get to the supply drop in the zone' : 'Shop closed — get to the supply station', 'danger', 2.6);
+            toast(zoneMode ? 'Shop closed — get to the supply drop in the zone' : campMode ? 'Shop closed — get to the supply point' : 'Shop closed — get to the supply station', 'danger', 2.6);
           } else if (e.reason === 'max') {
             toast(`You can't carry more (${itemName(e.item)})`, 'danger', 2.4);
           } else if (e.reason === 'owned') {
@@ -519,6 +527,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     if (!v) return;
     const me = localPlayer(v);
     if (zoneHud) zoneHud.update(v, me, info.localPos, dt);
+    if (campaignHud) campaignHud.update(v, me, info.localPos, dt);
     root.dataset.phase = v.phase;
 
     // wave / phase
@@ -532,12 +541,20 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     } else {
       setText(waveLeft, v.phase === 'victory' ? 'All waves survived' : 'Overrun');
     }
+    // the campaign's stages (hill waves, the breakout, floors, the roof quota) name their own counters
+    const cw = campaignHud ? campaignHud.wavePanel(v) : null;
+    setText(waveLabel, cw ? cw.label : 'WAVE');
+    if (cw) {
+      setText(waveNum, cw.num);
+      setText(waveTotal, cw.total);
+      if (cw.left && v.phase === 'wave') setText(waveLeft, cw.left);
+    }
     setShown(waveLeft, true);
     if (between) {
       const secs = Math.max(0, Math.ceil(v.timer));
       const total = v.players.length;
       const readyN = v.readyCount | 0;
-      const what = zoneMode ? 'Zone locks' : v.phase === 'prep' ? 'First wave' : 'Next wave';
+      const what = zoneMode ? 'Zone locks' : campaignHud ? campaignHud.phaseWhat(v) : v.phase === 'prep' ? 'First wave' : 'Next wave';
       let text;
       if (me && me.ready) text = `${what} in ${secs}s — you're ready (${readyN}/${total})`;
       // Touch has a big READY button on screen, and no room for a long line.
@@ -829,9 +846,12 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
         }
         if (crate) {
           text = `Press ${keys.interact} to take the ${crate.weapon && WEAPONS[crate.weapon] ? WEAPONS[crate.weapon].name : 'weapon crate'}`;
-        } else if (v.phase === 'wave' && nearSupply(map, v.zone, pos.x, pos.y, SUPPLY_RADIUS)) {
-          const atDrop = !!v.zone && Math.hypot(pos.x - v.zone.sx, pos.y - v.zone.sy) <= SUPPLY_RADIUS;
-          text = info.shopOpen ? '' : `Press ${keys.shop} to open the shop at the ${atDrop ? 'supply drop' : 'supply station'}`;
+        } else if (campaignHud && (text = campaignHud.prompt(v, me, pos, keys))) {
+          // (the zip gantry)
+        } else if (v.phase === 'wave' && nearSupply(map, v.zone || v.campaign, pos.x, pos.y, SUPPLY_RADIUS)) {
+          const drop = v.zone || v.campaign;
+          const atDrop = !!drop && Math.hypot(pos.x - drop.sx, pos.y - drop.sy) <= SUPPLY_RADIUS;
+          text = info.shopOpen ? '' : `Press ${keys.shop} to open the shop at the ${atDrop ? (v.campaign ? 'supply point' : 'supply drop') : 'supply station'}`;
         }
       }
       // facing something you can climb onto
@@ -884,6 +904,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     destroy() {
       clearTouchLayout();
       if (zoneHud) zoneHud.destroy();
+      if (campaignHud) campaignHud.destroy();
       scoreboard.destroy();
       root.replaceChildren();
       root.hidden = true;

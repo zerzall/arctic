@@ -6,6 +6,7 @@
 import {
   createRng, mix, shade, rgba, roundRectPath, fillRoundRect, fillCircle, fillEllipse, blobPath,
 } from './util.js';
+import { drawCampaignObstacle } from './obstacles-campaign.js';
 
 const GLASS = '#18222b';
 const TYRE = '#0e0e0f';
@@ -58,7 +59,8 @@ export function drawObstacle(g, o, seed = 0) {
     case 'silo': drawSilo(g, L, W, o.color, rng); break;
     case 'grave': drawGrave(g, L, W, o.color, rng); break;
     default:
-      fillRoundRect(g, -L / 2, -W / 2, L, W, 3, o.color || '#777');
+      // (the Campaign's kinds live in obstacles-campaign.js)
+      if (!drawCampaignObstacle(g, o, rng)) fillRoundRect(g, -L / 2, -W / 2, L, W, 3, o.color || '#777');
   }
 }
 

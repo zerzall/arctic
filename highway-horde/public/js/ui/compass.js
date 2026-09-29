@@ -24,6 +24,7 @@ const PX_PER_M = 32;
  */
 export function createCompass(canvas, map, opts = {}) {
   const zoneMode = !!opts.zone;
+  const campMode = !!opts.campaign;     // the Campaign: its stage circle and supply point (view.campaign)
   const g = canvas.getContext('2d');
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // labels grow with the rem-sized strip on big screens.
@@ -88,8 +89,8 @@ export function createCompass(canvas, map, opts = {}) {
       if (d < 24) return;
       marks.push({ delta: angleDelta(yaw, Math.atan2(dy, dx)), kind, color, label, d });
     };
-    if (map.supply) add(map.supply.x, map.supply.y, 'supply', '#56d67a');
-    const z = view && view.zone;
+    if (map.supply && !campMode) add(map.supply.x, map.supply.y, 'supply', '#56d67a');
+    const z = view && (view.zone || (campMode ? view.campaign : null));
     if (z) add(z.sx, z.sy, 'supply', '#56d67a');
     if (view) {
       for (const p of view.players || []) {
@@ -99,9 +100,9 @@ export function createCompass(canvas, map, opts = {}) {
         add(p.x, p.y, 'mate', p.state === 'downed' ? '#ff5252' : PLAYER_COLORS[r ? r.color : 0] || '#fff');
       }
     }
-    if (map.objective && !zoneMode) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
+    if (map.objective && !zoneMode && !campMode) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
     if (z && pos) {
-      add(z.x, z.y, 'zone', '#4fe3d0');
+      add(z.x, z.y, 'zone', campMode ? (z.zip ? '#6dff9a' : '#ffd166') : '#4fe3d0');
       const zm = marks[marks.length - 1];
       if (zm && zm.kind === 'zone') zm.d = Math.max(0, Math.hypot(z.x - pos.x, z.y - pos.y) - z.r);
     }
@@ -207,7 +208,7 @@ export function createCompass(canvas, map, opts = {}) {
     if (obj && Math.abs(obj.delta) <= HALF_ARC) {
       const x = xOf(obj.delta);
       g.font = `700 ${Math.round(10.5 * u)}px "Barlow Condensed", system-ui, sans-serif`;
-      g.fillStyle = obj.kind === 'zone' ? '#8ff3e6' : '#ffd766';
+      g.fillStyle = obj.kind === 'zone' ? (campMode ? '#ffe08a' : '#8ff3e6') : '#ffd766';
       g.textBaseline = 'middle';
       g.textAlign = x > W - 40 * u ? 'right' : 'left';
       g.fillText(`${Math.round(obj.d / PX_PER_M)}m`, x + (g.textAlign === 'left' ? 9 : -9) * u, H * 0.3);

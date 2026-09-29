@@ -14,13 +14,13 @@ import { GameCore } from './sim/core.js';
 export class Game extends GameCore {
   /**
    * @param {object} opts
-   *   mapId, seed      the map is built with buildMap(mapId, seed)
+   *   mapId, seed      the map is built with buildMap(mapId, seed, { mode })
    *   map              optional ready MapDef (tests/tools); takes precedence over mapId
    *   settings         { difficulty, waves, objective, friendlyFire }
    *   players          [{ id, name, color, cls, bot? }] — bot: true makes an AI survivor
    */
   constructor(opts = {}) {
-    const map = opts.map || buildMap(opts.mapId, opts.seed);
+    const map = opts.map || buildMap(opts.mapId, opts.seed, { mode: opts.settings && opts.settings.mode });
     super({ ...opts, map, mapId: opts.mapId || map.id });
   }
 }

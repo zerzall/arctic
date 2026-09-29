@@ -17,7 +17,7 @@
 // --out FILE (markdown report), --json FILE (raw per-run results),
 // --set 'WEAPONS.shotgun.damage=22;ZOMBIES.boss.hp=6000' (try numbers held in the data
 // tables' objects without editing them: WEAPONS, ZOMBIES, CLASSES, ITEMS, DIFFICULTIES,
-// WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE, THROWABLES).
+// WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE, THROWABLES, CAMPAIGN).
 //
 // Profiles: 'skilled' = the lobby bots (botSkill 1); 'average' = BOT_SKILL.AVERAGE, a
 // stand-in for an average human (slower reactions, worse aim, plain shopping).
@@ -27,6 +27,13 @@
 // whole team was in the circle, harasser kills and damage taken on the way) and the
 // blight damage taken during the wave.
 //   node scripts/balance.js --mode zone --maps harlan --diffs normal --sizes 1,4 --seeds 3
+//
+// --mode campaign (maps with the extension: checkpoint, highway, harlan; --waves N defaults to
+// 10 there): the whole Highway Horde campaign; a wave is a stage step (hill waves, the
+// breakout, one per floor, the roof), the summary adds the share of runs that escaped and how
+// far the lost ones got, the per-wave table names each stage, and damage taken by source
+// includes 'horde front'.
+//   node scripts/balance.js --mode campaign --diffs normal --sizes 1,4 --seeds 8
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
@@ -43,6 +50,7 @@ import {
 } from '../public/js/shared/constants.js';
 import { BOT_SKILL } from '../public/js/shared/sim/bots.js';
 import { mapModes } from '../public/js/shared/zone.js';
+import { frontGap, STAGE_SHORT, CAMPAIGN } from '../public/js/shared/campaign.js';
 
 const PROFILES = { skilled: BOT_SKILL.SKILLED, average: BOT_SKILL.AVERAGE };
 /** A wave that runs longer than this (sim seconds) is a stall: the run stops there. */
@@ -70,6 +78,7 @@ export function runMatch(job) {
   });
   // Evac Run: the move before each wave (length, arrival, fights on the way) and the blight.
   const zone = g.zone;
+  const camp = g.campaign;
   let breakStart = 0, arrive = -1, moveKills = 0, moveDmg = 0, fog0 = 0, harassed0 = 0;
   const n = players.length;
   const waves = [];
@@ -163,6 +172,10 @@ export function runMatch(job) {
             objStart: g.objective ? g.objective.hp / g.objective.maxHp : 1,
             bossSpawn: -1, bossDead: -1, bossesLeft: 0, kills: 0,
           };
+          if (camp) {
+            cur.stage = camp.stage;
+            cur.floor = camp.floor;
+          }
           if (zone) {
             cur.move = (g.tick - breakStart) / TICK_RATE;
             cur.arrive = arrive >= 0 ? (arrive - breakStart) / TICK_RATE : cur.move;
@@ -261,7 +274,8 @@ export function runMatch(job) {
     }
   }
   if (cur && zone) cur.fog = (zone.stats.fog - fog0) / n;
-  closeWave(false);
+  // (the campaign's last wave, the roof, ends in victory instead of a clear)
+  closeWave(over === 'victory');
   const cleared = waves.filter((w) => w.cleared).length;
   const perPlayer = g.players.map((p) => ({
     cls: p.cls, kills: p.kills, downs: p.downs, revives: p.revives, damage: Math.round(p.damage),
@@ -274,6 +288,7 @@ export function runMatch(job) {
     waves: waves.map((w) => ({
       wave: w.wave, boss: w.boss, cleared: w.cleared, dur: round2(w.dur), downs: w.downs, deaths: w.deaths,
       revives: w.revives, selfRevives: w.selfRevives, dmgTaken: round2(w.dmgTaken), peakAlive: w.peakAlive,
+      ...(camp ? { stage: w.stage, floor: w.floor } : {}),
       objStart: round2(w.objStart), objEnd: round2(w.objEnd), bank: Math.round(w.bank),
       earned: Math.round(w.earned), spent: Math.round(w.spent + w.spentBreak), kills: w.kills,
       bossDur: w.bossSpawn >= 0 && w.bossDead >= 0 ? round2((w.bossDead - w.bossSpawn) / TICK_RATE) : w.bossSpawn >= 0 ? -1 : null,
@@ -282,6 +297,10 @@ export function runMatch(job) {
         harassed: w.harassed, fog: round2(w.fog || 0),
       } : {}),
     })),
+    camp: camp ? {
+      stage: camp.stage, floor: camp.floor, escaped: g.players.filter((p) => p.escaped).length, rides: camp.stats.rides,
+      blight: Math.round(camp.stats.blight), kills: camp.kills, quota: camp.quota, zip: camp.zip,
+    } : null,
     buys, crates, kills, objBy, hurtBy, inHand, players: perPlayer, rays, hits,
     ticks: g.tick, ms: Date.now() - t0,
   };
@@ -300,6 +319,9 @@ function hurtSource(g, e, blastAt) {
     }
   }
   if (best) return best.type;
+  // Campaign: behind the horde front on the breakout
+  const cp = g.campaign && g.campaign.stage === 2 && g.campaign.front > -1e8 ? g.getPlayer(e.pid) : null;
+  if (cp && frontGap(g.campaign.route, g.campaign.front, cp.x, cp.y) < 0) return 'horde front';
   // Evac Run: a survivor outside the circle mid-wave is hurt by the blight
   const zc = g.zone && g.phase === 'wave' && g.zone.stage > 0 ? g.zone.circle : null;
   const p = zc && g.getPlayer(e.pid);
@@ -351,7 +373,7 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
-const TABLES = { WEAPONS, ZOMBIES, CLASSES, ITEMS, DIFFICULTIES, WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE, THROWABLES };
+const TABLES = { WEAPONS, ZOMBIES, CLASSES, ITEMS, DIFFICULTIES, WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE, THROWABLES, CAMPAIGN };
 
 /** Apply 'A.b.c=1;D.e=2' overrides to the shared data tables (this thread only). */
 export function applySets(spec) {
@@ -407,8 +429,9 @@ const list = (v, def) => (typeof v === 'string' ? v.split(',').map((s) => s.trim
 
 export function buildJobs(opt) {
   const quick = !!opt.quick;
-  const maps = list(opt.maps, MAP_LIST.map((m) => m.id));
-  const waves = Number(opt.waves) || 15;
+  const campaign = opt.mode === 'campaign';
+  const maps = list(opt.maps, MAP_LIST.map((m) => m.id)).filter((m) => !campaign || mapModes(m).includes('campaign'));
+  const waves = Number(opt.waves) || (campaign ? 10 : 15);
   const seeds = Number(opt.seeds) || (quick ? 1 : 3);
   const jobs = [];
   // Evac Run on request; maps that only play it always run it
@@ -540,15 +563,26 @@ function summaryTable(results) {
     const lostObj = rs.filter((r) => r.over === 'objective').length;
     const wiped = rs.filter((r) => r.over === 'wiped').length;
     const stall = rs.filter((r) => r.over === 'stall').length;
-    return [profile, diff, size, rs.length,
+    const campRow = rs[0].job.mode === 'campaign';
+    const won = rs.filter((r) => r.over === 'victory').length;
+    const reach = campRow ? [pct(won / rs.length), f1(mean(rs.map((r) => (r.camp ? r.camp.escaped : 0) / Number(size))) * 100 / 100)] : [];
+    return [profile, diff, size, rs.length, ...reach,
       pct(cl.filter((c) => c >= 5).length / rs.length), pct(cl.filter((c) => c >= 10).length / rs.length),
       pct(cl.filter((c) => c >= W).length / rs.length), f1(median(cl)), f1(mean(cl)),
       `${wiped}/${lostObj}${stall ? `/${stall}!` : ''}`,
       f2(mean(allW.map((w) => w.downs / Number(size)))), f2(mean(allW.map((w) => w.revives / Number(size)))),
       f0(mean(allW.map((w) => w.dur))), pct(rs.reduce((a, r) => a + r.hits, 0) / Math.max(1, rs.reduce((a, r) => a + r.rays, 0)))];
   });
-  return table(['profile', 'diff', 'team', 'runs', 'clear 5', 'clear 10', `clear ${results[0] ? results[0].job.waves : 15}`,
+  const campHead = results[0] && results[0].job.mode === 'campaign' ? ['escaped', 'esc/pl'] : [];
+  return table(['profile', 'diff', 'team', 'runs', ...campHead, 'clear 5', 'clear 10', `clear ${results[0] ? results[0].job.waves : 15}`,
     'median cleared', 'mean cleared', 'wiped/obj lost', 'downs/pl/wave', 'revives/pl/wave', 'wave s', 'hit rate'], rows);
+}
+
+/** Campaign: " hill" / " breakout" / " F2" / " roof" after a wave number. */
+function stageLabel(ws) {
+  const c = ws.find((x) => x.stage);
+  if (!c) return '';
+  return ` ${c.stage === 3 ? `F${c.floor}` : STAGE_SHORT[c.stage].toLowerCase()}`;
 }
 
 function waveTable(rs) {
@@ -562,7 +596,7 @@ function waveTable(rs) {
     const boss = ws.filter((x) => x.bossDur != null);
     const bossDone = boss.filter((x) => x.bossDur >= 0);
     rows.push([
-      w + (w % BOSS_EVERY === 0 ? 'B' : ''), pct(ws.length / n), pct(cl.length / n),
+      w + (w % BOSS_EVERY === 0 ? 'B' : '') + stageLabel(ws), pct(ws.length / n), pct(cl.length / n),
       f0(mean(cl.map((x) => x.dur))), f1(mean(ws.map((x) => x.dmgTaken))),
       f2(mean(ws.map((x) => x.downs / size))), f2(mean(ws.map((x) => x.deaths / size))),
       f2(mean(ws.map((x) => x.revives / size))),

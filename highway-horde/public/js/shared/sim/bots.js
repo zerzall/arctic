@@ -360,7 +360,7 @@ function think(game, b, index) {
   cmd.seq = ++b.seq;
   cmd.angle = b.aim;
   b.holding = false;
-  if (p.state === 'dead' || game.over) {
+  if (p.state === 'dead' || game.over || p.escaped || p.riding > 0) {
     b.target = null;
     b.mx = b.my = 0;
     b.hold = false;
@@ -648,10 +648,12 @@ function strategy(game, b, index) {
   const brk = phase === 'prep' || phase === 'intermission';
   // Evac Run: the shop is open everywhere between waves, so nobody walks to the station;
   // the break is for getting to the next zone.
-  if (brk && !b.shopDone && game.map.supply && !game.zone) {
-    setGoal(b, 'shop', game.map.supply.x, game.map.supply.y, SUPPLY_RADIUS * 0.55);
+  const shopAt = game.campaign ? game.campaign.supply : game.map.supply;
+  if (brk && !b.shopDone && shopAt && !game.zone) {
+    setGoal(b, 'shop', shopAt.x, shopAt.y, SUPPLY_RADIUS * 0.55);
     return;
   }
+  if (game.campaign && campaignGoal(game, b, index)) return;
   if (game.zone && brk && evacUrgent(game, b)) {
     chooseSpot(game, b, index);
     setGoal(b, 'evac', b.spotX, b.spotY, 40);
@@ -694,7 +696,7 @@ function strategy(game, b, index) {
  * zone's supply drop when it is closer (and inside the circle).
  */
 function supplyFor(game, p) {
-  const s = game.map.supply;
+  const s = game.campaign ? game.campaign.supply : game.map.supply;
   const z = game.zone;
   if (!z) return s || null;
   const d = z.supply;
@@ -728,7 +730,7 @@ function anchor(game, b, index) {
     zoneAnchor(game, b, index);
     return;
   }
-  const o = game.map.objective;
+  const o = game.campaign ? campaignPoint(game) : game.map.objective;
   let n = 0;
   for (const q of game.players) if (!q.bot && q.state === 'alive') n++;
   if (n > 0) {
@@ -742,7 +744,7 @@ function anchor(game, b, index) {
       }
     }
     b.anchorHuman = true;
-    if (!(game.objective && o && Math.hypot(b.ax - o.x, b.ay - o.y) < Math.max(o.w, o.h) / 2 + 260)) return;
+    if (!((game.campaign || game.objective) && o && Math.hypot(b.ax - o.x, b.ay - o.y) < Math.max(o.w, o.h) / 2 + 260)) return;
   }
   b.ax = o ? o.x : game.map.width / 2;
   b.ay = o ? o.y : game.map.height / 2;
@@ -777,6 +779,60 @@ function zoneAnchor(game, b, index) {
   b.anchorHuman = false;
 }
 
+/**
+ * Campaign: the point the team fights around in the current stage, as an objective-like box
+ * (the hill top, the tower door, a point between the floor's arrival and its stairs, the
+ * roof's helipad).
+ */
+function campaignPoint(game) {
+  const c = game.campaign, cfg = c.cfg;
+  switch (c.stage) {
+    case 1: return { x: cfg.hill.x, y: cfg.hill.y, w: 120, h: 120 };
+    case 2: return { x: c.circle.x, y: c.circle.y, w: 100, h: 100 };
+    case 3: {
+      const f = cfg.floors[c.floor - 1];
+      const a = f.arrive[0];
+      return { x: a.x + (f.stairs.x - a.x) * 0.3, y: a.y + (f.stairs.y - a.y) * 0.3, w: 100, h: 100 };
+    }
+    default: {
+      const r = cfg.roof;
+      return { x: r.pad.x - 170, y: r.pad.y, w: 100, h: 100 };
+    }
+  }
+}
+
+/**
+ * Campaign goals that override the ordinary ones: push on to the tower door during the
+ * breakout, go to the stairs once the floor is clear, ride the zip line once it is live.
+ * @returns {boolean} true when a goal was set
+ */
+function campaignGoal(game, b, index) {
+  const c = game.campaign, p = b.p;
+  const phase = game.phase;
+  if (c.stage === 4 && c.zip && !p.escaped) {
+    const z = c.cfg.roof.zip;
+    setGoal(b, 'zip', z.ix, z.iy, 30);
+    return true;
+  }
+  if (c.stage === 2 && phase === 'wave') {
+    // the tower door: everyone must stand inside its circle, each on their own bearing
+    const ci = c.circle, nb = Math.max(1, game.bots.length);
+    const a = ((index + 0.5) / nb) * TAU;
+    let gx = ci.x + Math.cos(a) * ci.r * 0.45, gy = ci.y + Math.sin(a) * ci.r * 0.45;
+    if (!game.world.isCircleFree(gx, gy, PLAYER_RADIUS + 6)) { gx = ci.x; gy = ci.y; }
+    setGoal(b, 'evac', gx, gy, 30);
+    return true;
+  }
+  if (c.stage === 3 && c.sub === 3 && phase === 'intermission' && b.shopDone) {
+    const humans = humansOf(game);
+    if (humans.alive === 0 || humans.allReady || game.timer < 14) {
+      setGoal(b, 'stairs', c.circle.x, c.circle.y, 34);
+      return true;
+    }
+  }
+  return false;
+}
+
 /** A free spot near the anchor on this bot's own bearing, spaced from teammates. */
 function chooseSpot(game, b, index) {
   const moved = !(Math.hypot(b.ax - b.spotAX, b.ay - b.spotAY) < 90);
@@ -785,7 +841,7 @@ function chooseSpot(game, b, index) {
   b.spotAY = b.ay;
   b.spotT = game.time + 2 + game.rng.range(0, 1);
   const world = game.world, field = game.botNav.field;
-  const o = game.map.objective;
+  const o = game.campaign ? campaignPoint(game) : game.map.objective;
   const nb = game.bots.length;
   const bearing = ((index + 0.5) / Math.max(1, nb)) * TAU + (b.anchorHuman ? 0.8 : 0.3);
   const r0 = b.anchorHuman ? 115 : game.zone ? Math.min(170, (b.zoneR || 400) * 0.3) : o ? Math.max(o.w, o.h) / 2 + 70 : 150;
@@ -1076,6 +1132,11 @@ function steer(game, b) {
         dy += (gy / gd) * w;
       }
       b.sprint = b.nearestAdj < kr * 0.5 && p.stamina > 25 && !p.sprintLock;
+      // Campaign breakout: the horde front is at our back, so backing off leans forward.
+      if (b.mode === 'evac' && game.campaign && game.campaign.stage === 2 && gd > 80) {
+        dx += (gx / gd) * 0.7;
+        dy += (gy / gd) * 0.7;
+      }
       // Evac Run: backing off must not take us out into the blight. Near the edge, slide
       // along it (circle-kite) instead of backing out; outside, head back in.
       const zc = zoneCircle(game);
@@ -1117,7 +1178,8 @@ function steer(game, b) {
     } else if (pathDir(game, b)) {
       dx = b._dx;
       dy = b._dy;
-      const errand = b.mode === 'revive' || b.mode === 'shop' || b.mode === 'resupply' || b.mode === 'crate' || b.mode === 'evac';
+      const errand = b.mode === 'revive' || b.mode === 'shop' || b.mode === 'resupply' || b.mode === 'crate' || b.mode === 'evac'
+        || b.mode === 'zip' || b.mode === 'stairs';
       b.sprint = !downed && errand && gd > 350 && b.nearestAdj > 300 && p.stamina > 45 && !p.sprintLock;
     }
   }
@@ -1467,6 +1529,11 @@ function melee(game, b, cmd) {
 
 function interact(game, b, cmd) {
   const p = b.p;
+  if (b.mode === 'zip' && game.campaign && game.campaign.zip) {
+    const z = game.campaign.cfg.roof.zip;
+    if (!p.prevInteract && Math.hypot(z.ix - p.x, z.iy - p.y) <= z.r * 0.7) cmd.interact = true;
+    return;
+  }
   if (b.mode === 'revive' && b.reviveRef) {
     const q = b.reviveRef;
     if (q.state === 'downed' && Math.hypot(q.x - p.x, q.y - p.y) <= REVIVE_RADIUS * 0.9) {
@@ -1563,7 +1630,7 @@ function shopAndReady(game, b, cmd) {
     }
     return;
   }
-  const supply = game.phase === 'wave' ? supplyFor(game, p) : game.map.supply;
+  const supply = game.phase === 'wave' ? supplyFor(game, p) : game.campaign ? game.campaign.supply : game.map.supply;
   // (Evac Run: the break's shop is open wherever the bot is; it shops on the way.)
   const atStation = (!!game.zone && phase !== 'wave') || (!!supply && Math.hypot(supply.x - p.x, supply.y - p.y) <= SUPPLY_RADIUS * 0.9);
   if (b.mode === 'resupply' && phase === 'wave') {

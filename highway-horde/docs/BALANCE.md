@@ -365,6 +365,55 @@ average 4p 33% finish 15.
     blight, never came in, and the bots won't go out for them. A zombie stuck for 12 s out
     in the blight now re-enters from a spawn box unless a survivor is within 300 px.
 
+## Campaign (Highway Horde, SPEC §3.8)
+
+```
+node scripts/balance.js --mode campaign --diffs normal --sizes 1,2,3,4,6 --profiles average,skilled --seeds 4 --no-mono
+node scripts/balance.js --mode campaign --diffs easy,hard,nightmare --sizes 4 --profiles average --seeds 4 --no-mono
+node scripts/balance.js --mode campaign --sizes 1,2 --seeds 4 --set 'CAMPAIGN.bossDelay.roof=45'   # try a number
+```
+
+`--mode campaign` runs the three extended maps (checkpoint, highway, harlan; `--waves` 10 by
+default: 6 hill waves, the breakout, three floors, the roof = 11 waves). The per-wave tables name
+each stage (`1 hilltop` ... `7 breakout`, `8 F1`, `11 rooftop`); the summary adds `escaped` (share
+of runs won) and `esc/pl` (survivors out per player); the damage table has a `horde front` row.
+`CAMPAIGN` (shared/campaign.js) is in the `--set` tables.
+
+| team (normal, 12 runs each) | average bots | skilled bots |
+|---|---|---|
+| 1 player | 17% escape | 42% |
+| 2 players | 83% | 67% |
+| 3 players | 67% | 92% |
+| 4 players | 58% | 100% |
+| 6 players | 83% | 100% |
+| 4 players, easy / hard / nightmare | 100% / 8% / 0% (dead by wave 5 on nightmare) | |
+
+Target: average 4p about 55%, small teams lower but not hopeless, skilled bots at least as good.
+Read with the usual care (12 runs, +-14 points; the pair's 83% against three's 67% is noise).
+
+* **Where the run is decided.** Bots walk through the hill waves (0-40 hp per player a wave,
+  no downs), the breakout (20 s, ~3 hp) and floors 1-2; the damage is on the last floor (boss),
+  and above all on the roof: 100-160 hp per player and 0.7-1.4 downs per player, in ~45 s.
+  Average solo teams also lose to floors 1-3 (42% of runs). Humans will be hurt earlier on
+  the hill than bots (see the open issues of the base game).
+* **The roof boss decides the roof.** With the Abomination walking in 26 s after the start, the
+  quota (44 + 26 per extra player) is reached in 30-60 s, so it always arrives in the middle of
+  the fight: solo and pair teams (skilled too) won 0-33%. Delaying it (`bossDelay.roof`) 45 s
+  made the pair 56-67% but 4-6 players 89-100%, so instead the delay is 26 s plus 12 s per
+  survivor short of three (`bossDelay.small`), and the roof gets ceil(n/2) bosses (was ceil(n/3),
+  `bossPlayers.roof`): big teams keep meeting them mid-quota.
+* **Not the levers:** the roof's alive cap (16 against 30 changed nothing: bots kill as fast as
+  the queue spawns), the spawn pace (0.75).
+* **Breakout.** Bots outrun the front (it walks 54-70 px/s; the route is 3300-4500 px, 17-25 s
+  at a run), so it costs ~3 hp: a human fighting through the street is the case it is
+  tuned for (anyone who loiters 10 s behind takes ~150 hp). Bots had parked outside the
+  door circle on Harlan (the whole team died to the front in 60 s); they now aim inside it.
+  A bug found on the way: `front.max` was defined twice (speed and damage), so the front's speed
+  was always the minimum; now `speedMax` / `dpsMax`.
+* **Perf** (250 zombies + 6 bots, `tests/campaign.test.js`): avg host tick highway 1.64 ms,
+  Checkpoint 1.50, Highway campaign 1.48, Harlan campaign 1.73 (flow-field rebuild ticks 3.0 /
+  3.0 / 4.2 ms against 3.4 on the highway; `maxDist` 2800 on all three).
+
 ## Open issues
 * **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
   15, against 33% in defend) and the harassers never really hurt a bot team. Human players,
@@ -387,3 +436,9 @@ average 4p 33% finish 15.
 * **Hit reporting on piercing guns:** a pierce > 1 ray that hits fewer zombies than its
   pierce reports `hit: 0` or `2`, so the magnum, DMR, LMG and sniper show no hit marker on a
   single target (combat.js `fireHitscan`). This is the reason the shotgun buff avoided pierce.
+* **Campaign, hill and floors 1-2 are easy for bot teams** (the same limit as the base game's
+  early waves); the roof and the last floor carry the tension. If human playtests find the
+  hill too gentle, raise `CAMPAIGN.hillRing.dirs` (more attack directions) or add hill waves;
+  if the roof is too hard, `bossDelay.roof` / `quota`.
+* **Solo campaign** is about 17% (average) / 42% (skilled): a downed solo survivor cannot be
+  revived. Only the self-revive kit saves the run.

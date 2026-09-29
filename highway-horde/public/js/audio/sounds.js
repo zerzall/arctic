@@ -998,6 +998,67 @@ export const SOUNDS = {
     return S.mix(out, S.filter(blip(sr, 440, 0.14, 'square'), sr, 'lowpass', 1600), sr, 0.5, 0.16);
   } },
 
+  // Campaign (SPEC §3.8): the stage stinger (low horns and timpani), the floor change (a lift
+  // chime over a falling rumble), the zip line waking up, the escape, the ride itself (a ratchet,
+  // the sheave's whine and rushing wind) and a stair tread.
+  camp_stage: { srate: 0.5, cat: 'stinger', v: 1, g: 0.55, prio: 100, wet: 0.5, group: 'st_camp', lim: [1.5, 1], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 3.2);
+    const horns = chord(sr, 3, [73.42, 110, 146.83, 220], 0, 0.005);
+    S.filter(horns, sr, 'lowpass', S.curve([[0, 260], [0.5, 1500], [2.9, 500]]), 0.7);
+    S.mix(out, S.env(horns, sr, 0.35, 2.3, 0.6), sr, 0.75);
+    S.mix(out, thud(sr, 88, 60, 1.2, 0.05, 1.3), sr, 0.7);
+    S.mix(out, thud(sr, 84, 58, 1.0, 0.05, 1.3), sr, 0.55, 0.42);
+    return S.mix(out, burst(sr, rng, 'bandpass', 1800, 0.9, 0.16), sr, 0.25, 0.42);
+  } },
+  camp_floor: { srate: 0.5, cat: 'stinger', v: 1, g: 0.5, prio: 100, wet: 0.4, group: 'st_camp', lim: [1.5, 1], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 2.6);
+    const rumble = S.filter(S.pink(sr, 2.4, rng), sr, 'lowpass', S.curve([[0, 420], [2.2, 90]]), 0.7);
+    S.mix(out, S.env(rumble, sr, 0.05, 2, 0.4), sr, 0.7);
+    S.mix(out, thud(sr, 70, 42, 0.5, 0.05, 1.4), sr, 0.6);
+    S.mix(out, S.fmBell(sr, 1.4, 783.99, { ratio: 2, index: 1.4, decay: 1.1 }), sr, 0.5, 0.9);
+    return S.mix(out, S.fmBell(sr, 1.6, 1174.66, { ratio: 2, index: 1.4, decay: 1.2 }), sr, 0.5, 1.3);
+  } },
+  zipline: { srate: 0.5, cat: 'stinger', v: 1, g: 0.5, prio: 100, wet: 0.4, group: 'st_camp', lim: [1.5, 1], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 2.2);
+    S.mix(out, S.env(S.osc(sr, 1.3, 'saw', S.curve([[0, 160], [1.2, 900]])), sr, 0.05, 1.1, 0.1), sr, 0.2);
+    S.filter(out, sr, 'lowpass', 2600, 0.8);
+    S.mix(out, click(sr, rng, 2600, 0.012, 3), sr, 0.4);
+    S.mix(out, S.fmBell(sr, 1.3, 987.77, { ratio: 2, index: 1.5, decay: 1 }), sr, 0.5, 0.8);
+    return S.mix(out, S.fmBell(sr, 1.4, 1318.51, { ratio: 2, index: 1.5, decay: 1.2 }), sr, 0.5, 1.05);
+  } },
+  camp_escape: { srate: 0.5, cat: 'stinger', v: 1, g: 0.5, prio: 100, wet: 0.5, group: 'st_camp', lim: [1.5, 1], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 2.4);
+    for (const [at, fs, len] of [[0, [196, 246.94, 293.66], 0.2], [0.2, [220, 277.18, 329.63], 0.2], [0.42, [196, 246.94, 293.66, 392], 1.8]]) {
+      const c = chord(sr, len + 0.1, fs, 0, 0.004);
+      S.filter(c, sr, 'lowpass', S.curve([[0, 600], [0.06, 3200], [len, 1400]]), 0.7);
+      S.mix(out, S.env(c, sr, 0.015, len * 0.8, len * 0.3), sr, 0.55, at);
+    }
+    S.mix(out, S.fmBell(sr, 1.6, 784, { ratio: 2, index: 1.2, decay: 1.2 }), sr, 0.4, 0.45);
+    return S.mix(out, S.env(S.filter(S.noise(sr, 1.6, rng), sr, 'highpass', 4000, 0.7), sr, 0.004, 1.4), sr, 0.08, 0.42);
+  } },
+  zip_ride: { cat: 'player', v: 1, g: 0.55, prio: 90, wet: 0.2, range: 2.2, lim: [1, 4], render: (sr, rng) => {
+    const dur = 5.2;
+    const out = S.makeBuf(sr, dur);
+    // the trolley's ratchet catching the cable
+    for (let i = 0; i < 14; i++) S.mix(out, click(sr, rng, 1500 + i * 60, 0.01, 2.5), sr, 0.5 * (1 - i / 18), i * i * 0.004 + i * 0.03);
+    // rushing wind: a swell that peaks mid-ride
+    const wind = S.filter(S.pink(sr, dur, rng), sr, 'bandpass', S.curve([[0, 500], [1.2, 900], [2.8, 1400], [dur, 500]]), 0.6);
+    S.mix(out, S.shape(wind, sr, S.curve([[0, 0], [0.5, 0.35], [1.6, 1], [3.4, 0.9], [dur, 0]])), sr, 0.6);
+    // the sheave's whine and the cable's zing
+    const whine = S.filter(S.osc(sr, dur, 'saw', S.curve([[0, 500], [1.4, 1900], [3.6, 1750], [dur, 900]])), sr, 'bandpass', 2400, 2);
+    S.mix(out, S.shape(whine, sr, S.curve([[0, 0], [0.7, 0.4], [1.6, 0.8], [3.8, 0.6], [dur, 0]])), sr, 0.16);
+    const zing = S.osc(sr, dur, 'sine', S.curve([[0, 2600], [1.2, 3400], [dur, 2200]]));
+    S.mix(out, S.shape(zing, sr, S.curve([[0, 0], [0.3, 0.2], [1.5, 0.35], [dur, 0]])), sr, 0.08);
+    return out;
+  } },
+  stairstep: { cat: 'player', v: 4, g: 0.26, prio: 30, wet: 0.1, range: 0.6, lim: [0.1, 4], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.26);
+    S.mix(out, thud(sr, J(rng, 170, 0.15), 90, 0.05, 0.01, 1.5), sr, 0.6);
+    const f = J(rng, 420, 0.2);
+    S.mix(out, S.env(S.partials(sr, 0.24, f, [[1, 1, 0.16], [2.1, 0.6, 0.12], [3.6, 0.3, 0.08]]), sr, 0.001, 0.14), sr, 0.35);
+    return S.mix(out, burst(sr, rng, 'bandpass', J(rng, 2800, 0.2), 1.6, 0.025), sr, 0.25, 0.004);
+  } },
+
   // UI. --------------------------------------------------------------------------------------
   ui_click: { cat: 'ui', v: 1, g: 0.3, prio: 100, wet: 0, lim: [0.03, 2], render: (sr, rng) =>
     S.mix(S.mix(S.makeBuf(sr, 0.05), click(sr, rng, 2000, 0.01, 2), sr), S.env(S.osc(sr, 0.04, 'sine', 1400), sr, 0.001, 0.03), sr, 0.3) },

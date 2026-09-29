@@ -10,8 +10,13 @@
 // Evac Run (opts.zone): no objective or edge spawns; the safe circle (and the smaller one
 // it shrinks to) is drawn over the map, the blight outside it tinted, and the zone's centre
 // and supply drop pinned to the radar's rim like the objective.
+//
+// The Campaign (opts.campaign): no objective or edge spawns; the hill, the stage's circle, the
+// horde front (a red band over the route behind it), the zip cable and the stage's supply
+// point are drawn over the map (drawCampaign).
 
 import { PLAYER_COLORS } from '../shared/constants.js';
+import { routePointExt, pathLen } from '../shared/campaign.js';
 import { currentUiScale } from './uiscale.js';
 
 const MINIMAP_HZ = 20;
@@ -21,7 +26,7 @@ const AREA_COLORS = {
 };
 /** Radar mode: world px from the player to the nearer edge of the window. */
 const RADAR_RANGE = 900;
-const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco', 'pier', 'ramp', 'silo']);
+const TALL = new Set(['building', 'wall', 'container', 'semi', 'bus', 'tanker', 'truck', 'booth', 'pillar', 'hesco', 'pier', 'ramp', 'silo', 'tower', 'watchtower', 'palisade', 'iwall', 'mast']);
 /** North-up mode: maps wider than this (width / height) scroll with the player instead of shrinking to a strip. */
 const SCROLL_ASPECT = 2.6;
 
@@ -42,6 +47,8 @@ export function createMinimap(canvas, map, opts = {}) {
   const g = canvas.getContext('2d');
   let radar = !!opts.radar;
   const zoneMode = !!opts.zone;
+  const campMode = !!opts.campaign && !!map.campaign;
+  const cfg = campMode ? map.campaign : null;
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // markers and labels grow with the rem-sized minimap on big screens.
   let W = 0, H = 0, dpr = 1, u = 1, scale = 1, ox = 0, oy = 0;
@@ -84,10 +91,11 @@ export function createMinimap(canvas, map, opts = {}) {
         b.stroke();
       }
     }
+    if (cfg) paintCampaignBase(b);
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
-    if (!zoneMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
-    const ob = zoneMode ? null : map.objective;
+    if (!zoneMode && !campMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
+    const ob = zoneMode || campMode ? null : map.objective;
     if (ob) {
       b.fillStyle = 'rgba(255,196,0,0.35)';
       rotRect(b, ob.x, ob.y, ob.w, ob.h, ob.a);
@@ -104,6 +112,34 @@ export function createMinimap(canvas, map, opts = {}) {
     b.strokeStyle = 'rgba(255,255,255,0.18)';
     b.lineWidth = u;
     b.strokeRect(ox + 0.5, oy + 0.5, map.width * scale - 1, map.height * scale - 1);
+  }
+
+  /** The campaign's fixed layout: the hill (lighter, with its plateau) and the route to the tower. */
+  function paintCampaignBase(b) {
+    const hl = cfg.hill;
+    b.fillStyle = 'rgba(150,170,110,0.16)';
+    b.beginPath();
+    b.arc(hl.x, hl.y, hl.r, 0, Math.PI * 2);
+    b.fill();
+    b.fillStyle = 'rgba(190,200,140,0.16)';
+    b.beginPath();
+    b.arc(hl.x, hl.y, hl.plateau, 0, Math.PI * 2);
+    b.fill();
+    b.strokeStyle = 'rgba(255,209,102,0.28)';
+    b.lineWidth = 3 / scale * u;
+    b.setLineDash([16 / scale * u, 12 / scale * u]);
+    b.beginPath();
+    cfg.route.forEach(([x, y], i) => (i ? b.lineTo(x, y) : b.moveTo(x, y)));
+    b.stroke();
+    b.setLineDash([]);
+    // the zip line, roof to landing pad
+    const z = cfg.roof.zip, l = cfg.landing.end;
+    b.strokeStyle = 'rgba(109,255,154,0.35)';
+    b.lineWidth = 2 / scale * u;
+    b.beginPath();
+    b.moveTo(z.x, z.y);
+    b.lineTo(l.x, l.y);
+    b.stroke();
   }
 
   function resize() {
@@ -169,7 +205,7 @@ export function createMinimap(canvas, map, opts = {}) {
     const Y = (y) => oy + y * k;
 
     // supply station
-    const s = map.supply;
+    const s = campMode ? null : map.supply;
     if (s) {
       g.fillStyle = '#56d67a';
       const sx = X(s.x), sy = Y(s.y);
@@ -177,6 +213,7 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fillRect(sx - 4 * u, sy - 1 * u, 8 * u, 2 * u);
     }
     if (view.zone) drawZone(view.zone, X(view.zone.x), Y(view.zone.y), X(view.zone.nx), Y(view.zone.ny), k, false);
+    if (campMode && view.campaign) drawCampaign(view.campaign, (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; }, k, false);
     // objective pulse when damaged
     if (view.objective && map.objective && view.objective.hp < view.objective.maxHp * 0.35) {
       const a = 0.35 + 0.35 * Math.sin(pulse * 8);
@@ -281,6 +318,8 @@ export function createMinimap(canvas, map, opts = {}) {
     g.restore();
     const zn = view && view.zone;
     if (zn) drawZone(zn, rx(zn.x, zn.y), ry(zn.x, zn.y), rx(zn.nx, zn.ny), ry(zn.nx, zn.ny), k, true);
+    const cz = campMode && view ? view.campaign : null;
+    if (cz) drawCampaign(cz, (x, y) => { _pt.x = rx(x, y); _pt.y = ry(x, y); return _pt; }, k, true);
     const inside = (x, y, m) => x >= m && x <= W - m && y >= m && y <= H - m;
     // Pin a point outside the window to its rim (along the ray from the centre).
     const pin = (x, y, m) => {
@@ -323,6 +362,29 @@ export function createMinimap(canvas, map, opts = {}) {
         g.fillRect(x - 2 * u, y - 2 * u, 4 * u, 4 * u);
       }
     }
+    // the campaign's circle and supply point, pinned to the rim like the objective
+    if (cz) {
+      let x = rx(cz.x, cz.y), y = ry(cz.x, cz.y);
+      const off = !inside(x, y, 7 * u);
+      if (off) ({ x, y } = pin(x, y, 7 * u));
+      if (off || Math.hypot(x - cx, y - cy) > cz.r * k) {
+        g.strokeStyle = '#000';
+        g.lineWidth = 4 * u;
+        g.beginPath();
+        g.arc(x, y, 5 * u, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = cz.zip ? '#6dff9a' : '#ffd166';
+        g.lineWidth = 2.2 * u;
+        g.beginPath();
+        g.arc(x, y, 5 * u, 0, Math.PI * 2);
+        g.stroke();
+      }
+      let sx = rx(cz.sx, cz.sy), sy = ry(cz.sx, cz.sy);
+      if (!inside(sx, sy, 5 * u)) ({ x: sx, y: sy } = pin(sx, sy, 5 * u));
+      g.fillStyle = '#56d67a';
+      g.fillRect(sx - 1.2 * u, sy - 4.5 * u, 2.4 * u, 9 * u);
+      g.fillRect(sx - 4.5 * u, sy - 1.2 * u, 9 * u, 2.4 * u);
+    }
     // the safe zone's centre and its supply drop, pinned to the rim like the objective
     if (zn) {
       let x = rx(zn.x, zn.y), y = ry(zn.x, zn.y);
@@ -347,7 +409,7 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fillRect(sx - 4.5 * u, sy - 1.2 * u, 9 * u, 2.4 * u);
     }
     // objective + supply: pinned to the rim when out of range
-    const ob = zoneMode ? null : map.objective;
+    const ob = zoneMode || campMode ? null : map.objective;
     if (ob) {
       let x = rx(ob.x, ob.y), y = ry(ob.x, ob.y);
       if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));
@@ -364,7 +426,7 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fill();
       g.stroke();
     }
-    const s = map.supply;
+    const s = campMode ? null : map.supply;
     if (s) {
       let x = rx(s.x, s.y), y = ry(s.x, s.y);
       if (!inside(x, y, 5 * u)) ({ x, y } = pin(x, y, 5 * u));
@@ -431,6 +493,62 @@ export function createMinimap(canvas, map, opts = {}) {
     g.strokeStyle = 'rgba(255,255,255,0.14)';
     g.lineWidth = u;
     g.strokeRect(0.5, 0.5, W - 1, H - 1);
+  }
+
+  const _pt = { x: 0, y: 0 };
+  const _rp = { x: 0, y: 0, a: 0 };
+  /**
+   * Campaign overlay: the stage's circle (pulsing green once the zip line is live), the horde
+   * front with a red band over the route behind it, the stage's supply point. `at(x, y)` maps
+   * a world point to screen (north-up or the rotated radar); k = screen px per world px.
+   */
+  function drawCampaign(c, at, k, isRadar) {
+    const p0 = at(c.x, c.y);
+    const cx0 = p0.x, cy0 = p0.y;
+    const r = Math.max(3 * u, c.r * k);
+    g.save();
+    if (c.front > -1e8 && cfg.route) {
+      // the horde: a red band along the route from the start of it to the front
+      const total = pathLen(cfg.route);
+      const to = Math.min(c.front, total);
+      g.lineCap = 'butt';
+      g.strokeStyle = 'rgba(220,40,30,0.32)';
+      g.lineWidth = Math.max(3 * u, 520 * k);
+      g.beginPath();
+      const n = 24;
+      const from = Math.min(0, c.front) - 900;
+      for (let i = 0; i <= n; i++) {
+        routePointExt(cfg.route, from + ((to - from) * i) / n, _rp);
+        const q = at(_rp.x, _rp.y);
+        if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y);
+      }
+      g.stroke();
+      routePointExt(cfg.route, c.front, _rp);
+      const a = _rp.a;
+      const q0 = at(_rp.x - Math.sin(a) * 300, _rp.y + Math.cos(a) * 300);
+      const x0 = q0.x, y0 = q0.y;
+      const q1 = at(_rp.x + Math.sin(a) * 300, _rp.y - Math.cos(a) * 300);
+      g.strokeStyle = '#ff4a3a';
+      g.lineWidth = 2.5 * u;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.lineTo(q1.x, q1.y);
+      g.stroke();
+    }
+    if (c.zip) g.setLineDash([5 * u, 4 * u]);
+    g.lineDashOffset = -pulse * 12 * u;
+    g.strokeStyle = c.zip ? `rgba(109,255,154,${0.75 + 0.25 * Math.sin(pulse * 5)})` : '#ffd166';
+    g.lineWidth = 2 * u;
+    g.beginPath();
+    g.arc(cx0, cy0, r, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
+    if (!isRadar) {
+      const sp = at(c.sx, c.sy);
+      g.fillStyle = '#56d67a';
+      g.fillRect(sp.x - 1 * u, sp.y - 4 * u, 2 * u, 8 * u);
+      g.fillRect(sp.x - 4 * u, sp.y - 1 * u, 8 * u, 2 * u);
+    }
   }
 
   /**

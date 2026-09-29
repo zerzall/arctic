@@ -15,6 +15,7 @@
 // flash or an explosion. `radius` is the reach in world units (the light is cut there).
 
 import * as THREE from 'three';
+import { terrainOf } from '../shared/terrain.js';
 
 // flame light height above its base: well up in the flames, so a wreck's own flanks and a
 // tanker's end cap under the fire are lit at a grazing angle instead of blown out white
@@ -121,11 +122,14 @@ export function createLights({ scene, camera, map, quality, fireBase }) {
   };
   // map lights; a lamp_post decor at the same spot sets the height of the light
   const lamps = map.decor.filter((d) => d.kind === 'lamp_post');
+  // (campaign maps: lights stand on the terrain; an explicit height is absolute)
+  const terr = terrainOf(map);
+  const ground = (x, y) => (terr.flat ? 0 : terr.height(x, y));
   const mapSources = map.lights.map((l, i) => {
     // a light with its own height (fixtures under an overpass) shines down like a lamp
-    let h = Number.isFinite(l.h) ? l.h : 70, isLamp = Number.isFinite(l.h);
+    let h = Number.isFinite(l.h) ? l.h : 70 + ground(l.x, l.y), isLamp = Number.isFinite(l.h);
     for (const d of lamps) {
-      if (Math.abs(d.x - l.x) < 4 && Math.abs(d.y - l.y) < 4) { h = LAMP_H * (d.s || 1); isLamp = true; break; }
+      if (Math.abs(d.x - l.x) < 4 && Math.abs(d.y - l.y) < 4) { h = LAMP_H * (d.s || 1) + ground(l.x, l.y); isLamp = true; break; }
     }
     const fire = !isLamp && l.flicker >= 0.5;
     if (fire) h = (fireBase ? fireBase(l.x, l.y) : 0) + FIRE_H;

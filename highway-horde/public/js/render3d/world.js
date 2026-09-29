@@ -26,6 +26,11 @@ import {
 import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField } from './world-veg.js';
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
+import { terrainHeight } from '../shared/terrain.js';
+import {
+  palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
+  buildRidgeWorld, makeSkyline, ridgeHeight,
+} from './world-ridge.js';
 import {
   createFxUniforms, makeSky, makeFlames, makeEmbers, makeSmoke, makeHalos, makeShafts, makePools, makeMarker, makeRain,
 } from './world-fx.js';
@@ -73,6 +78,9 @@ export function obstacleHeight(kind, o) {
     case 'building': return o ? buildingHeight(o) : 180;
     case 'silo': return RURAL_HEIGHT.silo;
     case 'grave': return RURAL_HEIGHT.grave;
+    case 'palisade': case 'watchtower': case 'tower': case 'iwall': case 'desk': case 'cabinet': case 'counter':
+    case 'ipillar': case 'stairs': case 'hvac': case 'parapet': case 'rim': case 'mast':
+      return ridgeHeight(kind, o);
     default: return 40;
   }
 }
@@ -100,6 +108,13 @@ function pointInOb(o, x, y, pad = 0) {
  * small fire on open ground, else on the ground.
  */
 export function fireBaseHeight(map, x, y) {
+  // campaign maps: everything stands on the terrain
+  const th = terrainHeight(map, x, y);
+  if (th > 0) return th + fireBaseHeight0(map, x, y);
+  return fireBaseHeight0(map, x, y);
+}
+
+function fireBaseHeight0(map, x, y) {
   // up on an overpass: on the wreck burning there, else on the deck
   const deck = deckHeightAt(map, x, y);
   if (deck > 0) {
@@ -156,6 +171,8 @@ export function createWorld(ctx, deps) {
   // a long map (the highway) cuts its heavy buckets finer: looking down the road, the
   // frustum and the fog then drop most of the pileup behind and beside the camera
   const fine = map.width > 6000 ? 1000 : undefined;
+  const gy = ctx.groundY || (() => 0);
+  const hasTerrain = !!ctx.terrain && !ctx.terrain.flat;
   const B = createGeoBuilder({
     cell: 1600,
     buckets: {
@@ -165,6 +182,7 @@ export function createWorld(ctx, deps) {
     },
   });
 
+  if (hasTerrain) B.setGround(gy);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -181,7 +199,7 @@ export function createWorld(ctx, deps) {
     B.obj(o.x, o.y, o.a || 0, o.id * 31 + (map.seed | 0));
     B.setJitter(0.06);
     try {
-      buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass);
+      buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass, halos);
     } catch (err) {
       console.warn('world: obstacle model failed', o.kind, err);
     }
@@ -223,7 +241,7 @@ export function createWorld(ctx, deps) {
   // ---- fires ----
   const fires = map.fires.map((f) => ({ x: f.x, y: f.y, r: f.r, base: fireBaseHeight(map, f.x, f.y) }));
   fires.forEach((f, i) => {
-    if (f.base === 30) {
+    if (f.base - gy(f.x, f.y) === 30) {
       // an oil drum with a fire in it
       B.obj(f.x, f.y, i, 70 + i);
       B.cyl('std', 0, 0, 0, 11, 30, '#4a3424', 16, 1, null, { surf: [DET.rust, 0.8, 0.6] });
@@ -234,6 +252,22 @@ export function createWorld(ctx, deps) {
     halos.push({ x: f.x, y: f.y, h: f.base + f.r * 0.9, color: '#ff7a2a', size: f.r * 5.5, flicker: 0.8, strength: 0.55, base: f.base });
   });
 
+  // ---- the campaign's floors, roof, zip line and landing (world-ridge.js) ----
+  let ridge = null;
+  if (map.campaign) {
+    try {
+      ridge = buildRidgeWorld(B, map, { halos, shafts });
+    } catch (err) {
+      console.warn('world: campaign dressing failed', err);
+    }
+  }
+  // campaign maps: light sprites, shafts and flags built in object frames stand on the ground too
+  if (hasTerrain) {
+    for (const hl of halos) if (hl.base === undefined && !hl.abs) hl.h += gy(hl.x, hl.y);
+    for (const sh of shafts) if (!sh.abs) { sh.h += gy(sh.x, sh.y); sh.base = gy(sh.x, sh.y); }
+    for (const fl of flags) fl.h += gy(fl.x, fl.y);
+    if (supplyLight) supplyLight.h += gy(supplyLight.x, supplyLight.y);
+  }
   const tDecMs = performance.now() - tDec;
   // ---- tree line past the bounds ----
   const tTl = performance.now();
@@ -306,6 +340,27 @@ export function createWorld(ctx, deps) {
     disposables.push(geo);
   }
 
+  // ---- campaign meshes: painted signs, the helipad disc, the skyline ----
+  if (ridge) {
+    const t = map.campaign.tower;
+    const [safe, zipSign, towerSign] = ridge.signs;
+    towerSign.position.set(t.x + Math.cos(t.a) * (t.w / 2 + 1.4), 300 + gy(t.x, t.y), t.y + Math.sin(t.a) * (t.w / 2 + 1.4));
+    towerSign.rotation.y = Math.PI / 2 - t.a;
+    zipSign.rotation.y = Math.PI;
+    for (const m of [...ridge.signs, ridge.helipad]) {
+      if (!m) continue;
+      root.add(m);
+      disposables.push(m.geometry, m.material);
+      if (m.material.map) disposables.push(m.material.map);
+    }
+    void safe;
+    if (map.campaign.skyline && map.campaign.skyline.length) {
+      const sky2 = makeSkyline(map.campaign.skyline);
+      root.add(sky2);
+      disposables.push(sky2.geometry, sky2.material, sky2.material.map);
+    }
+  }
+
   // ---- fx meshes ----
   const far = Math.hypot(map.width, map.height) + 1400;
   const tE = performance.now();
@@ -327,14 +382,15 @@ export function createWorld(ctx, deps) {
     const lampish = src && src.h > 150;
     // a fire up on an overpass deck lights the deck, not the ground under it: no fake pool
     const aloft = !Number.isFinite(l.h) && deckHeightAt(map, l.x, l.y) > 0;
-    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2, base: 0 };
+    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2, base: gy(l.x, l.y) };
   });
   // the canopies' fluorescent strips light the forecourt under them
-  for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: 0 });
+  for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: gy(c.x, c.y) });
   const pools = poolList.length ? makePools(poolList, fx) : null;
   if (pools) addFx(pools.mesh);
   const poolLevels = new Float32Array(poolList.length).fill(1);
-  const marker = ob ? addFx(makeMarker(ob, fx)) : null;
+  // (the campaign defends a hill, not the map's old objective: no beacon over it)
+  const marker = ob && !map.campaign ? addFx(makeMarker(ob, fx)) : null;
 
   // flags: one dynamic strip mesh
   const flagMesh = flags.length ? makeFlagMesh(flags) : null;
@@ -485,7 +541,7 @@ export function createWorld(ctx, deps) {
     }
     for (let i = 0; i < canopies.length; i++) {
       const c = canopies[i];
-      if (Math.abs(c.x - frame.camX) < 900 && Math.abs(c.y - frame.camY) < 900) ctx.lights.steady('world:canopy' + i, c.x, c.y, 140, '#e8f0ff', 0.36, Math.max(c.w, c.h) * 0.75);
+      if (Math.abs(c.x - frame.camX) < 900 && Math.abs(c.y - frame.camY) < 900) ctx.lights.steady('world:canopy' + i, c.x, c.y, 140 + gy(c.x, c.y), '#e8f0ff', 0.36, Math.max(c.w, c.h) * 0.75);
     }
     grass.update(cam, dt);
     if (rain && rain.mesh.visible) rain.update(deps.lights.poolLights, deps.lights.flashlight, cam);
@@ -596,9 +652,23 @@ function makeFlagMesh(list) {
 
 // ---- obstacles ------------------------------------------------------------------------------
 
-function buildObstacle(B, o, sign, overpass) {
+function buildObstacle(B, o, sign, overpass, halos) {
   const L = o.w, W = o.h;
   switch (o.kind) {
+    // the campaign's kinds (world-ridge.js)
+    case 'palisade': palisade(B, L, W); break;
+    case 'watchtower': watchtower(B, o, halos); break;
+    case 'tower': skyscraper(B, o, L, W, halos); break;
+    case 'iwall': iwall(B, o, L, W); break;
+    case 'desk': desk(B, o, L, W); break;
+    case 'cabinet': cabinet(B, o, L, W); break;
+    case 'counter': counter(B, o, L, W); break;
+    case 'ipillar': ipillar(B, o, L, W); break;
+    case 'stairs': stairs(B, o, L, W); break;
+    case 'hvac': hvac(B, o, L, W); break;
+    case 'parapet': parapet(B, o, L, W); break;
+    case 'mast': mast(B, o, L, W, halos); break;
+    case 'rim': break;
     // overpass piers and ramp embankments are built with their decks (world-overpass.js)
     case 'pier': if (!overpass) B.rblock('std', 0, 0, 0, L, obstacleHeight('pier', o), W, 4, o.color || '#8e8a82', null, { surf: [DET.concrete, 0.9, 0] }); break;
     case 'ramp': if (!overpass) B.block('std', 0, 0, 0, L, obstacleHeight('ramp', o), W, o.color || '#8a867d', null, { surf: [DET.concrete, 0.9, 0] }); break;

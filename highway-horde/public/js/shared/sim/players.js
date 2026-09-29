@@ -15,6 +15,7 @@ import { angleDiff } from '../math.js';
 import { makeObb, circleOverlapsObb, MASK_MOVE } from '../geom.js';
 import { stepPlayerMovement, settleVertical } from '../movement.js';
 import { resetVertical } from '../jump.js';
+import { RIDE_TICKS } from '../campaign.js';
 import { clearEdges, mergeEdges } from './core.js';
 import {
   fireWeaponShot, damageZombie, knockZombie, throwProjectile, rebuildBarricades, MAX_ZOMBIE_RADIUS,
@@ -58,6 +59,8 @@ export function createPlayer(game, info) {
     hp: perks.maxHp, maxHp: perks.maxHp, armor: perks.startArmor,
     stamina: STAMINA_MAX, sprintLock: false, sprinting: false,
     zq: 0, vzq: 0, jumpCd: 0, climbT: 0, climbTo: -1, z: 0,
+    // campaign: zip-line ride ticks left / frozen on the cable / escaped down the line / horde-front exposure
+    riding: 0, frozen: false, escaped: false, fogT: 0, rideX: 0, rideY: 0, rideZ: 0,
     speedMult: perks.speedMult, moveMult: 1, staminaMult: perks.staminaMult,
     slot: 1, lastSlot: 0,
     slots: [null, null, null], mag: [0, 0, 0], res: [0, 0, 0],
@@ -98,6 +101,8 @@ function setSlot(p, i, id) {
 export function spawnPointFor(game, i) {
   // Evac Run: late joiners and respawns come back inside the safe zone.
   if (game.zone && game.started) return game.zone.spawnPoint(i);
+  // Campaign: respawns and late joiners come back where the team is in the current stage.
+  if (game.campaign && game.started) return game.campaign.spawnPoint(i);
   const sp = game.map.playerSpawns;
   if (!sp || !sp.length) return { x: game.map.width / 2, y: game.map.height / 2 };
   for (let k = 0; k < sp.length; k++) {
@@ -190,7 +195,7 @@ export function updatePlayers(game) {
       continue;
     }
     p.angle = cmd.angle;
-    const alive = p.state === 'alive';
+    const alive = p.state === 'alive' && !p.escaped;
     if (alive) handleSwitch(game, p, cmd);
     const aw = activeWeapon(p);
     p.moveMult = alive && aw.id ? WEAPONS[aw.id].moveMult : 1;
@@ -212,7 +217,7 @@ export function updatePlayers(game) {
 
     // Downed players reload too (the dead never get here).
     if (cmd.reload) startReload(game, p);
-    handleFire(game, p, cmd, aw);
+    if (!p.escaped) handleFire(game, p, cmd, aw);
     // Game over / victory are terminal: no melee, throws, building or crates either.
     if (alive && !game.over) {
       if (cmd.melee && p.meleeCd <= 0) doMelee(game, p);
@@ -228,7 +233,9 @@ export function updatePlayers(game) {
       }
       if (cmd.turret) placeTurret(game, p);
       if (cmd.barricade) placeBarricade(game, p);
-      if (cmd.interact && !p.prevInteract) tryTakeCrate(game, p);
+      if (cmd.interact && !p.prevInteract) {
+        if (!(game.campaign && game.campaign.tryZip(p))) tryTakeCrate(game, p);
+      }
     }
     p.prevInteract = cmd.interact;
   }
@@ -566,7 +573,7 @@ export function respawnPlayer(game, p, i) {
   p.armor = Math.max(p.armor, p.perks.startArmor);
   p.stamina = STAMINA_MAX;
   p.sprintLock = false;
-  resetVertical(p);
+  resetVertical(p, game.world.terrainQ(p.x, p.y));
   p.respawn = false;
   p.bleedout = 0;
   p.revive = 0;
@@ -583,7 +590,7 @@ export function respawnPlayer(game, p, i) {
 
 /** Damage a player (armour absorbs its share). opts: { ff, dot } */
 export function damagePlayer(game, p, amount, fromX, fromY, ff = false, dot = false) {
-  if (!(amount > 0) || p.state === 'dead') return;
+  if (!(amount > 0) || p.state === 'dead' || p.escaped) return;
   if (p.state === 'downed') {
     if (ff) return;
     p.hitBleed = Math.min(DOWNED_HIT_BLEED_BANK, p.hitBleed + amount * DOWNED_HIT_BLEED);
@@ -787,7 +794,7 @@ export function updatePickups(game) {
     let taken = k.life <= 0;
     if (!taken && k.kind !== 'crate') {
       for (const p of game.players) {
-        if (p.state !== 'alive') continue;
+        if (p.state !== 'alive' || p.escaped) continue;
         const dx = p.x - k.x, dy = p.y - k.y;
         if (dx * dx + dy * dy > PICKUP_RADIUS * PICKUP_RADIUS) continue;
         if (!wantsPickup(p, k.kind)) continue;
@@ -862,7 +869,7 @@ function shopOpen(game, p) {
   const s = game.map.supply;
   if (s && Math.hypot(p.x - s.x, p.y - s.y) <= SUPPLY_RADIUS) return true;
   // Evac Run: the zone's supply drop is a shop too.
-  const z = game.zone && game.zone.supply;
+  const z = (game.zone && game.zone.supply) || (game.campaign && game.campaign.supply);
   return !!z && Math.hypot(p.x - z.x, p.y - z.y) <= SUPPLY_RADIUS;
 }
 
@@ -1070,5 +1077,8 @@ export function playerSnapshot(game, p) {
     jumpCd: p.jumpCd,
     climbT: p.climbT,
     climbTo: p.climbTo,
+    // campaign: how far along its zip-line ride (0 = not riding, else 0..1) and escaped down the line
+    ride: p.riding > 0 ? Math.max(1 / 255, 1 - p.riding / RIDE_TICKS) : 0,
+    esc: !!p.escaped,
   };
 }

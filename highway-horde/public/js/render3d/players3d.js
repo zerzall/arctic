@@ -400,7 +400,7 @@ export function createPlayers3D(ctx) {
       if (nearLights[k] > 1500 * 1500) break;
       const p = nearLights[k + 1], s = nearLights[k + 2];
       const reach = 130;
-      ctx.lights.steady('mate' + p.id, p.x + Math.cos(s.a) * reach, p.y + Math.sin(s.a) * reach, 60, '#fff0d0', 0.3, 190);
+      ctx.lights.steady('mate' + p.id, p.x + Math.cos(s.a) * reach, p.y + Math.sin(s.a) * reach, 60 + (p.z > 0 ? p.z : 0), '#fff0d0', 0.3, 190);
     }
     // forget players who left
     if (frameNo % 60 === 0) {

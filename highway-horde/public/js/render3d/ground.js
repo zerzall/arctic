@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { prepareMap, paintGround } from '../render/maplayer.js';
 import { bloodSplats, scorchSprite } from '../render/textures.js';
 import { periodicFbm, createRng } from '../render/util.js';
+import { terrainOf } from '../shared/terrain.js';
 
 const TILE = 1024;              // playable-area tile size (world units): ~10 visible draw calls
 const SKIRT = 1300;             // how far the ground continues past the map bounds
@@ -53,6 +54,7 @@ export function createGround({ scene, map, quality, renderer, detail }) {
   const W = map.width, H = map.height;
 
   // ---- painting source: the map with edge-touching roads/rivers carried into the skirt
+  const terrain = terrainOf(map);
   const ext = extendMap(map, SKIRT);
   const prep = prepareMap(ext);
   const waters = buildWaters(ext.areas.filter((a) => a.kind === 'water'), W, H);
@@ -112,7 +114,7 @@ export function createGround({ scene, map, quality, renderer, detail }) {
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     t.texture = tex;
     const mat = tier !== 'low' ? makeGroundMaterial(tex, uniforms) : makeLowMaterial(tex);
-    const geo = tileGeometry(t, waters);
+    const geo = tileGeometry(t, waters, terrain);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
@@ -236,7 +238,7 @@ export function createGround({ scene, map, quality, renderer, detail }) {
 
   /** Ground height at a sim point (0 except inside water areas). */
   function heightAt(x, y) {
-    return groundHeight(x, y, waters);
+    return groundHeight(x, y, waters) + (terrain.flat ? 0 : terrain.height(x, y));
   }
 
   function dispose() {
@@ -271,7 +273,7 @@ export function createGround({ scene, map, quality, renderer, detail }) {
   }
 
   return {
-    meshes, group, decal, update, waters, heightAt, dispose, setQuality,
+    meshes, group, decal, update, waters, heightAt, dispose, setQuality, terrain,
     /** Surface mask: RGBA = asphalt, concrete, grass, free of obstacles; rect in world units. */
     mask,
     uniforms,
@@ -368,9 +370,36 @@ function groundHeight(x, y, waters) {
 
 // ---- tile geometry ------------------------------------------------------------------------
 
-function tileGeometry(t, waters) {
+/** Grid step (units) of the ground mesh over a hill. */
+const HILL_STEP = 40;
+
+/** Add the grid lines a terrain feature needs inside tile t (hills: a regular grid; plateaus: their eased edges). */
+function terrainLines(t, terrain, xs, ys) {
+  const spec = terrain.spec;
+  let any = false;
+  const hit = (x0, y0, x1, y1) => !(x1 < t.x0 || x0 > t.x1 || y1 < t.y0 || y0 > t.y1);
+  for (const h of spec.hills || []) {
+    if (!hit(h.x - h.r, h.y - h.r, h.x + h.r, h.y + h.r)) continue;
+    any = true;
+    for (let v = Math.ceil((h.x - h.r) / HILL_STEP) * HILL_STEP; v < h.x + h.r; v += HILL_STEP) if (v > t.x0 && v < t.x1) xs.add(v);
+    for (let v = Math.ceil((h.y - h.r) / HILL_STEP) * HILL_STEP; v < h.y + h.r; v += HILL_STEP) if (v > t.y0 && v < t.y1) ys.add(v);
+  }
+  for (const p of spec.plateaus || []) {
+    if (!hit(p.x0 - p.edge, p.y0 - p.edge, p.x1 + p.edge, p.y1 + p.edge)) continue;
+    any = true;
+    for (let k = 0; k <= 10; k++) {
+      const e = (p.edge * k) / 10;
+      for (const v of [p.x0 - e, p.x1 + e]) if (v > t.x0 && v < t.x1) xs.add(v);
+      for (const v of [p.y0 - e, p.y1 + e]) if (v > t.y0 && v < t.y1) ys.add(v);
+    }
+  }
+  return any;
+}
+
+function tileGeometry(t, waters, terrain) {
   const xs = new Set([t.x0, t.x1]), ys = new Set([t.y0, t.y1]);
   let wet = false;
+  const hilly = !!terrain && !terrain.flat && t.inner && terrainLines(t, terrain, xs, ys);
   for (const w of waters) {
     if (w.x1 < t.x0 || w.x0 > t.x1 || w.y1 < t.y0 || w.y0 > t.y1) continue;
     wet = true;
@@ -389,7 +418,7 @@ function tileGeometry(t, waters) {
     for (let i = 0; i < nx; i++) {
       const k = j * nx + i;
       pos[k * 3] = X[i];
-      pos[k * 3 + 1] = wet ? groundHeight(X[i], Y[j], waters) : 0;
+      pos[k * 3 + 1] = (wet ? groundHeight(X[i], Y[j], waters) : 0) + (hilly ? terrain.height(X[i], Y[j]) : 0);
       pos[k * 3 + 2] = Y[j];
       uv[k * 2] = (1 + (X[i] - t.x0) * t.scale) / t.pw;
       uv[k * 2 + 1] = (1 + (Y[j] - t.y0) * t.scale) / t.ph;

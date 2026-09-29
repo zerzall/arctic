@@ -13,10 +13,14 @@
 import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
 import { MAP_LIST } from '../js/shared/maps.js';
+import { terrainHeight } from '../js/shared/terrain.js';
+import { routePointExt } from '../js/shared/campaign.js';
 
 const params = new URLSearchParams(location.search);
 const opt = {
   map: MAP_LIST.some((m) => m.id === params.get('map')) ? params.get('map') : 'highway',
+  // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
+  mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
   seed: Number(params.get('seed') || 1234),
   quality: ['low', 'ultra'].includes(params.get('quality')) ? params.get('quality') : 'high',
   bots: Math.max(0, Math.min(5, Number(params.get('bots') ?? 3))),
@@ -59,7 +63,78 @@ let quality = opt.quality;
  * Named viewpoints for a map: at the objective, at the supply station, down the main road,
  * at the map edge, plus per-map spots (bridge deck, river bank, checkpoint compound).
  */
+function campaignViewpoints(map) {
+  const c = map.campaign;
+  const hg = (x, y) => terrainHeight(map, x, y);
+  const at = (name, x, y, tx, ty, pitch = -0.04, z = null) => ({ name, x, y, z: z == null ? hg(x, y) : z, yaw: Math.atan2(ty - y, tx - x), pitch });
+  const h = c.hill, t = c.tower;
+  const v = [];
+  const gx = Math.cos(h.gate), gy = Math.sin(h.gate);
+  v.push(at('hill', h.x - gx * 60, h.y - gy * 60, h.x + gx * 400, h.y + gy * 400, -0.02));
+  v.push(at('hill-top', h.x + gx * 120, h.y + gy * 120, h.x - gx * 500, h.y - gy * 500, -0.02));
+  v.push(at('hill-gate', h.x - gx * 150, h.y - gy * 150, h.x + gx * 500, h.y + gy * 500, -0.05));
+  v.push(at('hill-slope', h.x + gx * 700, h.y + gy * 700, h.x, h.y, 0.02));
+  v.push(at('hill-far', h.x + gx * 1500, h.y + gy * 1500 + 260, h.x, h.y, 0.02, hg(h.x + gx * 1500, h.y + gy * 1500 + 260) + 20));
+  const r = c.route;
+  // the horde front (stage=2&front=<px>): looking back at it from a little ahead
+  const fs = Number(params.get('front') ?? 900), fp = routePointExt(r, fs + 700, {}), fq = routePointExt(r, fs - 200, {});
+  v.push(at('front', fp.x, fp.y, fq.x, fq.y, 0.0));
+  const a0 = r[Math.min(1, r.length - 1)];
+  v.push(at('breakout', a0[0], a0[1], r[r.length - 1][0], r[r.length - 1][1], 0.0));
+  const fa = Math.cos(t.a), fb = Math.sin(t.a);
+  v.push(at('tower-far', t.x + fa * 900 - fb * 300, t.y + fb * 900 + fa * 300, t.x, t.y, 0.42));
+  v.push(at('tower-door', t.x + fa * 380, t.y + fb * 380, t.x, t.y, 0.3));
+  v.push(at('street', t.x + fa * 900, t.y + fb * 900, t.x, t.y, 0.02));
+  for (const f of c.floors) {
+    v.push(at('floor-' + f.n, f.arrive[0].x, f.arrive[0].y, f.stairs.x, f.stairs.y, 0.0, f.base));
+    v.push(at('floor-' + f.n + '-back', f.stairs.x - 100, f.stairs.y, f.arrive[0].x, f.arrive[0].y, 0.0, f.base));
+  }
+  const rf = c.roof;
+  v.push(at('roof', rf.arrive[0].x, rf.arrive[0].y, rf.pad.x + 300, rf.pad.y, 0.0, rf.base));
+  v.push(at('roof-pad', rf.pad.x - 260, rf.pad.y, rf.pad.x + 260, rf.pad.y, -0.05, rf.base));
+  v.push(at('roof-edge', rf.zip.ix, rf.zip.iy - 120, rf.zip.x, rf.zip.y + 600, -0.12, rf.base));
+  v.push(at('zip', rf.zip.ix, rf.zip.iy, rf.zip.x, rf.zip.y + 800, -0.1, rf.base));
+  v.push(at('zip-ride', rf.zip.x, rf.zip.y + 300, c.landing.end.x, c.landing.end.y, -0.16, rf.zip.z - 200));
+  v.push(at('landing', c.landing.slots[0].x, c.landing.slots[0].y, rf.zip.x, rf.zip.y, 0.12, c.landing.base));
+  return v;
+}
+
+/** Dev only: put a campaign game in a later stage (what the e2e test does through the host's game). */
+function jumpStage(st) {
+  const c = game.campaign, g = game;
+  const clear = () => { for (const z of g.zombies) z.dead = true; g.spawnQueue = 0; g.bossQueue = 0; };
+  if (st === '2') {
+    g.wave = c.plan.breakout - 1;
+    g.phase = 'intermission';
+    g.timer = 0;
+    for (let i = 0; i < 5; i++) g.step();
+    clear();
+    const f = params.get('front');
+    if (f !== null) c.front = Number(f);
+  } else if (st.startsWith('3.')) {
+    c.stage = 3;
+    c.floor = Number(st.slice(2)) - 1;
+    clear();
+    c.moveUp();
+  } else if (st.startsWith('4')) {
+    c.stage = 3;
+    c.floor = c.cfg.floors.length;
+    clear();
+    c.moveUp();
+    g.wave = c.plan.roof - 1;
+    g.phase = 'intermission';
+    g.timer = 0;
+    for (let i = 0; i < 5; i++) g.step();
+    clear();
+    if (st === '4zip') {
+      c.kills = c.quota - 1;
+      c.onKill();
+    }
+  }
+}
+
 function viewpoints(map) {
+  if (map.campaign) return campaignViewpoints(map);
   const ob = map.objective, sp = map.supply;
   const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
   const v = [];
@@ -127,15 +202,22 @@ function setup(mapId) {
   const { Game } = gameMod;
   const players = [{ id: 1, name: 'You', color: 0, cls: 'soldier' }];
   for (let i = 0; i < opt.bots; i++) players.push({ id: i + 2, name: ['Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][i], color: i + 1, cls: CLASS_IDS[(i + 1) % CLASS_IDS.length], bot: true });
-  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false } });
+  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, mode: opt.mode } });
   roster = players.map((p) => ({ ...p, ready: true, ping: 0, host: p.id === 1 }));
   if (opt.wave && opt.zombies) for (let t = 0; t < 60 * 30 && game.phase === 'prep'; t++) game.step();
   snap = game.snapshot();
   const me = snap.players.find((p) => p.id === 1);
   yaw = me ? me.angle : 0;
   pitch = 0;
+  // stage=2 | 3.1 | 3.2 | 3.3 | 4 | 4zip (campaign): jump the director to that stage; front=<px>: put the horde front there
+  if (params.get('stage') && game.campaign) jumpStage(params.get('stage'));
+  // ambient=<darkness>,<tint>: review a map in brighter light (a dev tool; e.g. ambient=0.05,%239fc8ff)
+  if (params.get('ambient')) {
+    const [dk, tint] = params.get('ambient').split(',');
+    game.map.ambient = { darkness: Number(dk), tint: tint || game.map.ambient.tint };
+  }
   const t0 = performance.now();
-  renderer = createRenderer3D(canvas, { map: game.map, quality });
+  renderer = createRenderer3D(canvas, { map: game.map, quality, mode: game.mode });
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
   window.__fps.views = viewpoints(game.map);
   if (opt.view) setView(opt.view);
@@ -239,7 +321,7 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, angle: cam.yaw, state: 'alive' } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0 } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });

@@ -14,7 +14,7 @@
 //   0..1 values                   u8 (reloading/meleeing never round a non-zero to 0)
 //   player vertical state         exact integers (jump.js): zq u16, vzq i8, jumpCd u8,
 //                                 climbT u8 (+ climbTo u16 while climbing); z = zq × Z_UNIT
-//   zombie height                 u8 whole units, only for zombies off the ground (flag bit 128)
+//   zombie height                 u16 whole units, only for zombies off the ground (flag bit 128)
 //   kinds and ids of data tables  u8 indices into WEAPON_IDS, ZOMBIE_IDS, ...
 // Events use a per-type binary schema; an event this file does not know (or one whose
 // values do not fit its schema) is sent as JSON instead, so nothing is dropped unless
@@ -26,6 +26,7 @@ import { WEAPON_IDS, PROJECTILE_KINDS } from './weapons.js';
 import { ZOMBIE_IDS } from './zombies.js';
 import { PICKUP_KINDS } from './items.js';
 import { Z_UNIT } from './jump.js';
+import { CAMPAIGN_EVENTS } from './campaign.js';
 
 /** Message type tags (first byte of every binary message). */
 export const MSG = {
@@ -282,6 +283,7 @@ const ENUMS = {
   gameover: ['wiped', 'objective'],
   buyfail: ['cash', 'closed', 'max', 'invalid', 'owned'],
   zone: ['next', 'lock', 'shrink'],
+  campaign: CAMPAIGN_EVENTS,
 };
 
 const EVENT_SCHEMAS = [
@@ -321,6 +323,8 @@ const EVENT_SCHEMAS = [
   ['freeze', [['id', 'id'], ['x', 'pos'], ['y', 'pos']]],
   // Evac Run (SPEC §3.7): a zone was announced / locked / started to shrink; time in whole s
   ['zone', [['stage', ENUMS.zone], ['poi', 'u16'], ['x', 'pos'], ['y', 'pos'], ['r', 'rad'], ['time', 'u16']]],
+  // Campaign (SPEC §3.8): a stage or floor change, the breakout, the zip line waking up, a ride, an escape
+  ['campaign', [['what', ENUMS.campaign], ['stage', 'pid'], ['floor', 'pid'], ['pid', 'pid']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */
@@ -501,8 +505,8 @@ function readEvents(r) {
 
 // ---- snapshot
 
-const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32;
-const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4;
+const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32, P_ESCAPED = 64;
+const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8;
 
 const snapWriter = new Writer(32 * 1024);
 
@@ -531,7 +535,7 @@ function writePlayer(w, p) {
   w.u16(qAngle16(p.angle));
   w.u8(kindIndex(STATE_INDEX, p.state));
   w.u8((p.sprinting ? P_SPRINTING : 0) | (p.firing ? P_FIRING : 0) | (p.selfRevive ? P_SELF_REVIVE : 0)
-    | (p.respawn ? P_RESPAWN : 0) | (p.ready ? P_READY : 0) | (p.sprintLock ? P_SPRINT_LOCK : 0));
+    | (p.respawn ? P_RESPAWN : 0) | (p.ready ? P_READY : 0) | (p.sprintLock ? P_SPRINT_LOCK : 0) | (p.esc ? P_ESCAPED : 0));
   w.u16(qFixed(p.hp, 10, 65535));
   w.u16(qFixed(p.maxHp, 10, 65535));
   w.u16(qFixed(p.armor, 10, 65535));
@@ -573,6 +577,8 @@ function writePlayer(w, p) {
   const climbT = qInt(p.climbT, 255);
   w.u8(climbT);
   if (climbT) w.u16(qInt(p.climbTo, 65535));
+  // Campaign: zip-line ride progress (0 = not riding); `esc` travels in the flags byte.
+  w.u8(qUnitNz(p.ride));
 }
 
 function readPlayer(r) {
@@ -632,6 +638,8 @@ function readPlayer(r) {
   rec.climbT = r.u8();
   rec.climbTo = rec.climbT ? r.u16() : -1;
   rec.z = rec.zq * Z_UNIT;
+  rec.ride = r.u8() / 255;
+  rec.esc = (flags & P_ESCAPED) !== 0;
   return rec;
 }
 
@@ -667,6 +675,39 @@ function readZone(r) {
 }
 
 /**
+ * Campaign state (SPEC §4 `campaign`, 26 bytes): stage, floor, sub-state, the objective circle
+ * (0.25 px), the stage timer and its length (0.01 s), the horde front (f32 px along the route,
+ * -1e9 when none), the roof kill count and quota, the zip flag and the current supply point.
+ */
+function writeCampaign(w, c) {
+  w.u8(qInt(c.stage, 255));
+  w.u8(qInt(c.floor, 255));
+  w.u8(qInt(c.sub, 255));
+  w.u16(qPos(c.x));
+  w.u16(qPos(c.y));
+  w.u16(qFixed(c.r, 4, 65535));
+  w.u16(qFixed(c.t, 100, 65535));
+  w.u16(qFixed(c.total, 100, 65535));
+  w.f32(num(c.front) < -1e8 ? -1e9 : num(c.front));
+  w.u16(qInt(c.kills, 65535));
+  w.u16(qInt(c.quota, 65535));
+  w.u8(c.zip ? 1 : 0);
+  w.u16(qPos(c.sx));
+  w.u16(qPos(c.sy));
+}
+
+function readCampaign(r) {
+  return {
+    stage: r.u8(), floor: r.u8(), sub: r.u8(),
+    x: dqPos(r.u16()), y: dqPos(r.u16()), r: r.u16() / 4,
+    t: r.u16() / 100, total: r.u16() / 100,
+    front: r.f32(),
+    kills: r.u16(), quota: r.u16(), zip: r.u8(),
+    sx: dqPos(r.u16()), sy: dqPos(r.u16()),
+  };
+}
+
+/**
  * Encode a Snapshot (SPEC §4) into a fresh ArrayBuffer.
  *
  * Besides the SPEC fields it carries two netcode extras: `match` (u8 game counter, so a
@@ -683,7 +724,8 @@ export function encodeSnapshot(snap) {
   const echo = arr(snap.echo);
   const obj = snap.objective;
   const zone = snap.zone && typeof snap.zone === 'object' ? snap.zone : null;
-  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0));
+  const campaign = snap.campaign && typeof snap.campaign === 'object' ? snap.campaign : null;
+  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0));
   w.u8(qInt(snap.match, 255));
   w.u32(qInt(snap.tick, 0xffffffff));
   w.u8(kindIndex(PHASE_INDEX, snap.phase));
@@ -698,6 +740,7 @@ export function encodeSnapshot(snap) {
   }
   w.u8(qInt(snap.readyCount, 255));
   if (zone) writeZone(w, zone);
+  if (campaign) writeCampaign(w, campaign);
 
   const players = arr(snap.players);
   const np = Math.min(players.length, 255);
@@ -716,9 +759,9 @@ export function encodeSnapshot(snap) {
     w.u16(qPos(z.y));
     w.u8(qAngle8(z.angle));
     w.u8(qUnit(z.hp));
-    const h = qInt(z.z, 255);
+    const h = qInt(z.z, 65535);
     w.u8((qInt(z.flags, 255) & ~ZF_HIGH) | (h > 0 ? ZF_HIGH : 0));
-    if (h > 0) w.u8(h);
+    if (h > 0) w.u16(h);
   }
 
   const projectiles = arr(snap.projectiles);
@@ -821,6 +864,7 @@ export function decodeSnapshot(buf) {
     objective: null,
     readyCount: 0,
     zone: null,
+    campaign: null,
     players: null,
     zombies: null,
     projectiles: null,
@@ -835,6 +879,7 @@ export function decodeSnapshot(buf) {
   if (flags & H_OBJECTIVE) snap.objective = { hp: r.f32(), maxHp: r.f32() };
   snap.readyCount = r.u8();
   snap.zone = flags & H_ZONE ? readZone(r) : null;
+  snap.campaign = flags & H_CAMPAIGN ? readCampaign(r) : null;
 
   const np = r.u8();
   const players = new Array(np);
@@ -856,7 +901,7 @@ export function decodeSnapshot(buf) {
     };
     if (z.flags & ZF_HIGH) {
       z.flags &= ~ZF_HIGH;
-      z.z = r.u8();
+      z.z = r.u16();
     }
     zombies[i] = z;
   }

@@ -9,7 +9,7 @@ import { MAP_LIST, buildMap } from '../public/js/shared/maps.js';
 import { FlowField } from '../public/js/shared/flowfield.js';
 import { createCollisionWorld } from '../public/js/shared/movement.js';
 import {
-  ZONE, MODE_LIST, MODE_IDS, mapModes, fixModeCombo, moveTime, fogDps, shrinkCircle, insideZone, nearSupply, zoneName,
+  ZONE, MODE_LIST, MODE_IDS, STANDARD_MODES, mapModes, fixModeCombo, moveTime, fogDps, shrinkCircle, insideZone, nearSupply, zoneName,
 } from '../public/js/shared/zone.js';
 import { zoneSequence, walkComponents, componentAt, nearestPoi } from '../public/js/shared/sim/zone.js';
 import { encodeSnapshot, decodeSnapshot, EVENT_TYPES } from '../public/js/shared/protocol.js';
@@ -67,15 +67,19 @@ function startWave(g) {
 
 // ---------------------------------------------------------------------------------------
 describe('modes and maps', () => {
-  test('two modes, defend first (the default); Harlan County is an Evac Run map', () => {
-    assert.deepEqual(MODE_IDS, ['defend', 'zone']);
+  test('three modes, defend first (the default); Harlan County is an Evac Run / campaign map', () => {
+    assert.deepEqual(MODE_IDS, ['defend', 'zone', 'campaign']);
     assert.equal(DEFAULT_SETTINGS.mode, 'defend');
     for (const m of MODE_LIST) assert.ok(m.name && m.description.length > 20);
     const harlan = MAP_LIST.find((m) => m.id === 'harlan');
     assert.ok(harlan, 'the new map is listed');
-    assert.deepEqual(mapModes(harlan), ['zone']);
-    for (const m of MAP_LIST) if (m.id !== 'harlan') assert.deepEqual(mapModes(m), MODE_IDS, `${m.id} plays both`);
-    assert.deepEqual(getMap('harlan').modes, ['zone']);
+    assert.deepEqual(mapModes(harlan), ['zone', 'campaign']);
+    for (const m of MAP_LIST) {
+      if (m.id === 'harlan') continue;
+      const ext = ['highway', 'checkpoint'].includes(m.id);
+      assert.deepEqual(mapModes(m), ext ? MODE_IDS : STANDARD_MODES, `${m.id} plays ${ext ? 'all three' : 'both standard modes'}`);
+    }
+    assert.deepEqual(getMap('harlan').modes, ['zone', 'campaign']);
   });
 
   test('every map has points of interest the zone can use', () => {

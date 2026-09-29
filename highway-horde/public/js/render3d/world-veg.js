@@ -300,7 +300,15 @@ export function createGrassField(scene, ground, quality) {
     uHeight: { value: 12 },
     uDensity: { value: 0.9 },
     uTime: { value: 0 },
+    // campaign maps: the blades stand on the (first) hill: x, y, plateau radius, foot radius; its height
+    uHill: { value: new THREE.Vector4(0, 0, 1, 2) },
+    uHillH: { value: 0 },
   };
+  const hill0 = ground.terrain && !ground.terrain.flat && ground.terrain.spec.hills && ground.terrain.spec.hills[0];
+  if (hill0) {
+    uniforms.uHill.value.set(hill0.x, hill0.y, hill0.plateau, hill0.r);
+    uniforms.uHillH.value = hill0.h;
+  }
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 0.3 });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
@@ -310,6 +318,14 @@ export function createGrassField(scene, ground, quality) {
         uniform vec4 uMaskRect;
         uniform vec2 uCenter;
         uniform float uCell, uRadius, uHeight, uDensity, uTime;
+        uniform vec4 uHill;
+        uniform float uHillH;
+        float hillEase(float u) { u = clamp(u, 0.0, 1.0); return u * u * u * (u * (u * 6.0 - 15.0) + 10.0); }
+        float hillHeight(vec2 p) {
+          if (uHillH <= 0.0) return 0.0;
+          float d = distance(p, uHill.xy);
+          return d <= uHill.z ? uHillH : d >= uHill.w ? 0.0 : uHillH * hillEase(1.0 - (d - uHill.z) / (uHill.w - uHill.z));
+        }
         attribute vec2 iOff;
         attribute float aTip;
         varying vec3 vGrass;
@@ -338,6 +354,7 @@ export function createGrassField(scene, ground, quality) {
         transformed.x += aTip * sway * s * 1.4;
         transformed.z += aTip * sway * s * 0.7;
         transformed.xz += base;
+        transformed.y += hillHeight(base) * step(0.001, s);
         // colour: green on grass, straw on loose ground, lighter tips
         vec3 gcol = mix(vec3(0.05, 0.085, 0.03), vec3(0.11, 0.1, 0.05), 1.0 - lush);
         gcol *= 0.75 + 0.5 * h2;
