@@ -35,7 +35,7 @@ import * as campaignMod from './campaign3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
-import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor } from './post.js';
+import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT } from './post.js';
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -355,7 +355,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     logErr('post chain', err);
     post = null;
   }
-  const dyn = createDynRes();
+  // Dynamic resolution may climb above the native size (supersampling) on desktop screens
+  // (device pixel ratio below 2) when the GPU has headroom; phones and hi-dpi screens stay at 1.
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const dyn = createDynRes(coarse || (window.devicePixelRatio || 1) >= 2 ? 1 : 1.5);
   let gpuTimer = null;
   try { gpuTimer = createGpuTimer(renderer.getContext()); } catch { gpuTimer = null; }
   let postSet = normPostSettings(null);
@@ -372,8 +375,15 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     return q === 'high' ? Math.min(d, 2) : Math.min(d, 1) * 0.75;
   }
   /** Re-size the post chain's internal targets for the current render scale. */
+  // pixels the world pass may cover: supersampling stops short of exhausting GPU memory
+  const PIXEL_BUDGET = 16e6;
+  let effScale = 1;
+  function scaleCap() {
+    return Math.max(0.5, Math.sqrt(PIXEL_BUDGET / Math.max(1, cssW * cssH * prFull * prFull)));
+  }
   function applyScale() {
-    prInner = prFull * renderScale;
+    effScale = Math.min(renderScale, scaleCap(), RENDER_SCALE_LIMIT);
+    prInner = prFull * effScale;
     if (post) post.setSize(cssW, cssH, prFull, prInner);
   }
   function resize() {
@@ -382,7 +392,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     cssH = Math.max(1, canvas.clientHeight || window.innerHeight);
     prFull = pixelRatio();
     // without the post chain the canvas itself is the render target: scale it instead
-    renderer.setPixelRatio(post ? prFull : prFull * renderScale);
+    renderer.setPixelRatio(post ? prFull : prFull * Math.min(renderScale, scaleCap(), RENDER_SCALE_LIMIT));
     renderer.setSize(cssW, cssH, false);
     applyScale();
     camera.aspect = cssW / cssH;
@@ -502,7 +512,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       stats.lights = lights.activeCount;
       stats.staticTriangles = world.stats.staticTriangles;
       if (post) { stats.sceneCalls = post.sceneInfo.calls; stats.sceneTriangles = post.sceneInfo.triangles; }
-      stats.renderScale = Math.round(renderScale * 100) / 100;
+      stats.renderScale = Math.round(effScale * 100) / 100;
       stats.pixelRatio = Math.round(prInner * 1000) / 1000;
       stats.post = !!post;
       if (gpuTimer && Number.isFinite(gpuTimer.ms)) stats.gpuMs = Math.round(gpuTimer.ms * 100) / 100;

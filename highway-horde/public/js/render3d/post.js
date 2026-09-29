@@ -35,6 +35,9 @@ import { AtmosPass } from './post-atmos.js';
 
 const DIST_N = 4;
 
+/** Highest render scale: 2 = supersampling at twice the native resolution per axis. */
+export const RENDER_SCALE_LIMIT = 2;
+
 /** Settings the chain understands, with their defaults (SPEC §7.5 graphics settings). */
 export const POST_DEFAULTS = Object.freeze({
   renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
@@ -51,7 +54,7 @@ export function normPostSettings(s) {
   let rs = o.renderScale;
   if (rs !== 'auto') {
     rs = Number(rs);
-    rs = Number.isFinite(rs) && rs > 0 ? Math.max(0.5, Math.min(1, rs)) : 'auto';
+    rs = Number.isFinite(rs) && rs > 0 ? Math.max(0.5, Math.min(RENDER_SCALE_LIMIT, rs)) : 'auto';
   }
   const aa = o.antialias === 'fxaa' || o.antialias === 'off' || o.antialias === 'smaa' ? o.antialias : 'smaa';
   return {
@@ -604,7 +607,8 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
 
 /**
  * Dynamic resolution controller: measures real frame time over ~1 s windows and steps
- * the render scale between 0.5 and 1 to hold ~58–60 fps.
+ * the render scale between 0.5 and `maxScale` (1 by default; desktops pass 1.5 so a GPU with
+ * headroom renders above the native resolution, i.e. supersamples) to hold ~58–60 fps.
  *  - Below 55 fps it steps down, sized from the shortfall (pixels ∝ scale²).
  *  - With vsync, frame rates move in jumps (60 → 30): a step can show no gain until the
  *    next one crosses a vsync boundary, so no-gain steps are allowed to continue; only
@@ -614,7 +618,8 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
  *    one notch; an up-step taken back right away is undone by exactly one notch and the
  *    next up-step waits twice as long (no oscillation, no reallocation every second).
  */
-export function createDynRes() {
+export function createDynRes(maxScale = 1) {
+  const MAX = Math.max(1, Math.min(RENDER_SCALE_LIMIT, maxScale));
   let scale = 1;
   let winMs = 0, winN = 0, winGpu = 0, winGpuN = 0;
   const winDt = [];     // frame times of the current window (median: one hitch doesn't count)
@@ -624,7 +629,7 @@ export function createDynRes() {
   let lastUp = -1e9, upWait = 3, win = 0;
   let last = 0, slow = 0;
   const QUANT = 0.05;
-  const quant = (v) => Math.max(0.5, Math.min(1, Math.round(v / QUANT) * QUANT));
+  const quant = (v) => Math.max(0.5, Math.min(MAX, Math.round(v / QUANT) * QUANT));
   return {
     get scale() { return scale; },
     reset(s = scale) {
@@ -688,7 +693,7 @@ export function createDynRes() {
           next = Math.max(scale - 0.1, Math.min(scale - QUANT, want));
         }
         probe = { fps };
-      } else if (scale < 1 && (timed ? gpu < 11 && fps > 57 : fps >= 58.5)) {
+      } else if (scale < MAX && (timed ? gpu < 11 && fps > 57 : fps >= 58.5)) {
         good++;
         if (good >= (timed ? 1 : upWait)) { next = scale + QUANT; good = 0; lastUp = win; }
       } else {

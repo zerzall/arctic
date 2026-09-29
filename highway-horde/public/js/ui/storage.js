@@ -19,7 +19,7 @@ export const DEFAULT_CLIENT_SETTINGS = {
   // Graphics. quality goes to renderer.setQuality(); the rest rides along in the settings
   // object of every renderer.render() call (see gfx.js rendererSettings).
   quality: 'ultra',
-  renderScale: 'auto', // 'auto' (dynamic resolution holding 60 fps) | 0.5..1 (phones: 1)
+  renderScale: 'auto', // 'auto' (dynamic resolution holding 60 fps; may supersample up to 1.5 on desktops) | 0.5..2
   bloom: true,
   ao: true,            // ambient occlusion
   antialias: 'smaa',   // 'smaa' | 'fxaa' | 'off'
@@ -52,8 +52,10 @@ export const DEFAULT_CLIENT_SETTINGS = {
 export const FOV_MIN = 60;
 export const FOV_MAX = 120;
 /** Fixed render scales offered next to 'auto' (fraction of the native resolution). */
-export const RENDER_SCALES = [1, 0.85, 0.7, 0.5];
+export const RENDER_SCALES = [2, 1.5, 1.25, 1, 0.85, 0.7, 0.5];
 export const RENDER_SCALE_MIN = 0.5;
+/** Above 1 the world is drawn bigger than the screen and shrunk back (supersampling). */
+export const RENDER_SCALE_MAX = 2;
 /** "UI size" multipliers offered next to 'auto'. */
 export const UI_SCALES = [0.75, 0.9, 1.1, 1.25, 1.5];
 export const UI_SCALE_MIN = 0.75;
@@ -184,7 +186,7 @@ export function validateSettings(s) {
     music: num01(s.music, ds.music),
     muted: bool(s.muted, ds.muted),
     quality,
-    renderScale: autoOrNum(s.renderScale, RENDER_SCALE_MIN, 1, ds.renderScale),
+    renderScale: autoOrNum(s.renderScale, RENDER_SCALE_MIN, RENDER_SCALE_MAX, ds.renderScale),
     bloom: bool(s.bloom, fx.bloom),
     ao: bool(s.ao, fx.ao),
     antialias: oneOf(s.antialias, ANTIALIAS_MODES, fx.antialias),

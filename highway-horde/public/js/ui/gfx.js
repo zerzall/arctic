@@ -4,14 +4,14 @@
 // Contract with render3d (the WORLD owner implements it): renderer.setQuality(q) when the
 // preset's quality changes, and every renderer.render(view, { ..., settings }) carries
 //   { screenShake, showNames, lighting, fov, crosshair,
-//     renderScale: 'auto' | 0.5..1   // 'auto' = dynamic resolution that holds 60 fps
+//     renderScale: 'auto' | 0.5..2   // 'auto' = dynamic resolution that holds 60 fps
 //     bloom, ao, filmGrain, vignette, volumetrics, reflections: boolean,
 //     antialias: 'smaa' | 'fxaa' | 'off',
 //     gore: 'on' | 'low' | 'off' }   // blood, gibs and decals (off = dark ash, no gibs)
 // and r.stats may report renderScale (the scale in use right now) and gpuMs.
 // The top-down renderer ignores the fields it doesn't know.
 
-import { ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, GRAPHICS_PRESETS, GORE_MODES } from './storage.js';
+import { ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, RENDER_SCALE_MAX, GRAPHICS_PRESETS, GORE_MODES } from './storage.js';
 
 /** The effect toggles each preset sets (defined next to the prefs they validate). */
 export { GRAPHICS_PRESETS };
@@ -61,7 +61,7 @@ export function rendererSettings(s, out = {}) {
   out.fov = Number.isFinite(s.fov) ? s.fov : 80;
   if (out.crosshair === undefined) out.crosshair = true;
   out.renderScale = s.renderScale === 'auto' ? 'auto'
-    : Number.isFinite(s.renderScale) ? Math.min(1, Math.max(RENDER_SCALE_MIN, s.renderScale)) : 'auto';
+    : Number.isFinite(s.renderScale) ? Math.min(RENDER_SCALE_MAX, Math.max(RENDER_SCALE_MIN, s.renderScale)) : 'auto';
   out.bloom = s.bloom !== false;
   out.ao = s.ao !== false;
   out.antialias = ANTIALIAS_MODES.includes(s.antialias) ? s.antialias : 'smaa';

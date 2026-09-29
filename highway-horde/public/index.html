@@ -280,13 +280,16 @@
             <div class="set-row">
               <div class="set-label" id="renderscale-label">Resolution</div>
               <div class="seg" role="radiogroup" aria-labelledby="renderscale-label" id="set-renderscale" data-setting="renderScale">
-                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Lowers the resolution only when needed to hold 60 fps">Auto</button>
+                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Holds 60 fps: sharper than native when the GPU has headroom, lower only when a fight needs it">Auto</button>
+                <button type="button" class="seg-btn" role="radio" data-value="2" title="Supersampling: draws at 4x the pixels and shrinks it back. The sharpest picture; needs a strong graphics card">200%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1.5" title="Supersampling: very sharp, easy edges">150%</button>
+                <button type="button" class="seg-btn" role="radio" data-value="1.25">125%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="1">100%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="0.85">85%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="0.7">70%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="0.5">50%</button>
               </div>
-              <p class="set-help">Auto holds 60 fps: it lowers the resolution only when a big fight needs it.</p>
+              <p class="set-help">Auto holds 60 fps: it goes above 100% (sharper) when your graphics card has room and lowers it only when a big fight needs it. 150% and 200% render extra pixels for the sharpest picture.</p>
             </div>
             <button type="button" class="set-disclosure" id="set-adv-toggle" aria-expanded="false" aria-controls="set-adv">Advanced</button>
             <div id="set-adv" class="set-adv" hidden>

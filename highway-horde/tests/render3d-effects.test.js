@@ -166,3 +166,35 @@ test('daytime ambient life (birds, motes, leaves) runs and stays inside its budg
   assert.ok(amb.stats.birds <= 18);
   amb.dispose();
 });
+
+test('render scale: supersampling values are accepted and dynamic resolution can climb above 100%', async () => {
+  const { normPostSettings, createDynRes, RENDER_SCALE_LIMIT } = await import('../public/js/render3d/post.js');
+  assert.equal(RENDER_SCALE_LIMIT, 2);
+  for (const v of [0.5, 1, 1.25, 1.5, 2]) assert.equal(normPostSettings({ renderScale: v }).renderScale, v);
+  assert.equal(normPostSettings({ renderScale: 3 }).renderScale, 2, 'clamped to the supersampling limit');
+  assert.equal(normPostSettings({ renderScale: 0.1 }).renderScale, 0.5);
+  assert.equal(normPostSettings({}).renderScale, 'auto');
+
+  // a GPU with lots of headroom (60 fps, 4 ms of GPU) steps up past 1 only when allowed to
+  const run = (max) => {
+    const dyn = createDynRes(max);
+    let now = 0;
+    for (let i = 0; i < 60 * 40; i++) { now += 1000 / 60; dyn.tick(now, 4); }
+    return dyn.scale;
+  };
+  assert.equal(run(1), 1, 'phones and hi-dpi screens stay at 100%');
+  const up = run(1.5);
+  assert.ok(up > 1.3 && up <= 1.5, `desktop climbs toward 150%, got ${up}`);
+  // a GPU-bound machine (14.8 ms at 100%, cost grows with the pixel count) settles near
+  // the resolution that holds 60 fps instead of staying at 150%
+  const dyn = createDynRes(1.5);
+  dyn.reset(1.5);
+  let now = 0, scale = 1.5;
+  for (let i = 0; i < 60 * 90; i++) {
+    const gpu = 14.8 * scale * scale;
+    now += Math.max(1000 / 60, gpu);
+    const ns = dyn.tick(now, gpu);
+    if (ns !== null) scale = ns;
+  }
+  assert.ok(scale <= 1.2 && scale >= 0.85, `settles near what the GPU can hold, got ${scale}`);
+});

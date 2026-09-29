@@ -177,14 +177,16 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); JUMP
 sits next to it and the other actions have on-screen buttons. Gamepads and touch get a light aim assist.
-Every device starts on the **Ultra** graphics preset with **Auto** resolution, which
-lowers the render resolution only when a big fight would drop below 60 fps. On phones and
-tablets Ultra makes the device run warm and drains the battery faster; set the resolution
-to 100% in Settings for the sharpest picture, or pick High or Low if it stutters.
+Every device starts on the **Ultra** graphics preset with **Auto** resolution: on a desktop
+screen with room to spare it renders *above* your screen's resolution (up to 150%, then
+shrinks the picture back for very smooth edges) and lowers it only when a big fight would
+drop below 60 fps. For the sharpest picture pick **150%** or **200%** in Settings, if your
+graphics card can take it. On phones and tablets Ultra makes the device run warm and drains
+the battery faster; pick High or Low if it stutters.
 
 **Settings** (title screen or pause menu → Settings) has four tabs:
 
-- **Graphics**: a preset (Ultra, High, Low), the resolution (Auto, 100%, 85%, 70% or 50%)
+- **Graphics**: a preset (Ultra, High, Low), the resolution (Auto, 200%, 150%, 125%, 100%, 85%, 70% or 50%; above 100% draws extra pixels for a sharper picture)
   and, under *Advanced*, anti-aliasing (SMAA, FXAA, off), bloom, ambient occlusion, film
   grain, vignette and night lighting. Tweaking an effect marks the preset *Custom*. *Gore*
   (On, Low, Off) is separate from the presets: Low thins out the blood and drops severed

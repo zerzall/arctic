@@ -5,7 +5,7 @@
 // URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=ultra|high|low, bots=N (0..5),
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
-// graphics settings (SPEC §7.5): scale=auto|0.5..1, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
+// graphics settings (SPEC §7.5): scale=auto|0.5..2, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
 // gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
 // set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).

@@ -1424,10 +1424,14 @@ ultra, quarter / 16 on high; a depth-aware upsampling composite; 2–3 draw call
 2–6) → grade (ACES + sRGB, contrast/saturation/lift-gamma-gain, `vignette`, `filmGrain`,
 dither, and colour fringes + desaturation at the edges while the local player is hurt,
 not on low) → SMAA or FXAA (`antialias` 'smaa' | 'fxaa' | 'off'; low forces FXAA unless off)
-→ upscale + sharpen when the internal resolution is below 1. `settings.renderScale` is
-'auto' (dynamic resolution in 0.05 steps holding 58–60 fps, with hysteresis) or a fixed
-0.5–1 fraction of the tier's pixel-ratio cap (ultra min(dpr, 3), high min(dpr, 2), low
-0.75 × min(dpr, 1)); the canvas keeps its size and only the internal targets scale. All
+→ upscale + sharpen when the internal resolution is below 1 (above 1 the last pass shrinks
+the frame back: supersampling). `settings.renderScale` is 'auto' (dynamic resolution in 0.05
+steps holding 58–60 fps, with hysteresis; on desktop screens with a device pixel ratio
+below 2 it may climb to 1.5 when the GPU has headroom, phones and hi-dpi screens stay ≤ 1)
+or a fixed 0.5–2 fraction of the tier's pixel-ratio cap (ultra min(dpr, 3), high
+min(dpr, 2), low 0.75 × min(dpr, 1)); the world pass never exceeds 16 million pixels
+(`PIXEL_BUDGET`, so 200% on a 4K screen is capped); the canvas keeps its size and only the
+internal targets scale. The Settings offer Auto, 200%, 150%, 125%, 100%, 85%, 70%, 50%. All
 settings apply live; an unchanged settings object costs a few comparisons; `render()`
 never throws (a failing chain falls back to a direct render, and is dropped after 3
 failures). `settings.uiScale` (from the UI) scales the overlay. `r.stats` exposes
