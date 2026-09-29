@@ -1,0 +1,28 @@
+# CI for the game in bomberman/. The Electron app's own workflow (build.yml) is separate and untouched.
+name: Blast Party
+
+on:
+  push:
+    paths:
+      - 'bomberman/**'
+      - '.github/workflows/bomberman.yml'
+  pull_request:
+    paths:
+      - 'bomberman/**'
+      - '.github/workflows/bomberman.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bomberman
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bomberman/package-lock.json
+      - run: npm ci
+      - run: npm test

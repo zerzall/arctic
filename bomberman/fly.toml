@@ -1,0 +1,42 @@
+# Fly.io config for Blast Party. Run every flyctl command from this directory (bomberman/), where the Dockerfile lives:
+#
+#   fly launch --ha=false --no-deploy     # picks the app name and region and adds them to this file; keep this config
+#   fly scale count 1                     # rooms live in one process's memory, so never more than ONE machine
+#   fly deploy
+#
+# `fly launch` writes `app` and `primary_region` for you, so they are not set here.
+
+kill_signal = "SIGTERM"
+# The server finishes its graceful shutdown within 8 s (docs/SPEC.md section 7); flyctl documents the duration string form.
+kill_timeout = "10s"
+
+[env]
+  PORT = "3000"
+  TRUST_PROXY = "1"      # one hop: Fly's edge proxy (the server then reads Fly-Client-IP)
+  MAX_ROOMS = "100"
+
+[deploy]
+  strategy = "immediate"   # never run the old and the new machine side by side (rooms are per-process)
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0   # open WebSocket connections count as load and keep the machine up
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
