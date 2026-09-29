@@ -8,7 +8,8 @@
 //
 // Model space as actor-rig.js: +X forward, +Y up, +Z right; feet at y = 0 (~57 tall).
 
-import { ShapeBuilder, SLOT, MAT, lineRings } from './actor-shape.js';
+import { ShapeBuilder, SLOT, MAT, PART, lineRings } from './actor-shape.js';
+import { addClassGear, GLOVES } from './actor-sgear.js';
 import { B } from './actor-rig.js';
 import { CLASSES } from '../shared/classes.js';
 import { shadeHex, mixHex } from './actor-kit.js';
@@ -52,8 +53,9 @@ const BOOT = '#1f1a15', SOLE = '#121010', GLOVE = '#26211c', STRAP = '#2a261e', 
 /**
  * @param {string} cls classes.js id
  * @param {number} L 0 near · 1 far
+ * @param {number} [tier] quality tier (2 = low: no class gear beyond the base kit)
  */
-export function buildSoldier(cls, L) {
+export function buildSoldier(cls, L, tier = 0) {
   const P = SP;
   const look = (CLASSES[cls] || CLASSES.soldier).look;
   const vest = look.vest, hat = look.hat;
@@ -74,7 +76,7 @@ export function buildSoldier(cls, L) {
     [0.1, P.neck + 0.2, 2.2, 3.0, bw(B.CHEST, B.NECK, 0.3)],
   ];
   const rings = tor.map(([x, y, rx, rz, bone]) => ({ c: [x, y, 0], rx, rz, bone }));
-  sb.tube(rings, { seg: seg(18, 10), cap0: 'round', cap1: 'round', capRings: seg(3, 1), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', paint: 0.05,
+  sb.tube(rings, { seg: seg(18, 10), cap0: 'round', cap1: 'round', capRings: seg(3, 1), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', paint: 0.05, part: PART.TOP,
     profile: (th) => 1 - 0.1 * Math.max(0, -Math.cos(th)) });
   // ---- vest: a thicker shell over the chest with pouches ----
   const vk = heavy ? 1.2 : 1;
@@ -147,7 +149,7 @@ export function buildSoldier(cls, L) {
       { c: [0.1, P.knee - 3, z], rx: cr * 1.08, rz: cr * 0.98, bone: bw(TH, SH, 0.9) },
       { c: [-0.2, P.knee - 6.5, z], rx: cr * 1.05, rz: cr * 0.95, bone: SH },
       { c: [0.1, P.ankle + 2.4, z], rx: cr * 0.85, rz: cr * 0.8, bone: SH },
-    ], { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e8e8e8', paint: 0.12 });
+    ], { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e8e8e8', paint: 0.12, part: PART.LEG });
     // cargo pocket
     if (L === 0) roundBox(sb, [0.4, P.hip - 6.5, z + s * 2.9], [2.6, 3.4, 0.9], '#d6d6d6', TH, MAT.CLOTH, SLOT.CLOTH);
     // knee pad
@@ -166,7 +168,7 @@ export function buildSoldier(cls, L) {
     { c: [0, P.hip - 4, 0], rx: 3.2, rz: 4.9, bone: B.HIPS },
     { c: [0, P.hip - 1.2, 0], rx: 4.2, rz: 6.1, bone: B.HIPS },
     { c: [0.2, P.waist - 0.5, 0], rx: 4.2, rz: 6.0, bone: bw(B.HIPS, B.SPINE, 0.5) },
-  ], { seg: seg(16, 8), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e0e0e0', paint: 0.1 });
+  ], { seg: seg(16, 8), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e0e0e0', paint: 0.1, part: PART.PELVIS });
 
   // ---- arms: sleeves, armband (player colour), gloves ----
   const rolled = cls === 'scout' || cls === 'engineer';
@@ -186,17 +188,17 @@ export function buildSoldier(cls, L) {
       { c: [0.2, wr + 0.6, z], rx: r * 0.66, rz: r * 0.58, bone: bw(FA, HD, 0.4) },
     ];
     if (rolled) {
-      sb.tube(arm.slice(0, 5).map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.3, rz: (q.rz ?? q.r) + 0.3, r: undefined })), { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff' });
+      sb.tube(arm.slice(0, 5).map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.3, rz: (q.rz ?? q.r) + 0.3, r: undefined })), { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', part: PART.SLEEVE });
       sb.tube(arm.slice(3), { seg: seg(10, 6), slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff' });
       sb.tube(lineRings([-0.3, el + 1.6, z], [-0.3, el - 0.2, z], r + 0.6, r + 0.55, 2), { seg: seg(12, 7), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#d8d8d8', bone: bw(UA, FA, 0.3) });
     } else {
-      sb.tube(arm.map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.25, rz: (q.rz ?? q.r) + 0.25, r: undefined })), { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff' });
+      sb.tube(arm.map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.25, rz: (q.rz ?? q.r) + 0.25, r: undefined })), { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', part: PART.SLEEVE });
     }
     // armband in the player's colour
     sb.tube(lineRings([0.05, top - 3.2, z], [0.05, top - 5.2, z], r * 1.22, r * 1.12, 2), { seg: seg(12, 7), slot: SLOT.ACCENT, mat: MAT.CLOTH, color: '#ffffff', bone: UA });
     if (heavy) sb.ellipsoid([0, top + 0.8, z * 1.05], [3.2, 2.2, 3.0], { segW: seg(12, 6), segH: seg(6, 4), slot: SLOT.FIXED, mat: MAT.METAL, color: shadeHex(vest, 0.05), bone: bw(B.CHEST, UA, 0.6) });
     // gloved fist
-    glove(sb, [0.3, wr, z], s, HD, L);
+    glove(sb, [0.3, wr, z], s, HD, L, cls);
   }
 
   // ---- neck + head + headgear ----
@@ -207,6 +209,7 @@ export function buildSoldier(cls, L) {
   ], { seg: seg(12, 7), slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0' });
   face(sb, P, L, hat === 'none');
   headgear(sb, P, hat, look, L);
+  if (tier < 2) addClassGear(sb, P, cls, look, L);
   return sb;
 }
 
@@ -249,17 +252,26 @@ function backpack(sb, P, cls, vest, outfit, L) {
 }
 const seg8 = (L) => (L === 0 ? 10 : 6);
 
-function glove(sb, w, side, HD, L) {
-  // a fist closed round a grip: palm block + curled finger roll + thumb over the top
-  sb.ellipsoid([w[0] + 0.3, w[1] - 2.2, w[2]], [1.4, 2.3, 1.7], { segW: L ? 7 : 10, segH: L ? 4 : 6, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#2e2822', bone: HD });
+function glove(sb, w, side, HD, L, cls) {
+  // a fist closed round a grip: palm block + curled finger roll + thumb over the top; each
+  // class has its own gloves (nitrile, work leather, fingerless with tape, padded knuckles)
+  const G = GLOVES[cls] || GLOVES.soldier;
+  const k = G.thick ? 1.18 : 1;
+  const mat = G.glossy ? MAT.RUBBER : MAT.LEATHER;
+  sb.ellipsoid([w[0] + 0.3, w[1] - 2.2, w[2]], [1.4 * k, 2.3 * k, 1.7 * k], { segW: L ? 7 : 10, segH: L ? 4 : 6, slot: SLOT.FIXED, mat, color: G.color, bone: HD, part: PART.HAND });
   if (L === 0) {
     for (let f = 0; f < 4; f++) {
       const y = w[1] - 3.4 - f * 0.75;
-      sb.ellipsoid([w[0] + 1.35, y, w[2] + side * 0.25], [0.62, 0.42, 1.25], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.LEATHER, color: GLOVE, bone: HD });
+      sb.ellipsoid([w[0] + 1.35, y, w[2] + side * 0.25], [0.62 * k, 0.42 * k, 1.25 * k], { segW: 6, segH: 4, slot: SLOT.FIXED, mat, color: G.color, bone: HD });
+      if (G.fingerless && f < 3) sb.ellipsoid([w[0] + 1.75, y, w[2] + side * 0.25], [0.3, 0.38, 1.1], { segW: 5, segH: 3, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', bone: HD });
     }
-    sb.tube(lineRings([w[0] + 0.6, w[1] - 1.2, w[2] - side * 1.3], [w[0] + 1.7, w[1] - 2.6, w[2] - side * 0.9], 0.55, 0.45, 3), { seg: 6, cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.LEATHER, color: GLOVE, bone: HD });
+    sb.tube(lineRings([w[0] + 0.6, w[1] - 1.2, w[2] - side * 1.3], [w[0] + 1.7, w[1] - 2.6, w[2] - side * 0.9], 0.55 * k, 0.45 * k, 3), { seg: 6, cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat, color: G.color, bone: HD });
+    // knuckle pad, cuff, velcro strap
+    sb.ellipsoid([w[0] + 1.0, w[1] - 3.0, w[2] + side * 0.1], [0.5, 0.35, 1.35 * k], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.RUBBER, color: G.pad, bone: HD });
+    sb.tube(lineRings([w[0] - 0.1, w[1] + 0.9, w[2]], [w[0] - 0.1, w[1] - 0.5, w[2]], 1.5 * k, 1.5 * k, 2, (r) => { r.rz = 1.4 * k; }), { seg: 10, slot: SLOT.FIXED, mat: MAT.CLOTH, color: G.cuff, bone: HD });
+    if (G.tape) for (let t = 0; t < 3; t++) sb.tube(lineRings([w[0] + 0.1, w[1] + 2.4 + t * 0.55, w[2]], [w[0] + 0.1, w[1] + 2.75 + t * 0.55, w[2]], 1.6, 1.6, 2, (r) => { r.rz = 1.5; }), { seg: 10, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e0d8c0', bone: HD });
   } else {
-    sb.ellipsoid([w[0] + 1.2, w[1] - 4.1, w[2]], [0.8, 1.6, 1.4], { segW: 5, segH: 4, slot: SLOT.FIXED, mat: MAT.LEATHER, color: GLOVE, bone: HD });
+    sb.ellipsoid([w[0] + 1.2, w[1] - 4.1, w[2]], [0.8, 1.6, 1.4], { segW: 5, segH: 4, slot: SLOT.FIXED, mat, color: G.color, bone: HD });
   }
 }
 

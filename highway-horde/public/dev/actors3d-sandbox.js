@@ -6,6 +6,8 @@
 // URL: ?mode=lineup|horde|team|guns|fx|closeup  &yaw= &pitch= &x= &y= &weapon=  &q=ultra|high|low
 //      &shot=1 (hide HUD)  &zombies=N (horde size)  &studio=1 (stub: inspection lighting)
 //      closeup: &types=walker,runner &dist= &spacing= &anim=walk|idle|attack|burn|die|hit &face=
+//      gallery: &types=walker &n=24 &cols=6 &start=1 &dist=90 &spacing=26 &row=34 (a grid of static zombies with consecutive ids)
+//      &tod=day|night (time of day)  &cls=medic (the local player's class)  &color=3 (player colour index)
 //      &time=<s> (fast-forward the fixture before the first frame)  &ctx=stub
 
 import * as THREE from 'three';
@@ -239,7 +241,7 @@ function lineupScene() {
   const home = { x: local.x, y: local.y };
   return {
     localId: 1,
-    roster: [{ id: 1, name: 'You', color: 0, cls: 'soldier' }],
+    roster: [{ id: 1, name: 'You', color: parseInt(qs.get('color') || '0', 10), cls: qs.get('cls') || 'soldier' }],
     local,
     yaw: -Math.PI / 2,
     step(dt) {
@@ -278,7 +280,7 @@ function closeupScene() {
     y: local.y - dist * (t === 'boss' ? 1.7 : 1), angle: Math.PI / 2 + face, hp: 1, flags: flags0, _spd: anim === 'idle' || anim === 'attack' ? 0 : ZOMBIES[t].speed[0] }));
   let time = 0, dieT = 0;
   return {
-    localId: 1, roster: [{ id: 1, name: 'You', color: 0, cls: 'soldier' }], local, yaw: -Math.PI / 2,
+    localId: 1, roster: [{ id: 1, name: 'You', color: parseInt(qs.get('color') || '0', 10), cls: qs.get('cls') || 'soldier' }], local, yaw: -Math.PI / 2,
     step(dt) {
       time += dt;
       const events = [];
@@ -300,6 +302,26 @@ function closeupScene() {
       }
       return { view: baseView([local], anim === 'die' && dieT > 0.02 && dieT < 2.5 ? [] : zombies), events };
     },
+  };
+}
+
+function galleryScene() {
+  // a grid of static zombies with consecutive ids, facing the camera (variety review)
+  const list = (qs.get('types') || 'walker').split(',').filter((t) => ZOMBIES[t]);
+  const n = parseInt(qs.get('n') || '24', 10), cols = parseInt(qs.get('cols') || '6', 10), start = parseInt(qs.get('start') || '1', 10);
+  const dist = parseFloat(qs.get('dist') || '90'), spacing = parseFloat(qs.get('spacing') || '26'), row = parseFloat(qs.get('row') || '34');
+  const flags0 = parseInt(qs.get('flags') || '0', 10);
+  const local = fixturePlayer(1, qs.get('cls') || 'soldier', 'rifle');
+  local.x = cx; local.y = cy + 330;
+  const zombies = [];
+  for (let k = 0; k < n; k++) {
+    const t = list[k % list.length];
+    const c = k % cols, r = Math.floor(k / cols);
+    zombies.push({ id: start + k, type: t, x: local.x + (c - (cols - 1) / 2) * spacing, y: local.y - dist - r * row, angle: Math.PI / 2 + (((k * 7) % 5) - 2) * 0.05, hp: 1, flags: flags0, _spd: 0 });
+  }
+  return {
+    localId: 1, roster: [{ id: 1, name: 'You', color: parseInt(qs.get('color') || '0', 10), cls: qs.get('cls') || 'soldier' }], local, yaw: -Math.PI / 2,
+    step() { return { view: baseView([local], zombies), events: [] }; },
   };
 }
 
@@ -350,6 +372,7 @@ function teamScene() {
     { id: 2, kind: 'acid', x: home.x + 330, y: home.y - 330, r: 60, life: 0.9 },
   ];
   let time = 0;
+  const near = qs.get('near') ? { dx: parseFloat(qs.get('near')) || 28, dy: parseFloat(qs.get('nd') || '80') } : null;
   const projectiles = [];
   let nextP = 1;
   return {
@@ -363,6 +386,10 @@ function teamScene() {
         p.x = home.x + (k - 2.5) * 70;
         p.y = home.y - 260 + Math.sin(time * 0.8 + k) * 20;
         p.angle = (k % 2 ? -Math.PI / 2 : Math.PI / 2) + Math.sin(time * 0.5 + k) * 0.3;
+        if (near) {
+          // a close line-up facing the camera (class gear review)
+          p.x = home.x + (k - 2.5) * near.dx; p.y = home.y - near.dy; p.angle = Math.PI / 2 + (k - 2.5) * 0.09;
+        }
         p.state = k === 4 ? 'downed' : k === 5 && (time % 8) > 4 ? 'dead' : 'alive';
         p.sprinting = k === 2;
         // the sprinter hops (jump height + tucked legs), with a short pause on the ground
@@ -373,6 +400,9 @@ function teamScene() {
         p.hp = 20 + ((time * 10 + k * 17) % 80);
         p.spin = p.slots[1] === 'minigun' ? 1 : 0;
         p.meleeing = k === 1 && (time % 3) < 0.4 ? (time % 3) / 0.4 : 0;
+        // Doc (k = 1) kneels by the downed player (k = 4) for a while: the revive pose
+        if (k === 4) { const on = (time % 10) > 2.5; p.reviver = on ? 3 : 0; p.revive = on ? ((time - 2.5) % 7.5) / 7.5 : 0; p.x = home.x + 40; p.y = home.y - 200; }
+        if (k === 1 && (time % 10) > 2.5) { p.meleeing = 0; p.x = home.x + 40 - 26; p.y = home.y - 194; p.sprinting = false; }
         if (k === 0 && Math.floor(time * 10) !== Math.floor((time - dt) * 10)) {
           const a = p.angle;
           events.push({ type: 'shot', pid: p.id, turret: 0, weapon: 'rifle', x: p.x + Math.cos(a) * 22, y: p.y + Math.sin(a) * 22, angle: a,
@@ -431,6 +461,7 @@ function buildScene() {
   else if (mode === 'guns') scene = hordeScene({ zombies: 60, localFires: false });
   else if (mode === 'fx') scene = teamScene();
   else if (mode === 'closeup') scene = closeupScene();
+  else if (mode === 'gallery') scene = galleryScene();
   else scene = hordeScene({ zombies: qs.get('zombies') !== null ? parseInt(qs.get('zombies'), 10) : 250 });
   if (!Number.isFinite(yaw)) yaw = scene.yaw;
 }
@@ -439,7 +470,7 @@ async function main() {
   const useStub = qs.get('ctx') === 'stub';
   const r3 = useStub ? null : await tryImport('../js/render3d/renderer3d.js');
   if (r3 && r3.createRenderer3D) {
-    const r = r3.createRenderer3D(canvas, { map, quality });
+    const r = r3.createRenderer3D(canvas, { map, quality, time: qs.get('tod') || undefined });
     R = {
       real: r,
       stub: false,
@@ -490,6 +521,23 @@ async function main() {
     R, subs, stats: {}, setMode, ready: true, frames: 0,
     setWeapon(id) { weaponIdx = Math.max(0, WEAPON_IDS.indexOf(id)); },
     setLook(y, p) { yaw = y; pitch = p; },
+    /** Rebuild the scene from a new query string (dev shots: many views in one page load). */
+    query(str) {
+      for (const k of [...qs.keys()]) qs.delete(k);
+      for (const [k, v] of new URLSearchParams(str)) qs.set(k, v);
+      pitch = parseFloat(qs.get('pitch') || '0');
+      if (qs.get('weapon')) weaponIdx = Math.max(0, WEAPON_IDS.indexOf(qs.get('weapon')));
+      setMode(qs.get('mode') || 'lineup');
+      const loc = scene.local;
+      loc.x += parseFloat(qs.get('dx') || '0');
+      loc.y += parseFloat(qs.get('dy') || '0');
+      const t = parseFloat(qs.get('time') || '0');
+      for (let k = 0; k < t * 30; k++) {
+        const res = scene.step(1 / 30, null);
+        now += 1 / 30;
+        if (res.events.length) R.addEvents(res.events, { localId: scene.localId });
+      }
+    },
     local: () => scene.local,
     fire(on) { if (on) keys.add('f'); else keys.delete('f'); },
     events(list) { R.addEvents(list, { localId: scene.localId }); },
@@ -586,6 +634,13 @@ let last = performance.now();
 let fpsAcc = 0, fpsN = 0, fps = 0;
 const jsHist = [];
 function loop(t) {
+  // dev shots: while frozen only the frames in __SB.budget are rendered (a screenshot then
+  // never waits for a slow software-GL frame)
+  const sbx = window.__SB;
+  if (sbx && sbx.frozen) {
+    if (!(sbx.budget > 0)) { last = t; requestAnimationFrame(loop); return; }
+    sbx.budget--;
+  }
   const dt = Math.min(0.05, (t - last) / 1000);
   last = t;
   const step = qs.get('fixed') ? 1 / 60 : dt;

@@ -18,18 +18,21 @@ import { CLASSES, CLASS_IDS } from '../shared/classes.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { angleDiff, damp, hash01, capLuma } from './actor-kit.js';
-import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2 } from './actor-rig.js';
+import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2 } from './actor-rig.js';
 import { buildSoldier, soldierSkeleton, SP } from './actor-smodels.js';
 import { geometryFromArrays } from './actor-shape.js';
 import { actorTextures } from './actor-tex.js';
 import { gunObject } from './actor-guns.js';
 import { acquireFx, releaseFx } from './fx-core.js';
 
+const tierOf = (q) => (q === 'low' ? 2 : 0);
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 const CAP = 8;
 const SKIN = { soldier: '#c68e6a', medic: '#e3b899', engineer: '#8d5a3b', scout: '#b9835a', demo: '#d9a57c', heavy: '#6f4a33' };
 const GUN_SCALE = 0.84;
+// cloth pattern per class (rig shader): camouflage for the soldier and the heavy
+const PATTERN = { soldier: 3, heavy: 3 };
 
 // how each weapon style is held
 const HOLD = {
@@ -38,10 +41,10 @@ const HOLD = {
 };
 
 const cache = new Map();
-function soldierArrays(cls, L) {
-  const k = cls + L;
+function soldierArrays(cls, L, tier) {
+  const k = cls + L + ':' + (tier >= 2 ? 2 : 0);
   let a = cache.get(k);
-  if (!a) { a = buildSoldier(cls, L).arrays(); cache.set(k, a); }
+  if (!a) { a = buildSoldier(cls, L, tier).arrays(); cache.set(k, a); }
   return a;
 }
 function instancedGeometry(a) {
@@ -119,13 +122,14 @@ export function createPlayers3D(ctx) {
   root.name = 'players3d';
   ctx.scene.add(root);
   let high = ctx.quality !== 'low';
+  let curTier = tierOf(ctx.quality);
   const tex = actorTextures(8);
   const pool = new RigPool({ capacity: CAP + 2, textures: tex });
   const sk = soldierSkeleton();
   const bodies = {};
   for (const cls of CLASS_IDS) {
     bodies[cls] = [0, 1].map((L) => {
-      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L)), sk, { rim: '#b8d0ff', rimStrength: 0.34, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
+      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L, tierOf(ctx.quality))), sk, { rim: '#b8d0ff', rimStrength: 0.34, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
       root.add(m.mesh);
       return m;
     });
@@ -170,11 +174,13 @@ export function createPlayers3D(ctx) {
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
   const _mc = new THREE.Matrix4();
   const nearLights = [];
+  const reviveOf = new Map();
+  const stow = new Map();    // pid → { pistol, back: { obj, id } } — the weapons that are not in the hands
 
   function getState(p) {
     let s = state.get(p.id);
     if (!s) {
-      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, seen: 0, sprint: 0, down: 0, dead: 0, fwd: 1, side: 0, air: 0 };
+      s = { x: p.x, y: p.y, a: p.angle || 0, spd: 0, mvA: 0, ph: hash01(p.id) * TAU, shot: 9, seen: 0, sprint: 0, down: 0, dead: 0, fwd: 1, side: 0, air: 0, rev: 0, revX: 0, revY: 0, draw: 1, lastWid: undefined, recoil: 0 };
       state.set(p.id, s);
     }
     return s;
@@ -314,6 +320,9 @@ export function createPlayers3D(ctx) {
     let nc = 0;
     nearLights.length = 0;
     const list = (view && view.players) || [];
+    // who is reviving whom: the downed player's `reviver` is the id of the one kneeling by them
+    reviveOf.clear();
+    for (let k = 0; k < list.length; k++) { const q = list[k]; if (q.state === 'downed' && q.reviver > 0) reviveOf.set(q.reviver, q); }
     for (let k = 0; k < list.length; k++) {
       const p = list[k];
       if (p.id === localId && !(spectating && p.state === 'dead')) { hideGun(p.id); continue; }
@@ -330,7 +339,10 @@ export function createPlayers3D(ctx) {
         if (d > 0.05) s.mvA = Math.atan2(dy, dx);
       }
       s.x = p.x; s.y = p.y;
-      s.a += angleDiff(s.a, p.angle || 0) * damp(14, dt);
+      const rt = p.state === 'alive' ? reviveOf.get(p.id) : null;
+      const aim = rt ? Math.atan2(rt.y - p.y, rt.x - p.x) : (p.angle || 0);
+      s.a += angleDiff(s.a, aim) * damp(rt ? 9 : 14, dt);
+      s.rev += ((rt ? 1 : 0) - s.rev) * damp(7, dt);
       s.shot += dt;
       s.sprint += ((p.sprinting ? 1 : 0) - s.sprint) * damp(6, dt);
       s.down += ((p.state === 'downed' ? 1 : 0) - s.down) * damp(5, dt);
@@ -358,23 +370,41 @@ export function createPlayers3D(ctx) {
       const style = wid ? WEAPONS[wid].sprite.style : 'rifle';
       const hold = s.down > 0.5 ? 'pistol' : HOLD[style] || 'rifle';
       poseBody(p, s, time, hold);
-      pose.place(p.x, jz, p.y, s.a, 1);
+      // reviving: step in beside the downed teammate and kneel over them
+      let px = p.x, py = p.y;
+      if (rt && s.rev > 0.01) {
+        const dxr = rt.x - p.x, dyr = rt.y - p.y, dr = Math.hypot(dxr, dyr) || 1;
+        const move = Math.max(0, dr - 15) * s.rev;
+        px += dxr / dr * move; py += dyr / dr * move;
+      }
+      pose.place(px, jz, py, s.a, 1);
       pool.solve(i, model, pose);
+      const reviving = rt && s.rev > 0.25;
+      // drawing a weapon: the gun comes up from the holster or the back over a quarter second
+      if (wid !== s.lastWid) { s.draw = s.lastWid === undefined ? 1 : 0; s.lastWid = wid; }
+      s.draw = Math.min(1, s.draw + dt * 4.5);
       const g = gunFor(p.id, wid);
-      if (wid && g.obj && s.dead < 0.5) {
+      if (wid && g.obj && s.dead < 0.5 && !reviving) {
         placeGun(i, model, p, s, g, hold, time, jz);
         pool.solve(i, model, pose);
       } else if (g.obj) {
         g.obj.visible = false;
         if (g.left) g.left.visible = false;
       }
+      if (reviving) {
+        placeRevive(i, model, s, rt, time);
+        pool.solve(i, model, pose);
+      }
+      stowWeapons(i, p, s, reviving ? null : wid);
       pool.color(i, T_SKIN, skinCol[cls], 0);
       pool.color(i, T_CLOTH, outfitCol[cls], 0);
       pool.color(i, T_CLOTH2, outfitCol[cls], 0.04 + s.down * 0.3);
-      pool.color(i, T_ACCENT, color, 0);
+      pool.color(i, T_ACCENT, color, 1.6);           // the colour's status light glows
       pool.color(i, T_HAIR, hairCol, p.id * 7.3);
       pool.texel(i, T_FX, 0, 0, s.shot < 0.05 ? 0.25 : 0, 1);
-      pool.texel(i, T_FX2, 0, 0, 0, 0);
+      pool.texel(i, T_FX2, 0, 2.2, 0, 0);            // headlamps
+      pool.texel(i, T_VAR1, 0, 0, 0, PATTERN[cls] || 0);
+      pool.texel(i, T_VAR2, PATTERN[cls] || 0, 0, 0, 0);
 
       // weapon light: from under the barrel, along the gun (alive/downed teammates)
       if (p.state !== 'dead' && nc < CAP && g.obj && g.obj.visible) {
@@ -409,8 +439,14 @@ export function createPlayers3D(ctx) {
   }
 
   function hideGun(pid, remove) {
+    const st = stow.get(pid);
+    if (st) { for (const q of [st.pistol, st.back]) if (q.obj) q.obj.visible = false; }
     const g = guns.get(pid);
-    if (!g) return;
+    if (!g) {
+      if (remove) dropStow(pid);
+      return;
+    }
+    if (remove) dropStow(pid);
     if (g.obj) g.obj.visible = false;
     if (g.left) g.left.visible = false;
     if (remove) {
@@ -418,6 +454,75 @@ export function createPlayers3D(ctx) {
       if (g.left) { g.left.removeFromParent(); g.left.userData.dispose(); }
       guns.delete(pid);
     }
+  }
+
+  // ---- reviving: both hands pump on the downed teammate's chest -----------------------------
+  function placeRevive(k, model, s, t, time) {
+    pool.boneMatrix(k, B.CHEST, _mc);
+    rotOfMatrix4(_mc, Rc);
+    const ca = Math.cos(s.a), sa = Math.sin(s.a);
+    const rx = -sa, ry = ca;                       // right of the facing
+    const pump = Math.max(0, Math.sin(time * 8.5)) * 2.4 * s.rev;
+    const lift = (t.z > 0 ? t.z : 0);
+    for (const side of [1, -1]) {
+      W.set(t.x + rx * side * 1.5 - ca * 0.5, 13 + lift - pump, t.y + ry * side * 1.5 - sa * 0.5);
+      _pole.set(rx * side * 0.7 - ca * 0.3, 0.2, ry * side * 0.7 - sa * 0.3);
+      solveArm(k, model, side, _pole, null);
+    }
+  }
+
+  // ---- the weapons that are not in the hands: pistol in a thigh holster, one long gun slung on the back
+  function setStowed(slot, id, dead) {
+    if (slot.id !== id) {
+      if (slot.obj) { slot.obj.removeFromParent(); slot.obj.userData.dispose(); slot.obj = null; }
+      slot.id = id;
+      if (id) {
+        slot.obj = gunObject(id, { shadow: high, lite: true });
+        slot.obj.matrixAutoUpdate = false;
+        root.add(slot.obj);
+      }
+    }
+    if (slot.obj) slot.obj.visible = !dead;
+  }
+  const _sm = new THREE.Matrix4(), _sl = new THREE.Matrix4(), _sq = new THREE.Quaternion(), _se = new THREE.Euler(), _sv = new THREE.Vector3(), _ss = new THREE.Vector3(GUN_SCALE, GUN_SCALE, GUN_SCALE);
+  function stowWeapons(k, p, s, held) {
+    let st = stow.get(p.id);
+    if (!st) { st = { pistol: { obj: null, id: null }, back: { obj: null, id: null } }; stow.set(p.id, st); }
+    const dead = p.state === 'dead' && s.dead > 0.5;
+    let pistolId = null, backId = null;
+    const slots = p.slots || [];
+    for (let j = 0; j < slots.length; j++) {
+      const id = slots[j];
+      if (!id || !WEAPONS[id] || id === held) continue;
+      const cat = WEAPONS[id].category;
+      if ((cat === 'pistol' || cat === 'melee') && !pistolId && WEAPONS[id].sprite.style !== 'dual') pistolId = id;
+      else if (!backId) backId = id;
+    }
+    setStowed(st.pistol, pistolId, dead);
+    setStowed(st.back, backId, dead);
+    if (st.pistol.obj) {
+      // right thigh, muzzle down and a little back
+      pool.boneMatrix(k, B.THIGH_R, _sm);
+      _se.set(0.05, 0, -1.35, 'XYZ');
+      _sl.compose(_sv.set(1.3, SP.hip - 5.8, SP.legGap + 3.9), _sq.setFromEuler(_se), _ss);
+      st.pistol.obj.matrix.multiplyMatrices(_sm, _sl);
+      st.pistol.obj.matrixWorldNeedsUpdate = true;
+    }
+    if (st.back.obj) {
+      // slung diagonally across the back: butt low on the right, muzzle up on the left
+      const m = st.back.obj.userData.model;
+      pool.boneMatrix(k, B.CHEST, _sm);
+      _se.set(0.25, 0.28, 0.95, 'XYZ');
+      _sl.compose(_sv.set(-7.4, SP.chest - 3.0 + m.length * 0.06, 2.6), _sq.setFromEuler(_se), _ss);
+      st.back.obj.matrix.multiplyMatrices(_sm, _sl);
+      st.back.obj.matrixWorldNeedsUpdate = true;
+    }
+  }
+  function dropStow(pid) {
+    const st = stow.get(pid);
+    if (!st) return;
+    for (const q of [st.pistol, st.back]) if (q.obj) { q.obj.removeFromParent(); q.obj.userData.dispose(); q.obj = null; }
+    stow.delete(pid);
   }
 
   // ---- body pose ----------------------------------------------------------------------------
@@ -451,6 +556,21 @@ export function createPlayers3D(ctx) {
       ftL = ftL * n + 0.3 * k; ftR = ftR * n + 0.25 * k;
       thLX *= n; thRX *= n;
       spineZ -= 0.1 * k;
+    }
+    // reviving a teammate: kneeling on the right knee, leaning over them
+    if (s.rev > 0.01) {
+      const k = s.rev * (1 - s.down);
+      rootY = rootY * (1 - k) - (SP.hip - 14.6) * k;
+      thL = thL * (1 - k) + 1.4 * k; shL = shL * (1 - k) - 1.5 * k; ftL = ftL * (1 - k);
+      thR = thR * (1 - k) + 0.12 * k; shR = shR * (1 - k) - 1.55 * k; ftR = ftR * (1 - k) + 0.9 * k;
+      thLX *= 1 - k; thRX *= 1 - k;
+      spineZ = spineZ * (1 - k) - 0.62 * k; chestZ = chestZ * (1 - k) - 0.55 * k; chestY *= 1 - k; neckY *= 1 - k; headY *= 1 - k;
+      headZ = headZ * (1 - k) + 0.25 * k; headX *= 1 - k;
+    }
+    // recoil: the shot kicks the shoulders back and the head with them
+    if (s.shot < 0.14 && s.down < 0.5) {
+      const kk = 1 - s.shot / 0.14;
+      spineZ += kk * 0.05; chestZ += kk * 0.06; headZ += kk * 0.05; rootX -= kk * 0.5;
     }
     // downed: fallen back, propped on the left elbow
     if (s.down > 0.01) {
@@ -524,6 +644,13 @@ export function createPlayers3D(ctx) {
       // melee: shove forward with the butt/muzzle
       lx += ml * 6; ly += ml * 1.5; pitch += ml * 0.15; yaw -= ml * 0.3;
       const bob = pose.root[1];
+      // drawing: the gun comes up from the hip (a pistol) or over the shoulder (a long gun)
+      if (s.draw < 1) {
+        const dk = 1 - s.draw * s.draw * (3 - 2 * s.draw);
+        const holsterDraw = hold === 'pistol' || hold === 'dual';
+        ly -= dk * (holsterDraw ? 9 : 4); lx -= dk * (holsterDraw ? 2 : 6); lz += dk * (holsterDraw ? 4 : 5);
+        pitch -= dk * (holsterDraw ? 1.1 : 0.9); roll += dk * 0.5;
+      }
       gx = p.x + ca * lx - sa * lz; gz = p.y + sa * lx + ca * lz; gy = ly + bob + lift;
     }
     obj.visible = true;
@@ -549,6 +676,12 @@ export function createPlayers3D(ctx) {
       W.set(WR_R.x, WR_R.y, -WR_R.z).applyMatrix4(g.left.matrixWorld);
       _pole.set(-0.4 * ca + 0.8 * -sa, -1, -0.4 * sa - 0.8 * ca);
       solveArm(k, model, -1, _pole, handBuf);
+    } else if (s.down > 0.5) {
+      // downed: the pistol in the right hand, the left arm raised, reaching for help
+      if (g.left) g.left.visible = false;
+      pose.set(B.UARM_L, 0.1, -0.35, 2.25 + Math.sin(time * 2.2 + p.id) * 0.2);
+      pose.set(B.FARM_L, 0, 0, 0.35 + Math.sin(time * 3.1 + p.id) * 0.1);
+      pose.set(B.HAND_L, 0, 0, -0.3 + Math.sin(time * 5 + p.id) * 0.25);
     } else {
       if (g.left) g.left.visible = false;
       let t;
@@ -599,6 +732,17 @@ export function createPlayers3D(ctx) {
     addEvents,
     setQuality(q) {
       high = q !== 'low';
+      if (tierOf(q) !== curTier) {
+        curTier = tierOf(q);
+        for (const cls of CLASS_IDS) {
+          bodies[cls].forEach((m, L) => {
+            const g = instancedGeometry(soldierArrays(cls, L, curTier));
+            m.mesh.geometry.dispose();
+            m.mesh.geometry = g;
+            m.geometry = g;
+          });
+        }
+      }
       for (const cls of CLASS_IDS) bodies[cls].forEach((m, L) => { m.mesh.castShadow = high; m.mesh.receiveShadow = high && L === 0; });
       for (const g of guns.values()) for (const o of [g.obj, g.left]) if (o) o.traverse((c) => { if (c.isMesh) c.castShadow = high; });
     },
@@ -608,6 +752,7 @@ export function createPlayers3D(ctx) {
       pool.dispose();
       tex.detail.dispose();
       tex.normal.dispose();
+      tex.detail2.dispose();
       coneGeo.dispose();
       coneMat.dispose();
       cones.dispose();

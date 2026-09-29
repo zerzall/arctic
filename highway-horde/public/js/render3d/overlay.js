@@ -230,26 +230,88 @@ export function createOverlay3D(ctx) {
       const fade = Math.max(0, Math.min(1, (1700 - dist) / 400, (dist - 70) / 90, (edge - 0.13) / 0.08));
       if (fade <= 0 && !downed) continue;
       g.globalAlpha = downed ? 1 : fade;
-      if (settings.showNames !== false) {
-        g.lineWidth = 3 * ui;
-        g.strokeStyle = 'rgba(0,0,0,0.8)';
-        g.strokeText(name, s.x, s.y - 8 * ui);
-        g.fillStyle = color;
-        g.fillText(name, s.x, s.y - 8 * ui);
-      }
-      // hp bar
-      const bw = 40 * ui, bh = 4 * ui;
+      // tag scale: a little larger up close, smaller far off (clamped, so it stays readable)
+      const ts = Math.max(0.78, Math.min(1.15, 1.25 - dist / 1600));
+      const bw = 44 * ui * ts, bh = 5 * ui * ts;
       const f = Math.max(0, Math.min(1, p.hp / (p.maxHp || 100)));
-      g.fillStyle = 'rgba(0,0,0,0.65)';
-      g.fillRect(s.x - bw / 2 - ui, s.y - 5 * ui, bw + 2 * ui, bh + 2 * ui);
+      if (settings.showNames !== false) {
+        // a pill: class badge in the player's colour, then the name
+        const cls = r && r.cls ? r.cls : 'soldier';
+        g.font = FONT;
+        const nw = g.measureText(name).width;
+        const bad = 9 * ui * ts;                    // badge radius
+        const pw = nw + bad * 2 + 14 * ui * ts, ph = 17 * ui * ts;
+        const px = s.x - pw / 2, py = s.y - 11 * ui * ts - ph;
+        g.fillStyle = 'rgba(8,10,14,0.66)';
+        roundRect(g, px, py, pw, ph, ph / 2);
+        g.fill();
+        g.strokeStyle = 'rgba(255,255,255,0.14)';
+        g.lineWidth = 1 * ui;
+        g.stroke();
+        classBadge(g, cls, px + ph / 2, py + ph / 2, bad, color);
+        g.textAlign = 'left';
+        g.lineWidth = 3 * ui;
+        g.strokeStyle = 'rgba(0,0,0,0.7)';
+        g.strokeText(name, px + ph / 2 + bad + 4 * ui * ts, py + ph - 4.2 * ui * ts);
+        g.fillStyle = '#f4f6f8';
+        g.fillText(name, px + ph / 2 + bad + 4 * ui * ts, py + ph - 4.2 * ui * ts);
+        g.textAlign = 'center';
+      }
+      // hp bar: rounded, quartered, green to red; armour as a thin blue strip on top
+      g.fillStyle = 'rgba(0,0,0,0.7)';
+      roundRect(g, s.x - bw / 2 - ui, s.y - 5 * ui * ts - ui, bw + 2 * ui, bh + 2 * ui, bh / 2 + ui);
+      g.fill();
       g.fillStyle = f > 0.5 ? '#7dff9a' : f > 0.25 ? '#ffd54f' : '#ff5252';
-      g.fillRect(s.x - bw / 2, s.y - 4 * ui, bw * f, bh);
+      if (f > 0) { roundRect(g, s.x - bw / 2, s.y - 5 * ui * ts, Math.max(bh, bw * f), bh, bh / 2); g.fill(); }
+      g.fillStyle = 'rgba(0,0,0,0.45)';
+      for (let q = 1; q < 4; q++) g.fillRect(s.x - bw / 2 + bw * q / 4 - 0.5 * ui, s.y - 5 * ui * ts, ui, bh);
       if (p.armor > 0) {
         g.fillStyle = '#64b5f6';
-        g.fillRect(s.x - bw / 2, s.y, bw * Math.min(1, p.armor / 100), 1.5 * ui);
+        g.fillRect(s.x - bw / 2, s.y - 8 * ui * ts, bw * Math.min(1, p.armor / 100), 2 * ui * ts);
       }
       if (downed) reviveRing(p, s.x, s.y + 26 * ui);
       g.globalAlpha = 1;
+    }
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  /** A round badge in the player's colour with the class emblem (chevron, cross, gear, bolt, bomb, shield). */
+  function classBadge(c, cls, x, y, r, color) {
+    c.fillStyle = color;
+    c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.55)';
+    c.lineWidth = 1.2 * ui;
+    c.stroke();
+    c.fillStyle = 'rgba(10,12,16,0.92)';
+    c.strokeStyle = 'rgba(10,12,16,0.92)';
+    c.lineWidth = 1.6 * ui;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    const k = r * 0.55;
+    c.beginPath();
+    if (cls === 'medic') {
+      c.rect(x - k * 0.28, y - k, k * 0.56, k * 2); c.rect(x - k, y - k * 0.28, k * 2, k * 0.56); c.fill();
+    } else if (cls === 'engineer') {
+      c.arc(x, y, k * 0.62, 0, TAU); c.moveTo(x - k, y); c.lineTo(x + k, y); c.moveTo(x, y - k); c.lineTo(x, y + k); c.stroke();
+    } else if (cls === 'scout') {
+      c.moveTo(x - k, y + k * 0.7); c.lineTo(x, y - k); c.lineTo(x + k, y + k * 0.7); c.lineTo(x, y + k * 0.25); c.closePath(); c.fill();
+    } else if (cls === 'demo') {
+      c.arc(x - k * 0.1, y + k * 0.15, k * 0.75, 0, TAU); c.fill();
+      c.beginPath(); c.moveTo(x + k * 0.4, y - k * 0.5); c.lineTo(x + k * 0.9, y - k); c.stroke();
+    } else if (cls === 'heavy') {
+      c.moveTo(x - k, y - k); c.lineTo(x + k, y - k); c.lineTo(x + k, y + k * 0.1); c.lineTo(x, y + k); c.lineTo(x - k, y + k * 0.1); c.closePath(); c.fill();
+    } else {
+      c.moveTo(x - k, y + k * 0.2); c.lineTo(x, y - k * 0.6); c.lineTo(x + k, y + k * 0.2); c.moveTo(x - k, y + k * 0.9); c.lineTo(x, y + k * 0.1); c.lineTo(x + k, y + k * 0.9); c.stroke();
     }
   }
 

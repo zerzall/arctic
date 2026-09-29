@@ -5,6 +5,7 @@
 // renderer alive (see the GPU rules in SPEC §7.5).
 //
 //   actorDetail  512² RGBA, tileable: R rot mottle · G fabric weave · B grime · A splatter
+//   actorDetail2 512² RGBA, tileable: R vein network · G spots / sores / freckles · B blotches (rust, stains) · A cracks
 //   actorNormal  512² RGBA, tileable: RG skin normal (wrinkles, pores, veins) · BA cloth normal
 //   gunAtlas    1024² RGBA, 2×2 tiles (metal, polymer, wood, knurl):
 //               R albedo factor · G/B normal xy · A roughness
@@ -208,6 +209,65 @@ function genActorDetail() {
   return { detail: px, normal: nrm, size: S };
 }
 
+const F_7_3_301 = makeFbm(7, 3, 301);
+const F_13_2_311 = makeFbm(13, 2, 311);
+const F_5_4_321 = makeFbm(5, 4, 321);
+const F_20_2_331 = makeFbm(20, 2, 331);
+const F_3_3_341 = makeFbm(3, 3, 341);
+
+/** Worley distance to the second-nearest feature minus the nearest (thin cell edges → cracks). */
+function worleyEdge(u, v, p, seed) {
+  const key = p * 4096 * 1000 + seed + 7;
+  let F = features.get(key);
+  if (!F) {
+    F = new Float32Array(p * p * 2);
+    for (let j = 0; j < p; j++) for (let i = 0; i < p; i++) { F[(j * p + i) * 2] = hash2(i, j, seed); F[(j * p + i) * 2 + 1] = hash2(i, j, seed + 1); }
+    features.set(key, F);
+  }
+  const x = u * p, y = v * p;
+  const xi = Math.floor(x), yi = Math.floor(y);
+  let b1 = 9, b2 = 9;
+  for (let j = -1; j <= 1; j++) {
+    const cy = yi + j;
+    let wy = cy % p; if (wy < 0) wy += p;
+    for (let i = -1; i <= 1; i++) {
+      const cx = xi + i;
+      let wx = cx % p; if (wx < 0) wx += p;
+      const o = (wy * p + wx) * 2;
+      const dx = cx + F[o] - x, dy = cy + F[o + 1] - y;
+      const d = dx * dx + dy * dy;
+      if (d < b1) { b2 = b1; b1 = d; } else if (d < b2) b2 = d;
+    }
+  }
+  return Math.sqrt(b2) - Math.sqrt(b1);
+}
+
+function genActorDetail2() {
+  const S = 512;
+  const px = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) {
+    const v = y / S;
+    for (let x = 0; x < S; x++) {
+      const u = x / S;
+      const o = (y * S + x) * 4;
+      // R: branching veins — ridges of two noise fields, thin and slightly beaded
+      const r1 = 1 - Math.abs(F_7_3_301(u, v) * 2 - 1), r2 = 1 - Math.abs(F_13_2_311(u + 0.21, v + 0.6) * 2 - 1);
+      const vein = clamp01(smooth(0.9, 0.985, r1) + smooth(0.93, 0.99, r2) * 0.7);
+      // G: freckles / sores: a scatter of round blobs, some large and soft (sores), most tiny
+      const f = worley(u, v, 22, 201);
+      const pick = hash2(Math.floor(u * 22), Math.floor(v * 22), 203);
+      const spot = pick > 0.55 ? smooth(0.32, 0.12, f) : 0;
+      const speck = smooth(0.12, 0.02, worley(u, v, 70, 207)) * 0.7;
+      // B: blotches
+      const blot = smooth(0.35, 0.75, F_5_4_321(u + 0.4, v + 0.15) * 0.7 + F_20_2_331(u, v) * 0.3);
+      // A: cracks between cells, wobbled by noise
+      const crack = smooth(0.09, 0.0, worleyEdge(u + (F_3_3_341(u, v) - 0.5) * 0.04, v, 9, 211));
+      px[o] = vein * 255; px[o + 1] = clamp01(Math.max(spot, speck)) * 255; px[o + 2] = blot * 255; px[o + 3] = crack * 255;
+    }
+  }
+  return { detail: px, size: S };
+}
+
 function dataTex(data, size, aniso = 8) {
   const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -222,11 +282,12 @@ function dataTex(data, size, aniso = 8) {
 
 /**
  * Fresh textures over the cached actor pixel data (caller disposes).
- * @returns {{ detail: THREE.DataTexture, normal: THREE.DataTexture }}
+ * @returns {{ detail: THREE.DataTexture, normal: THREE.DataTexture, detail2: THREE.DataTexture }}
  */
 export function actorTextures(aniso = 8) {
   const d = cached('actor', genActorDetail);
-  return { detail: dataTex(d.detail, d.size, aniso), normal: dataTex(d.normal, d.size, aniso) };
+  const d2 = cached('actor2', genActorDetail2);
+  return { detail: dataTex(d.detail, d.size, aniso), normal: dataTex(d.normal, d.size, aniso), detail2: dataTex(d2.detail, d2.size, aniso) };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -356,5 +417,49 @@ export function viewmodelEnvTexture() {
   const t = new THREE.CanvasTexture(c);
   t.mapping = THREE.EquirectangularReflectionMapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// ---------------------------------------------------------------------------------------
+// stamped markings on the guns: one shared label sheet, a row of text per label (the
+// builders ask for rows as they lay out a gun; the sheet is repainted and re-uploaded)
+
+const MARK_W = 512, MARK_H = 1024, MARK_ROW = 16;
+const marks = { canvas: null, g: null, rows: new Map(), n: 0, version: 1 };
+
+/** Row of the label sheet holding `text`: { aspect (width / height), u1, v0, v1 }. */
+export function markRow(text) {
+  let r = marks.rows.get(text);
+  if (r) return r;
+  if (!marks.canvas) {
+    marks.canvas = document.createElement('canvas');
+    marks.canvas.width = MARK_W; marks.canvas.height = MARK_H;
+    marks.g = marks.canvas.getContext('2d');
+  }
+  const g = marks.g;
+  const idx = marks.n++ % (MARK_H / MARK_ROW);
+  g.clearRect(0, idx * MARK_ROW, MARK_W, MARK_ROW);
+  g.font = 'bold 12px "DejaVu Sans Mono", "Liberation Mono", "Courier New", monospace';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#fff';
+  const w = Math.min(MARK_W - 4, Math.ceil(g.measureText(text).width) + 6);
+  g.fillText(text, 3, idx * MARK_ROW + MARK_ROW / 2 + 0.5);
+  r = { idx, aspect: w / MARK_ROW, u1: w / MARK_W, v0: 1 - (idx + 1) * MARK_ROW / MARK_H, v1: 1 - idx * MARK_ROW / MARK_H };
+  marks.rows.set(text, r);
+  marks.version++;
+  return r;
+}
+
+/** Bumps whenever a row is added (callers re-upload their texture). */
+export function markVersion() { return marks.version; }
+
+/** Fresh texture over the shared label sheet (caller disposes). */
+export function markTexture() {
+  if (!marks.canvas) markRow('HH');
+  const t = new THREE.CanvasTexture(marks.canvas);
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = 4;
+  t.userData.v = marks.version;
   return t;
 }

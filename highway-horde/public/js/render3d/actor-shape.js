@@ -8,19 +8,16 @@
 // Vertex attributes (consumed by actor-rig.js):
 //   position, normal, uv (world units / tile), color (vertex tint and baked occlusion),
 //   aBones  vec2  two bones that move the vertex,
-//   aInfo   vec4  (weight of the second bone, colour slot, material class, paint 0..1).
+//   aInfo   vec4  (weight of the second bone, colour slot, material class, paint 0..1),
+//   aExt    vec2  (accessory option bit + 1 or 0 = always drawn, garment part code — PART).
 // Model space: +X forward, +Y up, +Z to the model's right (see actor-rig.js).
 
 import * as THREE from 'three';
+import { SLOT, MAT, PART, optBit } from './actor-consts.js';
+
+export { SLOT, MAT, PART };
 
 const TAU = Math.PI * 2;
-
-/** Colour source of a vertex (the rig tints it with the instance's colour for the slot). */
-export const SLOT = { FIXED: 0, SKIN: 1, CLOTH: 2, CLOTH2: 3, ACCENT: 4, HAIR: 5, GLOW: 6 };
-/** Surface class of a vertex (roughness, normal map channel, special shading). */
-export const MAT = {
-  SKIN: 0, CLOTH: 1, TEAR: 2, LEATHER: 3, BONE: 4, HAIR: 5, FLESH: 6, EYE: 7, GLOW: 8, METAL: 9, RUBBER: 10, SKIN_TEAR: 11,
-};
 
 // ---------------------------------------------------------------------------------------
 // cheap deterministic 3D value noise (build time only)
@@ -71,7 +68,7 @@ function colorOf(c) {
  */
 export class ShapeBuilder {
   constructor() {
-    this.P = []; this.N = []; this.UV = []; this.C = []; this.BN = []; this.IN = []; this.I = [];
+    this.P = []; this.N = []; this.UV = []; this.C = []; this.BN = []; this.IN = []; this.EX = []; this.I = [];
     this.tile = 18;     // world units per texture tile
   }
 
@@ -120,6 +117,9 @@ export class ShapeBuilder {
     const slot = o.slot ?? SLOT.FIXED, mat = o.mat ?? MAT.SKIN;
     const col0 = colorOf(o.color).clone();
     const ao = o.ao ?? 0.18;
+    const opt = o.opt ? optBit(o.opt) + 1 : 0;
+    if (o.opt && opt === 0) throw new Error('unknown option ' + o.opt);
+    const partCode = o.part ?? PART.NONE;
     for (let i = 0; i < n; i++) {
       const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
       const nx = nor[i * 3], ny = nor[i * 3 + 1], nz = nor[i * 3 + 2];
@@ -145,6 +145,7 @@ export class ShapeBuilder {
       if (o.paintFn) paint = Math.max(paint, o.paintFn(x, y, z));
       const m = o.matFn ? o.matFn(x, y, z) : mat;
       this.IN.push(_bw.w, slot, m, Math.max(0, Math.min(1, paint)));
+      this.EX.push(opt, typeof o.partFn === 'function' ? o.partFn(x, y, z) : partCode);
     }
     for (let t = 0; t < idx.length; t++) this.I.push(idx[t] + base);
     return this;
@@ -162,6 +163,8 @@ export class ShapeBuilder {
     const seg = Math.max(3, o.seg || 8);
     // expand round caps into extra shrinking rings
     let R = rings.slice();
+    // far levels of detail: keep every dec-th ring (and the last)
+    if (o.dec > 1) R = R.filter((_, i) => i % o.dec === 0 || i === R.length - 1);
     const capRings = o.capRings ?? Math.max(2, Math.round(seg / 4));
     const capOf = (end) => {
       const i0 = end ? R.length - 1 : 0, i1 = end ? R.length - 2 : 1;
@@ -340,6 +343,7 @@ export class ShapeBuilder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.C, 3));
     g.setAttribute('aBones', new THREE.Float32BufferAttribute(this.BN, 2));
     g.setAttribute('aInfo', new THREE.Float32BufferAttribute(this.IN, 4));
+    g.setAttribute('aExt', new THREE.Float32BufferAttribute(this.EX, 2));
     g.setIndex(this.I);
     g.computeBoundingSphere();
     return g;
@@ -349,7 +353,7 @@ export class ShapeBuilder {
   arrays() {
     return {
       position: new Float32Array(this.P), normal: new Float32Array(this.N), uv: new Float32Array(this.UV),
-      color: new Float32Array(this.C), aBones: new Float32Array(this.BN), aInfo: new Float32Array(this.IN),
+      color: new Float32Array(this.C), aBones: new Float32Array(this.BN), aInfo: new Float32Array(this.IN), aExt: new Float32Array(this.EX),
       index: this.vertexCount > 65535 ? new Uint32Array(this.I) : new Uint16Array(this.I),
     };
   }
@@ -367,6 +371,7 @@ export function geometryFromArrays(a) {
   g.setAttribute('color', new THREE.BufferAttribute(a.color, 3));
   g.setAttribute('aBones', new THREE.BufferAttribute(a.aBones, 2));
   g.setAttribute('aInfo', new THREE.BufferAttribute(a.aInfo, 4));
+  g.setAttribute('aExt', new THREE.BufferAttribute(a.aExt, 2));
   g.setIndex(new THREE.BufferAttribute(a.index, 1));
   g.computeBoundingSphere();
   return g;

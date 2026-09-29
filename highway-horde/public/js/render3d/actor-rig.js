@@ -11,32 +11,19 @@
 // Shading is MeshStandardMaterial with procedural detail (actor-tex.js): rot mottle,
 // fabric weave, grime and blood masks, skin/cloth normal maps, rotted-through clothing
 // (discarded holes that reveal the body underneath), charring and embers while burning,
-// glowing eyes/pustules in HDR (they bloom), a fresnel rim that survives fog.
+// glowing eyes/pustules in HDR (they bloom), a fresnel rim that survives fog. The material
+// lives in actor-rigmat.js and reads each instance's look from the parameter texels
+// (actor-consts.js): garment cuts, patterns, wounds, accessory switches, gear colours.
 //
 // Model space: +X forward, +Y up, +Z to the model's right. Limbs are modelled hanging
 // straight down. Bone rotation R = Ry·Rx·Rz about the bone's pivot (Z swings a hanging
 // limb forward, X spreads it sideways, Y twists), child after parent.
 
 import * as THREE from 'three';
+import { NB, B, DEFAULT_PARENTS, TEX_W, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_FX3, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3 } from './actor-consts.js';
+import { makeMaterials } from './actor-rigmat.js';
 
-export const NB = 20;
-export const B = {
-  HIPS: 0, SPINE: 1, CHEST: 2, NECK: 3, HEAD: 4, JAW: 5,
-  UARM_L: 6, FARM_L: 7, HAND_L: 8, UARM_R: 9, FARM_R: 10, HAND_R: 11,
-  THIGH_L: 12, SHIN_L: 13, FOOT_L: 14, THIGH_R: 15, SHIN_R: 16, FOOT_R: 17, X1: 18, X2: 19,
-};
-export const DEFAULT_PARENTS = [-1, 0, 1, 2, 3, 4, 2, 6, 7, 2, 9, 10, 0, 12, 13, 0, 15, 16, 2, 2];
-
-// row layout: 3 texels (matrix rows) per bone, then per-instance parameters
-export const TEX_W = 68;
-export const T_SKIN = 60;     // rgb skin, w = rot (0 healthy .. 1 rotten)
-export const T_CLOTH = 61;    // rgb shirt/jacket, w = tear (0 intact .. 1 shredded)
-export const T_CLOTH2 = 62;   // rgb trousers, w = blood (0 clean .. 1 soaked)
-export const T_ACCENT = 63;   // rgb accent / eye colour, w = eye glow (HDR)
-export const T_HAIR = 64;     // rgb hair, w = pattern seed (offsets the detail textures)
-export const T_FX = 65;       // x buff pulse, y char, z hit flash, w rim strength
-export const T_FX2 = 66;      // x burning, y glow parts (HDR), z wet, w frost (cryo: 0.45 chilled, 1 frozen)
-export const T_FX3 = 67;      // spare
+export { NB, B, DEFAULT_PARENTS, TEX_W, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_FX3, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3 };
 
 // ---------------------------------------------------------------------------------------
 // pose → matrices
@@ -110,241 +97,6 @@ function mul(out, a, b) {
 }
 
 // ---------------------------------------------------------------------------------------
-// material
-
-const RIG_VERT_HEAD = /* glsl */`
-uniform highp sampler2D uRigTex;
-uniform float uRowOffset;
-attribute vec2 aBones;
-attribute vec4 aInfo;
-int rigRow;
-vec4 rigT(int i) { return texelFetch(uRigTex, ivec2(i, rigRow), 0); }
-vec3 rigP;
-vec3 rigN;
-void rigSkin() {
-  rigRow = gl_InstanceID + int(uRowOffset + 0.5);
-  int ba = int(aBones.x + 0.5) * 3;
-  vec4 r0 = rigT(ba), r1 = rigT(ba + 1), r2 = rigT(ba + 2);
-  float w = aInfo.x;
-  if (w > 0.001) {
-    int bb = int(aBones.y + 0.5) * 3;
-    r0 = mix(r0, rigT(bb), w);
-    r1 = mix(r1, rigT(bb + 1), w);
-    r2 = mix(r2, rigT(bb + 2), w);
-  }
-  vec4 p = vec4(position, 1.0);
-  rigP = vec3(dot(r0, p), dot(r1, p), dot(r2, p));
-  rigN = normalize(vec3(dot(r0.xyz, normal), dot(r1.xyz, normal), dot(r2.xyz, normal)));
-}
-`;
-
-const VARYINGS = /* glsl */`
-varying vec2 vDUv;
-varying vec4 vInfo;     // material class, blood mask strength, tear, rot
-varying vec4 vFx;       // buff, char, hit flash, rim
-varying vec4 vFx2;      // burning, glow, wet, frost
-varying vec3 vGlowCol;  // emissive (eyes, pustules) — HDR, blooms
-varying vec3 vRimCol;
-`;
-
-const FRAG_HEAD = /* glsl */`
-uniform sampler2D uDetail;
-uniform sampler2D uNrm;
-uniform float uTime;
-${VARYINGS}
-vec4 hhD;
-float hhWet;
-float hhChar;
-int hhM;
-vec3 hhPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
-  vec3 q0 = dFdx(eyePos), q1 = dFdy(eyePos);
-  vec2 st0 = dFdx(uv), st1 = dFdy(uv);
-  vec3 q1p = cross(q1, N), q0p = cross(N, q0);
-  vec3 T = q1p * st0.x + q0p * st1.x;
-  vec3 Bt = q1p * st0.y + q0p * st1.y;
-  float det = max(dot(T, T), dot(Bt, Bt));
-  float s = det == 0.0 ? 0.0 : inversesqrt(det);
-  float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
-  return normalize(T * (nxy.x * s) + Bt * (nxy.y * s) + N * nz);
-}
-`;
-
-/**
- * Standard material bent by the rig, plus the matching shadow depth material. One pair
- * per mesh (they share programs; only uRowOffset differs).
- * @param {object} shared { uRigTex, uDetail, uNrm, uTime } uniform objects shared by the pool
- * @param {object} opts { rim, rimStrength }
- */
-function makeMaterials(shared, opts = {}) {
-  const uniforms = {
-    uRigTex: shared.uRigTex, uDetail: shared.uDetail, uNrm: shared.uNrm, uTime: shared.uTime,
-    uRowOffset: { value: 0 },
-    uRimColor: { value: new THREE.Color(opts.rim || '#8fb4ff') },
-    uRimStrength: { value: opts.rimStrength ?? 0.35 },
-  };
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + RIG_VERT_HEAD + VARYINGS + 'uniform vec3 uRimColor;\nuniform float uRimStrength;\n')
-      .replace('#include <beginnormal_vertex>', /* glsl */`
-  rigSkin();
-  vec3 objectNormal = rigN;
-  #ifdef USE_TANGENT
-    vec3 objectTangent = vec3(tangent.xyz);
-  #endif
-  {
-    int sl = int(aInfo.y + 0.5);
-    vec4 skin = rigT(${T_SKIN}), cloth = rigT(${T_CLOTH}), cloth2 = rigT(${T_CLOTH2}), acc = rigT(${T_ACCENT});
-    vec4 hair = rigT(${T_HAIR}), fx = rigT(${T_FX}), fx2 = rigT(${T_FX2});
-    vec3 sc = vec3(1.0);
-    if (sl == 1) sc = skin.rgb;
-    else if (sl == 2) sc = cloth.rgb;
-    else if (sl == 3) sc = cloth2.rgb;
-    else if (sl == 4) sc = acc.rgb;
-    else if (sl == 5) sc = hair.rgb;
-    vColor.rgb *= sc;
-    float mc = aInfo.z;
-    vInfo = vec4(mc, aInfo.w * cloth2.w, cloth.w, skin.w);
-    vGlowCol = vec3(0.0);
-    if (sl == 6) vGlowCol = color * fx2.y;
-    if (abs(mc - 7.0) < 0.5) vGlowCol = acc.rgb * acc.w;
-    vFx = fx;
-    vFx2 = fx2;
-    vDUv = uv + vec2(fract(hair.w * 0.3719), fract(hair.w * 0.6133));
-    vRimCol = (uRimColor * uRimStrength + vec3(1.0, 0.06, 0.02) * fx.x * 0.9 + vec3(1.0, 0.45, 0.1) * fx2.x * 0.5) * fx.w;
-  }`)
-      .replace('#include <begin_vertex>', 'vec3 transformed = rigP;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FRAG_HEAD)
-      .replace('#include <color_fragment>', /* glsl */`
-  #include <color_fragment>
-  hhD = texture2D(uDetail, vDUv);
-  hhM = int(vInfo.x + 0.5);
-  hhWet = vFx2.z;
-  float rot = vInfo.w;
-  if (hhM == 5) {
-    // thinning, matted hair: bald patches show the scalp through it
-    if (hhD.r * 0.8 + hhD.b * 0.3 < 0.44) discard;
-  }
-  if (hhM == 2) {
-    // rotted-through clothing: blotchy holes that grow with the tear amount
-    float tm = hhD.b * 0.55 + hhD.r * 0.25 + hhD.a * 0.2;
-    float lim = 1.02 - vInfo.z * 0.5;
-    if (tm > lim) discard;
-    diffuseColor.rgb *= mix(1.0, 0.35, smoothstep(lim - 0.1, lim, tm));
-  }
-  if (hhM == 11) {
-    // skin stretched over something glowing: split along cracks that show the light
-    float tm = hhD.r * 0.7 + hhD.a * 0.3;
-    if (tm > 0.5) discard;
-    diffuseColor.rgb *= mix(1.0, 0.3, smoothstep(0.4, 0.5, tm));
-    hhM = 0;
-  }
-  if (hhM == 0) {
-    vec3 rotTint = mix(vec3(1.0), vec3(0.8, 0.76, 0.6), rot);
-    diffuseColor.rgb *= mix(vec3(0.9), (0.52 + hhD.r * 0.6) * rotTint, 0.3 + rot * 0.6);
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 0.36, 0.44), smoothstep(0.5, 0.92, hhD.b) * rot * 0.75);
-  } else if (hhM == 1 || hhM == 2) {
-    diffuseColor.rgb *= 0.74 + hhD.g * 0.42;
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 0.45, 0.36), hhD.b * 0.6);
-  } else if (hhM == 3 || hhM == 10) {
-    diffuseColor.rgb *= 0.8 + hhD.r * 0.3;
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.6, hhD.b * 0.5);
-  } else if (hhM == 4) {
-    diffuseColor.rgb *= 0.82 + hhD.r * 0.25;
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.22, 0.12), hhD.b * 0.35);
-  } else if (hhM == 5) {
-    diffuseColor.rgb *= 0.55 + hhD.r * 0.5;
-  } else if (hhM == 6) {
-    diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
-    hhWet = max(hhWet, 0.75);
-  } else if (hhM == 9) {
-    diffuseColor.rgb *= 0.85 + hhD.r * 0.25;
-  }
-  // blood: soaks the painted areas (mouth, hands, wounds, hems) with a ragged splatter
-  // edge; old blood dries dark brown where the grime mask is high
-  float bl = vInfo.y;
-  float bm = smoothstep(0.46, 0.6, bl + (hhD.a - 0.5) * 0.55 + (hhD.b - 0.5) * 0.25);
-  if (hhM != 7 && hhM != 8) {
-    vec3 bc = mix(vec3(0.2, 0.014, 0.01), vec3(0.075, 0.022, 0.014), smoothstep(0.3, 0.8, hhD.b));
-    diffuseColor.rgb = mix(diffuseColor.rgb, bc, bm * 0.94);
-    hhWet = max(hhWet, bm * 0.7 * (1.0 - hhD.b));
-  }
-  // charring while/after burning: black, cracked
-  float ch = vFx.y;
-  hhChar = smoothstep(1.0 - ch, 1.0 - ch + 0.22, hhD.r * 0.55 + hhD.b * 0.45 + ch * 0.25);
-  if (hhM != 7 && hhM != 8) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.022, 0.018, 0.016), hhChar * 0.94);
-  // frost (cryo, vFx2.w): a pale blue-white crust that creeps over the body, glassy
-  if (vFx2.w > 0.001 && hhM != 7) {
-    float frost = smoothstep(0.2, 0.7, vFx2.w + (hhD.r - 0.5) * 0.6 + (hhD.b - 0.5) * 0.3);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.78, 0.92), frost * 0.88);
-    hhWet = max(hhWet, frost * 0.7);
-  }`)
-      .replace('#include <roughnessmap_fragment>', /* glsl */`
-  float roughnessFactor = 0.8;
-  if (hhM == 0) roughnessFactor = 0.56 + hhD.r * 0.22;
-  else if (hhM == 1 || hhM == 2) roughnessFactor = 0.93;
-  else if (hhM == 3) roughnessFactor = 0.48 + hhD.b * 0.3;
-  else if (hhM == 4) roughnessFactor = 0.42;
-  else if (hhM == 5) roughnessFactor = 0.75;
-  else if (hhM == 6) roughnessFactor = 0.3;
-  else if (hhM == 7) roughnessFactor = 0.12;
-  else if (hhM == 9) roughnessFactor = 0.3 + hhD.b * 0.35;
-  else if (hhM == 10) roughnessFactor = 0.82;
-  roughnessFactor = mix(roughnessFactor, 0.16, hhWet);
-  roughnessFactor = mix(roughnessFactor, 0.95, hhChar);`)
-      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
-      .replace('#include <normal_fragment_maps>', /* glsl */`
-  {
-    vec4 nn = texture2D(uNrm, vDUv);
-    vec2 nxy;
-    if (hhM == 1 || hhM == 2) nxy = (nn.ba * 2.0 - 1.0) * 0.7;
-    else if (hhM == 5) nxy = (nn.rg * 2.0 - 1.0) * 0.25;
-    else if (hhM == 0) nxy = (nn.rg * 2.0 - 1.0);
-    else if (hhM == 6 || hhM == 3 || hhM == 10) nxy = (nn.rg * 2.0 - 1.0) * 0.6;
-    else if (hhM == 7 || hhM == 8) nxy = vec2(0.0);
-    else nxy = (nn.rg * 2.0 - 1.0) * 0.3;
-    normal = hhPerturb(normal, -vViewPosition, vDUv, nxy);
-  }`)
-      .replace('#include <emissivemap_fragment>', /* glsl */`
-  #include <emissivemap_fragment>
-  // hit flash: lit surfaces here are ~0.02-0.1 linear (night), and ACES runs at exposure
-  // 1.15 / 0.6, so 0.5 read as a white glow and a teammate's per-shot 0.25 turned him pale
-  totalEmissiveRadiance += vGlowCol + vec3(1.0, 0.55, 0.4) * vFx.z * 0.16;
-  if (vFx2.x > 0.001) {
-    // embers glowing in the char cracks while it burns
-    float flick = 0.65 + 0.35 * sin(uTime * 17.0 + vDUv.x * 40.0 + vDUv.y * 23.0);
-    float emb = smoothstep(0.58, 0.7, hhD.r) * smoothstep(0.1, 0.6, hhChar);
-    totalEmissiveRadiance += vec3(3.2, 0.95, 0.18) * emb * vFx2.x * flick;
-  }
-  // a faint cold glow off the ice so a frozen zombie reads in the dark
-  totalEmissiveRadiance += vec3(0.03, 0.09, 0.15) * vFx2.w;`)
-      .replace('#include <fog_fragment>', /* glsl */`
-  float rigRim = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
-  rigRim = rigRim * rigRim * rigRim;
-  #include <fog_fragment>
-  #ifdef USE_FOG
-    // glowing eyes and silhouettes hold up in the fog: a pair of eyes in the murk is how
-    // a zombie should announce itself
-    gl_FragColor.rgb += vGlowCol * fogFactor * 0.8 + vRimCol * rigRim * fogFactor * 1.1;
-  #endif
-  gl_FragColor.rgb += vRimCol * rigRim;`);
-  };
-  mat.customProgramCacheKey = () => 'hh-rig2-std';
-
-  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  depth.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + RIG_VERT_HEAD)
-      .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;');
-  };
-  depth.customProgramCacheKey = () => 'hh-rig2-depth';
-  return { material: mat, depth, uniforms };
-}
-
-// ---------------------------------------------------------------------------------------
 
 /**
  * A pool of rigged models sharing one bone texture. Usage per frame:
@@ -365,6 +117,7 @@ export class RigPool {
     this.shared = {
       uRigTex: { value: null },
       uDetail: { value: o.textures.detail },
+      uDetail2: { value: o.textures.detail2 },
       uNrm: { value: o.textures.normal },
       uTime: { value: 0 },
     };

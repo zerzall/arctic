@@ -19,13 +19,13 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { shadeHex, mixHex } from './actor-kit.js';
-import { gunAtlasTexture } from './actor-tex.js';
+import { gunAtlasTexture, markRow, markTexture, markVersion } from './actor-tex.js';
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
 
 /** Surface classes (per vertex, select roughness/metalness/atlas tile). */
-export const GM = { STEEL: 0, ALLOY: 1, POLY: 2, WOOD: 3, RUBBER: 4, BRASS: 5, LENS: 6, PAINT: 7 };
+export const GM = { STEEL: 0, ALLOY: 1, POLY: 2, WOOD: 3, RUBBER: 4, BRASS: 5, LENS: 6, PAINT: 7, MARK: 8 };
 
 const STEEL = '#35393e', DARK = '#1b1c1e', BLUED = '#23262b', BRASS = '#c9a24a', RUBBER = '#161616', COPPER = '#b8683a';
 
@@ -75,7 +75,7 @@ class GunBuilder {
       _m.compose(_v.set(...(o.at || [0, 0, 0])), _q, _s.set(s[0], s[1], s[2]));
     }
     _nm.getNormalMatrix(_m);
-    const P = g.attributes.position, N = g.attributes.normal;
+    const P = g.attributes.position, N = g.attributes.normal, UV0 = g.attributes.uv;
     const base = b.pos.length / 3;
     _c.set(o.color || '#888888');
     const mat = o.mat ?? GM.STEEL;
@@ -95,7 +95,7 @@ class GunBuilder {
       // box projection by the dominant normal (wood grain always runs along the gun)
       const ax = Math.abs(_n.x), ay = Math.abs(_n.y), az = Math.abs(_n.z);
       let u, v;
-      if (woodGrain) { u = _v.x / tile * 0.35; v = (ay > az ? _v.z : _v.y) / tile; } else if (ax >= ay && ax >= az) { u = _v.z / tile; v = _v.y / tile; } else if (ay >= az) { u = _v.x / tile; v = _v.z / tile; } else { u = _v.x / tile; v = _v.y / tile; }
+      if (o.rawUv && UV0) { u = UV0.getX(i); v = UV0.getY(i); } else if (woodGrain) { u = _v.x / tile * 0.35; v = (ay > az ? _v.z : _v.y) / tile; } else if (ax >= ay && ax >= az) { u = _v.z / tile; v = _v.y / tile; } else if (ay >= az) { u = _v.x / tile; v = _v.z / tile; } else { u = _v.x / tile; v = _v.y / tile; }
       b.uv.push(u, v);
       b.col.push(_c.r, _c.g, _c.b);
       b.gun.push(mat, wear);
@@ -218,7 +218,183 @@ function dot(gb, x, y, z, r, color, part) {
 }
 
 // ---------------------------------------------------------------------------------------
+// detail pass: screws, stamped markings, magazine witness holes, ammo. The parts are laid
+// out by the builders above; this pass looks for flat spots on the finished geometry (a ray
+// along Z through a grid of points) and puts small things flush on them, so it works for
+// every gun without per-gun coordinates.
+
+const hash01 = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function hashStr(s) { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100003; return h; }
+
+/** A ray-caster along Z over the builder's solid triangles. */
+function makeCaster(gb) {
+  const tris = [];
+  for (const [key, b] of gb.parts) {
+    if (key.endsWith(':glow')) continue;
+    const P = b.pos;
+    for (let i = 0; i < b.idx.length; i += 3) {
+      const a = b.idx[i] * 3, c = b.idx[i + 1] * 3, d = b.idx[i + 2] * 3;
+      const ax = P[a], ay = P[a + 1], az = P[a + 2], bx = P[c], by = P[c + 1], bz = P[c + 2], cx = P[d], cy = P[d + 1], cz = P[d + 2];
+      // face normal z (twice the area's z component) → a flat wall facing ±Z has |nz| ≈ 1
+      const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      tris.push({
+        key, ax, ay, az, bx, by, bz, cx, cy, cz, nz: nz / nl, area2: nz,
+        x0: Math.min(ax, bx, cx), x1: Math.max(ax, bx, cx), y0: Math.min(ay, by, cy), y1: Math.max(ay, by, cy),
+      });
+    }
+  }
+  // a 2D grid over the triangles' xy boxes so a ray only meets the few that cover its cell
+  const CELL = 0.5, grid = new Map();
+  const cellKey = (ix, iy) => (ix + 512) * 2048 + (iy + 512);
+  for (let i = 0; i < tris.length; i++) {
+    const t = tris[i];
+    for (let ix = Math.floor(t.x0 / CELL); ix <= Math.floor(t.x1 / CELL); ix++) {
+      for (let iy = Math.floor(t.y0 / CELL); iy <= Math.floor(t.y1 / CELL); iy++) {
+        const k = cellKey(ix, iy);
+        let a = grid.get(k);
+        if (!a) { a = []; grid.set(k, a); }
+        a.push(t);
+      }
+    }
+  }
+  const NONE = [];
+  /** Outermost surface at (x, y) on the +Z (s = 1) or −Z side: { z, nz, key } or null. */
+  function ray(x, y, s, only) {
+    let best = null;
+    const cell = grid.get(cellKey(Math.floor(x / CELL), Math.floor(y / CELL))) || NONE;
+    for (let i = 0; i < cell.length; i++) {
+      const t = cell[i];
+      if (x < t.x0 || x > t.x1 || y < t.y0 || y > t.y1) continue;
+      if (only && t.key !== only) continue;
+      if (Math.abs(t.area2) < 1e-9) continue;
+      // barycentric in the xy plane
+      const d = (t.by - t.cy) * (t.ax - t.cx) + (t.cx - t.bx) * (t.ay - t.cy);
+      if (Math.abs(d) < 1e-12) continue;
+      const l1 = ((t.by - t.cy) * (x - t.cx) + (t.cx - t.bx) * (y - t.cy)) / d;
+      const l2 = ((t.cy - t.ay) * (x - t.cx) + (t.ax - t.cx) * (y - t.cy)) / d;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+      const z = l1 * t.az + l2 * t.bz + l3 * t.cz;
+      if (!best || (s > 0 ? z > best.z : z < best.z)) best = { z, nz: t.nz, key: t.key };
+    }
+    return best;
+  }
+  /** A spot where the side wall is flat (facing ±Z, within `r` all round): the hit or null. */
+  function flat(x, y, s, r, only) {
+    const c = ray(x, y, s, only);
+    if (!c || Math.abs(c.nz) < 0.96) return null;
+    for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
+      const q = ray(x + dx, y + dy, s, only);
+      if (!q || q.key !== c.key || Math.abs(q.z - c.z) > 0.035) return null;
+    }
+    return c;
+  }
+  return { ray, flat };
+}
+
+function screwHead(gb, x, y, z, s, key, angle) {
+  const cyl = new THREE.CylinderGeometry(0.1, 0.1, 0.07, 8);
+  cyl.rotateX(HALF_PI);
+  gb.add(cyl, { part: key, at: [x, y, z + s * 0.03], color: '#1a1b1e', mat: GM.STEEL, round: true, wear: 0.4 });
+  const slot = new THREE.BoxGeometry(0.17, 0.028, 0.02);
+  gb.add(slot, { part: key, at: [x, y, z + s * 0.066], rot: [0, 0, angle], color: '#050506', mat: GM.STEEL });
+}
+
+function markQuad(gb, x, y, z, s, text, h = 0.5, color = '#c9c5b6') {
+  const info = markRow(text);
+  const w = h * info.aspect;
+  const g = new THREE.PlaneGeometry(w, h);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * info.u1, info.v0 + uv.getY(i) * (info.v1 - info.v0));
+  if (s < 0) g.rotateY(Math.PI);
+  gb.add(g, { at: [x, y, z + s * 0.014], color, mat: GM.MARK, rawUv: true, wear: 0 });
+  return w;
+}
+
+function detailPass(gb, out, id, w) {
+  const L = out.length;
+  const seed = hashStr(id);
+  const cast = makeCaster(gb);
+  // ---- screws on the flat flanks of the receiver and frame (more on the visible left side) ----
+  for (const s of [-1, 1]) {
+    const cands = [];
+    for (let x = -3; x < L * 0.85; x += 0.8) {
+      for (let y = -2.6; y <= 3.4; y += 0.7) {
+        const c = cast.flat(x, y, s, 0.36);
+        if (c && c.key !== 'mag') cands.push({ x, y, z: c.z, key: c.key, r: hash01(x * 7.3 + y * 3.1 + seed) });
+      }
+    }
+    cands.sort((a, b) => a.r - b.r);
+    const chosen = [];
+    for (const c of cands) {
+      if (chosen.length >= (s < 0 ? 6 : 3)) break;
+      if (chosen.every((o) => Math.hypot(o.x - c.x, o.y - c.y) > 2.2)) chosen.push(c);
+    }
+    for (const c of chosen) screwHead(gb, c.x, c.y, c.z, s, c.key, hash01(c.x + c.y * 3 + seed) * Math.PI);
+  }
+  // ---- stamped markings: the model on the left flank, a serial number on the right ----
+  const name = (w.name || id).toUpperCase();
+  const serial = 'SN ' + String(10000 + Math.floor(hash01(seed) * 89999)) + ' US';
+  const marks = [[-1, name, 0.62], [1, serial, 0.5], [-1, '▸ SAFE ▸ FIRE', 0.42]];
+  const used = [];
+  for (const [s, text, h] of marks) {
+    const info = markRow(text);
+    const wq = h * info.aspect;
+    let done = false;
+    // scan for a flat stretch the label fits on (coplanar along its length and height)
+    for (let y = 1.4; y >= -1.6 && !done; y -= 0.35) {
+      for (let x = 1.0; x + wq < L * 0.85 && !done; x += 0.6) {
+        if (used.some((u) => u.s === s && Math.abs(u.y - y) < h + 0.3 && x < u.x1 + 0.3 && x + wq > u.x0 - 0.3)) continue;
+        const pts = [[x, y], [x + wq, y], [x + wq / 2, y], [x, y + h * 0.5], [x + wq, y + h * 0.5], [x, y - h * 0.5], [x + wq, y - h * 0.5], [x + wq / 2, y + h * 0.5], [x + wq / 2, y - h * 0.5]];
+        const hits = pts.map((p) => cast.ray(p[0], p[1], s));
+        const c0 = hits[2];
+        if (!c0 || Math.abs(c0.nz) < 0.96) continue;
+        if (hits.some((q) => !q || q.key !== c0.key || Math.abs(q.z - c0.z) > 0.03)) continue;
+        markQuad(gb, x + wq / 2, y, c0.z, s, text, h);
+        used.push({ s, y, x0: x, x1: x + wq });
+        done = true;
+      }
+    }
+  }
+  // ---- magazine witness holes: a column of holes with a brass round showing in each ----
+  for (const s of [-1, 1]) {
+    for (let x = -3; x < L * 0.6; x += 0.5) {
+      let placed = false;
+      for (let y = -0.6; y > -7 && !placed; y -= 0.5) {
+        const c = cast.flat(x, y, s, 0.3, 'mag');
+        if (!c) continue;
+        const n = 4;
+        const holes = [];
+        for (let k = 0; k < n; k++) {
+          const yy = y - k * 0.95;
+          const q = cast.flat(x, yy, s, 0.2, 'mag');
+          if (!q || Math.abs(q.z - c.z) > 0.03) break;
+          holes.push([yy, q.z]);
+        }
+        if (holes.length < 3) continue;
+        for (const [yy, zz] of holes) {
+          const d = new THREE.CircleGeometry(0.15, 8);
+          if (s < 0) d.rotateY(Math.PI);
+          gb.add(d, { part: 'mag', at: [x, yy, zz + s * 0.01], color: '#050506', mat: GM.STEEL });
+          const b = new THREE.CircleGeometry(0.085, 8);
+          if (s < 0) b.rotateY(Math.PI);
+          gb.add(b, { part: 'mag', at: [x, yy, zz + s * 0.02], color: BRASS, mat: GM.BRASS });
+        }
+        placed = true;
+      }
+      if (placed) break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------
 // models
+
+let DETAIL = true;
+/** Screws, stamped labels and witness holes on the full-size guns (the 'low' quality tier leaves them out). */
+export function setGunDetail(on) { DETAIL = !!on; }
 
 const cache = new Map();
 
@@ -228,7 +404,7 @@ const cache = new Map();
  */
 export function gunModel(weaponId, lite = false) {
   const id = WEAPONS[weaponId] ? weaponId : 'pistol';
-  const key = lite ? id + ':lite' : id;
+  const key = lite ? id + ':lite' : DETAIL ? id : id + ':plain';
   let m = cache.get(key);
   if (!m) {
     LITE = lite;
@@ -252,6 +428,7 @@ function build(id) {
   };
   const B = BUILDERS[style] || BUILDERS.pistol;
   B(gb, L, sp, out, w);
+  if (!LITE && DETAIL && !globalThis.__HH_NO_DETAIL) detailPass(gb, out, id, w);
   const geos = gb.build();
   out.geos = geos;
   out.partNames = [...new Set(Object.keys(geos).map((k) => k.split(':')[0]))];
@@ -522,6 +699,13 @@ function redDot(gb, x, y, glow = '#ff3a2a') {
     { color: '#202224', mat: GM.POLY, bevel: 0.1, holes: [[[x + 0.35, y + 0.7], [x + 2.25, y + 0.7], [x + 2.25, y + 1.55], [x + 0.35, y + 1.55]]] });
   rbox(gb, x + 1.2, x + 1.25, y + 0.7, y + 1.55, -0.52, 0.52, 0.01, { color: '#223848', mat: GM.LENS, seg: 1 });
   dot(gb, x + 1.3, y + 1.12, 0, 0.055, glow);
+  if (!LITE) {
+    // holographic ring reticle round the dot and two short ticks
+    const ring = new THREE.TorusGeometry(0.36, 0.017, 4, 22);
+    ring.rotateY(HALF_PI);
+    gb.add(ring, { glow: true, at: [x + 1.28, y + 1.12, 0], color: glow, round: true });
+    for (const s of [-1, 1]) gb.add(new THREE.BoxGeometry(0.02, 0.02, 0.16), { glow: true, at: [x + 1.28, y + 1.12, s * 0.55], color: glow });
+  }
   cylX(gb, x + 0.4, x + 1.2, y + 0.3, 0.85, 0.28, 0.28, { color: '#202224', mat: GM.POLY, seg: 12 });
 }
 function scope(gb, x0, x1, y, r, o = {}) {
@@ -541,6 +725,16 @@ function scope(gb, x0, x1, y, r, o = {}) {
   const lg2 = new THREE.CircleGeometry(r * 1.1, 20);
   gb.add(lg2, { at: [x0 - 0.01, y, 0], rot: [0, -HALF_PI, 0], color: '#0a1420', mat: GM.LENS });
   if (o.glint !== false) dot(gb, x1 + 0.02, y + r * 0.4, -r * 0.35, r * 0.18, '#9ad8ff');
+  if (!LITE) {
+    // reticle floating inside the eyepiece: crosshair, ring and a centre dot, glowing
+    const rr = r * 0.85, rc = '#ff3a2a';
+    gb.add(new THREE.BoxGeometry(0.015, rr * 1.7, 0.03), { glow: true, at: [x0 - 0.05, y, 0], color: rc });
+    gb.add(new THREE.BoxGeometry(0.015, 0.03, rr * 1.7), { glow: true, at: [x0 - 0.05, y, 0], color: rc });
+    const ring = new THREE.TorusGeometry(rr * 0.52, 0.014, 4, 24);
+    ring.rotateY(HALF_PI);
+    gb.add(ring, { glow: true, at: [x0 - 0.05, y, 0], color: rc, round: true });
+    dot(gb, x0 - 0.06, y, 0, 0.05, rc);
+  }
 }
 BUILDERS.rifle = (gb, L, sp, out) => {
   const col = sp.color, acc = sp.accent;
@@ -1384,6 +1578,7 @@ varying vec2 vGUv;
 `;
 const GUN_FRAG = /* glsl */`
 uniform sampler2D uGunAtlas;
+uniform sampler2D uMark;
 varying vec2 vGun;
 varying vec2 vGUv;
 vec4 gT;
@@ -1408,7 +1603,7 @@ vec3 gPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
  */
 export function createGunMaterial(atlas, opts = {}) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.5, envMap: opts.envMap || null, envMapIntensity: opts.envIntensity ?? 1 });
-  const uniforms = { uGunAtlas: { value: atlas } };
+  const uniforms = { uGunAtlas: { value: atlas }, uMark: { value: opts.mark || atlas } };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
@@ -1420,6 +1615,10 @@ export function createGunMaterial(atlas, opts = {}) {
   #include <color_fragment>
   gM = int(vGun.x + 0.5);
   gWear = vGun.y;
+  if (gM == 8) {
+    // stamped markings: paint where the label texture has ink
+    if (texture2D(uMark, vGUv).a < 0.42) discard;
+  }
   vec2 tile = gM == 2 ? vec2(0.5, 0.0) : gM == 3 ? vec2(0.0, 0.5) : gM == 4 ? vec2(0.5, 0.5) : vec2(0.0);
   {
     vec2 f = fract(vGUv);
@@ -1431,6 +1630,7 @@ export function createGunMaterial(atlas, opts = {}) {
   // edge wear: bare steel on metal edges, scuffs on polymer/wood
   float wm = smoothstep(0.3, 0.75, gWear + (gT.a - 0.45) * 0.6);
   if (gM <= 1 || gM == 7) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.53, 0.55), wm * 0.75);
+  if (gM == 8) diffuseColor.rgb = vColor.rgb * 0.0 + diffuseColor.rgb / max(alb, 0.001);
   else if (gM == 2 || gM == 4) diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.7 + 0.03, wm * 0.45);
   else if (gM == 3) diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.5, wm * 0.5);`)
       .replace('#include <roughnessmap_fragment>', /* glsl */`
@@ -1443,6 +1643,7 @@ export function createGunMaterial(atlas, opts = {}) {
   else if (gM == 5) roughnessFactor = 0.22 + gT.a * 0.2;
   else if (gM == 6) roughnessFactor = 0.04;
   else if (gM == 7) roughnessFactor = 0.38 + gT.a * 0.35;
+  else if (gM == 8) roughnessFactor = 0.7;
   if (gM <= 1 || gM == 7) roughnessFactor = mix(roughnessFactor, 0.24, wm);`)
       .replace('#include <metalnessmap_fragment>', /* glsl */`
   // parkerized steel and anodised alloy are finishes over the metal: mostly matte and
@@ -1450,7 +1651,7 @@ export function createGunMaterial(atlas, opts = {}) {
   float metalnessFactor = gM == 0 ? 0.5 + wm * 0.5 : gM == 1 ? 0.3 + wm * 0.7 : gM == 5 ? 1.0 : gM == 6 ? 0.3 : gM == 7 ? 0.15 + wm * 0.8 : 0.0;`)
       .replace('#include <normal_fragment_maps>', /* glsl */`
   {
-    float ns = gM == 3 ? 0.7 : gM == 4 ? 1.1 : gM == 6 ? 0.0 : gM == 2 ? 0.8 : 0.55;
+    float ns = gM == 3 ? 0.7 : gM == 4 ? 1.1 : gM == 6 || gM == 8 ? 0.0 : gM == 2 ? 0.8 : 0.55;
     normal = gPerturb(normal, -vViewPosition, vGUv, (gT.gb * 2.0 - 1.0) * ns);
   }`)
       .replace('#include <emissivemap_fragment>', /* glsl */`
@@ -1475,6 +1676,7 @@ export function releaseSharedGuns() {
     shared.std.dispose();
     shared.glow.dispose();
     shared.atlas.dispose();
+    shared.mark.dispose();
   }
 }
 
@@ -1482,9 +1684,10 @@ export function releaseSharedGuns() {
 export function gunMaterials() {
   if (shared) return shared;
   const atlas = gunAtlasTexture(8);
+  const mark = markTexture();
   shared = {
-    atlas,
-    std: createGunMaterial(atlas),
+    atlas, mark,
+    std: createGunMaterial(atlas, { mark }),
     // glowing parts: vertex colour × 2.6 in HDR (they bloom; ACES rolls them off)
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) }),
   };
@@ -1501,6 +1704,7 @@ export function gunMaterials() {
 export function gunObject(weaponId, o = {}) {
   const model = gunModel(weaponId, !!o.lite);
   const mats = gunMaterials();
+  if (mats.mark.userData.v !== markVersion()) { mats.mark.userData.v = markVersion(); mats.mark.needsUpdate = true; }
   const mat = o.material || mats.std;
   const glowMat = o.glowMaterial || mats.glow;
   const group = new THREE.Group();

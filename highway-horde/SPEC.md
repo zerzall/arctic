@@ -1247,7 +1247,12 @@ world-fx.js     one-draw-call GPU-animated world pieces (sky, fires, embers, smo
                 light shafts, fake far light pools, objective marker)
 actor-kit.js    PartBuilder (merge primitives into one vertex-coloured geometry), colours
 actor-rig.js    GPU-skinned InstancedMesh rig (pose rows in a float DataTexture per type)
-actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates
+actor-consts.js rig texel layout (T_*), colour slots, material classes, garment parts, accessory option bits
+actor-rigmat.js the rig's material: garment cuts, cloth patterns, wounds, skin (veins, sores, wrapped light), accessory culling
+actor-zlook.js  per-zombie look from (type, sim id): archetype (office worker … prisoner), skin/decay, hems, wounds, gear, gait — pure JS, deterministic
+actor-zkit.js   the accessory groups of the zombie models (hats, hair, packs, belts, gore, armour), switched on per instance
+actor-sgear.js  class gear of the survivors (helmets, packs, bandoliers, plates) + the gloves shared with the first-person hands
+actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles)
 fx-core.js      shared particle / streak / glow pools (3 draw calls), acquireFx(ctx)
 post.js         post-processing chain, dynamic resolution, GPU timer (see below)
 post-atmos.js   atmosphere + wet-ground reflections pass of the chain (see below)
@@ -1342,6 +1347,26 @@ gloved hands in the class outfit colour, idle sway, walk/sprint bob, recoil kick
 own `shot` (predicted shots included; `echo` shots ignored), reload dip over
 `reloading`, weapon switch lower/raise, melee swing, throw motion, minigun barrel spin,
 flamethrower pilot light; drawn in its own pass so it never clips into walls.
+Zombie variety (`actor-zlook.js`, `actor-rigmat.js`): `zombieLook(type, id)` is a pure function of the
+sim id (same person on every client; `tests/zlook.test.js`): an archetype per type (walkers are commuters,
+executives, police, firefighters, EMTs, soldiers, prisoners, tourists, hikers, farmers, patients in gowns ...;
+runners joggers and teens; screamers nurses and patients; brutes riot cops, bouncers, welded scrap), a human
+skin tone greyed towards the type's decay tint, hair style and colour, hat, glasses, packs, belts, lanyards,
+shoes or bare feet, wounds (gash, exposed bone, bite, bullet, burn, acid — two per zombie, painted in
+rest-pose model space by the shader, the cloth over them torn open), missing jaw/forearm/hand (bone scale 0 +
+a stump group), gore groups (ribs, entrails, spine, rebar, arrow), body build (height, girth, head, arm
+length), eyes (glowing, milky, one missing) and a gait (arms up/dangling/one out/clawing/hugging, limp side,
+lurch, head jerks). One model per type and LOD serves them all: the top, sleeves and trouser legs are shells
+whose hems are cut per instance (`T_VAR1`), patterns (pinstripe, plaid, camo, hi-vis, floral, stripes, grease)
+are shader-side, and accessories are option groups (`aExt.x` bit, `T_OPT` words) collapsed in the vertex
+shader unless the look switches them on — so variety costs no draw calls, only the hidden groups' vertices
+(≈ 4–6 k extra triangles submitted per near walker; the visible count is ≈ 5 k). LOD 1 keeps hats, hair and
+big packs; LOD 2 is the plain silhouette. Skin has a wrapped-diffuse "subsurface" term and a warm rim.
+Survivors get class gear and camouflage cloth, a status light in the player colour, a holstered pistol and a
+slung long gun, a draw animation on weapon switches and a kneeling CPR pose (hands on the downed teammate) while
+reviving. First-person hands are gloved per class (nitrile, work leather, fingerless with tape, padded), with
+seams, watch, cuff and sleeve detail; the viewmodel breathes and inspects the gun when idle, and publishes
+each ejected case as `fx.localEject` ({ seq, kind, x, h, y, vx, vh, vy }) for effects3d.
 Zombies: one InstancedMesh per body part per type (≤ ~60 draw calls for 300 zombies),
 walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 (burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at

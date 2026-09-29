@@ -3,6 +3,9 @@
 // type × LOD is one instanced draw, all posed in JS and uploaded as one bone texture, so
 // 300 zombies + 120 corpses cost at most 24 draw calls (+ their shadow passes). Zombies
 // outside the view frustum are not drawn at all; distance picks the LOD (with hysteresis).
+// Nobody is a clone: every zombie's look (outfit, skin, hair, hat, gear, wounds, missing
+// parts, build, gait) comes from actor-zlook.js as a pure function of its type and sim id,
+// so all clients draw the same person, and the rig shader draws it from the same mesh.
 //
 // Animation (per type, phased by id): shambling gait with hip sway, head bob and a limp,
 // sprinting runners, legless crawlers pulling themselves along, waddling bloaters with a
@@ -15,9 +18,10 @@
 
 import * as THREE from 'three';
 import { ZOMBIES, ZOMBIE_IDS, ZFLAG } from '../shared/zombies.js';
-import { col, mixHex, shadeHex, hash01, angleDiff, damp, capLuma } from './actor-kit.js';
-import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, TEX_W } from './actor-rig.js';
+import { col, hash01, angleDiff, damp } from './actor-kit.js';
+import { RigPool, Pose, B, T_FX, T_FX2, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_VAR2, TEX_W } from './actor-rig.js';
 import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
+import { zombieLook, packLook } from './actor-zlook.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
 import { actorTextures } from './actor-tex.js';
 import { acquireFx, releaseFx, F_ADD, F_FIRE, F_BOUNCE, F_FLICKER, FR } from './fx-core.js';
@@ -35,18 +39,17 @@ const GIB_CAP = 160;
 const SCALE = { walker: 1, runner: 0.95, crawler: 0.9, bloater: 1.12, spitter: 1, screamer: 1.02, brute: 1.55, boss: 2.5 };
 // stride length (units per gait cycle at scale 1) — sets how fast legs cycle for a speed
 const STRIDE = { walker: 44, runner: 74, crawler: 36, bloater: 36, spitter: 46, screamer: 50, brute: 58, boss: 72 };
-const EYE = { walker: '#ffc84a', runner: '#ffd070', crawler: '#ffb84a', bloater: '#dcff5a', spitter: '#a8ff3a', screamer: '#cfe4ff', brute: '#ff8a2a', boss: '#ff3ad0' };
-const PANTS = ['#34405a', '#2a2b30', '#5e5540', '#453526', '#4d5058', '#39466a'];
-const HAIR = ['#1a120c', '#3a2616', '#262626', '#4a3a2c', '#5c4a36', '#6b6b66'];
 // LOD distances (units) per quality; scaled by the zombie's size
-const LOD_DIST = { ultra: [380, 1000], high: [290, 760], low: [160, 460] };
+const LOD_DIST = { ultra: [340, 950], high: [270, 720], low: [160, 460] };
 
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();
-function modelArrays(type, L) {
-  const k = type + L;
+/** Quality tier of the models: ultra 0 (everything), high 1, low 2 (no accessories). */
+const tierOf = (q) => (q === 'ultra' ? 0 : q === 'low' ? 2 : 1);
+function modelArrays(type, L, tier) {
+  const k = type + L + ':' + tier;
   let a = modelCache.get(k);
-  if (!a) { a = buildZombie(type, L).arrays(); modelCache.set(k, a); }
+  if (!a) { a = buildZombie(type, L, tier).arrays(); modelCache.set(k, a); }
   return a;
 }
 
@@ -72,6 +75,7 @@ export function createZombies3D(ctx) {
   ctx.scene.add(root);
   let quality = ctx.quality || 'high';
   let high = quality !== 'low';
+  let tier = tierOf(quality);
 
   const tex = actorTextures(quality === 'ultra' ? 16 : 8);
   const pool = new RigPool({ capacity: CAPACITY + CORPSE_CAP, textures: tex });
@@ -81,7 +85,7 @@ export function createZombies3D(ctx) {
     const rim = t === 'boss' ? '#d8a0ff' : t === 'spitter' ? '#b8ff8a' : t === 'screamer' ? '#c8d8ff' : '#9fc0ff';
     const lods = [];
     for (let L = 0; L < 3; L++) {
-      const m = pool.addModel(instancedGeometry(modelArrays(t, L)), sk, {
+      const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier)), sk, {
         rim, rimStrength: 0.3, castShadow: high && L === 0, receiveShadow: high && L === 0, name: 'z-' + t + L,
       });
       root.add(m.mesh);
@@ -91,18 +95,10 @@ export function createZombies3D(ctx) {
   }
   pool.warm();
 
-  // per-type colour tables: skin variations, dirtied clothes, trousers, hair
-  const skinCols = {}, clothCols = {}, eyeCols = {};
-  for (const t of ZOMBIE_IDS) {
-    const look = ZOMBIES[t].look;
-    skinCols[t] = [0, 1, 2, 3].map((k) => capLuma(new THREE.Color(mixHex(shadeHex(look.skin, 0.06 - k * 0.04), ['#a8a880', '#6a8a5a', '#8a7a8a', '#9a9a70'][k], 0.14 + k * 0.04)), 0.4));
-    clothCols[t] = look.clothes.map((c) => capLuma(new THREE.Color(shadeHex(mixHex(c, '#4a463c', 0.25), -0.04)), 0.3));
-    eyeCols[t] = new THREE.Color(EYE[t] || '#ffcf66');
-  }
-  const pantsCols = PANTS.map((c) => new THREE.Color(c));
-  const hairCols = HAIR.map((c) => new THREE.Color(c));
-  const eliteEye = new THREE.Color('#ff3b1a');
-  const bossPants = new THREE.Color('#2a1c30');
+  const eliteEye = [1.0, 0.03, 0.01];
+  const eliteEyeCol = new THREE.Color(1.0, 0.23, 0.1);
+  const _eyeCol = new THREE.Color();
+  const s0 = (z) => state.get(z.id) || { look: { eyeCol: [1, 0.8, 0.3] } };
 
   // per-zombie animation state
   const state = new Map();
@@ -143,11 +139,13 @@ export function createZombies3D(ctx) {
     let s = state.get(z.id);
     if (!s || s.type !== z.type) {
       const seed = hash01(z.id * 31 + 7);
+      const look = zombieLook(z.type, z.id);
+      const G = look.gait;
       s = {
-        type: z.type, x: z.x, y: z.y, a: z.angle, ph: hash01(z.id) * TAU, spd: 0, vx: 0, vy: 0,
+        type: z.type, x: z.x, y: z.y, a: z.angle, ph: G.phase, spd: 0, vx: 0, vy: 0,
         atk: 9, atkN: 0, scream: 9, flinch: 9, hitA: 0, stagger: 0, slam: 9, charge: 0, spit: 9,
-        seen: 0, seed, seed2: hash01(z.id * 7 + 3), fl: 0, lod: -1, char: 0, burn: 0, twitch: 0,
-        armsUp: seed < 0.5, limp: seed > 0.62, tilt: (hash01(z.id * 13) - 0.5) * 0.6,
+        seen: 0, seed, seed2: hash01(z.id * 7 + 3), fl: 0, lod: -1, char: 0, burn: 0, twitch: 0, jerk: 0, jerkDir: 1,
+        look, tilt: G.tilt, hitSide: 0, hitLeg: false,
       };
       state.set(z.id, s);
     }
@@ -157,6 +155,7 @@ export function createZombies3D(ctx) {
   // ---- pose ---------------------------------------------------------------------------------
   function poseZombie(z, s, T, time) {
     const t = z.type;
+    const L = s.look, G = L.gait;
     const ph = s.ph;
     const amp = Math.min(1.25, s.spd / Math.max(30, T.def.speed[0] * 0.85));
     const sw = Math.sin(ph), cw = Math.cos(ph);
@@ -176,42 +175,75 @@ export function createZombies3D(ctx) {
     const stg = s.stagger;
     const scr = s.scream < 1.4 ? Math.min(1, s.scream * 5) * Math.min(1, (1.4 - s.scream) * 3) : 0;
     const twitch = s.twitch;
+    const jerk = s.jerk;
 
     pose.reset();
-    // ---- generic shamble ----
+    // ---- generic shamble (each zombie's gait comes from its look: sway, hunch, tilt, limp) ----
     let bob = -Math.abs(cw) * 1.2 * amp + 0.6 * amp;
-    let hipsX = sw * 0.07 * amp, hipsY = sw * 0.1 * amp, hipsZ = 0;
-    let spineZ = -0.12 - seed * 0.1, spineX = -sw * 0.05 * amp, spineY = -sw * 0.08 * amp;
-    let chestZ = -0.1 - seed2 * 0.12, chestX = s.tilt * 0.2, chestY = -sw * 0.06 * amp;
-    let neckZ = 0.12, headZ = 0.12 + Math.sin(ph * 2) * 0.05 * amp, headX = s.tilt + Math.sin(time * 1.3 + seed * 9) * 0.07, headY = Math.sin(time * 0.7 + seed * 5) * 0.2;
+    let hipsX = sw * 0.07 * amp * G.sway, hipsY = sw * 0.1 * amp * G.sway, hipsZ = 0;
+    let spineZ = -0.12 - seed * 0.1 - G.hunch * 0.14, spineX = -sw * 0.05 * amp, spineY = -sw * 0.08 * amp * G.sway;
+    let chestZ = -0.1 - seed2 * 0.12 - G.hunch * 0.06, chestX = s.tilt * 0.2, chestY = -sw * 0.06 * amp;
+    let neckZ = 0.12 + G.hunch * 0.1, headZ = 0.12 + Math.sin(ph * 2) * 0.05 * amp * (0.5 + G.stiff), headX = s.tilt + Math.sin(time * 1.3 + seed * 9) * 0.07, headY = Math.sin(time * 0.7 + seed * 5) * 0.2;
     let jaw = -(0.18 + seed2 * 0.28) - Math.max(0, Math.sin(time * 1.7 + seed * 7)) * 0.12;
-    // arms: reaching (classic) or dangling
-    let uaLZ, uaRZ, uaLX = 0.12, uaRX = -0.12, faLZ, faRZ, hdLZ = -0.25, hdRZ = -0.25;
-    if (s.armsUp) {
-      uaLZ = 1.25 + sw * 0.12 * amp + Math.sin(time * 1.1 + seed) * 0.06; uaRZ = 1.18 - sw * 0.12 * amp;
-      faLZ = 0.15 + cw * 0.08; faRZ = 0.25 - cw * 0.08;
+    if (jerk > 0.01) { headX += Math.sin(time * 43) * 0.18 * jerk; headY += s.jerkDir * 0.55 * jerk; headZ += 0.2 * jerk; jaw -= 0.35 * jerk; }
+    // arms: reaching, dangling, one arm out, clawing or hugging itself
+    let uaLZ, uaRZ, uaLX = 0.12, uaRX = -0.12, uaLY = 0, uaRY = 0, faLZ, faRZ, hdLZ = -0.25, hdRZ = -0.25;
+    const armSw = amp * (0.6 + G.stiff * 0.5);
+    const reach = (side) => {
+      // arm raised and reaching with a slow wobble
+      const k = side < 0 ? 1 : -1;
+      return { ua: 1.25 + Math.sin(time * 1.1 + seed + side) * 0.07 + k * sw * 0.12 * amp, fa: 0.2 + k * cw * 0.08 };
+    };
+    const hang = (side) => {
+      const k = side < 0 ? -1 : 1;
+      return { ua: k * sw * 0.35 * armSw + 0.07, fa: 0.3 + Math.max(0, -k * sw) * 0.3 * armSw };
+    };
+    const mode = G.armsMode;
+    if (mode === 0 || mode === 2) {
+      const rl = reach(-1), rr = reach(1), hl = hang(-1), hr = hang(1);
+      const oneL = mode === 2 && G.lookSide < 0, oneR = mode === 2 && G.lookSide > 0;
+      uaLZ = oneR ? hl.ua : rl.ua; faLZ = oneR ? hl.fa : rl.fa;
+      uaRZ = oneL ? hr.ua : rr.ua; faRZ = oneL ? hr.fa : rr.fa;
       uaLX = 0.05; uaRX = -0.08;
+    } else if (mode === 3) {
+      // clawing at the air: higher, fingers flexing
+      uaLZ = 1.55 + Math.sin(time * 3.1 + seed * 4) * 0.14; uaRZ = 1.5 + Math.sin(time * 2.7 + seed * 5) * 0.14;
+      faLZ = 0.55 + Math.sin(time * 5 + seed) * 0.2; faRZ = 0.5 + Math.sin(time * 4.6 + seed * 2) * 0.2;
+      hdLZ = -0.5 + Math.sin(time * 9 + seed * 7) * 0.35; hdRZ = -0.5 + Math.sin(time * 8.3 + seed * 3) * 0.35;
+      uaLY = -0.2; uaRY = 0.2;
+    } else if (mode === 4) {
+      // hugging its own belly
+      uaLZ = 0.6 + sw * 0.06 * amp; uaRZ = 0.6 - sw * 0.06 * amp; faLZ = 1.75; faRZ = 1.75; uaLY = -0.55; uaRY = 0.55; uaLX = 0; uaRX = 0; hdLZ = -0.4; hdRZ = -0.4;
     } else {
-      uaLZ = -sw * 0.35 * amp + 0.05; uaRZ = sw * 0.35 * amp + 0.1;
-      faLZ = 0.3 + Math.max(0, -sw) * 0.3 * amp; faRZ = 0.25 + Math.max(0, sw) * 0.3 * amp;
+      const hl = hang(-1), hr = hang(1);
+      uaLZ = hl.ua; uaRZ = hr.ua; faLZ = hl.fa; faRZ = hr.fa;
     }
-    const limp = s.limp ? 0.45 : 1;
-    let thL = sw * 0.46 * amp, thR = -sw * 0.46 * amp * limp;
-    let shL = -Math.max(0, Math.sin(ph + 1.4)) * 0.8 * amp - 0.06, shR = -Math.max(0, -Math.sin(ph + 1.4)) * 0.8 * amp * (s.limp ? 0.3 : 1) - 0.06;
+    const limpL = G.limp < 0 ? 0.42 : 1, limpR = G.limp > 0 ? 0.42 : 1;
+    let thL = sw * 0.46 * amp * limpL, thR = -sw * 0.46 * amp * limpR;
+    let shL = -Math.max(0, Math.sin(ph + 1.4)) * 0.8 * amp * (G.limp < 0 ? 0.3 : 1) - 0.06, shR = -Math.max(0, -Math.sin(ph + 1.4)) * 0.8 * amp * (G.limp > 0 ? 0.3 : 1) - 0.06;
     let ftL = Math.max(0, cw) * 0.3 * amp - 0.05, ftR = Math.max(0, -cw) * 0.3 * amp - 0.05;
     let thLX = 0, thRX = 0;
     let x1Z = 0, x1X = 0, x2Z = 0, x2X = 0, x1S = 1;
     let rootX = 0, rootY = 0, rootZ = 0;
-    if (s.limp) { hipsX += 0.05; rootY -= Math.max(0, -sw) * 0.8 * amp; }
+    if (G.limp) {
+      hipsX += 0.05 * G.limp; rootY -= Math.max(0, -sw * G.limp) * 0.8 * amp;
+      if (G.limp < 0) { thL = thL * 0.7 - 0.12; ftL -= 0.3 * amp; } else { thR = thR * 0.7 - 0.12; ftR -= 0.3 * amp; }
+    }
 
     switch (t) {
       case 'runner': {
         bob = -Math.abs(cw) * 2.6 * amp + 1.4 * amp;
-        spineZ = -0.3 - 0.12 * amp; chestZ = -0.2; chestY = -sw * 0.2 * amp; spineY = sw * 0.12 * amp;
+        spineZ = -0.3 - 0.12 * amp - G.hunch * 0.1; chestZ = -0.2; chestY = -sw * 0.2 * amp; spineY = sw * 0.12 * amp;
         neckZ = 0.25; headZ = 0.3; headX = s.tilt * 0.4;
-        uaLZ = -sw * 1.05 * amp + 0.25; uaRZ = sw * 1.05 * amp + 0.25; uaLX = 0.18; uaRX = -0.18;
-        faLZ = 1.45 + Math.max(0, sw) * 0.3; faRZ = 1.45 + Math.max(0, -sw) * 0.3;
-        hdLZ = -0.5; hdRZ = -0.5;
+        if (mode === 0 || mode === 3) {
+          // sprinting at the prey, arms reaching out ahead
+          uaLZ = 1.0 - sw * 0.35 * amp; uaRZ = 1.0 + sw * 0.35 * amp; faLZ = 0.7; faRZ = 0.7; hdLZ = -0.4; hdRZ = -0.4;
+        } else {
+          uaLZ = -sw * 1.05 * amp + 0.25; uaRZ = sw * 1.05 * amp + 0.25;
+          faLZ = 1.45 + Math.max(0, sw) * 0.3; faRZ = 1.45 + Math.max(0, -sw) * 0.3;
+          hdLZ = -0.5; hdRZ = -0.5;
+        }
+        uaLX = 0.18; uaRX = -0.18; uaLY = 0; uaRY = 0;
         thL = sw * 0.9 * amp + 0.1; thR = -sw * 0.9 * amp + 0.1;
         shL = -Math.max(0, Math.sin(ph + 1.3)) * 1.55 * amp - 0.25; shR = -Math.max(0, -Math.sin(ph + 1.3)) * 1.55 * amp - 0.25;
         ftL = Math.max(0, cw) * 0.5 * amp - 0.25; ftR = Math.max(0, -cw) * 0.5 * amp - 0.25;
@@ -223,14 +255,16 @@ export function createZombies3D(ctx) {
         bob = 0;
         hipsZ = -1.42; hipsX = sw * 0.06; hipsY = sw * 0.12;
         rootY = -22.5 + Math.max(0, sw) * 1.2; rootX = -2 + Math.max(0, -cw) * 2.5;
-        spineZ = 0.06 + sw * 0.05; chestZ = 0.12; chestY = sw * 0.15; chestX = 0;
-        neckZ = 0.55; headZ = 0.75 + Math.sin(time * 2 + seed) * 0.08; headX = s.tilt * 0.4; headY = sw * 0.2;
-        uaLZ = 2.2 + sw * 0.8; uaRZ = 2.2 - sw * 0.8; uaLX = 0.35; uaRX = -0.35;
+        spineZ = 0.06 + sw * 0.05; chestZ = 0.12; chestY = sw * 0.15 * G.sway; chestX = 0;
+        neckZ = 0.55; headZ = 0.75 + Math.sin(time * 2 + seed) * 0.08; headX = s.tilt * 0.4; headY = sw * 0.2 + Math.sin(time * 1.3 + seed * 3) * 0.15;
+        uaLZ = 2.2 + sw * 0.8; uaRZ = 2.2 - sw * 0.8; uaLX = 0.35; uaRX = -0.35; uaLY = 0; uaRY = 0;
         faLZ = -0.2 - Math.max(0, cw) * 0.9; faRZ = -0.2 - Math.max(0, -cw) * 0.9;
         hdLZ = -0.6 - Math.max(0, cw) * 0.4; hdRZ = -0.6 - Math.max(0, -cw) * 0.4;
         thL = 0.15 + sw * 0.18; thR = 0.1 - sw * 0.18; thLX = 0.15; thRX = -0.15;
         shL = -0.3 + cw * 0.3; shR = -0.4 - cw * 0.3;
         ftL = 0; ftR = 0;
+        // a lame arm drags: one side pulls, the other only claws
+        if (G.limp) { if (G.limp > 0) { uaRZ = 1.7; faRZ = -0.5; } else { uaLZ = 1.7; faLZ = -0.5; } }
         jaw = -0.45 - Math.max(0, Math.sin(time * 3 + seed * 5)) * 0.25;
         break;
       }
@@ -239,7 +273,8 @@ export function createZombies3D(ctx) {
         hipsX = sw * 0.16 * amp; hipsY = sw * 0.06 * amp;
         spineZ = 0.16; chestZ = 0.05; chestX = -sw * 0.08 * amp;
         neckZ = 0.1; headZ = 0.05; headX = s.tilt * 1.2 + Math.sin(time * 0.9 + seed * 3) * 0.12;
-        uaLZ = 0.55 + sw * 0.15 * amp; uaRZ = 0.55 - sw * 0.15 * amp; uaLX = 0.6; uaRX = -0.6;
+        // arms held out from the swollen belly, dangling a little
+        uaLZ = 0.55 + sw * 0.15 * amp + (mode === 0 ? 0.5 : 0); uaRZ = 0.55 - sw * 0.15 * amp + (mode === 0 ? 0.5 : 0); uaLX = 0.6; uaRX = -0.6; uaLY = 0; uaRY = 0;
         faLZ = 0.35; faRZ = 0.35;
         thL = sw * 0.3 * amp; thR = -sw * 0.3 * amp; thLX = 0.1; thRX = -0.1;
         shL = -Math.max(0, Math.sin(ph + 1.4)) * 0.45 * amp; shR = -Math.max(0, -Math.sin(ph + 1.4)) * 0.45 * amp;
@@ -252,7 +287,7 @@ export function createZombies3D(ctx) {
       }
       case 'spitter': {
         spineZ = -0.2; chestZ = -0.28; neckZ = 0.45; headZ = 0.2;
-        uaLZ = 0.35 + sw * 0.25 * amp; uaRZ = 0.35 - sw * 0.25 * amp; faLZ = 0.55; faRZ = 0.55;
+        uaLZ = 0.35 + sw * 0.25 * amp; uaRZ = 0.35 - sw * 0.25 * amp; faLZ = 0.55; faRZ = 0.55; uaLY = 0; uaRY = 0;
         jaw = -0.55 - Math.sin(time * 2.2 + seed * 3) * 0.1;
         x1S = 1 + Math.sin(time * 3.4 + seed * 5) * 0.08;
         if (s.spit < 0.7) {                                   // rear back, then retch forward
@@ -267,7 +302,7 @@ export function createZombies3D(ctx) {
       case 'screamer': {
         // stiff, twitchy; arms dangle loosely; head cocked
         spineZ = -0.05; chestZ = -0.06;
-        uaLZ = -sw * 0.25 * amp - 0.05; uaRZ = sw * 0.25 * amp - 0.05; uaLX = 0.12; uaRX = -0.12; faLZ = 0.12; faRZ = 0.12;
+        uaLZ = -sw * 0.25 * amp - 0.05; uaRZ = sw * 0.25 * amp - 0.05; uaLX = 0.12; uaRX = -0.12; faLZ = 0.12; faRZ = 0.12; uaLY = 0; uaRY = 0;
         hdLZ = -0.1; hdRZ = -0.1;
         headZ = 0.25; headX = s.tilt * 1.4 + twitch * 0.5;
         neckZ = 0.1;
@@ -285,7 +320,7 @@ export function createZombies3D(ctx) {
         bob = -Math.abs(cw) * 2.2 * amp + 1.1 * amp;
         hipsX = sw * 0.1 * amp; hipsY = sw * 0.12 * amp;
         spineZ = -0.25; chestZ = -0.25; chestY = -sw * 0.14 * amp; neckZ = 0.35; headZ = 0.3;
-        uaLZ = 0.35 - sw * 0.35 * amp; uaRZ = 0.25 + sw * 0.4 * amp; uaLX = 0.25; uaRX = -0.3;
+        uaLZ = 0.35 - sw * 0.35 * amp; uaRZ = 0.25 + sw * 0.4 * amp; uaLX = 0.25; uaRX = -0.3; uaLY = 0; uaRY = 0;
         faLZ = 0.5; faRZ = 0.35; hdLZ = -0.2; hdRZ = -0.1;
         thL = sw * 0.42 * amp; thR = -sw * 0.42 * amp; thLX = 0.08; thRX = -0.08;
         jaw = -0.2 - Math.max(0, Math.sin(time * 1.3 + seed * 4)) * 0.15;
@@ -301,7 +336,7 @@ export function createZombies3D(ctx) {
         bob = -Math.abs(cw) * 1.8 * amp + 0.9 * amp;
         hipsX = sw * 0.08 * amp;
         spineZ = -0.15; chestZ = -0.18; neckZ = 0.35; headZ = 0.2; headX = Math.sin(time * 0.8) * 0.1;
-        uaLZ = 0.55 + sw * 0.25 * amp; uaRZ = 0.55 - sw * 0.25 * amp; uaLX = 0.35; uaRX = -0.35;
+        uaLZ = 0.55 + sw * 0.25 * amp; uaRZ = 0.55 - sw * 0.25 * amp; uaLX = 0.35; uaRX = -0.35; uaLY = 0; uaRY = 0;
         faLZ = 0.55; faRZ = 0.55;
         thL = sw * 0.36 * amp; thR = -sw * 0.36 * amp; thLX = 0.1; thRX = -0.1;
         x2Z = 0.7 + Math.sin(time * 3.3 + seed) * 0.45; x2X = 0.5 + Math.sin(time * 2.1) * 0.2;   // third arm flails
@@ -330,14 +365,14 @@ export function createZombies3D(ctx) {
       } else {
         spineZ -= lunge * 0.28; chestZ -= lunge * 0.22; rootX += lunge * 4;
         headZ -= lunge * 0.15; jaw -= lunge * 0.55;
-        if (armSide) { uaRZ = uaRZ * (1 - raise) + (2.5 * raise) - slash * 1.6; faRZ -= raise * 0.6 - slash * 0.4; uaRX -= raise * 0.4; }
-        else { uaLZ = uaLZ * (1 - raise) + (2.5 * raise) - slash * 1.6; faLZ -= raise * 0.6 - slash * 0.4; uaLX += raise * 0.4; }
+        if (armSide) { uaRZ = uaRZ * (1 - raise) + (2.5 * raise) - slash * 1.6; faRZ -= raise * 0.6 - slash * 0.4; uaRX -= raise * 0.4; uaRY *= 1 - raise; }
+        else { uaLZ = uaLZ * (1 - raise) + (2.5 * raise) - slash * 1.6; faLZ -= raise * 0.6 - slash * 0.4; uaLX += raise * 0.4; uaLY *= 1 - raise; }
         chestY += (armSide ? -1 : 1) * slash * 0.35;
       }
     } else if (attacking) {
       // pinned to its victim: gnawing, clawing
       chestZ -= 0.18 + gnaw * 0.05; neckZ += 0.1; headZ += gnaw * 0.15; jaw = -0.5 - Math.abs(gnaw) * 0.4;
-      uaLZ = Math.max(uaLZ, 1.3) + gnaw * 0.2; uaRZ = Math.max(uaRZ, 1.3) - gnaw * 0.2;
+      uaLZ = Math.max(uaLZ, 1.3) + gnaw * 0.2; uaRZ = Math.max(uaRZ, 1.3) - gnaw * 0.2; uaLY *= 0.3; uaRY *= 0.3;
     }
     // ---- burning: flailing, writhing ----
     if (burning > 0.01 && t !== 'crawler') {
@@ -349,12 +384,15 @@ export function createZombies3D(ctx) {
       headX += Math.sin(time * 9 + seed) * 0.15 * b; jaw = -0.6 - Math.abs(Math.sin(time * 8)) * 0.3 * b;
       chestX += Math.sin(time * 3.3) * 0.12 * b;
     }
-    // ---- flinch away from the hit, stagger from knockback ----
+    // ---- flinch away from the hit (the arm on the hit side jerks), stagger from knockback ----
     if (fl > 0) {
       const back = Math.cos(s.hitA), side = Math.sin(s.hitA);
       spineZ += fl * 0.28 * back; chestZ += fl * 0.25 * back; headZ += fl * 0.4 * back;
       chestX -= fl * 0.3 * side; headX -= fl * 0.35 * side;
       uaLZ += fl * 0.3; uaRZ += fl * 0.25; rootX -= fl * 1.6 * back;
+      // limb flinch: the arm on the side that was hit snaps back, the other flails up
+      if (s.hitSide < 0) { uaLZ -= fl * 0.9; faLZ += fl * 0.6; uaRZ += fl * 0.4; } else { uaRZ -= fl * 0.9; faRZ += fl * 0.6; uaLZ += fl * 0.4; }
+      if (s.hitLeg) { if (s.hitSide < 0) { thL += fl * 0.3; shL -= fl * 0.4; } else { thR += fl * 0.3; shR -= fl * 0.4; } }
     }
     if (stg > 0.01) {
       const k = stg;
@@ -371,10 +409,10 @@ export function createZombies3D(ctx) {
     pose.set(B.NECK, 0, headY * 0.4, neckZ);
     pose.set(B.HEAD, headX, headY * 0.6, headZ);
     pose.set(B.JAW, 0, 0, jaw);
-    pose.set(B.UARM_L, uaLX, 0, uaLZ);
+    pose.set(B.UARM_L, uaLX, uaLY, uaLZ);
     pose.set(B.FARM_L, 0, 0, faLZ);
     pose.set(B.HAND_L, 0.1, 0, hdLZ);
-    pose.set(B.UARM_R, uaRX, 0, uaRZ);
+    pose.set(B.UARM_R, uaRX, uaRY, uaRZ);
     pose.set(B.FARM_R, 0, 0, faRZ);
     pose.set(B.HAND_R, -0.1, 0, hdRZ);
     pose.set(B.THIGH_L, thLX, 0, thL);
@@ -387,17 +425,19 @@ export function createZombies3D(ctx) {
     pose.scale(B.X1, x1S, x1S, x1S);
     pose.set(B.X2, x2X, 0, x2Z);
     pose.root[0] = rootX; pose.root[1] = rootY + bob; pose.root[2] = rootZ;
+    // body variation: head size, arm length, missing parts (their stumps are option groups)
+    if (L.headK !== 1) pose.scale(B.HEAD, L.headK, L.headK, L.headK);
+    if (L.armK !== 1) { pose.scale(B.UARM_L, 1, L.armK, 1); pose.scale(B.UARM_R, 1, L.armK, 1); }
+    if (L.missing.jaw) pose.scale(B.JAW, 0.02, 0.02, 0.02);
+    if (L.missing.armL) pose.scale(B.FARM_L, 0.02, 0.02, 0.02);
+    if (L.missing.armR) pose.scale(B.FARM_R, 0.02, 0.02, 0.02);
+    if (L.missing.handL) pose.scale(B.HAND_L, 0.02, 0.02, 0.02);
+    if (L.missing.handR) pose.scale(B.HAND_R, 0.02, 0.02, 0.02);
   }
 
   function writeColors(k, z, s, elite) {
-    const t = z.type, id = z.id;
-    pool.color(k, T_SKIN, skinCols[t][id & 3], t === 'screamer' ? 0.55 : 0.75 + s.seed2 * 0.25);
-    const cl = clothCols[t];
-    const tear = t === 'brute' || t === 'boss' ? 0.8 : 0.25 + s.seed * 0.55;
-    pool.color(k, T_CLOTH, cl[id % cl.length], tear);
-    pool.color(k, T_CLOTH2, t === 'boss' ? bossPants : pantsCols[(id >> 2) % pantsCols.length], 0.35 + s.seed2 * 0.55);
-    pool.color(k, T_ACCENT, elite ? eliteEye : eyeCols[t], elite ? 7 : t === 'boss' ? 5 : 2.6);
-    pool.color(k, T_HAIR, hairCols[(id >> 1) % hairCols.length], (id % 97) + s.seed * 13);
+    packLook(s.look, pool.stage, k * TEX_W * 4, elite ? eliteEye : null);
+    if (elite) pool.stage[k * TEX_W * 4 + T_VAR2 * 4 + 1] = 1;         // elites: veins standing out all over
   }
 
   // ---- update ---------------------------------------------------------------------------
@@ -446,7 +486,12 @@ export function createZombies3D(ctx) {
       s.zh = zh;
       s.a += angleDiff(s.a, z.angle) * damp(10, dt);
       const stride = STRIDE[z.type] * T.scale;
-      s.ph += (Math.min(s.spd, T.def.speed[1] * 2) / stride) * TAU * dt;
+      const G = s.look.gait;
+      // an uneven stride: some zombies lurch (speed up and hang in each step)
+      s.ph += (Math.min(s.spd, T.def.speed[1] * 2) / stride) * TAU * dt * G.speedK * (1 + 0.45 * G.lurch * Math.sin(s.ph));
+      // now and then the head snaps to one side
+      s.jerk = Math.max(0, s.jerk - dt * 3.2);
+      if (G.twitchRate > 0.15 && fx.rng() < dt * 0.35 * G.twitchRate) { s.jerk = 1; s.jerkDir = fx.rng() < 0.5 ? -1 : 1; }
       s.atk += dt; s.scream += dt; s.flinch += dt; s.slam += dt; s.spit += dt;
       const f = z.flags | 0;
       if ((f & ZFLAG.ATTACKING) && !(s.fl & ZFLAG.ATTACKING) && s.atk > 0.8) { s.atk = 0; s.atkN++; }
@@ -496,7 +541,8 @@ export function createZombies3D(ctx) {
       drawn++;
       stats.lod[L]++;
       poseZombie(z, s, T, s.ft);
-      pose.place(z.x, zh, z.y, s.a, sc);
+      const lk = s.look;
+      pose.place(z.x, zh, z.y, s.a, sc * lk.girthD, sc * lk.height, sc * lk.girthW);
       pool.solve(i, model, pose);
       writeColors(i, z, s, elite);
       const buff = (f & ZFLAG.BUFFED) ? 0.6 + Math.sin(time * 8 + s.seed * 6) * 0.4 : 0;
@@ -519,7 +565,7 @@ export function createZombies3D(ctx) {
 
   function eyeGlow(i, z, T, elite) {
     const P = T.P;
-    const c = elite ? eliteEye : eyeCols[z.type];
+    const c = elite ? eliteEyeCol : _eyeCol.setRGB(...s0(z).look.eyeCol);
     for (const sgn of [-1, 1]) {
       pool.point(i, B.HEAD, P.headC[0] + P.headR[0] * 0.95, P.headC[1] + P.headR[1] * 0.12, sgn * P.headR[2] * 0.36, _o);
       fx.glow(_o.x, _o.y, _o.z, elite ? 6 : 10, c, elite ? 0.7 : 0.5);
@@ -574,16 +620,20 @@ export function createZombies3D(ctx) {
     if (killer) push = Math.atan2(e.y - killer.y, e.x - killer.x);
     else if (s && s.flinch < 1) push = facing + Math.PI + s.hitA;
     const rel = angleDiff(facing, push);          // 0 = pushed forward (falls on its face)
+    const look = s ? s.look : zombieLook(type, e.id | 0);
     let kind;
     if (type === 'crawler') kind = 'flat';
-    else if (seed < 0.2) kind = 'crumple';
+    else if (seed < 0.14) kind = 'crumple';
+    else if (seed < 0.26) kind = 'kneel';
     else if (Math.abs(rel) < 0.8) kind = 'front';
     else if (Math.abs(rel) > 2.3) kind = 'back';
     else kind = 'side';
+    // some falls twist on the way down (a shot spins a zombie round)
+    const spin = kind !== 'flat' && hash01((e.id | 0) * 5 + 11) < 0.22 ? (rel > 0 ? 1 : -1) : 0;
     corpses.push({
-      type, x: e.x, y: e.y, a: facing, t: 0, id: e.id | 0, seed, kind, side: rel > 0 ? 1 : -1,
+      type, x: e.x, y: e.y, a: facing, t: 0, id: e.id | 0, seed, kind, side: rel > 0 ? 1 : -1, spin, look,
       char: s ? s.char : 0, burn: s ? s.burn : 0, elite: false, lod: -1, spd: s ? Math.min(1, s.spd / 120) : 0,
-      armsUp: s ? s.armsUp : true, tilt: s ? s.tilt : 0, cache: null,
+      armsUp: [0, 2, 3].includes(look.gait.armsMode), tilt: s ? s.tilt : 0, cache: null,
       h: s && s.zh > 0 ? s.zh : gnd(e.x, e.y),     // killed up on a roof: it drops there
     });
   }
@@ -625,6 +675,7 @@ export function createZombies3D(ctx) {
         pose.rootPivot[0] = dir > 0 ? -2.5 : 3.5;
         pose.root[1] = Math.sin(th) * (dir > 0 ? P.headR[0] * 0.9 : 4.8 * P.depth);
       }
+      if (c.spin) pose.rootRot[1] = c.spin * e * 1.5;
       // knees give a little, arms fly up then fall slack, head whips and lolls
       pose.set(B.HIPS, 0, 0, dir * 0.15 * e);
       pose.set(B.SPINE, 0, 0, -dir * 0.1 * e);
@@ -646,6 +697,25 @@ export function createZombies3D(ctx) {
       pose.set(B.FOOT_R, 0.2, 0, dir * 0.3 * e);
       pose.set(B.JAW, 0, 0, jaw);
       pose.set(B.X2, 0.8, 0, 0.4);
+      return;
+    }
+    if (c.kind === 'kneel') {
+      // sinks to its knees, sways, head lolling, and finally pitches forward
+      const kn = Math.min(1, t / 0.5), kne = kn * kn * (3 - 2 * kn);
+      const tp = Math.max(0, Math.min(1, (t - 0.55) / 0.75)), tpe = tp * tp;
+      pose.set(B.THIGH_L, 0, 0, 1.45 * kne); pose.set(B.SHIN_L, 0, 0, -2.4 * kne); pose.set(B.FOOT_L, 0, 0, -0.5 * kne);
+      pose.set(B.THIGH_R, 0.1, 0, 1.4 * kne); pose.set(B.SHIN_R, 0, 0, -2.4 * kne); pose.set(B.FOOT_R, 0, 0, -0.5 * kne);
+      pose.root[1] = -P.knee * 0.95 * kne + tpe * 2;
+      pose.rootRot[2] = -(tpe * 1.3 + (tp >= 1 ? settle : 0));
+      pose.rootRot[1] = c.side * Math.sin(t * 3.2) * 0.12 * (1 - tp);
+      pose.rootPivot[0] = 4; pose.rootPivot[1] = P.knee * 0.2;
+      pose.set(B.SPINE, 0, 0, 0.1 * kne - 0.25 * tpe);
+      pose.set(B.CHEST, 0, 0, 0.05 * kne - 0.1 * tpe);
+      pose.set(B.NECK, 0, c.side * 0.3, 0.55 * kne);
+      pose.set(B.HEAD, c.side * 0.4 * kne, c.side * 0.3, 0.6 * kne + 0.3 * tpe);
+      pose.set(B.UARM_L, 0.2, 0, 0.2 * (1 - kne) + 0.15); pose.set(B.FARM_L, 0, 0, 0.5);
+      pose.set(B.UARM_R, -0.2, 0, 0.3 * (1 - kne) + 0.2); pose.set(B.FARM_R, 0, 0, 0.4);
+      pose.set(B.JAW, 0, 0, jaw);
       return;
     }
     // crumple: the knees fold first, then it topples forward onto its face
@@ -670,7 +740,6 @@ export function createZombies3D(ctx) {
     pose.set(B.JAW, 0, 0, jaw);
   }
 
-  const corpseSkin = new THREE.Color(), corpseCloth = new THREE.Color();
   function updateCorpses(dt, time, lodD) {
     let w = 0;
     const camX = ctx.camera.position.x, camY = ctx.camera.position.z;
@@ -697,18 +766,23 @@ export function createZombies3D(ctx) {
         continue;
       }
       poseCorpse(c, T);
-      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale);
+      const lk = c.look;
+      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.girthD, T.scale * lk.height, T.scale * lk.girthW);
+      pose.scale(B.HEAD, lk.headK, lk.headK, lk.headK);
+      if (lk.missing.jaw) pose.scale(B.JAW, 0.02, 0.02, 0.02);
+      if (lk.missing.armL) pose.scale(B.FARM_L, 0.02, 0.02, 0.02);
+      if (lk.missing.armR) pose.scale(B.FARM_R, 0.02, 0.02, 0.02);
+      if (lk.missing.handL) pose.scale(B.HAND_L, 0.02, 0.02, 0.02);
+      if (lk.missing.handR) pose.scale(B.HAND_R, 0.02, 0.02, 0.02);
       pool.solve(i, model, pose);
-      const skin = skinCols[c.type][c.id & 3];
-      // dulled: the dead should not compete with the living for attention
-      corpseSkin.copy(skin).multiplyScalar(0.7);
-      pool.color(i, T_SKIN, corpseSkin, 0.95);
-      const cl = clothCols[c.type];
-      corpseCloth.copy(cl[c.id % cl.length]).multiplyScalar(0.75);
-      pool.color(i, T_CLOTH, corpseCloth, 0.5);
-      pool.color(i, T_CLOTH2, pantsCols[(c.id >> 2) % pantsCols.length], 0.9);
-      pool.texel(i, T_ACCENT, 0.05, 0.03, 0.02, 0);
-      pool.color(i, T_HAIR, hairCols[(c.id >> 1) % hairCols.length], (c.id % 97) + c.seed * 13);
+      packLook(lk, pool.stage, i * W4, null);
+      // dulled: the dead should not compete with the living for attention (dim eyes, sallow skin, more blood)
+      const o = i * W4;
+      for (let q = 0; q < 3; q++) { pool.stage[o + T_SKIN * 4 + q] *= 0.7; pool.stage[o + T_CLOTH * 4 + q] *= 0.75; }
+      pool.stage[o + T_SKIN * 4 + 3] = 0.95;
+      pool.stage[o + T_CLOTH * 4 + 3] = Math.max(0.5, pool.stage[o + T_CLOTH * 4 + 3]);
+      pool.stage[o + T_CLOTH2 * 4 + 3] = Math.min(1, pool.stage[o + T_CLOTH2 * 4 + 3] + 0.3);
+      pool.stage[o + T_ACCENT * 4] = 0.05; pool.stage[o + T_ACCENT * 4 + 1] = 0.03; pool.stage[o + T_ACCENT * 4 + 2] = 0.02; pool.stage[o + T_ACCENT * 4 + 3] = 0;
       pool.texel(i, T_FX, 0, c.char, 0, 0.3);
       pool.texel(i, T_FX2, c.burn, c.type === 'bloater' || c.type === 'spitter' ? 0.25 : 0.6, 0.35, 0);
       if (c.t > 2 && sink === 0) {
@@ -811,6 +885,8 @@ export function createZombies3D(ctx) {
     s.flinch = 0;
     // angle of the incoming hit relative to the zombie's facing (0 = from the front)
     s.hitA = angleDiff(s.a, Math.atan2(fromY - z.y, fromX - z.x));
+    s.hitSide = Math.sin(s.hitA) > 0 ? 1 : -1;
+    s.hitLeg = fx.rng() < 0.3;
   }
 
   function addEvents(events) {
@@ -892,6 +968,18 @@ export function createZombies3D(ctx) {
     setQuality(q) {
       quality = q;
       high = q !== 'low';
+      if (tierOf(q) !== tier) {
+        // a different tier of models: swap every mesh's geometry (the old ones are freed)
+        tier = tierOf(q);
+        for (const t of ZOMBIE_IDS) {
+          types[t].lods.forEach((m, L) => {
+            const g = instancedGeometry(modelArrays(t, L, tier));
+            m.mesh.geometry.dispose();
+            m.mesh.geometry = g;
+            m.geometry = g;
+          });
+        }
+      }
       for (const t of ZOMBIE_IDS) {
         types[t].lods.forEach((m, L) => { m.mesh.castShadow = high && L === 0; m.mesh.receiveShadow = high && L === 0; });
       }
@@ -900,6 +988,7 @@ export function createZombies3D(ctx) {
       pool.dispose();
       tex.detail.dispose();
       tex.normal.dispose();
+      tex.detail2.dispose();
       for (const g of gibGeos) g.dispose();
       for (const m of gibMeshes) m.dispose();
       gibMat.dispose();
