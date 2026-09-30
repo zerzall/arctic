@@ -1,9 +1,15 @@
 // Materials of the static world (WORLD, SPEC §7.5). One material per merged bucket:
 //   std    PBR (MeshStandardMaterial) for everything opaque — concrete, brick, rubber, char,
 //          wood, canvas, bark, rock...: vertex colour × the per-vertex detail layer
-//          (world-surf.js), with per-vertex roughness / metalness, plus a world-space
-//          weathering pass (rain streaks, stains, dust on ledges, moss on the north sides,
-//          rust on metal, brushed-metal roughness) driven by the detail array's macro layer
+//          (world-surf.js: normal, roughness and albedo, then hue, desaturation and height),
+//          with per-vertex roughness / metalness; bricks, slabs and shingles each get a tone
+//          of their own hashed from their place in the world, organic layers a second, larger
+//          copy of themselves, so nothing repeats tile after tile; parallax occlusion on ultra
+//          and cinematic, where the relief also shadows the sun; the normal detail the mips
+//          lose turns into roughness. Then a world-space weathering pass (rain streaks and
+//          drips, stains, splash dirt at the foot of walls, grime in the low spots, dust on
+//          ledges, moss on the north sides, rust on metal, brushed-metal roughness) driven
+//          by the detail array's macro layer
 //   paint  vehicle paint: MeshPhysicalMaterial with a clear coat over the detail layer, dusty
 //          toward the ground, sun-faded on top, with rust specks along the sills
 //   glass  dark reflective glass; window panes carry an interior-mapped room behind them

@@ -11,9 +11,13 @@
 // picks tiling detail layers from the world's detail texture array (world-surf.js):
 // asphalt aggregate, poured slabs with joints, grass and gravel/dirt normals and
 // roughness, each sampled at two scales so the ground stays crisp at the eye on a 4K
-// screen without visible tiling. Hard surfaces are wet: glossy, with dark puddles in a
-// world-space noise mask that mirror the lamps (scene.environment + the light pool), and
-// the lane paint is worn through in places. 'low' uses a plain Lambert with the albedo.
+// screen without visible tiling, with each layer's own colour (stones of different rock,
+// dry blades) and height: where surfaces meet, the higher texels win (grass tufts over the
+// dirt, stones through the sand), and soft ground meets along a wandering line. Hard
+// surfaces are wet: glossy, with dark puddles that fill the surface's low spots first and a
+// damp rim, mirroring the lamps (scene.environment + the light pool); the lane paint is
+// worn through in places and off the aggregate's tops. 'low' uses a plain Lambert with the
+// albedo.
 //
 // Decals (blood, scorch, acid, oil, gore) are painted into the tile canvases; dirty tiles
 // are re-uploaded one per frame, nearest to the camera first. Memory is fixed: the
@@ -569,7 +573,8 @@ export function makeGroundMaterial(tex, uniforms) {
           vec2 r = vec2(xz.x * 0.8 - xz.y * 0.6, xz.x * 0.6 + xz.y * 0.8);
           vec4 b = texture(uDetail, vec3(r / (tile * 3.7) + 0.37, layer));
           gLC = texture(uDetail, vec3(xz / tile, layer + ${DET_LAYERS}.0));
-          return vec4(mix(a.xy, b.xy, 0.3), (a.b + b.b) * 0.5, a.a * 0.7 + b.a * 0.3);
+          // (the second scale's normals count less: its 3.7x stones read as cobbles in a wet road's reflections)
+          return vec4(mix(a.xy, b.xy, 0.16), (a.b + b.b) * 0.5, a.a * 0.7 + b.a * 0.3);
         }
         // a big-scale wear layer (cracks, seams, patches, oil) at two incommensurate scales and angles:
         // returns its deviation from neutral in xy (normal), z (roughness) and w (albedo)
@@ -747,7 +752,7 @@ export function makeGroundMaterial(tex, uniforms) {
           // (wet hard ground: a film of water fills between the stones, so the lamps' reflections stay long
           // smooth streaks instead of a glitter of every grain)
           vec2 dn = (gD.xy * 2.0 - 1.0) * (1.0 - gPuddle * 0.97) * 0.9 * (1.0 - clamp(gMip * 0.12 - 0.1, 0.0, 0.55));
-          dn *= 1.0 - 0.45 * wetness * gHard - 0.3 * gDamp;
+          dn *= 1.0 - 0.5 * wetness * gHard - 0.3 * gDamp;
           // a curb's face leans toward the road, its top edge back the other way
           dn += gCurbN * gCurb * 1.5;
           if (uRain > 0.0) {

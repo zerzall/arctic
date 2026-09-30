@@ -320,7 +320,7 @@ const RECIPES = {
         const xx = wrap(x + off, N), col = Math.floor(xx / bl), fx = xx - col * bl;
         const b = row * perRow + (col < perRow ? col : perRow - 1), id = T1[b], id2 = T2[b];
         // chipped arrises: worley bites near the edges, and the edge itself wanders
-        const bite = F.w32.id[i] < 0.4 ? Math.max(0, 0.3 - F.w32.f1[i]) * 9 * s : 0;
+        const bite = F.w32.id[i] < 0.4 ? Math.max(0, 0.3 - F.w32.f1[i] - (F.f64[i] - 0.5) * 0.3) * (6 + 8 * F.w32.id[i]) * s : 0;
         const edge = Math.min(fy - 0.4 * s, rh - 1 - fy, fx * 0.9, (bl - 1 - fx) * 0.9) - (F.f64[i] - 0.5) * 1.4 * s - bite;
         const m = smooth(0.3 * s, 1.6 * s, edge);   // 0 = mortar joint, 1 = brick face
         const face = 0.8 + ((fx / bl) - 0.5) * (id - 0.5) * 0.12 + ((fy / rh) - 0.5) * (id2 - 0.5) * 0.1
@@ -459,21 +459,23 @@ const RECIPES = {
     const { N, F, h, a, r, co, ds } = c;
     yield* eachRow(N, (y) => {
       for (let i = y * N, e = i + N; i < e; i++) {
-        // alligatored char: raised blocks split by deep cracks, soot, ash on the blocks, rust showing through
-        const e = F.w16.f2[i] - F.w16.f1[i];
-        const crack = smooth(0.07, 0.0, e);
-        const block = smooth(0.02, 0.3, e);
-        const blister = F.w64.id[i] < 0.35 ? smooth(0.35, 0.05, F.w64.f1[i]) : 0;
-        const ash = smooth(0.55, 0.75, F.f8[i] * 0.6 + F.f64[i] * 0.4) * block;
-        const rust = smooth(0.58, 0.75, F.f4[i] * 0.7 + F.f32[i] * 0.3);
-        h[i] = 0.35 + block * 0.35 * (0.7 + 0.3 * F.w16.id[i]) - crack * 0.25 + blister * 0.12 + (F.f64[i] - 0.5) * 0.1;
-        a[i] = 0.34 + ash * 0.3 + rust * 0.12 + (F.f64[i] - 0.5) * 0.1 - crack * 0.12 + (F.w16.id[i] - 0.5) * 0.06;
+        // burnt: soot-black, a fine crackle of charred plates where it burnt deepest, blisters, grey
+        // ash lying in patches, rust (on metal) or brown char showing through where it flaked
+        const deep = smooth(0.46, 0.6, F.f8[i] * 0.7 + F.f64[i] * 0.3);
+        const e = F.w32.f2[i] - F.w32.f1[i] + (F.f64[i] - 0.5) * 0.06;
+        const crack = smooth(0.09, 0.01, e) * deep;
+        const block = smooth(0.02, 0.3, e) * deep;
+        const blister = F.w64.id[i] < 0.3 ? smooth(0.32, 0.08, F.w64.f1[i] + (F.f32[i] - 0.5) * 0.2) * (1 - deep) : 0;
+        const ash = smooth(0.58, 0.74, F.f16[i] * 0.6 + F.f64[i] * 0.4) * (0.4 + 0.6 * block);
+        const rust = smooth(0.6, 0.76, F.f4[i] * 0.7 + F.f32[i] * 0.3) * (1 - deep * 0.6);
+        h[i] = 0.4 + block * 0.18 * (0.7 + 0.3 * F.w32.id[i]) - crack * 0.16 + blister * 0.1 + (F.f64[i] - 0.5) * 0.1 + (F.f32[i] - 0.5) * 0.06;
+        a[i] = 0.36 + ash * 0.26 + rust * 0.12 + (F.f64[i] - 0.5) * 0.08 - crack * 0.1 + (F.f16[i] - 0.5) * 0.08 - blister * 0.03;
         co[i] = rust * 0.14 * (1 - ash);
         ds[i] = ash * 0.9 + (1 - rust) * 0.4;
-        r[i] = 0.9 - rust * 0.08 - blister * 0.1;
+        r[i] = 0.9 - rust * 0.08 - blister * 0.12;
       }
     });
-    return 1.6;
+    return 1.3;
   },
 
   *wood(c) {
@@ -556,10 +558,10 @@ const RECIPES = {
         const split = smooth(0.08, 0.02, plateE) * (1 - fiss);
         const flake = (F.w16.id[j] - 0.5) * 0.12;
         const moss = fiss * smooth(0.55, 0.7, F.f4[i]);
-        const lichen = F.w32.id[i] < 0.12 ? smooth(0.32, 0.18, F.w32.f1[i]) * (1 - fiss) : 0;
+        const lichen = F.w32.id[i] < 0.06 ? smooth(0.3, 0.18, F.w32.f1[i]) * (1 - fiss) * smooth(0.45, 0.6, F.f16[i]) : 0;
         const cork = (F.f32[i] - 0.5) * 0.14 + (F.n[(i + 9 * 40503) & F.M] - 0.5) * 0.05;
         h[i] = 0.2 + (1 - fiss) * (0.6 + flake + (1 - ridge) * 0.12) - split * 0.25 + (F.f64[i] - 0.5) * 0.1 + cork;
-        a[i] = 0.54 - fiss * 0.32 + (F.f16[i] - 0.5) * 0.12 + (F.f4[i] - 0.5) * 0.1 + flake * 0.6 - split * 0.16 + lichen * 0.18 + moss * 0.05 + cork * 0.5;
+        a[i] = 0.52 - fiss * 0.28 + (F.f16[i] - 0.5) * 0.1 + (F.f4[i] - 0.5) * 0.08 + flake * 0.35 - split * 0.14 + lichen * 0.14 + moss * 0.05 + cork * 0.3;
         co[i] = (F.f8[i] - 0.5) * 0.06 - moss * 0.06 - lichen * 0.02;
         cg[i] = moss * 0.14 + lichen * 0.05;
         ds[i] = lichen * 0.55;
@@ -1210,13 +1212,13 @@ const RECIPES = {
         const j = y * N + ((x * 3) & (N - 1));
         const chip = F.w64.f1[j] < 0.3 ? (F.w64.id[j] < 0.28 ? -1 : F.w64.id[j] > 0.74 ? 1 : 0) * smooth(0.3, 0.22, F.w64.f1[j]) : 0;
         const g = F.n[(i + 32 * 40503) & F.M];
-        const marble = (F.f16[i] - 0.5) * 0.07 + (F.f64[i] - 0.5) * 0.04 + (g > 0.95 ? 0.03 : g < 0.05 ? -0.03 : 0);
+        const marble = (F.f16[i] - 0.5) * 0.07 + (F.f64[i] - 0.5) * 0.04 + (g > 0.93 ? 0.05 : g < 0.07 ? -0.05 : 0);
         const lane = smooth(0.45, 0.7, F.f4[i]);
         const scK = Math.min(1, sc[i] * 2.4);
         h[i] = 0.5 + (F.f4[i] - 0.5) * 0.08 + (F.f8[i] - 0.5) * 0.03 - seam * 0.1 + scK * 0.015 + chip * 0.005;
-        a[i] = 0.5 + marble + chip * 0.05 - seam * 0.08 - scK * 0.2 - lane * 0.025;
-        co[i] = chip * 0.012 + lane * 0.008;
-        cg[i] = -chip * 0.008;
+        a[i] = 0.5 + marble + chip * 0.09 - seam * 0.08 - scK * 0.2 - lane * 0.025;
+        co[i] = chip * 0.02 + lane * 0.008 + (g > 0.97 ? 0.05 : 0);
+        cg[i] = -chip * 0.012 + (g < 0.03 ? 0.04 : 0);
         ds[i] = scK * 0.55 + seam * 0.25;
         r[i] = 0.3 + lane * 0.2 + (F.f16[i] - 0.5) * 0.08 + scK * 0.1 + seam * 0.15 + (F.n[(i + 37 * 40503) & F.M] - 0.5) * 0.04;
       }
