@@ -14,7 +14,8 @@ import {
 } from './progression.js';
 import { perkEffects } from './perks.js';
 import { hideoutEffects, grantWeapon, isWeaponKnown } from './upgrades.js';
-import { changeWorld, hideoutFor, isCompleted, MAX_STASH, addMember, MAX_FLAGS } from './world.js';
+import { changeWorld, isCompleted, MAX_STASH, addMember, MAX_FLAGS } from './world.js';
+import { resolveNext } from './graph.js';
 import { getMissions } from './content.js';
 
 /** Scrap multiplier by difficulty (harder worlds pay better). */
@@ -144,7 +145,7 @@ export function settleMission({ world, mission, result, party, difficulty, missi
   // The crew's world: completion, flags, unlocks, stash and the hideout they return to.
   const stash = {};
   let changed = world;
-  const unlocks = { weapon: null, npc: null, flags: [], hideout: null, chapterDone: false, upgradePoints: 0 };
+  const unlocks = { weapon: null, npc: null, flags: [], hideout: null, chapterDone: false, upgradePoints: 0, next: null };
   if (victory) {
     const prevHideout = world.hideout.current;
     changed = changeWorld(world, (w) => {
@@ -188,16 +189,15 @@ export function settleMission({ world, mission, result, party, difficulty, missi
         const pr = players[member.pid];
         if (pr) addMember(w, pr.profile, now);
       }
+      // a first win is a day on the road
+      if (firstClear) w.day = Math.min(999, (w.day | 0) + 1);
+      // where the crew goes next (an arrival at a hideout, its board, or straight to the next
+      // road mission); the hideout they rest in follows
+      const next = resolveNext(w);
+      if (next.kind === 'hideout' && next.hideout !== w.hideout.current) w.hideout.current = next.hideout;
+      unlocks.next = next;
+      if (next.kind === 'hideout' && next.hideout !== prevHideout) unlocks.hideout = next.hideout;
     }, now);
-    // The hideout the crew rests in follows the chapters they have finished.
-    const hideout = hideoutFor(changed, list);
-    if (hideout !== prevHideout) {
-      changed = changeWorld(changed, (w) => {
-        w.hideout.current = hideout;
-        w.progress.flags[`arrived_${hideout}`] = true;
-      }, now);
-      unlocks.hideout = hideout;
-    }
     unlocks.chapterDone = list.length > 0
       && list.filter((m) => m.chapter === mission.chapter).every((m) => isCompleted(changed, m.id));
   }

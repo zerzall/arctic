@@ -14,6 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="css/game.css">
+  <link rel="stylesheet" href="css/story.css">
   <!-- three.js for the first-person view (SPEC §7.5); must come before any module script. -->
   <script type="importmap">
     { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
@@ -38,7 +39,8 @@
         </header>
 
         <nav class="panel menu-panel" aria-label="Main menu">
-          <button id="btn-solo" class="btn btn-primary btn-big" type="button"><span class="btn-title">Play Solo</span><span class="btn-sub">Just you against the horde (AI squadmates optional)</span></button>
+          <button id="btn-story" class="btn btn-primary btn-big btn-story" type="button"><span class="btn-title">Story</span><span class="btn-sub">Road to Haven — a co-op campaign with hideouts, levels and saves</span></button>
+          <button id="btn-solo" class="btn btn-big" type="button"><span class="btn-title">Play Solo</span><span class="btn-sub">Just you against the horde (AI squadmates optional)</span></button>
           <button id="btn-host" class="btn btn-big" type="button"><span class="btn-title">Host Online Game</span><span class="btn-sub">Get a room code for your friends</span></button>
           <button id="btn-join" class="btn btn-big" type="button"><span class="btn-title">Join Game</span><span class="btn-sub">Enter a code or invite link</span></button>
           <div class="menu-row">
@@ -109,6 +111,7 @@
           </div>
 
           <div class="lobby-col lobby-col-wide">
+            <div id="story-lobby-panel" class="panel story-panel" hidden></div>
             <div class="panel settings-panel">
               <div class="panel-head"><h2>Mission</h2><span id="settings-owner" class="panel-meta"></span></div>
               <div id="map-cards" class="map-cards" role="radiogroup" aria-label="Map"></div>
@@ -164,6 +167,12 @@
           </div>
         </footer>
       </div>
+    </section>
+
+    <!-- ================= STORY (campaigns, saves) ================= -->
+    <section id="screen-story" class="screen screen-story" hidden aria-labelledby="story-title">
+      <div class="menu-bg" aria-hidden="true"><div class="bg-haze"></div><div class="bg-embers"></div></div>
+      <div id="story-wrap" class="lobby-wrap story-wrap"></div>
     </section>
 
     <!-- ================= GAME ================= -->
@@ -380,6 +389,7 @@
             <label class="range-row"><span>Effects</span><input type="range" min="0" max="100" step="1" data-setting="sfx"><output></output></label>
             <label class="range-row"><span>Music</span><input type="range" min="0" max="100" step="1" data-setting="music"><output></output></label>
             <label class="check-row"><input type="checkbox" data-setting="muted"><span>Mute all sound</span></label>
+            <label class="check-row" id="set-speech-row"><input type="checkbox" data-setting="speech"><span>Spoken story dialogue <small>reads scenes aloud with your browser's voices, a different voice for each character</small></span></label>
           </section>
         </div>
         <div class="btn-row"><button type="button" class="btn btn-primary" data-close>Done</button></div>
@@ -448,6 +458,9 @@
         <div class="btn-row"><button type="button" class="btn btn-primary" data-close>Got it</button></div>
       </div>
     </div>
+
+    <!-- story overlays: dialogue scenes, station panels, briefing and debrief (ui/story.js) -->
+    <div id="story-root" class="story-root"></div>
 
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
     <noscript><div class="noscript">Highway Horde needs JavaScript to run.</div></noscript>

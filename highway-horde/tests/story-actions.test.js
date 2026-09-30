@@ -10,6 +10,8 @@ import { createWorld } from '../public/js/shared/story/world.js';
 import { tierCost, KIT_ITEMS, HIDEOUT_UPGRADES } from '../public/js/shared/story/upgrades.js';
 import { PERK_RESET_COST } from '../public/js/shared/story/perks.js';
 import { xpForLevel } from '../public/js/shared/story/progression.js';
+import { setStoryContent, clearStoryContent } from '../public/js/shared/story/content.js';
+import { STUB_CONTENT } from '../public/js/shared/story/stub-content.js';
 
 function state(over = {}) {
   const profile = { ...createProfile({ name: 'A', cls: 'soldier' }), scrap: 500, ...over.profile };
@@ -18,7 +20,7 @@ function state(over = {}) {
 }
 
 test('every action id is listed and unknown ones are refused', () => {
-  assert.deepEqual(ACTIONS.slice().sort(), ['buygun', 'buykit', 'diff', 'donate', 'hideout', 'kit', 'loadout', 'perk', 'rename', 'reset', 'talk', 'tier']);
+  assert.deepEqual(ACTIONS.slice().sort(), ['buygun', 'buykit', 'diff', 'donate', 'flag', 'hideout', 'kit', 'loadout', 'perk', 'rename', 'reset', 'talk', 'tier']);
   const s = state();
   for (const bad of [null, undefined, 'x', 5, {}, { a: 5 }, { a: 'format' }, { a: '__proto__' }]) {
     const r = applyAction(s, bad);
@@ -116,6 +118,24 @@ test('host-only actions: difficulty and the campaign name', () => {
   assert.equal(applyAction(h, { a: 'diff', difficulty: 'normal' }).world, h.world, 'no change, no new revision');
   assert.equal(applyAction(h, { a: 'rename', name: '  The  Reds ' }).world.name, 'The Reds');
   assert.equal(applyAction(h, { a: 'rename', name: '​' }).reason, 'invalid');
+});
+
+test('flags: scenes seen and topics heard, only well-formed or known ones', () => {
+  const s = state();
+  assert.equal(applyAction(s, { a: 'flag', flag: 'seen_arrival_depot' }).world.progress.flags.seen_arrival_depot, true);
+  assert.equal(applyAction(s, { a: 'flag', flag: 'seen_epilogue' }).world.progress.flags.seen_epilogue, true);
+  assert.equal(applyAction(s, { a: 'flag', flag: 'bus_running' }).reason, 'invalid', 'mission flags come from rewards, not from a client');
+  assert.equal(applyAction(s, { a: 'flag', flag: '__proto__' }).reason, 'invalid');
+  assert.equal(applyAction(s, { a: 'flag', flag: 5 }).reason, 'invalid');
+  const again = applyAction(s, { a: 'flag', flag: 'seen_epilogue' });
+  assert.equal(applyAction({ ...s, world: again.world }, { a: 'flag', flag: 'seen_epilogue' }).world, again.world);
+  // a dialogue topic's own flags are allowed once the content is installed
+  setStoryContent(STUB_CONTENT);
+  try {
+    assert.equal(applyAction(s, { a: 'flag', flag: 'asked_mara' }).world.progress.flags.asked_mara, true);
+  } finally {
+    clearStoryContent();
+  }
 });
 
 test('talking sets a flag once and only for well-formed ids', () => {

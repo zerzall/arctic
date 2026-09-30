@@ -20,6 +20,7 @@ import {
   createWorld, sanitizeWorld, touchMember, pickHighest, changeWorld, availableMissions, currentChapter,
   isCompleted,
 } from '../shared/story/world.js';
+import { resolveNext, pendingArrival, epiloguePending } from '../shared/story/graph.js';
 import { applyAction } from '../shared/story/actions.js';
 import { specFromProfile } from '../shared/story/mods.js';
 import { settleMission } from '../shared/story/rewards.js';
@@ -62,6 +63,8 @@ export class StoryHost extends StoryView {
     this.stubTicks = 0;
     this.stageTick0 = -1;
     this.stageLaunch = null;
+    /** True while the crew is being briefed on a road mission without a hideout in between. */
+    this.direct = false;
     /** The peer that offered a newer copy of the world (asked for right after its welcome). */
     this.want = null;
   }
@@ -77,6 +80,7 @@ export class StoryHost extends StoryView {
       ready: this.ready.slice(),
       hideout: this.world.hideout.current,
       chapter: this.chapter(),
+      direct: this.direct,
     };
   }
 
@@ -165,7 +169,14 @@ export class StoryHost extends StoryView {
   startInfo() {
     const specs = {};
     for (const r of this.session.roster) specs[r.id] = this.specFor(r);
-    return { ...this.stateInfo(), specs, map: this.stageLaunch ? this.stageLaunch.mapId : null };
+    const info = { ...this.stateInfo(), specs, map: this.stageLaunch ? this.stageLaunch.mapId : null };
+    // a hideout visit may open with a scene: an arrival, or the ending
+    if (this.stage === 'hideout') {
+      const arrival = pendingArrival(this.world, this.world.hideout.current);
+      if (arrival) info.arrival = { hideout: arrival.hideout, flag: arrival.flag };
+      if (epiloguePending(this.world)) info.epilogue = true;
+    }
+    return info;
   }
 
   /** The spec a late joiner enters the running game with. */
@@ -192,7 +203,14 @@ export class StoryHost extends StoryView {
   begin() {
     if (this.stage !== 'lobby' || this.session.inGame) return false;
     this.lobbySettings = { ...this.session.settings };
-    return this._launchHideout();
+    return this._enter();
+  }
+
+  /** Walk on to wherever the story goes next: a hideout, or straight into a road mission's briefing. */
+  _enter() {
+    const next = resolveNext(this.world);
+    if (next.kind === 'briefing' && getMission(next.mission)) return this._launchStaging(next.mission);
+    return this._launchHideout(next.hideout);
   }
 
   /** The crew returned to the lobby: stage back to the lobby, world and profiles stay. */
@@ -220,13 +238,18 @@ export class StoryHost extends StoryView {
     };
   }
 
-  _launchHideout() {
-    const w = this.world;
+  _launchHideout(hideoutId) {
+    let w = this.world;
+    if (hideoutId && hideoutId !== w.hideout.current) {
+      w = changeWorld(w, (d) => { d.hideout.current = hideoutId; }, this.nowFn());
+      this._setWorld(w, true);
+    }
     this.stage = 'hideout';
     this.missionId = null;
     this.debrief = null;
     this.ready = [];
     this.finished = false;
+    this.direct = false;
     this.party = this.session.roster.map((r) => r.id);
     const hideout = w.hideout.current;
     const stage = { stage: 'hideout', mapId: hideout, mapMode: 'defend' };
@@ -239,17 +262,37 @@ export class StoryHost extends StoryView {
     });
   }
 
+  /** A road mission without a hideout in between: brief the crew on its map, frozen until they deploy. */
+  _launchStaging(missionId) {
+    const m = getMission(missionId);
+    if (!m) return false;
+    this.missionId = m.id;
+    this.direct = true;
+    this.debrief = null;
+    this.finished = false;
+    this.party = this.session.roster.map((r) => r.id);
+    this.ready = this.session.roster.filter((r) => r.bot || r.host).map((r) => r.id);
+    this.stage = 'briefing';
+    const ok = this._launchMissionGame(m, true);
+    if (ok) this.session._holdGame();
+    return ok;
+  }
+
   _launchMission() {
     const m = this.mission;
     if (!m) return false;
-    const w = this.world;
     this.stage = 'mission';
     this.finished = false;
     this.debrief = null;
     this.stageTick0 = -1;
     this.party = this.session.roster.map((r) => r.id);
+    return this._launchMissionGame(m, false);
+  }
+
+  _launchMissionGame(m, staging) {
+    const w = this.world;
     const mapMode = m.mode === 'campaign' ? 'campaign' : m.mode === 'zone' ? 'zone' : 'defend';
-    const stage = { stage: 'mission', mapId: m.map, mapMode, stub: m.stub || null };
+    const stage = { stage: 'mission', mapId: m.map, mapMode, stub: staging ? null : m.stub || null };
     this.stageLaunch = stage;
     const story = this._storySettings(m.id);
     const time = m.time === 'day' ? 'day' : 'night';
@@ -279,7 +322,9 @@ export class StoryHost extends StoryView {
       id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot, story: this.specFor(r),
     }));
     const create = session.hooks.createGame || ((opts) => createStoryGame(opts, stage));
-    return session._launchGame({ mapId, gameSettings: game, players, create, story: this.startInfo() });
+    const ok = session._launchGame({ mapId, gameSettings: game, players, create, story: this.startInfo() });
+    if (ok) this._emit('state', this.stateInfo());
+    return ok;
   }
 
   // ---- results ----------------------------------------------------------------------------------------
@@ -366,6 +411,7 @@ export class StoryHost extends StoryView {
       replay: res.replay,
       stash: res.stash,
       unlocks: res.unlocks,
+      next: res.unlocks.next,
       players,
       time: Math.floor(Number(ev.time) || 0),
     };
@@ -427,6 +473,7 @@ export class StoryHost extends StoryView {
       case 'back': return this._back(isHost);
       case 'retry': return this._retry(isHost);
       case 'heal': return this._heal(pid);
+      case 'bed': return this._bed(pid, isHost);
       case 'sync': return this._sync(pid, act.world);
       default: break;
     }
@@ -447,6 +494,7 @@ export class StoryHost extends StoryView {
     if (!m || !availableMissions(this.world, getMissions()).some((q) => q.id === m.id)) return fail('locked');
     this.stage = 'briefing';
     this.missionId = m.id;
+    this.direct = false;
     this.party = this.session.roster.map((r) => r.id);
     // AI survivors and the host are ready by definition; everyone else confirms
     this.ready = this.session.roster.filter((r) => r.bot || r.host).map((r) => r.id);
@@ -457,6 +505,7 @@ export class StoryHost extends StoryView {
   _unpick(isHost) {
     if (!isHost) return fail('host');
     if (this.stage !== 'briefing') return fail('busy');
+    if (this.direct) return fail('busy');
     this.stage = 'hideout';
     this.missionId = null;
     this.ready = [];
@@ -483,7 +532,7 @@ export class StoryHost extends StoryView {
   _back(isHost) {
     if (!isHost) return fail('host');
     if (this.stage !== 'debrief') return fail('busy');
-    return this._launchHideout() ? { ok: true } : fail('error');
+    return this._enter() ? { ok: true } : fail('error');
   }
 
   _retry(isHost) {
@@ -505,6 +554,18 @@ export class StoryHost extends StoryView {
     }
     p.hp = p.maxHp;
     p.armor = Math.max(p.armor, p.perks.startArmor);
+    return { ok: true };
+  }
+
+  /** The bed: anyone gets patched up; the host also moves the day on. */
+  _bed(pid, isHost) {
+    const healed = this._heal(pid);
+    if (!healed.ok) return healed;
+    if (isHost) {
+      const day = (this.world.day | 0) + 1;
+      this._setWorld(changeWorld(this.world, (d) => { d.day = Math.min(999, day); }, this.nowFn()), true);
+      return { ok: true, note: { day } };
+    }
     return { ok: true };
   }
 

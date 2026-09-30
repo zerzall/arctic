@@ -16,9 +16,13 @@ import {
 } from './upgrades.js';
 import { changeWorld, MAX_STASH, MAX_FLAGS } from './world.js';
 import { cleanText } from './profile.js';
+import { contentFlags } from './content.js';
 
 /** Action ids a client may send. */
-export const ACTIONS = ['loadout', 'tier', 'buygun', 'perk', 'reset', 'hideout', 'donate', 'kit', 'buykit', 'talk', 'diff', 'rename'];
+export const ACTIONS = ['loadout', 'tier', 'buygun', 'perk', 'reset', 'hideout', 'donate', 'kit', 'buykit', 'talk', 'flag', 'diff', 'rename'];
+
+/** Flags a player may set from the client: conversations heard and scenes seen (plus the ones dialogue topics set). */
+const CLIENT_FLAG = /^(talked|seen)_[a-z0-9_]{1,32}$/;
 
 /** Most scrap moved into the stash in one action. */
 export const MAX_DONATION = 1000;
@@ -113,10 +117,15 @@ export function applyAction(state, act) {
       const w = changeWorld(world, (d) => { d.hideout.stash[act.item] += 1; }, now);
       return { ok: true, profile: { ...profile, scrap: profile.scrap - cost }, world: w, note: { item: act.item, cost } };
     }
-    case 'talk': {
-      const npc = typeof act.npc === 'string' && /^[a-z][a-z0-9_]{0,23}$/.test(act.npc) ? act.npc : null;
-      if (!npc) return fail('invalid');
-      const flag = `talked_${npc}`;
+    case 'talk':
+    case 'flag': {
+      let flag = null;
+      if (act.a === 'talk') {
+        if (typeof act.npc === 'string' && /^[a-z][a-z0-9_]{0,23}$/.test(act.npc)) flag = `talked_${act.npc}`;
+      } else if (typeof act.flag === 'string' && (CLIENT_FLAG.test(act.flag) || contentFlags().has(act.flag))) {
+        flag = act.flag;
+      }
+      if (!flag) return fail('invalid');
       if (world.progress.flags[flag] || Object.keys(world.progress.flags).length >= MAX_FLAGS) return { ok: true, profile, world };
       return { ok: true, profile, world: changeWorld(world, (d) => { d.progress.flags[flag] = true; }, now) };
     }

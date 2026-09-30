@@ -171,10 +171,11 @@ test('finishing a chapter moves the crew to the next hideout and flags the arriv
     world = changeWorld(world, (w) => { for (const id of ids) w.progress.completed[id] = { stars: 1, time: 1 }; });
   };
   complete(['m1_1', 'm1_2', 'm2_1']);
-  // m1_3 finishes chapter 1: still the roadhouse
+  // m1_3 finishes chapter 1: still the roadhouse, and m2_1 is next
   let r = settleMission({ world, mission: getMission('m1_3'), result: win(1), party: [{ pid: 1, profile: p }], missions });
   assert.equal(r.unlocks.chapterDone, true);
   assert.equal(r.unlocks.hideout, null);
+  assert.deepEqual(r.unlocks.next, { kind: 'hideout', hideout: 'roadhouse' });
   assert.equal(r.unlocks.npc, 'priya');
   assert.equal(r.world.hideout.recruited.priya, true);
   assert.equal(r.world.progress.flags.beacon_lit, true);
@@ -182,9 +183,10 @@ test('finishing a chapter moves the crew to the next hideout and flags the arriv
   complete(['m1_3']);
   r = settleMission({ world, mission: getMission('m3_1'), result: win(1), party: [{ pid: 1, profile: p }], missions });
   assert.equal(r.unlocks.hideout, 'depot');
+  assert.deepEqual(r.unlocks.next, { kind: 'hideout', hideout: 'depot', arrival: true });
   assert.equal(r.world.hideout.current, 'depot');
   assert.equal(r.world.progress.node, 'hideout:depot');
-  assert.equal(r.world.progress.flags.arrived_depot, true);
+  assert.equal(r.world.day, 42, 'a first win is a day on the road');
   assert.equal(validateWorld(r.world).ok, true);
 }));
 

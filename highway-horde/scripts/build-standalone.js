@@ -47,7 +47,7 @@ const res = await build({
 const inline = (s) => s.replace(/<\/(script)/gi, '<\\/$1');
 
 let html = readFileSync(join(PUB, 'index.html'), 'utf8');
-const css = readFileSync(join(PUB, 'css/game.css'), 'utf8');
+const css = readFileSync(join(PUB, 'css/game.css'), 'utf8') + '\n' + readFileSync(join(PUB, 'css/story.css'), 'utf8');
 const scripts = [
   readFileSync(join(PUB, 'vendor/peerjs.min.js'), 'utf8'),
   readFileSync(join(PUB, 'config.js'), 'utf8'),
@@ -58,7 +58,7 @@ const swap = (from, to) => {
   if (!from.test(html)) throw new Error(`index.html no longer contains ${from}`);
   html = html.replace(from, () => to);
 };
-swap(/<link rel="stylesheet" href="css\/game\.css">/, `<style>\n${css.replace(/<\/(style)/gi, '<\\/$1')}\n</style>`);
+swap(/<link rel="stylesheet" href="css\/game\.css">\s*<link rel="stylesheet" href="css\/story\.css">/, `<style>\n${css.replace(/<\/(style)/gi, '<\\/$1')}\n</style>`);
 swap(/\s*<!--[^>]*three\.js[^>]*-->\s*<script type="importmap">[\s\S]*?<\/script>/, '');
 swap(/\s*<script src="vendor\/peerjs\.min\.js" defer><\/script>/, '');
 swap(/\s*<script src="config\.js" defer><\/script>/, '');

@@ -11,7 +11,7 @@ import { xpForLevel, MAX_XP } from '../public/js/shared/story/progression.js';
 import { tierSpent } from '../public/js/shared/story/upgrades.js';
 import {
   createWorld, sanitizeWorld, validateWorld, changeWorld, pickHighest, touchMember, isMember, missionBoard, availableMissions,
-  nextMission, currentChapter, chapterDone, campaignDone, hideoutFor, worldSummary, missionStatus, MAX_FLAGS, MAX_MEMBERS,
+  nextMission, currentChapter, chapterDone, campaignDone, worldSummary, missionStatus, MAX_FLAGS, MAX_MEMBERS,
 } from '../public/js/shared/story/world.js';
 import { setStoryContent, clearStoryContent, getMissions } from '../public/js/shared/story/content.js';
 import { STUB_CONTENT } from '../public/js/shared/story/stub-content.js';
@@ -281,12 +281,9 @@ test('mission progress follows the chain and the chapters', () => {
     w = done('m1_3');
     assert.equal(chapterDone(w, missions, 1), true);
     assert.equal(chapterDone(w, missions, 2), false);
-    assert.equal(hideoutFor(w, missions), 'roadhouse');
     assert.equal(currentChapter(w, missions), 2);
     w = done('m2_1');
-    assert.equal(hideoutFor(w, missions), 'roadhouse', 'chapter 2 rests at the roadhouse again');
     w = done('m3_1');
-    assert.equal(hideoutFor(w, missions), 'depot');
     assert.equal(campaignDone(w, missions), true);
     assert.equal(nextMission(w, missions), null);
     // explicit prerequisites override the chain

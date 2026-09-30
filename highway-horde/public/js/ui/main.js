@@ -11,6 +11,7 @@ import { createRenderer, renderMapPreview, renderClassPortrait } from '../render
 import { createAudio } from '../audio/audio.js';
 import { MAP_LIST, buildMap } from '../shared/maps.js';
 import { startApp } from './app.js';
+import { installStoryContent } from './story-content.js';
 
 const deps = {
   hostGame,
@@ -37,4 +38,5 @@ deps.renderer3dReady = import('../render3d/renderer3d.js')
     console.warn('[ui] first-person renderer unavailable, the classic view will be used:', err && err.message ? err.message : err);
   });
 
+installStoryContent();
 startApp(deps);

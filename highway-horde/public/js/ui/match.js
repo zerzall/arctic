@@ -152,6 +152,8 @@ export function startMatch(ctx, session) {
   });
   hud.setRoster(session.roster, session.localId);
   audio.setMap(map);
+  // Story rooms (STORY.md): the overlays, stations and dialogue of ui/story.js ride on the match.
+  const story = session.story && ctx.story ? ctx.story : null;
   if (made.fellBack && prefs.settings.view === 'fps') {
     // Said once per page: the setting stays 'fps' for a browser that can do it next time.
     if (!ctx.toldNoWebgl) hud.toast('3D view unavailable here — playing in the classic top-down view', 'minor', 5);
@@ -238,7 +240,12 @@ export function startMatch(ctx, session) {
   if (wantFullscreen && hasUserActivation()) goFullscreen();
 
   function overlayOpen() {
-    return pauseOpen || endShown || chat.isOpen || shop.isOpen || ctx.modals.count > 0;
+    return pauseOpen || endShown || chat.isOpen || shop.isOpen || ctx.modals.count > 0 || (!!story && story.isOpen);
+  }
+
+  /** In the hideout (and around a mission) the cash shop and the wave ready vote are not used. */
+  function storyHub() {
+    return !!story && session.story.stage !== 'mission';
   }
 
   function refreshEnabled() {
@@ -289,6 +296,7 @@ export function startMatch(ctx, session) {
     if (chat.isOpen) chat.close();
     pauseOpen = true;
     pauseEl.hidden = false;
+    if (story) story.suspend(true);
     audio.ui('click');
     refreshEnabled();
     requestAnimationFrame(() => {
@@ -300,6 +308,7 @@ export function startMatch(ctx, session) {
     if (!pauseOpen) return;
     pauseOpen = false;
     pauseEl.hidden = true;
+    if (story) story.suspend(false);
     if (document.activeElement && pauseEl.contains(document.activeElement)) document.activeElement.blur();
     refreshEnabled();
   }
@@ -413,7 +422,9 @@ export function startMatch(ctx, session) {
       inp.pause = false;
     }
     if (inp.pause) {
-      if (shop.isOpen) shop.close();
+      // (a scene or a station panel is closed first; the briefing and the result screen are not)
+      if (story && story.isOpen && story.escape()) { /* closed */ }
+      else if (shop.isOpen) shop.close();
       else if (chat.isOpen) chat.close();
       else if (pauseOpen) closePause();
       else if (!endShown && ctx.modals.count === 0) {
@@ -421,7 +432,7 @@ export function startMatch(ctx, session) {
         guardGhostClick();
       }
     }
-    if (inp.shop && !pauseOpen && !endShown && !chat.isOpen && ctx.modals.count === 0) {
+    if (inp.shop && !pauseOpen && !endShown && !chat.isOpen && ctx.modals.count === 0 && !storyHub() && !(story && story.isOpen)) {
       if (shop.isOpen) {
         shop.close();
       } else {
@@ -438,12 +449,14 @@ export function startMatch(ctx, session) {
       }
     }
     if (inp.chat && !pauseOpen && !endShown && !shop.isOpen && !chat.isOpen && ctx.modals.count === 0) chat.open();
-    if (inp.ready && !overlayOpen() && view && me && (view.phase === 'prep' || view.phase === 'intermission') && !me.ready) {
+    if (inp.ready && !overlayOpen() && !storyHub() && view && me && (view.phase === 'prep' || view.phase === 'intermission') && !me.ready) {
       session.ready();
       audio.ui('ready');
     }
     if (inp.nav) {
-      if (shop.isOpen) {
+      if (story && story.isOpen && !pauseOpen && ctx.modals.count === 0) {
+        story.nav(inp.nav);
+      } else if (shop.isOpen) {
         shop.nav(inp.nav);
       } else if (ctx.modals.count > 0) {
         const top = ctx.modals.top();
@@ -546,6 +559,7 @@ export function startMatch(ctx, session) {
       renderer.addEvents(events, { localId: session.localId });
       hud.addEvents(events);
       shop.onEvents(events, session.localId);
+      if (story) story.matchEvents(events);
       audio.addEvents(events, fps ? { x: lp.x, y: lp.y, yaw: lp.yaw, localId: session.localId } : { x: lp.x, y: lp.y, localId: session.localId });
     }
 
@@ -559,6 +573,7 @@ export function startMatch(ctx, session) {
       look: fps ? renderLook : undefined,
     });
     updateLockHint(me);
+    if (story) story.matchFrame(lastView, lastLocal);
 
     fpsAcc += dt;
     fpsN++;
@@ -595,7 +610,8 @@ export function startMatch(ctx, session) {
           shop.close();
           hud.toast('Wave started — shop closed', 'danger', 2.4);
         }
-        if ((phase === 'gameover' || phase === 'victory') && !endAt) endAt = now;
+        // (a story stage ends through the story flow: its result screen, not this one)
+        if ((phase === 'gameover' || phase === 'victory') && !endAt && !story) endAt = now;
         prevPhase = phase;
       }
       if (shop.isOpen && me && me.state !== 'alive') shop.close();
@@ -636,6 +652,12 @@ export function startMatch(ctx, session) {
   scope.on(screen, 'touchend', () => goFullscreen());
 
   refreshEnabled();
+  if (story) {
+    story.matchBegin(session, {
+      map, toast: (text, tone, secs) => hud.toast(text, tone, secs), inputMode: () => input.mode, refreshEnabled: () => refreshEnabled(),
+      openPause: () => openPause(),
+    });
+  }
   raf = requestAnimationFrame(frame);
 
   ctx.setDebug({
@@ -678,6 +700,7 @@ export function startMatch(ctx, session) {
       if (stopped) return;
       stopped = true;
       cancelAnimationFrame(raf);
+      if (story) story.matchEnd();
       scope.dispose();
       const parts = [chat, shop, hud, input, renderer];
       for (const p of parts) {

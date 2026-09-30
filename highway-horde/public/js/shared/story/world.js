@@ -3,7 +3,7 @@
 // campaign later takes the highest-`rev` copy it has and the campaign survives its
 // original host leaving.
 //
-//   World = { v:1, id, name, rev, createdAt, updatedAt, difficulty,
+//   World = { v:1, id, name, rev, createdAt, updatedAt, difficulty, day,
 //     progress:{ node, completed:{[missionId]:{stars,time}}, flags:{[k]:true} },
 //     hideout:{ current, upgrades:{[id]:tier}, recruited:{[npcId]:true}, stash:{ scrap, parts, medkit, ammo, frag ... } },
 //     members:{[profileId]:{ name, lastSeen }} }
@@ -15,7 +15,7 @@
 import { DIFFICULTY_IDS } from '../constants.js';
 import { newId, isId, cleanText } from './profile.js';
 import { HIDEOUT_IDS, HIDEOUT_TIERS, KIT_IDS } from './upgrades.js';
-import { FIRST_HIDEOUT, HIDEOUT_AFTER_CHAPTER, DEFAULT_CHAPTERS } from './content.js';
+import { FIRST_HIDEOUT, START_DAY, chapterTitle } from './content.js';
 
 /** World format version (see save.js for migrations). */
 export const WORLD_VERSION = 1;
@@ -60,6 +60,7 @@ export function createWorld(opts = {}) {
     createdAt: now,
     updatedAt: now,
     difficulty: DIFFICULTY_IDS.includes(opts.difficulty) ? opts.difficulty : 'normal',
+    day: START_DAY,
     progress: { node: `hideout:${FIRST_HIDEOUT}`, completed: {}, flags: {} },
     hideout: { current: FIRST_HIDEOUT, upgrades: {}, recruited: {}, stash: startingStash() },
     members: {},
@@ -136,6 +137,7 @@ export function sanitizeWorld(raw, opts = {}) {
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : now,
     updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : now,
     difficulty: DIFFICULTY_IDS.includes(raw.difficulty) ? raw.difficulty : 'normal',
+    day: int(raw.day, START_DAY, 999, START_DAY),
     progress: { node: `hideout:${current}`, completed, flags },
     hideout: { current, upgrades, recruited, stash },
     members,
@@ -269,19 +271,6 @@ export function campaignDone(world, missions) {
 }
 
 /**
- * The hideout for the world's progress: the one after the latest finished chapter that has
- * one (the campaign starts in the Roadhouse).
- */
-export function hideoutFor(world, missions) {
-  let id = FIRST_HIDEOUT;
-  const chapters = new Set(missions.map((m) => m.chapter));
-  for (const ch of [...chapters].sort((a, b) => a - b)) {
-    if (chapterDone(world, missions, ch) && HIDEOUT_AFTER_CHAPTER[ch]) id = HIDEOUT_AFTER_CHAPTER[ch];
-  }
-  return id;
-}
-
-/**
  * A short summary of a world for the menus.
  * @param {object} world
  * @param {object[]} missions
@@ -291,14 +280,13 @@ export function worldSummary(world, missions) {
   const stars = done.reduce((a, m) => a + world.progress.completed[m.id].stars, 0);
   const next = nextMission(world, missions);
   const chapter = currentChapter(world, missions);
-  const ch = DEFAULT_CHAPTERS.find((c) => c.n === chapter);
   return {
     id: world.id,
     name: world.name,
     difficulty: world.difficulty,
     rev: world.rev,
     chapter,
-    chapterTitle: ch ? ch.title : `Chapter ${chapter}`,
+    chapterTitle: chapterTitle(chapter),
     missionsDone: done.length,
     missionsTotal: missions.length,
     stars,

@@ -41,6 +41,7 @@ export class StoryClient extends StoryView {
     this.missionId = typeof s.mission === 'string' ? s.mission : null;
     this.party = Array.isArray(s.party) ? s.party.filter((n) => Number.isInteger(n)) : [];
     this.ready = Array.isArray(s.ready) ? s.ready.filter((n) => Number.isInteger(n)) : [];
+    this.direct = !!s.direct;
     if (this.stage !== 'debrief') this.debrief = null;
   }
 
@@ -48,13 +49,14 @@ export class StoryClient extends StoryView {
     return {
       stage: this.stage, mission: this.missionId, party: this.party, ready: this.ready,
       hideout: this.world ? this.world.hideout.current : null,
+      direct: this.direct,
     };
   }
 
   /** The `story` part of a start message: a new game of the next stage. */
   onStart(info) {
     this._setState(info);
-    this.stageInfo = { map: info.map || null };
+    this.stageInfo = { map: info.map || null, arrival: info.arrival || null, epilogue: !!info.epilogue };
     this._emit('state', this.stateInfo());
   }
 

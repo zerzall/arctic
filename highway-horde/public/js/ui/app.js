@@ -13,6 +13,8 @@ import { probeSoftwareGpu } from './gfx.js';
 import { createLobby } from './lobby.js';
 import { createChatHistory } from './chat.js';
 import { startMatch } from './match.js';
+import { createStoryApp } from './story.js';
+import { loadProfile as loadStoryProfile } from '../shared/story/save.js';
 import { ROOM_CODE_LENGTH, DIFFICULTY_IDS, WAVE_OPTIONS } from '../shared/constants.js';
 
 const JOIN_ERRORS = {
@@ -127,6 +129,7 @@ export function startApp(deps) {
   function showTitle() {
     titleEl.hidden = false;
     lobby.hide();
+    if (ctx.story) ctx.story.screen.hide();
     title.refresh();
     // Drop ?join= so going back to the menu doesn't rejoin on reload.
     try {
@@ -139,6 +142,13 @@ export function startApp(deps) {
   function profile() {
     const name = title.ensureName();
     return { name, color: prefs.color, cls: prefs.cls };
+  }
+
+  /** Story menu: the Story screen replaces the title until the player goes back or hosts. */
+  function openStory() {
+    titleEl.hidden = true;
+    lobby.hide();
+    ctx.story.screen.show();
   }
 
   // ---- session lifecycle ---------------------------------------------------------------------
@@ -186,14 +196,23 @@ export function startApp(deps) {
     sessionScope.sub(s, 'roster', onRoster);
     sessionScope.sub(s, 'settings', () => lobby.render());
     sessionScope.sub(s, 'chat', (m) => ctx.history.push(m));
-    sessionScope.sub(s, 'start', () => beginMatch());
+    sessionScope.sub(s, 'start', (info) => {
+      // A story room chains its games (hideout, mission, hideout ...): the next stage
+      // replaces the running match instead of waiting for the lobby.
+      if (info && info.story && match) {
+        match.stop();
+        match = null;
+      }
+      beginMatch();
+    });
+    if (s.story) ctx.story.attach(s, sessionScope);
     sessionScope.sub(s, 'lobby', () => backToLobby());
     sessionScope.sub(s, 'disconnected', (info) => onDisconnected(info && info.reason));
     sessionScope.sub(s, 'notice', (n) => {
       if (match) match.notice(n.text);
       else flashToast(n.text);
     });
-    if (s.isHost) {
+    if (s.isHost && !s.story) {
       const l = prefs.lobby;
       s.setSettings({
         mapId: l.mapId,
@@ -206,6 +225,7 @@ export function startApp(deps) {
       });
     }
     titleEl.hidden = true;
+    ctx.story.screen.hide();
     if (s.inGame) {
       // A late joiner's 'start' arrives on the next task; only step in if it didn't.
       sessionScope.timeout(() => {
@@ -272,6 +292,7 @@ export function startApp(deps) {
   function teardown() {
     if (match) match.stop();
     match = null;
+    if (ctx.story) ctx.story.detach();
     if (sessionScope) sessionScope.dispose();
     sessionScope = null;
     lobby.reset();
@@ -283,13 +304,21 @@ export function startApp(deps) {
   }
 
   function onDisconnected(reason) {
+    const wasStory = !!(session && session.story);
     teardown();
     audio.ui('leave');
-    ctx.dialogs.error('Disconnected', DISCONNECT_REASONS[reason] || reason || 'The connection was lost.', () => showTitle());
+    const text = DISCONNECT_REASONS[reason] || reason || 'The connection was lost.';
+    if (wasStory) {
+      // The campaign and the survivor were saved as the host sent them: nothing is lost.
+      ctx.dialogs.error('Disconnected', `${text} Your copy of the campaign and your survivor are saved on this device \u2014 anyone from the crew can host it again from the Story menu.`, () => openStory());
+    } else {
+      ctx.dialogs.error('Disconnected', text, () => showTitle());
+    }
   }
 
   function leave() {
     const s = session;
+    const wasStory = !!(s && s.story);
     teardown();
     if (s) {
       try {
@@ -299,15 +328,16 @@ export function startApp(deps) {
       }
     }
     audio.ui('leave');
-    showTitle();
+    if (wasStory) openStory();
+    else showTitle();
   }
 
-  function host(transport) {
+  function host(transport, story = null) {
     const p = profile();
     const solo = transport === 'local';
     connect(
       'host',
-      () => deps.hostGame({ ...p, transport }),
+      () => deps.hostGame(story ? { ...p, transport, story } : { ...p, transport }),
       solo ? 'Preparing…' : 'Creating room…',
       solo ? 'Setting up your solo run.' : 'Getting a room code for your friends.',
     );
@@ -315,7 +345,10 @@ export function startApp(deps) {
 
   function doJoin(code, via) {
     const p = profile();
-    connect('join', () => deps.joinGame({ code, via, ...p }), 'Joining…', `Connecting to room ${code}.`);
+    // A survivor saved in this browser comes along: a story room checks it and keeps it up to
+    // date; any other room ignores it.
+    const story = loadStoryProfile() ? { profile: ctx.story.ensureProfile() } : null;
+    connect('join', () => deps.joinGame(story ? { code, via, ...p, story } : { code, via, ...p }), 'Joining…', `Connecting to room ${code}.`);
   }
 
   // ---- screens & dialogs ------------------------------------------------------------------------
@@ -323,6 +356,7 @@ export function startApp(deps) {
   const title = createTitle({
     ...ctx,
     savePrefs: ctx.savePrefs,
+    onStory: () => openStory(),
     onSolo: () => host('local'),
     onHost: () => host('auto'),
     onJoin: () => join.open(),
@@ -330,6 +364,12 @@ export function startApp(deps) {
     onHowTo: () => ctx.howTo.open(),
   });
   const join = createJoinDialog({ ...ctx, onSubmit: doJoin });
+  ctx.profileInfo = () => profile();
+  ctx.story = createStoryApp(ctx, {
+    hostStory: (transport, story) => host(transport, story),
+    joinDialog: () => join.open(),
+    showTitle: () => showTitle(),
+  });
   const lobby = createLobby(ctx);
   applySettings();
   bindFullscreenButtons();

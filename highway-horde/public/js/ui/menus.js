@@ -10,6 +10,7 @@ import { cleanName, isCoarsePointer } from './storage.js';
 import { applyPreset, presetMatches, PRESET_KEYS } from './gfx.js';
 import { currentUiScale } from './uiscale.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
+import { speechSupported } from './story-voice.js';
 
 // ---- modal stack ------------------------------------------------------------------------
 
@@ -112,7 +113,7 @@ export function perkLines(classId) {
 // ---- title screen ------------------------------------------------------------------------
 
 /**
- * @param {object} ctx app context: { prefs, savePrefs, deps, audio, onSolo, onHost, onJoin, onSettings, onHowTo }
+ * @param {object} ctx app context: { prefs, savePrefs, deps, audio, onStory, onSolo, onHost, onJoin, onSettings, onHowTo }
  */
 export function createTitle(ctx) {
   const { prefs, deps } = ctx;
@@ -238,6 +239,7 @@ export function createTitle(ctx) {
     renderDetail();
   }
 
+  $('#btn-story').addEventListener('click', () => ctx.onStory());
   $('#btn-solo').addEventListener('click', () => ctx.onSolo());
   $('#btn-host').addEventListener('click', () => ctx.onHost());
   $('#btn-join').addEventListener('click', () => ctx.onJoin());
@@ -462,6 +464,8 @@ export function createSettingsDialog(ctx) {
   $('#set-fs-row', dlg).hidden = !fullscreenSupported();
   const lockable = typeof Element !== 'undefined' && typeof Element.prototype.requestPointerLock === 'function';
   $('#set-raw-row', dlg).hidden = !lockable || isCoarsePointer();
+  // Spoken story dialogue needs the browser's speech synthesis.
+  $('#set-speech-row', dlg).hidden = !speechSupported();
 
   /** Whether the first-person view can run here: unknown (null) until the 3D module loads. */
   function webglState() {

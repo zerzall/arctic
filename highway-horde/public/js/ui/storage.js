@@ -16,6 +16,7 @@ export const DEFAULT_CLIENT_SETTINGS = {
   sfx: 1,
   music: 0.6,
   muted: false,
+  speech: false,     // story dialogue read aloud with speechSynthesis (off by default)
   // Graphics. quality goes to renderer.setQuality(); the rest rides along in the settings
   // object of every renderer.render() call (see gfx.js rendererSettings).
   quality: 'ultra',
@@ -185,6 +186,7 @@ export function validateSettings(s) {
     sfx: num01(s.sfx, ds.sfx),
     music: num01(s.music, ds.music),
     muted: bool(s.muted, ds.muted),
+    speech: bool(s.speech, ds.speech),
     quality,
     renderScale: autoOrNum(s.renderScale, RENDER_SCALE_MIN, RENDER_SCALE_MAX, ds.renderScale),
     bloom: bool(s.bloom, fx.bloom),

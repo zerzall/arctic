@@ -309,7 +309,7 @@ export function createLobby(ctx) {
       setText(row.name, r.name);
       row.name.style.color = PLAYER_COLORS[r.color] || '#fff';
       row.el.style.setProperty('--pc', PLAYER_COLORS[r.color] || '#fff');
-      setText(row.cls, c ? `${c.name} · ${c.role}` : r.cls);
+      setText(row.cls, c ? `${c.name} · ${c.role}${r.lvl ? ` · Lv ${r.lvl}` : ''}` : r.cls);
       row.crown.hidden = !r.host;
       row.you.hidden = r.id !== session.localId;
       const solo = session.transport === 'local';
@@ -468,6 +468,8 @@ export function createLobby(ctx) {
     renderMine();
     renderSettings();
     renderFooter();
+    // Story rooms swap the mission settings for the campaign (ui/story-lobby.js).
+    if (ctx.story) ctx.story.lobby.decorate(session);
   }
 
   return {

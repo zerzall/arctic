@@ -32,6 +32,8 @@ export class StoryView {
     this.party = [];
     this.ready = [];
     this.debrief = null;
+    /** True while a road mission is briefed without a hideout in between (no way back). */
+    this.direct = false;
     /** The hideout / mission map ids of the running stage (informational). */
     this.stageInfo = null;
   }
@@ -74,6 +76,10 @@ export class StoryView {
   heal() { this._act({ a: 'heal' }); }
   /** Note a conversation (sets a story flag the dialogue can use). */
   talked(npc) { this._act({ a: 'talk', npc }); }
+  /** Note a scene seen or a topic heard: sets a world flag ("seen_arrival_depot", a topic's setFlags ...). */
+  setFlag(flag) { this._act({ a: 'flag', flag }); }
+  /** Bed: sleep until morning (the host moves the day on), a heal for anyone. */
+  sleep() { this._act({ a: 'bed' }); }
 
   // ---- crew actions (the host decides) -------------------------------------------------
 
