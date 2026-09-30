@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -170,7 +170,8 @@ export const WAVE_OPTIONS = [10, 15, 20, 0];  // 0 = endless
 // Default lobby settings chosen by the host.
 export const DEFAULT_SETTINGS = {
   mapId: 'highway',
-  mode: 'defend',                          // 'defend' | 'zone' (Evac Run) | 'campaign' (shared/zone.js, shared/campaign.js)
+  mode: 'defend',                          // 'defend' | 'zone' (Evac Run) | 'campaign' (shared/zone.js, shared/campaign.js);
+                                           // story games use 'mission' | 'hideout' (sim/story.js)
   time: 'night',                           // 'night' | 'day' (shared/timeofday.js; the campaign is always day)
   difficulty: 'normal',
   waves: 15,

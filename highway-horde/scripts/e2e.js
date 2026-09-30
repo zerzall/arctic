@@ -35,12 +35,17 @@
 //                   the stages driven through the host's game (hill, breakout, floor, roof,
 //                   zip line, escape, "Escaped" end screen), then first person: hill, tower
 //                   floor and roof
-//
-//   l  story        Road to Haven: Story → New campaign (solo) → the first stage (the hideout of the
+//   l  story-loop   Road to Haven: Story → New campaign (solo) → the first stage (the hideout of the
 //                   stub content, or the first road briefing of the real one) → a mission briefed,
 //                   deployed and won → the debrief (stars, XP bar, level-up, perk point spent) →
 //                   on to the next stage; then the saves: reload, the campaign is listed, Export a
 //                   file, Delete, Import it back, Continue resumes it
+//
+//   m  story        Road to Haven: a small mission started through the session's createGame
+//                   hook, two bots: objective tracker, an NPC (Mara) with her talk prompt and
+//                   the radio strip, fuel cans and an optional note picked up, a hold-to-use
+//                   device with its ring, "Mission complete"; then first person: the NPC's
+//                   model with accessory and hair, the items and markers in the 3D scene
 //
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
 // localStorage before every page load); g and h play first person at quality 'low', i both.
@@ -1212,7 +1217,8 @@ async function scenarioFpsSolo(sc) {
   await titleSetup(pl, { name: 'Pointman', cls: 'soldier' });
   await pl.page.click('#btn-solo');
   await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
-  await pl.page.click('#btn-start');
+  // (building the 3D world blocks the page, longer on a busy machine: don't wait on the click)
+  await pl.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
   await waitFpsGame(pl, 1);
   const me0 = (await readState(pl)).me;
   const look0 = await pl.page.evaluate(() => window.__HH.getLook());
@@ -1355,7 +1361,7 @@ async function scenarioFpsRelay(sc) {
   }
   await client.page.click('#btn-ready');
   await waitFor(host, () => window.__HH.session.roster.filter((r) => r.ready).length === 1, null, 'the client ready');
-  await host.page.click('#btn-start');
+  await host.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
   for (const pl of [host, client]) await waitFpsGame(pl, 2);
   const ids = {
     host: await host.page.evaluate(() => window.__HH.session.localId),
@@ -1840,7 +1846,7 @@ async function scenarioCampaign(sc) {
  * mission first, no hideout): the mission is won by the clock when it has one, else forced
  * through the host's own result path.
  */
-async function scenarioStory(sc) {
+async function scenarioStoryLoop(sc) {
   const pl = await sc.player('story');
   pl.url = sc.env.relay.url;
   await titleSetup(pl, { name: 'Wanderer', cls: 'soldier' });
@@ -1997,6 +2003,227 @@ async function scenarioStory(sc) {
   log(`    story: saves ok (export ${(fs.statSync(saved).size / 1024).toFixed(1)} KB), resumed with ${resumed.done.join()} done`);
 }
 
+/**
+ * The story missions (STORY.md §5, SPEC §3.9): a small mission started through the session's
+ * createGame hook (the engine's story screen does that for real), played on the classic view
+ * with two bots: the tracker and the radio strip, an NPC with its prompt, story items picked up,
+ * a hold-to-use device with its ring, an optional note, the end screen; then the same mission in
+ * first person (NPC model with its accessory, items, device and markers in the 3D scene).
+ */
+const E2E_MISSION = {
+  id: 'e2e_field', chapter: 1, index: 1, title: 'Field Test', blurb: 'A test.', map: 'highway', time: 'night', mode: 'free',
+  level: [1, 1], party: { min: 1, max: 6 }, startAt: 'overpass',
+  npcs: [{ id: 'mara', at: 'overpass' }],
+  briefing: [{ who: 'mara', text: 'Ready?' }], debrief: [{ who: 'mara', text: 'Done.' }], rewards: { xp: 1, scrap: 1 },
+  stars: { time: 900, noDowns: true },
+  steps: [
+    { id: 'talk', type: 'dialogue', npc: 'mara', talk: true, text: 'Talk to Mara', lines: [{ who: 'mara', text: 'Take three fuel cans to the bus.', ms: 2500 }] },
+    { id: 'cans', type: 'collect', item: 'fuel', count: 3, at: ['bus'], scatter: 140, text: 'Collect the fuel cans', pressure: false, onStart: [{ type: 'radio', who: 'deke', text: 'Red cans. Look in the trunks.', ms: 2500 }] },
+    { id: 'wire', type: 'activate', at: ['bus'], hold: 4, text: 'Wire the horn (hold E)', pressure: false },
+    { id: 'home', type: 'reach', at: 'overpass', hold: 1, who: 'any', text: 'Get back to the overpass', pressure: false },
+  ],
+  bonus: [{ id: 'note', type: 'collect', item: 'note', note: 'n01', count: 1, at: ['bus'], scatter: 140, text: 'Find the note (optional)' }],
+};
+
+/** Solo lobby → `bots` bots → the mission through the session hook → Start. */
+async function startMission(pl, mission, bots) {
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  for (let i = 0; i < bots; i++) await pl.page.click('#btn-add-bot');
+  await waitFor(pl, (n) => document.querySelectorAll('#roster .roster-row').length === n + 1, bots, 'the roster');
+  await pl.page.evaluate(async (m) => {
+    const s = window.__HH.session;
+    const { Game } = await import('/js/shared/sim.js');
+    const story = { mission: m, simMode: m.mode, title: m.title };
+    s.hooks.createGame = (opts) => new Game({ ...opts, mapId: m.map, settings: { ...opts.settings, mode: 'mission', time: m.time, story } });
+    Object.assign(s.settings, { mapId: m.map, mode: 'mission', time: m.time, story });
+    window.__e2eStory = { events: [] };
+    const orig = s.drainEvents.bind(s);
+    s.drainEvents = () => {
+      const ev = orig();
+      for (const e of ev) if (['objective', 'radio', 'item', 'talk', 'interact', 'storyend', 'npc'].includes(e.type)) window.__e2eStory.events.push(e);
+      return ev;
+    };
+  }, mission);
+  await pl.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
+}
+
+const storyEvents = (pl, type) => pl.page.evaluate((t) => window.__e2eStory.events.filter((e) => e.type === t), type);
+const teleport = (pl, x, y) => pl.page.evaluate(({ x, y }) => {
+  const s = window.__HH.session;
+  const p = s.game.getPlayer(s.localId);
+  p.x = x;
+  p.y = y;
+}, { x, y });
+
+async function scenarioStory(sc) {
+  const pl = await sc.player('story');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Courier', cls: 'soldier' });
+  await startMission(pl, E2E_MISSION, 2);
+  await waitFor(pl, () => {
+    const H = window.__HH;
+    const v = H.getView && H.getView();
+    return !document.querySelector('#screen-game').hidden && !!v && v.players.length === 3 && !!v.story;
+  }, null, 'the mission game', 60e3);
+  // (the bots would do the errands before the scripted player gets to them: they only fight and follow here)
+  await pl.page.evaluate(() => { window.__HH.session.game.story.botGoal = () => null; });
+
+  // The tracker names the first objective; the NPC is there with its state.
+  const t0 = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-story');
+    const rows = [...document.querySelectorAll('#hud .story-row')].map((r) => r.textContent);
+    return el && !el.hidden && rows.length ? rows : false;
+  }, null, 'the objective tracker', 20e3);
+  expect(/talk to mara/i.test(t0.join(' ')), `the tracker should name the first objective: ${JSON.stringify(t0)}`);
+  const view0 = await pl.page.evaluate(() => {
+    const v = window.__HH.getView();
+    return { npcs: v.npcs.map((n) => ({ key: n.key, name: n.name, state: n.state, acc: n.look.accessory, cls: n.look.cls })), mode: v.story.mode, marks: v.story.marks.map((m) => m.kind) };
+  });
+  expect(view0.npcs.length === 1 && view0.npcs[0].key === 'mara' && view0.npcs[0].name === 'Mara Voss', `Mara should be in the view: ${JSON.stringify(view0.npcs)}`);
+  expect(view0.mode === 'mission' && view0.marks.includes('npc'), `the talk step marks the NPC: ${JSON.stringify(view0)}`);
+  log(`    story: tracker "${t0[0].replace(/\s+/g, ' ').trim()}", NPC ${view0.npcs[0].name} (${view0.npcs[0].cls}, ${view0.npcs[0].acc})`);
+
+  // Walk up to her: the prompt, E, her words on the radio strip.
+  await teleport(pl, ...(await pl.page.evaluate(() => { const n = window.__HH.getView().npcs[0]; return [n.x - 40, n.y]; })));
+  const prompt = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-prompt');
+    return el && !el.hidden && /mara/i.test(el.textContent) ? el.textContent : false;
+  }, null, 'the talk prompt', 15e3);
+  await sc.screenshots('-talk-prompt');
+  // (a tap is only seen when a game frame falls inside it: hold E for a moment)
+  await pl.page.keyboard.down('e');
+  await sleep(350);
+  await pl.page.keyboard.up('e');
+  const radio = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-radio');
+    return el && !el.hidden && /fuel cans/i.test(el.textContent) ? el.textContent : false;
+  }, null, 'the radio strip with Mara\'s words', 20e3);
+  expect(/mara/i.test(radio), `the strip names the speaker: "${radio}"`);
+  log(`    story: prompt "${prompt.replace(/\s+/g, ' ').trim()}", radio "${radio.replace(/\s+/g, ' ').trim()}"`);
+  await sc.screenshots('-radio');
+  expect((await storyEvents(pl, 'talk')).length >= 1, 'a talk event should have fired');
+
+  // Fuel cans: three items on the map; stand on each.
+  await waitFor(pl, () => window.__HH.getView().story.items.filter((i) => i.item === 'fuel').length === 3, null, 'three fuel cans on the ground', 20e3);
+  const cans0 = await waitFor(pl, () => {
+    const rows = [...document.querySelectorAll('#hud .story-row')].map((r) => r.textContent);
+    return rows.find((r) => /fuel cans/i.test(r)) || false;
+  }, null, 'the collect row', 10e3);
+  expect(/0\s*\/\s*3/.test(cans0), `the collect row should count 0/3: "${cans0}"`);
+  for (let k = 1; k <= 3; k++) {
+    const spot = await pl.page.evaluate(() => { const it = window.__HH.getView().story.items.find((i) => i.item === 'fuel'); return it ? [it.x, it.y] : null; });
+    if (!spot) break;
+    await teleport(pl, spot[0], spot[1]);
+    await waitFor(pl, (kk) => {
+      const rows = [...document.querySelectorAll('#hud .story-row')].map((r) => r.textContent);
+      const done = window.__e2eStory.events.filter((e) => e.type === 'item' && e.item === 'fuel').length;
+      return done >= kk || rows.some((r) => /fuel cans/i.test(r) && new RegExp(`${kk}\\s*/\\s*3`).test(r)) ? true : false;
+    }, k, `fuel can ${k} picked up`, 15e3);
+    if (k === 1) await sc.screenshots('-items');
+  }
+  const items = await storyEvents(pl, 'item');
+  expect(items.filter((e) => e.item === 'fuel').length >= 3, `three fuel pickups should have been announced: ${JSON.stringify(items)}`);
+  // the optional note: found with the optional row
+  const optRow = await pl.page.evaluate(() => [...document.querySelectorAll('#hud .story-row')].map((r) => r.textContent).find((r) => /note/i.test(r)) || '');
+  log(`    story: fuel collected; optional row "${optRow.replace(/\s+/g, ' ').trim()}"`);
+  const noteSpot = await pl.page.evaluate(() => { const it = window.__HH.getView().story.items.find((i) => i.item === 'note'); return it ? [it.x, it.y] : null; });
+  if (noteSpot) {
+    await teleport(pl, noteSpot[0], noteSpot[1]);
+    await waitFor(pl, () => window.__e2eStory.events.some((e) => e.type === 'item' && e.item === 'note' && e.note === 'n01'), null, 'the note picked up (with its id)', 15e3);
+  }
+
+  // The device: a hold-to-use spot with a ring that fills while E is held.
+  const dev = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const it = v.interactables.find((q) => q.on && !q.done);
+    return it ? { x: it.x, y: it.y, kind: it.kind } : false;
+  }, null, 'the device', 20e3);
+  await teleport(pl, dev.x - 18, dev.y);
+  await waitFor(pl, () => {
+    const el = document.querySelector('#hud .hud-prompt');
+    return el && !el.hidden && /wire the horn/i.test(el.textContent) ? true : false;
+  }, null, 'the device prompt', 15e3);
+  await pl.page.keyboard.down('e');
+  const ring = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const it = v.interactables[0];
+    const r = document.querySelector('#hud .hud-prompt .story-ring');
+    return it && it.prog > 0.15 && r && !r.hidden ? { prog: it.prog, user: it.user } : false;
+  }, null, 'the hold ring filling', 20e3);
+  await sc.screenshots('-hold');
+  expect(ring.user === (await pl.page.evaluate(() => window.__HH.session.localId)), `the ring is held by the local player: ${JSON.stringify(ring)}`);
+  await waitFor(pl, () => window.__e2eStory.events.some((e) => e.type === 'interact'), null, 'the hold to finish', 20e3);
+  await pl.page.keyboard.up('e');
+  log(`    story: device (${dev.kind}) used, ring reached ${ring.prog.toFixed(2)} on the way`);
+
+  // Back to the overpass: the mission ends.
+  const home = await pl.page.evaluate(() => { const m = window.__HH.getView().story.marks.find((q) => q.kind === 'reach'); return m ? [m.x, m.y] : null; });
+  expect(!!home, 'the last step marks the place to reach');
+  await teleport(pl, home[0], home[1]);
+  await waitFor(pl, () => window.__HH.getView().phase === 'victory', null, 'victory', 60e3);
+  const end = await waitFor(pl, () => {
+    const el = document.querySelector('#endscreen');
+    return el && !el.hidden ? { title: document.querySelector('#end-title').textContent, sub: document.querySelector('#end-sub').textContent } : false;
+  }, null, 'the end screen', 20e3);
+  expect(/mission complete/i.test(end.title), `the end screen should say the mission is complete: "${end.title}"`);
+  const fin = (await storyEvents(pl, 'storyend'))[0];
+  expect(fin && fin.result === 'victory' && fin.stars >= 1 && fin.mission === 'e2e_field', `a storyend event: ${JSON.stringify(fin)}`);
+  log(`    story: "${end.title}" — ${fin.stars} star(s), ${fin.time}s, items ${JSON.stringify(fin.items)}`);
+  await sc.screenshots('-victory');
+  await sc.close(pl);
+
+  // First person: the NPC model with its accessory, the items, the device, the markers.
+  const fp = await sc.player('story-fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  fp.url = sc.env.relay.url;
+  await titleSetup(fp, { name: 'Pointman', cls: 'soldier' });
+  // (in the open, at the west crossroads)
+  await startMission(fp, { ...E2E_MISSION, startAt: 'crossroadsW', npcs: [{ id: 'mara', at: 'crossroadsW' }] }, 1);
+  await waitFpsGame(fp, 2, 'the first-person mission');
+  await waitFor(fp, () => window.__HH.getView().npcs.length === 1, null, 'the NPC in the first-person view', 30e3);
+  // a row of the cast beside Mara (the hideout's residents): hats, hair, packs, an apron
+  const at = await fp.page.evaluate(() => { const n = window.__HH.getView().npcs[0]; return [n.x, n.y]; });
+  await fp.page.evaluate(async ([ax, ay]) => {
+    const { createNpc } = await import('/js/shared/sim/npcs.js');
+    const g = window.__HH.session.game;
+    ['deke', 'ozzy', 'june', 'roz', 'quill'].forEach((key, i) => createNpc(g, { key, x: ax + 24 * (i % 2), y: ay + (i - 2) * 46, angle: Math.PI }));
+  }, at);
+  await waitFor(fp, () => window.__HH.getView().npcs.length === 6, null, 'the cast in the view', 15e3);
+  // stand 190 px west of them, looking east
+  await teleport(fp, at[0] - 190, at[1]);
+  await turnTo(fp, 0);
+  await sleep(2500);
+  const scene = await waitFor(fp, () => {
+    const d = window.__HH.renderer.debug;
+    const sc3 = d && d.scene;
+    const npcs = sc3 && sc3.getObjectByName('npcs3d');
+    const story = sc3 && sc3.getObjectByName('story3d');
+    if (!npcs || !story) return false;
+    const rig = npcs.children.filter((c) => c.isMesh && c.visible && c.geometry && c.geometry.instanceCount > 0).length;
+    const dress = npcs.children.filter((c) => c.isMesh && !c.geometry.isInstancedBufferGeometry && c.visible).length;
+    return { rig, dress, items: story.children.length };
+  }, null, 'the NPC and story groups in the 3D scene', 60e3);
+  log(`    story fps: NPC rig meshes ${scene.rig}, accessory / hair meshes ${scene.dress}, story group children ${scene.items}`);
+  expect(scene.rig >= 1, `Mara's body should be in the scene: ${JSON.stringify(scene)}`);
+  expect(scene.dress >= 6, `the cast's hats, hair and accessories should be in the scene: ${JSON.stringify(scene)}`);
+  await sc.screenshots('-fps-npc', FPS_SHOT_MS);
+  // close up on two of them: Deke (cap, tool belt) and Ozzy (headset, curly hair)
+  for (const [i, tag] of [[0, 'deke'], [1, 'ozzy']]) {
+    await teleport(fp, at[0] + 24 * (i % 2) - 78, at[1] + (i - 2) * 46);
+    await turnTo(fp, 0);
+    await sleep(1800);
+    await sc.screenshots(`-fps-close-${tag}`, FPS_SHOT_MS);
+  }
+  // an item and its marker
+  const can = await fp.page.evaluate(() => { const it = window.__HH.getView().story.items.find((i) => i.item === 'fuel'); return it ? [it.x, it.y] : null; });
+  if (can) {
+    await teleport(fp, can[0] - 160, can[1]);
+    await turnTo(fp, 0);
+    await sleep(2500);
+    await sc.screenshots('-fps-item', FPS_SHOT_MS);
+  }
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -2009,7 +2236,8 @@ const SCENARIOS = [
   ['i', 'zone', scenarioZone, 360e3],
   ['j', 'day', scenarioDay, 300e3],
   ['k', 'campaign', scenarioCampaign, 420e3],
-  ['l', 'story', scenarioStory, 200e3],
+  ['l', 'story-loop', scenarioStoryLoop, 200e3],
+  ['m', 'story', scenarioStory, 300e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

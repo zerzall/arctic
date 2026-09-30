@@ -27,6 +27,7 @@ import { createLighting, nightFor } from './lighting.js';
 import { resolveTime } from '../shared/timeofday.js';
 import { createZone2D, drawPoiRings } from './zone2d.js';
 import { createCampaign2D, drawCampaignPreview } from './campaign2d.js';
+import { createStory2D } from './story2d.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
@@ -142,6 +143,8 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   const zone2d = createZone2D(map);
   // The Campaign: terrain shading, the stage circle, the horde front, the zip cable (campaign2d.js)
   const campaign2d = createCampaign2D(map);
+  // Road to Haven: story items, hold-to-use devices, NPCs, objective markers (story2d.js)
+  const story2d = createStory2D(map);
 
   // obstacle sprites (lazy)
   const obSprites = new Array(map.obstacles.length).fill(null);
@@ -1101,6 +1104,10 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     mark('statics');
     if (V) {
       drawPickupsAndDeployables(V);
+      if (V.story || (V.npcs && V.npcs.length) || (V.interactables && V.interactables.length)) {
+        setWorld();
+        story2d.drawGround(ctx, V, viewRect, time, dt);
+      }
       drawPlayers(V, true);
       drawZombies(V);
       drawTurrets(V);
@@ -1147,6 +1154,10 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       setWorld();
       campaign2d.drawWorld(ctx, V, viewRect, time, K.k);
     }
+    if (V && V.story) {
+      setWorld();
+      story2d.drawWorld(ctx, V, viewRect, time, K.k);
+    }
     mark('emissive');
 
     // ---- screen overlays ----
@@ -1167,6 +1178,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     });
     if (V && V.zone) zone2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
     if (V && V.campaign) campaign2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
+    if (V && (V.story || (V.npcs && V.npcs.length))) story2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time, Number.isFinite(settings.uiScale) && settings.uiScale > 0 ? Math.max(0.5, Math.min(4, settings.uiScale)) : 1);
     mark('overlay');
     if (hasPerf) timings.total += (performance.now() - tStart - timings.total) * 0.1;
   }

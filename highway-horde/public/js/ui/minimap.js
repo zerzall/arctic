@@ -14,10 +14,14 @@
 // The Campaign (opts.campaign): no objective or edge spawns; the hill, the stage's circle, the
 // horde front (a red band over the route behind it), the zip cable and the stage's supply
 // point are drawn over the map (drawCampaign).
+//
+// Road to Haven (opts.story): the current objective's markers, story items, NPCs and hold-to-use
+// spots are drawn over the map (storymarks.js); on the radar the markers pin to the rim.
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { routePointExt, pathLen } from '../shared/campaign.js';
 import { currentUiScale } from './uiscale.js';
+import { drawStoryMap } from './storymarks.js';
 
 const MINIMAP_HZ = 20;
 const AREA_COLORS = {
@@ -48,6 +52,7 @@ export function createMinimap(canvas, map, opts = {}) {
   let radar = !!opts.radar;
   const zoneMode = !!opts.zone;
   const campMode = !!opts.campaign && !!map.campaign;
+  const storyMode = !!opts.story;
   const cfg = campMode ? map.campaign : null;
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // markers and labels grow with the rem-sized minimap on big screens.
@@ -214,6 +219,11 @@ export function createMinimap(canvas, map, opts = {}) {
     }
     if (view.zone) drawZone(view.zone, X(view.zone.x), Y(view.zone.y), X(view.zone.nx), Y(view.zone.ny), k, false);
     if (campMode && view.campaign) drawCampaign(view.campaign, (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; }, k, false);
+    if (storyMode) {
+      const at = (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; };
+      at.k = k;
+      drawStoryMap(g, view, u, pulse, at, null, winOf());
+    }
     // objective pulse when damaged
     if (view.objective && map.objective && view.objective.hp < view.objective.maxHp * 0.35) {
       const a = 0.35 + 0.35 * Math.sin(pulse * 8);
@@ -408,6 +418,18 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fillRect(sx - 1.2 * u, sy - 4.5 * u, 2.4 * u, 9 * u);
       g.fillRect(sx - 4.5 * u, sy - 1.2 * u, 9 * u, 2.4 * u);
     }
+    if (storyMode && view) {
+      const at = (x, y) => { _pt.x = rx(x, y); _pt.y = ry(x, y); return _pt; };
+      at.k = k;
+      const rim = (p, m) => {
+        if (inside(p.x, p.y, m)) return false;
+        const q = pin(p.x, p.y, m);
+        p.x = q.x;
+        p.y = q.y;
+        return true;
+      };
+      drawStoryMap(g, view, u, pulse, at, rim, { inside: (x, y, m) => inside(x, y, m) });
+    }
     // objective + supply: pinned to the rim when out of range
     const ob = zoneMode || campMode ? null : map.objective;
     if (ob) {
@@ -497,6 +519,8 @@ export function createMinimap(canvas, map, opts = {}) {
 
   const _pt = { x: 0, y: 0 };
   const _rp = { x: 0, y: 0, a: 0 };
+  /** The north-up window test of storymarks.js: inside the canvas shrunk by `m` px. */
+  const winOf = () => ({ inside: (x, y, m) => x >= m && x <= W - m && y >= m && y <= H - m });
   /**
    * Campaign overlay: the stage's circle (pulsing green once the zip line is live), the horde
    * front with a red band over the route behind it, the stage's supply point. `at(x, y)` maps

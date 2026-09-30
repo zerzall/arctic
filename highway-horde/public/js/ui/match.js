@@ -17,6 +17,7 @@
 import { DIFFICULTIES } from '../shared/constants.js';
 import { resolveTime } from '../shared/timeofday.js';
 import { STAGE_SHORT } from '../shared/campaign.js';
+import { missionOf, simModeOf } from '../shared/story/registry.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
@@ -136,8 +137,13 @@ export function startMatch(ctx, session) {
 
   // Evac Run (SPEC §3.7): the renderers build the zone wall, the HUD its zone panel
   // The Campaign (SPEC §3.8): a map built with the campaign extension (map.campaign) plays it
+  // Road to Haven (STORY.md): a mission or a hideout adds the story HUD on top of the wave machine
+  // the mission runs on ('zone' | 'campaign' | none)
+  const storyMode = !!session.settings && (session.settings.mode === 'mission' || session.settings.mode === 'hideout');
+  const script = storyMode ? missionOf(session.settings) : null;
   const mode = map.campaign ? 'campaign'
-    : (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
+    : storyMode ? (simModeOf(session.settings) === 'zone' ? 'zone' : 'defend')
+      : (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
   const time = resolveTime(map, session.settings && session.settings.time);
   const made = createViewRenderer(ctx, map, mode, time);
   const { renderer, canvas, fps } = made;
@@ -149,6 +155,7 @@ export function startMatch(ctx, session) {
   const hud = createHud(hudEl, {
     map, renderClassPortrait: deps.renderClassPortrait, audio, invite,
     view: fps ? 'fps' : 'topdown', minimapRotate: prefs.settings.minimapRotate, mode,
+    story: storyMode ? { title: (session.settings.story && session.settings.story.title) || (script && script.title) || '' } : null,
   });
   hud.setRoster(session.roster, session.localId);
   audio.setMap(map);
@@ -359,7 +366,7 @@ export function startMatch(ctx, session) {
     endEl.classList.toggle('victory', victory);
     endEl.classList.toggle('defeat', !victory);
     const camp = map.campaign && view.campaign ? view.campaign : null;   // the Campaign's own end texts
-    $('#end-title').textContent = camp && victory ? 'Escaped' : victory ? 'Victory' : 'Overrun';
+    $('#end-title').textContent = storyMode ? (victory ? 'Mission complete' : 'Mission failed') : camp && victory ? 'Escaped' : victory ? 'Victory' : 'Overrun';
     const objName = (map.objective && map.objective.name) || 'objective';
     let sub;
     if (camp && victory) sub = 'Every survivor rode the zip line out. The horde stays behind.';

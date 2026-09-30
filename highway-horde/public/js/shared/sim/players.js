@@ -93,7 +93,8 @@ function giveStarterKit(p) {
   p.lastSlot = 0;
 }
 
-function setSlot(p, i, id) {
+/** Put weapon `id` (or nothing) in slot i with a full magazine and reserve. */
+export function setSlot(p, i, id) {
   p.slots[i] = id;
   if (id) {
     const w = weaponOf(p, id);
@@ -107,10 +108,20 @@ function setSlot(p, i, id) {
 
 /** A clear player spawn point, preferring index i. */
 export function spawnPointFor(game, i) {
+  // Road to Haven: a mission starts its survivors at its own place ...
+  if (game.story && !game.started) {
+    const s = game.story.startPoint(i);
+    if (s) return s;
+  }
   // Evac Run: late joiners and respawns come back inside the safe zone.
   if (game.zone && game.started) return game.zone.spawnPoint(i);
   // Campaign: respawns and late joiners come back where the team is in the current stage.
   if (game.campaign && game.started) return game.campaign.spawnPoint(i);
+  // ... and brings the fallen back beside the team.
+  if (game.story && game.started) {
+    const s = game.story.spawnPoint(i);
+    if (s) return s;
+  }
   const sp = game.map.playerSpawns;
   if (!sp || !sp.length) return { x: game.map.width / 2, y: game.map.height / 2 };
   for (let k = 0; k < sp.length; k++) {
@@ -598,7 +609,7 @@ export function respawnPlayer(game, p, i) {
 
 /** Damage a player (armour absorbs its share). opts: { ff, dot } */
 export function damagePlayer(game, p, amount, fromX, fromY, ff = false, dot = false) {
-  if (!(amount > 0) || p.state === 'dead' || p.escaped) return;
+  if (!(amount > 0) || p.state === 'dead' || p.escaped || game.safe) return;
   if (p.state === 'downed') {
     if (ff) return;
     p.hitBleed = Math.min(DOWNED_HIT_BLEED_BANK, p.hitBleed + amount * DOWNED_HIT_BLEED);

@@ -10,6 +10,8 @@ export const IMPORTANT_EVENTS = new Set([
   'wave', 'waveclear', 'gameover', 'victory', 'buy', 'buyfail', 'down', 'revived', 'died', 'respawn',
   'pickup', 'place', 'placefail', 'destroyed', 'bossspawn', 'drop', 'throw', 'zdie', 'explosion', 'ignite',
   'zone', 'campaign',
+  // Road to Haven: the tracker, subtitles, story items, talks and the end of a mission must arrive
+  'objective', 'radio', 'storyend', 'interact', 'talk', 'item', 'npc',
 ]);
 
 /**
