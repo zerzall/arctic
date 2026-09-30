@@ -76,8 +76,9 @@ export function createLevelHud(root, { map, toast, objName = null }) {
         return true;
       case 'gate': {
         const label = gateLabel(e.id);
-        if (e.open) toast(label ? `${label}: open` : 'The way ahead is open', 'good', 2.8);
-        else toast(label ? `${label}: shut` : 'The way back is shut', 'danger', 2.6);
+        // (a level's labels read like "Mill Road Gas: the forecourt barricade")
+        if (e.open) toast(label ? `${label} is open` : 'The way ahead is open', 'good', 2.8);
+        else toast(label ? `${label} is shut` : 'The way back is shut', 'danger', 2.6);
         return true;
       }
       case 'checkpoint':
