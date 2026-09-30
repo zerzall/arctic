@@ -27,6 +27,7 @@ import { nearSupply } from '../shared/zone.js';
 import { createZoneHud } from './zonehud.js';
 import { createCampaignHud } from './campaignhud.js';
 import { createStoryHud } from './storyhud.js';
+import { createLevelHud } from './levelhud.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
@@ -92,8 +93,9 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   ]);
   const objBar = bar('obj');
   const objPct = h('span.obj-pct');
+  const objName = h('span.obj-name', { text: (map.objective && map.objective.name) || 'Objective' });
   const objPanel = h('div.hud-objective.hud-box', null, [
-    h('div.obj-head', null, [h('span.obj-name', { text: (map.objective && map.objective.name) || 'Objective' }), objPct]),
+    h('div.obj-head', null, [objName, objPct]),
     objBar.el,
   ]);
   const team = h('div.hud-team');
@@ -207,6 +209,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const storyHud = storyMode
     ? createStoryHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id), promptEl: prompt, title: story.title || '' })
     : null;
+  // A story level: the location card, its scripted moments, the defend point's name (ui/levelhud.js)
+  const levelHud = createLevelHud(root, { map, toast: (...a) => toast(...a), objName });
 
   // ---- state -----------------------------------------------------------------------------
 
@@ -348,6 +352,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     for (const e of events) {
       if (zoneHud) zoneHud.addEvent(e);
       if (campaignHud && campaignHud.addEvent(e, lastView, localId)) continue;
+      if (levelHud && levelHud.addEvent(e, lastView)) continue;
       if (storyHud && storyHud.addEvent(e, lastView, localId)) continue;
       switch (e.type) {
         case 'zdie': {
@@ -540,6 +545,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     if (zoneHud) zoneHud.update(v, me, info.localPos, dt);
     if (campaignHud) campaignHud.update(v, me, info.localPos, dt);
     if (storyHud) storyHud.update(v, me, info.localPos, dt);
+    if (levelHud) levelHud.update(v, dt);
     root.dataset.phase = v.phase;
 
     // wave / phase
@@ -929,6 +935,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       if (zoneHud) zoneHud.destroy();
       if (campaignHud) campaignHud.destroy();
       if (storyHud) storyHud.destroy();
+      if (levelHud) levelHud.destroy();
       scoreboard.destroy();
       root.replaceChildren();
       root.hidden = true;

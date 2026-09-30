@@ -5,6 +5,7 @@
 // host and comes back as a 'story' event that re-renders the open panel.
 
 import { h } from './dom.js';
+import { mapMeta } from '../shared/maps.js';
 import { WEAPONS, WEAPON_IDS } from '../shared/weapons.js';
 import { PERKS, PERK_IDS, MAX_RANK, RANK_LEVELS, canBuyPerk, perkPointsSpent, PERK_RESET_COST } from '../shared/story/perks.js';
 import {
@@ -428,7 +429,7 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
       detail = h('p.st-empty', { text: 'No missions yet.' });
     } else {
       const entry = entries.find((e) => e.mission.id === m.id);
-      const map = (deps.MAP_LIST || []).find((q) => q.id === m.map);
+      const map = mapMeta(m.map);
       const rw = m.rewards || {};
       const lv = Array.isArray(m.level) ? m.level : [1, 1];
       const under = profile.level < lv[0];

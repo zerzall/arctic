@@ -2,7 +2,7 @@
 // helpers the simulation, the netcode, the HUD and both renderers share. The rules that
 // move the zone live in sim/zone.js; nothing here touches the DOM or keeps state.
 
-import { MAP_LIST } from './maps.js';
+import { MAP_LIST, mapMeta } from './maps.js';
 import { levelSupplies } from './level.js';
 
 /** Game modes in lobby order. 'defend' is the original mode and the default. */
@@ -75,7 +75,7 @@ export const ZONE_STAGES = ['move', 'hold', 'shrink', 'final'];
  * @returns {string[]}
  */
 export function mapModes(map) {
-  const meta = typeof map === 'string' ? MAP_LIST.find((m) => m.id === map) : map;
+  const meta = typeof map === 'string' ? mapMeta(map) : map;
   return meta && Array.isArray(meta.modes) && meta.modes.length ? meta.modes : STANDARD_MODES;
 }
 
