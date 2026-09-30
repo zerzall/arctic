@@ -90,7 +90,7 @@ function factoryOf(mod) {
 
 /** 'ultra' | 'high' | 'low' (anything unknown is 'high'). */
 function normQuality(v) {
-  return v === 'low' || v === 'ultra' ? v : 'high';
+  return v === 'low' || v === 'ultra' || v === 'cinematic' ? v : 'high';   // TEMP(V2): V1 owns the real tier plumbing
 }
 
 /**
@@ -562,7 +562,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     if (!s) return;
     if (s.quality !== rawSet.quality) {
       rawSet.quality = s.quality;
-      if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra') api.setQuality(s.quality);
+      if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra' || s.quality === 'cinematic') api.setQuality(s.quality);
     }
     if (s.renderScale === rawSet.renderScale && s.bloom === rawSet.bloom && s.ao === rawSet.ao && s.antialias === rawSet.antialias
       && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette

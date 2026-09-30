@@ -25,7 +25,7 @@ const statsEl = document.getElementById('stats');
 if (qs.get('shot')) document.body.classList.add('shot');
 let mode = qs.get('mode') || 'lineup';
 document.getElementById('mode').value = mode;
-let quality = qs.get('q') === 'low' || qs.get('q') === 'ultra' ? qs.get('q') : 'high';
+let quality = ['low', 'ultra', 'cinematic'].includes(qs.get('q')) ? qs.get('q') : 'high';
 
 const map = createFixtureMap('bus');
 
@@ -623,7 +623,7 @@ window.addEventListener('pointermove', (e) => {
 });
 document.getElementById('mode').addEventListener('change', (e) => setMode(e.target.value));
 document.getElementById('quality').addEventListener('click', (e) => {
-  quality = quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'ultra';
+  quality = quality === 'cinematic' ? 'ultra' : quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'cinematic';
   e.target.textContent = 'quality: ' + quality;
   R.setQuality(quality);
 });

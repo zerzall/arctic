@@ -29,6 +29,7 @@ import { trunk, canopy, bush, buildTreeLine, createGrassField, scatterFlora, set
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
 import { terrainHeight } from '../shared/terrain.js';
+import { tierAtLeast, baseTier } from './tier.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
   buildRidgeWorld, makeSkyline, ridgeHeight,
@@ -143,7 +144,10 @@ function fireBaseHeight0(map, x, y) {
  */
 export function createWorld(ctx, deps) {
   const { scene, map } = ctx;
-  let tier = ctx.quality === 'low' || ctx.quality === 'ultra' ? ctx.quality : 'high';
+  // (cinematic = ultra's materials + the extra-detail geometry of the V2 asset pass)
+  const cin = tierAtLeast(ctx.quality, 'cinematic');
+  let full = ctx.quality === 'low' || ctx.quality === 'ultra' || cin ? ctx.quality : 'high';
+  let tier = baseTier(full);
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
@@ -157,7 +161,7 @@ export function createWorld(ctx, deps) {
   // and gets them the first time the player picks a higher tier
   let detailTex = tier === 'low' ? null : track(makeDetailArray(aniso));
   const tDetail = performance.now() - tA;
-  const ground = createGround({ scene, map, quality: ctx.quality, renderer: deps.renderer, detail: detailTex });
+  const ground = createGround({ scene, map, quality: tier, cinematic: cin, renderer: deps.renderer, detail: detailTex });
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
   const day = amb.time === 'day';
@@ -202,7 +206,7 @@ export function createWorld(ctx, deps) {
 
   if (hasTerrain) B.setGround(gy);
   // geometry detail of the buildings follows the tier the world is built for
-  setDetailLevel(tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
+  setDetailLevel(cin ? 3 : tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -286,7 +290,7 @@ export function createWorld(ctx, deps) {
   const cullDistFog = Math.sqrt(-Math.log(0.002)) / Math.max(1e-5, amb.fogDensity);
   let dress = null;
   try {
-    dress = createDress(ctx, { root, mats, fx, halos, tier, aniso, day, gy, hasTerrain, cullDist: cullDistFog });
+    dress = createDress(ctx, { root, mats, fx, halos, tier: full, aniso, day, gy, hasTerrain, cullDist: cullDistFog });
   } catch (err) {
     console.warn('world: set dressing failed', err);
   }
@@ -440,7 +444,7 @@ export function createWorld(ctx, deps) {
   if (flagMesh) { root.add(flagMesh.mesh); disposables.push(flagMesh.mesh.geometry, flagMesh.mesh.material); }
 
   // ---- grass field (camera-following, instanced; none on 'low') ----
-  const grass = createGrassField(scene, ground, tier);
+  const grass = createGrassField(scene, ground, full);
 
   // ---- light rain ('ultra' only): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
@@ -607,8 +611,10 @@ export function createWorld(ctx, deps) {
     update,
     /** Swap every static mesh to the tier's materials; the grass field follows the tier. */
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
-      if (nt === tier) return;
+      const nf = q === 'low' || q === 'ultra' || q === 'cinematic' ? q : 'high';
+      const nt = baseTier(nf);
+      if (nf === full) return;
+      full = nf;
       tier = nt;
       if (tier !== 'low' && !detailTex) {
         detailTex = track(makeDetailArray(Math.min(tier === 'ultra' ? 16 : 8, maxAniso)));
@@ -616,9 +622,9 @@ export function createWorld(ctx, deps) {
         ground.uniforms.uDetail.value = detailTex;
       }
       for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
-      grass.setQuality(tier);
+      grass.setQuality(full);
       ground.setQuality(tier);
-      if (dress) dress.setQuality(tier);
+      if (dress) dress.setQuality(full);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();

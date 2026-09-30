@@ -25,7 +25,7 @@ const opt = {
   // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
   mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
   seed: Number(params.get('seed') || 1234),
-  quality: ['low', 'ultra'].includes(params.get('quality')) ? params.get('quality') : 'high',
+  quality: ['low', 'ultra', 'cinematic'].includes(params.get('quality')) ? params.get('quality') : 'high',
   bots: Math.max(0, Math.min(5, Number(params.get('bots') ?? 3))),
   tour: params.get('tour') === '1',
   view: params.get('view') || null,
