@@ -147,7 +147,13 @@ export function killZombie(game, z, by, gib) {
     spawnPickup(game, 'health', z.x + 30, z.y);
     spawnPickup(game, 'armor', z.x, z.y + 30);
   } else {
-    rollDrop(game, z.x, z.y, DROP_CHANCE * (z.elite ? 3 : 1), CRATE_DROP_CHANCE * (z.elite ? 5 : 1));
+    // (story perk Lucky Loot: the killer's drop and crate multipliers, 1 without it)
+    const killer = by ? game.getPlayer(by) : null;
+    rollDrop(
+      game, z.x, z.y,
+      DROP_CHANCE * (z.elite ? 3 : 1) * (killer && killer.perks.dropMult || 1),
+      CRATE_DROP_CHANCE * (z.elite ? 5 : 1) * (killer && killer.perks.crateMult || 1),
+    );
   }
   if (z.type === 'bloater') {
     const sp = z.def.special;
@@ -199,7 +205,9 @@ export function damageObjective(game, amount, x, y) {
  * @param {object} [opt] overrides for non-player blasts: { zombieDmg, playerDmg,
  *   structDmg, credit }
  */
-export function explode(game, x, y, r, dmg, owner, kind, opt = null) {
+export function explode(game, x, y, radius, dmg, owner, kind, opt = null) {
+  // (story perk Demolition widens the owner's blasts; 1 without it)
+  const r = owner && owner.perks.explosiveRadius ? radius * owner.perks.explosiveRadius : radius;
   game.emit({ type: 'explosion', x: Math.round(x), y: Math.round(y), r, kind });
   const credit = opt ? opt.credit : owner ? owner.id : 0;
   const zDmg = opt ? opt.zombieDmg : dmg * (owner ? owner.perks.explosiveMult || 1 : 1);

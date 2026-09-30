@@ -17,6 +17,7 @@ import { stepPlayerMovement, settleVertical } from '../movement.js';
 import { resetVertical } from '../jump.js';
 import { RIDE_TICKS } from '../campaign.js';
 import { clearEdges, mergeEdges } from './core.js';
+import { weaponOf, applyProfileToPlayer, giveStoryKit } from './profile-mods.js';
 import {
   fireWeaponShot, damageZombie, knockZombie, throwProjectile, rebuildBarricades, MAX_ZOMBIE_RADIUS,
 } from './combat.js';
@@ -75,10 +76,16 @@ export function createPlayer(game, info) {
     dotAcc: 0, dotT: 0, dotX: 0, dotY: 0,
   };
   giveStarterKit(p);
+  // Story mode (STORY.md): perks, weapon tiers and the loadout of the survivor's profile.
+  if (info.story) applyProfileToPlayer(game, p, info.story);
   return p;
 }
 
 function giveStarterKit(p) {
+  if (p.story) {
+    giveStoryKit(p);
+    return;
+  }
   setSlot(p, 0, 'pistol');
   const cw = CLASSES[p.cls].startWeapon;
   setSlot(p, 1, cw && WEAPONS[cw] ? cw : null);
@@ -89,8 +96,9 @@ function giveStarterKit(p) {
 function setSlot(p, i, id) {
   p.slots[i] = id;
   if (id) {
-    p.mag[i] = WEAPONS[id].mag;
-    p.res[i] = WEAPONS[id].reserve;
+    const w = weaponOf(p, id);
+    p.mag[i] = w.mag;
+    p.res[i] = w.reserve;
   } else {
     p.mag[i] = 0;
     p.res[i] = 0;
@@ -275,7 +283,7 @@ function startReload(game, p) {
   if (p.reloadT > 0) return false;
   const aw = activeWeapon(p);
   if (!aw.id) return false;
-  const w = WEAPONS[aw.id];
+  const w = weaponOf(p, aw.id);
   const mag = aw.slot < 0 ? p.freeMag : p.mag[aw.slot];
   const res = aw.slot < 0 ? -1 : p.res[aw.slot];
   if (mag >= w.mag || res === 0) return false;
@@ -289,7 +297,7 @@ function startReload(game, p) {
 }
 
 function finishReload(game, p, aw) {
-  const w = WEAPONS[aw.id];
+  const w = weaponOf(p, aw.id);
   if (aw.slot < 0) {
     p.freeMag = w.mag;
   } else {
@@ -313,7 +321,7 @@ function handleFire(game, p, cmd, aw) {
     p.prevFire = !!cmd.fire;
     return;
   }
-  const w = WEAPONS[aw.id];
+  const w = weaponOf(p, aw.id);
   if (p.reloadT > 0) {
     if (p.reloadSlot !== aw.slot) {
       p.reloadT = 0;
@@ -513,7 +521,7 @@ export function downPlayer(game, p) {
   if (p.state !== 'alive') return;
   p.state = 'downed';
   p.hp = 0;
-  p.bleedout = BLEEDOUT_TIME;
+  p.bleedout = BLEEDOUT_TIME * (p.perks.bleedoutMult || 1);
   p.hitBleed = 0;
   p.downT = 0;
   p.revive = 0;
@@ -533,7 +541,7 @@ export function downPlayer(game, p) {
 export function revivePlayer(game, p, by) {
   if (p.state !== 'downed') return;
   p.state = 'alive';
-  p.hp = Math.min(p.maxHp, REVIVE_HP);
+  p.hp = Math.min(p.maxHp, REVIVE_HP + (p.perks.reviveHpBonus || 0));
   p.bleedout = 0;
   p.downT = 0;
   p.revive = 0;
@@ -629,7 +637,7 @@ export function updateDowned(game) {
     }
     if (p.state !== 'downed') continue;
     p.downT += DT;
-    if (p.selfRevive && p.downT >= SELF_REVIVE_DELAY) {
+    if (p.selfRevive && p.downT >= SELF_REVIVE_DELAY * (p.perks.reviveDelayMult || 1)) {
       p.selfRevive = false;
       revivePlayer(game, p, p.id);
       continue;
@@ -750,7 +758,7 @@ function wantsPickup(p, kind) {
     case 'ammo':
       for (let i = 0; i < WEAPON_SLOTS; i++) {
         const id = p.slots[i];
-        if (id && WEAPONS[id].reserve >= 0 && p.res[i] < WEAPONS[id].reserve) return true;
+        if (id && weaponOf(p, id).reserve >= 0 && p.res[i] < weaponOf(p, id).reserve) return true;
       }
       return false;
     case 'health': return p.hp < p.maxHp;
@@ -766,8 +774,8 @@ function applyPickup(game, p, k) {
     case 'ammo':
       for (let i = 0; i < WEAPON_SLOTS; i++) {
         const id = p.slots[i];
-        if (!id || WEAPONS[id].reserve < 0) continue;
-        const max = WEAPONS[id].reserve;
+        if (!id || weaponOf(p, id).reserve < 0) continue;
+        const max = weaponOf(p, id).reserve;
         p.res[i] = Math.min(max, p.res[i] + Math.ceil(max * 0.35));
       }
       break;
@@ -841,8 +849,8 @@ function tryTakeCrate(game, p) {
 export function giveWeapon(game, p, id) {
   const owned = p.slots.indexOf(id);
   if (owned >= 0) {
-    p.mag[owned] = WEAPONS[id].mag;
-    p.res[owned] = WEAPONS[id].reserve;
+    p.mag[owned] = weaponOf(p, id).mag;
+    p.res[owned] = weaponOf(p, id).reserve;
     return owned;
   }
   let s = p.slots.indexOf(null);
@@ -903,7 +911,7 @@ export function applyBuy(game, p, item) {
       case 'ammo':
         for (let i = 0; i < WEAPON_SLOTS; i++) {
           const id = p.slots[i];
-          if (id && WEAPONS[id].reserve >= 0) p.res[i] = WEAPONS[id].reserve;
+          if (id && weaponOf(p, id).reserve >= 0) p.res[i] = weaponOf(p, id).reserve;
         }
         for (const t of game.turrets) if (t.owner === p.id && !t.dead) t.ammo = t.maxAmmo;
         break;
@@ -932,14 +940,15 @@ function buyCheck(game, p, item) {
     const w = WEAPONS[item];
     if (w.unlockWave > shopWave(game)) return 'invalid';
     const s = p.slots.indexOf(item);
-    if (s >= 0 && p.mag[s] >= w.mag && (w.reserve < 0 || p.res[s] >= w.reserve)) return 'owned';
+    const mine = weaponOf(p, item);
+    if (s >= 0 && p.mag[s] >= mine.mag && (mine.reserve < 0 || p.res[s] >= mine.reserve)) return 'owned';
   } else {
     switch (item) {
       case 'ammo': {
         let need = false;
         for (let i = 0; i < WEAPON_SLOTS; i++) {
           const id = p.slots[i];
-          if (id && WEAPONS[id].reserve >= 0 && p.res[i] < WEAPONS[id].reserve) need = true;
+          if (id && weaponOf(p, id).reserve >= 0 && p.res[i] < weaponOf(p, id).reserve) need = true;
         }
         for (const t of game.turrets) if (t.owner === p.id && !t.dead && t.ammo < t.maxAmmo) need = true;
         if (!need) return 'max';
