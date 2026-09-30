@@ -226,6 +226,8 @@ test('the renderer gets the graphics settings every frame, in the agreed shape',
     crosshair: true, screenShake: true, showNames: true, lighting: true, fov: 80,
     renderScale: 'auto', bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true,
     volumetrics: true, reflections: true, gore: 'on',
+    msaa: 0, shadowsHigh: false, contactShadows: false, aoFull: false, fxHigh: false, motionBlur: false, dof: false, lensFx: false, lightShadows: false,
+    brightness: 1, contrast: 1, saturation: 1, timing: false,
   });
   // Reuses the object it is given (the match loop passes the same one every frame).
   s.renderScale = 0.85;

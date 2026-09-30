@@ -23,6 +23,7 @@
 
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { tierAtLeast } from './tier.js';
 
 export const ATMOS_LIGHTS = 12;
 
@@ -392,7 +393,7 @@ export class AtmosPass extends Pass {
 
   setSize(w, h) {
     this.w = w; this.h = h;
-    const ultra = this.tier === 'ultra';
+    const ultra = tierAtLeast(this.tier, 'ultra');
     const vs = ultra ? 0.5 : 0.25, ss = ultra ? 0.5 : 0.25;
     const vw = Math.max(1, Math.round(w * vs)), vh = Math.max(1, Math.round(h * vs));
     const sw = Math.max(1, Math.round(w * ss)), sh = Math.max(1, Math.round(h * ss));
@@ -417,7 +418,7 @@ export class AtmosPass extends Pass {
     if (!depth) return;
     this.time = (this.time + (deltaTime || 0)) % 1000;
     const src = this.getSources ? this.getSources() : null;
-    const ultra = this.tier === 'ultra';
+    const ultra = tierAtLeast(this.tier, 'ultra');
     const ac = renderer.autoClear;
     renderer.autoClear = false;
     try {
@@ -499,7 +500,7 @@ export class AtmosPass extends Pass {
       else u.uMistCol.value.copy(amb.fog).lerp(amb.sky, 0.08).multiplyScalar(1.35);
     }
     const fl = src && src.flashlight;
-    const beam = this.tier === 'ultra' && fl && fl.intensity > 0;
+    const beam = tierAtLeast(this.tier, 'ultra') && fl && fl.intensity > 0;
     if (beam) {
       u.uFlashPos.value.copy(fl.position);
       this._v.copy(fl.target.position).sub(fl.position).normalize();

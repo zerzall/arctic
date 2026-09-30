@@ -32,11 +32,18 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { AtmosPass } from './post-atmos.js';
+import { tierAtLeast } from './tier.js';
 
 const DIST_N = 4;
 
 /** Highest render scale: 2 = supersampling at twice the native resolution per axis. */
 export const RENDER_SCALE_LIMIT = 2;
+
+/**
+ * Pixels the world pass may cover per tier (supersampling stops short of exhausting GPU memory):
+ * 16 million, i.e. 4K x 1.4^2; Cinematic 36 million = 4K x 1.5^2 x 2 ("Auto" up to 200% at 1080p, 150% at 4K).
+ */
+export const PIXEL_BUDGET = Object.freeze({ cinematic: 36e6, ultra: 16e6, high: 16e6, low: 16e6 });
 
 /** Settings the chain understands, with their defaults (SPEC §7.5 graphics settings). */
 export const POST_DEFAULTS = Object.freeze({
@@ -123,7 +130,7 @@ class DepthAOPass extends Pass {
   }
 
   configure(q) {
-    const ultra = q === 'ultra';
+    const ultra = tierAtLeast(q, 'ultra');
     // units: 1 world unit ≈ 3 cm, so radius 20 ≈ 0.6 m of contact shadow
     // (contact shadow polish: a touch tighter and stronger where two surfaces meet, ultra a little more)
     this.gtao.updateGtaoMaterial({ radius: ultra ? 18 : 20, distanceExponent: 1.7, thickness: 12, scale: ultra ? 1.28 : 1.18, samples: ultra ? 16 : 10, distanceFallOff: 1 });

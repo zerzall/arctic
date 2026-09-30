@@ -35,7 +35,8 @@ import * as campaignMod from './campaign3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
-import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT } from './post.js';
+import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT, PIXEL_BUDGET } from './post.js';
+import { normTier, tierAtLeast } from './tier.js';
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -88,10 +89,8 @@ function factoryOf(mod) {
   return typeof mod.default === 'function' ? mod.default : null;
 }
 
-/** 'ultra' | 'high' | 'low' (anything unknown is 'high'). */
-function normQuality(v) {
-  return v === 'low' || v === 'ultra' ? v : 'high';
-}
+/** 'cinematic' | 'ultra' | 'high' | 'low' (anything unknown is 'high'). */
+const normQuality = normTier;
 
 /**
  * Create the first-person renderer on `canvas`.
@@ -371,15 +370,14 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   function pixelRatio() {
     const d = window.devicePixelRatio || 1;
     // Ultra renders at the screen's native resolution (phones are ~3x): sharp, and hot.
-    if (q === 'ultra') return Math.min(d, 3);
+    if (tierAtLeast(q, 'ultra')) return Math.min(d, 3);
     return q === 'high' ? Math.min(d, 2) : Math.min(d, 1) * 0.75;
   }
   /** Re-size the post chain's internal targets for the current render scale. */
   // pixels the world pass may cover: supersampling stops short of exhausting GPU memory
-  const PIXEL_BUDGET = 16e6;
   let effScale = 1;
   function scaleCap() {
-    return Math.max(0.5, Math.sqrt(PIXEL_BUDGET / Math.max(1, cssW * cssH * prFull * prFull)));
+    return Math.max(0.5, Math.sqrt(PIXEL_BUDGET[q] / Math.max(1, cssW * cssH * prFull * prFull)));
   }
   function applyScale() {
     effScale = Math.min(renderScale, scaleCap(), RENDER_SCALE_LIMIT);
@@ -562,7 +560,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     if (!s) return;
     if (s.quality !== rawSet.quality) {
       rawSet.quality = s.quality;
-      if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra') api.setQuality(s.quality);
+      if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra' || s.quality === 'cinematic') api.setQuality(s.quality);
     }
     if (s.renderScale === rawSet.renderScale && s.bloom === rawSet.bloom && s.ao === rawSet.ao && s.antialias === rawSet.antialias
       && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette

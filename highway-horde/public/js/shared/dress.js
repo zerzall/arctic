@@ -20,7 +20,7 @@
 import { createRng, hashString } from './rng.js';
 
 /** Items shown per quality tier (fraction of the ranks). */
-export const DRESS_DENSITY = Object.freeze({ ultra: 1, high: 0.6, low: 0.25 });
+export const DRESS_DENSITY = Object.freeze({ cinematic: 1, ultra: 1, high: 0.6, low: 0.25 });
 
 /** Density of a tier name (unknown names count as 'high'). */
 export function dressDensity(tier) {

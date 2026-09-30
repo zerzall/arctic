@@ -12,9 +12,10 @@
 import * as THREE from 'three';
 import { PartBuilder, col } from './actor-kit.js';
 import { F_BOUNCE, F_VSTRETCH, FR, DC, DK } from './fx-core.js';
+import { baseTier, tierRow } from './tier.js';
 
 const TAU = Math.PI * 2;
-const CAP = { ultra: 110, high: 64, low: 0 };
+export const CAP = { cinematic: 240, ultra: 110, high: 64, low: 0 };
 const LIFE = 26;
 const SKIN = '#cdbfa3', FLESH = '#7a1414', BONE = '#e0d8c2', CLOTH = '#3c3c44', GORE = '#5a0e0e';
 
@@ -69,8 +70,8 @@ function headGeometry() {
  */
 export function createGore3D(ctx, fx, env) {
   const { G, surf } = env;
-  let tier = ctx.quality === 'ultra' ? 'ultra' : ctx.quality === 'low' ? 'low' : 'high';
-  const MAXN = CAP.ultra;
+  let tier = ctx.quality === 'cinematic' ? 'cinematic' : baseTier(ctx.quality);
+  const MAXN = CAP.cinematic;
   const geos = [limbGeometry(), torsoGeometry(), headGeometry()];
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0 });
   const meshes = geos.map((g, i) => {
@@ -102,7 +103,7 @@ export function createGore3D(ctx, fx, env) {
   const skins = ['#8f9878', '#8a9470', '#9a8a72', '#7f8a68', '#968c78', '#88806c'].map((h) => col(h));
   const _sf = { nx: 0, ny: 0, top: 0, kind: '', d: 0, s0: 0, s1: 0 };
 
-  function cap() { return CAP[tier]; }
+  function cap() { return tierRow(CAP, tier); }
 
   /** Spawn a body part at (x, h, y) flying along `dir` (radians, sim angle) at `speed`. */
   function piece(kind, x, h, y, dir, speed, size = 1, tintIdx = 0) {
@@ -255,7 +256,7 @@ export function createGore3D(ctx, fx, env) {
     const h0 = 26 + G(x, y);
     const heavy = 220 + 320 * power;
     const around = !Number.isFinite(dir);
-    const limbs = tier === 'ultra' ? 4 : 3;
+    const limbs = tier === 'cinematic' ? 5 : tier === 'ultra' ? 4 : 3;
     for (let k = 0; k < limbs; k++) {
       const d = around ? fx.rng() * TAU : dir + (fx.rng() - 0.5) * 1.6;
       piece(0, x, h0 + fx.rng() * 8, y, d, heavy * 0.8, k < 2 ? 0.9 : 1.15, tint);
@@ -279,7 +280,7 @@ export function createGore3D(ctx, fx, env) {
     get count() { return n; },
     stats,
     setQuality(q) {
-      tier = q === 'ultra' ? 'ultra' : q === 'low' ? 'low' : 'high';
+      tier = q === 'cinematic' ? 'cinematic' : baseTier(q);
       if (n > cap()) n = cap();
     },
     clear() { n = 0; },

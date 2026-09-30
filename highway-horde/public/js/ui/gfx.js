@@ -4,33 +4,48 @@
 // Contract with render3d (the WORLD owner implements it): renderer.setQuality(q) when the
 // preset's quality changes, and every renderer.render(view, { ..., settings }) carries
 //   { screenShake, showNames, lighting, fov, crosshair,
-//     renderScale: 'auto' | 0.5..2   // 'auto' = dynamic resolution that holds 60 fps
+//     renderScale: 'auto' | 0.5..2   // 'auto' = dynamic resolution that holds the display's refresh rate
 //     bloom, ao, filmGrain, vignette, volumetrics, reflections: boolean,
 //     antialias: 'smaa' | 'fxaa' | 'off',
-//     gore: 'on' | 'low' | 'off' }   // blood, gibs and decals (off = dark ash, no gibs)
-// and r.stats may report renderScale (the scale in use right now) and gpuMs.
+//     gore: 'on' | 'low' | 'off',    // blood, gibs and decals (off = dark ash, no gibs)
+//     // Cinematic-tier extras (ignored below Cinematic): msaa 0|2|4|8, shadowsHigh, contactShadows,
+//     // aoFull, fxHigh, motionBlur, dof, lensFx, lightShadows: boolean
+//     // display calibration (multipliers around 1): brightness, contrast, saturation
+//     // timing: boolean (per-pass GPU timings for the stats overlay) }
+// and r.stats may report renderScale (the scale in use right now), gpuMs and passMs.
 // The top-down renderer ignores the fields it doesn't know.
 
-import { ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, RENDER_SCALE_MAX, GRAPHICS_PRESETS, GORE_MODES } from './storage.js';
+import {
+  ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, RENDER_SCALE_MAX, GRAPHICS_PRESETS, GORE_MODES, MSAA_MODES, CALIB_MIN, CALIB_MAX,
+} from './storage.js';
+
+/** A display-calibration multiplier: a finite number inside its range, else 1. */
+const calib = (v) => (Number.isFinite(v) ? Math.min(CALIB_MAX, Math.max(CALIB_MIN, v)) : 1);
 
 /** The effect toggles each preset sets (defined next to the prefs they validate). */
 export { GRAPHICS_PRESETS };
 
 /** Settings a preset owns; any other value in the Advanced panel makes it "custom". */
-export const PRESET_KEYS = ['bloom', 'ao', 'antialias', 'filmGrain', 'vignette', 'volumetrics', 'reflections'];
+export const PRESET_KEYS = [
+  'bloom', 'ao', 'antialias', 'filmGrain', 'vignette', 'volumetrics', 'reflections',
+  'msaa', 'shadowsHigh', 'contactShadows', 'aoFull', 'fxHigh', 'motionBlur', 'dof', 'lensFx', 'lightShadows',
+];
 
 /**
  * Pick a preset: sets the quality and every effect toggle the preset owns. Resolution
  * (renderScale) is left alone: it is its own control, and on 'auto' it already trades
  * pixels for frame rate.
  * @param {object} settings prefs.settings (mutated)
- * @param {string} quality 'ultra' | 'high' | 'low'
+ * @param {string} quality 'cinematic' | 'ultra' | 'high' | 'low'
+ * @param {{ picked?: boolean }} [o] picked: whether this is the player's own choice (default true);
+ *   the first-run GPU detection passes false so a later detection may still refine it
  * @returns {object} settings
  */
-export function applyPreset(settings, quality) {
+export function applyPreset(settings, quality, o = {}) {
   const q = QUALITIES.includes(quality) ? quality : 'ultra';
   settings.quality = q;
   Object.assign(settings, GRAPHICS_PRESETS[q]);
+  settings.qualityPicked = o.picked !== false;
   return settings;
 }
 
@@ -70,6 +85,19 @@ export function rendererSettings(s, out = {}) {
   out.volumetrics = s.volumetrics !== false;
   out.reflections = s.reflections !== false;
   out.gore = GORE_MODES.includes(s.gore) ? s.gore : 'on';
+  out.msaa = MSAA_MODES.includes(s.msaa) ? s.msaa : 0;
+  out.shadowsHigh = s.shadowsHigh === true;
+  out.contactShadows = s.contactShadows === true;
+  out.aoFull = s.aoFull === true;
+  out.fxHigh = s.fxHigh === true;
+  out.motionBlur = s.motionBlur === true;
+  out.dof = s.dof === true;
+  out.lensFx = s.lensFx === true;
+  out.lightShadows = s.lightShadows === true;
+  out.brightness = calib(s.displayBrightness);
+  out.contrast = calib(s.displayContrast);
+  out.saturation = calib(s.displaySaturation);
+  out.timing = s.showStats === true;
   return out;
 }
 

@@ -24,6 +24,7 @@ import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
 import { zombieLook, packLook } from './actor-zlook.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
 import { actorTextures } from './actor-tex.js';
+import { tierAtLeast, tierRow } from './tier.js';
 import { acquireFx, releaseFx, F_ADD, F_FIRE, F_BOUNCE, F_FLICKER, FR } from './fx-core.js';
 
 const TAU = Math.PI * 2;
@@ -40,12 +41,12 @@ const SCALE = { walker: 1, runner: 0.95, crawler: 0.9, bloater: 1.12, spitter: 1
 // stride length (units per gait cycle at scale 1) — sets how fast legs cycle for a speed
 const STRIDE = { walker: 44, runner: 74, crawler: 36, bloater: 36, spitter: 46, screamer: 50, brute: 58, boss: 72 };
 // LOD distances (units) per quality; scaled by the zombie's size
-const LOD_DIST = { ultra: [340, 950], high: [270, 720], low: [160, 460] };
+export const LOD_DIST = { cinematic: [520, 1350], ultra: [340, 950], high: [270, 720], low: [160, 460] };
 
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();
 /** Quality tier of the models: ultra 0 (everything), high 1, low 2 (no accessories). */
-const tierOf = (q) => (q === 'ultra' ? 0 : q === 'low' ? 2 : 1);
+const tierOf = (q) => (tierAtLeast(q, 'ultra') ? 0 : q === 'low' ? 2 : 1);
 function modelArrays(type, L, tier) {
   const k = type + L + ':' + tier;
   let a = modelCache.get(k);
@@ -77,7 +78,7 @@ export function createZombies3D(ctx) {
   let high = quality !== 'low';
   let tier = tierOf(quality);
 
-  const tex = actorTextures(quality === 'ultra' ? 16 : 8);
+  const tex = actorTextures(tierAtLeast(quality, 'ultra') ? 16 : 8);
   const pool = new RigPool({ capacity: CAPACITY + CORPSE_CAP, textures: tex });
   const types = {};
   for (const t of ZOMBIE_IDS) {
@@ -454,7 +455,7 @@ export function createZombies3D(ctx) {
     const cam = ctx.camera;
     _pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     frustum.setFromProjectionMatrix(_pm);
-    const lodD = LOD_DIST[quality] || LOD_DIST.high;
+    const lodD = tierRow(LOD_DIST, quality);
     const list = (view && view.zombies) || [];
     const camX = frame.camX, camY = frame.camY;
     stats.lod[0] = stats.lod[1] = stats.lod[2] = 0;

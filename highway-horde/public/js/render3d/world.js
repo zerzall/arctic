@@ -28,6 +28,7 @@ import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField, scatterFlora, setBiome } from './world-veg.js';
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
+import { normTier, tierAtLeast, anisoFor } from './tier.js';
 import { terrainHeight } from '../shared/terrain.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
@@ -143,14 +144,14 @@ function fireBaseHeight0(map, x, y) {
  */
 export function createWorld(ctx, deps) {
   const { scene, map } = ctx;
-  let tier = ctx.quality === 'low' || ctx.quality === 'ultra' ? ctx.quality : 'high';
+  let tier = normTier(ctx.quality);
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
   const maxAniso = deps.renderer ? deps.renderer.capabilities.getMaxAnisotropy() : 1;
-  const aniso = Math.min(tier === 'ultra' ? 16 : tier === 'high' ? 8 : 2, maxAniso);
+  const aniso = anisoFor(tier, maxAniso);
 
   const tA = performance.now();
   // the detail layers only feed the PBR tiers: 'low' (Lambert) skips the ~0.4 s generation
@@ -202,7 +203,7 @@ export function createWorld(ctx, deps) {
 
   if (hasTerrain) B.setGround(gy);
   // geometry detail of the buildings follows the tier the world is built for
-  setDetailLevel(tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
+  setDetailLevel(tier === 'low' ? 0 : tierAtLeast(tier, 'ultra') ? 2 : 1);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -442,12 +443,12 @@ export function createWorld(ctx, deps) {
   // ---- grass field (camera-following, instanced; none on 'low') ----
   const grass = createGrassField(scene, ground, tier);
 
-  // ---- light rain ('ultra' only): streaks lit by the lamps, rings in the puddles ----
+  // ---- light rain ('ultra' and up): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
   const setRain = () => {
-    const on = tier === 'ultra' && !day;   // (a sunny day is dry)
+    const on = tierAtLeast(tier, 'ultra') && !day;   // (a sunny day is dry)
     if (on && !rain) {
-      rain = makeRain(fx, 5000);
+      rain = makeRain(fx, tier === 'cinematic' ? 9000 : 5000);
       rain.setRoofs(deckRoofs(map));
       root.add(rain.mesh);
       disposables.push(rain.mesh.geometry, rain.mesh.material);
@@ -607,11 +608,11 @@ export function createWorld(ctx, deps) {
     update,
     /** Swap every static mesh to the tier's materials; the grass field follows the tier. */
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
+      const nt = normTier(q);
       if (nt === tier) return;
       tier = nt;
       if (tier !== 'low' && !detailTex) {
-        detailTex = track(makeDetailArray(Math.min(tier === 'ultra' ? 16 : 8, maxAniso)));
+        detailTex = track(makeDetailArray(anisoFor(tier === 'high' ? 'high' : 'ultra', maxAniso)));
         mats.shared.uDetail.value = detailTex;
         ground.uniforms.uDetail.value = detailTex;
       }

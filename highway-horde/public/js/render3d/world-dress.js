@@ -22,6 +22,7 @@ import { LIFE_PROPS } from './dress-life-props.js';
 import { NATURE } from './dress-nature.js';
 import { APOCALYPSE } from './dress-apoc.js';
 import { createLife } from './dress-life.js';
+import { normTier, tierRow } from './tier.js';
 
 const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS, ...NATURE, ...APOCALYPSE };
 
@@ -29,7 +30,7 @@ const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS,
 export const DRESS_MODELLED = Object.freeze(Object.keys(BUILDERS));
 
 /** Triangles the dressing may add per tier (only the biggest maps reach it). */
-const TRI_BUDGET = { ultra: 650000, high: 400000, low: 170000 };
+export const TRI_BUDGET = { cinematic: 2500000, ultra: 650000, high: 400000, low: 170000 };
 /** Tall props that make the skyline: built into the far set. */
 const FAR = new Set(['pole', 'wire', 'billboard', 'watertower', 'flagpole', 'banner', 'deadtree']);
 /** The small props are not drawn past this distance (the far set is). */
@@ -128,7 +129,7 @@ export function createDress(ctx, deps) {
     const Dfar = makeBuilder({ std: 40000, mid: 40000, all: 40000 });
     shown = 0;
     const hl = built ? [] : halos;
-    const budget = TRI_BUDGET[tier];
+    const budget = tierRow(TRI_BUDGET, tier);
     for (let i = 0; i < ranked.length; i++) {
       const it = ranked[i];
       if (it.q >= density) break;
@@ -196,7 +197,7 @@ export function createDress(ctx, deps) {
     },
     update(view, frame) { life.update(view, frame); },
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
+      const nt = normTier(q);
       if (nt === tier) return;
       const dOld = dressDensity(tier), dNew = dressDensity(nt);
       tier = nt;

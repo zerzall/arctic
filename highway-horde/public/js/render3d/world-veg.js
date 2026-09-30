@@ -13,6 +13,7 @@ import { T, shadeHex, seededRng, lin } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { LEAF_CELLS } from './world-tex.js';
 import { cardList, card, listGeo, PINE, LEAF, desertPiece, setBiome } from './world-flora.js';
+import { normTier, tierRow } from './tier.js';
 
 // trees, bushes and their species (world-flora.js)
 export { trunk, canopy, bush, scatterFlora, setBiome } from './world-flora.js';
@@ -137,7 +138,9 @@ export function buildTreeLine(B, map, waters) {
 // ---- grass field -------------------------------------------------------------------------------
 
 // height stays well under a crawler's back (~20): grass must never hide a zombie
-const GRASS = {
+export const GRASS = {
+  // cinematic: 2x the tufts, a longer reach and every blade of the field
+  cinematic: { grid: 256, cell: 3.9, height: 9.5, density: 1.0 },
   ultra: { grid: 180, cell: 4.6, height: 9.5, density: 0.95 },
   high: { grid: 128, cell: 6, height: 9.5, density: 0.9 },
 };
@@ -264,11 +267,11 @@ export function createGrassField(scene, ground, quality) {
   let time = 0;
 
   function build(q) {
-    const t = q === 'ultra' ? 'ultra' : q === 'low' ? 'low' : 'high';
+    const t = normTier(q);
     if (t === tier) return;
     tier = t;
     if (mesh) { scene.remove(mesh); geo.dispose(); mesh = null; geo = null; }
-    const cfg = GRASS[t];
+    const cfg = tierRow(GRASS, t);
     if (!cfg) return;
     geo = tuftGeometry(6);
     const G = cfg.grid;
