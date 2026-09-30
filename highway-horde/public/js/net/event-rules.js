@@ -12,6 +12,8 @@ export const IMPORTANT_EVENTS = new Set([
   'zone', 'campaign',
   // Road to Haven: the tracker, subtitles, story items, talks and the end of a mission must arrive
   'objective', 'radio', 'storyend', 'interact', 'talk', 'item', 'npc',
+  // Story levels: gates, title cards, the score, lights, checkpoints and scripted hordes
+  'gate', 'area', 'title', 'music', 'shake', 'lights', 'checkpoint', 'horde',
 ]);
 
 /**

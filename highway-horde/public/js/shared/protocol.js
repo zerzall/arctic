@@ -344,6 +344,16 @@ const EVENT_SCHEMAS = [
   ['talk', [['pid', 'pid'], ['npc', 'str']]],
   ['item', [['pid', 'pid'], ['item', 'str'], ['note', 'str'], ['x', 'pos'], ['y', 'pos'], ['n', 'u16'], ['of', 'u16']]],
   ['npc', [['what', ENUMS.npcWhat], ['npc', 'str'], ['id', 'pid']]],
+  // Story levels (JOURNEY.md §4): a gate moved, a section entered, a title card, the score, a
+  // camera shake, a section's lights, the respawn point, a scripted horde
+  ['gate', [['id', 'str'], ['open', 'bool']]],
+  ['area', [['id', 'str'], ['name', 'str'], ['i', 'pid']]],
+  ['title', [['text', 'txt'], ['sub', 'txt']]],
+  ['music', [['state', 'str']]],
+  ['shake', [['k', 'amt'], ['x', 'pos'], ['y', 'pos'], ['r', 'rad']]],
+  ['lights', [['section', 'str'], ['on', 'bool']]],
+  ['checkpoint', [['section', 'str']]],
+  ['horde', [['x', 'pos'], ['y', 'pos'], ['n', 'u16']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */
@@ -533,7 +543,9 @@ function readEvents(r) {
 // ---- snapshot
 
 const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32, P_ESCAPED = 64;
-const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8, H_STORY = 16;
+const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8, H_STORY = 16, H_LEVEL = 32;
+/** Most gates a level block carries. */
+const LEVEL_GATES = 32;
 /** Story block parts (its own flags byte). */
 const SB_STORY = 1, SB_NPCS = 2, SB_INTS = 4;
 
@@ -881,6 +893,39 @@ function readNpcs(r) {
   return out;
 }
 
+/**
+ * A story level (SPEC §4 `level`): the section reached and the checkpoint section (u8 each), the
+ * sections whose lights are out (u32 bits), the gates in `map.gates` order (up to 32: open u8 and
+ * the ticks since it last changed, u16, so the renderers animate it from where it is), the
+ * defend point's name ('' = none).
+ */
+function writeLevel(w, lv, tick) {
+  w.u8(qInt(lv.section, 255));
+  w.u8(qInt(lv.checkpoint, 255));
+  w.u32(qInt(lv.dark, 0xffffffff));
+  const gates = arr(lv.gates);
+  const n = Math.min(gates.length, LEVEL_GATES);
+  w.u8(n);
+  for (let i = 0; i < n; i++) {
+    const g = gates[i] || {};
+    w.u8(g.open ? 1 : 0);
+    w.u16(qInt(num(tick) - num(g.t), 65535));
+  }
+  writeStr(w, lv.defend || '', 40);
+}
+
+function readLevel(r, tick) {
+  const lv = { section: r.u8(), checkpoint: r.u8(), dark: r.u32(), gates: [], defend: '' };
+  const n = r.u8();
+  for (let i = 0; i < n; i++) {
+    const open = r.u8() !== 0;
+    const age = r.u16();
+    lv.gates.push({ open, t: Math.max(0, tick - age) });
+  }
+  lv.defend = readStr(r);
+  return lv;
+}
+
 /** Hold-to-use spots (up to 32): id, kind, position, radius, flags (hold | on | done), progress, who holds. */
 function writeInteractables(w, list) {
   const n = Math.min(list.length, 32);
@@ -930,7 +975,9 @@ export function encodeSnapshot(snap) {
   const story = snap.story && typeof snap.story === 'object' ? snap.story : null;
   const npcs = arr(snap.npcs), ints = arr(snap.interactables);
   const storyBits = (story ? SB_STORY : 0) | (npcs.length ? SB_NPCS : 0) | (ints.length ? SB_INTS : 0);
-  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0) | (storyBits ? H_STORY : 0));
+  const level = snap.level && typeof snap.level === 'object' ? snap.level : null;
+  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0) | (storyBits ? H_STORY : 0)
+    | (level ? H_LEVEL : 0));
   w.u8(qInt(snap.match, 255));
   w.u32(qInt(snap.tick, 0xffffffff));
   w.u8(kindIndex(PHASE_INDEX, snap.phase));
@@ -952,6 +999,7 @@ export function encodeSnapshot(snap) {
     if (npcs.length) writeNpcs(w, npcs);
     if (ints.length) writeInteractables(w, ints);
   }
+  if (level) writeLevel(w, level, snap.tick);
 
   const players = arr(snap.players);
   const np = Math.min(players.length, 255);
@@ -1077,6 +1125,7 @@ export function decodeSnapshot(buf) {
     zone: null,
     campaign: null,
     story: null,
+    level: null,
     npcs: [],
     interactables: [],
     players: null,
@@ -1100,6 +1149,7 @@ export function decodeSnapshot(buf) {
     if (bits & SB_NPCS) snap.npcs = readNpcs(r);
     if (bits & SB_INTS) snap.interactables = readInteractables(r);
   }
+  snap.level = flags & H_LEVEL ? readLevel(r, snap.tick) : null;
 
   const np = r.u8();
   const players = new Array(np);

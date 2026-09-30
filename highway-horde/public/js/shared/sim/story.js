@@ -27,8 +27,10 @@ import { TAU } from '../math.js';
 import { WEAPONS } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import {
-  ITEM_PICKUP_RADIUS, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS,
+  ITEM_PICKUP_RADIUS, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS, LEVEL_ACTIONS,
 } from '../story-defs.js';
+import { sectionIndex } from '../level.js';
+import { runAction } from './level-actions.js';
 import { missionOf, simModeOf } from '../story/registry.js';
 import { walkComponents, componentAt } from './zone.js';
 import { addInteractable } from './interact.js';
@@ -109,6 +111,8 @@ export class StoryDirector {
     }
     /** Timed callbacks (scripted blasts): { t, fn } in sim seconds. */
     this.timers = [];
+    /** Scripted actions of onStart / onDone lists waiting for their `delay` (sim/level-actions.js): { t, a }. */
+    this.actionQ = [];
   }
 
   _makeStep(def, i) {
@@ -280,6 +284,12 @@ export class StoryDirector {
    * `defend` step has an `at` anchor: boxes on a ring around it. Null = the map's own spawns.
    */
   spawnRects() {
+    const level = this.game.level;
+    if (level) {
+      // a story level: the spawns of the sections ahead (a step's pressure.section, else the
+      // section its `at` anchor stands in, else the current and the next one)
+      return level.spawnRects(this.sectionHint());
+    }
     for (const s of this.active) {
       if ((s.type !== 'waves' && s.type !== 'defend') || s.def.at === undefined) continue;
       const a = this.anchor(s.def.at);
@@ -305,6 +315,35 @@ export class StoryDirector {
       }
     }
     return out;
+  }
+
+  /**
+   * On a story level: the section an active step's `pressure.section` sends the zombies from
+   * (the lead first), else -1 (the level's current and next sections).
+   */
+  sectionHint() {
+    const map = this.map;
+    let best = -1;
+    for (const s of this.active) {
+      const p = s.def && s.def.pressure;
+      if (!p || typeof p !== 'object' || p.section === undefined) continue;
+      const i = sectionIndex(map, String(p.section));
+      if (i < 0) continue;
+      if (s === this.lead) return i;
+      if (best < 0) best = i;
+    }
+    return best;
+  }
+
+  /** A gate of the level opened or shut: the walk components changed (spots for items, bursts, rings). */
+  onGates() {
+    const g = this.game;
+    if (!this.started) return;
+    this.comp = walkComponents(g.flow);
+    const c = this.centre();
+    const main = componentAt(g.flow, this.comp, c.x, c.y);
+    if (main >= 0) this.mainComp = main;
+    for (const s of this.active) s.ring = null;
   }
 
   /** True when the game's zone / campaign director drives the waves (the mission only watches). */
@@ -435,6 +474,8 @@ export class StoryDirector {
     this._pickupItems();
     this._respawns();
     this._timers();
+    if (this.actionQ.length) this._actions();
+    if (g.over) return;
     const act = this.active;
     for (let k = 0; k < act.length; k++) {
       const s = act[k];
@@ -523,12 +564,38 @@ export class StoryDirector {
   // -----------------------------------------------------------------------------------
   // Radio / say lines
 
-  /** Queue subtitle lines: [{ who, text, ms?, kind? }, ...] (kind 'say' = spoken in person). */
+  /**
+   * Queue subtitle lines: [{ who, text, ms?, kind? }, ...] (kind 'say' = spoken in person). A
+   * scripted action in the list (`{ type: 'gate' | 'horde' | ... }`, LEVEL_ACTIONS) is queued to
+   * run `delay` seconds from now (at once when it has none), in list order.
+   */
   say(lines, defaultKind = 'radio') {
     const list = Array.isArray(lines) ? lines : [lines];
     for (const l of list) {
+      if (l && typeof l === 'object' && Object.hasOwn(LEVEL_ACTIONS, l.type)) {
+        this.actionQ.push({ t: Number.isFinite(l.delay) && l.delay > 0 ? Math.min(120, l.delay) : 0, a: l });
+        continue;
+      }
       const n = normLine(l, defaultKind);
       if (n) this.lineQ.push(n);
+    }
+    // (the ones due now run now: a gate opened by an onDone is open before the next step starts)
+    if (this.actionQ.length && this.started && !this.hideout) this._actions(0);
+  }
+
+  /** Run the queued actions that are due (after `dt` more seconds), in the order they were queued. */
+  _actions(dt = DT) {
+    const q = this.actionQ;
+    const due = [];
+    for (let i = 0; i < q.length; i++) {
+      q[i].t -= dt;
+      if (q[i].t <= 1e-9) due.push(q[i]);
+    }
+    if (!due.length) return;
+    this.actionQ = q.filter((e) => !due.includes(e));
+    for (const e of due) {
+      if (this.ended || this.game.over) return;
+      runAction(this, e.a);
     }
   }
 
@@ -615,9 +682,13 @@ export class StoryDirector {
     return { x: p.x, y: p.y };
   }
 
-  /** Where respawns and late joiners appear: beside a survivor on their feet. */
+  /** Where respawns and late joiners appear: beside a survivor on their feet (on a story level: at a checkpoint). */
   spawnPoint(i) {
     const g = this.game;
+    if (g.level) {
+      const s = g.level.spawnPoint(i);
+      if (s) return s;
+    }
     let best = null;
     for (const p of g.players) {
       if (p.state === 'alive' && !p.escaped) {
@@ -738,6 +809,8 @@ export class StoryDirector {
     const pr = {
       tier, pace, specials, burst,
       at: cfg.at !== undefined ? cfg.at : null,
+      // (a story level: the section the zombies come from, else the current and the next one)
+      section: cfg.section !== undefined && g.level ? sectionIndex(this.map, String(cfg.section)) : -1,
       cap: cfg.cap > 0 ? cfg.cap : Math.min(g.diff.maxAlive, 18 + 8 * players),
       t: cfg.delay >= 0 ? cfg.delay : 5 + this.rng.range(0, 5),
       left: Number.isFinite(cfg.bursts) && cfg.bursts >= 0 ? Math.floor(cfg.bursts) : Infinity,
@@ -774,13 +847,13 @@ export class StoryDirector {
     const at = pr.at !== null ? this.anchor(pr.at) : null;
     const c = at || this.centre();
     if (pr.burst) {
-      this.burst(c.x, c.y, pr.size, pr.tier, pr.specials, at ? 200 : 0);
+      this.burst(c.x, c.y, pr.size, pr.tier, pr.specials, at ? 200 : 0, 0, pr.section);
       pr.left--;
       pr.t = pr.every * this.rng.range(0.8, 1.25);
     } else {
       const sp = SPAWN_PACING;
       const n = Math.min(this.rng.int(sp.groupMin, sp.groupMax + Math.floor(pr.tier / sp.groupPerWaves)), pr.cap - alive);
-      this.burst(c.x, c.y, n, pr.tier, pr.specials, at ? 200 : 0, 0.25);
+      this.burst(c.x, c.y, n, pr.tier, pr.specials, at ? 200 : 0, 0.25, pr.section);
       pr.t = this._groupGap(pr.tier, pr.pace);
     }
     this.stats.bursts++;
@@ -790,10 +863,14 @@ export class StoryDirector {
    * Send `n` zombies (types by the mix of virtual wave `tier`) at (fx, fy) from a ring of open ground
    * 650..1000 px away, behind the survivors' backs when possible. `specials` are forced into the mix:
    * `share` > 0 makes that fraction of the group one of them, else one of each is added to the group.
+   * On a story level the group comes out of the spawn rects of the sections ahead instead (`section`
+   * ≥ 0: that section's), see sim/level.js.
    */
-  burst(fx, fy, n, tier, specials, inner = 0, share = 0) {
+  burst(fx, fy, n, tier, specials, inner = 0, share = 0, section = -1) {
     const g = this.game;
-    const spot = this.ringSpot(fx, fy, 650 + inner, 1000 + inner, 560);
+    const spot = g.level
+      ? g.level.spawnSpot(this.rng, section >= 0 ? section : this.sectionHint())
+      : this.ringSpot(fx, fy, 650 + inner, 1000 + inner, 560);
     if (!spot) return 0;
     const saved = g.wave;
     g.wave = tier - g.tierBonus;
@@ -859,9 +936,14 @@ export class StoryDirector {
   // -----------------------------------------------------------------------------------
   // Objective (a defend step) and waves of the step runner
 
-  /** Turn the map's objective on (a defend step); returns it. */
-  enableObjective() {
+  /**
+   * Turn the map's objective on (a defend step); returns it. On a story level (no objective of its
+   * own) the defend point goes up at anchor `target` instead (sim/level.js defendAt; `label` is its
+   * HUD name).
+   */
+  enableObjective(target = undefined, label = '') {
     const g = this.game, o = this.map.objective;
+    if (g.level && target !== undefined && !o) return g.level.defendAt(String(target), label);
     if (!o) return null;
     if (!g.objective) {
       const hp = Math.round(o.hp * (1 + OBJECTIVE_HP_PER_PLAYER * (Math.max(1, g.players.length) - 1)));
@@ -873,6 +955,10 @@ export class StoryDirector {
 
   disableObjective() {
     const g = this.game;
+    if (g.level && g.level.defend) {
+      g.level.clearDefend();
+      return;
+    }
     g.objective = null;
     g.rebuildFlowNow();
   }

@@ -3,6 +3,7 @@
 // move the zone live in sim/zone.js; nothing here touches the DOM or keeps state.
 
 import { MAP_LIST } from './maps.js';
+import { levelSupplies } from './level.js';
 
 /** Game modes in lobby order. 'defend' is the original mode and the default. */
 export const MODE_LIST = [
@@ -156,6 +157,8 @@ export function zoneName(map, z) {
 export function nearSupply(map, zone, x, y, radius) {
   const s = map && map.supply;
   if (s && Math.hypot(x - s.x, y - s.y) <= radius) return true;
+  // (a story level's supply crates, shared/level.js)
+  for (const c of levelSupplies(map)) if (Math.hypot(x - c.x, y - c.y) <= radius) return true;
   return !!zone && zone.sx !== undefined && Math.hypot(x - zone.sx, y - zone.sy) <= radius;
 }
 
