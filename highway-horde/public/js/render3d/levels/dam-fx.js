@@ -99,10 +99,14 @@ export function createDamFx(ctx, deps) {
         float flow = vUv.y * 14.0 - uTime * 3.4;
         float n = fbm(vec2(vUv.x * 16.0, flow));
         float streak = smoothstep(0.4, 0.8, fbm(vec2(vUv.x * 46.0, vUv.y * 5.0 - uTime * 5.5)));
-        float foam = clamp(0.25 + 0.7 * n + 0.45 * streak + smoothstep(0.55, 1.0, vUv.y) * 0.6, 0.0, 1.0);
-        foam *= 0.75 + 0.25 * smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
-        vec3 water = vec3(0.10, 0.2, 0.19);
-        vec3 col = mix(water, vec3(0.9, 0.94, 0.95), foam) * uLit;
+        // glassy green water over the crest, tearing into white ropes as it accelerates down the chute
+        float rope = smoothstep(0.45, 0.85, fbm(vec2(vUv.x * 60.0, vUv.y * 3.0 - uTime * 6.0)));
+        float foam = smoothstep(0.3, 0.9, 0.1 + 0.55 * n + 0.35 * streak) * (0.25 + 0.75 * smoothstep(0.02, 0.35, vUv.y));
+        foam = clamp(foam + rope * 0.35 * smoothstep(0.1, 0.5, vUv.y) + smoothstep(0.78, 1.0, vUv.y) * 0.55, 0.0, 1.0);
+        float edge = smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x);
+        foam = mix(1.0, foam, edge * 0.8 + 0.2);
+        vec3 water = mix(vec3(0.06, 0.13, 0.12), vec3(0.16, 0.26, 0.24), n);
+        vec3 col = mix(water, vec3(0.82, 0.87, 0.88), foam) * uLit;
         float a = (0.72 + 0.28 * foam) * fogVis(vD);
         gl_FragColor = vec4(mix(uFogColor, col, fogVis(vD)), a);
       ` + TONE + '}',

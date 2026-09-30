@@ -47,6 +47,28 @@ export function controlBuilding(P) {
     B.block('std', 0, H - 4, s * (D / 2 + 3), L + 10, 10, 8, '#c8c2b4', null, CONC);
     for (let x = -L / 2 + 40; x < L / 2; x += 110) B.block('std', x, 0, s * (D / 2 + 3), 16, H - 4, 6, '#bdb7a9', null, CONC);
   }
+  // the south facade (toward the spillway yard): windows between the pilasters with rooms behind them,
+  // air conditioners, the station's lettering
+  for (let k = 0, x = -L / 2 + 95; x < L / 2 - 40; x += 110, k++) {
+    const zf = D / 2 + 0.2;
+    B.box('std', x, 84, zf + 1.2, 70, 80, 1, '#4a4e4c', null, STEEL);
+    if (hash01(k * 11 + 3) < 0.25) {
+      B.box('std', x, 84, zf + 2.2, 62, 72, 1.6, '#8a6a44', null, WOOD);         // boarded up
+      for (const y of [64, 104]) B.box('std', x, y, zf + 3.2, 66, 6, 1, '#6a5238', [0, 0, 0.1], WOOD);
+    } else {
+      B.add('glass', T.plane(), [x, 84, zf + 1.9], [62, 72, 1], null, '#2a3238', { pane: { id: 2 * 256 + Math.floor(hash01(k * 7 + 1) * 255), w: 62, h: 72 } });
+      B.box('std', x, 84, zf + 2.2, 2, 72, 1.4, '#3a3e40', null, STEEL);
+      B.box('std', x, 100, zf + 2.2, 62, 2, 1.4, '#3a3e40', null, STEEL);
+    }
+    B.box('std', x, 44, zf + 3, 76, 4, 8, '#c8c2b4', null, CONC);
+    if (k % 2 === 1) {
+      B.rblock('std', x, 132, zf + 8, 34, 22, 16, 2, '#8e9294', null, STEEL);
+      for (let v = 0; v < 5; v++) B.box('std', x - 12 + v * 6, 143, zf + 16.2, 3, 16, 0.6, '#5a5e62', null, STEEL);
+    }
+  }
+  pic(B, 'control', -L / 2 + 160, 150, D / 2 + 3.4, 20, 0);
+  pic(B, 'authority', L / 2 - 170, 150, D / 2 + 3.4, 20, 0);
+  pic(B, 'd_graf1', 60, 26, D / 2 + 3.3, 26, 0);
   // the east facade: sill, big window bays, lintel, pilasters, the door with its canopy and sign
   const ex = L / 2 - 10;
   const bays = [[1310, 1640], [1780, 1900]];

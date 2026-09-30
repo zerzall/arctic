@@ -282,35 +282,41 @@ export function parapet(P, o) {
   const { B } = P;
   const L = o.w, north = o.style === 'parapetN';
   const s = north ? -1 : 1;        // the outer side (local z)
-  const H = 46;
-  B.rblock('std', 0, 0, 0, L, H, o.h, 2.5, COL.concL, null, { ...CONC, noJitter: true });
-  B.rblock('std', 0, H, 0, L + 2, 6, o.h + 8, 2.5, '#bdb7aa', null, { ...CONC, noJitter: true });
-  // art-deco fluting on the road side, every 40
-  for (let x = -L / 2 + 20; x < L / 2 - 10; x += 40) B.box('std', x, H * 0.45, -s * (o.h / 2 + 0.6), 6, H * 0.7, 1.4, '#a8a296', null, { ...CONC, noJitter: true });
-  // the outer cornice and a dripline stain
+  const H = 24;                    // a low wall: the eye (52) sees over it, down to the water
+  const BR = S(DET.panel, 0.35, 0.8);
+  B.rblock('std', 0, 0, 0, L, H, o.h, 2, COL.concL, null, { ...CONC, noJitter: true });
+  B.rblock('std', 0, H, 0, L + 2, 5, o.h + 6, 2, '#bdb7aa', null, { ...CONC, noJitter: true });
+  // the outer cornice under the deck's edge
   B.box('std', 0, -6, s * (o.h / 2 + 5), L + 2, 12, 10, COL.concD, null, { ...CONC, noJitter: true });
-  B.box('std', 0, -30, s * (o.h / 2 + 1), L, 40, 2, north ? '#6a665c' : '#7a766c', null, { ...CONC, noJitter: true });
-  // a bronze handrail on the parapet's top
-  rod(B, 'std', [-L / 2, H + 12, 0], [L / 2, H + 12, 0], 1.4, COL.bronze, S(DET.panel, 0.35, 0.8), 6);
-  for (let x = -L / 2 + 6; x <= L / 2; x += 60) rod(B, 'std', [x, H + 6, 0], [x, H + 12, 0], 0.8, COL.bronze, S(DET.panel, 0.35, 0.8), 4);
+  // an art-deco bronze railing on the wall: square posts, a rail of flat bars between them, a top rail
+  const lowTier = P.tier === 'low';
+  const postStep = 90;
+  for (let x = -L / 2 + 6; x <= L / 2 - 4; x += postStep) B.box('std', x, H + 5 + 9, 0, 4, 18, 4, COL.bronze, null, BR);
+  B.box('std', 0, H + 5 + 18, 0, L, 2.4, 4, COL.bronze, null, BR);
+  B.box('std', 0, H + 5 + 4, 0, L, 1.4, 2, COL.bronze, null, BR);
+  if (!lowTier) for (let x = -L / 2 + 12; x < L / 2 - 4; x += 12) B.box('std', x, H + 5 + 11, 0, 0.9, 13, 0.9, '#6a5230', null, BR);
   return true;
 }
 
 /** Art-deco lamp standards on the parapets, where the layout put the crest's lights. */
 export function crestLamps(P, map) {
   const { B, gy, halos } = P;
+  const BR = S(DET.panel, 0.35, 0.8);
   for (const l of map.lights) {
     if (!(l.h > Z + 100 && l.h < Z + 130)) continue;
     const north = l.y < 800;
     const py = north ? C.y0 - 8 : C.y1 + 8;
-    at(B, gy, l.x, py, Z + 52, 0, Math.round(l.x));
-    // a fluted column rising from the parapet with a lantern
-    B.cyl('std', 0, 0, 0, 5, 50, '#b4ad9e', 12, 0.8, null, CONC);
-    for (let k = 0; k < 6; k++) B.box('std', Math.cos(k) * 4.2, 22, Math.sin(k) * 4.2, 1.4, 44, 1.4, '#9a9486', null, CONC);
-    B.cyl('std', 0, 50, 0, 7, 4, COL.bronze, 10, 1, null, S(DET.panel, 0.35, 0.8));
-    B.cyl('std', 0, 54, 0, 6, 14, '#f4e8c8', 10, 1.15, null, S(0, 0.2, 0.1));
-    B.cyl('std', 0, 68, 0, 7.5, 3, COL.bronze, 10, 0.4, null, S(DET.panel, 0.35, 0.8));
-    lampGlow(B, halos, 0, 61, 0, l.x, py, l.color, { size: [5, 5, 5], k: P.day ? 1.4 : 3.6, halo: 110, strength: 0.7, y0: Z + 52, shape: 'sphere' });
+    at(B, gy, l.x, py, Z, 0, Math.round(l.x));
+    // a pylon standing through the parapet: a stepped concrete base, a fluted bronze shaft, a lantern
+    B.rblock('std', 0, 0, 0, 22, 34, 22, 2, '#b8b2a4', null, CONC);
+    B.rblock('std', 0, 34, 0, 16, 6, 16, 1.5, '#a8a296', null, CONC);
+    B.cyl('std', 0, 40, 0, 3.4, 64, COL.bronze, 10, 0.75, null, BR);
+    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; B.box('std', Math.cos(a) * 3, 60, Math.sin(a) * 3, 1.2, 36, 1.2, '#6a5230', [0, -a, 0], BR); }
+    B.cyl('std', 0, 104, 0, 7, 3, COL.bronze, 10, 1, null, BR);
+    B.cyl('glass', 0, 107, 0, 6.5, 16, '#e8dcc0', 10, 1.2, null, S(0, 0.15, 0.1));
+    B.cyl('std', 0, 123, 0, 8.4, 3, COL.bronze, 10, 0.5, null, BR);
+    B.cyl('std', 0, 126, 0, 1.4, 6, COL.bronze, 6, 0.3, null, BR);
+    lampGlow(B, halos, 0, 114, 0, l.x, py, l.color, { size: [5, 7, 5], k: P.day ? 1.2 : 3.6, halo: 120, strength: 0.7, y0: Z, shape: 'sphere' });
   }
 }
 

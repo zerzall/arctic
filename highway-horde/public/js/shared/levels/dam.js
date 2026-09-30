@@ -289,9 +289,9 @@ export function build(B) {
   // a storm over the canyon by day, a wet blue-black night (the renderers read map.look)
   B.map.look = {
     day: {
-      az: 205, el: 38, haze: '#8e979c', horizon: '#9aa3a8', zenith: '#4f5c68', fog: 0.00036, cover: 0.97,
+      az: 205, el: 38, haze: '#8c959b', horizon: '#98a1a7', zenith: '#4c5966', fog: 0.00024, cover: 0.97,
       sunColor: '#dfe6ee', sunI: 1.9, hemiSky: '#a9b6c4', hemiGround: '#5a5a4a', hemi: 1.12, exposure: 1.06,
-      heat: 0, ridge: '#4f5a60', wet: 0.95, mist: 1.6,
+      heat: 0, ridge: '#4f5a60', wet: 0.8, mist: 1.3,
       grade: { saturation: 0.86, contrast: 1.08, gain: [0.99, 1.0, 1.02], vignette: 0.26 },
     },
     night: {
@@ -299,6 +299,7 @@ export function build(B) {
       fogDensity: 0.00118, hemi: 0.9, moonI: 0.42,
     },
     deciduous: 0.15,
+    trees: ['pine', 'spruce', 'pine', 'spruce', 'birch'],
   };
   const A = artData(B);
   const C = DAM.crest;
@@ -673,7 +674,9 @@ function buildTurbines(B, A) {
 function buildRiverside(B, A) {
   const S = { section: 'riverside' };
   const bld = (x, y, w, h, color, roof, arch, extra = {}) => {
-    const o = B.ob('building', x, y, w, h, 0, { color, roof, section: 'riverside', ...extra });
+    // a small river town: two storeys (an explicit height keeps the shop rows low)
+    const top = extra.top ?? (arch === 'shops' ? 128 + (Math.round(x / 10) % 3) * 12 : undefined);
+    const o = B.ob('building', x, y, w, h, 0, { color, roof, section: 'riverside', ...extra, top });
     if (arch) o.arch = arch;
     return o;
   };
