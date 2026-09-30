@@ -11,11 +11,15 @@
 // times, and a post chain that fails falls back to drawing the world straight to the canvas.
 //
 // Graphics settings (render(view, { settings })), applied live and cheap when unchanged:
-//   quality 'ultra'|'high'|'low', renderScale 'auto'|0.5..1 (fraction of the tier's
-//   pixel-ratio cap; 'auto' = dynamic resolution), bloom, ao (ignored on 'low'),
+//   quality 'cinematic'|'ultra'|'high'|'low', renderScale 'auto'|0.5..2 (fraction of the tier's
+//   pixel-ratio cap; 'auto' = dynamic resolution holding 97 % of the display's refresh rate),
+//   bloom, ao (ignored on 'low'),
 //   antialias 'smaa'|'fxaa'|'off' ('low' uses FXAA), filmGrain, vignette, volumetrics
 //   (ground mist + light scattering) and reflections (wet ground / water SSR), both
-//   ignored on 'low'; gore 'on'|'low'|'off' (blood, gibs and decals; off = dark ash, no gibs).
+//   ignored on 'low'; gore 'on'|'low'|'off' (blood, gibs and decals; off = dark ash, no gibs);
+//   Cinematic only: msaa 0|2|4|8, shadowsHigh, contactShadows, aoFull, fxHigh, motionBlur, dof, lensFx,
+//   lightShadows; everywhere: brightness / contrast / saturation (display calibration, x1) and
+//   timing (per-pass GPU timings in r.stats.passMs).
 
 import * as THREE from 'three';
 import { createWorld, obstacleHeight, objectiveHeight, fireBaseHeight } from './world.js';
@@ -95,11 +99,12 @@ const normQuality = normTier;
 /**
  * Create the first-person renderer on `canvas`.
  * @param {HTMLCanvasElement} canvas
- * @param {{ map: object, quality?: 'ultra'|'high'|'low', mode?: 'defend'|'zone', time?: 'night'|'day' }} opts
+ * @param {{ map: object, quality?: 'cinematic'|'ultra'|'high'|'low', mode?: 'defend'|'zone', time?: 'night'|'day', refreshHz?: number }} opts
+ *   refreshHz: the display's refresh rate (ui/display.js measures it); dynamic resolution aims at 97 % of it
  *   mode 'zone' (Evac Run) builds the safe-zone wall and markers (zone3d.js);
  *   time 'day' renders the sunny variant of the map (SPEC §7.5.1; default: the map's own time, else night)
  */
-export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend', time } = {}) {
+export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend', time, refreshHz = 60 } = {}) {
   if (map && map.campaign) mode = 'campaign';
   const tCreate = performance.now();
   let q = normQuality(quality);
@@ -338,15 +343,19 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   }
 
   // ---- post chain + dynamic resolution ----
+  let gpuTimer = null;
+  try { gpuTimer = createGpuTimer(renderer.getContext()); } catch { gpuTimer = null; }
   let post = null;
   try {
-    // the atmosphere pass reads the light pool, the flashlight and the ground's wet mask
-    const atmosSrc = { lights: lights.poolLights, kinds: lights.poolKinds, flashlight: lights.flashlight, ambient: amb, ground: world.ground, fogDensity: amb.fogDensity };
+    // the atmosphere pass reads the light pool, the flashlight and the ground's wet mask (and, on
+    // Cinematic, the cascaded sun for its shafts); the contact shadows read the sun's direction
+    const atmosSrc = { lights: lights.poolLights, kinds: lights.poolKinds, flashlight: lights.flashlight, ambient: amb, ground: world.ground, fogDensity: amb.fogDensity, sun: null, sunDir: lights.sunDir };
     // the sun (day) / moon (night) direction feeds the lens flare; the shared fx pools feed the heat / shockwave distortion
     const flareDir = (amb.sunDir ? amb.sunDir.clone() : new THREE.Vector3(-0.45, 0.62, -0.64)).normalize();
     post = createPost(renderer, {
       scene, camera, getViewmodel: () => vm, quality: q, look: amb.grade || nightGradeFor(map),
-      getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; return atmosSrc; },
+      getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; atmosSrc.sun = lights.sun; return atmosSrc; },
+      gpuTimer,
       getFx: () => peekFx(ctx), flareDir, flareStrength: amb.time === 'day' ? 0.11 : 0.04,
       flareColor: amb.time === 'day' ? [1, 0.92, 0.72] : [0.7, 0.85, 1],
     });
@@ -355,14 +364,18 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     post = null;
   }
   // Dynamic resolution may climb above the native size (supersampling) on desktop screens
-  // (device pixel ratio below 2) when the GPU has headroom; phones and hi-dpi screens stay at 1.
+  // (device pixel ratio below 2) when the GPU has headroom, up to 1.5 (Cinematic: 2, the pixel budget
+  // caps it); phones and hi-dpi screens stay at 1. It aims at 97 % of the display's refresh rate.
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const dyn = createDynRes(coarse || (window.devicePixelRatio || 1) >= 2 ? 1 : 1.5);
-  let gpuTimer = null;
-  try { gpuTimer = createGpuTimer(renderer.getContext()); } catch { gpuTimer = null; }
+  let hz = Number.isFinite(refreshHz) && refreshHz >= 30 ? refreshHz : 60;
+  const makeDyn = () => createDynRes(coarse || (window.devicePixelRatio || 1) >= 2 ? 1 : tierAtLeast(q, 'cinematic') ? 2 : 1.5, hz * 0.97);
+  let dyn = makeDyn();
   let postSet = normPostSettings(null);
   // raw values of the last settings seen: re-normalised only when one of them changes
-  const rawSet = { quality: undefined, renderScale: undefined, bloom: undefined, ao: undefined, antialias: undefined, filmGrain: undefined, vignette: undefined, volumetrics: undefined, reflections: undefined };
+  const RAW = ['renderScale', 'bloom', 'ao', 'antialias', 'filmGrain', 'vignette', 'volumetrics', 'reflections',
+    'msaa', 'shadowsHigh', 'contactShadows', 'aoFull', 'fxHigh', 'motionBlur', 'dof', 'lensFx', 'lightShadows', 'brightness', 'contrast', 'saturation', 'timing'];
+  const rawSet = { quality: undefined };
+  for (const k of RAW) rawSet[k] = undefined;
   let postErrors = 0;
 
   // ---- sizing ----
@@ -448,7 +461,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // submitMs = three.js render calls (draw submission; includes driver time on software GL)
   // renderScale = fraction of the tier's pixel-ratio cap in use; gpuMs only where the
   // browser exposes GPU timer queries (EXT_disjoint_timer_query_webgl2)
-  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0, renderScale: 1, pixelRatio: 1, post: !!post };
+  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0, renderScale: 1, pixelRatio: 1, post: !!post, tier: q, msaa: 0, width: 0, height: 0, refreshHz: hz };
   let fpsAcc = 0, fpsN = 0, jsAvg = 0, updAvg = 0, subAvg = 0;
 
   function render(view, opts = {}) {
@@ -513,7 +526,13 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       stats.renderScale = Math.round(effScale * 100) / 100;
       stats.pixelRatio = Math.round(prInner * 1000) / 1000;
       stats.post = !!post;
+      stats.tier = q;
+      stats.msaa = post ? post.msaa : 0;
+      stats.width = Math.max(1, Math.floor(cssW * prInner));
+      stats.height = Math.max(1, Math.floor(cssH * prInner));
+      stats.refreshHz = hz;
       if (gpuTimer && Number.isFinite(gpuTimer.ms)) stats.gpuMs = Math.round(gpuTimer.ms * 100) / 100;
+      if (gpuTimer && post && post.timing) stats.passMs = gpuTimer.passes; else if (stats.passMs) delete stats.passMs;
       stats.frames++;
       if (dt > 0) {
         fpsAcc += dt; fpsN++;
@@ -531,9 +550,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   function drawFrame(frame, dt) {
     if (post) {
       try {
-        if (gpuTimer) gpuTimer.begin();
+        const whole = gpuTimer && !post.timing;
+        if (whole) gpuTimer.begin('frame');
         post.render(dt, frame);
-        if (gpuTimer) gpuTimer.end();
+        if (whole) gpuTimer.end();
         return;
       } catch (err) {
         if (gpuTimer) gpuTimer.end();
@@ -562,15 +582,15 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       rawSet.quality = s.quality;
       if (s.quality === 'low' || s.quality === 'high' || s.quality === 'ultra' || s.quality === 'cinematic') api.setQuality(s.quality);
     }
-    if (s.renderScale === rawSet.renderScale && s.bloom === rawSet.bloom && s.ao === rawSet.ao && s.antialias === rawSet.antialias
-      && s.filmGrain === rawSet.filmGrain && s.vignette === rawSet.vignette
-      && s.volumetrics === rawSet.volumetrics && s.reflections === rawSet.reflections) return;
-    rawSet.renderScale = s.renderScale; rawSet.bloom = s.bloom; rawSet.ao = s.ao; rawSet.antialias = s.antialias;
-    rawSet.filmGrain = s.filmGrain; rawSet.vignette = s.vignette;
-    rawSet.volumetrics = s.volumetrics; rawSet.reflections = s.reflections;
+    let same = true;
+    for (const k of RAW) if (s[k] !== rawSet[k]) { same = false; break; }
+    if (same) return;
+    for (const k of RAW) rawSet[k] = s[k];
     const prev = postSet.renderScale;
     postSet = normPostSettings(s);
     if (post) post.configure(postSet, q);
+    // the cascaded sun's map size follows the shadow setting (cinematic; the default is on)
+    lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh });
     if (postSet.renderScale !== prev) {
       const target = postSet.renderScale === 'auto' ? renderScale : postSet.renderScale;
       if (postSet.renderScale === 'auto') dyn.reset(renderScale);
@@ -664,13 +684,22 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       }
       try { world.setQuality(n); } catch (err) { logErr('setQuality world', err); }
       if (post) post.configure(postSet, n);
-      // a new tier has a new pixel-ratio cap: let dynamic resolution start over from full
+      lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh });
+      // a new tier has a new pixel-ratio cap and ceiling: let dynamic resolution start over from full
+      dyn = makeDyn();
       if (postSet.renderScale === 'auto') { renderScale = 1; dyn.reset(1); }
       resize();
     },
+    /** The display's refresh rate (Hz) changed or was measured late: dynamic resolution re-aims at 97 % of it. */
+    setRefreshHz(nhz) {
+      if (!Number.isFinite(nhz) || nhz < 30 || nhz === hz) return;
+      hz = nhz;
+      dyn.setTarget(hz * 0.97);
+      stats.refreshHz = hz;
+    },
     get stats() { return stats; },
     /** Internals for dev tools / tests (not part of the SPEC API). */
-    get debug() { return { renderer, scene, camera, world, lights, subs, ctx, createMs, post, settings: postSet }; },
+    get debug() { return { renderer, scene, camera, world, lights, subs, ctx, createMs, post, settings: postSet, dyn }; },
     destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -694,6 +723,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       try { if (post) post.dispose(); } catch (err) { logErr('dispose post', err); }
       post = null;
       try { if (gpuTimer) gpuTimer.dispose(); } catch (err) { logErr('dispose gpu timer', err); }
+      gpuTimer = null;
       // anything a sub-system left behind (the viewmodel's own scene included)
       const seen = new Set();
       const leftovers = (o) => {

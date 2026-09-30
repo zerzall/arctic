@@ -535,6 +535,8 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     hemi, flashlight: flash, ambient: amb,
     /** The sun / moon light (a DirectionalLight, or the two-cascade sun of 'cinematic'). */
     get moon() { return moon; },
+    /** Unit vector from the scene toward the sun / moon (contact shadows, shafts). */
+    get sunDir() { return MOON_DIR; },
     /** Sun shadow description for the atmosphere pass (light shafts): null when there is no cascaded map yet. */
     get sun() { return cascaded && moon.castShadow ? { light: moon, shadow: moon.shadow, dir: MOON_DIR } : null; },
     updateMoonShadow,
