@@ -2231,8 +2231,11 @@ async function scenarioStory(sc) {
   log(`    story: device (${dev.kind}) used, ring reached ${ring.prog.toFixed(2)} on the way`);
 
   // Back to the overpass: the mission ends.
-  const home = await pl.page.evaluate(() => { const m = window.__HH.getView().story.marks.find((q) => q.kind === 'reach'); return m ? [m.x, m.y] : null; });
-  expect(!!home, 'the last step marks the place to reach');
+  // (the interact event and the next step's marker reach the view in different frames: wait for the marker)
+  const home = await waitFor(pl, () => {
+    const m = window.__HH.getView().story.marks.find((q) => q.kind === 'reach');
+    return m ? [m.x, m.y] : false;
+  }, null, 'the last step marks the place to reach', 10e3);
   await teleport(pl, home[0], home[1]);
   await waitFor(pl, () => window.__HH.getView().phase === 'victory', null, 'victory', 60e3);
   const end = await waitFor(pl, () => {
