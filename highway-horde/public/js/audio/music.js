@@ -560,6 +560,9 @@ for (const s of Object.values(MUSIC_STATES)) s.tick = s.compound ? 60 / s.bpm / 
 // Cue states and what follows them count as one "family" for the state machine.
 const FAMILY = { waveclear: 'calm', victory: 'glory', gameover: 'lament' };
 const URGENT = new Set(['battle', 'boss', 'waveclear', 'victory', 'gameover']);
+/** States a story level's `music` action may hold, and for how long by default (s). */
+const HOLDABLE = new Set(['calm', 'tension', 'battle', 'boss']);
+const HOLD_TIME = 45;
 
 /** Build phrase `name` for `state` (deterministic for a given rng): { len, events, segs }. */
 export function buildPhrase(stateName, name, rng = createRng(1)) {
@@ -646,6 +649,7 @@ export function createMusic(ctx, { out, bank, seed } = {}) {
   let started = false;
   let intensity = 0.1, target = 0.1, boss = false, mode = 'menu';
   let cueReq = null;           // { name, at } — e.g. a wave just got cleared
+  let held = null;             // { state, until } — a story level's `music` action holds a state a while
   let lastTick = 0, nextTime = 0;
   let cur = null;              // { name, def, phrase, idx, tick, group }
   const played = new Map();    // phrase → times played (less-heard phrases come first)
@@ -820,6 +824,10 @@ export function createMusic(ctx, { out, bank, seed } = {}) {
     if (mode === 'victory') return 'victory';
     if (mode === 'hideout') return 'hideout';
     if (boss) return 'boss';
+    if (held) {
+      if (lastTick < held.until) return held.state;
+      held = null;
+    }
     const fighting = cur && (cur.name === 'battle' || cur.name === 'boss');
     if (target >= 0.33 || (fighting && target >= 0.2)) return 'battle';
     if (cueReq && cueReq.name === 'waveclear') return 'waveclear';
@@ -876,6 +884,25 @@ export function createMusic(ctx, { out, bank, seed } = {}) {
     /** One-off musical moment: 'waveclear'. */
     cue(name) {
       if (name === 'waveclear') cueReq = { name, at: lastTick };
+    },
+    /**
+     * A story level's `music` action: hold a looping state ('calm' | 'tension' | 'battle' | 'boss')
+     * for `seconds`, whatever the fight's intensity says; 'waveclear' plays that cue; 'auto' (or an
+     * unknown state) lets the intensity lead again.
+     */
+    hold(state, seconds = HOLD_TIME) {
+      if (state === 'waveclear') {
+        cueReq = { name: state, at: lastTick };
+        held = null;
+      } else if (HOLDABLE.has(state)) {
+        held = { state, until: lastTick + Math.max(1, seconds) };
+      } else {
+        held = null;
+      }
+    },
+    /** The state a `music` action holds, or null. */
+    get held() {
+      return held && lastTick < held.until ? held.state : null;
     },
     /** Multiply the score's level (0..1) while the fight is loud. */
     duck(level, now = lastTick) {
