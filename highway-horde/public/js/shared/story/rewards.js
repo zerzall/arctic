@@ -110,7 +110,8 @@ export function settleMission({ world, mission, result, party, difficulty, missi
     np = {
       ...np,
       scrap: Math.min(99999, (np.scrap | 0) + scrap),
-      kit: {},
+      // supplies are spent on a win; a lost mission keeps them for the retry
+      kit: victory ? {} : { ...(np.kit || {}) },
       stats: {
         kills: (np.stats.kills | 0) + kills,
         missions: (np.stats.missions | 0) + (victory ? 1 : 0),

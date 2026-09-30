@@ -6,12 +6,14 @@
 // relay when the page is served by the relay server, else p2p.
 //
 // Control messages on the reliable 'ctl' channel (JSON, { t, ... }):
-//   client → host  hello { version, protocol, name, color, cls, token } · profile { name?, color?, cls?, ready? }
-//                  chat { text } · buy { item } · ready · pong { n, ts } · bye
-//   host → client  welcome { id, code, roster, settings } · reject { reason } · roster { roster }
+//   client → host  hello { version, protocol, name, color, cls, token, story? } · profile { name?, color?, cls?, ready? }
+//                  chat { text } · buy { item } · ready · pong { n, ts } · bye · sact { a, ... } (story)
+//   host → client  welcome { id, code, roster, settings, story? } · reject { reason } · roster { roster }
 //                  settings { settings } · chat { pid, name, text, system } · notice { text }
-//                  start { match, mapId, seed, settings, roster } · lobby · ping { n, ts }
+//                  start { match, mapId, seed, settings, roster, story? } · lobby · ping { n, ts }
 //                  bye { reason } · kick
+//                  story rooms only (protocol 9, net/story-host.js): world { world } · sprofile { profile }
+//                  sstate { stage, mission, party, ready, ... } · sdebrief { debrief } · sres { a, ok, ... } · swant { id }
 // Binary on 'state': snapshots (host → client) and inputs (client → host), shared/protocol.js.
 // The host trusts nothing a client sends: see lobby-rules.js and HostSession._onMessage
 // (per-peer message budget, shop ids only, kick bans by tab token and name, room lock).
@@ -71,9 +73,11 @@ async function fetchServerInfo() {
  * @param {string|object} [opts.transport] 'auto' | 'relay' | 'p2p' | 'local', or a ready
  *   HostTransport instance (tests)
  * @param {object} [opts.hooks] test hooks, see HostSession
+ * @param {object} [opts.story] host a story campaign room (STORY.md): { profile, world?, newWorld? }
+ *   — `session.story` is then the StoryHost (net/story-host.js), else null
  * @returns {Promise<HostSession>} resolves once friends can join (code set, except local)
  */
-export async function hostGame({ name, color, cls, transport = 'auto', hooks } = {}) {
+export async function hostGame({ name, color, cls, transport = 'auto', hooks, story = null } = {}) {
   let net;
   if (transport && typeof transport === 'object') {
     net = transport;
@@ -95,7 +99,7 @@ export async function hostGame({ name, color, cls, transport = 'auto', hooks } =
     }
     if (!net) net = await createPeerHost();
   }
-  return new HostSession(net, { name, color, cls }, hooks);
+  return new HostSession(net, { name, color, cls }, hooks, story);
 }
 
 /**
@@ -108,10 +112,12 @@ export async function hostGame({ name, color, cls, transport = 'auto', hooks } =
  * @param {number} opts.color
  * @param {string} opts.cls
  * @param {object} [opts.hooks] test hooks, see ClientSession
+ * @param {object} [opts.story] the joiner's story data for a campaign room: { profile, worldId?, worldRev? }
+ *   (a room that is not a story room ignores it)
  * @returns {Promise<ClientSession>} rejects Error('Room not found' | 'Room is full' |
  *   'Game version mismatch' | 'Could not connect')
  */
-export async function joinGame({ code, via, name, color, cls, hooks } = {}) {
+export async function joinGame({ code, via, name, color, cls, hooks, story = null } = {}) {
   let net;
   if (via && typeof via === 'object') {
     net = await via;
@@ -136,5 +142,5 @@ export async function joinGame({ code, via, name, color, cls, hooks } = {}) {
     }
   }
   const session = new ClientSession(net, hooks);
-  return session._handshake({ name, color, cls });
+  return session._handshake({ name, color, cls }, story);
 }

@@ -155,6 +155,12 @@ test('a defeat pays half the fighting XP, no scrap and no progress; bots earn no
   assert.equal(r.players[1].delta.weapon, null);
   assert.equal(r.players[2], undefined);
   assert.equal(r.players[1].profile.weapons.shotgun, undefined);
+  // supplies are kept for the retry
+  const kitted = settleMission({
+    world, mission: getMission('m1_1'), result: { result: 'defeat', stats: {} },
+    party: [{ pid: 1, profile: { ...p, kit: { frag: 2 } } }],
+  });
+  assert.deepEqual(kitted.players[1].profile.kit, { frag: 2 });
 }));
 
 test('finishing a chapter moves the crew to the next hideout and flags the arrival', withContent(() => {

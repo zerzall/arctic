@@ -18,6 +18,7 @@ import {
   botProfile, isShopItem, clientToken,
 } from './lobby-rules.js';
 import { IMPORTANT_EVENTS, PERISHABLE_EVENTS } from './event-rules.js';
+import { StoryHost } from './story-host.js';
 
 /** Input older than this means the host is not looking (hidden tab): stand still. */
 const STALE_INPUT = 0.25;
@@ -76,8 +77,9 @@ export class HostSession extends Emitter {
    * @param {HostTransport} net
    * @param {object} profile { name, color, cls }
    * @param {object} [hooks] test hooks: { createGame(opts), now() seconds, manual: true }
+   * @param {object} [story] makes this a story room (STORY.md): { profile, world, newWorld }
    */
-  constructor(net, profile = {}, hooks = {}) {
+  constructor(net, profile = {}, hooks = {}, story = null) {
     super();
     this.net = net;
     this.hooks = hooks;
@@ -101,6 +103,12 @@ export class HostSession extends Emitter {
     this.left = false;
     this.match = 0;
     this.seed = 0;
+    /** The story controller (net/story-host.js) of a story room, else null. */
+    this.story = story ? new StoryHost(this, story) : null;
+    /** Story stages: the game is frozen behind the result screen. */
+    this.held = false;
+    /** The story part of the running game's start message. */
+    this.storyStart = null;
 
     /** transport peer id → { peerId, pid, since, lastSeen, lastSeq, chat, pingN } */
     this.peers = new Map();
@@ -166,16 +174,30 @@ export class HostSession extends Emitter {
 
   start() {
     if (this.inGame || this.left) return false;
-    const createGame = this.hooks.createGame || ((opts) => new Game(opts));
+    // A story room starts in its hideout and chains its own games (net/story-host.js).
+    if (this.story) return this.story.begin();
+    const s = this.settings;
+    return this._launchGame({
+      mapId: s.mapId,
+      gameSettings: { difficulty: s.difficulty, waves: s.waves, objective: s.objective, friendlyFire: s.friendlyFire, mode: s.mode, time: s.time },
+      players: this.roster.map((r) => ({ id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot })),
+    });
+  }
+
+  /**
+   * Build a Game, tell everyone to start it and begin stepping it. A running game is
+   * replaced (story stages chain into each other without visiting the lobby).
+   * @param {{ mapId: string, gameSettings: object, players: object[], create?: Function, story?: object }} plan
+   */
+  _launchGame({ mapId, gameSettings, players, create = null, story = null }) {
+    if (this.left) return false;
+    if (this.inGame) this._stopGame();
+    const createGame = create || this.hooks.createGame || ((opts) => new Game(opts));
     const s = this.settings;
     this.seed = randomSeed();
     this.match = (this.match + 1) & 0xff;
-    this.game = createGame({
-      mapId: s.mapId,
-      seed: this.seed,
-      settings: { difficulty: s.difficulty, waves: s.waves, objective: s.objective, friendlyFire: s.friendlyFire, mode: s.mode, time: s.time },
-      players: this.roster.map((r) => ({ id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot })),
-    });
+    this.storyStart = story;
+    this.game = createGame({ mapId, seed: this.seed, settings: gameSettings, players });
     // Bots are ready by definition (the in-game ready vote is theirs to cast).
     for (const r of this.roster) r.ready = !!r.bot;
     this.builder.reset();
@@ -192,14 +214,22 @@ export class HostSession extends Emitter {
     const graceUntil = this.clock() + START_GRACE;
     for (const peer of this.peers.values()) peer.graceUntil = graceUntil;
     this.emit('roster', this.roster);
-    this.emit('start', { mapId: s.mapId, seed: this.seed, settings: { ...s } });
-    if (!this.hooks.manual) this.ticker = createTicker(TICK_RATE, () => this._pump());
+    const info = { mapId: s.mapId, seed: this.seed, settings: { ...s } };
+    if (story) info.story = story;
+    this.emit('start', info);
+    if (!this.hooks.manual && !this.ticker) this.ticker = createTicker(TICK_RATE, () => this._pump());
     return true;
+  }
+
+  /** Story: freeze the running game (the result screen is up). */
+  _holdGame() {
+    this.held = true;
   }
 
   returnToLobby() {
     if (!this.inGame || this.left) return false;
     this._stopGame();
+    if (this.story) this.story.onReturnToLobby();
     for (const r of this.roster) r.ready = !!r.bot;
     this._sendAll('ctl', { t: 'lobby' });
     this._rosterChanged();
@@ -337,7 +367,7 @@ export class HostSession extends Emitter {
 
   _pump() {
     const game = this.game;
-    if (!game || this.left) return;
+    if (!game || this.left || this.held) return;
     const now = this.clock();
     if (this.t0 === null) this.t0 = now - game.tick * DT;
     let due = Math.floor((now - this.t0) / DT + 1e-9) - game.tick;
@@ -348,7 +378,7 @@ export class HostSession extends Emitter {
       due = MAX_CATCHUP_TICKS;
     }
     const active = now - this.lastUpdateAt <= STALE_INPUT;
-    for (let i = 0; i < due && this.game === game; i++) {
+    for (let i = 0; i < due && this.game === game && !this.held; i++) {
       game.setInput(1, active ? this.builder.next() : this.builder.idle());
       game.step();
       const send = game.tick % SNAPSHOT_EVERY === 0;
@@ -366,6 +396,12 @@ export class HostSession extends Emitter {
       this._pushLocalEvents(snap.events, active);
     }
     if (send) this._broadcastSnapshot(snap);
+    // Story: a mission may have ended with this snapshot (after it went out: the last
+    // shots and the win reach the players before the result screen does).
+    if (this.story) {
+      this.story.onSnapshot(snap);
+      if (snap.events.length) this.story.onEvents(snap.events);
+    }
   }
 
   /**
@@ -404,6 +440,7 @@ export class HostSession extends Emitter {
     this.ticker = null;
     this.game = null;
     this.inGame = false;
+    this.held = false;
     this.prevSnap = this.curSnap = this.lastView = null;
     this.netEvents = [];
     this.localEvents = [];
@@ -411,7 +448,7 @@ export class HostSession extends Emitter {
   }
 
   _startMessage() {
-    return {
+    const msg = {
       t: 'start',
       match: this.match,
       mapId: this.settings.mapId,
@@ -419,6 +456,9 @@ export class HostSession extends Emitter {
       settings: { ...this.settings },
       roster: this.roster,
     };
+    // Story: which stage this is and every survivor's spec (the clients predict with theirs).
+    if (this.story && this.storyStart) msg.story = this.story.startInfo();
+    return msg;
   }
 
   // ---- peers -------------------------------------------------------------------------
@@ -467,6 +507,9 @@ export class HostSession extends Emitter {
         break;
       case 'ready':
         if (this.game) this.game.command(peer.pid, { type: 'ready' });
+        break;
+      case 'sact':
+        if (this.story) this.story.onAction(peer.pid, data);
         break;
       case 'pong':
         this._pong(peer, data);
@@ -551,11 +594,18 @@ export class HostSession extends Emitter {
     peer.lastSeq = 0;
     this.pidToPeer.set(pid, peer.peerId);
     this.chatLimiters.set(pid, new ChatLimiter());
-    this._send(peer, { t: 'welcome', id: pid, code: this.code, roster: this.roster, settings: this.settings });
+    // Story: check the joiner's profile against the caps and keep the accepted one.
+    if (this.story) this.story.admit(pid, entry, peer, msg.story);
+    const welcome = { t: 'welcome', id: pid, code: this.code, roster: this.roster, settings: this.settings };
+    if (this.story) welcome.story = this.story.welcomeInfo(pid);
+    this._send(peer, welcome);
+    if (this.story) this.story.afterWelcome();
     if (this.game) {
       // Late join: the newcomer starts spectating and respawns with the next wave. The
       // Game gives someone coming back under the same name what they left with (§3.1).
-      this.game.addPlayer({ id: pid, name: entry.name, color: entry.color, cls: entry.cls });
+      const info = { id: pid, name: entry.name, color: entry.color, cls: entry.cls };
+      if (this.story) info.story = this.story.joinSpec(pid);
+      this.game.addPlayer(info);
       this._send(peer, this._startMessage());
       peer.graceUntil = this.clock() + START_GRACE;
     }
@@ -634,6 +684,7 @@ export class HostSession extends Emitter {
     if (i < 0) return;
     const [entry] = this.roster.splice(i, 1);
     if (this.game) this.game.removePlayer(peer.pid);
+    if (this.story) this.story.onLeave(peer.pid);
     if (this.left) return;
     this._rosterChanged();
     const what = reason === 'kicked' ? 'was kicked' : reason === 'timeout' ? 'lost connection' : 'left the game';

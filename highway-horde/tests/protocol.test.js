@@ -243,7 +243,7 @@ test('the new guns: weapon ids, frost flags, flare/frost/harpoon projectiles, fl
   assert.deepEqual(d.events, snap.events);
   assert.ok(EVENT_TYPES.includes('freeze'));
   assert.ok(buf.byteLength - base < 80, 'all binary, no JSON');
-  assert.equal(PROTOCOL_VERSION, 8);
+  assert.ok(PROTOCOL_VERSION >= 8, 'the snapshot layout of protocol 8 and up');
 });
 
 test('sprintLock round-trips both ways', () => {

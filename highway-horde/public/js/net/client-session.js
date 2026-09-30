@@ -30,6 +30,9 @@ import { interpolateSnapshots } from './interpolation.js';
 import { NetStats } from './stats.js';
 import { sanitizeName, isColor, sanitizeClass, clientToken } from './lobby-rules.js';
 import { IMPORTANT_EVENTS, PERISHABLE_EVENTS, STALE_EVENT_AGE } from './event-rules.js';
+import { StoryClient } from './story-client.js';
+import { storyMods, sanitizeSpec, weaponFor } from '../shared/story/mods.js';
+import { buildStoryMap } from '../shared/story/stub-hub.js';
 
 const HELLO_TIMEOUT_MS = 10000;
 /** Nothing at all from the host for this long (it pings every 2 s): give up. */
@@ -142,6 +145,12 @@ export class ClientSession extends Emitter {
     this.inGame = false;
     this.left = false;
     this.locked = false;
+    /** The story mirror (net/story-client.js) once a story room welcomed us, else null. */
+    this.story = null;
+    /** Story mods of the local survivor for the running game (prediction), or null. */
+    this.mods = null;
+    /** The joiner's own copy of the campaign (offered to the host if it is the newer one). */
+    this.localWorld = null;
     this.match = -1;
     this.lastHostMsg = this.clock();
     this.graceUntil = -Infinity;
@@ -202,7 +211,7 @@ export class ClientSession extends Emitter {
   }
 
   /** Send hello and wait for welcome/reject. Resolves this session. */
-  _handshake(profile) {
+  _handshake(profile, story = null) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => done(new Error('Could not connect')), HELLO_TIMEOUT_MS);
       const done = (err) => {
@@ -217,7 +226,7 @@ export class ClientSession extends Emitter {
         }
       };
       this._welcome = done;
-      this._sendCtl({
+      const hello = {
         t: 'hello',
         version: GAME_VERSION,
         protocol: PROTOCOL_VERSION,
@@ -225,7 +234,18 @@ export class ClientSession extends Emitter {
         color: isColor(profile.color) ? profile.color : 0,
         cls: sanitizeClass(profile.cls),
         token: this.hooks.token || tabToken(),
-      });
+      };
+      // Story rooms: our profile (the host checks it against its caps) and which copy of
+      // the campaign we hold, so the host can ask for it if it is newer than its own.
+      if (story && story.profile) {
+        this.localWorld = story.world || null;
+        hello.story = { profile: story.profile };
+        if (story.world && story.world.id) {
+          hello.story.worldId = story.world.id;
+          hello.story.worldRev = story.world.rev | 0;
+        }
+      }
+      this._sendCtl(hello);
     });
   }
 
@@ -399,6 +419,7 @@ export class ClientSession extends Emitter {
         this.inviteUrl = inviteUrlFor(this.code, this.transport);
         this.roster = Array.isArray(data.roster) ? data.roster : [];
         this.settings = { ...DEFAULT_SETTINGS, ...data.settings };
+        if (data.story && typeof data.story === 'object') this.story = new StoryClient(this, data.story, this.localWorld);
         if (this._welcome) this._welcome(null);
         break;
       case 'reject':
@@ -426,8 +447,10 @@ export class ClientSession extends Emitter {
         this._startGame(data);
         break;
       case 'lobby':
+        if (this.story) this.story.onLobby();
         if (this.inGame) {
           this.inGame = false;
+          this.mods = null;
           this._resetGameState();
           this.emit('lobby');
         }
@@ -442,11 +465,15 @@ export class ClientSession extends Emitter {
         this._disconnect('Kicked');
         break;
       default:
+        // story room messages (world, sprofile, sstate, sdebrief, sres, swant)
+        if (this.story) this.story.onMessage(data);
     }
   }
 
   _startGame(msg) {
-    const build = this.hooks.buildMap || buildMap;
+    // (a story room's hideout maps come from the same builder; until the real hub maps
+    // exist, an unknown hideout id becomes the stub hub, see shared/story/stub-hub.js)
+    const build = this.hooks.buildMap || (msg.story ? buildStoryMap : buildMap);
     let map;
     try {
       map = build(msg.mapId, msg.seed, { mode: msg.settings && msg.settings.mode });
@@ -461,12 +488,20 @@ export class ClientSession extends Emitter {
     this.match = msg.match;
     this.settings = { ...DEFAULT_SETTINGS, ...msg.settings };
     if (Array.isArray(msg.roster)) this.roster = msg.roster;
+    // Story: this survivor's perks and weapon tiers, derived exactly as the host does.
+    this.mods = null;
+    if (msg.story && typeof msg.story === 'object') {
+      if (this.story) this.story.onStart(msg.story);
+      const spec = sanitizeSpec(msg.story.specs && msg.story.specs[this.localId]);
+      if (spec) this.mods = storyMods(spec);
+    }
     this.builder.reset();
     this.inGame = true;
     this.lastHostMsg = this.clock();
     this.graceUntil = this.clock() + START_GRACE;
     const match = this.match;
     const info = { mapId: msg.mapId, seed: msg.seed, settings: { ...this.settings } };
+    if (msg.story) info.story = msg.story;
     // A late joiner gets 'start' right behind 'welcome', before joinGame()'s caller had a
     // chance to subscribe; emitting on the next task lets it see the event either way.
     setTimeout(() => {
@@ -646,15 +681,20 @@ export class ClientSession extends Emitter {
 
   // ---- shot prediction (cosmetic, SPEC §4.1) -------------------------------------------
 
+  /** The gun table entry for the local survivor (their tiers and perks in a story game). */
+  _weapon(id) {
+    return weaponFor(this.mods, id);
+  }
+
   _reloadTime(id) {
-    return WEAPONS[id].reload * (perksFor((this._localEntry() || {}).cls).reloadMult || 1);
+    return this._weapon(id).reload * (perksFor((this._localEntry() || {}).cls).reloadMult || 1);
   }
 
   /** The host's startReload(): only with room in the mag and ammo in reserve. */
   _startReload(aw) {
     const W = this.wpn;
     if (W.reloadLeft > 0 || !aw.id) return;
-    const w = WEAPONS[aw.id];
+    const w = this._weapon(aw.id);
     const mag = aw.slot < 0 ? W.freeMag : W.mag[aw.slot];
     const res = aw.slot < 0 ? -1 : W.res[aw.slot];
     if (mag >= w.mag || res === 0) return;
@@ -665,7 +705,7 @@ export class ClientSession extends Emitter {
 
   _finishReload(aw) {
     const W = this.wpn;
-    const w = WEAPONS[aw.id];
+    const w = this._weapon(aw.id);
     if (aw.slot < 0) {
       W.freeMag = w.mag;
     } else {
@@ -701,7 +741,7 @@ export class ClientSession extends Emitter {
       W.prevFire = !!cmd.fire;
       return;
     }
-    const w = WEAPONS[aw.id];
+    const w = this._weapon(aw.id);
     if (W.reloadLeft > 0) {
       if (W.reloadSlot !== aw.slot) {
         W.reloadLeft = 0;
@@ -963,8 +1003,9 @@ export class ClientSession extends Emitter {
     p.sprinting = sp.sprinting;
     p.sprintLock = !!sp.sprintLock;
     copyVertical(p, sp);
-    p.speedMult = perks.speedMult;
-    p.staminaMult = perks.staminaMult;
+    // (story mods multiply on top of the class perks, in the host's order)
+    p.speedMult = this.mods ? perks.speedMult * this.mods.speed : perks.speedMult;
+    p.staminaMult = this.mods ? perks.staminaMult * this.mods.stamina : perks.staminaMult;
     this.predSlot = sp.slot;
     p.moveMult = this._moveMultFor(sp.slots, sp.slot, sp.state);
     this.pred = p;
