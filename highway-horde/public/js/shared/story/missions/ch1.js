@@ -1,8 +1,8 @@
-// CHAPTER 1 — DEAD HIGHWAY (highway, night). No hideout yet: the crew moves along the road and
-// the three missions chain straight into each other; chapter 1 ends at the Roadhouse.
-// Zombies: walkers only in 1.1, the first runners at the end of 1.2, crawlers in 1.3.
+// CHAPTER 1 — DEAD HIGHWAY. No hideout yet: the night at the bus (highway) chains straight into the
+// walk west at dawn (the Mill Road level), which ends at the Roadhouse gate.
+// Zombies: walkers only at the bus; runners and the first crawlers on Mill Road (virtual wave 1-3).
 
-import { radio, say, L, P, kill, noteStep } from './lib.js';
+import { radio, say, L, P, PS, A, arrive, kill, noteStep } from './lib.js';
 
 export const CH1 = [
   // ------------------------------------------------------------------------------------------
@@ -12,7 +12,7 @@ export const CH1 = [
     map: 'highway', time: 'night', mode: 'defend', level: [1, 2], party: { min: 1, max: 6 },
     requires: [], hub: null, after: 'm1_2',
     briefing: [
-      L('narrator', 'DAY 41. HIGHWAY 9, FORTY MILES FROM ANYWHERE. DUSK.'),
+      L('narrator', 'DAY {day}. HIGHWAY 9, FORTY MILES FROM ANYWHERE. DUSK.'),
       L('mara', 'You. With the gun. Are you here to help or to loot?'),
       L('mara', 'Never mind. Either way you\'re standing next to my bus, and that makes you my problem.'),
       L('june', 'Miss Mara! The radio man is doing his speech again!'),
@@ -72,7 +72,7 @@ export const CH1 = [
       L('mara', 'Fourteen children were alive at midnight and they\'re alive now. I\'m not thanking you properly, because if I start I\'ll cry, and I can\'t spare the water.'),
       L('june', 'How many people did you save before, Miss Mara?'),
       L('mara', 'I stopped counting on day nine, sweetheart. Go and eat something.'),
-      L('mara', 'The bus is finished. The nearest wheels are a tow truck at Mill Road Gas, two miles west, if anyone is still there. It\'ll take us all day to sneak that far.'),
+      L('mara', 'The bus is finished. There\'s a gas station two miles west with a tow truck painted on the sign. We walk at first light.'),
       L('mara', 'Fourteen. That\'s the only number I\'m keeping.'),
     ],
     stars: { time: 660, noDowns: true, optional: 'collectAll' },
@@ -80,188 +80,225 @@ export const CH1 = [
   },
 
   // ------------------------------------------------------------------------------------------
+  // The walk west: the jam, Mill Road Gas (Deke and his tow truck), Shady Acres (Ozzy and his
+  // antenna), the Haskell corn and the Roadhouse gate. Mara keeps the kids on the bus and talks
+  // the crew through it on a walkie-talkie; Deke fetches the bus with the truck at the end.
   {
-    id: 'm1_2', chapter: 1, index: 2, title: 'Fuel Run',
-    blurb: 'The bus will never drive again, but a tow truck sits two miles west with a locked door and an empty tank. Six red cans is all it asks.',
-    map: 'highway', time: 'night', mode: 'free', level: [2, 3], party: { min: 1, max: 6 },
-    requires: ['m1_1'], hub: null, after: 'm1_3',
+    id: 'm1_2', chapter: 1, index: 2, title: 'Mill Road',
+    blurb: 'Dawn after the pileup. Three miles of dead traffic, a gas station with a tow truck and a grumpy owner, a trailer park with an antenna, and a motel at the end of the corn.',
+    map: 'millroad', time: 'day', mode: 'free', level: [2, 3], party: { min: 1, max: 6 },
+    requires: ['m1_1'], hub: null, after: 'hideout:roadhouse',
+    npcs: [{ id: 'deke', at: 'gas_office' }, { id: 'ozzy', at: 'trailer_radio' }],
     briefing: [
-      L('narrator', 'DAY 42. MILL ROAD GAS, TWO MILES WEST. DUSK.'),
-      L('mara', 'You made it to the station. The sign says DIESEL. The pumps say otherwise.'),
-      L('deke', 'Read the other sign. The one on the door. I\'m not opening it.'),
-      L('mara', 'That\'s a man. A live one. Sir, we have kids on a bus and we need a truck.'),
-      L('deke', 'I have a tow truck, no fuel and a bad hip. You have kids and a bus. I can do arithmetic.'),
-      L('deke', 'Six cans. Red ones. Any car on that road with a tank and no owner. I\'ll open up when I hear the sixth can hit the concrete.'),
-      L('mara', 'He\'s charming. Bring back six cans, and we\'ll find out what he\'s like when he isn\'t being charming.'),
-      L('deke', 'I heard that.'),
+      L('narrator', 'DAY {day}. HIGHWAY 9 WESTBOUND, MILE 73. SUNRISE.'),
+      L('mara', 'Morning. The bus is finished, and fourteen kids can\'t walk two hundred miles. They can ride two, if somebody tows them.'),
+      L('mara', 'Mill Road Gas is two miles west. There\'s a tow truck painted on the sign. A sign is a kind of promise.'),
+      L('june', 'Miss Mara, the cars go all the way to the sky.'),
+      L('mara', 'Three miles of dead traffic, June. They go through it, not around. The kids stay on the bus with me until you call.'),
+      L('mara', 'Daylight is on our side today. You can see them coming. Check every car before you pass it, and every car after.'),
+      L('mara', 'Find the truck. Find whoever owns it. Be polite if they\'re alive and quick if they\'re not.'),
+      L('june', 'Can I say the thing? Be careful, and come back, and bring snacks.'),
+      L('mara', 'She\'s been practising that all night. Radios on. Go.'),
     ],
     steps: [
+      // ---- THE JAM ---------------------------------------------------------------------
+      kill('jam', 'walker', 10, 'Push into the jam: clear the first cars (0/10)', {
+        pressure: PS('jam', 1, 0.5),
+        onStart: [
+          A.title('MILL ROAD', 'Highway 9 westbound. Sunrise'),
+          A.music('tension'),
+          radio('mara', 'Radio check. The cars on the shoulder are the ones that move. Mind the shoulder.'),
+        ],
+        onDone: [radio('mara', 'I can hear you from the bus. That\'s good shooting and bad news: so can everything else.')],
+      }),
       {
-        id: 'cans1', type: 'collect', item: 'fuel', count: 3, at: ['crossroadsW', 'westEnd'], text: 'Siphon fuel from the wrecks (0/3)', pressure: P(1, 0.4),
-        onStart: [radio('deke', 'Red cans. Trunks, back seats, sometimes the front seat. Look for the ones that aren\'t moving.')],
-        onDone: [radio('deke', 'Is that an alarm? That\'s an alarm. You set off an alarm.')],
+        id: 'kit', type: 'collect', item: 'medkit', count: 2, at: ['jam_ambulance'], text: 'Search the ambulance for a trauma kit (0/2)', pressure: PS('jam', 1, 0.4),
+        onStart: [
+          A.horde('jam_semi', 6, 'walker'),
+          radio('mara', 'An ambulance! If there\'s a trauma bag in it, it\'s mine. Tobias has a cut I don\'t like.'),
+          radio('june', 'The big truck\'s doors just opened by themselves. That\'s never good, right?'),
+        ],
+        onDone: [radio('mara', 'Gauze. Real gauze. I could kiss that ambulance.')],
       },
       {
-        id: 'alarm', type: 'activate', at: ['crossroadsW'], hold: 5, text: 'Silence the semi\'s alarm (hold E)', pressure: P(1, 1.2),
-        onStart: [radio('mara', 'That\'s a truck alarm. That\'s a very loud truck alarm, and they can hear it in the next county.')],
-        onDone: [radio('deke', 'Thank you. My ears will send a card.')],
-      },
-      {
-        id: 'cans2', type: 'collect', item: 'fuel', count: 3, at: ['gasStation', 'westEnd'], text: 'Find the last three cans (0/3)', pressure: P(1, 0.6),
-        onStart: [radio('deke', 'Three more. Sixth can hits the concrete, I open the door. That\'s the deal. Deals are the last thing I have.')],
-      },
-      {
-        id: 'door', type: 'reach', at: 'gasStation', hold: 3, text: 'Bring the cans to the station door', pressure: P(1, 0.4),
-        onDone: [say('deke', 'Six. Huh. I didn\'t think you\'d manage two.')],
-      },
-      {
-        id: 'meet', type: 'dialogue', lines: [
-          L('deke', 'Deke Harlan. That isn\'t a joke. The county is named after my family. Long story, bad card game.'),
-          L('mara', 'Open the door, Mr. Harlan.'),
-          L('deke', 'Deke. Mister Harlan is dead, and he was a lousy mechanic.'),
-          L('deke', 'Truck is in bay two. Prime the line and hold the door, I\'ll handle the pump. Don\'t touch anything that\'s clicking.'),
+        id: 'shutter', type: 'dialogue', pressure: false, lines: [
+          say('deke', 'Hey! You with the rifles! Read the sign on the shutter before you knock.'),
+          radio('mara', 'What does the sign say?'),
+          say('deke', 'It says GO AWAY in a very friendly font.'),
+          radio('mara', 'We have fourteen kids and a dead bus, and you have a tow truck on your sign.'),
+          say('deke', '...Then stop standing in the open. I\'m cranking the shutter. It\'s slow, it\'s loud and it\'s the only one I\'ve got.'),
         ],
       },
       {
-        id: 'prime', type: 'activate', at: ['gasStation'], hold: 14, text: 'Prime the tow truck\'s fuel line (hold E)', pressure: P(1, 0.7),
-        onStart: [say('deke', 'Twenty seconds! Twenty seconds and she catches!')],
+        id: 'crank', type: 'survive', seconds: 40, text: 'Hold the jam while the old man cranks the shutter up', pressure: PS('jam', 1, 1.0),
+        onStart: [A.music('battle'), A.hordeIn('jam', 8, 'walker'), say('deke', 'It squeals. Everything within a mile is going to hear it squeal.')],
+        onDone: [A.gate('gas_shutter'), A.music('calm'), say('deke', 'In! In, in, in. Wipe your feet. Don\'t touch the jerky.')],
+      },
+
+      // ---- MILL ROAD GAS ----------------------------------------------------------------
+      arrive('forecourt', 'gasstation', 'Duck under the shutter into Mill Road Gas', ['MILL ROAD GAS', 'Diesel. Tow. Live bait.'], {
+        lines: [say('deke', 'Welcome to Mill Road Gas. The bait is live. The coffee is not. Office. Now.')],
+      }),
+      {
+        id: 'deke', type: 'dialogue', npc: 'deke', talk: true, text: 'Talk to the old man in the office', pressure: false,
+        lines: [
+          L('deke', 'Deke Harlan. That isn\'t a joke. The county is named after my family. Long story, bad card game.'),
+          L('deke', 'Tow truck\'s in bay two. She wants a battery and diesel, and I have neither, plus a bad hip.'),
+          L('deke', 'Batteries are in the garage. Diesel is in the tank under the forecourt, and the hand pump is out there with the dead.'),
+          L('deke', 'Bring me both and I\'ll hook your bus and tow your kids anywhere they point. Deal?'),
+        ],
+        onDone: [radio('mara', 'Deal. Tell him deal. Tell him I said please, and then tell him deal.')],
+      },
+      {
+        id: 'battery', type: 'collect', item: 'battery', count: 1, at: ['gas_garage'], text: 'Pull a truck battery out of the garage', pressure: PS('gasstation', 1, 0.5),
+        onStart: [A.horde('gas_garage', 5, 'walker'), say('deke', 'Big black box, two posts. Red is bad, black is worse. Carry it level.')],
+        onDone: [say('deke', 'Heavy, isn\'t it? That\'s how you know it\'s honest.')],
+      },
+      {
+        id: 'diesel', type: 'collect', item: 'fuel', count: 3, at: ['gas_tanks', 'gas_forecourt'], text: 'Hand-pump diesel from the underground tank (0/3)', pressure: PS('gasstation', 2, 0.6),
+        onStart: [say('deke', 'Every stroke of that pump rings like a church bell. Sorry. I meant to oil it in April.')],
+        onDone: [say('deke', 'Three cans. She\'ll drink every drop and ask for dessert.')],
+      },
+      {
+        id: 'truck', type: 'defend', target: 'gas_tow', seconds: 60, text: 'Hold the forecourt while Deke gets the tow truck running', pressure: PS('gasstation', 2, 0.9),
+        onStart: [
+          A.music('battle'),
+          say('deke', 'Twenty seconds and she catches! Probably forty. Could be a minute. Don\'t let them near my truck.'),
+          radio('mara', 'One of them is RUNNING. Why is one of them running?'),
+          say('deke', 'Don\'t panic. Panic uses fuel.'),
+        ],
         onDone: [say('deke', 'That\'s the sound of a 1997 Ford refusing to die. Listen to that. That\'s spite.')],
       },
       {
-        id: 'tow', type: 'escort', npc: 'deke', route: ['gasStation', 'crossroadsW', 'bus'], text: 'Cover Deke and the tow truck back to the bus', pressure: P(2, 0.5, ['runner']),
-        onStart: [
-          say('deke', 'Nice and slow. She only has two speeds and one of them is off.'),
-          radio('mara', 'Deke, one of them is running. Why is one of them RUNNING?'),
-          say('deke', 'Don\'t panic. Panic uses fuel.'),
+        id: 'vent', type: 'activate', at: ['gas_tanks'], hold: 4, text: 'Drop a road flare down the old tank vent, then run (hold E)', pressure: PS('gasstation', 2, 1.1),
+        onStart: [say('deke', 'The whole crowd\'s on my forecourt. Good. That tank has been breathing fumes since 1994. Give it a flare.')],
+        onDone: [
+          A.boom('gas_tanks', 280, 600, 2),
+          A.shake(0.8, 2),
+          say('deke', 'I have wanted to do that since the day I bought this place.', 2600),
         ],
-        onDone: [radio('mara', 'I can see the truck! I can see the truck, June, sit down!')],
       },
       {
-        id: 'hook', type: 'survive', seconds: 40, text: 'Hold the line while Deke hooks the bus', pressure: P(1, 0.5),
-        onStart: [say('deke', 'Hook is on. Give me forty seconds and a small miracle.')],
-        onDone: [say('deke', 'Chain is set. Small miracle delivered.')],
+        id: 'goodbye', type: 'dialogue', pressure: PS('gasstation', 1, 0.3), lines: [
+          say('deke', 'Right. I\'m going back for your bus. Shady Acres is out back, and the road to the motel runs through it.'),
+          say('deke', 'There\'s a kid in there with an antenna on his trailer. Talks all night. Tell him I said hello and to shut up.'),
+          say('deke', 'Stand back from the gate. I don\'t have the key, but I do have a truck.'),
+        ],
+        onDone: [A.gate('trailer_gate', 1), A.shake(0.5, 1), radio('deke', 'That was the key. Go on. I\'ll meet you at the motel with fourteen kids and a bus.')],
+      },
+
+      // ---- SHADY ACRES --------------------------------------------------------------------
+      arrive('acres', 'trailers', 'Through the gate into Shady Acres', ['SHADY ACRES', 'Mobile home park. Pop. 60, once'], {
+        extra: { remove: ['deke'] },
+        lines: [
+          radio('ozzy', 'Hello? Hello! Is that a person? Please say a person. I get a lot of recordings.'),
+          radio('mara', 'We\'re people. Who\'s this?'),
+          radio('ozzy', 'Ozzy! The trailer with the antenna. The big antenna. Please hurry, they found my steps.'),
+        ],
+      }),
+      {
+        id: 'antenna', type: 'reach', at: 'trailer_radio', text: 'Get to the trailer with the big antenna', pressure: PS('trailers', 2, 0.6),
+        onStart: [radio('ozzy', 'Lot 9. You can\'t miss it. It looks like a porcupine made of coat hangers.')],
+      },
+      {
+        id: 'ozzy', type: 'dialogue', npc: 'ozzy', talk: true, text: 'Talk to the kid with the headset', pressure: false,
+        lines: [
+          L('ozzy', 'You\'re real. You\'re actually real. Hi! Ozzy. Oswald, technically, but nobody\'s called me that since the school secretary.'),
+          L('ozzy', 'I\'ve logged the Haven message for nine nights. Same words, same pause, and on night six it coughed. Nobody records a cough.'),
+          L('ozzy', 'I\'ve been trying to answer her with this rig. It isn\'t strong enough. Nothing I have is strong enough.'),
+          L('ozzy', 'Can I come with you? I can bring the radio. I can\'t bring the antenna. I\'ll say goodbye to the antenna.'),
+        ],
+      },
+      {
+        id: 'pack', type: 'defend', target: 'trailer_radio', seconds: 70, text: 'Hold Ozzy\'s trailer while he packs the radio', pressure: PS('trailers', 2, 0.8),
+        onStart: [
+          A.music('battle'),
+          A.horde('trailer_pool', 6, 'crawler'),
+          radio('ozzy', 'The pool! The empty pool! They\'ve been living in the deep end! They CRAWL!'),
+        ],
+        onDone: [say('ozzy', 'Packed! Everything important fits in one bag if you sit on it.')],
+      },
+      {
+        id: 'fence', type: 'activate', at: ['trailer_exit'], hold: 8, text: 'Cut through the farm fence at the back of the park (hold E)', pressure: PS('trailers', 2, 0.7),
+        follow: ['ozzy'],
+        onStart: [say('ozzy', 'The motel is on the other side of the Haskell corn. I can see its sign from my roof. NO VAC. Well. NO VAC-something.')],
+        onDone: [A.gate('corn_fence'), A.music('tension'), say('ozzy', 'Bye, antenna. You were a good antenna.')],
+      },
+
+      // ---- HASKELL CORNFIELD --------------------------------------------------------------
+      arrive('corn', 'corn', 'Push into the Haskell cornfield', ['HASKELL CORNFIELD', 'Corn taller than a mechanic'], {
+        pressure: PS('corn', 2, 0.4),
+        lines: [radio('mara', 'Tow truck just pulled up at the bus. He\'s hooking us. He says his name is Deke and I should stop saying please.')],
+      }),
+      kill('runners', 'runner', 4, 'Something is running through the corn (0/4)', {
+        at: 'corn_scarecrow', pressure: PS('corn', 2, 0.6, ['runner']),
+        onStart: [say('ozzy', 'Do you hear that? The corn is moving FAST. Corn shouldn\'t move fast.')],
+        onDone: [say('ozzy', 'Runners. Some of them run. I had a theory about it. The theory was "please no."')],
+      }),
+      {
+        id: 'silo', type: 'activate', at: ['corn_silo'], hold: 6, text: 'Climb the silo and wave a flare at the motel (hold E)', pressure: PS('corn', 2, 0.6),
+        onStart: [say('ozzy', 'Somebody\'s at the motel! There\'s smoke from the kitchen chimney! Somebody is COOKING.')],
+        onDone: [
+          radio('roz', 'Whoever\'s waving that flare off Haskell\'s silo: you look ridiculous. You have kids with you? Then you have a room.'),
+          radio('roz', 'Hold the corn. I\'m finding the gate key. It\'s on a ring with forty other keys.'),
+        ],
+      },
+      {
+        id: 'hold_corn', type: 'survive', seconds: 45, text: 'Hold the corn until the motel gate opens', pressure: PS('corn', 3, 1.0),
+        onStart: [A.music('battle'), A.hordeIn('corn', 10)],
+        onDone: [A.gate('motel_gate'), radio('roz', 'Gate\'s open! Move your feet, I\'m not heating the soup twice!')],
+      },
+
+      // ---- THE ROADHOUSE GATE -----------------------------------------------------------
+      arrive('gate', 'motel', 'Through the gate onto the Roadhouse lot', ['THE ROADHOUSE', 'Motel. Kitchen. No vacancy'], {
+        extra: { npcs: [{ id: 'roz', at: 'motel_sign' }] },
+        lines: [say('roz', 'Roz Pruitt. I cook. Put your guns where the kids can\'t reach and your boots where I can\'t smell them.')],
+      }),
+      {
+        id: 'bus', type: 'defend', target: 'motel_gate', seconds: 75, text: 'Hold the gate until Deke tows the bus in', pressure: PS('corn', 3, 0.9, ['runner']),
+        onStart: [
+          A.music('battle'),
+          radio('deke', 'One tow truck, one bus, fourteen kids and a lot of noise coming up the farm road. Keep that gate clear!'),
+          radio('june', 'We\'re going SO fast! Mister Deke says this is only second gear!'),
+        ],
+        onDone: [
+          A.shut('motel_gate', 1),
+          A.shake(0.4, 1),
+          A.music('calm', 2),
+          say('roz', '...And shut. Welcome to the Roadhouse.'),
+        ],
+      },
+      {
+        id: 'inside', type: 'reach', at: 'motel_lot', hold: 4, who: 'all', text: 'Everybody onto the motel lot', pressure: false,
+        npcs: [{ id: 'mara', at: 'motel_lot' }, { id: 'deke', at: 'motel_lot' }],
+        onDone: [say('june', 'Is it a hotel? Does it have a pool? Is the pool full of the crawly ones?'), say('roz', 'No pool, sweetheart. Just soup.')],
       },
     ],
     bonus: [
-      noteStep('n02', 'gasStation', 'Read the sign on the pump (optional)', 'cans1'),
-      noteStep('n03', 'westEnd', 'Search the roadblock for orders (optional)', 'cans1'),
+      noteStep('n02', 'gas_office', 'Read the sign taped inside the shutter (optional)', 'deke'),
+      noteStep('n21', 'trailer_radio', 'Read Ozzy\'s radio log (optional)', 'pack'),
+      {
+        id: 'cb', type: 'collect', item: 'part', count: 1, at: ['jam_semi'], text: 'Pull the CB radio out of the semi\'s cab (optional)',
+        since: 'kit', flags: { semi_cb: true }, todo: 'stepFlags',
+        onDone: [radio('mara', 'A CB radio? Whoever we meet with an antenna is going to love you.')],
+      },
     ],
     rewards: {
-      xp: 240, scrap: 60, weapon: 'shotgun', upgradePoints: 0, flags: { met_deke: true, tow_truck_running: true }, unlockNpc: 'deke',
+      xp: 360, scrap: 70, weapon: 'shotgun', upgradePoints: 1,
+      flags: { met_deke: true, met_ozzy: true, tow_truck_running: true, road_open: true }, unlockNpc: 'deke',
     },
     debrief: [
       L('deke', 'Nobody has given me a job in thirty days. I forgot how much I missed being yelled at.'),
       L('mara', 'You\'re in our debt, Mr. Harlan.'),
       L('deke', 'I\'m in the debt of a very large bank, ma\'am. It has never once come to collect.'),
-      L('deke', 'Take this. Pump shotgun, from behind the register. I nailed it to the wall so nobody would steal it. Then I un-nailed it, because I\'m not an idiot.'),
-      L('mara', 'You pat that pocket a lot.'),
-      L('deke', 'It\'s a habit. It\'s nothing. Where\'s this bus going?'),
-      L('mara', 'A lake.'),
-      L('deke', 'Everybody has a lake. Fine. Show me the lake.'),
+      L('deke', 'Here. Pump shotgun, from behind the register. I nailed it to the wall so nobody would steal it. Then I un-nailed it, because I\'m not an idiot.'),
+      L('ozzy', 'The Haven voice is live. I have logs. Nine nights. I will show anyone the logs. I will show them twice.'),
+      L('mara', 'Ozzy, it\'s a loop.'),
+      L('ozzy', 'Loops don\'t clear their throats.'),
+      L('june', 'Mister Deke, your truck smells like a birthday candle.'),
+      L('deke', 'That\'s the clutch, kid. Don\'t tell her.'),
     ],
-    stars: { time: 780, noDowns: true, optional: 'collectAll' },
-    todo: 'bonus,graph',
-  },
-
-  // ------------------------------------------------------------------------------------------
-  {
-    id: 'm1_3', chapter: 1, index: 3, title: 'Beacon',
-    blurb: 'A jackknifed semi blocks the I-44 overpass. A boy in a trailer says he can prove the Haven message is live, if you keep his beacon burning long enough.',
-    map: 'highway', time: 'night', mode: 'free', level: [3, 4], party: { min: 1, max: 6 },
-    requires: ['m1_2'], hub: null, after: 'hideout:roadhouse',
-    briefing: [
-      L('narrator', 'DAY 43. THE I-44 OVERPASS. NIGHT.'),
-      L('deke', 'Jackknifed semi, three lanes wide. The tow truck can shift it. Slowly. Loudly.'),
-      L('mara', 'Loudly is a problem.'),
-      L('ozzy', 'Uh. Hello? Is that a person? Please say a person and not a recording. I get a lot of recordings.'),
-      L('mara', 'We\'re people. Who\'s this?'),
-      L('ozzy', 'Ozzy! Oswald! Ozzy. I\'m on top of the overpass. I live in a trailer. It has an antenna.'),
-      L('deke', 'Of course it does.'),
-      L('ozzy', 'I\'ve logged the Haven message for nine nights and it\'s LIVE. Somebody is speaking it. If my beacon hits full power, she\'ll hear me and answer.'),
-      L('ozzy', 'It needs three car batteries and somebody to keep the dead off it for a few minutes.'),
-      L('mara', '"A few minutes."'),
-      L('ozzy', '...Ten. Maybe ten.'),
-      L('deke', 'Kid, you\'re hired.'),
-    ],
-    steps: [
-      {
-        id: 'climb', type: 'reach', at: 'overpass', text: 'Reach the I-44 overpass', pressure: P(1, 0.3),
-        onStart: [radio('ozzy', 'The left lane is more of a suggestion than a lane. Hug the right. Please hurry, I\'ve been talking to a sandwich.')],
-        onDone: [radio('ozzy', 'You\'re real. You\'re actually real. Okay. Deep breath. Hello!')],
-      },
-      {
-        id: 'batteries', type: 'collect', item: 'battery', count: 3, at: ['overpass', 'crossroadsE', 'crossroadsW'], text: 'Pull car batteries (0/3)', pressure: P(1, 0.4),
-        onStart: [radio('deke', 'Under the hood, black box, two terminals. Red is bad, black is worse. Just grab them and go.')],
-      },
-      {
-        id: 'meet', type: 'dialogue', lines: [
-          L('ozzy', 'That\'s a lot of gun. Hi! Ozzy. Oswald, technically, but nobody has called me that since the school secretary.'),
-          L('ozzy', 'This is the rig. A dipole, a truck battery and, uh, mostly duct tape.'),
-          L('deke', 'Duct tape. On a transmitter.'),
-          L('ozzy', 'It\'s load-bearing duct tape.'),
-          L('ozzy', 'Batteries in, ten minutes. I do the talking, you do the not dying. Everyone gets a job.'),
-        ],
-      },
-      {
-        id: 'wire', type: 'activate', at: ['overpass'], hold: 10, text: 'Wire the beacon to the batteries (hold E)', pressure: P(1, 0.5),
-        onStart: [say('ozzy', 'Red to red, black to black. If it sparks, that\'s normal. If it screams, that isn\'t.')],
-        onDone: [say('ozzy', 'Oh. Oh no. It\'s working. It\'s actually working.')],
-      },
-      {
-        id: 'warden_call', type: 'wait', seconds: 40, parallel: true,
-        onDone: [
-          radio('warden', '...KD9... I hear you. This is Haven. Say again your call sign. Over.', 3400),
-          radio('ozzy', 'KD9-OZZ! Ozzy! Highway 9, the I-44 overpass! You\'re REAL!', 2800),
-          radio('warden', 'I\'m real. It\'s loud. Um. How many are you? Over.', 3200),
-          radio('mara', 'Twenty-two. Fourteen are children.', 2600),
-          radio('warden', 'Copy. Fourteen. Okay. Come to the marina. Come as fast as you can.', 3600),
-          radio('ozzy', 'SEE? Live! Nobody records a hiccup!', 2600),
-          radio('warden', 'Warden out. ...Over. Sorry. Warden, over and out.', 3400),
-        ],
-      },
-      {
-        id: 'hold', type: 'survive', seconds: 90, text: 'Keep the beacon lit: hold the overpass', pressure: P(2, 0.55, ['crawler']),
-        onStart: [radio('ozzy', 'CQ, CQ, CQ. Haven, Haven, this is KD9-OZZ on the Highway 9 overpass. Do you copy? Over.')],
-      },
-      {
-        id: 'surge', type: 'survive', seconds: 45, text: 'The beacon is calling every dead thing for miles!', pressure: P(2, 1.5, ['runner']),
-        onStart: [
-          radio('ozzy', 'So the beacon is very loud. That is, technically, the point.'),
-          radio('mara', 'Runners! A whole crowd of them!'),
-          radio('deke', 'Kid, you said ten minutes.'),
-        ],
-        onDone: [radio('mara', 'Nobody tell me it gets worse. I want to believe it doesn\'t.')],
-      },
-      {
-        id: 'winch', type: 'activate', at: ['crossroadsE'], hold: 8, text: 'Winch the jackknifed semi clear (hold E)', pressure: P(2, 0.8),
-        onStart: [radio('deke', 'Hook is on the trailer. When it goes, it goes all at once. Stand clear.')],
-        onDone: [radio('deke', 'Timber.')],
-      },
-      {
-        id: 'collapse', type: 'survive', seconds: 25, text: 'The pileup gives way: get clear!', pressure: P(3, 1.5, ['crawler']),
-        onStart: [radio('mara', 'Whatever was pinned under that trailer just got unpinned.')],
-      },
-      {
-        id: 'motel', type: 'reach', at: 'motel', hold: 6, text: 'Secure the Roadhouse motel', pressure: P(2, 0.4),
-        onDone: [radio('deke', 'Well. A motel. The sign says NO VAC and the rest burnt out.'), radio('ozzy', 'I\'m choosing to read that as vacancy.')],
-      },
-    ],
-    bonus: [noteStep('n04', 'overpass', 'Read the trucker\'s log in the cab (optional)', 'batteries')],
-    rewards: {
-      xp: 300, scrap: 80, weapon: 'lever', upgradePoints: 1, flags: { met_ozzy: true, warden_contact: true, road_open: true }, unlockNpc: 'ozzy',
-    },
-    debrief: [
-      L('mara', 'Twenty-two of us and one motel. It has a roof and a lock. Tonight that\'s a palace.'),
-      L('ozzy', 'She answered. You all heard it. I\'m not saying I told you so. I\'m saying it once, slowly, so nobody can accuse me of rushing.'),
-      L('mara', 'I heard a very nervous person on a radio, Ozzy.'),
-      L('ozzy', 'A very nervous Warden on a radio.'),
-      L('deke', 'She said fourteen children and then she said copy. Nobody says copy to a recording.'),
-      L('mara', 'Maybe. Maybe there\'s a boat.'),
-      L('mara', 'Two hundred miles is a long way to hope.'),
-      L('june', 'Two hundred is smaller than a thousand.'),
-      L('mara', '...It is, June. It is.'),
-    ],
-    stars: { time: 840, noDowns: true, optional: 'collectAll' },
-    todo: 'bonus,graph',
+    stars: { time: 1080, noDowns: true, optional: 'collectAll' },
+    todo: 'bonus,graph,level',
   },
 ];

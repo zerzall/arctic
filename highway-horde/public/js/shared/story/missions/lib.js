@@ -21,6 +21,12 @@ export const L = (who, text) => ({ who, text });
  */
 export const P = (waves, pace, specials) => (specials && specials.length ? { waves, pace, specials } : { waves, pace });
 
+/**
+ * Pressure on a story level (JOURNEY.md §4.2): the same numbers, with the zombies coming from the spawn
+ * rects of `section` (the section the objective is in, usually the one the crew stands in).
+ */
+export const PS = (section, waves, pace, specials) => ({ ...P(waves, pace, specials), section });
+
 /** kill step: `zombie` is the zombie type id (STORY.md writes it `type`, which collides). */
 export const kill = (id, zombie, count, text, extra = {}) => ({
   id, type: 'kill', zombie, count, text, ...extra, todo: extra.at ? 'zombieKey,killAt' : 'zombieKey',
@@ -32,14 +38,66 @@ export const noteStep = (noteId, at, text, since) => ({
   id: noteId, type: 'collect', item: 'note', count: 1, at: [at], note: noteId, text, ...(since ? { since } : {}), todo: 'noteRef',
 });
 
+// ---- scripted actions of a story level (JOURNEY.md §4.3, story-defs.js LEVEL_ACTIONS) ----------
+// They go in a step's onStart / onDone beside its radio and say lines and run in list order;
+// `delay` is seconds after the step starts / ends.
+const d = (o, delay) => (delay ? { ...o, delay } : o);
+export const A = {
+  /** Open a gate of the level (the zombies behind it pour through). */
+  gate: (id, delay) => d({ type: 'gate', id }, delay),
+  /** Shut a gate again (a door slams behind the crew). */
+  shut: (id, delay) => d({ type: 'gate', id, open: false }, delay),
+  /** A burst of zombies out of an anchor (a doorway, a truck, the pews): `zombie` a type or 'any'. */
+  horde: (at, count, zombie = 'any', delay) => d({ type: 'horde', at, count, zombie }, delay),
+  /** A burst out of a whole section's spawn rects. */
+  hordeIn: (section, count, zombie = 'any', delay) => d({ type: 'horde', section, count, zombie }, delay),
+  /** A scripted blast: hurts zombies, shakes and knocks players (no player damage). */
+  boom: (at, r = 240, damage = 400, delay) => d({ type: 'explode', at, r, damage }, delay),
+  /** A section's lights go out (the power fails) ... */
+  dark: (section, delay) => d({ type: 'lights', section, on: false }, delay),
+  /** ... or come back. */
+  light: (section, delay) => d({ type: 'lights', section, on: true }, delay),
+  /** A title card for everyone (48 characters at most). */
+  title: (text, sub, delay) => d(sub ? { type: 'title', text, sub } : { type: 'title', text }, delay),
+  /** Push the score to a state (audio/music.js MUSIC_STATES: calm, tension, battle, boss ...). */
+  music: (state, delay) => d({ type: 'music', state }, delay),
+  /** Camera shake for everyone near (0..1). */
+  shake: (k, delay) => d({ type: 'shake', k }, delay),
+  /** Move the party's respawn point into a section. */
+  cp: (section, delay) => d({ type: 'checkpoint', section }, delay),
+};
+
+/**
+ * The crew walks into the next section of a level: a `reach { section }` step whose end puts up the
+ * area's title card, moves the checkpoint there and plays the arrival lines.
+ *   card             [title, sub]: the title card (a place name, upper case; 48 characters at most)
+ *   o.lines          radio / say lines on arrival (after the card)
+ *   o.onStart        lines / actions while the crew walks there
+ *   o.pressure       zombies on the way (default: a trickle out of that section)
+ *   o.music          a music state on arrival
+ *   o.extra          any other step fields (npcs, follow, ...)
+ */
+export function arrive(id, section, text, card, o = {}) {
+  return {
+    id, type: 'reach', section, text,
+    pressure: o.pressure || PS(section, o.waves || 1, 0.3),
+    ...(o.onStart ? { onStart: o.onStart } : {}),
+    onDone: [A.title(card[0], card[1]), A.cp(section), ...(o.music ? [A.music(o.music)] : []), ...(o.lines || [])],
+    ...(o.extra || {}),
+  };
+}
+
 // ---- vocabularies (the test checks the data against these) -----------------------------
-/** `collect` item kinds used by the missions (S2 draws them). */
-export const ITEM_KINDS = ['note', 'fuel', 'battery', 'part', 'crate', 'pump', 'medkit', 'tag', 'player'];
+/** `collect` item kinds used by the missions (S2 draws them; story-defs.js STORY_ITEMS gives each a look). */
+export const ITEM_KINDS = [
+  'note', 'fuel', 'battery', 'part', 'crate', 'pump', 'medkit', 'tag', 'player',
+  'medicine', 'key', 'files', 'insulin', 'keycard', 'fuse', 'charge', 'injector', 'supplies', 'ammo',
+];
 
 /** Step types the executor implements (STORY.md §5.4). */
 export const STEP_TYPES = ['defend', 'waves', 'survive', 'collect', 'reach', 'activate', 'escort', 'kill', 'boss', 'evac', 'campaignStage', 'wait', 'dialogue'];
 
-/** Anchor names authors may use, per map (STORY.md §5.2). */
+/** Anchor names authors may use, per classic map (STORY.md §5.2). The story levels' come from their SPEC. */
 export const ANCHORS = {
   highway: ['bus', 'crossroadsW', 'crossroadsE', 'gasStation', 'overpass', 'westEnd', 'eastEnd', 'motel', 'diner'],
   truckstop: ['diner', 'pumps', 'truckLot', 'motelRow', 'roadNorth', 'roadSouth', 'trailerA', 'trailerB', 'trailerC'],
@@ -64,6 +122,8 @@ export const TODO_REQUESTS = {
   campaignWaves: 'campaignStage(hill).waves: number of hill waves (default max(3, round(0.6*waves))).',
   noteRef: 'collect(item:"note").note:<noteId>: the id of the note in NOTES (missions.js); the pickup shows that note text and adds it to the journal.',
   graph: 'mission.requires/hub/after: the unlock graph used by index.js nextNodes(); S1 stores progress.node from `after`.',
+  level: 'a mission on a story level (JOURNEY.md): mode "free", reach{section}, defend{target:<anchor>} with a defend point, pressure.section, and the level actions (gate, horde, explode, lights, title, music, shake, checkpoint) in onStart/onDone (agent E).',
+  side: 'mission.side / opens: a side job on the hideout board (chapter 7 "Side Jobs"): optional, replayable, never in nextNodes; `opens` is the story chapter it belongs to and `after: "hideout"` returns the crew to the hideout it is in.',
 };
 
 export const TODO_KEYS = Object.keys(TODO_REQUESTS);

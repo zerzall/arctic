@@ -16,7 +16,7 @@ import { LEVEL_LIST, LEVEL_SPECS } from '../levels/index.js';
 import { DIFFICULTIES } from '../constants.js';
 import {
   STEP_TYPES, MISSION_MODES, CAMPAIGN_STAGES, ANCHOR_VOCAB, CAMPAIGN_ANCHORS, DEFEND_ANCHOR, INTERACT_KINDS, isItemId,
-  normLine, CAST, LEVEL_ACTIONS,
+  normLine, CAST, LEVEL_ACTIONS, SIDE_CHAPTER,
 } from '../story-defs.js';
 
 const TIMES = ['night', 'day'];
@@ -46,8 +46,10 @@ const EFFECTS = ['lure', 'explode'];
 const MISSION_KEYS = new Set([
   'id', 'chapter', 'index', 'title', 'blurb', 'map', 'time', 'mode', 'level', 'party', 'briefing', 'steps', 'rewards', 'debrief',
   'stars', 'startAt', 'npcs', 'tier', 'respawn', 'timeLimit', 'waveScale', 'todo', 'note', 'pressure', 'difficulty',
-  'bonus', 'requires', 'hub', 'after', 'notes',
+  'bonus', 'requires', 'hub', 'after', 'notes', 'side', 'opens',
 ]);
+/** `after`: the next mission, a hideout ("hideout" alone = the one the crew is in), or the ending. */
+const AFTER_RE = /^([a-z][a-z0-9_]*|hideout(:[a-z][a-z0-9_]*)?|epilogue)$/;
 
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const isNum = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
@@ -85,8 +87,17 @@ export function validateMission(m, { maps = null } = {}) {
   }
   for (const k of Object.keys(m)) if (!MISSION_KEYS.has(k)) warn(`unknown mission field "${k}"`);
   if (!isStr(m.id) || !/^[a-z][a-z0-9_]*$/.test(m.id)) err('id must be lower-case letters, digits and _');
-  if (!isInt(m.chapter, 1, 6)) err('chapter must be an integer 1..6');
-  if (!isInt(m.index, 1, 9)) err('index must be an integer 1..9');
+  // a side job (the hideout board's optional jobs) is filed under the side-jobs chapter and `opens` in a story chapter
+  if (m.side !== undefined && typeof m.side !== 'boolean') err('side must be a boolean');
+  if (m.side === true) {
+    if (m.chapter !== SIDE_CHAPTER) err(`a side job is filed under chapter ${SIDE_CHAPTER}`);
+    if (!isInt(m.opens, 1, 6)) err('opens (the story chapter a side job belongs to) must be an integer 1..6');
+    if (m.after !== undefined && !/^hideout/.test(m.after)) err('a side job returns to a hideout (after: "hideout")');
+  } else {
+    if (!isInt(m.chapter, 1, 6)) err('chapter must be an integer 1..6');
+    if (m.opens !== undefined) err('opens only means something on a side job');
+  }
+  if (!isInt(m.index, 1, 19)) err('index must be an integer 1..19');
   if (!isStr(m.title)) err('title is required');
   if (!isStr(m.blurb)) err('blurb is required');
   const mapMeta = MAP_LIST.find((e) => e.id === m.map) || LEVEL_LIST.find((e) => e.id === m.map);
@@ -107,7 +118,7 @@ export function validateMission(m, { maps = null } = {}) {
   if (m.difficulty !== undefined && !DIFFICULTIES[m.difficulty]) err('difficulty must be an existing difficulty');
   if (m.requires !== undefined && !(Array.isArray(m.requires) && m.requires.every(isStr))) err('requires must be an array of mission ids');
   if (m.hub !== undefined && m.hub !== null && !isStr(m.hub)) err('hub must be null or a hideout id');
-  if (m.after !== undefined && !isStr(m.after)) err('after must be a mission id, "hideout:<id>" or "epilogue"');
+  if (m.after !== undefined && !(isStr(m.after) && AFTER_RE.test(m.after))) err('after must be a mission id, "hideout:<id>", "hideout" or "epilogue"');
   if (m.notes !== undefined && !(Array.isArray(m.notes) && m.notes.every(isStr))) err('notes must be an array of note ids');
 
   const lines = (list, label, required = false) => {
