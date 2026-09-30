@@ -21,6 +21,7 @@ import { T, shadeHex, mixHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
 import { trashBags } from './world-props.js';
+import { cinGable, cinFlatRoof } from './world-bld-cin.js';
 import {
   Face, DETAIL, skinBand, windowUnit, doorUnit, awning, signBoard, shutter, cornice, downspout, conduit, railing, balcony,
   fireEscape, acUnit, ventStack, waterTank, antenna, dish, hatch, chimney, roomId,
@@ -344,6 +345,7 @@ function flatRoof(B, o, ctx, sign, opts = {}) {
     B.add('neon', T.plane(), [0, wallH + 60, W / 2 - 11.2], [194, 48, 1], null, '#ffffff', { emissive: 2.4, uv: atlasUV(sign.cell) });
     B.add('neon', T.plane(), [0, wallH + 60, W / 2 - 16.8], [194, 48, 1], [0, Math.PI, 0], '#ffffff', { emissive: 2.2, uv: atlasUV(sign.cell) });
   }
+  if (DETAIL.level >= 3) cinFlatRoof(B, ctx, ph);
 }
 
 /**
@@ -386,6 +388,10 @@ function gableRoof(B, ctx, opts) {
       B.add('std', T.box(), map(0, ey - 1.6, sd * (span / 2 + oh - 0.4)), [len + gh * 2, 3, 1.1], [0, rotY, 0], ctx.trim, { surf: [DET.wood, 0.8, 0], noJitter: true });
       B.add('std', T.cyl(6), map(0, ey - 3.4, sd * (span / 2 + oh + 0.6)), [1, len + gh * 2, 1], new THREE.Euler(0, rotY, Math.PI / 2, 'YXZ'), '#5a5e62', { surf: [DET.rust, 0.5, 0.7], map: 'cyl', noJitter: true });
     }
+  }
+  if (DETAIL.level >= 3) {
+    const hx = (span / 2 + oh) / 2;
+    cinGable(B, ctx, { rise, span, len, map, rotY }, { th, oh, gh, phi, slopeLen, hx, cy: wallH + rise - hx * Math.tan(phi) - th * 0.5 / Math.cos(phi) }, rc, layer);
   }
   return { rise, span, len, axis, map, rotY };
 }

@@ -231,12 +231,16 @@ test('buildings and trees grow at level 3 and stay finite', () => {
   const cases = {
     shops: (B) => bld.building(B, { id: 12, kind: 'building', w: 220, h: 90, color: '#a89a7c', roof: '#4e4a45', x: 100, y: 100, a: 0 }, 220, 90, null),
     apartment: (B) => bld.building(B, { id: 33, kind: 'building', w: 180, h: 100, color: '#8a6a5a', roof: '#4e4a45', x: 100, y: 100, a: 0 }, 180, 100, null),
+    house: (B) => bld.building(B, { id: 5, kind: 'building', w: 90, h: 70, color: '#c8c0a8', roof: '#5a3a2a', x: 100, y: 100, a: 0 }, 90, 70, null),
     oak: (B) => flora.canopy(B, { s: 1 }, 1),
     trunk: (B) => flora.trunk(B, 30, { x: 100, y: 100, id: 3, color: '#4a3a2a' }),
   };
+  // (level 2 is the old geometry: triangle counts measured at de88dae)
+  const OLD = { shops: 6374, apartment: 5980, house: 1016, oak: 386, trunk: 132 };
   for (const [k, fn] of Object.entries(cases)) {
     const a = buildAt(2, fn), b = buildAt(3, fn);
     assert.equal(b.bad, 0, k + ' finite');
+    assert.equal(Math.round(a.tris), OLD[k], k + ' level 2 is unchanged');
     assert.ok(b.tris > a.tris * 1.3, `${k}: ${a.tris} → ${b.tris}`);
   }
 });
