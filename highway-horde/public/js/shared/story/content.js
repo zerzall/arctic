@@ -332,6 +332,26 @@ export function stationKeeper(kind, world) {
   return keeper ? keeper.id : null;
 }
 
+/**
+ * Cast ids that are NOT with the crew yet in this world (the content's `npcAvailable`); the hideout
+ * leaves them out. Empty when the content has no such rule.
+ * @returns {string[]}
+ */
+export function npcsAbsent(world) {
+  const f = content.helpers && content.helpers.npcAvailable;
+  if (typeof f !== 'function') return [];
+  const out = [];
+  for (const c of Object.values(content.cast)) {
+    if (!c || typeof c !== 'object' || !c.id || c.system || c.radioOnly) continue;
+    try {
+      if (!f(c.id, world)) out.push(c.id);
+    } catch {
+      // bad content never stops the game
+    }
+  }
+  return out;
+}
+
 /** The pre-mission pep talk of a mission (lines) or null. */
 export function pepFor(missionId) {
   const pep = content.dialogue && content.dialogue.pep;

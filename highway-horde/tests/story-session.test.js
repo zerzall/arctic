@@ -185,7 +185,7 @@ test('start: the hideout stage, every survivor\'s spec in the start message, pre
   assert.equal(st.nodeId, 'hideout:roadhouse');
   assert.equal(st.difficulty, 'normal');
   assert.deepEqual(st.party.map((p) => p.pid), [1, 2]);
-  assert.equal(st.party[1].profile.level, 10);
+  assert.equal(g.specs.get(2).lvl, 10, 'the party member\'s level rides in their spec');
   assert.deepEqual(st.hideoutUpgrades, {});
   assert.deepEqual(st.npcs, []);
   assert.deepEqual(g.opts.players.map((p) => p.id), [1, 2]);
@@ -388,8 +388,13 @@ test('the mission chain: hideout → briefing → mission → debrief → hideou
   assert.equal(env.games.length, 2, 'a second game was built');
   assert.equal(g.opts.mapId, 'highway');
   assert.equal(g.opts.settings.mode, 'mission');
-  assert.equal(g.opts.settings.mapMode, 'defend');
   assert.equal(g.opts.settings.story.nodeId, 'm1_1');
+  assert.equal(g.opts.settings.story.simMode, 'defend');
+  // the session settings (the start message) name the game mode and carry a light story block
+  assert.equal(env.host.settings.mode, 'mission');
+  assert.deepEqual(env.host.settings.story, { nodeId: 'm1_1', difficulty: 'normal', simMode: 'defend', title: 'Pileup' });
+  assert.equal(c.settings.mode, 'mission');
+  assert.equal(c.settings.story.nodeId, 'm1_1');
   assert.equal(c.story.stage, 'mission');
   assert.equal(c.settings.mapId, 'highway');
   assert.notEqual(c.match, hideoutMatch);
@@ -658,9 +663,8 @@ test('solo with AI survivors: bots get profiles scaled to the human and join the
   assert.equal(g.opts.players.length, 3);
   assert.equal(g.opts.players.filter((p) => p.bot).length, 2);
   for (const p of g.opts.players) assert.ok(p.story && p.story.loadout[0], 'everyone has a spec');
-  const bot = g.opts.settings.story.party[1];
-  assert.equal(bot.profile.level, 9, 'bots play at the party level');
-  assert.deepEqual(sanitizeProfile(bot.profile).notes, []);
+  const bot = g.opts.players.find((p) => p.bot);
+  assert.equal(bot.story.lvl, 9, 'bots play at the party level');
   host.story.pickMission('m1_1');
   host.story.deploy();
   host.update(1 / 60, null, 0);

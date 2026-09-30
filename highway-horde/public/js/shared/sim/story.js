@@ -200,16 +200,18 @@ export class StoryDirector {
     const fromCfg = Array.isArray(this.cfg.npcs) ? this.cfg.npcs : [];
     const hub = this.map.hub && Array.isArray(this.map.hub.npcs) ? this.map.hub.npcs : [];
     const seen = new Set();
+    // cast members who are not with the crew yet (settings.story.absent: the session knows the world) stay out
+    const absent = new Set(Array.isArray(this.cfg.absent) ? this.cfg.absent.map(String) : []);
     for (const h of hub) {
       const key = String(h.id || h.role || '');
-      if (!key) continue;
+      if (!key || absent.has(key)) continue;
       const over = fromCfg.find((c) => c && (c.id === key || c.key === key)) || {};
       seen.add(key);
       createNpc(g, { ...over, key, name: over.name, look: over.look, x: h.x, y: h.y, angle: h.angle || 0, mode: over.mode || h.mode || 'idle', route: h.route, loop: h.loop });
     }
     for (const c of fromCfg) {
       const key = String(c.id || c.key || '');
-      if (!key || seen.has(key)) continue;
+      if (!key || seen.has(key) || absent.has(key)) continue;
       if (this.hideout && !this._hasPos(c)) continue;
       if (this._hasPos(c)) createNpc(g, { ...c, key });
     }

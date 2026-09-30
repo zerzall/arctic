@@ -15,7 +15,6 @@ import { xpForLevel } from '../public/js/shared/story/progression.js';
 import { tierMag } from '../public/js/shared/story/upgrades.js';
 import { WEAPONS } from '../public/js/shared/weapons.js';
 import { perksFor } from '../public/js/shared/classes.js';
-import { resetStorySupport } from '../public/js/shared/sim/story-shim.js';
 
 setStoryContent(STUB_CONTENT);
 
@@ -31,7 +30,6 @@ async function flush(rounds = 4) {
 }
 
 async function setup({ clientProfile, world }) {
-  resetStorySupport();
   let t = 1000;
   const clock = () => t;
   clock.advance = (dt) => {
@@ -66,7 +64,7 @@ async function setup({ clientProfile, world }) {
 
 const localOf = (s) => s.getView().players.find((p) => p.id === s.localId);
 
-test('the stub hideout: stations exist, E next to one is an interact event for both sides, no waves ever start', async () => {
+test('the hideout: stations exist, E next to one is an interact event for both sides, no zombies ever come', async () => {
   const env = await setup({});
   const { host, client } = env;
   host.start();
@@ -98,8 +96,9 @@ test('the stub hideout: stations exist, E next to one is an interact event for b
   await env.frames(60 * 25);
   const v = host.getView();
   assert.equal(v.zombies.length, 0);
-  assert.notEqual(v.phase, 'wave');
-  assert.equal(host.game.phase, 'intermission');
+  assert.equal(host.game.settings.mode, 'hideout', 'the real story game, not a stand-in');
+  assert.equal(host.game.safe, true, 'nothing can hurt a survivor in the hideout');
+  assert.equal(v.story.mode, 'hideout');
   // the cash shop is shut
   host.game.getPlayer(1).cash = 5000;
   host.buy('rifle');

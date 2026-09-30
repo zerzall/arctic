@@ -6,7 +6,7 @@
 //
 // Nothing here runs unless the player opens the Story screen or joins a story room.
 
-import { $, h, setText, setShown } from './dom.js';
+import { $, h, setText } from './dom.js';
 import { createProfile, sanitizeProfile } from '../shared/story/profile.js';
 import { createWorld } from '../shared/story/world.js';
 import { loadProfile, saveProfile, saveWorld, loadWorlds } from '../shared/story/save.js';
@@ -45,8 +45,6 @@ export function createStoryApp(ctx, hooks) {
   let matchHooks = null;
   let statusEl = null;
   let dockEl = null;
-  let promptEl = null;
-  let lastPrompt = '';
   /** Scenes already started this session (a flag name each): a scene never plays twice. */
   const played = new Set();
   /** Topics heard on this hideout visit (dialogue `once`). */
@@ -192,10 +190,6 @@ export function createStoryApp(ctx, hooks) {
       if (tl) tl.prepend(statusEl);
       else hudEl.appendChild(statusEl);
     }
-    if (!promptEl || !promptEl.isConnected) {
-      promptEl = h('div.st-prompt', { hidden: true, role: 'status' });
-      hudEl.appendChild(promptEl);
-    }
     if (!dockEl || !dockEl.isConnected) {
       dockEl = h('nav.st-dock', { hidden: true, 'aria-label': 'Hideout stations' }, ['board', 'workbench', 'armory', 'infirmary', 'upgrades', 'perks', 'talk', 'sleep'].map((k) => h('button.btn.btn-small', {
         type: 'button', dataset: { station: k }, title: STATION_LABELS[k], onclick: () => openStation(k),
@@ -259,7 +253,6 @@ export function createStoryApp(ctx, hooks) {
     matchHooks = null;
     if (statusEl) statusEl.hidden = true;
     if (dockEl) dockEl.hidden = true;
-    if (promptEl) promptEl.hidden = true;
     syncStage();
     root.classList.remove('suspended');
     panels.close();
@@ -352,30 +345,8 @@ export function createStoryApp(ctx, hooks) {
     changed();
   }
 
-  function matchFrame(view, local) {
-    if (!promptEl || !session || !session.story || !matchHooks) return;
-    let text = '';
-    const map = matchHooks.map;
-    if (local && map && map.interactables && !isOpen() && canOpenPanels()) {
-      let best = null, bestD = Infinity;
-      for (const it of map.interactables) {
-        const d = Math.hypot(it.x - local.x, it.y - local.y);
-        if (d <= it.r + 16 && d < bestD) {
-          bestD = d;
-          best = it;
-        }
-      }
-      if (best) {
-        const key = { kbm: 'E', pad: 'RB', touch: 'USE' }[matchHooks.inputMode()] || 'E';
-        text = `${key} — ${best.label || best.kind}`;
-      }
-    }
-    if (text !== lastPrompt) {
-      lastPrompt = text;
-      promptEl.textContent = text;
-      setShown(promptEl, !!text);
-    }
-  }
+  /** Per-frame hook (the "E — station" prompt is drawn by the story HUD, ui/storyhud.js). */
+  function matchFrame() {}
 
   // ---- overlay plumbing ----------------------------------------------------------------------------------------
 

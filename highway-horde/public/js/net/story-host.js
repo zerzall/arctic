@@ -24,7 +24,7 @@ import { resolveNext, pendingArrival, epiloguePending } from '../shared/story/gr
 import { applyAction } from '../shared/story/actions.js';
 import { specFromProfile } from '../shared/story/mods.js';
 import { settleMission } from '../shared/story/rewards.js';
-import { getMissions, getMission } from '../shared/story/content.js';
+import { getMissions, getMission, npcsAbsent } from '../shared/story/content.js';
 import { createStoryGame } from '../shared/sim/story-shim.js';
 import { StoryView } from './story-view.js';
 
@@ -224,18 +224,30 @@ export class StoryHost extends StoryView {
     if (this.lobbySettings) this.session.settings = { ...this.lobbySettings };
   }
 
-  _storySettings(nodeId) {
+  /**
+   * `settings.story` of the Game (SPEC §3.9 plus the world's own facts): `nodeId` names the mission
+   * script (or `hideout:<id>`), `simMode` the wave machine it runs on, `party` the survivors (their
+   * perks and guns come through the players' StorySpecs, see mods.js), `absent` the cast members who
+   * are not with the crew yet and so must not stand in the hideout.
+   */
+  _storySettings(nodeId, extra = {}) {
     const w = this.world;
-    const party = this.session.roster.map((r) => ({ pid: r.id, profile: this.simProfile(r) }));
     return {
       worldId: w.id,
       nodeId,
       difficulty: w.difficulty,
-      party,
+      party: this.session.roster.map((r) => ({ pid: r.id })),
       flags: { ...w.progress.flags },
       hideoutUpgrades: { ...w.hideout.upgrades },
-      npcs: Object.keys(w.hideout.recruited),
+      npcs: [],
+      absent: npcsAbsent(w),
+      ...extra,
     };
+  }
+
+  /** The light copy of `settings.story` that rides in the session settings (the start message): clients build the map and the HUD from it. */
+  _wireStory(nodeId, extra = {}) {
+    return { nodeId, difficulty: this.world.difficulty, ...extra };
   }
 
   _launchHideout(hideoutId) {
@@ -252,13 +264,13 @@ export class StoryHost extends StoryView {
     this.direct = false;
     this.party = this.session.roster.map((r) => r.id);
     const hideout = w.hideout.current;
-    const stage = { stage: 'hideout', mapId: hideout, mapMode: 'defend' };
+    const stage = { stage: 'hideout', mapId: hideout };
     this.stageLaunch = stage;
-    const story = this._storySettings(`hideout:${hideout}`);
+    const node = `hideout:${hideout}`;
     return this._launch(stage, {
       mapId: hideout,
-      ui: { mapId: hideout, mode: 'hideout', time: 'day', difficulty: w.difficulty },
-      game: { difficulty: w.difficulty, waves: 0, objective: false, friendlyFire: false, mode: 'hideout', time: 'day', story },
+      ui: { mapId: hideout, mode: 'hideout', story: this._wireStory(node), time: 'day', difficulty: w.difficulty },
+      game: { difficulty: w.difficulty, waves: 0, objective: false, friendlyFire: false, mode: 'hideout', time: 'day', story: this._storySettings(node) },
     });
   }
 
@@ -291,25 +303,25 @@ export class StoryHost extends StoryView {
 
   _launchMissionGame(m, staging) {
     const w = this.world;
-    const mapMode = m.mode === 'campaign' ? 'campaign' : m.mode === 'zone' ? 'zone' : 'defend';
-    const stage = { stage: 'mission', mapId: m.map, mapMode, stub: staging ? null : m.stub || null };
+    const stage = { stage: 'mission', mapId: m.map, stub: staging ? null : m.stub || null };
     this.stageLaunch = stage;
-    const story = this._storySettings(m.id);
-    const time = m.time === 'day' ? 'day' : 'night';
+    const simMode = ['defend', 'zone', 'campaign', 'free'].includes(m.mode) ? m.mode : 'defend';
+    const time = simMode === 'campaign' || m.time === 'day' ? 'day' : 'night';
+    const extra = { simMode, title: m.title };
     return this._launch(stage, {
       mapId: m.map,
-      ui: { mapId: m.map, mode: mapMode, time: mapMode === 'campaign' ? 'day' : time, difficulty: w.difficulty },
+      ui: { mapId: m.map, mode: 'mission', story: this._wireStory(m.id, extra), time, difficulty: w.difficulty },
       game: {
-        difficulty: w.difficulty, waves: 0, objective: false, friendlyFire: false, mode: 'mission', mapMode,
-        time: mapMode === 'campaign' ? 'day' : time, story,
+        difficulty: w.difficulty, waves: 0, objective: false, friendlyFire: false, mode: 'mission', time, story: this._storySettings(m.id, extra),
       },
     });
   }
 
   _launch(stage, { mapId, ui, game }) {
     const session = this.session;
-    // The session's own settings describe the stage while it runs (the map, the mode of its
-    // map, the time of day); the lobby's are restored when the crew returns to the lobby.
+    // The session's own settings describe the stage while it runs (the map, the game mode
+    // 'hideout' | 'mission' with a light `story`, the time of day); the lobby's are restored
+    // when the crew returns to the lobby.
     session.settings = { ...session.settings, ...ui };
     for (const r of session.roster) {
       const p = this.profiles.get(r.id);
@@ -321,7 +333,7 @@ export class StoryHost extends StoryView {
     const players = session.roster.map((r) => ({
       id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot, story: this.specFor(r),
     }));
-    const create = session.hooks.createGame || ((opts) => createStoryGame(opts, stage));
+    const create = session.hooks.createGame || ((opts) => createStoryGame(opts));
     const info = this.startInfo();
     // (before the launch: the UI starts the match inside it and reads the stage's opening scene)
     const before = this.stageInfo;

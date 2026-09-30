@@ -54,7 +54,7 @@ function nz(v, hi = 99999) {
  * @param {object} args
  * @param {object} args.world the crew's world before the mission
  * @param {object} args.mission the mission (STORY.md §5.4)
- * @param {object} args.result the `storyend` event { result, stars, stats, time? }
+ * @param {object} args.result the `storyend` event { result, stars, stats, time?, flags? }
  * @param {{ pid: number, profile: object, human?: boolean }[]} args.party who took part (bots earn nothing)
  * @param {string} [args.difficulty] defaults to the world's
  * @param {object[]} [args.missions] campaign order (defaults to the installed content)
@@ -166,6 +166,14 @@ export function settleMission({ world, mission, result, party, difficulty, missi
           unlocks.npc = rw.unlockNpc;
         }
         if (isWeaponKnown(rw.weapon)) unlocks.weapon = rw.weapon;
+      }
+      // flags the mission's own steps set on completion travel with the storyend (`flags: { k: true }` on a step)
+      const stepFlags = result && result.flags && typeof result.flags === 'object' ? result.flags : {};
+      for (const k of Object.keys(stepFlags)) {
+        if (stepFlags[k] === true && !w.progress.flags[k] && /^[a-z][A-Za-z0-9_.:-]{0,39}$/.test(k) && Object.keys(w.progress.flags).length < MAX_FLAGS) {
+          w.progress.flags[k] = true;
+          unlocks.flags.push(k);
+        }
       }
       const add = (k, n) => {
         if (n > 0) {
