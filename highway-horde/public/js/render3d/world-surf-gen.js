@@ -853,15 +853,16 @@ const RECIPES = {
     const { N, F, h, a, r, ds } = c;
     yield* eachRow(N, (y) => {
       for (let i = y * N, e = i + N; i < e; i++) {
-        // crumpled bin bag / tarp: flat facets tilted every way, sharp creases between them, a pale stress line on each
-        const e = F.w8.f2[i] - F.w8.f1[i];
-        const crease = smooth(0.06, 0.0, e);
-        const tilt = (F.w8.id[i] - 0.5) * 0.6 * F.w8.f1[i];
+        // crumpled bin bag / tarp: soft folds of two sizes, ridged where the sheet doubles over, a few
+        // pale stretch marks along the ridges, dust in the hollows; glossy
         const fold = 1 - Math.abs(F.f8[i] - 0.5) * 2;
-        h[i] = 0.5 + tilt + fold * 0.25 + (F.f32[i] - 0.5) * 0.12 + crease * 0.06;
-        a[i] = 0.5 + (fold - 0.5) * 0.08 + crease * 0.07 + smooth(0.62, 0.8, F.f4[i]) * 0.06;
-        ds[i] = crease * 0.4 + smooth(0.62, 0.8, F.f4[i]) * 0.3;
-        r[i] = 0.3 + (1 - fold) * 0.14 + crease * 0.14 + smooth(0.62, 0.8, F.f4[i]) * 0.3;
+        const fold2 = 1 - Math.abs(F.f32[(i + 21 * 40503) & F.M] - 0.5) * 2;
+        const ridge = smooth(0.82, 0.97, fold) * 0.7 + smooth(0.85, 0.98, fold2) * 0.3;
+        const dust = smooth(0.6, 0.8, F.f4[i]) * (1 - fold * 0.6);
+        h[i] = 0.3 + fold * 0.4 + fold2 * 0.14 + (F.f64[i] - 0.5) * 0.04;
+        a[i] = 0.5 + (fold - 0.5) * 0.06 + ridge * 0.06 + dust * 0.06;
+        ds[i] = ridge * 0.35 + dust * 0.3;
+        r[i] = 0.3 + (1 - fold) * 0.1 + ridge * 0.08 + dust * 0.3;
       }
     });
     return 1.4;
