@@ -301,6 +301,8 @@ button.st-card-gun:hover { border-color: rgba(255, 196, 0, 0.6); }
 .st-debrief.defeat .st-debrief-title { color: var(--blood-hi); text-shadow: 0 0 1.5rem rgba(224, 52, 44, 0.4); }
 .st-stars-row { display: inline-flex; gap: 0.5rem; }
 .st-star { font-size: 3rem; line-height: 1; color: #2a2f37; transform: scale(0.4); opacity: 0; animation: st-star-in 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) forwards; animation-delay: calc(0.3s + var(--i) * 0.35s); }
+.st-goals { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1.125rem; margin: 0.25rem 0 0; padding: 0; font-family: var(--font-cond); font-size: 0.9375rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); }
+.st-goals li.on { color: var(--hazard); }
 .st-star.on { color: var(--hazard); text-shadow: 0 0 1rem rgba(255, 196, 0, 0.7); }
 @keyframes st-star-in { to { transform: none; opacity: 1; } }
 .st-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.625rem; }
@@ -344,3 +346,5 @@ button.st-card-gun:hover { border-color: rgba(255, 196, 0, 0.6); }
 #app:has(#story-root.scene) #hud { visibility: hidden; }
 #screen-game[data-story='briefing'] .hud-wave,
 #screen-game[data-story='debrief'] .hud-wave { display: none; }
+/* the debrief is the result screen: the HUD's own "mission complete" banner steps aside */
+#screen-game[data-story='debrief'] .hud-banner { display: none; }

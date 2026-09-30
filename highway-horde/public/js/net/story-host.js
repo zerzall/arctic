@@ -431,6 +431,9 @@ export class StoryHost extends StoryView {
       next: res.unlocks.next,
       players,
       time: Math.floor(Number(ev.time) || 0),
+      // why a mission was lost ('wiped' | 'npc' | 'timeout' ...) and which star goals were met (S2's storyend)
+      reason: typeof ev.reason === 'string' ? ev.reason.slice(0, 24) : '',
+      met: ev.met && typeof ev.met === 'object' ? { time: !!ev.met.time, perfect: !!ev.met.perfect } : null,
     };
     if (res.world !== world) this._setWorld(res.world, false);
     // profiles first (each player persists its own), then the world, then the result

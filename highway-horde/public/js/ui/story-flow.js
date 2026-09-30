@@ -13,6 +13,31 @@ import { MAX_TIER, KIT_ITEMS, KIT_IDS } from '../shared/story/upgrades.js';
 
 const ANIM_MS = 2600;
 
+/** What a lost mission says about why (`debrief.reason`, from the director's storyend). */
+const LOSS_TEXT = {
+  wiped: 'Everyone went down. Nothing from the mission is kept.',
+  npc: 'Someone you were protecting was lost. Nothing from the mission is kept.',
+  timeout: 'Time ran out. Nothing from the mission is kept.',
+  objective: 'The objective was lost. Nothing from the mission is kept.',
+  failed: 'The objective failed. Nothing from the mission is kept.',
+};
+
+function clock(secs) {
+  return `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`;
+}
+
+/** The three star goals of a mission as short labels, lit by what the crew met. */
+function starGoals(mission, d) {
+  const st = (mission && mission.stars) || {};
+  const met = d.met || { time: d.stars >= 2, perfect: d.stars >= 3 };
+  const clean = [st.noDowns ? 'no one goes down' : '', st.optional ? 'every bonus' : ''].filter(Boolean).join(' + ');
+  return [
+    { text: 'Win', on: d.stars >= 1 },
+    st.time > 0 ? { text: `Under ${clock(st.time)}`, on: !!met.time } : null,
+    clean ? { text: clean.charAt(0).toUpperCase() + clean.slice(1), on: !!met.perfect } : null,
+  ].filter(Boolean);
+}
+
 /** What the debrief's way-on button says, from where the story goes next (`debrief.next`). */
 function wayOnLabel(next, victory) {
   if (!next || next.done) return 'Back to the hideout';
@@ -189,7 +214,8 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const head = h('header.st-debrief-head', null, [
       h('div.st-debrief-kicker', { text: mission ? `Chapter ${mission.chapter} · ${mission.title}` : d.title }),
       h('h2.st-debrief-title', { text: victory ? (d.replay ? 'Mission complete' : 'Mission complete') : 'Mission failed' }),
-      victory ? h('div.st-stars-row', { 'aria-label': `${d.stars} stars` }, starEls) : h('p.st-sub', { text: 'The crew fell back. Nothing from the mission is kept.' }),
+      victory ? h('div.st-stars-row', { 'aria-label': `${d.stars} stars` }, starEls) : h('p.st-sub', { text: LOSS_TEXT[d.reason] || 'The crew fell back. Nothing from the mission is kept.' }),
+      victory ? h('ul.st-goals', null, starGoals(mission, d).map((g) => h('li' + (g.on ? '.on' : ''), { text: `${g.on ? '★' : '☆'} ${g.text}` }))) : null,
       quip ? h('p.st-quip', null, [h('b', { text: castOf(quip.who).name, style: { color: castOf(quip.who).color } }), ` “${quip.text}”`]) : null,
       d.time ? h('div.st-sub', { text: `Time ${Math.floor(d.time / 60)}:${String(d.time % 60).padStart(2, '0')}${d.replay ? ' · replay' : ''}` }) : null,
     ]);
