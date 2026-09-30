@@ -20,7 +20,7 @@
 
 export const CAST = {
   narrator: {
-    id: 'narrator', name: '', role: 'Caption', station: null, system: true, joins: null,
+    id: 'narrator', name: 'Narrator', role: 'Caption', station: null, system: true, joins: null,
     bio: 'Title cards and place names.',
     voice: { pitch: 0.8, rate: 0.9 },
     look: null,

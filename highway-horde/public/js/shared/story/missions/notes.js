@@ -45,7 +45,7 @@ export const NOTES = {
   },
   n10: {
     id: 'n10', mission: 'm3_2', at: 'cargoB', day: 3, title: 'Shipping manifest',
-    text: 'Consignee: Lake Harlan Harbor Authority, Attn: Capt. E. Alcott. One marine injector pump, two fuel filters and spare gaskets for the ferry Halcyon. Rush.',
+    text: 'Consignee: Lake Harlan Harbor Authority, attention Captain Alcott. One marine injector pump, two fuel filters and spare gaskets for the ferry Halcyon. Rush.',
   },
   n11: {
     id: 'n11', mission: 'm3_2', at: 'cargoC', day: 4, title: 'Barge crew letter',
@@ -53,7 +53,7 @@ export const NOTES = {
   },
   n12: {
     id: 'n12', mission: 'm4_1', at: 'tower', day: 6, title: 'Orders, Checkpoint Delta',
-    text: 'Delta will hold the crossroads and the tower until relieved. Do not abandon the tower. — Col. Reese. Below it, in pen: "Colonel Reese left on Day 8 with the trucks. — Sgt. O."',
+    text: 'Orders from Colonel Reese: hold the crossroads and the tower until relieved, and do not abandon the tower. Underneath, in pen: "The Colonel left on Day 8 with the trucks. Nobody relieved us. — Okafor"',
   },
   n13: {
     id: 'n13', mission: 'm4_2', at: 'genC', day: 27, title: 'Unsent letter',
@@ -77,7 +77,7 @@ export const NOTES = {
   },
   n18: {
     id: 'n18', mission: 'm5_2', at: 'mainStreet', day: 29, title: 'Discharge slip',
-    text: 'W. Alcott, age 15, dehydration. Declined to stay; asked for D batteries "for the radio at home" and whether we had seen a man in a captain\'s cap. We had not. She said she would be quick.',
+    text: 'Discharge slip, patient Alcott, age 15, dehydration. Declined to stay; asked for D batteries "for the radio at home" and whether we had seen a man in a captain\'s cap. We had not, and she said she would be quick.',
   },
   n19: {
     id: 'n19', mission: 'm6_1', at: 'ridgeHill', day: 31, title: 'Card on the transmitter',

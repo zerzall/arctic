@@ -14,17 +14,17 @@ export const CH5 = [
     briefing: [
       L('narrator', 'DAY 56. BLACKWATER DEPOT. DEPARTURE.'),
       L('priya', 'County line at mile eleven. Harlan County. Fifty miles of farmland, three towns, one interstate, and a map with a lot of blank spaces.'),
-      L('deke', 'Harlan County. Named for my great-granddad. He lost it in a card game. Do not touch anything, it is all mortgaged.'),
+      L('deke', 'Harlan County. Named for my great-granddad. He lost it in a card game. Don\'t touch anything, it\'s all mortgaged.'),
       L('dutch', 'The rig will follow at a distance. I charge by the mile and by the fear.'),
       L('okafor', 'The interstate is the fastest route and the worst. Nothing on it is friendly and nothing moves in a straight line. Keep moving.'),
-      L('ozzy', 'The Warden says the storm front hits the lake on Day fifty-eight. The ferry was going to wait until sixty. It cannot anymore.'),
-      L('mara', 'Then we do not stop.'),
+      L('ozzy', 'The Warden says the storm front hits the lake on Day fifty-eight. The ferry was going to wait until sixty. It can\'t anymore.'),
+      L('mara', 'Then we don\'t stop.'),
       L('priya', 'Actually, we do stop. Four times. The interchange, the quarry, the Gas-N-Go, Main Street. Everything between them is open ground.'),
       L('okafor', 'Every safe zone shrinks. Do not linger.'),
       L('june', 'Miss Priya? Can I hold the map?'),
-      L('priya', 'You can hold it. You cannot draw on it.'),
-      L('june', 'I would draw on it nicely.'),
-      L('priya', 'That is what they all say.'),
+      L('priya', 'You can hold it. You can\'t draw on it.'),
+      L('june', 'I\'d draw on it nicely.'),
+      L('priya', 'That\'s what they all say.'),
     ],
     steps: [
       {
@@ -37,7 +37,7 @@ export const CH5 = [
       },
       {
         id: 'radio3', type: 'wait', seconds: 230, parallel: true,
-        onDone: [radio('warden', 'KD9-OZZ, Haven. The storm front is on the radar. It is on the... on the barometer. It is close. Please hurry.')],
+        onDone: [radio('warden', 'KD9-OZZ, Haven. The storm front is on the radar. It\'s on the... on the barometer. It\'s close. Please hurry.')],
       },
       {
         id: 'run', type: 'evac', stops: ['i70Interchange', 'millerQuarry', 'gasNGo', 'mainStreet'], text: 'Run the interstate: reach each safe zone',
@@ -58,15 +58,15 @@ export const CH5 = [
       xp: 600, scrap: 180, weapon: 'hmg', upgradePoints: 1, flags: { interstate_cleared: true },
     },
     debrief: [
-      L('priya', 'Main Street. I am entering it in the book. Day fifty-six. Population: us.'),
-      L('mara', 'That is a joke.'),
-      L('priya', 'It is a map entry.'),
+      L('priya', 'Main Street. I\'m entering it in the book. Day fifty-six. Population: us.'),
+      L('mara', 'That\'s a joke.'),
+      L('priya', 'It\'s a map entry.'),
       L('june', 'The sign said forty-one miles to the water. Forty-one is the day you found our bus.'),
       L('ozzy', 'June. Nobody else noticed that. Nobody.'),
-      L('june', 'I count things. It is my whole personality.'),
-      L('deke', 'Forty-one miles. I have done worse in a bad truck.'),
+      L('june', 'I count things. It\'s my whole personality.'),
+      L('deke', 'Forty-one miles. I\'ve done worse in a bad truck.'),
       L('okafor', 'Ten miles of that is cornfield. Nobody has ever won a war in a cornfield.'),
-      L('mara', 'We are not going to war, Sergeant. We are going to church, and the church has a boat.'),
+      L('mara', 'We aren\'t going to war, Sergeant. We\'re going to church, and the church has a boat.'),
     ],
     stars: { time: 720, noDowns: true, optional: 'collectAll' },
     todo: 'bonus,graph',
@@ -80,7 +80,7 @@ export const CH5 = [
     requires: ['m5_1'], hub: null, after: 'hideout:farmstead',
     briefing: [
       L('narrator', 'DAY 57. MAIN STREET. DUSK.'),
-      L('mara', 'There is a field hospital on the east side. Army tents, medical crates and, if the radio is right, a surgeon with a beard and a stubborn streak.'),
+      L('mara', 'There\'s a field hospital on the east side. Army tents, medical crates and, if the radio is right, a surgeon with a beard and a stubborn streak.'),
       L('ozzy', 'Dr. Ellery. He has been on a loop asking for anyone with a truck, a generator, or a sense of humor.'),
       L('mara', 'We have two out of three.'),
       L('deke', 'We have a truck.'),
@@ -90,7 +90,7 @@ export const CH5 = [
       L('dutch', 'Is the pharmacy going to be full of bloaters?'),
       L('priya', 'The pharmacy will be full of whatever it wants to be full of.'),
       L('okafor', 'Move quickly. Something large has been feeding at that hospital. My scouts found the tracks.'),
-      L('mara', 'I know. Let us go.'),
+      L('mara', 'I know. Let\'s go.'),
     ],
     steps: [
       {
@@ -103,7 +103,7 @@ export const CH5 = [
       },
       {
         id: 'triage', type: 'reach', at: 'fieldHospital', hold: 45, text: 'Hold the triage circle while patients are moved', pressure: P(7, 0.8, ['screamer']),
-        onStart: [radio('mara', 'Patients are being moved to the trucks. Forty-five seconds. Do not let anything through the circle.')],
+        onStart: [radio('mara', 'Patients are being moved to the trucks. Forty-five seconds. Don\'t let anything through the circle.')],
         onDone: [radio('mara', 'Trucks loaded. Every patient who could walk, walked.')],
       },
       {
@@ -113,7 +113,7 @@ export const CH5 = [
       boss('abomination', 'Bring down the Abomination', {
         pressure: P(7, 0.4),
         onStart: [
-          radio('mara', 'That is not a patient.'),
+          radio('mara', 'That isn\'t a patient.'),
           radio('priya', 'Definitely not a patient.'),
           radio('okafor', 'It is slow. Use the slow. Keep moving, never stand still, and hit it with everything you have.'),
         ],
@@ -121,7 +121,7 @@ export const CH5 = [
       }),
       {
         id: 'lead', type: 'reach', at: 'haskellFarm', text: 'Lead the convoy to Haskell Farm', pressure: P(5, 0.3),
-        onDone: [radio('dutch', 'I am parking the rig in the barn. Send the bill to the farm.')],
+        onDone: [radio('dutch', 'I\'m parking the rig in the barn. Send the bill to the farm.')],
       },
     ],
     bonus: [
@@ -137,7 +137,7 @@ export const CH5 = [
       xp: 640, scrap: 190, weapon: 'cryo', upgradePoints: 2, flags: { hospital_saved: true, med_supplies: true },
     },
     debrief: [
-      L('mara', 'Twenty-eight on the trucks. Twenty-eight who were not going to see Day fifty-eight.'),
+      L('mara', 'Twenty-eight on the trucks. Twenty-eight who weren\'t going to see Day fifty-eight.'),
       L('june', 'Are you counting, Miss Mara?'),
       L('mara', 'No.'),
       L('june', 'You said twenty-eight.'),
@@ -145,7 +145,7 @@ export const CH5 = [
       L('june', 'Ms. Delaney said counting is how you keep people from disappearing.'),
       L('mara', 'Did she.'),
       L('june', 'She said it in the third grade. About sheep.'),
-      L('mara', 'Then I suppose I will count sheep.'),
+      L('mara', 'Then I suppose I\'ll count sheep.'),
     ],
     stars: { time: 900, noDowns: true, optional: 'collectAll' },
     todo: 'bonus,graph',
