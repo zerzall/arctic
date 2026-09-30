@@ -217,10 +217,9 @@ Merge order will be S1 → S2 → S3 → S4 → V1 → V2 by the coordinator, wh
 
 ## S1 seams
 
-What S1 built, and every seam it invented so the other parts can plug in. Everything below is
-implemented and tested (`tests/story-*.test.js`, e2e scenario `l`); nothing needs S2/S3/S4 to run:
-S1 ships stand-ins (a stub hideout, stub missions, `shared/story/stub-content.js`) that step aside
-the moment the real thing exists.
+What S1 built and where it meets the other parts. Implemented and tested (`tests/story-*.test.js`,
+e2e scenario `l`); merged on top of S2's mission director and S4's data. The only stand-in left is the
+hideout map: until S3's hub maps exist, `buildStoryMap()` builds a stub hub on the truck stop.
 
 ### Pure layer (`shared/story/*`)
 
@@ -237,18 +236,17 @@ Extra World fields: `day` (starts at 41, +1 per won mission and per night at the
 ### 1. Content wiring: one file, two lines
 
 Nothing imports S4's data directly; `shared/story/content.js` is a registry filled once by
-**`ui/story-content.js`**. Today it installs the stub content. When `shared/story/index.js`
-(S4) is in the tree, replace the stub import and call with
+**`ui/story-content.js`**, which installs the written campaign:
 
 ```js
 import * as story from '../shared/story/index.js';
 setStoryContent({ story });
 ```
 
-`tests/story-real-content.test.js` skips without S4's data and **fails if the data is there but
-this file still installs the stub**. With the data wired, that test also walks the whole campaign
-through `graph.js` / `rewards.js` and compares `nextNodes` with S4's own. (Checked against S4's
-commit 2ec77be: the whole campaign plays through, and e2e scenario `l` passes with it wired.)
+`shared/story/stub-content.js` (five small missions with a `stub` field) is only for unit tests and
+tools (`setStoryContent(STUB_CONTENT)`). `tests/story-real-content.test.js` fails if the written
+campaign is in the tree but `ui/story-content.js` does not install it; it also walks the whole
+campaign through `graph.js` / `rewards.js` and compares `nextNodes` with S4's own.
 What S1 reads from S4: `MISSIONS` (`requires`, `hub`, `after`, `rewards {xp, scrap, weapon,
 upgradePoints, flags, unlockNpc}`, `briefing`, `debrief`, `stars`), `CHAPTERS` (`arrival {hideout,
 flag, scene}`, `epilogue`), `CAST` (name, role, `look.cls`, `portrait.accent/pose`, `voice`,
@@ -261,71 +259,66 @@ scene / the epilogue plays when the hideout stage starts and the viewer sets `se
 then the mission's `PEP` line, a lost mission shows a `RETRY` quip, road missions (`hub: null`)
 chain briefing → mission → debrief → next briefing with no hideout in between (`story.direct`).
 
-### 2. `new Game` options (S2)
+### 2. Games of a story stage (S2's settings, S1's session)
+
+The host launches every stage as `new Game` with S2's settings (§5.1, SPEC §3.9):
 
 ```js
-new Game({ mapId, seed,
-  settings: { mode:'hideout'|'mission', mapMode:'defend'|'zone'|'campaign',   // mapMode = rules of the underlying map (missions)
-    story:{ worldId, nodeId /* 'hideout:<id>' | missionId */, difficulty, party:[{ pid, profile }],
-            flags:{}, hideoutUpgrades:{[id]:tier}, npcs:[recruited npc ids] }, time, difficulty, ... },
-  players:[{ id, name, color, cls, bot, story: <StorySpec> }] })
+settings: { mode:'hideout'|'mission', difficulty, waves:0, time,
+  story:{ nodeId /* missionId | 'hideout:<id>' */, simMode, title, difficulty,
+          party:[{ pid }], worldId, flags, hideoutUpgrades, npcs:[], absent:[cast ids not with the crew yet] } }
+players: [{ id, name, color, cls, bot, story: <StorySpec> }]
 ```
-* The **session settings** (what the lobby and the `start` message call `settings`) describe the
-  map, not the story stage: `mode` is the map mode (`mapMode`), so `buildMap(mapId, seed, { mode })`
-  works unchanged on clients. The game's own `settings.mode` is `'hideout'` / `'mission'`.
-* `createStoryGame(opts, stage)` (`shared/sim/story-shim.js`) builds the game. It first tries
-  `new Game(opts)`; if `game.settings.mode === opts.settings.mode` the simulation supports the
-  story modes and that game is used (remembered for the process). Otherwise it falls back: a
-  `StubHideoutGame` (no waves, no zombies, press-E stations from `map.interactables`, the cash shop
-  closed) or, for missions, a plain wave game on the mission's map (`stub.waves`; `stub.seconds`
-  wins by the clock). Tests can inject `hooks.createGame`; `resetStorySupport()` forgets the probe.
-* `buildStoryMap(id, seed, opts)` (`shared/story/stub-hub.js`) calls `buildMap()` first and only
-  builds the stub hub (on `truckstop`, five stations as `interactables`) when the id is
-  `roadhouse` / `depot` / `farmstead` and `buildMap` does not know it. When S3's maps exist they win.
-* **`applyProfileToPlayer(game, p, spec)`** (`shared/sim/profile-mods.js`) is called by
-  `createPlayer` when `info.story` is set (also for `addPlayer` of a late joiner). It sets
-  `p.story` (StoryMods), adds to `p.perks` (`maxHp`, `startArmor`, `speedMult`, `staminaMult`,
-  `reviveSpeed`, `healAura`, `cashMult`, `explosiveMult` and the new optional `explosiveRadius`,
-  `bleedoutMult`, `dropMult`, `crateMult`, `reviveDelayMult`, `reviveHpBonus`, read as 1/0 when
-  absent) and fills the slots from the loadout. **Anything that shoots, reloads or buys ammo for a
-  player must use `weaponOf(p, id)`** (plain `WEAPONS[id]` without a spec); S2 code that fires a
-  survivor's gun should do the same. Players without `story` are untouched, so every existing mode
-  is byte-for-byte as before.
+* The **session settings** (what the lobby and the `start` message call `settings`) carry `mode:'hideout'|'mission'`
+  and a light `story` block `{ nodeId, difficulty, simMode?, title? }`, so every client builds the same map
+  (`mapBuildOptions(settings)`) and the story HUD. The full block (party, flags, upgrades) stays on the host.
+* `createStoryGame(opts)` (`shared/sim/story-shim.js`) is `new Game({ ...opts, map })` with the map from
+  **`buildStoryMap(id, seed, opts)`** (`shared/story/stub-hub.js`): `buildMap()` first, and only when the id is
+  `roadhouse` / `depot` / `farmstead` and unknown does it build the stub hub (truck stop + five stations as
+  `interactables`). **When S3's maps exist they win by themselves** (host and clients both call `buildStoryMap`).
+* **`applyProfileToPlayer(game, p, spec)`** (`shared/sim/profile-mods.js`) runs in `createPlayer` when `info.story`
+  is set (also for a late joiner). It sets `p.story` (StoryMods), adds to `p.perks` (`maxHp`, `startArmor`,
+  `speedMult`, `staminaMult`, `reviveSpeed`, `healAura`, `cashMult`, `explosiveMult` and the optional `explosiveRadius`,
+  `bleedoutMult`, `dropMult`, `crateMult`, `reviveDelayMult`, `reviveHpBonus`, read as 1/0 when absent) and fills the
+  slots from the loadout. **Anything that shoots, reloads or buys ammo for a player must use `weaponOf(p, id)`**.
+  S2's own `party[]` hook (`perks` / `armor` / `loadout` per pid) is not used: the profile reaches the sim through
+  the players' specs, which the client derives the same way for prediction.
+* `settings.story.absent`: S2's director skips these cast ids when it places `map.hub.npcs` (S1 fills it from
+  S4's `npcAvailable(id, world)`, so the Roadhouse shows only the people who have joined).
 * Bots get a profile scaled to the party level (`botStoryProfile`) and a spec like anybody else.
+* A road mission's briefing (no hideout in between) is a frozen mission game (`_holdGame`); Deploy builds a
+  fresh one, so the director starts only when the crew goes.
 
 ### 3. Events S1 consumes from the sim
 
-* `{ type:'storyend', result:'victory'|'defeat', stars:0..3, stats:{[pid]:{ kills, kinds:{[zombieKind]:n},
-  elites, objectives, revives, downs }}, time /* seconds */ }` → rewards, debrief. Stats may be partial;
-  unknown fields are ignored and every number is clamped host-side (`rewards.clampStars`, kill caps).
-  For fallback missions the host synthesises one from the classic `victory` / `gameover`.
-* `{ type:'interact', pid, id, kind }`: `kind` `board`/`radio` → mission board, `workbench`,
-  `armory`/`stash`, `infirmary`, `upgrades` → the station panel for that player only, `bed` → sleep
-  (heals anybody, the host also moves the day on). `range`, `campfire` and unknown kinds are ignored.
-* `{ type:'talk', pid, npc }` → the conversation with that NPC id (a cast id). The hideout stage
-  is `world.hideout.current`.
-* The HUD line "E — <label>" for the nearest `map.interactables` entry is drawn by S1
-  (`ui/story.js`, `.st-prompt`); if S2 draws its own prompt, hide one of them (drop the prompt
-  block in `matchFrame` or the CSS class).
+* `storyend` (§5.1): result, stars (the director's), `stats[pid]` (`kills`, `downs`, `revives` feed the XP), `time`,
+  `flags` (merged into the world by `rewards.settleMission`). Stats are clamped host-side; a fixture game that
+  emits classic `victory` / `gameover` instead gets a synthesised `storyend` (tests only).
+* `interact {pid, id, kind}`: `board` / `radio`, `workbench`, `armory` / `stash`, `infirmary`, `upgrades` open that
+  station's panel for that player only; `bed` sleeps (heals anybody, the host also moves the day on); `range`,
+  `campfire` and mission devices (`use`, `terminal`, `generator` ...) are ignored (`ui/story.js` `STATION_PANELS`).
+  Panels open only in the hideout stage.
+* `talk {pid, npc}`: the conversation with that cast id (greeting + topics). The station panels show whoever tends
+  the station in this world (`cast.station` + `npcAvailable`).
+* The "E — station" prompt and hold rings are S2's HUD (`ui/storyhud.js`); S1 draws none.
 
-### 4. Session and protocol (PROTOCOL_VERSION = 9)
+### 4. Session and protocol (PROTOCOL_VERSION = 10)
 
-A story room is a normal room with `session.story` (host: `StoryHost`, client: `StoryClient`, both
-`StoryView`; see the header of `net/story-view.js`). New control messages (all `ctl`):
+A story room is a normal room with `session.story` (host: `StoryHost`, client: `StoryClient`, both `StoryView`; see
+the header of `net/story-view.js`). PROTOCOL 9 (S1) added the story control messages, S2's binary changes made it 10;
+S1 adds no binary layout. Control messages (all `ctl`, JSON):
 `hello.story {profile, worldId, worldRev}` · `welcome.story {world, profile, state, pid, debrief?}` ·
-`start.story {stage, mission, party, ready, hideout, chapter, direct, specs:{[pid]:StorySpec}, map,
-arrival?, epilogue?}` · `world {world}` · `sprofile {profile}` · `sstate {...}` · `sdebrief {debrief}` ·
-`sres {a, ok, reason?, note?}` · `swant {id}` (host asks for a newer world copy) · client `sact {a, ...}`.
-Station actions (`loadout, tier, buygun, perk, reset, hideout, donate, kit, buykit, talk, flag, diff,
-rename, heal, bed`) and crew actions (`pick, unpick, ready, deploy, back, retry, sync`) are all validated
-on the host; a client `flag` may only set `talked_*`, `seen_*` or a flag a dialogue topic declares.
-The host accepts a joiner's Profile through `acceptJoinProfile` (level ≤ 20, XP/scrap/perk points consistent
-with the level, tiers ≤ 5, known guns) and answers with the accepted one. The host session builds each
-stage's game through `HostSession._launchGame()` and freezes a finished mission behind its result with
-`_holdGame()`; stages chain hideout → briefing → mission → debrief → hideout without the lobby, late joiners
-enter the running stage, and when the host leaves clients keep their World copy and Profile.
-**S2 also bumps PROTOCOL_VERSION (to 10):** take the higher number. The tests compare against the constant
-(`>= 9`, and "a client one version behind is turned away"), so nothing else needs editing.
+`start.story {stage, mission, party, ready, hideout, chapter, direct, specs:{[pid]:StorySpec}, map, arrival?, epilogue?}` ·
+`world {world}` · `sprofile {profile}` · `sstate {...}` · `sdebrief {debrief}` · `sres {a, ok, reason?, note?}` ·
+`swant {id}` (the host asks for a newer world copy) · client `sact {a, ...}`.
+Station actions (`loadout, tier, buygun, perk, reset, hideout, donate, kit, buykit, talk, flag, diff, rename, heal, bed`)
+and crew actions (`pick, unpick, ready, deploy, back, retry, sync`) are all validated on the host; a client `flag` may
+only set `talked_*`, `seen_*` or a flag a dialogue topic declares. The host accepts a joiner's Profile through
+`acceptJoinProfile` (level <= 20, XP/scrap/perk points consistent with the level, tiers <= 5, known guns) and answers
+with the accepted one. The host session builds each stage's game through `HostSession._launchGame()` and freezes a
+finished mission behind its result with `_holdGame()`; stages chain hideout -> briefing -> mission -> debrief -> hideout
+without the lobby, late joiners enter the running stage, and when the host leaves clients keep their World copy and
+Profile. `ClientSession` builds the map from `mapBuildOptions(settings)` (or `buildStoryMap` in a story room).
 
 ### 5. UI files, flags and hooks
 

@@ -928,8 +928,8 @@ buffer; an event whose JSON exceeds `MAX_JSON_EVENT_BYTES` (1 KB) is dropped. A 
 of every binary message is a message-type tag so snapshots and inputs can share a channel.
 Tests (`tests/protocol.test.js`): round-trip every field, every event type, empty arrays,
 max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
-PROTOCOL_VERSION 9 changes no binary layout: it only adds the JSON control messages of the story
-rooms (§10.4), and turns older clients away from every room.
+The story rooms' JSON control messages (§10.4) arrived with protocol 9 and change no binary layout; the
+version is 10 with the story block above.
 
 ## 6. Networking — `public/js/net/*`
 
@@ -1802,12 +1802,13 @@ flat tyre, dents, an antenna or luggage on the roof.
   Scenario j (day): the lobby's Time row (Night first, Day, saved in `prefs.lobby.time`, kept across a
   map change), a first-person solo game by day (`ctx.time` 'day', sun on, flashlight off) and a
   top-down one, no console errors.
-  Scenario l (story, 200 s budget): Story → New campaign (solo) → the first stage (the hideout's
-  stations open and close, the board briefs a mission; or, with the real campaign, the first road
-  briefing) → Deploy → a mission won (by its clock, else through the host's result path) → the
-  debrief (stars, XP counter, level badge ends on the new level) → the perk point spent from the
-  debrief → on to the next stage; then a reload, the campaign card lists its progress, Export a
-  file, Delete, Import it back and Continue resumes at the saved progress (see §10).
+  Scenario l (story-loop, 200 s budget; `m` is S2's mission scenario): Story → New campaign (solo) with a bot
+  → the first road briefing → Deploy → the real mission m1_1 runs (the story HUD lists its step) and is ended
+  the way the director ends it (`storyend`) → the debrief (stars, XP counter, level badge ends on the new
+  level) → the perk point spent from the debrief → on to the next briefing; then a reload, the campaign card
+  lists its progress, Export a file, Delete, Import it back and Continue resumes at the saved progress; then a
+  crafted save that has cleared the road chapter arrives at the Roadhouse: the arrival scene, every station
+  panel, the board listing the missions, a hub mission briefed and backed out of (see §10).
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,
@@ -1877,9 +1878,11 @@ stamina uses the same mods (`ClientSession.mods`). Tests: `story-mods-sim` (the 
 `story-net-sim` (host and client against each other).
 
 ### 10.4 Story sessions — `net/story-{view,host,client}.js`, `host-session.js`, `client-session.js`
-PROTOCOL_VERSION 9 adds the story control messages (`hello.story`, `welcome.story`, `start.story`,
-`world`, `sprofile`, `sstate`, `sdebrief`, `sres`, `swant`, client `sact`); the binary snapshot is
-unchanged. `session.story` is a `StoryView` (`stage`, `world`, `profile`, `mission`, `party`, `ready`,
+Protocol 9 added the story control messages (`hello.story`, `welcome.story`, `start.story`,
+`world`, `sprofile`, `sstate`, `sdebrief`, `sres`, `swant`, client `sact`; JSON, no binary change);
+the current version is 10 (S2's story block in the snapshot). Every stage is launched as S2's `mission` /
+`hideout` game (§3.9): the session settings carry `mode` and a light `story {nodeId, difficulty, simMode, title}`,
+the host's game also `party`, `flags`, `hideoutUpgrades`, `absent`. `session.story` is a `StoryView` (`stage`, `world`, `profile`, `mission`, `party`, `ready`,
 `debrief`, `direct` and the action methods `setLoadout`, `upgradeWeapon`, `buyWeapon`, `buyPerk`,
 `resetPerks`, `upgradeHideout`, `donate`, `takeKit`, `buyKit`, `heal`, `talked`, `setFlag`, `sleep`,
 `setDifficulty`, `renameWorld`, `pickMission`, `cancelBriefing`, `setReady`, `deploy`, `backToHideout`,
@@ -1904,9 +1907,10 @@ Fake-transport tests: `story-session`, `story-session-road`.
   armory/stash, upgrade board, infirmary, perk tree, mission board with the party), the briefing and
   the debrief (`story-flow.js`: ready check, kit, animated XP bars with level-up flashes,
   stars, loot, way on).
-* The HUD gets a level / XP / scrap strip, the "E — station" prompt and (with the stub hideout) a
-  station dock. All sizes are rem-based (they follow `--ui-scale`, so 1080p and 4K both work);
+* The HUD gets a level / XP / scrap strip (the "E — station" prompt and the hold rings are S2's story HUD)
+  and, on the stub hideout map, a station dock. All sizes are rem-based (they follow `--ui-scale`, so 1080p and 4K both work);
   every button is reachable with the gamepad (`padNavigate`) and touch.
 * Style: the game's dark panels with hazard-yellow accents; audio cues go through `audio.ui(...)`.
 * Tests: pure units `story-{progression,profile,rewards,actions,graph}`, the registry against the
-  real data `story-real-content` (skips until `shared/story/index.js` exists), e2e scenario `l` (§9).
+  written campaign `story-real-content`, sessions with fake transports `story-session{,-road}`, host and
+  client against the real sim `story-net-sim`, e2e scenario `l` (§9).

@@ -35,11 +35,12 @@
 //                   the stages driven through the host's game (hill, breakout, floor, roof,
 //                   zip line, escape, "Escaped" end screen), then first person: hill, tower
 //                   floor and roof
-//   l  story-loop   Road to Haven: Story → New campaign (solo) → the first stage (the hideout of the
-//                   stub content, or the first road briefing of the real one) → a mission briefed,
-//                   deployed and won → the debrief (stars, XP bar, level-up, perk point spent) →
-//                   on to the next stage; then the saves: reload, the campaign is listed, Export a
-//                   file, Delete, Import it back, Continue resumes it
+//   l  story-loop   Road to Haven, the engine side: Story → New campaign (solo, one bot) → the first road
+//                   briefing → Deploy → the real mission m1_1 (story HUD) ended through the director's
+//                   storyend → the debrief (stars, XP bar, level-up, perk point spent) → the next
+//                   briefing; then the saves: reload, the campaign is listed, Export a file, Delete,
+//                   Import it back, Continue resumes it; then a crafted save at the Roadhouse: the
+//                   arrival scene, every station panel, the board, a briefing backed out of
 //
 //   m  story        Road to Haven: a small mission started through the session's createGame
 //                   hook, two bots: objective tracker, an NPC (Mara) with her talk prompt and
