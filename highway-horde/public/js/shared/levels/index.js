@@ -16,7 +16,8 @@ const MODULES = { millroad, hollowcreek, forest, hospital, mall, metro, dam, rai
 
 /** Every level, in campaign order: { id, name, kind:'level', chapter, description, sections }. */
 export const LEVEL_LIST = Object.freeze(Object.values(MODULES).map((m) => Object.freeze({
-  id: m.SPEC.id, name: m.SPEC.name, kind: 'level', modes: ['mission'], chapter: m.SPEC.chapter,
+  // (every level plays day and night: JOURNEY.md §2.1; the mission picks, SPEC.time is its main mission's)
+  id: m.SPEC.id, name: m.SPEC.name, kind: 'level', modes: ['mission'], times: ['day', 'night'], chapter: m.SPEC.chapter,
   description: m.SPEC.description, sections: m.SPEC.sections.map((s) => s.id),
 })).sort((a, b) => a.chapter - b.chapter));
 

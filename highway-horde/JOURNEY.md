@@ -31,12 +31,34 @@ objective and the crew splitting up to open a gate.
 
 | Ch | Title | Missions (map) | Hideout after |
 |----|-------|----------------|---------------|
-| 1 | Dead Highway | 1.1 **Pileup** (highway, kept as it is: defend the bus until dawn) · 1.2 **Mill Road** (millroad, day) | **The Roadhouse** |
-| 2 | Hollow Creek | 2.1 **Hollow Creek** (hollowcreek, night) · 2.2 **Saint Mercy** (hospital, night) | (Roadhouse) |
-| 3 | Blackwater | 3.1 **Westgate** (mall, night) · 3.2 **Blackwater Dam** (dam, day, storm) | **Blackwater Depot** |
-| 4 | Delta | 4.1 **The Rail Yard** (railyard, dusk) · 4.2 **Fort Harlan** (airbase, night, rain) | (Depot) |
-| 5 | Harlan County | 5.1 **Underground** (metro, night) · 5.2 **Blackpine** (forest, night, fog) | **Harlan Farmstead** |
-| 6 | Haven | 6.1 **Last Stand** (harlan campaign: hill) · 6.2 **The Tower** (harlan campaign: tower, roof, zip line) | epilogue |
+| 1 | Dead Highway | 1.1 **Pileup** (highway, night → dawn, kept as it is: defend the bus until sunrise) · 1.2 **Mill Road** (millroad, **day**) | **The Roadhouse** |
+| 2 | Hollow Creek | 2.1 **Hollow Creek** (hollowcreek, **day**) · 2.2 **Saint Mercy** (hospital, night) | (Roadhouse) |
+| 3 | Blackwater | 3.1 **Westgate** (mall, **day**: sun through the skylights, the dark store) · 3.2 **Blackwater Dam** (dam, **day**, storm) | **Blackwater Depot** |
+| 4 | Delta | 4.1 **The Rail Yard** (railyard, **day**) · 4.2 **Fort Harlan** (airbase, night, rain) | (Depot) |
+| 5 | Harlan County | 5.1 **Underground** (metro, **day**: dark tunnels, then daylight in Harlan Square) · 5.2 **Blackpine** (forest, **day**, morning fog) | **Harlan Farmstead** |
+| 6 | Haven | 6.1 **Last Stand** (harlan campaign, **day**: the hill) · 6.2 **The Tower** (harlan campaign, **day**: tower, roof, zip line) | epilogue |
+
+### 2.1 Daylight (the player asked for it)
+
+"Just make sure you add daylight as well. I don't want to always play in the dark of night." So:
+
+* **Most of the campaign plays by day.** Nine of the twelve main missions are day missions. Only Pileup,
+  Saint Mercy and Fort Harlan stay at night. The story reasons are the bus stand until dawn, the hospital
+  horror, and the rain at the airbase. Side jobs keep their written time.
+* **Every level plays both day and night** (`LEVEL_LIST` `times: ['day', 'night']`), and it must look
+  great at both.
+  * **By day:**
+    * strong sun and sky light, with sun shadows;
+    * bright exteriors;
+    * shafts of daylight through windows, skylights and doorways into darker interiors;
+    * lamps off or dim.
+  * **By night:** the lights the level places.
+  * The level's `SPEC.time` is the time its main mission plays.
+* **A "Daylight only" campaign option** (the story lobby, stored in the world). When it is on, every mission
+  and side job plays by day, whatever the script says. W owns it: the world field, the story lobby toggle
+  and the one line in `net/story-host.js` where the mission time is picked.
+* Dark interiors (the metro tunnels, the hospital stairwell after the power cut) still exist by day. That
+  contrast is what makes daylight feel good.
 
 That is twelve main missions: the old 1.1, 6.1 and 6.2, plus nine new ones. The other old missions (Fuel
 Run, Beacon, Diner Siege, Radio Parts, Night Hauler, The Crossing, Sunken Cargo, Hold the Tower, Broken
