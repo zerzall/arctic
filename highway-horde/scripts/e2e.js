@@ -1153,7 +1153,7 @@ async function walkForward(pl, observer, pid, dist) {
  * first-person camera rose with it. @returns {{ kind, top, z, cam, dist }}
  */
 async function climbOnto(pl) {
-  const target = await pl.page.evaluate(async () => {
+  const pickTarget = () => pl.page.evaluate(async () => {
     const [{ createCollisionWorld, mantleSpot }, { closestPointOnObb, MASK_MOVE }] = await Promise.all([
       import('/js/shared/movement.js'), import('/js/shared/geom.js'),
     ]);
@@ -1178,20 +1178,28 @@ async function climbOnto(pl) {
     }
     return best;
   });
-  expect(target, 'test setup: no car, van or container within reach of a clear run');
-  await turnTo(pl, target.yaw);
-  await setKeys(pl, new Set(['w', 'Space']));
-  let started;
-  try {
-    started = await waitFor(pl, () => {
-      const H = window.__HH;
-      const p = H.session.getPredictedLocal();
-      const v = H.session.getView();
-      const me = v && v.players.find((q) => q.id === H.session.localId);
-      return (me && me.climbT > 0) || (p && p.climbT > 0) ? true : false;
-    }, null, `a climb onto the ${target.kind} ${target.dist.toFixed(0)} px ahead`, 20e3);
-  } finally {
-    await releaseAll(pl);
+  // Up to three tries: a zombie that shoves the player off the line, or a slow frame, costs one try,
+  // not the whole scenario (each try picks the nearest climbable thing afresh).
+  let target = null;
+  let started = false;
+  for (let attempt = 0; attempt < 3 && !started; attempt++) {
+    target = await pickTarget();
+    expect(target, 'test setup: no car, van or container within reach of a clear run');
+    await turnTo(pl, target.yaw);
+    await setKeys(pl, new Set(['w', 'Space']));
+    try {
+      started = await waitFor(pl, () => {
+        const H = window.__HH;
+        const p = H.session.getPredictedLocal();
+        const v = H.session.getView();
+        const me = v && v.players.find((q) => q.id === H.session.localId);
+        return (me && me.climbT > 0) || (p && p.climbT > 0) ? true : false;
+      }, null, `a climb onto the ${target.kind} ${target.dist.toFixed(0)} px ahead`, 9e3);
+    } catch (err) {
+      if (attempt === 2) throw err;
+    } finally {
+      await releaseAll(pl);
+    }
   }
   expect(started, 'no climb');
   const up = await waitFor(pl, () => {
@@ -1770,8 +1778,9 @@ async function scenarioCampaign(sc) {
     return el && !el.hidden && /zip line/i.test(el.textContent) ? el.textContent : false;
   }, null, 'the ride prompt', 10e3);
   expect(/zip line/i.test(prompt), `a prompt to ride: "${prompt}"`);
-  await pl.page.keyboard.press('e');
-  await waitFor(pl, () => { const v = window.__HH.getView(); const me = v.players.find((p) => p.id === window.__HH.session.localId); return me.ride > 0; }, null, 'the local player riding', 10e3);
+  // (held, not tapped: on a slow machine a tap can fall between two frames and never be seen)
+  await pl.page.keyboard.press('e', { delay: 500 });
+  await waitFor(pl, () => { const v = window.__HH.getView(); const me = v.players.find((p) => p.id === window.__HH.session.localId); return me.ride > 0; }, null, 'the local player riding', 20e3);
   await sleep(1500);
   await sc.screenshots('-zip', 1500);
   // The bots ride too.

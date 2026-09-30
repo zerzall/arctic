@@ -49,6 +49,7 @@ const inline = (s) => s.replace(/<\/(script)/gi, '<\\/$1');
 let html = readFileSync(join(PUB, 'index.html'), 'utf8');
 const css = readFileSync(join(PUB, 'css/game.css'), 'utf8') + '\n' + readFileSync(join(PUB, 'css/story.css'), 'utf8');
 const scripts = [
+  'window.__HH_ONEFILE = true;',
   readFileSync(join(PUB, 'vendor/peerjs.min.js'), 'utf8'),
   readFileSync(join(PUB, 'config.js'), 'utf8'),
   res.outputFiles[0].text,

@@ -511,16 +511,39 @@
     // leaving a dimmed menu that does nothing. Opened straight from a folder (file://), the
     // browser blocks the modules for sure: point at the one-file build instead.
     var fromDisk = location.protocol === 'file:';
-    setTimeout(function () {
+    // What went wrong, for the message below: every error that happens while the page starts is kept.
+    var bootErrors = [];
+    window.addEventListener('error', function (e) {
+      bootErrors.push((e.message || 'error') + (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      bootErrors.push('promise: ' + (r && r.message ? r.message : String(r)));
+    });
+    function report() {
       var app = document.getElementById('app');
       var status = document.getElementById('server-status');
       if (app && app.classList.contains('booting') && status) {
-        status.textContent = fromDisk
+        status.textContent = fromDisk && !window.__HH_ONEFILE && !bootErrors.length
           ? 'Browsers can\'t run this copy of the game from a folder on your computer. Open Highway-Horde.html (the one-file version) instead, or put this folder on a website such as Netlify.'
-          : 'The game failed to load. Please reload the page in an up-to-date browser.';
+          : bootErrors.length
+            ? 'The game hit an error while starting. Your browser is probably fine: please send the details below to the developer.'
+            : 'The game is taking too long to start. Wait a few seconds, then reload the page (Ctrl+F5).';
         status.style.color = '#ff5b4f';
         status.style.fontSize = '1.1rem';
+        var box = document.createElement('pre');
+        box.id = 'boot-details';
+        box.style.cssText = 'margin:10px 0 0;padding:8px 10px;max-width:46rem;white-space:pre-wrap;word-break:break-word;font:12px/1.4 monospace;color:#ffb3ad;background:rgba(0,0,0,.45);border:1px solid #5a2622;user-select:text;';
+        box.textContent = 'Details: ' + (bootErrors.slice(0, 5).join('\n') || 'no error was reported')
+          + '\nBrowser: ' + navigator.userAgent + '\nPage: ' + location.protocol + '//' + (location.host || '(file)');
+        status.parentNode.insertBefore(box, status.nextSibling);
       }
+    }
+    // From a plain folder the modules are blocked for sure: say so after 1.5 s. The one-file build (which
+    // marks itself with __HH_ONEFILE) runs fine from disk and gets the normal 12 s to start.
+    setTimeout(function () {
+      if (fromDisk && window.__HH_ONEFILE) setTimeout(report, 10500);
+      else report();
     }, fromDisk ? 1500 : 12000);
   </script>
 </body>

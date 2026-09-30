@@ -56,7 +56,14 @@ const DISCONNECT_REASONS = {
  */
 export function startApp(deps) {
   const prefs = loadPrefs();
-  const audio = deps.createAudio();
+  // A browser that cannot make the audio engine must not stop the game from starting: play on in silence.
+  let audio;
+  try {
+    audio = deps.createAudio();
+  } catch (err) {
+    console.warn('[ui] audio unavailable, playing without sound:', err && err.message ? err.message : err);
+    audio = new Proxy({}, { get: () => () => undefined });
+  }
   const debug = { session: null, renderer: null, hud: null, audio, input: null, getView: () => null, getLocal: () => null };
   window.__HH = debug;
 
@@ -151,7 +158,11 @@ export function startApp(deps) {
 
   const titleEl = $('#screen-title');
   // Before the screens build: portraits and previews measure their rem-sized boxes.
-  applyUiScale(prefs.settings, coarse);
+  try {
+    applyUiScale(prefs.settings, coarse);
+  } catch (err) {
+    console.warn('[ui] UI scaling failed, using the default size:', err && err.message ? err.message : err);
+  }
   document.documentElement.dataset.quality = prefs.settings.quality;
 
   function showTitle() {
@@ -174,6 +185,7 @@ export function startApp(deps) {
 
   /** Story menu: the Story screen replaces the title until the player goes back or hosts. */
   function openStory() {
+    if (!ctx.story) return;
     titleEl.hidden = true;
     lobby.hide();
     ctx.story.screen.show();
@@ -375,7 +387,7 @@ export function startApp(deps) {
     const p = profile();
     // A survivor saved in this browser comes along: a story room checks it and keeps it up to
     // date; any other room ignores it.
-    const story = loadStoryProfile() ? { profile: ctx.story.ensureProfile() } : null;
+    const story = ctx.story && loadStoryProfile() ? { profile: ctx.story.ensureProfile() } : null;
     connect('join', () => deps.joinGame(story ? { code, via, ...p, story } : { code, via, ...p }), 'Joining…', `Connecting to room ${code}.`);
   }
 
@@ -393,11 +405,20 @@ export function startApp(deps) {
   });
   const join = createJoinDialog({ ...ctx, onSubmit: doJoin });
   ctx.profileInfo = () => profile();
-  ctx.story = createStoryApp(ctx, {
-    hostStory: (transport, story) => host(transport, story),
-    joinDialog: () => join.open(),
-    showTitle: () => showTitle(),
-  });
+  // The Story screens are an optional extra: if they cannot start in this browser, hide the Story button and
+  // keep the rest of the game working.
+  try {
+    ctx.story = createStoryApp(ctx, {
+      hostStory: (transport, story) => host(transport, story),
+      joinDialog: () => join.open(),
+      showTitle: () => showTitle(),
+    });
+  } catch (err) {
+    console.warn('[ui] Story mode unavailable in this browser:', err && err.message ? err.message : err);
+    ctx.story = null;
+    const storyBtn = document.getElementById('btn-story');
+    if (storyBtn) storyBtn.hidden = true;
+  }
   const lobby = createLobby(ctx);
   applySettings();
   bindFullscreenButtons();
@@ -447,6 +468,12 @@ export function startApp(deps) {
         // page is going away anyway
       }
     }
+  });
+
+  // The browser may keep this page in its back/forward cache after 'pagehide' closed the session; coming
+  // back with the Back button would show a lobby or match that belongs to a dead session. Start fresh.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) location.reload();
   });
 
   Promise.resolve()
