@@ -238,6 +238,9 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     }
   }
 
+  // story levels: the sub-systems' lit materials read the indoor light mask too (world.js / indoor.js)
+  try { if (world.patchIndoor) world.patchIndoor(scene); } catch (err) { logErr('indoor mask', err); }
+
   // ---- camera rig state ----
   const rig = {
     x: camera.position.x, y: camera.position.z, eye: EYE, yaw: 0, pitch: 0, roll: 0,
@@ -500,6 +503,8 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
         }
       }
       world.update(view, frame);
+      // (materials made later — a new zombie look, a gun on the ground — pick up the indoor mask)
+      if (world.indoor && stats.frames % 120 === 60) world.patchIndoor(scene);
       lights.update({
         dt, camX: frame.camX, camY: frame.camY,
         flashlight: !!local && local.state !== 'dead' && map.kind !== 'hideout',   // (no torch in a safe camp: the fires and lamps light it)
@@ -648,6 +653,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     for (const s of subs) {
       if (typeof s.addEvents !== 'function') continue;
       try { s.addEvents(events, opts); } catch (err) { logErr('addEvents ' + s.__name, err); }
+    }
+    // (a story level's scripted camera shakes)
+    if (world.addEvents) {
+      try { world.addEvents(events); } catch (err) { logErr('addEvents world', err); }
     }
   }
 

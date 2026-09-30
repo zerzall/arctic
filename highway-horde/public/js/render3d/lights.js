@@ -26,6 +26,7 @@ import { dayAmbientFor } from './daylight.js';
 import { terrainOf } from '../shared/terrain.js';
 import { normTier, tierAtLeast, tierRow } from './tier.js';
 import { HHSunLight } from './sunlight.js';
+import { nearestSection } from '../shared/level.js';
 
 // flame light height above its base: well up in the flames, so a wreck's own flanks and a
 // tanker's end cap under the fire are lit at a grazing angle instead of blown out white
@@ -38,6 +39,8 @@ const E0 = 5.5;
 const FADE_IN = 3.5, FADE_OUT = 7;  // per second
 const MAX_FLASHES = 40;
 const FLASH_I = 900;
+/** By day, the share of its light a fixture under a roof keeps (street lamps keep lampK). */
+const INTERIOR_DAY_K = 0.7;
 
 /** Point lights in the pool per tier. */
 export const LIGHT_POOL = { cinematic: 20, ultra: 12, high: 8, low: 4 };
@@ -269,6 +272,20 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     };
   });
   const mapLevel = new Float32Array(mapSources.length);
+  // Story levels (JOURNEY.md §4.3): every map light knows its section, so a power cut (`lights`
+  // action) switches that section's lights off; a light under a roof is an interior fixture and
+  // stays on by day (street lamps go out in the daylight, a hospital corridor's tubes do not).
+  if (map.kind === 'level') {
+    for (const s of mapSources) {
+      s.section = nearestSection(map, s.x, s.y);
+      s.interior = (map.roofs || []).some((r) => {
+        const c = Math.cos(r.a || 0), sn = Math.sin(r.a || 0), dx = s.x - r.x, dy = s.y - r.y;
+        return Math.abs(dx * c + dy * sn) <= r.w / 2 && Math.abs(-dx * sn + dy * c) <= r.h / 2;
+      });
+    }
+  }
+  /** Sections whose map lights are out (bit i = section i). */
+  let darkBits = 0;
 
   const steadyMap = new Map();
   let frameNo = 0;
@@ -391,7 +408,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       s.score = sc * (s.slot ? 1.3 : 1);   // hysteresis: keep what is already lit
       cands.push(s);
     };
-    for (const s of mapSources) consider(s);
+    for (const s of mapSources) if (!(darkBits && s.section >= 0 && (darkBits & (1 << s.section)))) consider(s);
     for (const s of steadyMap.values()) consider(s);
     for (const s of flashes) consider(s);
     cands.sort((a, b) => b.score - a.score);
@@ -456,7 +473,8 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       L.position.set(s.x, s.h, s.y);
       L.color.copy(s.color);
       L.distance = s.radius;
-      L.intensity = s.intensity * E0 * k * (day ? (s.flash ? amb.flashK : s.lamp ? amb.lampK : amb.fireK) : 1);
+      // (by day an interior fixture keeps most of its light: it is what lights the room)
+      L.intensity = s.intensity * E0 * k * (day ? (s.flash ? amb.flashK : s.interior ? INTERIOR_DAY_K : s.lamp ? amb.lampK : amb.fireK) : 1);
       if (s.index !== undefined) mapLevel[s.index] = p.level;
     }
   }
@@ -684,6 +702,18 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       if (cine) { setShadows(); setMoonShadow(); }
     },
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
+    /**
+     * Story levels: the sections whose map lights are cut (bit i = section i; the `lights`
+     * action). Their lights leave the pool (fading out) and report level 0.
+     */
+    setDark(bits) {
+      darkBits = bits >>> 0;
+    },
+    /** True when map light `i` is out (its section's lights are cut). */
+    isDark(i) {
+      const s = mapSources[i];
+      return !!(s && darkBits && s.section >= 0 && (darkBits & (1 << s.section)));
+    },
     dispose() {
       for (const p of pool) dropMap(p.light.shadow);
       dropMap(flash.shadow);

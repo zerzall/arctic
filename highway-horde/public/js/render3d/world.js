@@ -31,6 +31,10 @@ import { createDress } from './world-dress.js';
 import { normTier, tierAtLeast, anisoFor } from './tier.js';
 import { createHideout } from './world-hideout.js';
 import { createLevelArt, levelBuckets } from './levels/index.js';
+import { createGates } from './gates3d.js';
+import { createRoofs } from './roofs3d.js';
+import { createIndoor, patchIndoor, patchIndoorTree } from './indoor.js';
+import { nearestSection } from '../shared/level.js';
 import { terrainHeight } from '../shared/terrain.js';
 import { baseTier } from './tier.js';
 import {
@@ -256,6 +260,19 @@ export function createWorld(ctx, deps) {
       console.warn('world: level art failed', err);
     }
   }
+  // a level's indoor spaces (roofs3d.js: ceilings, roofs, fixtures) and its gates (gates3d.js,
+  // built once the static meshes exist: they move, so they stay out of the merged ones)
+  let roofs = null;
+  if (map.kind === 'level' && map.roofs && map.roofs.length) {
+    try {
+      roofs = createRoofs(ctx, { level, newBuilder, matOf: (b, t) => matOf(b, t), root, tier, day, halos });
+    } catch (err) {
+      console.warn('world: roofs failed', err);
+    }
+    // no grass under a roof (the grass field grows where the ground mask's alpha is 1)
+    try { keepGrassOut(ground, map.roofs); } catch (err) { console.warn('world: roof grass mask failed', err); }
+  }
+  const gateObs = map.kind === 'level';
 
   // ---- obstacles ----
   setBiome(map);   // tree species by map (the trunks agree with their crowns)
@@ -265,15 +282,22 @@ export function createWorld(ctx, deps) {
   const tObs = performance.now();
   if (signCell) for (const o of map.obstacles) if (o.kind === 'building' && Math.max(o.w, o.h) >= 170 && (!signBuilding || o.w * o.h > signBuilding.w * signBuilding.h)) signBuilding = o;
   for (const o of map.obstacles) {
+    // (a story level's gates are drawn by gates3d.js: they open)
+    if (gateObs && o.gate) continue;
     B.obj(o.x, o.y, o.a || 0, o.id * 31 + (map.seed | 0));
     B.setJitter(0.06);
     try {
       if (hideout && hideout.obstacle(B, o)) continue;
       if (level && level.obstacle(B, o)) continue;
       buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass, halos);
+      // a wall under a roof reaches the ceiling
+      if (roofs) roofs.wallTop(B, o);
     } catch (err) {
       console.warn('world: obstacle model failed', o.kind, err);
     }
+  }
+  if (roofs) {
+    try { roofs.build(B); } catch (err) { console.warn('world: roof models failed', err); }
   }
   const canopies = buildCanopies(B, map);
   // the overpass: decks, bents, ramps, deck lamps and signs, wrecks up top
@@ -418,6 +442,39 @@ export function createWorld(ctx, deps) {
   }
   if (level) {
     try { level.finish(); } catch (err) { console.warn('world: level art finish failed', err); }
+  }
+  // ---- a story level: fixtures, the gates, the indoor light mask ----
+  let gates = null, indoor = null;
+  if (map.kind === 'level') {
+    if (roofs) {
+      try { roofs.finish(); } catch (err) { console.warn('world: roof fixtures failed', err); }
+    }
+    try {
+      gates = createGates(ctx, {
+        root, newBuilder, matOf: (b, t) => matOf(b, t), tier, gy, roofs,
+        onChange: (g, open) => { if (indoor) indoor.setGateOpen(g.obs, open); },
+      });
+    } catch (err) {
+      console.warn('world: gates failed', err);
+    }
+    if (roofs) {
+      try {
+        indoor = createIndoor(map, {
+          heightOf: (kind, o) => obstacleHeight(kind, o),
+          sectionOf: (r) => (r.section !== undefined ? (map.sections || []).findIndex((s) => s.id === r.section) : nearestSection(map, r.x, r.y)),
+          gateObstacles: new Set(map.obstacles.filter((o) => o.gate).map((o) => o.id)),
+          // with a sun / moon shadow map the roofs cast their own shadow; on 'low' the mask does it
+          sunK: tier === 'low' ? 1 : 0.35,
+        });
+        // every lit world material reads it (actors' materials are patched by the renderer, patchIndoor())
+        for (const m of Object.values(mats.hi).concat(Object.values(mats.low))) patchIndoor(m);
+        patchIndoorTree(root);
+        patchIndoorTree(ground.group);
+      } catch (err) {
+        console.warn('world: indoor mask failed', err);
+        indoor = null;
+      }
+    }
   }
 
   // ---- water ----
@@ -643,9 +700,11 @@ export function createWorld(ctx, deps) {
     mats.hi.neon.color.copy(neonBase).multiplyScalar(neonK);
     if (pools) {
       const lv = deps.lights.mapLevel;
-      for (let i = 0; i < lv.length && i < poolLevels.length; i++) poolLevels[i] = 1 - (lv[i] || 0);
+      for (let i = 0; i < lv.length && i < poolLevels.length; i++) poolLevels[i] = deps.lights.isDark && deps.lights.isDark(i) ? 0 : 1 - (lv[i] || 0);
       pools.setLevels(poolLevels);
     }
+    // a story level: the gates move, the fixtures light, a power cut darkens its section
+    if (map.kind === 'level') levelUpdate(view, frame);
     if (flagMesh) flagMesh.update(time);
     if (supplyLight && ctx.lights) {
       ctx.lights.steady('world:supply', supplyLight.x, supplyLight.y, supplyLight.h, '#ffe2b0', 0.9, 300);
@@ -659,6 +718,39 @@ export function createWorld(ctx, deps) {
     ground.update(frame);
   }
 
+  let darkSeen = -1, rainAt = { x: NaN, y: NaN };
+  function levelUpdate(view, frame) {
+    if (gates) {
+      try { gates.update(view, frame); } catch (err) { console.warn('world: gates update failed', err); }
+    }
+    const bits = view && view.level ? view.level.dark >>> 0 : 0;
+    if (bits !== darkSeen) {
+      darkSeen = bits;
+      if (deps.lights.setDark) deps.lights.setDark(bits);
+      if (roofs) roofs.setDark(bits);
+      if (indoor) indoor.setDark(bits);
+    }
+    if (roofs) {
+      roofs.update(view, frame);
+      // rain stays out of the rooms near the camera (world-fx.js keeps four shelters)
+      if (rain && rain.mesh.visible && Math.hypot(frame.camX - rainAt.x, frame.camY - rainAt.y) > 60) {
+        rainAt = { x: frame.camX, y: frame.camY };
+        rain.setRoofs(deckRoofs(map).concat(roofs.nearest(frame.camX, frame.camY, 4)).slice(0, 4));
+      }
+    }
+  }
+
+  /** A shake event (the `shake` action): the camera shakes when it is within its range. */
+  function addEvents(events) {
+    for (const e of events) {
+      if (!e || e.type !== 'shake') continue;
+      const cam = ctx.camera.position;
+      const d = Math.hypot(cam.x - (e.x || 0), cam.z - (e.y || 0));
+      const r = e.r > 0 ? e.r : 1800;
+      if (d < r) ctx.shake((Number(e.k) || 0.5) * (1 - 0.6 * d / r));
+    }
+  }
+
   let triangles = 0;
   for (const m of staticMeshes) triangles += m.geometry.attributes.position.count / 3;
 
@@ -668,6 +760,18 @@ export function createWorld(ctx, deps) {
     sky,
     hideout,
     level,
+    /** A story level's gates (gates3d.js), roofs (roofs3d.js) and indoor mask (indoor.js), else null. */
+    gates,
+    roofs,
+    indoor,
+    addEvents,
+    /**
+     * Patch the lit materials the renderer's sub-systems made (actors, items, effects) for the
+     * indoor mask; renderer3d calls it once they exist (and again now and then for new ones).
+     */
+    patchIndoor(scene) {
+      return indoor ? patchIndoorTree(scene) : 0;
+    },
     /** Static meshes that cast the moon's shadow (lights.updateMoonShadow). */
     moonCasters,
     fx,
@@ -690,6 +794,12 @@ export function createWorld(ctx, deps) {
       if (dress) dress.setQuality(full);
       if (hideout) hideout.setQuality(full);
       if (level) level.setQuality(full);
+      if (gates) gates.setQuality(tier);
+      if (roofs) roofs.setQuality(tier);
+      if (indoor) {
+        indoor.setSunK(tier === 'low' ? 1 : 0.35);
+        patchIndoorTree(ground.group);
+      }
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();
@@ -708,6 +818,9 @@ export function createWorld(ctx, deps) {
     dispose() {
       if (hideout) hideout.dispose();
       if (level) level.dispose();
+      if (gates) gates.dispose();
+      if (roofs) roofs.dispose();
+      if (indoor) indoor.dispose();
       gone = true;
       setSegBoost(1);
       if (dress) dress.dispose();
@@ -917,3 +1030,29 @@ function buildDecor(B, d, i, light, halos, shafts, flags) {
   }
 }
 
+
+// ---- story levels ---------------------------------------------------------------------------
+
+/**
+ * Keep the grass field out from under a level's roofs: their rects go into the ground mask's
+ * "free of obstacles" alpha (the grass grows only where it is 1).
+ */
+function keepGrassOut(ground, roofs) {
+  const m = ground && ground.mask;
+  if (!m || !m.data) return;
+  const S = m.cw / m.w;
+  for (const r of roofs) {
+    const c = Math.cos(r.a || 0), s = Math.sin(r.a || 0);
+    const hw = r.w / 2 + 4, hh = r.h / 2 + 4;
+    const ex = Math.abs(c) * hw + Math.abs(s) * hh, ey = Math.abs(s) * hw + Math.abs(c) * hh;
+    const px0 = Math.max(0, Math.floor((r.x - ex - m.x0) * S)), px1 = Math.min(m.cw - 1, Math.ceil((r.x + ex - m.x0) * S));
+    const py0 = Math.max(0, Math.floor((r.y - ey - m.y0) * S)), py1 = Math.min(m.ch - 1, Math.ceil((r.y + ey - m.y0) * S));
+    for (let py = py0; py <= py1; py++) {
+      for (let px = px0; px <= px1; px++) {
+        const wx = m.x0 + (px + 0.5) / S - r.x, wy = m.y0 + (py + 0.5) / S - r.y;
+        if (Math.abs(wx * c + wy * s) <= hw && Math.abs(-wx * s + wy * c) <= hh) m.data[(py * m.cw + px) * 4 + 3] = 0;
+      }
+    }
+  }
+  m.texture.needsUpdate = true;
+}
