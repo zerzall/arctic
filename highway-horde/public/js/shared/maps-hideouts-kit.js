@@ -51,6 +51,8 @@ export function kit(B, id, name, opts) {
     props: [], dress: [], look: opts.look || {}, upgrades: Object.fromEntries(UPGRADE_KINDS.map((k) => [k, 0])),
   };
   map.hub = hub;
+  // the renderers read a map's mood overrides (night / day / trees / deciduous) from `map.look`
+  map.look = hub.look;
   const K = {
     hub,
     /** A free prop (no collision). */

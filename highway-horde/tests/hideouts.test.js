@@ -511,6 +511,22 @@ before(async () => {
   hubMod = await import('../public/js/render3d/world-hideout.js');
 });
 
+test('the mood overrides reach the renderers: map.look, golden hour, hub nights', async () => {
+  const { dayAmbientFor } = await import('../public/js/render3d/daylight.js');
+  const { ambientFor } = await import('../public/js/render3d/lights.js');
+  for (const id of HIDEOUT_IDS) assert.equal(getMap(id).look, getMap(id).hub.look, `${id}: map.look is hub.look`);
+  const farm = getMap('farmstead'), road = getMap('roadhouse'), depot = getMap('depot');
+  const golden = dayAmbientFor(farm);
+  assert.equal(golden.warm, 1, 'the farmstead paints its horizon gold');
+  assert.ok(golden.moonI > 3.5 && golden.sunDir.y < 0.35, 'a low, strong sun');
+  assert.equal(dayAmbientFor(road).warm, 0, 'the roadhouse keeps a plain bright day');
+  assert.ok(dayAmbientFor(road).sunDir.y > golden.sunDir.y && dayAmbientFor(depot).sunDir.y > golden.sunDir.y);
+  // each hub tunes its night (colours as THREE.Color, numbers as given)
+  assert.equal(ambientFor(depot, 'night').moonI, depot.look.night.moonI);
+  assert.equal(ambientFor(road, 'night').moonI, road.look.night.moonI);
+  assert.notEqual(ambientFor(depot, 'night').moonI, ambientFor(buildMap('highway', 1), 'night').moonI);
+});
+
 /** Build a hideout's hero models headless: { tris, geoms, warnings }. */
 function buildHubGeometry(map, { upgrades = null, quality = 'high' } = {}) {
   const buckets = {

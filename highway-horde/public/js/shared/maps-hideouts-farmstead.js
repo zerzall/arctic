@@ -18,9 +18,9 @@ export function buildFarmstead(B) {
         grade: { saturation: 1.02, contrast: 1.06, lift: [0.010, 0.012, 0.022], gain: [1.05, 1.0, 0.95] },
       },
       day: {
-        az: 205, el: 11, warm: 1, haze: '#f2b87a', horizon: '#ffcf94', zenith: '#3f6fb8', fog: 0.00052, cover: 0.5, heat: 0.15, ridge: '#8a6a5a', wet: 0.2,
-        sunColor: '#ff9a48', sunI: 4.8, hemiSky: '#c9b8a4', hemiGround: '#6f7c48', hemi: 0.9, exposure: 1.06, mist: 0.9, lampK: 0.55, fireK: 0.9,
-        grade: { contrast: 1.08, saturation: 1.22, lift: [0.008, 0.004, 0.0], gain: [1.14, 1.0, 0.78], vignette: 0.3, bloom: 0.36, bloomThreshold: 1.3 },
+        az: 205, el: 12, warm: 1, haze: '#efc08e', horizon: '#ffd39c', zenith: '#3f6fb8', fog: 0.00042, cover: 0.5, heat: 0.15, ridge: '#8a6a5a', wet: 0.2,
+        sunColor: '#ff9a48', sunI: 4.8, hemiSky: '#c4b8ae', hemiGround: '#6f8448', hemi: 0.95, exposure: 1.06, mist: 0.9, lampK: 0.55, fireK: 0.9,
+        grade: { contrast: 1.07, saturation: 1.1, lift: [0.008, 0.005, 0.004], gain: [1.1, 1.0, 0.86], vignette: 0.3, bloom: 0.34, bloomThreshold: 1.3 },
       },
     },
   });

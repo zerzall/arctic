@@ -143,7 +143,22 @@ function jumpStage(st) {
 /** Named viewpoints of a hideout: the party's start, every station, the NPC spots, overviews. */
 function hubViewpoints(map) {
   const hub = map.hub;
-  const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
+  // (a camera never stands inside a tree, a wall or the pond: the nearest clear spot is used)
+  const wet = (x, y) => map.areas.some((ar) => ar.kind === 'water' && Math.abs(x - ar.x) < ar.w / 2 + 50 && Math.abs(y - ar.y) < ar.h / 2 + 50);
+  const clear = (x, y) => !wet(x, y) && map.obstacles.every((o) => {
+    const c = Math.cos(o.a || 0), s2 = Math.sin(o.a || 0), dx = x - o.x, dy = y - o.y;
+    return Math.abs(dx * c + dy * s2) > o.w / 2 + 70 || Math.abs(-dx * s2 + dy * c) > o.h / 2 + 70;
+  });
+  const spot = (x, y) => {
+    for (const r of [0, 60, 120, 180, 260, 340]) {
+      for (let k = 0; k < 12; k++) {
+        const px = x + Math.cos(k * 0.5236) * r, py = y + Math.sin(k * 0.5236) * r;
+        if (px > 60 && py > 60 && px < map.width - 60 && py < map.height - 60 && clear(px, py)) return { x: px, y: py };
+      }
+    }
+    return { x, y };
+  };
+  const at = (name, x, y, tx, ty, pitch = -0.04) => { const p = spot(x, y); return { name, x: p.x, y: p.y, yaw: Math.atan2(ty - p.y, tx - p.x), pitch }; };
   const v = [];
   const sp = hub.spawn;
   v.push(at('spawn', sp.x + 200, sp.y + 60, sp.x, sp.y - 120, -0.02));

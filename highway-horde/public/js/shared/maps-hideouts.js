@@ -6,7 +6,9 @@
 //
 //   map.kind          'hideout'
 //   map.hub           { id, name, chapters, defaultTime, spawn, bounds, stations[], npcs[],
-//                       upgradeSlots{}, range, props[], dress[], look }
+//                       upgradeSlots{}, range, props[], dress[], look, upgrades }
+//   map.look         the same object as hub.look: { night?, day?, trees?, deciduous? } mood overrides the
+//                     renderers read (lights.js night, daylight.js day, world-flora / world-veg trees)
 //   map.interactables [{ id, kind, x, y, r, label, hold: 0 }]  one per station (id = station id)
 //
 // The hideouts are NOT in MAP_LIST (the lobby never offers them). Their layout is hand made
