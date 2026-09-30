@@ -10,7 +10,6 @@
 // Cinematic extras (default: the Cinematic preset's; ignored on the other tiers): msaa=0|2|4|8, shadows=0|1 (4096 cascades),
 // contact=0|1, aofull=0|1, fxhigh=0|1, mb=0|1 (motion blur), dof=0|1, lens=0|1, lightshadows=0|1,
 // display calibration: bright=<0.7..1.3>, contrast=<..>, sat=<..>; timing=1 (per-pass GPU timings in the readout),
-// dpr=<n> (pretend device pixel ratio), refresh=<hz> (dynamic resolution target),
 // gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
 // set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
