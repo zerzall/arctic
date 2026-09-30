@@ -9,7 +9,7 @@
 // a map's props stay a handful of draw calls; the level-2 code paths do not call this file.
 
 import * as THREE from 'three';
-import { T, shadeHex, mixHex } from './world-geo.js';
+import { T, shadeHex } from './world-geo.js';
 import { DET } from './world-surf.js';
 
 const DOME = () => T.custom('pdome', () => new THREE.SphereGeometry(1, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2));
@@ -290,4 +290,3 @@ export function cinTyre(B, pos, sc, rota) {
 /** A concrete chunk / brick as a rock template instead of a bare dodecahedron. */
 export function chunk(k) { return rockTemplate(k % 4, 2); }
 
-export { mixHex };

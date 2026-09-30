@@ -6,8 +6,7 @@
 
 import * as THREE from 'three';
 import { DRESS_KINDS } from '../shared/dress.js';
-import { T, S, DET, mark, rod } from './dress-kit.js';
-import { shadeHex } from './world-geo.js';
+import { T, S, DET, mark } from './dress-kit.js';
 
 const GRASS = ['#3d4f26', '#4a5a2c', '#56552f', '#34461f', '#5e5a36', '#6a6a3a'];
 const GRIT = ['#6f6a62', '#5a564f', '#807a6e', '#4a4640', '#8a8478'];
@@ -69,5 +68,4 @@ export function cinDressExtras(D, it) {
       D.add('std', T.blade(), [Math.cos(a) * d, 0, Math.sin(a) * d], [r.range(0.9, 1.6), r.range(5, 11), 1], [r.range(-0.3, 0.3), r.range(0, 6.28), r.range(-0.4, 0.4)], r.pick(GRASS), { noAO: true, surf: [0, 0.9, 0] });
     }
   }
-  void shadeHex; void rod;
 }

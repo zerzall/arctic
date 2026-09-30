@@ -262,21 +262,13 @@ export function fireTruck(B, o, v, L, W, wheelFn) {
     B.box('std', 0.5 * L, 22, sd * W * 0.36, 1, 6, 9, '#e8e8e0', null, S2);
   }
   // windshield, grille, bumper, siren and light bar
-  B.box(DETAIL.level >= 3 ? 'vglass' : 'glass', 0.478 * L, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
-  if (DETAIL.level >= 3) {
-    // (the glass is see-through now: a dark cab behind it, a dashboard and two seat backs)
-    const dk = { surf: [DET.plastic, 0.7, 0], noAO: true };
-    B.box('std', 0.462 * L, 50, 0, 0.4, 15, W * 0.84, '#0b0e11', null, { surf: [0, 0.85, 0], noAO: true });
-    B.rbox('std', 0.452 * L, 44, 0, 6, 4, W * 0.8, 1, '#15181b', null, dk);
-    for (const z of [-0.24, 0.24]) {
-      B.rbox('std', 0.4 * L, 37, z * W, 12, 4, 12, 1, '#20242a', null, dk);
-      B.rbox('std', 0.385 * L, 46, z * W, 3, 16, 11, 1, '#20242a', [0, 0, -0.1], dk);
-    }
-    B.add('std', T.torus(12, 0.16, 5), [0.43 * L, 47, -0.24 * W], [5, 5, 5], [0, Math.PI / 2, 0.5], '#101214', dk);
-  }
-  B.box('std', 0.481 * L, 50, 0, 0.8, 16.6, 1.6, red, null, S2);
-  B.box('std', 0.481 * L, 58.2, 0, 0.8, 1.6, W * 0.88, red, null, S2);
-  B.box('std', 0.481 * L, 42, 0, 0.8, 1.4, W * 0.88, red, null, S2);
+  // (cinematic: the glass is see-through, so it stands a little proud of the cab's front with a dark plate behind it and the frame moves with it)
+  const wz = DETAIL.level >= 3 ? 1.5 : 0;
+  B.box(DETAIL.level >= 3 ? 'vglass' : 'glass', 0.478 * L + wz, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
+  if (DETAIL.level >= 3) B.box('std', 0.478 * L + 0.9, 50, 0, 0.5, 15, W * 0.84, '#0b0e11', null, { surf: [0, 0.85, 0], noAO: true });
+  B.box('std', 0.481 * L + wz, 50, 0, 0.8, 16.6, 1.6, red, null, S2);
+  B.box('std', 0.481 * L + wz, 58.2, 0, 0.8, 1.6, W * 0.88, red, null, S2);
+  B.box('std', 0.481 * L + wz, 42, 0, 0.8, 1.4, W * 0.88, red, null, S2);
   B.box('std', 0.48 * L + 0.3, 30, 0, 1, 18, W * 0.5, '#1a1a1a', null, { surf: [DET.corrugated, 0.4, 0.8] });
   B.rbox('std', 0.5 * L - 1, 18, 0, 5, 7, W * 1.02, 1.4, CHROME, null, Sm);
   lightBar(B, 0.34 * L, 76, W * 0.86, ['#ff2a1a', '#f4f4ec'], v);

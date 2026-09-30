@@ -174,11 +174,13 @@ export function cinLamps(B, v, frontX, rearX, yF, yR, spread, sizeF, sizeR) {
     B.add('glow', lowCyl(10), [frontX + 0.25, yF - fh * 0.5 - 6.4, z * 0.82], [1.15, 0.2, 1.15], [0, 0, -Math.PI / 2], HEAD, { emissive: lit ? 1.2 : 0.14, uv: atlasUV('white'), noAO: true });
     // ---- tail lamp: brake (red), turn (amber), reverse (white) sections behind a ribbed lens
     B.rbox('std', rearX + 0.2, yR, z, rd + 0.6, rh + 1, rw + 1, 0.4, '#141416', null, { surf: [DET.plastic, 0.5, 0.1] });
-    const wsec = rw / 3;
-    const cols = [[TAIL, lit ? 3 : 0.7], [AMBER, 0.35], ['#ffffff', 0.2]];
-    for (let s = 0; s < 3; s++) {
-      const zz = z + sd * (s - 1) * wsec * (s === 0 ? 1.25 : 1) * -1;
-      B.box('glow', rearX - 0.2, yR, zz, rd * 0.5, rh * 0.95, wsec * 0.92, cols[s][0], null, { emissive: cols[s][1], uv: atlasUV('white') });
+    // (the red brake section is two thirds of the lamp, the amber turn and the white reverse sections share the rest)
+    const secs = [[TAIL, lit ? 3.2 : 0.9, 0.62], [AMBER, 0.4, 0.19], ['#ffffff', 0.25, 0.19]];
+    let edge = rw / 2;
+    for (const [col, em, frac] of secs) {
+      const ws = rw * frac;
+      B.box('glow', rearX - 0.2, yR, z + sd * (edge - ws / 2), rd * 0.5, rh * 0.95, ws * 0.94, col, null, { emissive: em, uv: atlasUV('white') });
+      edge -= ws;
     }
     B.rbox('vglass', rearX - 0.5, yR, z, rd * 0.5, rh + 0.2, rw + 0.3, 0.4, '#d6a0a0', null, { uv: atlasUV('white') });
     for (let k = 0; k < 4; k++) B.box('std', rearX - 0.8, yR, z + sd * (k - 1.5) * (rw / 4.2), 0.25, rh + 0.1, 0.22, '#3a1416', null, { surf: [0, 0.4, 0.1], noAO: true });
