@@ -308,8 +308,9 @@ function torsoGear(sb, P, L, has) {
   }
   const back = P.backX || ((y) => -F(y) * 0.95);
   if (has('suspenders')) {
-    const g = grp(sb, 'suspenders', { ...S, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#3a2a22' });
-    for (const s of [-1, 1]) g.tube([{ c: [F(P.waist + 0.6) + 0.08, P.waist + 0.6, s * 2.6], rx: 0.3, rz: 0.65 }, { c: [F(P.chest + 3) + 0.08, P.chest + 3, s * 2.8], rx: 0.3, rz: 0.65 }, { c: [0.8, P.sY + 0.9, s * 3.0], rx: 0.35, rz: 0.65 }, { c: [back(P.chest + 3) - 0.08, P.chest + 3, s * 2.9], rx: 0.3, rz: 0.65 }, { c: [back(P.waist + 0.6) - 0.08, P.waist + 0.6, s * 2.6], rx: 0.3, rz: 0.65 }], { seg: 4, ref: [1, 0, 0] });
+    // (in the gear colour: a farmer's red or tan braces, the denim straps of bib overalls)
+    const g = grp(sb, 'suspenders', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#e0e0e0' });
+    for (const s of [-1, 1]) g.tube([{ c: [F(P.waist + 0.6) + 0.2, P.waist + 0.6, s * 2.6], rx: 0.3, rz: 0.65 }, { c: [F(P.chest + 3) + 0.22, P.chest + 3, s * 2.8], rx: 0.3, rz: 0.65 }, { c: [0.8, P.sY + 1.1, s * 3.0], rx: 0.35, rz: 0.65 }, { c: [back(P.chest + 3) - 0.2, P.chest + 3, s * 2.9], rx: 0.3, rz: 0.65 }, { c: [back(P.waist + 0.6) - 0.2, P.waist + 0.6, s * 2.6], rx: 0.3, rz: 0.65 }], { seg: 4, ref: [1, 0, 0] });
   }
   if (has('apron')) {
     const g = grp(sb, 'apron', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH });

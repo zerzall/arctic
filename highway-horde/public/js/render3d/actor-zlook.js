@@ -116,7 +116,9 @@ const LEGS = { jeans: -1, trousers: -1, shorts: 20.0, capri: 9.0, torn: 15.0, ba
 const HAIR_STYLES = {
   short: {}, patchy: { strands: [50.6, 0.62] }, shaggy: { strands: [50.6, 0.1] }, bob: { strands: [46.8, 0.05] },
   shoulder: { strands: [41.6, 0.05] }, long: { strands: [0, 0.03] }, stringy: { strands: [0, 0.5] },
-  pony: { opt: 'hair_pony' }, bun: { opt: 'hair_bun' }, mohawk: { opt: 'hair_mohawk', scalp: false }, afro: { opt: 'hair_afro', scalp: false },
+  pony: { opt: 'hair_pony' }, bun: { opt: 'hair_bun' },
+  // (on the dead a mohawk or an afro is a matted, patchy crop: the big wig-like shells read as a doll's)
+  mohawk: { strands: [50.6, 0.45] }, afro: {},
 };
 
 const A = (name, w, o) => ({ name, w, top: 'tee', bot: 'jeans', shoe: 'sneaker', topPat: [[0, 1]], botPat: [[0, 1]], ...o });
@@ -238,7 +240,7 @@ const SITES = {
   hip: { p: [2.0, 27.5, 4.6], r: [1.8, 2.5] },
 };
 const SITE_NAMES = Object.keys(SITES);
-const BELLY_SITE = { p: [12.6, 33.5, 3.0], r: [3, 4.5] };
+const BELLY_SITE = { p: [11.2, 36.5, 4.5], r: [2, 3] };
 
 function makeWound(r, type, siteName, T) {
   let s = SITES[siteName];
@@ -487,7 +489,7 @@ export function optionsForType(type) {
   }
   if (T !== 'brute' && T !== 'boss') {
     for (const o of ['hair_scalp', 'hair_strands', 'nose']) set.add(o);
-    if (T !== 'bloater') for (const o of ['hair_pony', 'hair_bun', 'hair_afro', 'hair_mohawk']) set.add(o);
+    if (T !== 'bloater') for (const o of ['hair_pony', 'hair_bun']) set.add(o);
     for (const o of ['ribs', 'entrails', 'rebar', 'arrow', 'bone_arm']) set.add(o);
     if (T === 'walker' || T === 'runner' || T === 'bloater') for (const o of ['stump_l', 'stump_r', 'stump_hand_l', 'stump_hand_r']) set.add(o);
     if (T === 'walker') set.add('spine');

@@ -8,7 +8,8 @@
 //            "subsurface" wrap kept faint and cold; the grooves between the ribs and the
 //            sternum as a bump from the model-space anatomy (no texture needed, any LOD)
 //   cloth    threadbare weave, sun-faded, grimed, mud climbing from the feet and on the knees,
-//            fluid stains under the arms, a matte fabric response (very rough, weak specular)
+//            fluid stains under the arms, seams and button plackets, a matte fabric response
+//            (very rough, weak specular) with a grazing fibre sheen
 //   blood    a bib of it run down from the mouth over the chin, neck and chest; fresh blood
 //            is red and wet only on the newly dead and at the wounds, old blood a matte crust
 //   cuts     torn strips below the hems, the trouser shell over a modelled leg, necklines
@@ -209,9 +210,15 @@ export const Z_SHADE = /* glsl */`
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.14, 0.08), hhD.b * 0.4);
     zSpec = 0.6;
   } else if (hhM == 5) {
-    // matted, greasy, dusty hair
-    diffuseColor.rgb *= 0.55 + hhD.r * 0.5;
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.66, 0.58), hhD.b * 0.5);
+    // matted, greasy, dusty hair in strands; where it is falling out it thins to the scalp
+    // (no hard-edged patches: they read as paint)
+    vec3 c = diffuseColor.rgb * (0.5 + hhD.r * 0.45) * (0.75 + 0.5 * hhD.g);
+    c = mix(c, c * vec3(0.7, 0.66, 0.58), hhD.b * 0.5);
+    if (hhPart != 9) {
+      float thin = smoothstep(0.4 + rot * 0.12, 0.62 + rot * 0.12, hhD2.b * 0.7 + hhD.r * 0.5);
+      c = mix(tSkin.rgb * baseCol * 0.55, c, thin * (0.55 + 0.45 * hhD.g));
+    }
+    diffuseColor.rgb = c;
     zSpec = 0.45;
   } else if (hhM == 6) {
     diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
@@ -250,7 +257,8 @@ export const Z_BLOOD = /* glsl */`
     bib = smoothstep(w, w * 0.35, abs(vMP.z)) * smoothstep(uBody.x - 1.5, uBody.y + 1.0 + streak * 4.0, vMP.y) * (0.55 + streak * 0.6);
   }
   float bl = max(vI.y * blood, bib * blood * 1.1);
-  float bm = smoothstep(0.46, 0.6, bl + (hhD.a - 0.5) * 0.55 + (hhD.b - 0.5) * 0.25);
+  // (soaked-in stains that spread through the weave, a few splashes: not polka dots)
+  float bm = smoothstep(0.46, 0.6, bl + (hhD2.b - 0.5) * 0.5 + (hhD.a - 0.5) * 0.3 + (hhD.b - 0.5) * 0.15);
   if (hhM != 7 && hhM != 8 && hhM != 13) {
     // fresh (red, wet) on the newly dead and where it still runs; old blood dries to a brown-black crust
     float fresh = clamp((1.0 - rot) * 0.8 + smoothstep(0.75, 1.0, vI.y) * 0.3 - bib * 0.3, 0.0, 1.0);
@@ -310,8 +318,8 @@ export const Z_NORMAL = /* glsl */`
 /**
  * Cloth fuzz (inside three's direct light, after the diffuse): fibres catch light at grazing
  * angles, a soft sheen rolling round the silhouette of a garment instead of a specular
- * highlight — what makes a sleeve read as cloth rather than a painted shell. Ultra and
- * cinematic (zSheen is 0 on the other tiers and on everything but cloth).
+ * highlight — what makes a sleeve read as cloth rather than a painted shell. Full on
+ * cinematic, lighter on high and ultra, none on low (zSheen is 0 on everything but cloth).
  */
 export const Z_SHEEN = /* glsl */`
 	if (zSheen > 0.0) {

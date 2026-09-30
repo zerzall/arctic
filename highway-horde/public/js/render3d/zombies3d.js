@@ -7,7 +7,14 @@
 // parts, build, gait) comes from actor-zlook.js as a pure function of its type and sim id,
 // so all clients draw the same person, and the rig shader draws it from the same mesh.
 //
-// Animation (per type, phased by id): shambling gait with hip sway, head bob and a limp,
+// The material is the corpse variant of the rig shader (actor-zmat.js: per-mesh body landmarks,
+// no cold rim outline by day, a cheaper fragment on low), and the look's theme follows the map id
+// (patients at the hospital, soldiers at the airbase ...).
+//
+// Animation (per type, phased by id): a lurching shamble — the weight rolling onto the stance
+// leg, the torso pitching into each step, a head too heavy for its neck lagging and lolling,
+// jutting forward of a hunched chest, one shoulder lower, now and then an arm hanging out of its
+// socket or a lame foot dragging its toes, swaying in place when it stands — with a limp,
 // sprinting runners, legless crawlers pulling themselves along, waddling bloaters with a
 // pulsing belly, hunched spitters that rear back to spit, twitchy screamers that arch
 // back to scream, lumbering brutes (head-down charge) and the stomping boss (slam
@@ -311,8 +318,11 @@ export function createZombies3D(ctx) {
         spineZ = -0.3 - 0.12 * amp - G.hunch * 0.1; chestZ = -0.2; chestY = -sw * 0.2 * amp; spineY = sw * 0.12 * amp;
         neckZ = 0.25; headZ = 0.3; headX = s.tilt * 0.4;
         if (mode === 0 || mode === 3) {
-          // sprinting at the prey, arms reaching out ahead
-          uaLZ = 1.0 - sw * 0.35 * amp; uaRZ = 1.0 + sw * 0.35 * amp; faLZ = 0.7; faRZ = 0.7; hdLZ = -0.4; hdRZ = -0.4;
+          // sprinting at the prey, arms clawing out ahead, flailing and uneven
+          uaLZ = 1.0 - sw * 0.35 * amp + Math.sin(time * 6.3 + seed * 4) * 0.2 * amp; uaRZ = 1.0 + sw * 0.35 * amp + Math.sin(time * 5.7 + seed2 * 5) * 0.2 * amp;
+          faLZ = 0.7 + Math.sin(time * 8.1 + seed) * 0.25 * amp; faRZ = 0.7 + Math.sin(time * 7.4 + seed2) * 0.25 * amp;
+          hdLZ = -0.4 + Math.sin(time * 11 + seed * 3) * 0.3; hdRZ = -0.4 + Math.sin(time * 10.3 + seed2 * 3) * 0.3;
+          headX += Math.sin(time * 4.2 + seed * 7) * 0.08 * amp;
         } else {
           uaLZ = -sw * 1.05 * amp + 0.25; uaRZ = sw * 1.05 * amp + 0.25;
           faLZ = 1.45 + Math.max(0, sw) * 0.3; faRZ = 1.45 + Math.max(0, -sw) * 0.3;
