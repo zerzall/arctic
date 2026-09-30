@@ -15,6 +15,7 @@ import { xpForLevel } from '../public/js/shared/story/progression.js';
 import { tierMag } from '../public/js/shared/story/upgrades.js';
 import { WEAPONS } from '../public/js/shared/weapons.js';
 import { perksFor } from '../public/js/shared/classes.js';
+import { isRangeTarget } from '../public/js/shared/sim/range.js';
 
 setStoryContent(STUB_CONTENT);
 
@@ -72,7 +73,8 @@ test('the hideout: stations exist, E next to one is an interact event for both s
   const map = client.getMap();
   assert.equal(map.kind, 'hideout');
   assert.ok(map.interactables.length >= 5);
-  assert.deepEqual(map.interactables.map((i) => i.kind).sort(), ['armory', 'board', 'infirmary', 'upgrades', 'workbench']);
+  // the real hideouts (maps-hideouts.js) have every station kind: the five panels plus bed, range and campfire
+  assert.deepEqual([...new Set(map.interactables.map((i) => i.kind))].sort(), ['armory', 'bed', 'board', 'campfire', 'infirmary', 'range', 'upgrades', 'workbench']);
   assert.deepEqual(host.getMap().interactables, map.interactables, 'both sides built the same hub');
   const bench = map.interactables.find((i) => i.kind === 'workbench');
   const p = host.game.getPlayer(client.localId);
@@ -95,7 +97,8 @@ test('the hideout: stations exist, E next to one is an interact event for both s
   // 25 game seconds later: still no wave, no zombies
   await env.frames(60 * 25);
   const v = host.getView();
-  assert.equal(v.zombies.length, 0);
+  // (the shooting range's practice dummies stand in the zombie list; no real zombie ever comes)
+  assert.equal(v.zombies.filter((z) => !isRangeTarget(host.getMap(), z.x, z.y)).length, 0);
   assert.equal(host.game.settings.mode, 'hideout', 'the real story game, not a stand-in');
   assert.equal(host.game.safe, true, 'nothing can hurt a survivor in the hideout');
   assert.equal(v.story.mode, 'hideout');
