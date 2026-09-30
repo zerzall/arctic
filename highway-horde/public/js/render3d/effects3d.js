@@ -25,6 +25,7 @@ import { createBlood } from './blood3d.js';
 import { createGore3D } from './gore3d.js';
 import { createCasings3D } from './casings3d.js';
 import { col } from './actor-kit.js';
+import { tierAtLeast } from './tier.js';
 import { crateGeometry } from './items3d.js';
 import { gunMaterials } from './actor-guns.js';
 
@@ -66,7 +67,10 @@ export function createEffects3D(ctx) {
     fx.beam = (ax, ah, ay, bx, bh, by, ...a) => fx0.beam(ax, ah + gOff, ay, bx, bh + gOff, by, ...a);
   }
   let high = ctx.quality !== 'low';
-  let ultra = ctx.quality === 'ultra';
+  let ultra = tierAtLeast(ctx.quality, 'ultra');
+  // cinematic: the bursts carry 1.5x the particles (its pools are 2.2x as big)
+  let cine = ctx.quality === 'cinematic';
+  const cineN = (n) => (cine ? Math.ceil(n * 1.5) : n);
   let localId = 0;
   let now = 0;
   let camX = 0, camY = 0, camH = EYE, pitch = 0;
@@ -74,7 +78,7 @@ export function createEffects3D(ctx) {
   const surf = surfaceIndex(ctx);
   const gm = groundIndex(ctx);
   // blood decals, severed limbs and casings work in absolute heights (they look up the ground themselves)
-  const env = { G, surf, gm, high, ultra, blood: null };
+  const env = { G, surf, gm, high, ultra, cine, blood: null };
   const blood3 = createBlood(ctx, fx0, env);
   env.blood = blood3;
   const gore3 = createGore3D(ctx, fx0, env);
@@ -122,6 +126,7 @@ export function createEffects3D(ctx) {
 
   // ---- primitive emitters -------------------------------------------------------------
   function sparks(x, h, y, dirA, spread, count, speed, color = HOT_SPARK) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       if (fx.load() > 0.95) return;
       const a = dirA + (R() - 0.5) * spread, s = speed * (0.4 + R() * 0.8);
@@ -131,6 +136,7 @@ export function createEffects3D(ctx) {
     }
   }
   function dust(x, h, y, count, size, color, speed = 30, life = 0.9, alpha = 0.4, dirA = null, spread = TAU) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = dirA == null ? R() * TAU : dirA + (R() - 0.5) * spread, s = speed * (0.3 + R());
       fx.spawn(x + (R() - 0.5) * size * 0.4, h + R() * size * 0.3, y + (R() - 0.5) * size * 0.4, Math.cos(a) * s, 8 + R() * 16, Math.sin(a) * s,
@@ -138,6 +144,7 @@ export function createEffects3D(ctx) {
     }
   }
   function chips(x, h, y, dirA, count, color, speed = 160, size = 0.9) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = dirA + (R() - 0.5) * 1.8, s = speed * (0.4 + R());
       const i = fx.spawn(x, h, y, Math.cos(a) * s, 40 + R() * speed * 0.8, Math.sin(a) * s, 0.5 + R() * 0.6, size * (0.6 + R() * 0.8), size * 0.6, color, 1, FR.CHUNK, F_BOUNCE | F_SPIN, 650, 0.5);
@@ -149,6 +156,7 @@ export function createEffects3D(ctx) {
     // the gore setting (ash grey when off, thinner when low)
     const P = fx.gore;
     if (P.mode === 'low') count = Math.ceil(count * 0.6);
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = dirA + (R() - 0.5) * spread, s = speed * (0.3 + R() * 0.9);
       const i = fx.spawn(x, h + (R() - 0.5) * 4, y, Math.cos(a) * s, 20 + R() * 120, Math.sin(a) * s, 0.4 + R() * 0.4, (big ? 1.6 : 1.1) + R() * 0.8, 0.9, k % 2 ? P.blood : P.blood2, 0.95, FR.DROP, F_BOUNCE | F_VSTRETCH, 650, 0.6);
@@ -183,6 +191,7 @@ export function createEffects3D(ctx) {
   }
 
   function fireball(x, h, y, count, size, speed, life = 0.6, color = FIRE_TINT, alpha = 0.55) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = R() * TAU, up = R() * 0.9, s = speed * (0.3 + R() * 0.7);
       const i = fx.spawn(x + Math.cos(a) * size * 0.2, h + R() * size * 0.3, y + Math.sin(a) * size * 0.2,
@@ -193,6 +202,7 @@ export function createEffects3D(ctx) {
   }
   const SMOKES = [FR.SMOKE, FR.SMOKE2, FR.SMOKE3, FR.SMOKE4, FR.SMOKE5];
   function smoke(x, h, y, count, size, life, color, alpha, rise = 30, spreadR = 20, hot = false) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = R() * TAU, r = R() * spreadR;
       fx.spawn(x + Math.cos(a) * r, h + R() * size * 0.5, y + Math.sin(a) * r, Math.cos(a) * 12, rise * (0.5 + R()), Math.sin(a) * 12,
@@ -200,6 +210,7 @@ export function createEffects3D(ctx) {
     }
   }
   function debris(x, h, y, count, color, speed, size = 2.5) {
+    count = cineN(count);
     for (let k = 0; k < count; k++) {
       const a = R() * TAU, s = speed * (0.3 + R() * 0.8);
       fx.spawn(x, h, y, Math.cos(a) * s, 120 + R() * speed * 1.4, Math.sin(a) * s, 1.2 + R() * 1.2, size * (0.6 + R()), size * 0.5, color, 1, R() < 0.5 ? FR.CHUNK : FR.SHARD, F_BOUNCE | F_SPIN, 800, 0.3);
@@ -1085,9 +1096,11 @@ export function createEffects3D(ctx) {
     },
     setQuality(q) {
       high = q !== 'low';
-      ultra = q === 'ultra';
+      ultra = tierAtLeast(q, 'ultra');
+      cine = q === 'cinematic';
       env.high = high;
       env.ultra = ultra;
+      env.cine = cine;
       fx.setQuality(q);
       gore3.setQuality(q);
       casings.setQuality(q);

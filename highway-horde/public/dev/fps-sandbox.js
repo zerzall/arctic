@@ -2,11 +2,15 @@
 // map with AI bot teammates and renders it with createRenderer3D. You play slot 1 with
 // keyboard + mouse (pointer lock), or watch a scripted flythrough (?tour=1).
 //
-// URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=ultra|high|low, bots=N (0..5),
+// URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=cinematic|ultra|high|low (or q=), bots=N (0..5),
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
 // graphics settings (SPEC §7.5): scale=auto|0.5..2, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
+// Cinematic extras (default: the Cinematic preset's; ignored on the other tiers): msaa=0|2|4|8, shadows=0|1 (4096 cascades),
+// contact=0|1, aofull=0|1, fxhigh=0|1, mb=0|1 (motion blur), dof=0|1, lens=0|1, lightshadows=0|1,
+// hp=<1..100> (the local player's health in the ghost view: low hp shows the hurt effects and depth of field),
+// display calibration: bright=<0.7..1.3>, contrast=<..>, sat=<..>; timing=1 (per-pass GPU timings in the readout),
 // gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
 // set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
@@ -18,6 +22,8 @@ import { MAP_LIST } from '../js/shared/maps.js';
 import { DRESS_KINDS } from '../js/shared/dress.js';
 import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
+import { GRAPHICS_PRESETS } from '../js/ui/storage.js';
+import { TIERS } from '../js/render3d/tier.js';
 
 const params = new URLSearchParams(location.search);
 const opt = {
@@ -25,12 +31,13 @@ const opt = {
   // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
   mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
   seed: Number(params.get('seed') || 1234),
-  quality: ['low', 'ultra'].includes(params.get('quality')) ? params.get('quality') : 'high',
+  quality: TIERS.includes(params.get('quality') || params.get('q')) ? (params.get('quality') || params.get('q')) : 'high',
   bots: Math.max(0, Math.min(5, Number(params.get('bots') ?? 3))),
   tour: params.get('tour') === '1',
   view: params.get('view') || null,
   fixed: params.get('fixed') === '1',
   wave: params.get('wave') === '1',
+  hp: params.get('hp') ? Math.max(1, Math.min(100, Number(params.get('hp')) || 100)) : 0,
   fov: Number(params.get('fov') || 80),
   zombies: params.get('zombies') !== '0',
   // paused=1: no animation loop, frames only via __fps.step() (screenshots on software GL)
@@ -51,6 +58,24 @@ const gfx = {
   reflections: params.get('refl') !== '0',
   gore: ['on', 'low', 'off'].includes(params.get('gore')) ? params.get('gore') : 'on',
 };
+// the Cinematic extras follow the preset of the tier in use unless a param says otherwise
+{
+  const P = GRAPHICS_PRESETS[opt.quality] || GRAPHICS_PRESETS.ultra;
+  const flag = (name, dflt) => (params.get(name) === null ? dflt : params.get(name) === '1');
+  gfx.msaa = params.get('msaa') === null ? P.msaa : Number(params.get('msaa'));
+  gfx.shadowsHigh = flag('shadows', P.shadowsHigh);
+  gfx.contactShadows = flag('contact', P.contactShadows);
+  gfx.aoFull = flag('aofull', P.aoFull);
+  gfx.fxHigh = flag('fxhigh', P.fxHigh);
+  gfx.motionBlur = flag('mb', P.motionBlur);
+  gfx.dof = flag('dof', P.dof);
+  gfx.lensFx = flag('lens', P.lensFx);
+  gfx.lightShadows = flag('lightshadows', P.lightShadows);
+  gfx.brightness = Number(params.get('bright') || 1);
+  gfx.contrast = Number(params.get('contrast') || 1);
+  gfx.saturation = Number(params.get('sat') || 1);
+  gfx.timing = params.get('timing') === '1';
+}
 
 const canvas = document.getElementById('game');
 const $stats = document.getElementById('stats');
@@ -338,7 +363,8 @@ mapSel.value = opt.map;
 mapSel.onchange = () => { opt.map = mapSel.value; setup(opt.map); };
 
 function toggleQuality() {
-  quality = quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'ultra';
+  quality = quality === 'cinematic' ? 'ultra' : quality === 'ultra' ? 'high' : quality === 'high' ? 'low' : 'cinematic';
+  Object.assign(gfx, Object.fromEntries(['msaa', 'shadowsHigh', 'contactShadows', 'aoFull', 'fxHigh', 'dof', 'lensFx', 'lightShadows'].map((k) => [k, GRAPHICS_PRESETS[quality][k]])));
   renderer.setQuality(quality);
 }
 
@@ -380,7 +406,7 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(opt.hp ? { hp: opt.hp } : null), ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });
@@ -390,7 +416,9 @@ function step(dt, nowS) {
     statT = 0;
     const s = renderer.stats;
     const me = snap.players.find((p) => p.id === 1);
-    $stats.textContent = `${game.map.name} · ${quality} · ${s.fps} fps · js ${s.jsMs.toFixed(2)} ms · scale ${s.renderScale}${s.gpuMs !== undefined ? ` · gpu ${s.gpuMs} ms` : ''}\n`
+    const res = s.width ? ` · ${s.width}x${s.height}` : '';
+    const passes = s.passMs ? `\npasses ${Object.entries(s.passMs).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' · ')} ms` : '';
+    $stats.textContent = `${game.map.name} · ${quality}${s.msaa ? ` · MSAA ${s.msaa}x` : ''} · ${s.fps} fps · js ${s.jsMs.toFixed(2)} ms · scale ${s.renderScale}${res}${s.gpuMs !== undefined ? ` · gpu ${s.gpuMs} ms` : ''}${passes}\n`
       + `draw calls ${s.drawCalls} (world ${s.sceneCalls ?? '-'}) · tris ${(s.triangles / 1000).toFixed(1)}k · static ${(s.staticTriangles / 1000).toFixed(1)}k · lights ${s.lights}\n`
       + `phase ${snap.phase} wave ${snap.wave} · zombies ${snap.zombies.length} · you ${me ? `${Math.round(me.x)},${Math.round(me.y)} ${me.state}` : '-'}`;
   }

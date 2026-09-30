@@ -15,6 +15,11 @@ import * as THREE from 'three';
 import { acquireFx, releaseFx, F_ADD, F_BOUNCE, F_SPIN, F_FLICKER, FR } from './fx-core.js';
 import { col } from './actor-kit.js';
 import { groundIndex, MAT } from './surfaces.js';
+import { normTier, tierAtLeast, tierRow } from './tier.js';
+
+/** Fireflies over the grass (night) and birds on the lamps and roofs (day) per tier. */
+export const FLY = { cinematic: 60, ultra: 36, high: 20, low: 0 };
+export const BIRDS = { cinematic: 28, ultra: 18, high: 10, low: 0 };
 
 const TAU = Math.PI * 2;
 
@@ -79,7 +84,7 @@ export function createAmbient3D(ctx) {
   const fx = acquireFx(ctx);
   const R = fx.rng;
   const day = ctx.time === 'day';
-  let tier = ctx.quality === 'ultra' ? 'ultra' : ctx.quality === 'low' ? 'low' : 'high';
+  let tier = normTier(ctx.quality);
   const gm = groundIndex(ctx);
   const G = ctx.groundY || (() => 0);
   const map = ctx.map;
@@ -93,9 +98,8 @@ export function createAmbient3D(ctx) {
   for (const l of map.lights || []) if (l.flicker >= 0.5 && !Number.isFinite(l.h)) fires.push({ x: l.x, y: l.y });
 
   // ---- fireflies (night, over grass) --------------------------------------------------------
-  const FLY = { ultra: 36, high: 20, low: 0 };
   const flies = [];
-  for (let i = 0; i < FLY.ultra; i++) flies.push({ x: 0, y: 0, h: 0, vx: 0, vy: 0, ph: R() * TAU, sp: 0.6 + R() * 0.8, on: false, hue: R() });
+  for (let i = 0; i < FLY.cinematic; i++) flies.push({ x: 0, y: 0, h: 0, vx: 0, vy: 0, ph: R() * TAU, sp: 0.6 + R() * 0.8, on: false, hue: R() });
   const FLY_C = [col('#c8ff5a'), col('#b8ff7a'), col('#f4ff8a')];
 
   function placeFly(f) {
@@ -111,7 +115,6 @@ export function createAmbient3D(ctx) {
   }
 
   // ---- birds (day) ---------------------------------------------------------------------------
-  const BIRDS = { ultra: 18, high: 10, low: 0 };
   const perches = [];
   if (day) {
     for (const d of map.decor || []) if (d.kind === 'lamp_post') perches.push({ x: d.x, y: d.y, h: 232 * (d.s || 1) });
@@ -126,10 +129,10 @@ export function createAmbient3D(ctx) {
     }
   }
   const birds = [];
-  for (let i = 0; i < BIRDS.ultra; i++) birds.push({ x: 0, y: 0, h: 0, vx: 0, vy: 0, vh: 0, yaw: 0, ph: R() * TAU, fly: 0, t: 0, px: 0, py: 0, ph0: 0, alive: false, sc: 1 });
+  for (let i = 0; i < BIRDS.cinematic; i++) birds.push({ x: 0, y: 0, h: 0, vx: 0, vy: 0, vh: 0, yaw: 0, ph: R() * TAU, fly: 0, t: 0, px: 0, py: 0, ph0: 0, alive: false, sc: 1 });
   const geoB = birdGeometry();
-  const iPos = new THREE.InstancedBufferAttribute(new Float32Array(BIRDS.ultra * 4), 4);
-  const iState = new THREE.InstancedBufferAttribute(new Float32Array(BIRDS.ultra * 4), 4);
+  const iPos = new THREE.InstancedBufferAttribute(new Float32Array(BIRDS.cinematic * 4), 4);
+  const iState = new THREE.InstancedBufferAttribute(new Float32Array(BIRDS.cinematic * 4), 4);
   iPos.setUsage(THREE.DynamicDrawUsage); iState.setUsage(THREE.DynamicDrawUsage);
   const bg = new THREE.InstancedBufferGeometry();
   bg.index = null;
@@ -147,7 +150,7 @@ export function createAmbient3D(ctx) {
   birdMesh.visible = false;
   birdMesh.name = 'birds';
   // (only in the scene when there can be birds: no program to compile at night or on 'low')
-  const syncBirdMesh = () => { if (day && BIRDS[tier] > 0 && perches.length) { if (!birdMesh.parent) ctx.scene.add(birdMesh); } else birdMesh.removeFromParent(); };
+  const syncBirdMesh = () => { if (day && tierRow(BIRDS, tier) > 0 && perches.length) { if (!birdMesh.parent) ctx.scene.add(birdMesh); } else birdMesh.removeFromParent(); };
   syncBirdMesh();
 
   function perchBird(b, far) {
@@ -201,12 +204,13 @@ export function createAmbient3D(ctx) {
     windS = 45 + 40 * (0.5 + 0.5 * Math.sin(wind * 0.09 + 1));
     windX = Math.cos(wa); windY = Math.sin(wa);
     const high = tier !== 'low';
-    const ultra = tier === 'ultra';
+    const ultra = tierAtLeast(tier, 'ultra');
+    const cineK = tier === 'cinematic' ? 1.7 : 1;
     const load = fx.load();
 
     // motes: warm specks hanging in the light (day), a few cold ones at night near the lamps' haze
     if (day && high && load < 0.8) {
-      acc.mote += dt * (ultra ? 12 : 6);
+      acc.mote += dt * (ultra ? 12 : 6) * cineK;
       while (acc.mote >= 1) {
         acc.mote -= 1;
         const a = R() * TAU, d = 30 + R() * 380;
@@ -217,7 +221,7 @@ export function createAmbient3D(ctx) {
 
     // leaves and paper blown along the ground
     if (load < 0.8) {
-      acc.leaf += dt * (ultra ? 1.6 : high ? 1 : 0.4);
+      acc.leaf += dt * (ultra ? 1.6 : high ? 1 : 0.4) * cineK;
       while (acc.leaf >= 1) {
         acc.leaf -= 1;
         // upwind of the camera so they cross the view
@@ -244,7 +248,7 @@ export function createAmbient3D(ctx) {
 
     // ash and embers carried downwind from the fires near the camera
     if (high && fires.length && load < 0.85) {
-      acc.ember += dt * (ultra ? 14 : 7);
+      acc.ember += dt * (ultra ? 14 : 7) * cineK;
       while (acc.ember >= 1) {
         acc.ember -= 1;
         const f = fires[(R() * fires.length) | 0];
@@ -261,7 +265,7 @@ export function createAmbient3D(ctx) {
 
     // rain splashes: faint white flecks popping on the ground around the player under the night rain
     if (ultra && !day && load < 0.8) {
-      acc.splash += dt * 45;
+      acc.splash += dt * 45 * cineK;
       while (acc.splash >= 1) {
         acc.splash -= 1;
         const a = R() * TAU, d = 20 + Math.sqrt(R()) * 330;
@@ -273,7 +277,7 @@ export function createAmbient3D(ctx) {
 
     // fireflies
     if (!day && tier !== 'low') {
-      const n = FLY[tier];
+      const n = tierRow(FLY, tier);
       for (let i = 0; i < n; i++) {
         const f = flies[i];
         const d2 = (f.x - camX) ** 2 + (f.y - camY) ** 2;
@@ -315,8 +319,8 @@ export function createAmbient3D(ctx) {
     }
 
     // birds
-    if (day && BIRDS[tier] > 0 && perches.length) {
-      const n = BIRDS[tier];
+    if (day && tierRow(BIRDS, tier) > 0 && perches.length) {
+      const n = tierRow(BIRDS, tier);
       let cnt = 0;
       const P = iPos.array, S = iState.array;
       for (let i = 0; i < n; i++) {
@@ -376,7 +380,7 @@ export function createAmbient3D(ctx) {
 
   // first placement: birds perch right away
   function init() {
-    if (day && perches.length) for (let i = 0; i < BIRDS[tier]; i++) perchBird(birds[i], false);
+    if (day && perches.length) for (let i = 0; i < tierRow(BIRDS, tier); i++) perchBird(birds[i], false);
   }
   init();
 
@@ -384,10 +388,10 @@ export function createAmbient3D(ctx) {
     update,
     addEvents,
     setQuality(q) {
-      tier = q === 'ultra' ? 'ultra' : q === 'low' ? 'low' : 'high';
+      tier = normTier(q);
       for (const f of flies) f.on = false;
       syncBirdMesh();
-      if (day && perches.length) for (let i = 0; i < BIRDS[tier]; i++) if (!birds[i].alive) perchBird(birds[i], false);
+      if (day && perches.length) for (let i = 0; i < tierRow(BIRDS, tier); i++) if (!birds[i].alive) perchBird(birds[i], false);
     },
     scare,
     dispose() {

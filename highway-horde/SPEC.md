@@ -1210,8 +1210,10 @@ Large screens: the stylesheet is in rem and `<html>` font-size is 16px × `--ui-
 (`ui/uiscale.js`: clamp(min(h/1000, w/1200), 1, 3), always 1 on touch; × the "UI size"
 setting 75–150 %), so the HUD and menus keep their proportions from 720p to 4K; with
 `hudSafeArea: '16:9'` (default) the HUD sits in a centred 16:9 box on ultrawide screens.
-Settings dialog tabs: Graphics (preset, resolution, Advanced effect toggles — §7.5),
-Display & HUD (UI size, safe area, view, fov, name tags, stats, minimap), Controls
+Settings dialog tabs: Graphics (preset, the detected GPU, resolution with a "Recommended" hint,
+Advanced effect toggles and the Cinematic extras — §7.5, §7.5.3),
+Display & HUD (UI size, safe area, view, fov, frame-rate limit, display calibration, name tags,
+stats, minimap), Controls
 (sensitivity, invert, raw mouse, aim assist), Audio. Fullscreen buttons on the title,
 pause menu and settings (`ui/fullscreen.js`; in Chromium the game claims Esc while
 fullscreen so Esc only releases the mouse); `fullscreenOnStart` (off by default).
@@ -1405,14 +1407,21 @@ actor-zkit.js   the accessory groups of the zombie models (hats, hair, packs, be
 actor-sgear.js  class gear of the survivors (helmets, packs, bandoliers, plates) + the gloves shared with the first-person hands
 actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles)
 fx-core.js      shared particle / streak / glow pools (3 draw calls), acquireFx(ctx)
-post.js         post-processing chain, dynamic resolution, GPU timer (see below)
-post-atmos.js   atmosphere + wet-ground reflections pass of the chain (see below)
+post.js         post-processing chain, dynamic resolution (refresh-aware), GPU timer with per-pass slots (see below)
+post-atmos.js   atmosphere + wet-ground reflections pass of the chain (see below); on 'cinematic' also the
+                sun shafts marched through the cascaded sun map (§7.5.3)
+post-cine.js    the 'cinematic' passes: MsaaWorldPass, ContactShadowPass, DepthCopyPass, MotionBlurPass, DofPass
+post-bloom.js   the 'cinematic' dual-filter bloom (HHBloomPass) and the lens-dirt texture
+tier.js         the tier helpers every per-tier table uses: TIERS, tierRank, tierAtLeast, normTier, baseTier,
+                tierRow(table, q) (a table without a 'cinematic' row falls back to 'ultra'), texScale(q)
+                (1 | 1 | 1 | 2: the texture-size multiplier asset code may apply), anisoFor(q, max)
+sunlight.js     HHSunLight / HHSunShadow: the cascaded sun / moon shadow of 'cinematic' (§7.5.3)
 ```
 Each sub-system is created as `createX(ctx)` and returns
 `{ update(view, frame), addEvents?(events, opts), setQuality?(q), dispose() }`.
 `ctx` (built by renderer3d.js, read-only for sub-systems):
 ```
-ctx = { THREE, scene, camera, map, quality,           // quality 'ultra' | 'high' | 'low'
+ctx = { THREE, scene, camera, map, quality,           // quality 'cinematic' | 'ultra' | 'high' | 'low'
         overlay,                                       // CanvasRenderingContext2D of the overlay (CSS px)
         lights: { flash(x, y, h, color, intensity, radius, life),   // transient light (muzzle, explosion)
                   steady(key, x, y, h, color, intensity, radius) }, // per-frame persistent source
@@ -1428,8 +1437,9 @@ frame = { dt, now, localId, roster, local /* view record of the local player or 
 **Public API** (same shape as §7.1 so `ui/match.js` can use either renderer):
 ```js
 import { createRenderer3D } from './render3d/renderer3d.js';
-const r = createRenderer3D(canvas, { map, quality, mode, time });   // mode 'defend' | 'zone' (→ ctx.mode);
+const r = createRenderer3D(canvas, { map, quality, mode, time, refreshHz });   // mode 'defend' | 'zone' (→ ctx.mode);
                                                                      // time 'night' | 'day' (→ ctx.time, §7.5.1; default: the map's own time, else night)
+                                                                     // refreshHz: the display's measured refresh rate (default 60, §7.5.3)
 r.render(view, { localId, roster, now, dt, look: { yaw, pitch }, settings })
    // settings: { screenShake, showNames, lighting,
    //   fov: horizontal degrees measured on a 4:3 frame (Hor+; default 80 → 64.4° vertical,
@@ -1440,9 +1450,13 @@ r.addEvents(events, { localId })
 r.screenToWorld(sx, sy) → {x, y}   // ground point under a screen point (for API compatibility)
 r.worldToScreen(x, y, h = 0) → {x, y, visible}
 r.getCamera() → { x, y, yaw }      // camera position/orientation (listener for audio)
-r.resize(); r.setQuality(q); r.destroy(); r.stats; r.mode === 'fps'
+r.resize(); r.setQuality(q); r.setRefreshHz(hz); r.destroy(); r.stats; r.mode === 'fps'
+   // r.setRefreshHz(hz): the refresh rate Auto resolution aims at (97 % of it; the UI passes
+   //   min(display refresh, FPS cap)); r.setQuality(q) takes 'cinematic' | 'ultra' | 'high' | 'low'
    // r.stats = { drawCalls, triangles, jsMs, updateMs, submitMs, fps, lights,
-   //             staticTriangles, frames }   (ms are rolling averages)
+   //             staticTriangles, frames,
+   //             tier, msaa, width, height, refreshHz, passMs /* { passId: ms } while timing is on */ }
+   //             (ms are rolling averages)
    // r.debug = { renderer, scene, camera, world, lights, subs, ctx, createMs } — dev tools
    //             and tests only, not API
 export function isWebGLAvailable()
@@ -1524,9 +1538,15 @@ walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 1080p with 250 zombies on a mid laptop at 'high'; 'low' = no shadows, 4 pool lights,
 fewer particles, render scale 0.75; 'ultra' = native resolution (pixel ratio up to 3),
 12 pool lights, 2048² flashlight shadows, full-density ground textures, 16x anisotropy,
-more particles, denser grass, light rain. Every device defaults to 'ultra' with
+more particles, denser grass, light rain; 'cinematic' = everything 'ultra' does plus the
+extras of §7.5.3, for RTX-class GPUs (no frame-time budget beyond the display's refresh rate).
+Every device defaults to 'ultra' with
 renderScale 'auto' (phones included, at the owner's request — they run hot; 'auto' keeps
-them playable). Sub-systems treat any quality other than 'low' as high.
+them playable); a first-time desktop profile whose GPU is recognised as strong starts on
+'cinematic' instead (§7.5.3). Sub-systems treat any quality other than 'low' as high, and
+any table keyed by tier must carry a 'cinematic' row (`tests/render3d-tiers.test.js`); use
+`tier.js` (`tierAtLeast(q, 'ultra')`, `tierRow`, `baseTier`) instead of `q === 'ultra'`, or
+'cinematic' would fall through to the 'high' branch.
 
 **Post-processing & graphics settings** (`render3d/post.js`). The world renders into a
 linear half-float target: world → GTAO at half resolution (high/ultra, `ao`) → atmosphere
@@ -1542,20 +1562,23 @@ ultra, quarter / 16 on high; a depth-aware upsampling composite; 2–3 draw call
 dither, and colour fringes + desaturation at the edges while the local player is hurt,
 not on low) → SMAA or FXAA (`antialias` 'smaa' | 'fxaa' | 'off'; low forces FXAA unless off)
 → upscale + sharpen when the internal resolution is below 1 (above 1 the last pass shrinks
-the frame back: supersampling). `settings.renderScale` is 'auto' (dynamic resolution in 0.05
-steps holding 58–60 fps, with hysteresis; on desktop screens with a device pixel ratio
-below 2 it may climb to 1.5 when the GPU has headroom, phones and hi-dpi screens stay ≤ 1)
-or a fixed 0.5–2 fraction of the tier's pixel-ratio cap (ultra min(dpr, 3), high
+the frame back: supersampling; on 'cinematic' a Catmull-Rom filter, not bilinear). `settings.renderScale` is 'auto'
+(dynamic resolution in 0.05 steps holding 97 % of the display's refresh rate — 58 fps on
+60 Hz, 140 on 144 Hz, §7.5.3 — with hysteresis; on desktop screens with a device pixel ratio
+below 2 it may climb to 1.5 when the GPU has headroom, to 2.0 on 'cinematic'; phones and
+hi-dpi screens stay ≤ 1)
+or a fixed 0.5–2 fraction of the tier's pixel-ratio cap (cinematic and ultra min(dpr, 3), high
 min(dpr, 2), low 0.75 × min(dpr, 1)); the world pass never exceeds 16 million pixels
-(`PIXEL_BUDGET`, so 200% on a 4K screen is capped); the canvas keeps its size and only the
+(36 million on 'cinematic'; `PIXEL_BUDGET`, so 200% on a 4K screen is capped at 16 M / 36 M —
+on 'cinematic' 200% at 4K is 33 M and fits); the canvas keeps its size and only the
 internal targets scale. The Settings offer Auto, 200%, 150%, 125%, 100%, 85%, 70%, 50%. All
 settings apply live; an unchanged settings object costs a few comparisons; `render()`
 never throws (a failing chain falls back to a direct render, and is dropped after 3
 failures). `settings.uiScale` (from the UI) scales the overlay. `r.stats` exposes
 drawCalls/triangles (post passes included), sceneCalls/sceneTriangles, fps, renderScale,
-pixelRatio and gpuMs (with EXT_disjoint_timer_query_webgl2). UI presets: Ultra (all
-effects), High (AO and reflections off), Low (no bloom/AO/grain/volumetrics/reflections,
-FXAA); prefs validate every field.
+pixelRatio and gpuMs (with EXT_disjoint_timer_query_webgl2). UI presets: Cinematic (all
+effects and the extras of §7.5.3), Ultra (all effects), High (AO and reflections off), Low (no
+bloom/AO/grain/volumetrics/reflections, FXAA); prefs validate every field.
 Measured (SwiftShader, 1600x900, 250 zombies + bots fighting): 65–81 draw calls and
 235k–295k triangles on 'high', 55 calls / 185k on 'low'; scene update ~3 ms. The world
 splits its static meshes into 1600-unit cells (the heavy 'std'/'paint' buckets into 1000 on
@@ -1563,7 +1586,7 @@ a map wider than 6000) and skips any cell or ground tile wholly past the fog (wh
 passes < 0.2 % of a surface), so a long map costs about what a short one does: the
 7600-wide highway draws 84–104 calls / 385k–540k triangles on 'ultra' at 1600x900 with no
 zombies (the old 3600-wide one: 85–107 / 510k–540k). Ground canvases keep a texel budget
-per tier (ultra 10 M, high 6 M, low 3 M texels; every other map fits at full density).
+per tier (cinematic 22 M, ultra 10 M, high 6 M, low 3 M texels; every other map fits at full density).
 The viewmodel is drawn with its own fixed 64° vertical camera (matching the default fov).
 
 **Effects, gore and ambient life** (`effects3d.js`, `fx-core.js`, `fx-decals.js`, `blood3d.js`,
@@ -1572,7 +1595,7 @@ particles (additive), beams, decals, plus the bird / limb / casing meshes only w
 - **Decals** are quads lying on a surface (a wall's face normal from the map's obstacle
   rectangles, or the ground), lit by the scene lights with the sun's and flashlight's shadows,
   clipped to the top and the ends of the surface they are on. They live in two ring buffers
-  (`gore` 1600 / 800 / 160 and `marks` 700 / 360 / 80 on ultra / high / low): the oldest is
+  (`gore` 1600 / 800 / 160 and `marks` 700 / 360 / 80 on ultra / high / low; cinematic 4000 / 1800): the oldest is
   recycled, nothing is allocated. Ageing runs on the GPU from each decal's birth time: pools
   spread over ~5 s, blood dries from bright wet red to a dark crust (~75 s) and loses its gloss,
   drips run down walls, everything fades at the end of its life.
@@ -1741,6 +1764,121 @@ picked from the obstacle id; a 'truck' painted `FIRE_ENGINE` (`#b01818`, maps.js
 engine; the school bus and box trailers carry lettering; any vehicle may have an open hood, a
 flat tyre, dents, an antenna or luggage on the roof.
 
+### 7.5.3 Cinematic tier, GPU detection and refresh-aware display — `render3d/{tier,sunlight,post-cine,post-bloom}.js`, `ui/{gpu,display}.js`
+
+Added for owners with an RTX-class GPU at 1080p to 4K, who asked for a picture "not restricted
+by compute". `'cinematic'` is a fourth graphics tier above `'ultra'`; the three existing tiers
+look and cost exactly what they did (their tables, shaders and passes are untouched; the
+12-tap shadow filter and the cascaded sun below exist only when the map is 4096² or the tier
+is cinematic). Everything is procedural and additive; each expensive item has its own switch
+(Settings → Graphics → Advanced → *Cinematic extras*, saved in prefs) and degrades on its own
+(no MSAA support → 0, no cascades → the single sun map, no timer query → no per-pass ms).
+
+**Tier plumbing.** `storage.js` `QUALITIES = ['cinematic', 'ultra', 'high', 'low']`,
+`GRAPHICS_PRESETS.cinematic` (all effects on, `msaa` 4, the extras on except `motionBlur`),
+`ui/gfx.js` `applyPreset` / `rendererSettings`, `renderer.setQuality('cinematic')`. Every
+per-tier table has a `cinematic` key (fx-core `QUALITY` particle / streak / glow / decal caps,
+lights `LIGHT_POOL`, ground `GROUND_TEXELS` / `GROUND_DENSITY`, world-veg `GRASS`, world-dress
+`TRI_BUDGET`, shared `DRESS_DENSITY`, casings / gore `CAP`, zombies `LOD_DIST`, ambient `FLY` /
+`BIRDS`, post `PIXEL_BUDGET`); `tests/render3d-tiers.test.js` loads each module and fails when a
+table lacks the key, and scans render3d for tier ternaries that would fold 'cinematic' into
+'high'. `normTier(q)` maps unknown values to 'high'; `baseTier(q)` maps 'cinematic' to 'ultra'
+for code that only knows three tiers. In `'cinematic'` each item below is one line of
+`CINEMATIC_DEFAULTS` in post.js; the Settings extras and `fps-sandbox` parameters override it.
+
+**What cinematic adds** (estimated GPU cost on an RTX 4070 Ti Super class card, additive to
+Ultra, at 3840×2160 internal; the build machine has no GPU so these are estimates from pixel
+and tap counts, to be replaced by `/dev/benchmark.html` numbers from real hardware):
+
+| Item | Switch | Detail | Est. cost |
+|---|---|---|---|
+| MSAA on the HDR target | `msaa` Off/2×/4×/8× (default 4×) | a private multisampled render target (own depth texture), resolved by three, then copied (colour + depth) into the composer; alpha-to-coverage on the alpha-tested foliage; the count is clamped to `maxSamples` and to 90 M sample-pixels; SMAA still runs after grading | 1.5–3 ms (4×) |
+| Cascaded sun / moon shadows | `shadowsHigh` | `HHSunLight` (sunlight.js): two camera-centred spherical cascades (near ~320, far ~1900 units; texel-snapped and rotation-invariant so the shadow never shimmers when the camera turns), one 4096² atlas map redrawn on demand for the static world only, sampled with a 12-tap Vogel-disk PCF whose radius is per axis (texel-isotropic); off → the single 2048² sun map | 0.3–1 ms |
+| 4096² flashlight shadow | `shadowsHigh` | the flashlight SpotLight map 2048² → 4096², same 12-tap PCF | 0.3 ms |
+| Shadow-casting lamps | `lightShadows` (night) | the first 3 pool slots cast a 1024² static cube shadow of the nearest street lamps / fires (map lights: fixed position and radius); a slot that changes hands redraws its map, one per frame | 0.2–0.6 ms |
+| Full-resolution ambient occlusion | `aoFull` | GTAO at the full internal resolution (capped at 8.9 M px, else 0.5×) with 24 samples and a wide depth-aware denoise (radius 13, 16 taps) instead of half resolution / 12 samples | 1.5–2.5 ms |
+| Contact shadows | `contactShadows` | a short screen-space march toward the main light (sun by day, moon by night) darkening the fine occluders the shadow map cannot resolve (into its own target, multiplied in) | 0.5 ms |
+| Volumetric light | `fxHigh` | full-resolution mist (capped at 8.9 M px), 22 flashlight steps, up to 20 pool lights, and the SUN SHAFTS: the sun map is sampled along the view ray (Henyey-Greenstein g = 0.62, so shafts show toward the sun) | 1.5–3 ms |
+| Screen-space reflections | `fxHigh` | 0.75× resolution (capped at 6 M px) with 48 steps, roughness that grows with the hit distance, 6 streak taps on wet asphalt | 1–1.5 ms |
+| Bloom | (always on with `bloom`) | a 7-level dual-filter bloom (13-tap downsample with Karis average and soft-knee threshold, 3×3 tent upsample) replaces the stock one: wide, smooth, no fireflies | 0.4 ms |
+| Lens effects | `lensFx` | a dirt mask that lights up only where the bloom is strong, and a faint radial chromatic fringe | 0.1 ms |
+| Motion blur | `motionBlur` (default off) | camera-motion blur from the depth buffer, shutter about 1/3 of a frame | 0.4 ms |
+| Depth of field | `dof` | subtle, only while the local player is hurt (focus follows the crosshair distance, 1×1 focus targets) | 0.3 ms, only when hurt |
+| Supersampling | resolution | Auto climbs to 2.0 (36 M px budget); the last pass shrinks with a Catmull-Rom filter instead of bilinear; 16× anisotropic filtering | scales with pixels |
+| Density | (tier) | pool lights 12 → 20, particle pool 4200 → 9200 (spawn counts ×1.5), beams 480 → 960, decals 1600 / 700 → 4000 / 1800, gibs, casings, fireflies, birds, rain streaks 9000, grass 256 × 256 tufts at a 3.9-unit cell (ultra 180 / 4.6, density 1.0 vs 0.95), dress-life ×1.6 and ambient life ×1.7 (`dress-life`, `ambient3d`), set-dressing budget 650 k → 2.5 M triangles (the `shared/dress.js` density is 1.0 already on ultra; cinematic raises the triangle cap so nothing is thinned), ground texels 10 M → 22 M | 0.5–1.5 ms |
+
+A rough total at 1080p with Auto climbing to 200 % (3840×2160 internal) is 8–11 ms on the
+card above, i.e. 90–120 fps; at native 4K about the same. `texScale(q)` (1 | 1 | 1 | 2) is the
+helper asset code may use to give cinematic bigger procedural textures; it is exported, not
+yet applied to the shared world textures.
+
+**Colour.** The grade keeps ACES with sRGB output and adds a triangular-PDF dither at the last
+pass (no banding in the dark gradients of a night sky, at any tier). Display calibration
+(Settings → Display & HUD, all tiers): brightness, contrast and saturation sliders 0.7–1.3 (1.0 =
+untouched), saved in prefs (`displayBrightness`, `displayContrast`, `displaySaturation`), applied
+in the grade shader.
+
+**GPU detection** (`ui/gpu.js`, pure functions plus `probeGpu()`). The renderer string of
+`WEBGL_debug_renderer_info` is cleaned (`cleanGpuName`: ANGLE, Direct3D, Mesa and Metal noise
+removed) and classified by a CONSERVATIVE regex table (`classifyGpu`): 'high' (Cinematic
+recommended) = NVIDIA RTX 20-series from the 2070 (2060 = Ultra), RTX 30 / 40 / 50 from the
+x060 (laptop parts one step higher: from the x070; RTX 20 laptop from the 2080), GTX 1080 / 1080 Ti, RTX A4000 and up, Titan,
+AMD RX 6700 and up, RX 7600 XT and up, RX 9060 XT and up (laptop one step higher), Intel Arc
+A750 / A770 / B570 and up, Apple M2 and later and any M1 Pro / Max / Ultra; 'mid' (Ultra) =
+the smaller discrete parts (GTX 1050-1070, 16-series, RX 5500-6600, RX 7600 non-XT, Arc A380 / A580,
+bare M1); 'integrated' (Intel UHD / Iris, AMD "Radeon Graphics", Apple "GPU" without a model,
+Adreno / Mali / PowerVR), 'software' (SwiftShader, llvmpipe, Microsoft Basic Render) and
+unknown or masked strings give no recommendation. Only the FIRST-TIME profile (no quality
+ever chosen: `settings.qualityPicked` false) takes the recommendation, at startup and only on
+non-touch devices: `applyDetectedTier(settings, gpu)` changes an unpicked profile's tier and
+never a picked one (a stored quality other than the old default 'ultra' counts as picked; a
+legacy 'high' without a stored render scale counts as unpicked). Choosing a preset in
+Settings sets `qualityPicked`. Settings names the card under the presets: "Detected: NVIDIA
+GeForce RTX 4070 Ti SUPER — Cinematic recommended" (software: "software rendering: the Low
+preset fits best"). `tests/gpu.test.js`.
+
+**Refresh-aware Auto resolution** (`post.js` `createDynRes(maxScale, targetFps)`, `ui/display.js`).
+`measureRefresh()` measures the rAF interval (median of ~60 intervals while the page is
+visible, `estimateRefreshHz`), snaps it to a real refresh rate (60, 75, 90, 100, 120, 144, 165,
+240, 360: `snapRefresh`; below 50 reads as 60) and re-measures on a display change (window
+moved, `visibilitychange`); a steady measurement (`isSteady`) may lower the previous one.
+The renderer gets `min(refresh, FPS cap)` through `refreshHz` / `setRefreshHz`. The
+controller targets 97 % of that rate (`dynResTarget`): with R = target / 0.97, it steps the
+scale down under 0.917 R, holds between 0.95 R and 0.975 R, steps up above 0.975 R when the GPU
+time leaves headroom (frame budget × 0.66). Nothing caps the frame rate at 60: the rAF loop
+runs at the display's rate, and *Frame-rate limit* (Settings → Display & HUD: Off, 60, 120,
+144; `settings.fpsCap`) is the only limiter (`createFrameLimiter`, half a display frame of
+slack so a 60 cap on a 144 Hz screen averages 60). V-sync is the browser's (it presents on
+the display's vblank); the settings note says so. The ceiling is 2.0 on cinematic, 1.5 on
+desktop ultra / high, 1.0 on touch and dpr ≥ 2. `resolutionHint()` writes the "Recommended:
+…" line under Resolution from the GPU class, the preset, the screen's physical pixels and the
+refresh rate (for example Auto on a 4070 Ti Super at 1080p, 100-150 % at 4K on Ultra).
+`tests/display.test.js`, `tests/render3d-post.test.js`.
+
+**Tooling.**
+- Stats overlay (Settings → Display & HUD → *FPS / resolution / ping*): fps, tier, internal
+  resolution and scale, MSAA, ping and, where the browser has `EXT_disjoint_timer_query_webgl2`,
+  the milliseconds of each pass (`world`, `ao`, `contact`, `atmos`, `depth`, `motion`, `dof`,
+  `viewmodel`, `bloom`, `grade`, `smaa`, `fxaa`, `resolve`, `upscale`; `r.stats.passMs`) in a line below.
+  Off by default; timing costs nothing while the overlay is hidden.
+- `public/dev/fps-sandbox.html` parameters (see the header of `fps-sandbox.js`): `q=cinematic`,
+  `msaa=0|2|4|8`, `dof=0|1`, `mb=0|1`, `shadows=`, `contact=`, `aofull=`, `fxhigh=`, `lens=`,
+  `lightshadows=`, `bright= contrast= sat=`, `timing=1`, `hp=<1..100>` (low health: the hurt look and
+  depth of field in the ghost view), and the existing `scale=`,
+  `zombies=`, `time=`, `wave=`.
+- `public/dev/benchmark.html`: a 20-second fly-through of the highway map on a fixed
+  camera path (`bench-stats.js` `pathAt`), with `q=`, `scale=`, `msaa=`, `secs=`, `auto=1`
+  (dynamic resolution on), `fixed=1`, `warm=` and `timing=1` parameters, printing average fps,
+  1 % / 0.1 % lows, frame-time percentiles and GPU ms as copyable text; `window.__bench`
+  drives it from Playwright. Unit-tested statistics: `tests/bench-stats.test.js`.
+
+**Known limits.** Actors (zombies, players) do not cast the sun / moon map (only the flashlight
+sees them: the shadows of the moving are missing by day; contact shadows cover the ground
+under them); muzzle-flash lights do not cast shadows; TAA is not implemented (MSAA + SMAA +
+supersampling instead); set-dressing density cannot exceed 1.0 (the cap only removes the
+thinning); switching to cinematic in the middle of a game swaps the sun light for the cascaded
+one and recompiles the lit materials once (a hitch, at the settings change only).
+
 ## 8. Deployment
 - Static: `public/` can be served by any static host (Netlify: `netlify.toml` publishes
   `public`). Uses the PeerJS cloud for signalling. Friends open the link, host clicks
@@ -1809,6 +1947,14 @@ flat tyre, dents, an antenna or luggage on the roof.
   lists its progress, Export a file, Delete, Import it back and Continue resumes at the saved progress; then a
   crafted save that has cleared the road chapter arrives at the Roadhouse: the arrival scene, every station
   panel, the board listing the missions, a hub mission briefed and backed out of (see §10).
+- Graphics-tier tests (all `node --test`, no GPU): `render3d-tiers.test.js` (every per-tier
+  table has a `cinematic` key; no tier ternary folds cinematic into high), `gpu.test.js` (GPU
+  name cleaning, the classification table, the first-run rule), `display.test.js` (refresh
+  snapping, frame limiter, resolution hint, dynres target), `render3d-post.test.js` (post
+  settings normalisation, `createDynRes` at 60/120/144 Hz), `ui-cinematic.test.js` (prefs
+  validation and presets for the new fields), `bench-stats.test.js` (percentiles, camera path).
+  Screenshots of the tiers and of the UI at 3840×2160 come from the Playwright helpers used
+  during development (`public/dev/fps-sandbox.html` with `paused=1&fixed=1`).
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,

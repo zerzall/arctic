@@ -68,12 +68,13 @@ function flush(ctx, now, dt = 1 / 60) {
 }
 
 const CAPS = {
+  cinematic: { particles: 9200, gore: 4000, marks: 1800 },
   ultra: { particles: 4200, gore: 1600, marks: 700 },
   high: { particles: 2600, gore: 800, marks: 360 },
   low: { particles: 900, gore: 160, marks: 80 },
 };
 
-for (const tier of ['ultra', 'high', 'low']) {
+for (const tier of ['cinematic', 'ultra', 'high', 'low']) {
   test(`particle pool is capped on ${tier}`, () => {
     const ctx = makeCtx(tier);
     const fx = core.acquireFx(ctx);
@@ -102,7 +103,7 @@ for (const tier of ['ultra', 'high', 'low']) {
     assert.equal(D.stats.marks, c.marks);
     assert.equal(fx.stats.decals, c.gore + c.marks);
     const mesh = ctx.scene.children.find((k) => k.name === 'fx-core') && ctx.scene.getObjectByName('fx-decals');
-    const total = CAPS.ultra.gore + CAPS.ultra.marks;
+    const total = CAPS.cinematic.gore + CAPS.cinematic.marks;   // (the buffers are sized for the biggest tier)
     assert.ok(mesh.geometry.instanceCount <= total, 'never draws more instances than the buffer holds');
     // the ring wraps: after the clock moves on, the next decal takes the oldest slot
     const before = D.stats.born;

@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { makeCanvas } from './actor-kit.js';
 import { createDecalLayer, releaseDecalAtlas, DC, DK } from './fx-decals.js';
+import { tierRow } from './tier.js';
 
 export { DC, DK };
 
@@ -32,7 +33,9 @@ export const FR = {
 };
 const GRID = 8;
 
-const QUALITY = {
+/** Pool sizes per tier (cinematic: ~2.2x the particles and 2.5x the decals of ultra). */
+export const QUALITY = {
+  cinematic: { particles: 9200, beams: 960, gore: 4000, marks: 1800 },
   ultra: { particles: 4200, beams: 480, gore: 1600, marks: 700 },
   high: { particles: 2600, beams: 320, gore: 800, marks: 360 },
   low: { particles: 900, beams: 140, gore: 160, marks: 80 },
@@ -529,9 +532,9 @@ function fxMaterial(vert, frag, additive, extra = {}) {
 // ---------------------------------------------------------------------------------------
 
 function createFx(ctx) {
-  const q = QUALITY[ctx.quality] || QUALITY.high;
+  const q = tierRow(QUALITY, ctx.quality);
   // Buffers sized for the biggest tier so setQuality can switch without reallocating.
-  const CAP = QUALITY.ultra.particles, BCAP = QUALITY.ultra.beams;
+  const CAP = QUALITY.cinematic.particles, BCAP = QUALITY.cinematic.beams;
   let cap = q.particles, bcap = q.beams;
   const R = ctx.rng || Math.random;
 
@@ -552,7 +555,7 @@ function createFx(ctx) {
   const bm = new Float32Array(BCAP * 16);
   let bn = 0;
   // decals: two ring buffers on the GPU (fx-decals.js)
-  const decals = createDecalLayer(ctx.scene, { gore: q.gore, marks: q.marks }, { gore: QUALITY.ultra.gore, marks: QUALITY.ultra.marks });
+  const decals = createDecalLayer(ctx.scene, { gore: q.gore, marks: q.marks }, { gore: QUALITY.cinematic.gore, marks: QUALITY.cinematic.marks });
   // heat / shockwave distortion sources (post.js projects them): { x, h, y, r, k, life, age, kind }
   const DIST_CAP = 6;
   const dist = [];
@@ -840,9 +843,9 @@ function createFx(ctx) {
     rotLast: (i, r, w = 0) => { if (i >= 0) { rot[i] = r; vrot[i] = w; } },
     /** Seconds of velocity a F_VSTRETCH particle is stretched by (default 0.03). */
     velStretch: (i, k) => { if (i >= 0) vstr[i] = k; },
-    get quality() { return cap >= QUALITY.ultra.particles ? 'ultra' : cap <= QUALITY.low.particles ? 'low' : 'high'; },
+    get quality() { return cap >= QUALITY.cinematic.particles ? 'cinematic' : cap >= QUALITY.ultra.particles ? 'ultra' : cap <= QUALITY.low.particles ? 'low' : 'high'; },
     setQuality(qn) {
-      const qq = QUALITY[qn] || QUALITY.high;
+      const qq = tierRow(QUALITY, qn);
       cap = qq.particles;
       bcap = qq.beams;
       if (n > cap) n = cap;

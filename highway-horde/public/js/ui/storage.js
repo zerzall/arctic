@@ -19,8 +19,11 @@ export const DEFAULT_CLIENT_SETTINGS = {
   speech: false,     // story dialogue read aloud with speechSynthesis (off by default)
   // Graphics. quality goes to renderer.setQuality(); the rest rides along in the settings
   // object of every renderer.render() call (see gfx.js rendererSettings).
-  quality: 'ultra',
-  renderScale: 'auto', // 'auto' (dynamic resolution holding 60 fps; may supersample up to 1.5 on desktops) | 0.5..2
+  quality: 'ultra',    // 'cinematic' | 'ultra' | 'high' | 'low'
+  // Whether the player chose the quality (a click on a preset). Until then the first-run GPU
+  // detection (ui/gpu.js) may raise the default to 'cinematic'; a chosen quality is never touched.
+  qualityPicked: false,
+  renderScale: 'auto', // 'auto' (dynamic resolution holding the display's refresh rate; may supersample: up to 1.5 on desktops, 2 on Cinematic) | 0.5..2
   bloom: true,
   ao: true,            // ambient occlusion
   antialias: 'smaa',   // 'smaa' | 'fxaa' | 'off'
@@ -29,11 +32,30 @@ export const DEFAULT_CLIENT_SETTINGS = {
   volumetrics: true,   // ground mist + lamps / fires glowing in the air ('high'/'ultra')
   reflections: true,   // wet-ground and water reflections ('high'/'ultra')
   gore: 'on',          // 'on' | 'low' (less blood, no limbs) | 'off' (dark ash instead of red, no gibs)
+  // Cinematic extras (the Advanced panel; only the Cinematic tier honours them, every other
+  // preset holds them off): MSAA samples on the HDR target, 4096 px cascaded sun shadows, screen-space
+  // contact shadows, full-resolution AO, higher-quality reflections / light shafts, motion blur,
+  // depth of field (hurt / downed), chromatic lens effects and shadow-casting lamps.
+  msaa: 0,
+  shadowsHigh: false,
+  contactShadows: false,
+  aoFull: false,
+  fxHigh: false,
+  motionBlur: false,
+  dof: false,
+  lensFx: false,
+  lightShadows: false,
   lighting: true,
   screenShake: true,
   showNames: true,
   showStats: false,
   // Display: menus and HUD scale with the screen (uiscale.js); fullscreen is opt-in.
+  // 'off' | 60 | 120 | 144: skip frames above this rate (the game otherwise follows the display's refresh)
+  fpsCap: 'off',
+  // Tone calibration for the display (× 1 = the game's own grade): exposure, contrast, colour
+  displayBrightness: 1,
+  displayContrast: 1,
+  displaySaturation: 1,
   uiScale: 'auto',     // 'auto' | 0.75..1.5 (× the automatic, resolution-aware size)
   hudSafeArea: '16:9', // 'full' | '16:9' (ultrawide: HUD corners inside a centred 16:9 box)
   fullscreenOnStart: false,
@@ -62,7 +84,14 @@ export const UI_SCALES = [0.75, 0.9, 1.1, 1.25, 1.5];
 export const UI_SCALE_MIN = 0.75;
 export const UI_SCALE_MAX = 1.5;
 export const ANTIALIAS_MODES = ['smaa', 'fxaa', 'off'];
-export const QUALITIES = ['ultra', 'high', 'low'];
+export const QUALITIES = ['cinematic', 'ultra', 'high', 'low'];
+/** MSAA sample counts offered on Cinematic (0 = off; clamped to what the GPU supports). */
+export const MSAA_MODES = [0, 2, 4, 8];
+/** Frame-rate caps offered in Display settings. */
+export const FPS_CAPS = ['off', 60, 120, 144];
+/** Range of the display calibration sliders. */
+export const CALIB_MIN = 0.7;
+export const CALIB_MAX = 1.3;
 /** Gore levels: 'off' replaces blood with dark ash and nobody is blown apart. */
 export const GORE_MODES = ['on', 'low', 'off'];
 
@@ -71,10 +100,16 @@ export const GORE_MODES = ['on', 'low', 'off'];
  * fallback for effects missing from stored prefs: someone who picked Low before the panel
  * existed keeps a light Low setup instead of waking up with every effect on.
  */
+const NO_CINEMATIC = { msaa: 0, shadowsHigh: false, contactShadows: false, aoFull: false, fxHigh: false, motionBlur: false, dof: false, lensFx: false, lightShadows: false };
 export const GRAPHICS_PRESETS = {
-  ultra: { bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: true },
-  high: { bloom: true, ao: false, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: false },
-  low: { bloom: false, ao: false, antialias: 'fxaa', filmGrain: false, vignette: true, volumetrics: false, reflections: false },
+  // Cinematic: everything Ultra does, plus the RTX-class extras (motion blur stays off: taste)
+  cinematic: {
+    bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: true,
+    msaa: 4, shadowsHigh: true, contactShadows: true, aoFull: true, fxHigh: true, motionBlur: false, dof: true, lensFx: true, lightShadows: true,
+  },
+  ultra: { bloom: true, ao: true, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: true, ...NO_CINEMATIC },
+  high: { bloom: true, ao: false, antialias: 'smaa', filmGrain: true, vignette: true, volumetrics: true, reflections: false, ...NO_CINEMATIC },
+  low: { bloom: false, ao: false, antialias: 'fxaa', filmGrain: false, vignette: true, volumetrics: false, reflections: false, ...NO_CINEMATIC },
 };
 
 const NAME_POOL = [
@@ -178,7 +213,12 @@ export function validateSettings(s) {
   // Builds before the graphics panel saved the old desktop default ('high') with every
   // profile, whether or not the player chose it; those prefs have no renderScale. Treat
   // that 'high' as unpicked so desktops move up to the new default.
-  if (s.renderScale === undefined && s.quality === 'high') quality = ds.quality;
+  const legacyHigh = s.renderScale === undefined && s.quality === 'high';
+  if (legacyHigh) quality = ds.quality;
+  // A quality counts as chosen when the profile says so; profiles from before the flag were
+  // saved with the default 'ultra' whether or not it was picked, so only another value
+  // (someone changed it on purpose) counts.
+  const qualityPicked = !legacyHigh && (typeof s.qualityPicked === 'boolean' ? s.qualityPicked : s.quality !== undefined && s.quality !== 'ultra' && QUALITIES.includes(s.quality));
   // Missing or broken effect toggles follow the preset of the quality in use.
   const fx = GRAPHICS_PRESETS[quality];
   return {
@@ -188,6 +228,7 @@ export function validateSettings(s) {
     muted: bool(s.muted, ds.muted),
     speech: bool(s.speech, ds.speech),
     quality,
+    qualityPicked,
     renderScale: autoOrNum(s.renderScale, RENDER_SCALE_MIN, RENDER_SCALE_MAX, ds.renderScale),
     bloom: bool(s.bloom, fx.bloom),
     ao: bool(s.ao, fx.ao),
@@ -197,10 +238,23 @@ export function validateSettings(s) {
     volumetrics: bool(s.volumetrics, fx.volumetrics),
     reflections: bool(s.reflections, fx.reflections),
     gore: oneOf(s.gore, GORE_MODES, ds.gore),
+    msaa: oneOf(s.msaa, MSAA_MODES, fx.msaa),
+    shadowsHigh: bool(s.shadowsHigh, fx.shadowsHigh),
+    contactShadows: bool(s.contactShadows, fx.contactShadows),
+    aoFull: bool(s.aoFull, fx.aoFull),
+    fxHigh: bool(s.fxHigh, fx.fxHigh),
+    motionBlur: bool(s.motionBlur, fx.motionBlur),
+    dof: bool(s.dof, fx.dof),
+    lensFx: bool(s.lensFx, fx.lensFx),
+    lightShadows: bool(s.lightShadows, fx.lightShadows),
     lighting: bool(s.lighting, ds.lighting),
     screenShake: bool(s.screenShake, ds.screenShake),
     showNames: bool(s.showNames, ds.showNames),
     showStats: bool(s.showStats, ds.showStats),
+    fpsCap: oneOf(s.fpsCap, FPS_CAPS, ds.fpsCap),
+    displayBrightness: Math.round(numIn(s.displayBrightness, CALIB_MIN, CALIB_MAX, ds.displayBrightness) * 100) / 100,
+    displayContrast: Math.round(numIn(s.displayContrast, CALIB_MIN, CALIB_MAX, ds.displayContrast) * 100) / 100,
+    displaySaturation: Math.round(numIn(s.displaySaturation, CALIB_MIN, CALIB_MAX, ds.displaySaturation) * 100) / 100,
     uiScale: autoOrNum(s.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, ds.uiScale),
     hudSafeArea: oneOf(s.hudSafeArea, ['full', '16:9'], ds.hudSafeArea),
     fullscreenOnStart: bool(s.fullscreenOnStart, ds.fullscreenOnStart),

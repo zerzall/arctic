@@ -8,6 +8,8 @@ import { PLAYER_COLORS, PLAYER_COLOR_NAMES, ROOM_CODE_LENGTH, ROOM_CODE_ALPHABET
 import { $, $$, h, fitCanvas } from './dom.js';
 import { cleanName, isCoarsePointer } from './storage.js';
 import { applyPreset, presetMatches, PRESET_KEYS } from './gfx.js';
+import { gpuLabel, recommendedTier } from './gpu.js';
+import { resolutionHint } from './display.js';
 import { currentUiScale } from './uiscale.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 import { speechSupported } from './story-voice.js';
@@ -436,7 +438,8 @@ const SETTINGS_TABS = ['graphics', 'display', 'controls', 'audio'];
  * Settings dialog: tabs for Graphics (preset, resolution, Advanced effects), Display & HUD
  * (fullscreen, UI size, HUD safe area, readouts), Controls and Audio. Every control writes
  * prefs.settings straight away, applies it (ctx.applySettings) and saves.
- * @param {object} ctx { prefs, savePrefs, modals, audio, applySettings(), deps, webgl, match }
+ * @param {object} ctx { prefs, savePrefs, modals, audio, applySettings(), deps, webgl, match,
+ *   gpu (ui/gpu.js probeGpu() result, once known), display ({ refreshHz }: the measured refresh rate) }
  */
 export function createSettingsDialog(ctx) {
   const dlg = $('#dlg-settings');
@@ -455,6 +458,11 @@ export function createSettingsDialog(ctx) {
   const resetBtn = $('#set-preset-reset', dlg);
   const uiNow = $('#set-uiscale-now', dlg);
   const gfxNote = $('#set-gfx-note', dlg);
+  const gpuNote = $('#set-gpu', dlg);
+  const resHint = $('#set-res-hint', dlg);
+  const cineBox = $('#set-cine', dlg);
+  const refreshNow = $('#set-refresh-now', dlg);
+  const calibReset = $('#set-calib-reset', dlg);
   let tab = SETTINGS_TABS[0];
   // Sliders store value / data-scale (default 100: 0..100 % ↦ 0..1).
   const scaleOf = (r) => Number(r.dataset.scale) || 100;
@@ -503,6 +511,22 @@ export function createSettingsDialog(ctx) {
     const custom = !presetMatches(s);
     customBadge.hidden = !custom;
     resetBtn.hidden = !custom;
+    // the Cinematic extras only mean something on the Cinematic preset
+    cineBox.hidden = s.quality !== 'cinematic';
+    // what GPU this is, and what it is good for
+    const coarse = isCoarsePointer();
+    const g = ctx.gpu;
+    const label = g && g.name ? gpuLabel(g, { coarse }) : '';
+    gpuNote.textContent = label ? `Detected: ${label}` : '';
+    gpuNote.hidden = !label;
+    const hz = ctx.display && ctx.display.refreshHz;
+    const sc = typeof screen !== 'undefined' ? screen : { width: window.innerWidth, height: window.innerHeight };
+    const hint = resolutionHint({
+      gpuTier: recommendedTier(g, { coarse }), quality: s.quality, width: sc.width, height: sc.height, dpr: window.devicePixelRatio || 1, refreshHz: hz,
+    });
+    resHint.textContent = hint.text;
+    resHint.hidden = !hint.text;
+    refreshNow.textContent = hz ? `· ${hz} Hz display` : '';
   }
 
   function syncUiScale() {
@@ -592,6 +616,12 @@ export function createSettingsDialog(ctx) {
       changed();
     });
   }
+  calibReset.addEventListener('click', () => {
+    s.displayBrightness = 1; s.displayContrast = 1; s.displaySaturation = 1;
+    ctx.audio.ui('click');
+    sync();
+    changed();
+  });
   resetBtn.addEventListener('click', () => {
     applyPreset(s, s.quality);
     ctx.audio.ui('click');
@@ -627,7 +657,7 @@ export function createSettingsDialog(ctx) {
     },
     /** The effective UI scale changed (window resize, UI size): refresh the readout. */
     refresh() {
-      if (!dlg.hidden) syncUiScale();
+      if (!dlg.hidden) { syncUiScale(); syncGraphics(); }
     },
     /** 'graphics' | 'display' | 'controls' | 'audio' */
     selectTab,

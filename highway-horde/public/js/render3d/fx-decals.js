@@ -412,6 +412,9 @@ varying float vDS;
 export function createDecalLayer(scene, caps, maxCaps) {
   const GMAX = maxCaps.gore, MMAX = maxCaps.marks, TOT = GMAX + MMAX;
   let gCap = caps.gore, mCap = caps.marks;
+  // the marks ring starts right after the tier's gore ring (not after the biggest tier's), so a
+  // lower tier draws no idle instances; a tier change clears the layer, so the base may move
+  let mBase = gCap;
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
   geo.setIndex([0, 1, 2, 0, 2, 3]);
@@ -444,7 +447,7 @@ export function createDecalLayer(scene, caps, maxCaps) {
   mesh.name = 'fx-decals';
   scene.add(mesh);
 
-  // ring state: [0, gCap) gore, [GMAX, GMAX + mCap) marks
+  // ring state: [0, gCap) gore, [mBase, mBase + mCap) marks
   let gn = 0, gHead = 0, mn = 0, mHead = 0;
   let dirtyLo = TOT, dirtyHi = -1;
   let clock = 0;
@@ -459,7 +462,7 @@ export function createDecalLayer(scene, caps, maxCaps) {
     }
     let s;
     if (mn < mCap) s = mn++; else { s = mHead; mHead = (mHead + 1) % mCap; }
-    return GMAX + s;
+    return mBase + s;
   }
 
   /**
@@ -496,7 +499,7 @@ export function createDecalLayer(scene, caps, maxCaps) {
       }
       dirtyLo = TOT; dirtyHi = -1;
     }
-    geo.instanceCount = mn > 0 ? GMAX + mn : gn;
+    geo.instanceCount = mn > 0 ? mBase + mn : gn;
     mesh.visible = gn + mn > 0;
     stats.gore = gn; stats.marks = mn; stats.total = gn + mn;
   }
@@ -513,7 +516,7 @@ export function createDecalLayer(scene, caps, maxCaps) {
     advance(seconds) { clock += seconds; uniforms.uNow.value = clock; },
     get clock() { return clock; },
     get caps() { return { gore: gCap, marks: mCap }; },
-    setCaps(c) { clear(); gCap = Math.min(GMAX, c.gore); mCap = Math.min(MMAX, c.marks); },
+    setCaps(c) { clear(); gCap = Math.min(GMAX, c.gore); mCap = Math.min(MMAX, c.marks); mBase = gCap; },
     dispose() {
       mesh.removeFromParent();
       geo.dispose();

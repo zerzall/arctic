@@ -20,11 +20,20 @@
 // A full-resolution composite then upsamples both with depth-aware (joint bilateral)
 // weights and writes colour × transmittance + in-scatter + reflection into the other
 // buffer (the pass swaps). Draw calls: 2–3.
+//
+// 'cinematic' (SPEC §7.5.3, setting `fxHigh`): the volumetrics march at full resolution with 22
+// flashlight steps and up to 20 pool lights, and add SUN SHAFTS — the view ray is marched through the
+// cascaded sun map (the static world's shadow, sunlight.js) so buildings, cars and tree canopies cut
+// real crepuscular rays out of the haze (moon shafts at night); the reflections run at 3/4 resolution
+// with 48 steps, blur the wet asphalt's streaks with the distance of what they mirror, and take more
+// taps in the streak filter.
 
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { tierAtLeast } from './tier.js';
 
-export const ATMOS_LIGHTS = 12;
+/** Pool lights the volumetrics can integrate (the pool has 12 on Ultra, 20 on Cinematic; the loop stops at the pool's size). */
+export const ATMOS_LIGHTS = 20;
 
 const VERT = `
 varying vec2 vUv;
@@ -60,6 +69,15 @@ uniform vec3 uMistCol;
 uniform float uMist, uMistH, uScatter, uMistScatter, uFog, uSkyDist, uTime;
 uniform vec3 uFlashPos, uFlashDir, uFlashCol;
 uniform vec4 uFlash;                    // cos outer, cos inner, range, steps (0 = no beam)
+uniform float uLightN;                  // pool lights to integrate
+#ifdef HH_SUN
+uniform highp sampler2DShadow uSunMap;  // the cascaded sun / moon map (an atlas: cascade i in tile i)
+uniform mat4 uSunMat0, uSunMat1;
+uniform vec4 uSunDepth;                 // view depth where cascade 0 ends, cascade 1 ends
+uniform vec3 uSunDir, uSunCol, uCamFwd; // toward the sun; colour x intensity; the camera's forward vector
+uniform vec4 uShaft;                    // steps, in-scatter density, scale height, depth bias (units)
+uniform vec2 uSunRange;                 // depth range of the two shadow cameras (units), for the bias
+#endif
 varying vec2 vUv;
 
 // integral of the lamp's window (1 - d²/R²)² over u (offset from the closest point)
@@ -97,6 +115,7 @@ void main() {
 
   // ---- the light pool scattering in the air (closed form per light) ----
   for (int i = 0; i < ${ATMOS_LIGHTS}; i++) {
+    if (float(i) >= uLightN) break;
     vec4 lp = uLPos[i];
     if (lp.w <= 0.0) continue;
     vec3 oc = lp.xyz - O;
@@ -131,7 +150,7 @@ void main() {
     float jit = hhIgn(gl_FragCoord.xy + fract(uTime * 7.0) * 61.0);
     float acc = 0.0;
     float dt = end / n;
-    for (int s = 0; s < 16; s++) {
+    for (int s = 0; s < 32; s++) {
       if (float(s) >= n) break;
       float t = (float(s) + jit) * dt;
       vec3 p = O + D * t;
@@ -144,6 +163,37 @@ void main() {
     }
     L += uFlashCol * acc * dt * 0.4;
   }
+
+#ifdef HH_SUN
+  // ---- sun / moon shafts: the view ray marched through the cascaded shadow map ----
+  if (uShaft.x > 0.5) {
+    float n = uShaft.x;
+    float dt = S / n;
+    float jit = hhIgn(gl_FragCoord.xy + fract(uTime * 5.0) * 43.0);
+    float acc = 0.0;
+    float fwd = dot(D, uCamFwd);
+    for (int s = 0; s < 64; s++) {
+      if (float(s) >= n) break;
+      float t = (float(s) + jit) * dt;
+      vec3 p = O + D * t;
+      float vd = t * fwd;
+      float lit = 1.0;
+      vec4 sc = vd < uSunDepth.x ? uSunMat0 * vec4(p, 1.0) : uSunMat1 * vec4(p, 1.0);
+      float bias = uShaft.w / (vd < uSunDepth.x ? uSunRange.x : uSunRange.y);
+      // (the matrix already maps into this cascade's tile of the atlas)
+      if (vd < uSunDepth.y && sc.x > 0.0 && sc.x < 1.0 && sc.y > 0.0 && sc.y < 1.0 && sc.z < 1.0) {
+        lit = texture(uSunMap, vec3(sc.xy, sc.z - bias));
+      }
+      float dens = exp(-max(p.y, 0.0) / uShaft.z) * exp(-uFog * uFog * t * t);
+      acc += lit * dens;
+    }
+    float cosT = dot(D, uSunDir);
+    // Henyey-Greenstein, forward scattering (g = 0.62): the shafts show looking toward the sun
+    float g = 0.62;
+    float phase = (1.0 - g * g) / (4.0 * 3.14159265 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
+    L += uSunCol * acc * dt * uShaft.y * (0.2 + phase * 3.2);
+  }
+#endif
   gl_FragColor = vec4(L, T);
 }`;
 
@@ -154,7 +204,7 @@ uniform sampler2D tColor;
 uniform sampler2D tDetail;      // ground.js detail map (puddle noise)
 uniform sampler2D tMask;        // ground surface mask
 uniform vec4 uMaskRect;
-uniform float uWet, uTime, uSteps, uMaxDist, uWaterY, uRain, uCap;
+uniform float uWet, uTime, uSteps, uMaxDist, uWaterY, uRain, uCap, uHitBlur;
 uniform mat4 uProj, uView;
 varying vec2 vUv;
 
@@ -209,7 +259,8 @@ void main() {
   vec2 hitUv = vec2(0.0);
   vec3 skyMax = vec3(0.0);
   float n = uSteps;
-  for (int i = 1; i <= 32; i++) {
+  float hitT = uMaxDist;
+  for (int i = 1; i <= 64; i++) {
     if (float(i) > n) break;
     float f = (float(i) - 0.5 + jit) / n;
     float t = uMaxDist * f * f;
@@ -238,6 +289,7 @@ void main() {
         if (mz - pm.z > 0.0) hi = m; else lo = m;
       }
       hitUv = hhProject(start + R * hi);
+      hitT = hi;
       hit = true;
       break;
     }
@@ -254,6 +306,8 @@ void main() {
   }
   // HDR caps: a lamp lens mirrored in a puddle blooms, but never into a white sheet
   col = min(col, vec3(uCap));
+  // (cinematic) contact hardening: a reflection of something far away is blurrier on wet asphalt
+  if (uHitBlur > 0.0 && rough > 0.12) rough = min(1.0, rough + hitT / uMaxDist * uHitBlur);
   gl_FragColor = vec4(col * F * strength * fade, rough);
 }`;
 
@@ -262,7 +316,7 @@ precision highp float;
 ${DEPTH_PARS}
 uniform sampler2D tColor, tVol, tSsr;
 uniform vec2 uVolSize, uSsrSize;
-uniform float uVolOn, uSsrOn, uStreak, uWaterY;
+uniform float uVolOn, uSsrOn, uStreak, uWaterY, uStreakTaps;
 varying vec2 vUv;
 
 void main() {
@@ -303,8 +357,9 @@ void main() {
         float j = hhIgn(gl_FragCoord.xy) - 0.5;
         vec3 sum = r;
         float ws = 1.0;
-        for (int k = 1; k <= 4; k++) {
-          float o = (float(k) + j * 0.9) / 4.0;
+        for (int k = 1; k <= 8; k++) {
+          if (float(k) > uStreakTaps) break;
+          float o = (float(k) + j * 0.9) / uStreakTaps;
           float w = exp(-o * o * 2.2);
           sum += (texture2D(tSsr, vUv + vec2(0.0, o * rad)).rgb + texture2D(tSsr, vUv - vec2(0.0, o * rad)).rgb) * w;
           ws += 2.0 * w;
@@ -341,9 +396,14 @@ export class AtmosPass extends Pass {
     this.getSources = getSources;
     this.needsSwap = true;
     this.enabled = false;
+    /** Sun / moon shaft strength multiplier (tuning knob; 1 = as designed). */
+    this.shaftK = 1;
     this.vol = false;
     this.ssr = false;
     this.tier = 'high';
+    this.hi = false;                 // cinematic fxHigh
+    this.sunOn = false;
+    this.sun = null;
     this.time = 0;
     this.w = 1; this.h = 1;
     const type = hdr ? THREE.HalfFloatType : THREE.UnsignedByteType;
@@ -363,37 +423,61 @@ export class AtmosPass extends Pass {
       uFog: { value: 0.001 }, uSkyDist: { value: 3000 }, uTime: { value: 0 },
       uFlashPos: { value: new THREE.Vector3() }, uFlashDir: { value: new THREE.Vector3(0, 0, -1) },
       uFlashCol: { value: new THREE.Color() }, uFlash: { value: new THREE.Vector4(0.9, 0.99, 900, 0) },
+      uLightN: { value: 12 },
+      uSunMap: { value: null }, uSunMat0: { value: new THREE.Matrix4() }, uSunMat1: { value: new THREE.Matrix4() },
+      uSunDepth: { value: new THREE.Vector4(300, 1900, 0, 0) }, uSunRange: { value: new THREE.Vector2(2000, 8000) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() }, uCamFwd: { value: new THREE.Vector3(0, 0, -1) },
+      uShaft: { value: new THREE.Vector4(0, 2.5e-5, 300, 2) },
     });
     this.ssrMat = mat(SSR_FRAG, {
       ...depthU(),
       tColor: { value: null }, tDetail: { value: null }, tMask: { value: null }, uMaskRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uWet: { value: 1 }, uTime: { value: 0 }, uSteps: { value: 28 }, uMaxDist: { value: 2600 }, uWaterY: { value: -16 }, uRain: { value: 0 }, uCap: { value: 12 },
+      uWet: { value: 1 }, uTime: { value: 0 }, uSteps: { value: 28 }, uMaxDist: { value: 2600 }, uWaterY: { value: -16 }, uRain: { value: 0 }, uCap: { value: 12 }, uHitBlur: { value: 0 },
       uProj: { value: new THREE.Matrix4() }, uView: { value: new THREE.Matrix4() },
     });
     this.compMat = mat(COMP_FRAG, {
       ...depthU(),
       tColor: { value: null }, tVol: { value: this.volRT.texture }, tSsr: { value: this.ssrRT.texture },
       uVolSize: { value: new THREE.Vector2(1, 1) }, uSsrSize: { value: new THREE.Vector2(1, 1) },
-      uVolOn: { value: 0 }, uSsrOn: { value: 0 }, uStreak: { value: 0.05 }, uWaterY: { value: -16 },
+      uVolOn: { value: 0 }, uSsrOn: { value: 0 }, uStreak: { value: 0.05 }, uWaterY: { value: -16 }, uStreakTaps: { value: 4 },
     });
     this.quad = new FullScreenQuad(this.volMat);
     this._c = new THREE.Color();
     this._v = new THREE.Vector3();
   }
 
-  /** Which parts run on this tier with these settings ('low' never runs the pass). */
-  configure(tier, volumetrics, reflections) {
+  /** Which parts run on this tier with these settings ('low' never runs the pass). `hi`: the cinematic fxHigh extras. */
+  configure(tier, volumetrics, reflections, hi = false) {
     this.tier = tier;
+    this.hi = hi && tierAtLeast(tier, 'cinematic');
     this.vol = tier !== 'low' && !!volumetrics;
     this.ssr = tier !== 'low' && !!reflections;
     this.enabled = this.vol || this.ssr;
     this.setSize(this.w, this.h);
   }
 
+  /**
+   * The cascaded sun (lights.js `sun`) for the shafts, or null. Switching it on / off changes the
+   * volumetric program (a #define), so it is only touched when the state really changes.
+   */
+  setSun(sun) {
+    const on = !!(this.hi && sun && sun.shadow && sun.shadow.map && sun.shadow.map.depthTexture);
+    if (on !== this.sunOn) {
+      this.sunOn = on;
+      if (on) this.volMat.defines.HH_SUN = 1; else delete this.volMat.defines.HH_SUN;
+      this.volMat.needsUpdate = true;
+    }
+    this.sun = on ? sun : null;
+  }
+
   setSize(w, h) {
     this.w = w; this.h = h;
-    const ultra = this.tier === 'ultra';
-    const vs = ultra ? 0.5 : 0.25, ss = ultra ? 0.5 : 0.25;
+    const ultra = tierAtLeast(this.tier, 'ultra');
+    // (cinematic: full-resolution mist and shafts, 3/4-resolution reflections, but never more than a 4K
+    // frame's worth of pixels for the one, 6 M for the other: above that the frame is supersampled anyway)
+    const px = Math.max(1, w * h);
+    const vs = this.hi ? Math.min(1, Math.sqrt(8.9e6 / px)) : ultra ? 0.5 : 0.25;
+    const ss = this.hi ? Math.min(0.75, Math.sqrt(6e6 / px)) : ultra ? 0.5 : 0.25;
     const vw = Math.max(1, Math.round(w * vs)), vh = Math.max(1, Math.round(h * vs));
     const sw = Math.max(1, Math.round(w * ss)), sh = Math.max(1, Math.round(h * ss));
     // targets only take memory while their part is on
@@ -417,7 +501,8 @@ export class AtmosPass extends Pass {
     if (!depth) return;
     this.time = (this.time + (deltaTime || 0)) % 1000;
     const src = this.getSources ? this.getSources() : null;
-    const ultra = this.tier === 'ultra';
+    const ultra = tierAtLeast(this.tier, 'ultra');
+    this.setSun(src && src.sun);
     const ac = renderer.autoClear;
     renderer.autoClear = false;
     try {
@@ -440,7 +525,8 @@ export class AtmosPass extends Pass {
         u.uTime.value = this.time;
         // by day the escaping rays pick up the bright sky (and the sun): keep it a reflection, not a mirror flash
         u.uCap.value = src && src.ambient && src.ambient.time === 'day' ? 3.0 : 12;
-        u.uSteps.value = ultra ? 28 : 16;
+        u.uSteps.value = this.hi ? 48 : ultra ? 28 : 16;
+        u.uHitBlur.value = this.hi ? 0.5 : 0;
         const g = src && src.ground;
         if (g && g.uniforms) {
           u.tDetail.value = g.uniforms.detailMap.value;
@@ -461,6 +547,7 @@ export class AtmosPass extends Pass {
       c.tColor.value = readBuffer.texture;
       c.uVolOn.value = this.vol ? 1 : 0;
       c.uSsrOn.value = this.ssr ? 1 : 0;
+      c.uStreakTaps.value = this.hi ? 6 : 4;
       this.quad.material = this.compMat;
       renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
       this.quad.render(renderer);
@@ -474,6 +561,7 @@ export class AtmosPass extends Pass {
     const P = u.uLPos.value, C = u.uLCol.value;
     const pool = src && src.lights ? src.lights : [];
     const kinds = src && src.kinds;
+    u.uLightN.value = Math.min(ATMOS_LIGHTS, pool.length);
     for (let i = 0; i < ATMOS_LIGHTS; i++) {
       const l = pool[i];
       if (!l || !(l.intensity > 0)) { P[i].set(0, -1e5, 0, 0); C[i].set(0, 0, 0, 0); continue; }
@@ -499,16 +587,39 @@ export class AtmosPass extends Pass {
       else u.uMistCol.value.copy(amb.fog).lerp(amb.sky, 0.08).multiplyScalar(1.35);
     }
     const fl = src && src.flashlight;
-    const beam = this.tier === 'ultra' && fl && fl.intensity > 0;
+    const beam = tierAtLeast(this.tier, 'ultra') && fl && fl.intensity > 0;
+    this._sunShafts(u, src, day, dark);
     if (beam) {
       u.uFlashPos.value.copy(fl.position);
       this._v.copy(fl.target.position).sub(fl.position).normalize();
       u.uFlashDir.value.copy(this._v);
       u.uFlashCol.value.copy(fl.color).multiplyScalar(fl.intensity);
-      u.uFlash.value.set(Math.cos(fl.angle), Math.cos(fl.angle * (1 - fl.penumbra)), Math.min(fl.distance || 900, 900), 10);
+      u.uFlash.value.set(Math.cos(fl.angle), Math.cos(fl.angle * (1 - fl.penumbra)), Math.min(fl.distance || 900, 900), this.hi ? 22 : 10);
     } else {
       u.uFlash.value.w = 0;
     }
+  }
+
+  /** Uniforms of the sun / moon shafts (cinematic fxHigh): the cascade matrices, depth ranges, colour and density. */
+  _sunShafts(u, src, day, dark) {
+    const sun = this.sun;
+    if (!sun) { u.uShaft.value.x = 0; return; }
+    const sh = sun.shadow, cam = this.camera;
+    u.uSunMap.value = sh.map.depthTexture;
+    u.uSunMat0.value.copy(sh.getMatrix(0));
+    u.uSunMat1.value.copy(sh.getMatrix(1));
+    u.uSunDepth.value.set(sh.depths[0], sh.depths[1], 0, 0);
+    const r0 = sh.getCamera(0), r1 = sh.getCamera(1);
+    u.uSunRange.value.set(r0.far - r0.near, r1.far - r1.near);
+    u.uSunDir.value.copy(sun.dir);
+    cam.getWorldDirection(this._v);
+    u.uCamFwd.value.copy(this._v);
+    // colour x intensity of the sun / moon; the density is what the haze scatters per unit: a clear day
+    // barely shows shafts, a hazy morning or the thick night mist a lot
+    const l = sun.light;
+    u.uSunCol.value.copy(l.color).multiplyScalar(l.intensity);
+    const mist = src && src.ambient && Number.isFinite(src.ambient.mist) ? src.ambient.mist : 0.6;
+    u.uShaft.value.set(this.hi ? 28 : 0, this.shaftK * (day ? 1.3e-5 * (0.5 + mist) : 6e-5 * (0.6 + dark)), day ? 320 : 140, 2.5);
   }
 
   dispose() {

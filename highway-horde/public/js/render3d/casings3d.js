@@ -6,8 +6,9 @@
 
 import * as THREE from 'three';
 import { col } from './actor-kit.js';
+import { baseTier, tierRow } from './tier.js';
 
-const CAP = { ultra: 140, high: 80, low: 22 };
+export const CAP = { cinematic: 340, ultra: 140, high: 80, low: 22 };
 const LIFE = 40;
 const BRASS = ['#c9a24a', '#d6b25a', '#b98f3c'], HULL = '#b02a24', STEEL = '#8a8f94';
 
@@ -40,8 +41,8 @@ function casingGeometry() {
 
 export function createCasings3D(ctx, fx, env) {
   const { G } = env;
-  let tier = ctx.quality === 'ultra' ? 'ultra' : ctx.quality === 'low' ? 'low' : 'high';
-  const MAXN = CAP.ultra;
+  let tier = ctx.quality === 'cinematic' ? 'cinematic' : baseTier(ctx.quality);
+  const MAXN = CAP.cinematic;
   const geo = casingGeometry();
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.3 });
   const mesh = new THREE.InstancedMesh(geo, mat, MAXN);
@@ -66,7 +67,7 @@ export function createCasings3D(ctx, fx, env) {
    * @param {number} kind 0 brass (pistol, smg, rifle), 1 shotgun hull, 2 heavy rifle / MG brass
    */
   function eject(x, h, y, aim, kind) {
-    const cap = CAP[tier];
+    const cap = tierRow(CAP, tier);
     if (cap <= 0) return;
     let i;
     if (n < cap) i = n++;
@@ -152,8 +153,8 @@ export function createCasings3D(ctx, fx, env) {
     step, eject, stats,
     get count() { return n; },
     setQuality(q) {
-      tier = q === 'ultra' ? 'ultra' : q === 'low' ? 'low' : 'high';
-      if (n > CAP[tier]) n = CAP[tier];
+      tier = q === 'cinematic' ? 'cinematic' : baseTier(q);
+      if (n > tierRow(CAP, tier)) n = tierRow(CAP, tier);
     },
     dispose() { mesh.removeFromParent(); mesh.dispose(); geo.dispose(); mat.dispose(); },
   };

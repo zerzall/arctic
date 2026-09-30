@@ -28,6 +28,7 @@ import { padNavigate } from './padnav.js';
 import { flashToast } from './menus.js';
 import { applyLook, moveToWorld, aimAssist, sensitivityOf, wrapAngle } from './look.js';
 import { rendererSettings } from './gfx.js';
+import { createFrameLimiter } from './display.js';
 import { currentUiScale } from './uiscale.js';
 import { enterFullscreen, fullscreenSupported, isFullscreen } from './fullscreen.js';
 
@@ -86,14 +87,25 @@ function gameCanvas(kind, fresh = false) {
   return c;
 }
 
+/**
+ * The frame rate dynamic resolution aims at 97 % of: the display's refresh rate (measured by app.js),
+ * or the frame-rate limit when that is lower.
+ */
+function effectiveHz(ctx) {
+  const hz = (ctx.display && ctx.display.refreshHz) || 60;
+  const cap = Number(ctx.prefs.settings.fpsCap);
+  return cap > 0 ? Math.min(hz, cap) : hz;
+}
+
 /** First-person renderer when the view setting asks for it and it can run, else top-down. */
 function createViewRenderer(ctx, map, mode, time) {
   const { deps, prefs } = ctx;
   const quality = prefs.settings.quality;
+  const refreshHz = effectiveHz(ctx);
   if (prefs.settings.view !== 'topdown' && typeof deps.createRenderer3D === 'function' && webglOk(ctx)) {
     const canvas = gameCanvas('webgl');
     try {
-      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality, mode, time }) };
+      return { fps: true, canvas, renderer: deps.createRenderer3D(canvas, { map, quality, mode, time, refreshHz }) };
     } catch (err) {
       console.warn('[game] the first-person view failed to start, using the classic view', err);
       ctx.webgl = false;
@@ -188,6 +200,8 @@ export function startMatch(ctx, session) {
   let stopped = false;
   let raf = 0;
   let last = 0;
+  // Settings > Display > frame-rate limit: skip the rAF callbacks above the cap (off = follow the display)
+  const limiter = createFrameLimiter();
   let lastView = null;
   let prevPhase = '';
   let errors = 0;
@@ -222,6 +236,7 @@ export function startMatch(ctx, session) {
     renderSettings.uiScale = currentUiScale();
     hud.setMinimapRotate(s.minimapRotate);
     input.setRawMouse(s.rawMouse);
+    if (renderer.setRefreshHz) renderer.setRefreshHz(effectiveHz(ctx));
     if (s.quality !== appliedQuality) {
       appliedQuality = s.quality;
       try {
@@ -630,6 +645,7 @@ export function startMatch(ctx, session) {
   function frame(t) {
     if (stopped) return;
     raf = requestAnimationFrame(frame);
+    if (!limiter.allow(t, prefs.settings.fpsCap, ctx.display && ctx.display.refreshHz)) return;
     const dt = last ? Math.min(0.1, Math.max(0, (t - last) / 1000)) : 1 / 60;
     last = t;
     try {
@@ -691,6 +707,10 @@ export function startMatch(ctx, session) {
       hud.notice(text);
     },
     applySettings,
+    /** The refresh rate was measured (late): dynamic resolution re-aims. */
+    setRefreshHz() {
+      if (renderer.setRefreshHz) renderer.setRefreshHz(effectiveHz(ctx));
+    },
     /** The UI scale changed: HUD canvases (minimap, compass, portraits) follow their boxes. */
     resize() {
       if (stopped) return;
