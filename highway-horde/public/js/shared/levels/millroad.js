@@ -256,6 +256,26 @@ export function spawn(B, sec, x, y, w, h, weight = 1) {
   B.zspawn(x, y, w, h, weight, sec);
 }
 
+/** A hand-placed set-dressing item (shared/dress.js DRESS_KINDS; no collision), drawn by the world's dressing. */
+export function dress(B, k, x, y, a = 0, s = 1) {
+  const art = artOf(B);
+  if (!art.dress) art.dress = [];
+  art.dress.push([k, r1(x), r1(y), r3(a), r3(s)]);
+}
+
+/**
+ * A solid building façade ('building' obstacle drawn by world-bld.js as `arch`), its front toward
+ * local +y at angle `a`. Returns the obstacle.
+ */
+export function facade(B, x, y, w, d, a, arch, o = {}) {
+  const b = B.ob('building', x, y, w, d, a, { color: o.color || '#8a5a44', roof: o.roof || '#3a3634', section: o.sec });
+  b.arch = arch;
+  if (o.top) b.top = o.top;
+  if (o.lit !== undefined) b.lit = o.lit;
+  if (o.style) b.style = o.style;
+  return b;
+}
+
 /** A tagged obstacle whose model the level art draws (`style`). */
 export function ob(B, kind, style, x, y, w, h, a = 0, o = {}) {
   return B.ob(kind, x, y, w, h, a, { ...o, style, section: o.sec });
