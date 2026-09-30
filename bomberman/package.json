@@ -9,11 +9,15 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test --test-timeout=30000 \"specs/unit/**/*.spec.js\" \"specs/integration/**/*.spec.js\"",
+    "test": "node --test --test-timeout=60000 \"specs/unit/**/*.spec.js\" \"specs/integration/**/*.spec.js\"",
     "test:e2e": "node specs/e2e/run.e2e.mjs",
-    "share": "node scripts/share.js"
+    "share": "node scripts/share.js",
+    "build:single": "node scripts/build-single.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

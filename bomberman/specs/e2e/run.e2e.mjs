@@ -4,6 +4,9 @@
 // turn (each exports `name` and a default async function({ base, browser, playwright, server, ok }), on a fresh server), and exits
 // non-zero if any check failed or any scenario threw. Without Playwright or its browser it prints SKIP and exits 0 (SPEC 10.1).
 //
+// single.e2e.mjs is the odd one out: it builds download/blast-party.html into a temp folder and opens it over file:// with the network blocked
+// (no server involved; it launches its own Chromium with mDNS candidate hiding off, so two pages on one machine can find each other by WebRTC).
+//
 // Screenshots of every screen go to $E2E_SHOTS (default: <tmpdir>/blast-party-e2e), e.g. E2E_SHOTS=/tmp/shots npm run test:e2e.
 // SOAK_S sets the length of the soak in seconds (default 60).
 

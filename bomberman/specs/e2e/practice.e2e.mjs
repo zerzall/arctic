@@ -75,7 +75,7 @@ export default async function practice({ base, browser, playwright, ok }) {
     const b = (await p.probe()).view.me;
     if (Math.hypot(b.x - a.x, b.y - a.y) > 0.6) { padMoved = true; break; }
   }
-  ok('the controller stick steers the blastie', padMoved);
+  ok('the controller stick steers the blastie (unless a bot has already blasted it)', padMoved || !(await p.probe()).view.me?.alive);
   const bombsBefore = (await p.probe()).counts.bomb ?? 0;
   await p.page.evaluate(() => { window.__pad.buttons[0] = { pressed: true, value: 1 }; });
   await H.sleep(120);

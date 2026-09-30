@@ -1949,6 +1949,65 @@ th.col-num { padding-inline: 0; text-align: center; }
 }
 
 /* ---------------------------------------------------------------------------------------------------------------
+   Single-file download: the title screen's friends box, the lobby's friend cards and the code dialogs (window.__BP_SINGLE__)
+   ------------------------------------------------------------------------------------------------------------- */
+.title-card.is-single > .friends-box { order: 4; }
+.friends-box {
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+  padding: .9rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, .07);
+  border: .1rem solid rgba(255, 255, 255, .12);
+}
+.friends-title { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: 1.2rem; font-weight: 900; }
+.friends-title .ic { color: var(--yellow); }
+.friends-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .7rem; }
+.friends-btns .btn { padding-inline: .6rem; text-align: center; }
+.friends-note, .friend-text, .friend-note { margin: 0; font-size: .95rem; font-weight: 700; color: var(--ink-2); }
+.friend-note { color: var(--ink-3); font-size: .9rem; }
+.friend-card .btn { width: 100%; margin: .8rem 0 .7rem; }
+.guest-card .friend-note { margin-top: .5rem; }
+
+.modal-p2p { width: min(100%, 36rem); }
+.modal-p2p .dialog-text { font-size: 1.05rem; }
+.modal-p2p .modal-body { gap: .8rem; }
+.title-card.is-single .title-main .btn { font-size: clamp(1.25rem, 6.4vw, 1.6rem); }
+.p2p-step { display: flex; flex-direction: column; gap: .6rem; }
+.p2p-step[hidden] { display: none; }
+.p2p-step-title { margin: 0; font-size: 1.1rem; font-weight: 900; color: var(--yellow); }
+.code-box {
+  min-height: 5.6rem;
+  resize: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: max(16px, .85rem);
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-all;
+}
+.code-box.is-busy { color: var(--ink-3); }
+.code-out { display: flex; flex-direction: column; gap: .6rem; }
+.code-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.code-actions .btn { flex: 1 1 9rem; }
+.code-actions .btn-glass { flex: 0 1 auto; }
+.p2p-more { display: flex; justify-content: flex-end; }
+.p2p-status {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: 0;
+  padding: .6rem .9rem;
+  border-radius: 1rem;
+  font-weight: 800;
+  background: rgba(255, 255, 255, .1);
+  border: .1rem solid rgba(255, 255, 255, .18);
+}
+.p2p-status.is-empty { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.p2p-status[data-kind="error"] { background: rgba(217, 43, 69, .55); border-color: rgba(255, 120, 140, .7); }
+.p2p-status[data-kind="good"] { background: rgba(31, 184, 90, .4); border-color: rgba(120, 255, 170, .6); }
+
+/* ---------------------------------------------------------------------------------------------------------------
    Modals, toasts, blocking overlays
    ------------------------------------------------------------------------------------------------------------- */
 .modal-layer { position: fixed; inset: 0; z-index: 60; pointer-events: none; }

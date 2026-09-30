@@ -21,6 +21,13 @@
 //   * The "Showdown" banner is the renderer's canvas banner; the HUD only announces it to screen readers (two banners would overlap).
 //   * The connecting overlay has a Cancel button (a free host can take a minute; the only other way out was a reload).
 //   * `version` errors reload the page once; a second one within a minute asks the player to refresh by hand.
+//
+// THE SINGLE-FILE DOWNLOAD (window.__BP_SINGLE__, set by an inline script before the bundle; see scripts/build-single.mjs)
+//   There is no server. Practice is unchanged. "Host a game" runs a Room in this page (p2p.js HostSession, lazily imported) and the host's own
+//   player talks to it through HostConnection; "Join a friend's game" connects a GuestConnection to a host's page over a WebRTC data channel
+//   after the two players swapped a code each (dialogs in ui.js). S.p2p says which role this tab has. What differs from the served build:
+//   no /r/CODE addresses or stored session (a file:// page has neither), no automatic reconnect (a guest whose link dropped needs a new code
+//   and gets the same character back through its token), and when the host leaves the game ends for everybody.
 
 import { audio } from './audio.js';
 import { UI, isRoomCode } from './ui.js';
@@ -35,6 +42,7 @@ import {
 import { WIRE_VERSION, STATE } from '../../shared/constants.js';
 
 const DEBUG = /[?&]debug=1(?:&|$)/.test(location.search);
+const SINGLE = window.__BP_SINGLE__ === true;
 const SESSION_KEY = 'bp.session';
 const RELOAD_KEY = 'bp.reloaded';
 const HUD_EVERY_MS = 100;                      // the HUD is DOM: at most 10 updates a second (SPEC 8.2)
@@ -76,6 +84,12 @@ const S = {
   view: null,                                  // the View drawn last (for window.__bp)
   inRoom: false,                               // the back-gesture guard is armed
   rejoining: false,
+  p2p: null,                                   // single-file play with friends: 'host' | 'guest' | null
+  host: null,                                  // HostSession (host only)
+  guestSession: null,                          // GuestSession (guest only, during the handshake)
+  invite: null,                                // the host's unanswered invite: { id, code }
+  hostName: '',                                // the host's name as the invite showed it (guest only)
+  tokenGame: '',                               // which hosted game S.token belongs to (guest only): a seat token is never sent to another game
 };
 
 /** What the frame loop watches to turn state into sound, banners and setting changes. */
@@ -119,10 +133,17 @@ audio.unlock();
 
 const send = (obj) => (S.conn ? S.conn.send(obj) : false);
 
+let p2pModule = null;
+/** p2p.js is only ever loaded by the single-file build (a lazy import: the served build never reaches this). */
+const loadP2P = () => (p2pModule ??= import('./p2p.js').catch((err) => { p2pModule = null; throw err; }));
+
 const ui = new UI(document.getElementById('app'), {
   onCreate: (name) => { sfx('click'); startOnline({ name, create: true }); },
   onJoin: (code, name) => { sfx('click'); startOnline({ name, code, create: false }); },
   onPractice: (name) => { sfx('click'); startPractice(name); },
+  onHost: (name) => { sfx('click'); startHost(name); },
+  onJoinFriend: (name) => { sfx('click'); startJoinFriend(name); },
+  onAddFriend: () => { sfx('click'); openAddFriend(); },
   onProfile: (patch) => { send({ t: 'profile', ...patch }); },
   onSettings: (patch) => { sfx('click'); send({ t: 'settings', patch }); },
   onAddBot: (level) => { sfx('click'); send({ t: 'addBot', level }); },
@@ -187,7 +208,7 @@ window.addEventListener('orientationchange', () => {
  * is caught instead of leaving the page in the middle of a match.
  */
 function enterRoom(code) {
-  if (isRoomCode(code)) {
+  if (!SINGLE && isRoomCode(code)) {
     try { history.replaceState(null, '', `/r/${code}${DEBUG ? '?debug=1' : ''}`); } catch { /* an unusual embedding; the room works without a pretty address */ }
   }
   if (S.inRoom) return;
@@ -196,6 +217,10 @@ function enterRoom(code) {
 }
 
 function leaveRoomUrl() {
+  if (SINGLE) {                                 // a file:// page has no address to tidy (and history.replaceState to '/' would throw)
+    S.inRoom = false;
+    return;
+  }
   if (!S.inRoom && location.pathname === '/') return;
   S.inRoom = false;
   try { history.replaceState(null, '', DEBUG ? '/?debug=1' : '/'); } catch { /* as above */ }
@@ -205,7 +230,7 @@ window.addEventListener('popstate', () => {
   if (S.inRoom) {                               // the back gesture must not throw a player out of a match: ask instead
     try { history.pushState({ bp: 1 }, '', location.href); } catch { /* ignore */ }
     if (ui.current === 'game') ui.showMenu(true);
-  } else if (ui.current === 'title' && location.pathname !== '/') {
+  } else if (!SINGLE && ui.current === 'title' && location.pathname !== '/') {
     try { history.replaceState(null, '', DEBUG ? '/?debug=1' : '/'); } catch { /* ignore */ }     // a stale /r/CODE entry left behind after leaving
   }
 });
@@ -256,11 +281,12 @@ function resumeSession(session) {
   connect(false, 'Rejoining…');
 }
 
-function connect(practice, text) {
+/** `prebuilt`: a connection that already exists (the host's own player, or a guest's data channel); it is used instead of a new one. */
+function connect(practice, text, prebuilt = null) {
   S.practice = practice;
   const gen = ++S.gen;
   ui.showConnecting(text, () => { cancelConnecting(); });
-  const conn = practice ? new LoopbackConnection() : new WebSocketConnection();
+  const conn = prebuilt ?? (practice ? new LoopbackConnection() : new WebSocketConnection());
   S.conn = conn;
   conn.onopen = () => {
     if (gen !== S.gen) return;
@@ -275,7 +301,7 @@ function connect(practice, text) {
   conn.onclose = (info) => {
     if (gen === S.gen) onClosed(info);
   };
-  if (!practice) {
+  if (!practice && prebuilt === null) {
     conn.onstatus = (status) => {
       if (gen === S.gen) onStatus(status);
     };
@@ -291,6 +317,16 @@ function endSession() {
   if (conn) {
     try { conn.close(); } catch (err) { console.error(err); }
   }
+  if (S.host) { try { S.host.shutdown(); } catch (err) { console.error(err); } }     // (closing the host's connection already did; this covers "still loading")
+  try { S.guestSession?.close(); } catch (err) { console.error(err); }
+  ui.p2pDialog?.close();
+  S.host = null;
+  S.guestSession = null;
+  S.invite = null;
+  S.p2p = null;
+  S.hostName = '';
+  S.tokenGame = '';
+  ui.setP2P(null);
   S.practice = false;
   S.token = '';
   S.code = '';
@@ -328,8 +364,20 @@ function cancelConnecting() {
 }
 
 function leaveRoom() {
+  if (S.p2p === 'host' && S.host && S.host.friendCount > 0) {          // leaving ends the game for everyone: ask first
+    ui.showDialog({
+      title: 'End the game?',
+      text: 'You are the host, so leaving ends the game for everyone who joined you.',
+      tone: 'error',
+      actions: [
+        { label: 'End the game', kind: 'danger', onClick: () => goHome() },
+        { label: 'Keep playing', kind: 'primary' },
+      ],
+    });
+    return;
+  }
   const conn = S.conn;
-  if (conn && !S.practice && S.joined && conn.readyState === 1) conn.send({ t: 'leave' });     // the seat is freed now, not after the grace period
+  if (conn && !S.practice && S.p2p !== 'host' && S.joined && conn.readyState === 1) conn.send({ t: 'leave' });     // the seat is freed now, not after the grace period
   goHome();
 }
 
@@ -352,6 +400,10 @@ function onStatus(status) {
 }
 
 function onClosed(info) {
+  if (S.p2p) {
+    onP2PClosed(info);
+    return;
+  }
   const outcome = closeOutcome(info, { practice: S.practice, tokenJoin: !!S.token, serverClosed: S.serverClosed, sinceReload: sinceReload() });
   const conn = S.conn;
   switch (outcome.kind) {
@@ -418,6 +470,212 @@ function sinceReload() {
   return Number.isFinite(at) && at > 0 ? Math.max(0, Date.now() - at) : null;
 }
 
+// ---- Single-file play with friends (window.__BP_SINGLE__) ---------------------------------------------------------
+
+/** Host a game: a Room in this page, the host's own player, and a way to add friends. */
+async function startHost(name) {
+  endSession();
+  S.name = name;
+  S.create = true;
+  S.p2p = 'host';
+  ui.setP2P('host');
+  const gen = ++S.gen;
+  ui.showConnecting('Starting your game...', () => cancelConnecting());
+  let session;
+  try {
+    const mod = await loadP2P();
+    if (gen !== S.gen) return;
+    session = new mod.HostSession({ name });
+  } catch (err) {
+    console.error(err);
+    if (gen === S.gen) goHome({ error: "Hosting could not start in this browser. You can still play Practice, or join a friend's game." });
+    return;
+  }
+  S.host = session;
+  session.on((ev) => { if (S.host === session) onHostEvent(ev); });
+  connect(false, 'Starting your game...', session.localConnection());
+}
+
+/** Join a friend's game: the paste-a-code dialog first, the data channel next, then the ordinary lobby. */
+async function startJoinFriend(name) {
+  endSession();
+  S.name = name;
+  S.create = false;
+  S.p2p = 'guest';
+  ui.setP2P('guest');
+  await openJoinDialog();
+}
+
+async function openJoinDialog() {
+  const gen = ++S.gen;
+  let mod;
+  try {
+    mod = await loadP2P();
+  } catch (err) {
+    console.error(err);
+    if (gen === S.gen) goHome({ error: "Joining could not start in this browser. Practice still works." });
+    return;
+  }
+  if (gen !== S.gen) return;
+  S.guestSession?.close();
+  const session = new mod.GuestSession();
+  S.guestSession = session;
+  let dialog = null;
+  const hostName = () => session.hostName || 'the host';
+  session.on((ev) => {
+    if (S.guestSession !== session || ev.type !== 'state') return;
+    if (ev.state === 'connecting') dialog?.setStatus('busy', `Connecting to ${hostName()}... this can take up to 20 seconds.`);
+    else if (ev.state === 'waiting') {
+      if (ev.message) dialog?.setStatus('busy', `${ev.message}`);
+    } else if (ev.state === 'failed') {
+      dialog?.setStatus('error', `${ev.message} Press "Start again" and ask the host for a new code.`);
+      dialog?.expireCode?.();
+    } else if (ev.state === 'open') {
+      S.hostName = session.hostName;
+      if (S.token && S.tokenGame !== session.gameId) S.token = '';     // a different game (or a restarted one): the old seat token stays with its own host
+      S.tokenGame = session.gameId;
+      const conn = session.connection();
+      S.guestSession = null;
+      dialog?.close();
+      connect(false, S.token ? 'Getting back in...' : `Joining ${hostName()}...`, conn);
+    }
+  });
+  dialog = ui.showJoinFriend({
+    onInvite: (text) => session.acceptInvite(text),
+    hostName,
+    onClose: () => {                             // the player gave up on the dialog
+      if (S.guestSession === session) goHome();
+    },
+  });
+}
+
+/** The host's "Add a friend": a fresh invite (or the unanswered one, when reopened), and the reply that completes it. */
+function openAddFriend() {
+  const host = S.host;
+  if (!host) return;
+  ui.showAddFriend({
+    onNewCode: async (force) => {
+      if (!force && S.invite && host.inviteAlive(S.invite.id)) return S.invite.code;
+      if (S.invite) host.cancelInvite(S.invite.id);
+      S.invite = null;
+      const made = await host.createInvite();
+      if (S.host !== host) return made.code;
+      S.invite = { id: made.id, code: made.code };
+      return made.code;
+    },
+    onReply: async (text) => {
+      await host.acceptReply(text);
+      S.invite = null;                           // one invite, one friend
+    },
+    onClose: () => {},
+  });
+}
+
+/** Why the Room turned a friend away, in words for the host (their dialog is still open). */
+const REFUSED_COPY = {
+  locked: 'Your friend connected, but the game is locked. Switch off "Lock room" in the lobby, then press "New code" and try again.',
+  full: 'Your friend connected, but the game is full. Remove a bot or kick a player in the lobby, then press "New code" and try again.',
+  kicked: 'That player was removed from this game earlier, so they cannot come back.',
+  hello: 'Your friend connected but never said hello. Ask them to keep the page open and try a new code.',
+  default: 'Your friend connected, but the game would not let them in. Press "New code" and try again.',
+};
+
+/** Guest side: what a turned-away friend reads (the game is not a "room" here). */
+const P2P_JOIN_COPY = {
+  full: 'That game is full. If you were in it a moment ago, your old seat may still be held: ask the host to kick the away player, then join again.',
+  locked: 'The host has locked the game, so nobody new can join. Ask them to switch off "Lock room".',
+  kicked: 'The host removed you from that game.',
+  no_room: 'That game is not running any more. Ask the host for a new code.',
+};
+
+/** What the host's session tells the page while friends connect, join and drop. */
+function onHostEvent(ev) {
+  const dialog = ui.p2pDialog;
+  if (ev.type === 'closed') return;
+  if (ev.type !== 'friend') return;
+  switch (ev.state) {
+    case 'connecting':
+      dialog?.setStatus('busy', 'Connecting to your friend... this can take up to 20 seconds.');
+      break;
+    case 'open':
+      dialog?.setStatus('busy', 'Connected! Getting your friend into the lobby...');
+      break;
+    case 'joined':
+      if (dialog) dialog.close();
+      ui.toast('A friend joined your game!', 'good');
+      break;
+    case 'failed':
+      dialog?.setStatus('error', `${ev.message} Press "New code" and try again.`);
+      dialog?.setBusy(false);
+      break;
+    case 'refused':
+      dialog?.setStatus('error', REFUSED_COPY[ev.code] ?? REFUSED_COPY.default);
+      dialog?.setBusy(false);
+      break;
+    case 'lost':
+      if (!S.host?.closed) ui.toast('A friend lost their connection. Open the menu and tap "Add a friend" to let them back in with a new code.', 'warn', { ms: 8000 });
+      break;
+    default:
+      break;
+  }
+}
+
+/** A single-file connection ended. Nothing reconnects by itself here: the text says what the player can do instead. */
+function onP2PClosed(info) {
+  if (info.byUser) return;
+  if (S.p2p === 'host') {
+    goHome();
+    ui.showDialog({
+      title: 'Your game ended',
+      text: info.reason === 'closed' ? 'The game was closed after a long time without any activity. You can host a new one.' : 'The game stopped unexpectedly. You can host a new one from the home screen.',
+      actions: [{ label: 'OK', kind: 'primary' }],
+    });
+    return;
+  }
+  if (info.hostEnded) {
+    goHome();
+    ui.showDialog({ title: 'The host ended the game', text: 'The host left, so this game is over. You can host your own game or join another one.', actions: [{ label: 'OK', kind: 'primary' }] });
+    return;
+  }
+  if (info.fatal) {
+    const outcome = closeOutcome(info, { practice: false, tokenJoin: false, serverClosed: false, sinceReload: null });
+    if (outcome.kind === 'kicked') {
+      goHome();
+      ui.showDialog({ title: 'You were removed', text: 'The host removed you from the game.', tone: 'error', actions: [{ label: 'OK', kind: 'primary' }] });
+    } else {
+      goHome({ error: P2P_JOIN_COPY[info.reason] ?? outcome.text ?? 'Could not join that game. Ask the host for a new code.' });
+    }
+    return;
+  }
+  // The link itself broke: the host closed the page, or the network between you went away.
+  S.game?.pauseSending();
+  input.releaseAll();
+  S.conn = null;
+  S.joined = false;
+  ui.showConnecting(null);
+  ui.showDialog({
+    title: 'Connection lost',
+    text: 'You lost your link to the host. If the host closed or reloaded their page, the game is over. If they are still hosting, ask them to open the menu, tap "Add a friend" and send you a new code: you get your character back.',
+    tone: 'error',
+    actions: [
+      { label: 'Rejoin with a new code', kind: 'primary', onClick: () => { openJoinDialog(); } },
+      { label: 'Leave', kind: 'glass', onClick: () => goHome() },
+    ],
+  });
+}
+
+// Closing or reloading the host's page: tell the friends the game is over instead of leaving them to find out from a silent link (best effort).
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted && S.p2p === 'host' && S.host && !S.host.closed) S.host.shutdown();     // (a page the browser keeps for the back button may come back alive: leave that one)
+});
+
+window.addEventListener('beforeunload', (e) => {
+  if (S.p2p === 'host' && S.host && S.host.friendCount > 0) {          // closing the page ends the game for everyone
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 // ---- Incoming messages --------------------------------------------------------------------------------
 
 function onMessage(msg) {
@@ -463,9 +721,10 @@ function onJoined(msg) {
   if (!S.practice) {
     S.token = msg.token;
     S.code = msg.code;
-    saveSession();
+    saveSession();                               // (a no-op in the single-file build: 'P2P' is no room code, and there is no address to rejoin from)
   }
-  enterRoom(S.practice ? '' : msg.code);
+  enterRoom(S.practice || S.p2p ? '' : msg.code);
+  if (S.p2p === 'host') requestWakeLock();       // a phone that goes to sleep takes the whole game down with it
   ui.showReconnecting(null);
   if (!S.game || S.game.me !== msg.id) S.game = new ClientGame({ me: msg.id, send, now });
   S.game.setSeq(msg.seq);
@@ -739,7 +998,10 @@ function onVisible() {
   }
   const conn = S.conn;
   if (S.game && conn && (S.practice || conn.readyState === 1)) S.game.resume(t);
-  if (S.round) requestWakeLock();
+  if (S.round || S.p2p === 'host') requestWakeLock();
+  if (S.p2p === 'host' && S.host && S.host.friendCount > 0 && S.host.tickerKind !== 'worker') {
+    ui.toast('Friends may lag while this tab is in the background. Keep it visible while you host.', 'warn', { ms: 6000 });
+  }
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) onHidden(); else onVisible(); });
@@ -779,6 +1041,10 @@ function probe() {
     me: S.me,
     code: S.code,
     practice: S.practice,
+    p2p: S.p2p,
+    friends: S.host ? S.host.friendCount : 0,
+    ticker: S.host ? S.host.tickerKind : '',
+    hostTick: S.host && S.host.room.world ? S.host.room.world.tickNo : -1,
     joined: S.joined,
     ws: S.conn ? S.conn.readyState : -1,
     menuOpen: ui.menuOpen,
@@ -806,7 +1072,14 @@ function probe() {
   };
 }
 
-if (DEBUG) window.__bp = { probe };
+if (DEBUG) {
+  window.__bp = {
+    probe,
+    /** e2e only: cuts this guest's link without telling the host, like a network that went away. */
+    dropLink: () => S.conn?.dropLink?.(),
+    host: () => S.host,
+  };
+}
 
 // ---- Start ----------------------------------------------------------------------------------------------------------
 
@@ -816,8 +1089,8 @@ setInterval(() => { if (S.token) saveSession(); }, KEEP_ALIVE_MS);
 requestAnimationFrame(frame);
 setMusic('menu');
 
-const linkCode = roomCodeFromLocation(location);
-const session = parseSession(tabStore.get(SESSION_KEY), Date.now());
+const linkCode = SINGLE ? '' : roomCodeFromLocation(location);     // (a file:// address never carries a room)
+const session = SINGLE ? null : parseSession(tabStore.get(SESSION_KEY), Date.now());
 if (mayRejoin(session, linkCode)) {
   ui.showTitle({ name: session.name });
   resumeSession(session);

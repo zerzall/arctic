@@ -13,6 +13,7 @@
 //   onSettings(patch)  onAddBot(level)  onRemoveBot(id)  onKick(id)  onStart()  onBackToLobby()   host controls
 //   onChat(text)  onEmote(e 0..7)  onLeave()
 //   onMute(bool)  onVolume(v 0..1)
+//   onHost(name)  onJoinFriend(name)  onAddFriend()              the single-file download only (window.__BP_SINGLE__), see "P2P dialogs" below
 //   onToggleEffects(reduce)   true = the player asked for REDUCED effects (the setting is called "Reduce effects").
 //   onControlsSide('right' | 'left')                             not in the spec's list; input.js should swap joystick and BOMB.
 //
@@ -307,6 +308,7 @@ const ICONS = {
   right: line('<path d="M9 5l7 7-7 7"/>'),
   arrow: line('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   copy: line('<rect x="9" y="9" width="11" height="11" rx="3"/><path d="M5 15V7a3 3 0 0 1 3-3h8"/>'),
+  paste: line('<rect x="5" y="5" width="14" height="16" rx="3"/><path d="M9 5V4a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 4v1M9 12h6M9 16h4"/>'),
   share: line('<circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.3 10.8l7.4-3.6M8.3 13.2l7.4 3.6"/>'),
   qr: line('<rect x="4" y="4" width="6" height="6" rx="1.4"/><rect x="14" y="4" width="6" height="6" rx="1.4"/><rect x="4" y="14" width="6" height="6" rx="1.4"/><path d="M14 14h2.5v2.5H14zM19.5 14v.01M14 19.5v.01M17.5 19.5H20M20 17v.01"/>'),
   sliders: line('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>'),
@@ -671,13 +673,13 @@ function pingMeter() {
   const node = el('span', { class: 'ping', role: 'img', 'aria-label': 'Connection unknown', dataset: { q: 'none' } }, el('span', { class: 'ping-bars', 'aria-hidden': 'true' }, bars), text);
   return {
     node,
-    set(ms, local = false) {
+    set(ms, local = false, kind = '') {
       const q = local ? 'good' : pingQuality(ms);
       const shown = local ? 'Local' : q === 'none' ? '--' : `${Math.round(ms)} ms`;
       const word = { good: 'good', ok: 'fair', bad: 'poor', none: 'unknown' }[q];
       if (node.dataset.q !== q) node.dataset.q = q;
       if (text.textContent !== shown) text.textContent = shown;
-      const label = local ? 'Practice, no network' : q === 'none' ? 'Connection unknown' : `Connection ${word}, ${Math.round(ms)} milliseconds`;
+      const label = local ? (kind === 'host' ? 'Hosting this game' : 'Practice, no network') : q === 'none' ? 'Connection unknown' : `Connection ${word}, ${Math.round(ms)} milliseconds`;
       if (node.getAttribute('aria-label') !== label) node.setAttribute('aria-label', label);
     },
   };
@@ -735,6 +737,9 @@ class ChatPanel {
 // Title screen
 // ================================================================================================
 
+/** The honest one-paragraph version of how playing with friends works in the single-file download. */
+const SINGLE_EXPLAINER = 'One person hosts and keeps this page open. Friends join with a code you send them (no account, no server). Works best on the same Wi-Fi, or with a normal home connection.';
+
 class TitleScreen {
   constructor(ui) {
     this.ui = ui;
@@ -749,22 +754,39 @@ class TitleScreen {
     this.joinLabel = el('label', { for: 'code-input', class: 'field-label', text: 'Got a room code?' });
     this.createBtn = el('button', { class: 'btn btn-primary btn-xl', type: 'button', on: { click: () => this.create() } }, icon('plus'), 'Create room');
     this.joinBtn = el('button', { class: 'btn btn-blue btn-lg', type: 'button', on: { click: () => this.join() } }, 'Join');
-    this.card = el('div', { class: 'card title-card' },
-      this.invite,
-      el('div', { class: 'field' },
-        el('label', { for: 'name-input', class: 'field-label', text: 'Your name' }),
-        el('div', { class: 'field-row' }, this.nameInput,
-          el('button', { class: 'icon-btn', type: 'button', title: 'Pick a random name', 'aria-label': 'Pick a random name', on: { click: () => { this.nameInput.value = randomName(); this.nameInput.focus(); } } }, icon('dice'))),
-        el('p', { id: 'name-hint', class: 'field-hint', text: 'This is what your friends will see.' })),
-      this.error,
-      el('div', { class: 'title-main' }, this.createBtn),
-      el('div', { class: 'join-box' },
-        this.joinLabel,
-        el('div', { class: 'field-row' }, this.codeInput, this.joinBtn),
-        el('p', { id: 'code-hint', class: 'field-hint', text: '4 letters, no vowels. Pasting an invite link works too.' })),
-      el('div', { class: 'title-links' },
-        el('button', { class: 'btn btn-glass', type: 'button', on: { click: () => this.practice() } }, icon('bot'), 'Practice vs bots'),
-        el('button', { class: 'btn btn-glass', type: 'button', on: { click: (e) => ui.showHowTo(true, e.currentTarget) } }, icon('help'), 'How to play')));
+    const howto = el('button', { class: 'btn btn-glass', type: 'button', on: { click: (e) => ui.showHowTo(true, e.currentTarget) } }, icon('help'), 'How to play');
+    const nameField = el('div', { class: 'field' },
+      el('label', { for: 'name-input', class: 'field-label', text: 'Your name' }),
+      el('div', { class: 'field-row' }, this.nameInput,
+        el('button', { class: 'icon-btn', type: 'button', title: 'Pick a random name', 'aria-label': 'Pick a random name', on: { click: () => { this.nameInput.value = randomName(); this.nameInput.focus(); } } }, icon('dice'))),
+      el('p', { id: 'name-hint', class: 'field-hint', text: 'This is what your friends will see.' }));
+    if (ui.single) {
+      // The downloaded single file has no server: no room codes. Practice always works; friends connect directly through codes they swap.
+      this.hostBtn = el('button', { class: 'btn btn-blue btn-lg', type: 'button', on: { click: () => this.host() } }, icon('users'), 'Host a game');
+      this.joinFriendBtn = el('button', { class: 'btn btn-green btn-lg', type: 'button', on: { click: () => this.joinFriend() } }, icon('link'), "Join a friend's game");
+      this.card = el('div', { class: 'card title-card is-single' },
+        nameField,
+        this.error,
+        el('div', { class: 'title-main' }, el('button', { class: 'btn btn-primary btn-xl', type: 'button', on: { click: () => this.practice() } }, icon('bot'), 'Practice vs bots')),
+        el('div', { class: 'friends-box' },
+          el('h2', { class: 'friends-title' }, icon('users'), 'Play with friends'),
+          el('div', { class: 'friends-btns' }, this.hostBtn, this.joinFriendBtn),
+          el('p', { class: 'friends-note', text: SINGLE_EXPLAINER })),
+        el('div', { class: 'title-links' }, howto));
+    } else {
+      this.card = el('div', { class: 'card title-card' },
+        this.invite,
+        nameField,
+        this.error,
+        el('div', { class: 'title-main' }, this.createBtn),
+        el('div', { class: 'join-box' },
+          this.joinLabel,
+          el('div', { class: 'field-row' }, this.codeInput, this.joinBtn),
+          el('p', { id: 'code-hint', class: 'field-hint', text: '4 letters, no vowels. Pasting an invite link works too.' })),
+        el('div', { class: 'title-links' },
+          el('button', { class: 'btn btn-glass', type: 'button', on: { click: () => this.practice() } }, icon('bot'), 'Practice vs bots'),
+          howto));
+    }
 
     const words = el('span', { class: 'logo-words', 'aria-hidden': 'true' },
       el('span', { class: 'logo-word logo-blast', dataset: { text: 'BLAST' }, text: 'BLAST' }),
@@ -780,7 +802,7 @@ class TitleScreen {
       this.parade);
 
     this.nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this.code ? this.join() : this.create();
+      if (e.key === 'Enter') (ui.single ? this.practice() : this.code ? this.join() : this.create());
     });
     this.codeInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.join();
@@ -814,6 +836,14 @@ class TitleScreen {
 
   practice() {
     this.ui.emit('onPractice', this.takeName());
+  }
+
+  host() {
+    this.ui.emit('onHost', this.takeName());
+  }
+
+  joinFriend() {
+    this.ui.emit('onJoinFriend', this.takeName());
   }
 
   join() {
@@ -909,6 +939,18 @@ class LobbyScreen {
     this.practiceCard = el('section', { class: 'card practice-card', hidden: true },
       el('h2', { class: 'card-title' }, icon('bot'), 'Practice mode'),
       el('p', { text: 'You are playing offline against bots. Add more bots or start when you are ready. Nobody else can join.' }));
+    // Single-file download: no room code, no invite link, no QR (they would all be wrong). The host adds friends with codes instead.
+    this.friendBtn = el('button', { class: 'btn btn-primary btn-xl', type: 'button', on: { click: () => ui.emit('onAddFriend') } }, icon('plus'), 'Add a friend');
+    this.friendNote = el('p', { class: 'friend-note', text: 'You are the host. Keep this page open while you play: if you close it, the game ends for everybody.' });
+    this.friendCard = el('section', { class: 'card friend-card', 'aria-labelledby': 'friend-h', hidden: true },
+      el('h2', { id: 'friend-h', class: 'card-title' }, icon('users'), 'Friends'),
+      el('p', { class: 'friend-text', text: 'Send each friend a code. They send one back. That is all it takes, and no room code is needed.' }),
+      this.friendBtn, this.friendNote);
+    this.guestNote = el('p', { class: 'friend-text' });
+    this.guestCard = el('section', { class: 'card friend-card guest-card', 'aria-labelledby': 'guest-h', hidden: true },
+      el('h2', { id: 'guest-h', class: 'card-title' }, icon('link'), 'Connected'),
+      this.guestNote,
+      el('p', { class: 'friend-note', text: 'If your connection drops, ask the host for a new code to jump back in with the same character.' }));
 
     // ---- Players
     this.count = el('span', { class: 'count-chip' });
@@ -953,7 +995,7 @@ class LobbyScreen {
     this.root = el('section', { id: 'screen-lobby', class: 'screen screen-lobby', hidden: true, 'aria-labelledby': 'lobby-h1' },
       el('div', { class: 'lobby-inner' }, this.bar,
         el('div', { class: 'lobby-grid' },
-          el('div', { class: 'lobby-col' }, this.codeCard, this.practiceCard, this.playersCard, this.youCard),
+          el('div', { class: 'lobby-col' }, this.codeCard, this.practiceCard, this.friendCard, this.guestCard, this.playersCard, this.youCard),
           el('div', { class: 'lobby-col' }, this.settingsCard, this.chat.root)),
         this.actionbar));
   }
@@ -1114,9 +1156,23 @@ class LobbyScreen {
   }
 
   renderCode(msg, local) {
-    this.codeCard.hidden = local;
+    const p2p = this.ui.p2p;
+    this.codeCard.hidden = local || !!p2p;
     this.practiceCard.hidden = !local;
-    if (local || !isRoomCode(msg.code)) return;
+    this.friendCard.hidden = p2p !== 'host';
+    if (p2p === 'host') {
+      const note = msg.settings?.locked ? 'The game is locked, so nobody new can join. Switch off "Lock room" first.'
+        : msg.players.length >= MAX_PLAYERS ? 'The game is full. Remove a bot or kick a player to make room.'
+          : 'You are the host. Keep this page open while you play: if you close it, the game ends for everybody.';
+      if (this.friendNote.textContent !== note) this.friendNote.textContent = note;
+    }
+    this.guestCard.hidden = p2p !== 'guest';
+    if (p2p === 'guest') {
+      const host = msg.players.find((p) => p.id === msg.hostId);
+      const text = host ? `You are playing on ${host.name}'s computer. Wait for the host to start the match.` : 'You are playing on the host\'s computer.';
+      if (this.guestNote.textContent !== text) this.guestNote.textContent = text;
+    }
+    if (local || p2p || !isRoomCode(msg.code)) return;
     const changed = this.codeText.textContent !== `Room code ${spellCode(msg.code)}`;
     if (changed) {
       this.codeText.textContent = `Room code ${spellCode(msg.code)}`;
@@ -1260,7 +1316,7 @@ class LobbyScreen {
     sdRow.control.setReadOnly(!isHost || noTimer);
     sdRow.node.classList.toggle('is-off', noTimer);
     sdRow.node.querySelector('.switch-hint').textContent = noTimer ? 'Needs a round timer' : 'Walls close in when time runs out';
-    this.rows.locked.node.querySelector('.switch-hint').textContent = s.locked ? 'Nobody new can join' : 'Anyone with the code can join';
+    this.rows.locked.node.querySelector('.switch-hint').textContent = s.locked ? 'Nobody new can join' : this.ui.p2p ? 'You can still add friends' : 'Anyone with the code can join';
 
     const summary = [`First to ${s.rounds ?? '?'}`, roundTimeLabel(s.roundTime), SETTING_LABELS.mode[s.mode] ?? ''].filter(Boolean).join(' \u00b7 ');
     this.settingsSummary.textContent = summary;
@@ -1858,6 +1914,13 @@ export class UI {
   constructor(root = document.getElementById('app') ?? document.body, callbacks = {}) {
     this.root = root;
     this.cb = callbacks;
+    /** The single-file download (no server): the title screen offers Practice / Host / Join instead of Create / Join by room code. */
+    this.single = window.__BP_SINGLE__ === true;
+    /** 'host' | 'guest' while in a room that lives in a browser (single-file play with friends), else null. */
+    this.p2p = null;
+    this.p2pDialog = null;
+    /** How many friends are connected to this hosted game (main.js replaces it): the menu words "leave" differently for a host on their own. */
+    this.friendCount = () => 0;
     this.current = '';
     this.you = -1;
     this.lobbyMsg = null;
@@ -2045,6 +2108,8 @@ export class UI {
   }
 
   resetRoom() {
+    this.p2p = null;
+    this.p2pDialog?.close?.();
     this.lobbyMsg = null;
     this.you = -1;
     this.chatHistory = [];
@@ -2106,8 +2171,8 @@ export class UI {
   /** Round-trip time in ms (null = unknown). In Practice the meters show "Local". */
   setPing(ms) {
     this.lastPing = ms ?? null;
-    const local = !!this.lobbyMsg?.local;
-    for (const meter of this.pings) meter.set(this.lastPing, local);
+    const local = !!this.lobbyMsg?.local || this.p2p === 'host';
+    for (const meter of this.pings) meter.set(this.lastPing, local, this.p2p === 'host' ? 'host' : '');
   }
 
   /** "3", "2", "1", "GO!" or null to clear. */
@@ -2244,6 +2309,168 @@ export class UI {
     if (this.dialog) this.modals.close(this.dialog);
   }
 
+
+  // ---- P2P dialogs (single-file download)
+
+  /** Marks the room as one that lives in a browser: 'host' | 'guest' | null. Call before the first lobby message. */
+  setP2P(role) {
+    this.p2p = role === 'host' || role === 'guest' ? role : null;
+    if (this.lobbyMsg) this.lobby.render(this.lobbyMsg);
+  }
+
+  /**
+   * "Add a friend" (host). Step 1: the invite code. Step 2: paste the friend's reply.
+   * @param {{ onNewCode: (force: boolean) => Promise<string>, onReply: (text: string) => Promise<void>, onClose?: () => void }} ctl
+   *   onNewCode / onReply may reject with an Error whose message is fit for the player.
+   * @returns {{ setStatus: (kind: 'busy'|'good'|'error'|'info', text: string) => void, setBusy: (busy: boolean) => void, close: () => void }}
+   */
+  showAddFriend(ctl) {
+    this.p2pDialog?.close();
+    let out;
+    let inp;
+    let status;
+    let connect;
+    let fresh;
+    let making = false;
+    const newCode = async (force) => {
+      if (making) return;                                        // (one code at a time: every extra click would leave another live invite behind)
+      making = true;
+      fresh.disabled = true;
+      out.set('', 'Making your invite code...');
+      status.set('busy', 'Making your invite code. This takes a few seconds.');
+      inp.box.value = '';
+      connect.disabled = true;
+      try {
+        const code = await ctl.onNewCode(force === true);
+        out.set(code);
+        status.set('', '');
+        connect.disabled = false;
+        if (document.activeElement !== inp.box) out.copy.focus({ preventScroll: true });     // (never pull focus out of the reply box the player is typing in)
+      } catch (err) {
+        out.set('', 'No code yet');
+        status.set('error', err?.message || 'Could not make a code. Please try again.');
+      } finally {
+        making = false;
+        fresh.disabled = false;
+      }
+    };
+    const submit = async () => {
+      const text = inp.box.value.trim();
+      if (!text) {
+        status.set('error', "Paste your friend's reply code first.");
+        inp.box.focus();
+        return;
+      }
+      connect.disabled = true;
+      status.set('busy', 'Connecting to your friend...');
+      try {
+        await ctl.onReply(text);
+      } catch (err) {
+        status.set('error', err?.message || 'That code did not work.');
+        connect.disabled = false;
+        inp.box.focus();
+      }
+    };
+    const handle = p2pModal(this, {
+      title: 'Add a friend', iconName: 'users', ctl,
+      build: (body, handle) => {
+        out = codeOutput(this, { label: 'Your invite code', wrap: (code) => `Join my Blast Party game! Open your copy of blast-party.html (I can send you the file), tap "Join a friend's game" and paste this code:\n\n${code}` });
+        inp = codeInput(this, { id: 'reply-input', label: "Your friend's reply code", placeholder: 'Paste the reply code here', onEnter: submit });
+        status = statusLine();
+        connect = el('button', { class: 'btn btn-green btn-lg', type: 'button', disabled: true, on: { click: submit } }, icon('check'), 'Connect');
+        fresh = el('button', { class: 'btn btn-glass btn-sm', type: 'button', on: { click: () => newCode(true) } }, icon('refresh'), 'New code');
+        const msg = this.lobbyMsg;
+        const blocked = msg?.settings?.locked ? 'Your game is locked, so nobody new can join. Switch off "Lock room" in the lobby first.'
+          : msg && msg.players.length >= MAX_PLAYERS ? 'Your game is full. Remove a bot or kick a player in the lobby first.' : '';
+        body.append(
+          el('p', { class: 'dialog-text', text: 'Two quick steps. Any chat app works: WhatsApp, iMessage, email, Discord... Your friend needs their own copy of the blast-party.html file too.' }),
+          ...(blocked ? [el('p', { class: 'code-warn', role: 'note', text: blocked })] : []),
+          step('1. Send this invite code to your friend', out.node, el('div', { class: 'p2p-more' }, fresh)),
+          step('2. Paste the reply code they send back', inp.box, el('div', { class: 'code-actions' }, inp.paste, connect)),
+          status.node,
+          el('p', { class: 'field-hint', text: `${CODE_PRIVACY} One invite works for one friend; add more friends the same way.` }),
+          el('div', { class: 'dialog-actions' }, el('button', { class: 'btn btn-glass btn-lg', type: 'button', text: 'Close', on: { click: () => handle.dismiss() } })));
+        newCode(false);
+        return fresh;
+      },
+    });
+    return Object.assign(handle, {
+      setStatus: (kind, text) => status.set(kind, text),
+      setBusy: (busy) => { connect.disabled = !!busy || !out.box.value; },
+    });
+  }
+
+  /**
+   * "Join a friend's game" (guest). Step 1: paste the host's invite. Step 2: send the reply back and wait.
+   * @param {{ onInvite: (text: string) => Promise<{ code: string, host: string }>, onClose?: () => void }} ctl
+   */
+  showJoinFriend(ctl) {
+    this.p2pDialog?.close();
+    let status;
+    let inp;
+    let go;
+    let stepOne;
+    let stepTwo;
+    let out;
+    let again;
+    let stepTitle;
+    const submit = async () => {
+      const text = inp.box.value.trim();
+      if (!text) {
+        status.set('error', "Paste your friend's invite code first.");
+        inp.box.focus();
+        return;
+      }
+      go.disabled = true;
+      status.set('busy', 'Making your reply code. This takes a few seconds.');
+      try {
+        const { code, host } = await ctl.onInvite(text);
+        stepOne.hidden = true;
+        stepTwo.hidden = false;
+        stepTitle.textContent = host ? `2. Send this reply code back to ${host}` : '2. Send this reply code back to the host';
+        out.set(code);
+        status.set('busy', `Waiting for ${host || 'the host'} to add you. Send them the reply code now.`);
+        out.copy.focus({ preventScroll: true });
+      } catch (err) {
+        status.set('error', err?.message || 'That code did not work.');
+        go.disabled = false;
+        inp.box.focus();
+      }
+    };
+    const handle = p2pModal(this, {
+      title: "Join a friend's game", iconName: 'link', ctl,
+      build: (body, h) => {
+        inp = codeInput(this, { id: 'invite-input', label: "Your friend's invite code", placeholder: 'Paste the invite code here', onEnter: submit });
+        out = codeOutput(this, { label: 'Your reply code', wrap: (code) => `Here is my Blast Party reply code. Paste it in "Add a friend":\n\n${code}` });
+        status = statusLine();
+        go = el('button', { class: 'btn btn-green btn-lg', type: 'button', on: { click: submit } }, icon('arrow'), 'Continue');
+        stepTitle = el('h3', { class: 'p2p-step-title', text: '2. Send this reply code back' });
+        again = el('button', { class: 'btn btn-glass btn-sm', type: 'button', on: { click: () => {
+          stepOne.hidden = false;
+          stepTwo.hidden = true;
+          inp.box.value = '';
+          go.disabled = false;
+          status.set('', '');
+          inp.box.focus();
+        } } }, icon('refresh'), 'Start again');
+        stepOne = step('1. Paste the invite code your friend sent you', inp.box, el('div', { class: 'code-actions' }, inp.paste, go));
+        stepTwo = el('section', { class: 'p2p-step', hidden: true }, stepTitle, out.node, el('div', { class: 'p2p-more' }, again));
+        body.append(
+          el('p', { class: 'dialog-text', text: 'Ask the host to tap "Add a friend" and send you their invite code.' }),
+          stepOne, stepTwo, status.node,
+          el('p', { class: 'field-hint', text: CODE_PRIVACY }),
+          el('div', { class: 'dialog-actions' }, el('button', { class: 'btn btn-glass btn-lg', type: 'button', text: 'Cancel', on: { click: () => h.dismiss() } })));
+        return inp.box;
+      },
+    });
+    return Object.assign(handle, {
+      setStatus: (kind, text) => status.set(kind, text),
+      setBusy: () => {},
+      /** The connection attempt is over: the reply code on show is dead, so it cannot be copied any more. */
+      expireCode: () => { out.set('', 'This code is no longer valid'); },
+    });
+  }
+
   // ---- Settings shared by the title screen, lobby and menu
 
   /** Pushes audio/effects/controls state into the UI (main.js calls this once audio has loaded its saved values). */
@@ -2307,6 +2534,7 @@ export class UI {
     const inGame = this.current === 'game';
     const lobby = this.lobbyMsg;
     const isHost = !!lobby && lobby.you === lobby.hostId;
+    const alone = this.p2p === 'host' && this.friendCount() === 0;
     const frame = dialogFrame({ title: 'Menu', cls: 'modal-menu', icon: 'menu', onClose: () => this.showMenu(false) });
     const sound = switchControl({ label: 'Sound', checked: !this.settings.muted, onToggle: (on) => this.setMuted(!on) });
     const resume = el('button', { class: 'btn btn-primary btn-lg', type: 'button', on: { click: () => this.showMenu(false) } }, icon('arrow'), inGame ? 'Back to the game' : 'Close');
@@ -2316,8 +2544,9 @@ export class UI {
       el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: (e) => this.showSettings(true, e.currentTarget) } }, icon('sliders'), 'Settings'),
       el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: (e) => this.showHowTo(true, e.currentTarget) } }, icon('help'), 'How to play'),
       fullscreenSupported() ? el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: toggleFullscreen } }, icon('fullscreen'), 'Full screen') : null,
-      inGame && isHost && !lobby.local ? el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: () => { this.showMenu(false); this.emit('onBackToLobby'); } } }, icon('home'), 'End match for all') : null,
-      el('button', { class: 'btn btn-danger btn-lg', type: 'button', on: { click: () => { this.showMenu(false); this.emit('onLeave'); } } }, icon('leave'), lobby?.local ? 'Leave practice' : inGame ? 'Leave match' : 'Leave room'),
+      this.p2p === 'host' ? el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: () => { this.showMenu(false); this.emit('onAddFriend'); } } }, icon('plus'), 'Add a friend') : null,
+      inGame && isHost && !lobby.local ? el('button', { class: 'btn btn-glass btn-lg', type: 'button', on: { click: () => { this.showMenu(false); this.emit('onBackToLobby'); } } }, icon('home'), alone ? 'End match' : 'End match for all') : null,
+      el('button', { class: 'btn btn-danger btn-lg', type: 'button', on: { click: () => { this.showMenu(false); this.emit('onLeave'); } } }, icon('leave'), lobby?.local ? 'Leave practice' : this.p2p === 'host' ? (alone ? 'End the game' : 'End the game for everyone') : inGame ? 'Leave match' : 'Leave room'),
     ];
     if (inGame) frame.body.appendChild(el('p', { class: 'dialog-text', text: lobby?.local ? 'Practice keeps running while this menu is open.' : 'The game keeps running while this menu is open.' }));
     frame.body.appendChild(el('div', { class: 'menu-list' }, items));
@@ -2371,6 +2600,119 @@ export class UI {
   }
 }
 
+
+// ================================================================================================
+// P2P dialogs (single-file download): "Add a friend" for the host, "Join a friend's game" for a guest
+// ================================================================================================
+
+const CODE_PRIVACY = 'Codes contain your network (IP) addresses, so only send them to people you trust.';
+
+/** A status line under a form: kind 'busy' (spinner) | 'good' | 'error' | 'info'; an empty text hides it. */
+function statusLine() {
+  const spinner = el('span', { class: 'spinner', 'aria-hidden': 'true', hidden: true });
+  const text = el('span', { class: 'p2p-status-text' });
+  // (always in the page, only visually emptied: a live region that appears together with its text is not announced by screen readers)
+  const node = el('p', { class: 'p2p-status is-empty', role: 'status', 'aria-live': 'polite' }, spinner, text);
+  return {
+    node,
+    set(kind, message) {
+      node.classList.toggle('is-empty', !message);
+      node.dataset.kind = kind;
+      spinner.hidden = kind !== 'busy';
+      text.textContent = message || '';
+      if (message && kind !== 'busy') node.scrollIntoView?.({ block: 'nearest' });     // a long dialog on a small phone: bring the answer into view
+    },
+  };
+}
+
+/** A read-only box showing a code, with Copy and Share buttons. `wrap(code)` is the friendly sentence Share puts around it. */
+function codeOutput(ui, { label, wrap }) {
+  const box = el('textarea', { class: 'text-input code-box', readonly: true, rows: '3', 'aria-label': label, spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', on: { focus: (e) => e.currentTarget.select() } });
+  const copyLabel = el('span', { text: 'Copy code' });
+  let timer = 0;
+  const copy = el('button', { class: 'btn btn-primary btn-lg', type: 'button', disabled: true, on: { click: async () => {
+    const ok = await copyText(box.value);
+    if (ok) {
+      copyLabel.textContent = 'Copied!';
+      clearTimeout(timer);
+      timer = setTimeout(() => { copyLabel.textContent = 'Copy code'; }, 2200);
+      ui.toast('Code copied. Now paste it into a chat.', 'good');
+    } else {
+      box.focus();
+      box.select();
+      ui.toast('Press Ctrl+C (Cmd+C on a Mac) to copy the code', 'info');
+    }
+  } } }, icon('copy'), copyLabel);
+  const share = el('button', { class: 'btn btn-blue btn-lg', type: 'button', disabled: true, hidden: typeof navigator.share !== 'function', on: { click: () => {
+    const result = navigator.share({ title: 'Blast Party', text: wrap(box.value) });
+    result?.catch?.(() => {});
+  } } }, icon('share'), 'Share');
+  const node = el('div', { class: 'code-out' }, box, el('div', { class: 'code-actions' }, copy, share));
+  return {
+    node, box, copy,
+    set(code, placeholder = '') {
+      box.value = code || '';
+      box.placeholder = placeholder;
+      box.classList.toggle('is-busy', !code);
+      copy.disabled = share.disabled = !code;
+    },
+  };
+}
+
+/** An editable box for a pasted code, with a Paste button where the browser allows reading the clipboard. */
+function codeInput(ui, { id, label, placeholder, onEnter }) {
+  const box = el('textarea', { id, class: 'text-input code-box', rows: '3', placeholder, spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', 'aria-label': label });
+  box.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter?.(); } });
+  const canRead = typeof navigator.clipboard?.readText === 'function';
+  const paste = el('button', { class: 'btn btn-glass', type: 'button', hidden: !canRead, on: { click: async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        box.value = text;
+        box.dispatchEvent(new Event('input'));
+        onEnter?.();
+      } else ui.toast('Nothing to paste yet. Copy the code first.', 'info');
+    } catch {
+      box.focus();
+      ui.toast('Press Ctrl+V (Cmd+V on a Mac) to paste', 'info');
+    }
+  } } }, icon('paste'), 'Paste');
+  return { box, paste };
+}
+
+const step = (title, ...kids) => el('section', { class: 'p2p-step' }, el('h3', { class: 'p2p-step-title', text: title }), kids);
+
+/** Shared frame of both dialogs. Returns the handle main.js keeps; `handle.close()` never calls `ctl.onClose` (only the player closing it does). */
+function p2pModal(ui, { title, iconName, ctl, build }) {
+  let entry;
+  let done = false;
+  const frame = dialogFrame({ title, cls: 'modal-p2p', icon: iconName, onClose: () => ui.modals.close(entry) });
+  const handle = {
+    /** Closes without telling `ctl.onClose` (the caller is the one closing it). */
+    close() {
+      done = true;
+      if (entry) ui.modals.close(entry);
+    },
+    /** The player pressed Close / Cancel: same as the X button and Esc. */
+    dismiss() {
+      if (entry) ui.modals.close(entry);
+    },
+  };
+  const focus = build(frame.body, handle);
+  entry = ui.modals.open(frame.node, {
+    focus,
+    onClose: () => {
+      if (ui.p2pDialog === handle) ui.p2pDialog = null;
+      if (!done) {
+        done = true;
+        ctl.onClose?.();
+      }
+    },
+  });
+  ui.p2pDialog = handle;
+  return handle;
+}
+
 // ================================================================================================
 // How to play content
 // ================================================================================================
@@ -2420,8 +2762,8 @@ function howToSections() {
         el('li', { text: 'Flames hurt everyone, including you and your team, so run for cover.' }),
         el('li', { text: 'Bombs chain: a blast sets off every bomb it touches.' }),
         el('li', { text: 'No sound on iPhone? Turn off the silent switch.' }),
-        el('li', { text: 'The host can lock the room once everyone has joined.' }))),
+        el('li', { text: window.__BP_SINGLE__ === true ? 'The host can lock the game once everyone has joined.' : 'The host can lock the room once everyone has joined.' }))),
   ];
 }
 
-const isSecure = () => window.isSecureContext !== false;
+const isSecure = () => window.isSecureContext !== false || window.__BP_SINGLE__ === true;

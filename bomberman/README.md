@@ -113,6 +113,31 @@ The machine stops by itself when nobody is playing and starts again on the next 
 
 The `Dockerfile` here runs the game anywhere that runs containers: `docker build -t blast-party .` then `docker run -p 3000:3000 blast-party`. Run only one container, and set `TRUST_PROXY` if there is a proxy in front (see [Configuration](#configuration)).
 
+## Just want one file?
+
+If installing Node.js is more than you want to do tonight, there is a **single file** that contains the whole game: [`download/blast-party.html`](download/blast-party.html) (about 480 KB). Save it anywhere, **double-click it**, and it opens in your browser. There is no server, no account and no internet needed to play against bots. (The file is rebuilt from the sources with `npm run build:single`; you only need that if you change the game.)
+
+**On your own: Practice vs bots.** Works completely offline, exactly like Practice on the server version.
+
+**With family or friends, no server: Host a game and Join a friend's game.** One player's browser plays the part of the server, and everyone else connects to it directly (a WebRTC connection). The two of you swap short text codes through any chat app:
+
+1. The **host** opens the file, types a name and presses **Host a game**. In the lobby they press **Add a friend**. A long invite code starting with `BP1-` appears; **Copy code** (or **Share**) and send it to a friend. **Each friend needs their own copy of `blast-party.html`**, so send the file along with the code (a chat app, a USB stick, a link to wherever you keep it).
+2. The **friend** opens their own copy of the file, presses **Join a friend's game**, pastes the invite code and presses **Continue**. A reply code appears; they send it back to the host.
+3. The host pastes the reply code into step 2 of the same window and presses **Connect**. After a second or two the friend is in the lobby. Repeat for each friend: one invite is good for one friend, and codes are only valid for about ten minutes.
+4. From there it is the ordinary game: chat, colours, bots, settings, **Start match**.
+
+What to know before you rely on it:
+
+- **The host must keep the page open.** The host's browser runs the game for everybody, so closing or reloading the page ends it for everyone (the friends see "The host ended the game", usually at once; if the browser dies without a goodbye they see "Connection lost" after about ten seconds). Putting the computer or phone to sleep freezes it, and after a while the friends drop. Hosting from a laptop works best; a phone can host if it stays awake with the page in front. Keep the host's tab visible; the game keeps its pace in a background tab in Chrome, Edge and Firefox, but not every browser is that generous.
+- **Same Wi-Fi is the reliable case.** Over the internet it works for most ordinary home connections, but there is no relay server in this mode, so some networks simply cannot connect directly: strict or "symmetric" routers, school and work networks, some mobile data plans, some VPNs. The game says so when a connection fails. In that case use the server version (`npm start`, or `npm run share` for a public link).
+- **Up to 7 friends** join one host (8 players in total, bots included). Every friend's game is calculated on the host's device, so a big party wants a laptop, not an old phone.
+- **A friend whose connection drops needs a fresh code.** Nothing reconnects by itself in this mode. They see "Connection lost", press **Rejoin with a new code**, the host adds them again (**Add a friend** in the lobby, or in the menu during a match), and they get their own character back (the host keeps the seat for about two minutes during a match and five in the lobby). If the host closed or reloaded the page, the game is gone and there is nothing to rejoin.
+- **Waiting for the host is fine.** A friend can wait many minutes between making the reply code and the host pasting it. Each invite works for one person only; if two friends use the same invite, only the first reply is accepted, so give each friend their own code (**New code**).
+- **A "same Wi-Fi" that does not connect** is usually client isolation (guest networks, some routers, hotels and offices stop devices talking to each other). Use the main Wi-Fi, or the server version. Phones may not be able to open a downloaded `.html` file at all (for example from the iOS Files app or some in-app viewers); if that happens, open the file from a desktop browser, or use the server version. We could not test every phone.
+- **Other browsers.** Only Chromium-based browsers were tested with real connections. Firefox and Safari should work (the code checker accepts the usual shapes of their connection details), but that is not verified; if a code is refused as "not valid" there, the server version is the fallback.
+- **Codes contain network addresses.** To find each other the two browsers write their (private and public) IP addresses into the code, so only send codes to people you trust. To learn the public address the file asks two free public STUN servers (`stun.l.google.com` and `stun.cloudflare.com`) while it makes a code. That is the only time it touches the internet; without internet the code still works on the same Wi-Fi, it just takes about four seconds longer to appear.
+- There are no room codes, invite links or QR codes in this mode (they need a server), and no auto-rejoin after a reload.
+
 ## Controls
 
 | | Keyboard | Touch | Game controller |
@@ -245,6 +270,9 @@ Bots are called Bolt, Fuse, Pixel, Zap, Boomer, Spark, Nova and Kaboom. **Practi
 | "That room does not exist", "That room is locked" or "That room is full" | Check the code (four letters, no vowels), ask the host to switch off **Lock room**, or note the limit of 8 players. |
 | "Server is busy, try again in a minute." | The server hit its room limit (30 on Render's blueprint, 100 on Fly.io, 200 by default). Try again in a minute. |
 | `Could not start Blast Party: listen EADDRINUSE` | Port 3000 is taken. Start on another port: `PORT=3001 npm start` (macOS/Linux) or `$env:PORT=3001; npm start` (PowerShell). |
+| Single file: "We couldn't connect" or a friend never joins | Direct connections need both browsers to reach each other. Try the same Wi-Fi, switch off VPNs, and make a fresh invite (**New code**). On school, work or some mobile networks it cannot work; use the server version instead (`npm start` or `npm run share`). |
+| Single file: "That doesn't look like a Blast Party code" | Copy the whole code, from `BP1-` to the end, including the last four characters after the dot. Pasting it inside a sentence or over several lines is fine. |
+| Single file: "The host ended the game" or "Connection lost" | The host closed or reloaded the page, or the connection between you dropped. The host adds you again (**Add a friend**) and you rejoin with the new code as the same character. |
 | Lag, jerky movement | Move closer to the router or use the main Wi-Fi band. For online play, choose a Fly region near you. On Render's free plan keep the number of simultaneous rooms low; the free computer is small. |
 
 ### Privacy and safety
@@ -315,7 +343,8 @@ npm test          # unit + integration tests (Node's built-in runner, real WebSo
 npm run test:e2e  # end-to-end tests in a headless Chromium browser via Playwright (not part of npm test)
 ```
 
-- `npm test` runs `specs/unit/**/*.spec.js` and `specs/integration/**/*.spec.js`. Nothing else is installed for it. The same command runs in CI (`.github/workflows/bomberman.yml`) on every change under `bomberman/`.
+- `npm test` runs `specs/unit/**/*.spec.js` and `specs/integration/**/*.spec.js`. `npm install` is all it needs (`esbuild`, a dev dependency, builds the single-file download that `specs/unit/single-file.spec.js` checks; the downloadable file must be rebuilt with `npm run build:single` after changes under `client/` or `shared/`, and that spec fails when it is stale). The same command runs in CI (`.github/workflows/bomberman.yml`) on every change under `bomberman/`.
+- The e2e scenario `specs/e2e/single.e2e.mjs` opens the single file over `file://` with the network blocked and plays offline Practice, then a host with two friends (one on a phone) over real WebRTC, a cut link and a re-handshake. It runs its own Chromium with mDNS candidate hiding switched off, so two browsers on one machine can find each other.
 - `npm run test:e2e` needs [Playwright](https://playwright.dev) and a Chromium browser installed on your machine (globally, or point `PLAYWRIGHT_MODULE_DIR` and `PLAYWRIGHT_BROWSERS_PATH` at them). Without them it prints `SKIP` and exits successfully.
 - Test files must be named `*.spec.js` / `*.e2e.mjs` and never `test.js`, `*.test.js` or live in a `test/` folder, because the repository's other project runs `node --test` with auto-discovery at the repo root and must not pick these up (`specs/unit/naming.spec.js` enforces it).
 
@@ -323,7 +352,7 @@ npm run test:e2e  # end-to-end tests in a headless Chromium browser via Playwrig
 
 ```
 bomberman/
-  package.json        scripts: start, dev, test, test:e2e, share
+  package.json        scripts: start, dev, test, test:e2e, share, build:single
   Dockerfile  fly.toml  .dockerignore      deployment (Render's render.yaml is in the repository root)
   client/             the web app, plain files served as they are
     index.html  manifest.webmanifest  css/style.css  icons/
@@ -331,6 +360,7 @@ bomberman/
     js/ui.js          all DOM screens: title, lobby, HUD, results, dialogs
     js/game.js        ClientGame: snapshots, interpolation, prediction and reconciliation
     js/net.js         WebSocketConnection and LoopbackConnection (Practice mode)
+    js/p2p.js         single-file play with friends: codes, HostSession (a Room in the host's page), GuestConnection, WebRTC
     js/input.js       keyboard, touch and gamepad
     js/render.js  sprites.js  particles.js   canvas rendering, procedural art, effects
     js/audio.js       synthesized sound and music (no audio files)
@@ -350,8 +380,10 @@ bomberman/
     qr.js             QR code generator (lobby and `npm run share`)
   scripts/
     share.js          `npm run share`: server plus a public tunnel
+    build-single.mjs  `npm run build:single`: bundles everything into download/blast-party.html
     make-icons.mjs    regenerates client/icons/*.png
     dev/              developer tooling (art sheets, bot and audio checks, the PROTOCOL.md generator)
+  download/           blast-party.html, the whole game as one file (generated; commit it after rebuilding)
   specs/              unit/ integration/ e2e/ helpers/ fixtures/
   docs/               SPEC.md (the design contract), PROTOCOL.md (wire protocol)
 ```
