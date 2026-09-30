@@ -40,7 +40,7 @@ const FADE_IN = 3.5, FADE_OUT = 7;  // per second
 const MAX_FLASHES = 40;
 const FLASH_I = 900;
 /** By day, the share of its light a fixture under a roof keeps (street lamps keep lampK). */
-const INTERIOR_DAY_K = 0.7;
+const INTERIOR_DAY_K = 0.15;
 
 /** Point lights in the pool per tier. */
 export const LIGHT_POOL = { cinematic: 20, ultra: 12, high: 8, low: 4 };
@@ -473,7 +473,8 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       L.position.set(s.x, s.h, s.y);
       L.color.copy(s.color);
       L.distance = s.radius;
-      // (by day an interior fixture keeps most of its light: it is what lights the room)
+      // (by day an interior fixture keeps a little of its light: the room reads dim, not black, and
+      // still darker than the street outside)
       L.intensity = s.intensity * E0 * k * (day ? (s.flash ? amb.flashK : s.interior ? INTERIOR_DAY_K : s.lamp ? amb.lampK : amb.fireK) : 1);
       if (s.index !== undefined) mapLevel[s.index] = p.level;
     }

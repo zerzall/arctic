@@ -22,7 +22,7 @@ import * as THREE from 'three';
 const TEXEL = 8;
 const MAX_TEX = 2048;
 /** How far daylight carries into a room through an opening (units: e-folding length). */
-const SPILL = 46;
+const SPILL = 64;
 /** Obstacles at least this tall (3D model height) stop the light at a room's edge. */
 const WALL_H = 60;
 /** Extra darkness of the roofs of a section whose lights are out. */

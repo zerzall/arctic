@@ -294,7 +294,7 @@ function setup(mapId) {
   // (a story level plays its missions; here it is walked like a hideout, or with plain waves while zombies are on)
   const levelMap = LEVEL_IDS.includes(mapId);
   const mode = hubMap || (levelMap && !opt.zombies) ? 'hideout' : levelMap ? 'defend' : opt.mode;
-  // demo=rooms (a story level): walled rooms with a roof of every kind in its second section, to review
+  // demo=rooms (a story level): walled rooms with a roof of every kind from its second section on, to review
   // the interiors (roofs3d.js, the indoor light mask) before the level's own art exists
   const demoMap = levelMap && params.get('demo') === 'rooms' ? demoRooms(buildMap(mapId, opt.seed)) : null;
   game = new Game({ mapId, map: demoMap || undefined, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode } });
@@ -339,40 +339,47 @@ function levelViewpoints(map) {
 }
 
 /**
- * demo=rooms: walled rooms under roofs of every kind along the second section of a story level (north
+ * demo=rooms: walled rooms under roofs of every kind from the second section of a story level on (north
  * and south of the road), each with a doorway toward the road and a window gap; the walls are ordinary
  * `wall` obstacles, so the sim and both renderers see them. Views `room:<kind>` (inside, looking at
  * the doorway) and `door:<kind>` (outside, looking in).
  */
 function demoRooms(map) {
-  const s = map.sections[Math.min(1, map.sections.length - 1)];
+  let si = Math.min(1, map.sections.length - 1);
   const kinds = ['office', 'industrial', 'hospital', 'house', 'mall', 'metro', 'plain'];
-  const road = s.y;
   const views = [];
-  const wall = (x, y, w, h) => map.obstacles.push({ id: map.obstacles.length, kind: 'wall', x, y, w, h, a: 0, color: '#8c877c', solid: true, wrecked: false, roof: null, section: s.id });
-  const layout = kinds.map((kind) => ({ kind, w: kind === 'mall' ? 520 : kind === 'industrial' ? 460 : 320, d: kind === 'mall' ? 420 : 300, x: 0, side: -1 }));
-  // (two rows: the first of each pair north of the road, the second south; x advances per pair)
+  const wall = (x, y, w, h, s) => map.obstacles.push({ id: map.obstacles.length, kind: 'wall', x, y, w, h, a: 0, color: '#8c877c', solid: true, wrecked: false, roof: null, section: s.id });
+  const layout = kinds.map((kind) => ({ kind, w: kind === 'mall' ? 520 : kind === 'industrial' ? 460 : 320, d: kind === 'mall' ? 420 : 300, x: 0, side: -1, s: null }));
+  // (two rows: the first of each pair north of the road, the second south; x advances per pair,
+  // on into the next section when a pair does not fit)
+  let s = map.sections[si];
   let x = s.x - s.w / 2 + 140;
   for (let i = 0; i < layout.length; i += 2) {
     const pair = layout.slice(i, i + 2);
     const w = Math.max(...pair.map((q) => q.w));
-    pair.forEach((q, j) => { q.x = x + w / 2; q.side = j === 0 ? -1 : 1; });
+    if (x + w > s.x + s.w / 2 - 40 && si + 1 < map.sections.length) {
+      s = map.sections[++si];
+      x = s.x - s.w / 2 + 140;
+    }
+    pair.forEach((q, j) => { q.x = x + w / 2; q.side = j === 0 ? -1 : 1; q.s = s; });
     x += w + 70;
   }
   for (const q of layout) {
+    const s = q.s;
     if (q.x + q.w / 2 > s.x + s.w / 2 - 40) continue;
+    const road = s.y;
     const cy = road + q.side * (170 + q.d / 2);
     const near = cy - q.side * q.d / 2, far = cy + q.side * q.d / 2;
-    wall(q.x, far, q.w, 14);
-    wall(q.x - q.w / 2, cy, 14, q.d);
+    wall(q.x, far, q.w, 14, s);
+    wall(q.x - q.w / 2, cy, 14, q.d, s);
     // the east wall with a window gap
-    wall(q.x + q.w / 2, cy - q.d * 0.3, 14, q.d * 0.4);
-    wall(q.x + q.w / 2, cy + q.d * 0.35, 14, q.d * 0.3);
+    wall(q.x + q.w / 2, cy - q.d * 0.3, 14, q.d * 0.4, s);
+    wall(q.x + q.w / 2, cy + q.d * 0.35, 14, q.d * 0.3, s);
     // the road side with a doorway (wide for the garage and the mall)
     const door = q.kind === 'industrial' || q.kind === 'mall' ? 150 : 84;
     const seg = (q.w - door) / 2;
-    wall(q.x - q.w / 2 + seg / 2, near, seg, 14);
-    wall(q.x + q.w / 2 - seg / 2, near, seg, 14);
+    wall(q.x - q.w / 2 + seg / 2, near, seg, 14, s);
+    wall(q.x + q.w / 2 - seg / 2, near, seg, 14, s);
     map.roofs.push({ x: q.x, y: cy, w: q.w + 14, h: q.d + 14, a: 0, height: q.kind === 'mall' ? 250 : q.kind === 'industrial' ? 210 : 150, kind: q.kind, section: s.id, dark: 0.78 });
     views.push({ name: 'room:' + q.kind, x: q.x - q.w * 0.3, y: cy + q.side * q.d * 0.3, yaw: Math.atan2(near - (cy + q.side * q.d * 0.3), q.x - (q.x - q.w * 0.3)), pitch: 0.05 });
     views.push({ name: 'door:' + q.kind, x: q.x - 40, y: near - q.side * 220, yaw: Math.atan2(q.side, 0.12), pitch: 0 });

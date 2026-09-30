@@ -29,6 +29,8 @@ const WALL_MODEL_H = 88;
 const MAX_FIX_LIGHTS = 4;
 /** Fixture lights are registered with the pool only this close to the camera. */
 const FIX_NEAR = 1500;
+/** By day, the strength a fixture light keeps (before the pool's own day scale). */
+const FIX_DAY_K = 0.2;
 
 /** Per kind: ceiling and roof colours and surfaces, fixture light colour and strength. */
 const KIND = {
@@ -397,7 +399,9 @@ export function createRoofs(ctx, deps) {
       for (let k = 0; k < rc.fix.length; k++) {
         const f = rc.fix[k];
         if (Math.abs(f.x - cx) > FIX_NEAR || Math.abs(f.y - cy) > FIX_NEAR) continue;
-        L.steady(`roof:${rc.i}:${k}`, f.x, f.y, f.h, fixColor[rc.i], K.k * (day ? 1.2 : 1), reach);
+        // (by day a room is lit mostly by the daylight spilling in: the fixtures only lift it a little,
+        // so the room still reads darker than the street; the pool scales steady sources by fireK too)
+        L.steady(`roof:${rc.i}:${k}`, f.x, f.y, f.h, fixColor[rc.i], K.k * (day ? FIX_DAY_K : 1), reach);
       }
     }
   }
