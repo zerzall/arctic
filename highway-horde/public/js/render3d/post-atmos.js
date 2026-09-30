@@ -191,7 +191,7 @@ void main() {
     // Henyey-Greenstein, forward scattering (g = 0.62): the shafts show looking toward the sun
     float g = 0.62;
     float phase = (1.0 - g * g) / (4.0 * 3.14159265 * pow(1.0 + g * g - 2.0 * g * cosT, 1.5));
-    L += uSunCol * acc * dt * uShaft.y * (0.35 + phase * 4.0);
+    L += uSunCol * acc * dt * uShaft.y * (0.2 + phase * 3.2);
   }
 #endif
   gl_FragColor = vec4(L, T);
@@ -396,6 +396,8 @@ export class AtmosPass extends Pass {
     this.getSources = getSources;
     this.needsSwap = true;
     this.enabled = false;
+    /** Sun / moon shaft strength multiplier (tuning knob; 1 = as designed). */
+    this.shaftK = 1;
     this.vol = false;
     this.ssr = false;
     this.tier = 'high';
@@ -617,7 +619,7 @@ export class AtmosPass extends Pass {
     const l = sun.light;
     u.uSunCol.value.copy(l.color).multiplyScalar(l.intensity);
     const mist = src && src.ambient && Number.isFinite(src.ambient.mist) ? src.ambient.mist : 0.6;
-    u.uShaft.value.set(this.hi ? 28 : 0, day ? 7e-5 * (0.5 + mist) : 1.6e-4 * (0.6 + dark), day ? 320 : 140, 2.5);
+    u.uShaft.value.set(this.hi ? 28 : 0, this.shaftK * (day ? 1.3e-5 * (0.5 + mist) : 6e-5 * (0.6 + dark)), day ? 320 : 140, 2.5);
   }
 
   dispose() {

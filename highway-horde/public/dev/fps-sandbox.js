@@ -9,6 +9,7 @@
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
 // Cinematic extras (default: the Cinematic preset's; ignored on the other tiers): msaa=0|2|4|8, shadows=0|1 (4096 cascades),
 // contact=0|1, aofull=0|1, fxhigh=0|1, mb=0|1 (motion blur), dof=0|1, lens=0|1, lightshadows=0|1,
+// hp=<1..100> (the local player's health in the ghost view: low hp shows the hurt effects and depth of field),
 // display calibration: bright=<0.7..1.3>, contrast=<..>, sat=<..>; timing=1 (per-pass GPU timings in the readout),
 // gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
 // set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).
@@ -36,6 +37,7 @@ const opt = {
   view: params.get('view') || null,
   fixed: params.get('fixed') === '1',
   wave: params.get('wave') === '1',
+  hp: params.get('hp') ? Math.max(1, Math.min(100, Number(params.get('hp')) || 100)) : 0,
   fov: Number(params.get('fov') || 80),
   zombies: params.get('zombies') !== '0',
   // paused=1: no animation loop, frames only via __fps.step() (screenshots on software GL)
@@ -404,7 +406,7 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(opt.hp ? { hp: opt.hp } : null), ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });
