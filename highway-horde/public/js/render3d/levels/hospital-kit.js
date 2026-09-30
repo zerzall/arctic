@@ -423,6 +423,19 @@ export function createInteriorArt(ctx, deps, level) {
     }
     return best;
   }
+  /** The floor height of a room (the terrain under its centre: the upper level of a mall stands on a plateau). */
+  const baseCache = new WeakMap();
+  function roomBase(r) {
+    let b = baseCache.get(r);
+    if (b === undefined) { b = gy(r.x, r.y); baseCache.set(r, b); }
+    return b;
+  }
+  /** The floor height at a window (cached; the map's own items are never written). */
+  function winBase(it) {
+    let b = baseCache.get(it);
+    if (b === undefined) { b = sideBase(it, it.th || 16); baseCache.set(it, b); }
+    return b;
+  }
   const FIN_DEFAULT = { floor: '#8a877e', upper: '#cfcac0', lower: null, skirt: '#3a3a38', ceil: '#d8d6ce', ceilKind: 'plain' };
   /** The finish (look) of a room. */
   function finishOf(r) {
@@ -433,6 +446,12 @@ export function createInteriorArt(ctx, deps, level) {
   // ---- windows and doors on the walls ------------------------------------------------------------
   const windows = items.filter((it) => it.t === 'window');
   const doors = items.filter((it) => it.t === 'door');
+  /** The floor height beside a wall item (door, window): the higher of its two sides (a raised floor stands on terrain). */
+  function sideBase(it, th) {
+    const [ax, ay] = toWorld(it, 0, th / 2 + 16), [bx, by] = toWorld(it, 0, -th / 2 - 16);
+    return Math.max(gy(ax, ay), gy(bx, by), gy(it.x, it.y));
+  }
+
   /** Windows lying in wall piece o (normalised by wallFrame), as holes in its local frame: { t, y0, y1, w, it }. */
   function holesOf(o) {
     const c = Math.cos(o.a || 0), s = Math.sin(o.a || 0);
@@ -443,7 +462,8 @@ export function createInteriorArt(ctx, deps, level) {
       if (Math.abs(lz) > o.h / 2 + 2 || Math.abs(lx) > o.w / 2) continue;
       // (a window's own axis must run along the wall)
       if (Math.abs(Math.sin((it.a || 0) - (o.a || 0))) > 0.1) continue;
-      out.push({ t: lx, y0: it.sill, y1: it.sill + it.h, w: it.w, it });
+      const wb = winBase(it);
+      out.push({ t: lx, y0: wb + it.sill, y1: wb + it.sill + it.h, w: it.w, it });
     }
     return out.sort((p, q) => p.t - q.t);
   }
@@ -532,21 +552,22 @@ export function createInteriorArt(ctx, deps, level) {
       for (const sg of segs) {
         sg.fin = finishOf(sg.room);
         sg.h = sg.room ? (sg.fin.tall || sg.room.height) : 0;
-        if (sg.h > top) top = sg.h;
+        sg.base = sg.room && !sg.fin.tall ? roomBase(sg.room) : 0;
+        if (sg.base + sg.h > top) top = sg.base + sg.h;
       }
       faces.push({ s, segs });
     }
     if (!top) top = ws.h || 120;
     for (const f of faces) {
       for (const sg of f.segs) {
-        if (sg.room) interiorFace(B, o, f.s, sg.t0, sg.t1, sg.h, sg.fin, holes, ws, top);
+        if (sg.room) interiorFace(B, o, f.s, sg.t0, sg.t1, sg.h, sg.fin, holes, ws, top, sg.base);
         else if (level.facade) {
           try { level.facade(P(B, o, { ws }), f.s, sg.t0, sg.t1, holes, top); } catch (err) { warnOnce('facade ' + o.style, err); }
         } else plainFace(B, o, f.s, sg.t0, sg.t1, 0, top, ws.face || FIN_DEFAULT.upper, holes, S(DET.drywall, 0.85, 0));
       }
     }
     // the top and the two ends
-    const topH = Math.max(top, ...faces.flatMap((f) => f.segs.map((sg) => (sg.room ? sg.h : (ws.facadeTop || top)))));
+    const topH = Math.max(top, ...faces.flatMap((f) => f.segs.map((sg) => (sg.room ? sg.base + sg.h : (ws.facadeTop || top)))));
     if (ws.after) { try { ws.after(P(B, o, { ws, faces, top: topH })); } catch (err) { warnOnce('wall after ' + o.style, err); } at(B, o.x, o.y, o.a || 0, o.id * 31, base); }
     B.quad('std', [0, topH, 0], [L, 0, 0], [0, 0, -W], shadeHex(ws.face || '#8a877e', -0.2), S(DET.concrete, 0.9, 0));
     for (const e of [-1, 1]) B.quad('std', [e * L / 2, topH / 2, 0], [0, 0, -e * W], [0, topH, 0], shadeHex(ws.face || '#9a968c', -0.1), S(DET.drywall, 0.9, 0));
@@ -573,40 +594,55 @@ export function createInteriorArt(ctx, deps, level) {
   }
 
   /** An interior face segment: skirting, the lower finish (tiles / wainscot) to the rail, the upper paint. */
-  function interiorFace(B, o, s, t0, t1, h, fin, holes, ws, top) {
+  function interiorFace(B, o, s, t0, t1, h, fin, holes, ws, top, base = 0) {
     if (fin.tall) { plainFace(B, o, s, t0, t1, 0, fin.tall, fin.upper, holes, fin.upperSurf || S(fin.upperDet ?? DET.drywall, 0.85, 0)); return; }
+    const b0 = base;
     const lowH = fin.lowerH || 0;
     const skirtH = fin.skirtH ?? 5;
     const upSurf = fin.upperSurf || S(fin.upperDet ?? DET.drywall, fin.upperRough ?? 0.82, 0);
     const lowSurf = fin.lowerSurf || S(fin.lowerDet ?? DET.tile, fin.lowerRough ?? 0.45, 0);
     if (lowH > 0) {
-      plainFace(B, o, s, t0, t1, 0, lowH, fin.lower || fin.upper, holes, lowSurf);
-      plainFace(B, o, s, t0, t1, lowH, h, fin.upper, holes, upSurf);
+      plainFace(B, o, s, t0, t1, b0, b0 + lowH, fin.lower || fin.upper, holes, lowSurf);
+      plainFace(B, o, s, t0, t1, b0 + lowH, b0 + h, fin.upper, holes, upSurf);
     } else {
-      plainFace(B, o, s, t0, t1, 0, Math.min(h, 34), fin.upper, holes, upSurf);
-      plainFace(B, o, s, t0, t1, Math.min(h, 34), h, fin.upper, holes, upSurf);
+      plainFace(B, o, s, t0, t1, b0, b0 + Math.min(h, 34), fin.upper, holes, upSurf);
+      plainFace(B, o, s, t0, t1, b0 + Math.min(h, 34), b0 + h, fin.upper, holes, upSurf);
     }
     const len = t1 - t0, mid = (t0 + t1) / 2, z = s * o.h / 2;
     // skirting and the rail (a bumper rail in hospitals, a dado rail elsewhere)
-    if (skirtH > 0) B.box('std', mid, skirtH / 2, z + s * 0.6, len, skirtH, 1.2, fin.skirt || '#3a3a38', null, S(DET.plastic, 0.5, 0));
+    if (skirtH > 0) B.box('std', mid, b0 + skirtH / 2, z + s * 0.6, len, skirtH, 1.2, fin.skirt || '#3a3a38', null, S(DET.plastic, 0.5, 0));
     if (fin.rail && lod() >= 1) {
-      const railY = fin.railY ?? (lowH || 32);
+      const railY = b0 + (fin.railY ?? (lowH || 32));
       for (const [a, b] of spansAround(t0, t1, holes, railY)) {
         B.rbox('std', (a + b) / 2, railY, z + s * 1.4, b - a, fin.railH || 3.2, 2.8, 0.8, fin.rail, null, fin.railSurf || S(DET.plastic, 0.4, 0.05));
       }
     }
     // a cornice / shadow gap at the ceiling
-    if (fin.cornice && lod() >= 1) B.box('std', mid, h - 1.2, z + s * 0.9, len, 2.4, 1.8, fin.cornice, null, S(DET.plaster, 0.8, 0));
+    if (fin.cornice && lod() >= 1) B.box('std', mid, b0 + h - 1.2, z + s * 0.9, len, 2.4, 1.8, fin.cornice, null, S(DET.plaster, 0.8, 0));
     // the room's wall dressing: grime near the floor, a stain
     if (fin.grime && lod() >= 1 && len > 60) {
       const r = hash01(o.id * 13 + (s > 0 ? 1 : 0) + Math.round(t0));
       if (r < fin.grime) {
         const gx = t0 + len * (0.2 + 0.6 * hash01(o.id * 7 + Math.round(t1)));
-        const cells = level.grimeCells || ['grime'];
+        const cells = fin.grimeCells || level.grimeCells || ['grime'];
         const cell = cells[Math.floor(hash01(o.id + Math.round(gx)) * cells.length)];
         const gw = 40 + 50 * hash01(o.id * 3 + Math.round(gx));
         const hit = holes.some((hl) => Math.abs(hl.t - gx) < hl.w / 2 + gw / 2);
-        if (!hit) api.decal(B, cell, gx, fin.grimeY ?? 34, z + s * 0.35, gw, fin.grimeH ?? 50, s > 0 ? 0 : Math.PI);
+        if (!hit) api.decal(B, cell, gx, b0 + (fin.grimeY ?? 34), z + s * 0.35, gw, fin.grimeH ?? 50, s > 0 ? 0 : Math.PI);
+      }
+    }
+    // the things on the walls: dispensers, extinguishers, posters, clocks, bins below (the level draws them)
+    if (fin.wallProps && level.wallProp && lod() >= 1 && len > 90) {
+      const step = fin.wallStep || 150;
+      const n = Math.max(1, Math.floor(len / step));
+      for (let i = 0; i < n; i++) {
+        const seed = o.id * 31 + i * 7 + (s > 0 ? 3 : 0) + Math.round(t0);
+        const t = t0 + (i + 0.5) * (len / n) + (hash01(seed + 1) - 0.5) * 30;
+        if (hash01(seed) > (fin.wallPropK ?? 0.65)) continue;
+        if (t - t0 < 34 || t1 - t < 34) continue;
+        if (holes.some((hl) => Math.abs(hl.t - t) < hl.w / 2 + 24)) continue;
+        const kind = fin.wallProps[Math.floor(hash01(seed + 5) * fin.wallProps.length)];
+        try { level.wallProp({ ...api, B, o, s, t, z: z + s * 0.08, ry: s > 0 ? 0 : Math.PI, base: b0, h, kind, fin, seed }); } catch (err) { warnOnce('wall prop ' + kind, err); }
       }
     }
     void top; void ws;
@@ -631,7 +667,7 @@ export function createInteriorArt(ctx, deps, level) {
   /** A door frame: jambs, head, the lintel up to the ceiling on both sides, and the leaves by kind. */
   function drawDoor(B, it) {
     const w = it.w, th = it.th || 16, h = it.h || 78;
-    const base = gy(it.x, it.y);
+    const base = sideBase(it, th);
     at(B, it.x, it.y, it.a || 0, Math.round(it.x * 3 + it.y), base);
     B.setJitter(0.01);
     // the rooms either side
@@ -639,7 +675,7 @@ export function createInteriorArt(ctx, deps, level) {
     const ra = roomAt(ax, ay), rb = roomAt(bx, by);
     const fa = finishOf(ra), fb = finishOf(rb);
     const ws = (level.walls && level.walls[it.style]) || {};
-    const topOf = (rm, fin) => (rm ? (fin.tall || rm.height) : (ws.facadeTop || ws.top || 150)) - base;
+    const topOf = (rm, fin) => (rm ? (fin.tall || roomBase(rm) + rm.height) : (ws.facadeTop || ws.top || 150)) - base;
     const topA = topOf(ra, fa), topB = topOf(rb, fb);
     const top = Math.max(topA, topB);
     const frame = (level.doorFrame && level.doorFrame(it)) || { color: '#8a8f94', surf: STEEL, jamb: 3.2 };
@@ -728,7 +764,8 @@ export function createInteriorArt(ctx, deps, level) {
   const glassPanes = [];      // collected for finish(): real see-through panes (not shadow casters)
   function drawWindow(B, it) {
     const w = it.w, th = it.th || 16, y0 = it.sill, y1 = it.sill + it.h;
-    at(B, it.x, it.y, it.a || 0, Math.round(it.x + it.y * 7), 0);
+    const wbase = winBase(it);
+    at(B, it.x, it.y, it.a || 0, Math.round(it.x + it.y * 7), wbase);
     B.setJitter(0.01);
     const [ax, ay] = toWorld(it, 0, th / 2 + 16), [bx, by] = toWorld(it, 0, -th / 2 - 16);
     const fa = finishOf(roomAt(ax, ay)), fb = finishOf(roomAt(bx, by));
@@ -753,7 +790,7 @@ export function createInteriorArt(ctx, deps, level) {
       for (let p = 0; p < 3; p++) B.box('std', (hash01(it.x + p) - 0.5) * 4, y0 + (p + 0.5) * (it.h / 3), -th / 2 - 0.8, w + 6, it.h / 3 - 1, 1, ['#6b5a44', '#5a4632', '#75604a'][p], [0, 0, (hash01(it.y + p) - 0.5) * 0.12], S(DET.wood, 0.85, 0));
     } else if (!broken) {
       const [wx, wy] = toWorld(it, 0, fz);
-      glassPanes.push({ x: wx, y: wy, a: it.a || 0, w: w - 2 * F, h: it.h - 2 * F, yc: (y0 + y1) / 2 });
+      glassPanes.push({ x: wx, y: wy, a: it.a || 0, w: w - 2 * F, h: it.h - 2 * F, yc: wbase + (y0 + y1) / 2 });
     } else if (lod() >= 1) {
       // glass teeth left in the frame
       for (let k = 0; k < 5; k++) {
@@ -775,7 +812,7 @@ export function createInteriorArt(ctx, deps, level) {
   function drawRoom(B, r) {
     const fin = finishOf(r);
     if (!fin) return;
-    const base = fin.base !== undefined ? fin.base : 0;
+    const base = fin.base !== undefined ? fin.base : roomBase(r);
     at(B, r.x, r.y, 0, Math.round(r.x + r.y), base);
     B.setJitter(0);
     // floor
@@ -783,6 +820,16 @@ export function createInteriorArt(ctx, deps, level) {
       const fs = { noAO: true, surf: [fin.floorDet ?? DET.linoleum, fin.floorRough ?? 0.4, 0] };
       B.quad('lvfloor', [0, 0, 0], [r.w, 0, 0], [0, 0, -r.h], fin.floor, fs);
       if (fin.floorFx) fin.floorFx({ B, r, fin, ...api });
+      // stains and trails on the floor
+      if (fin.floorDecals && lod() >= 1) {
+        const rr = seededRng(Math.round(r.x * 13 + r.y * 7) + 5);
+        const n = Math.round((r.w * r.h) / (fin.decalArea || 160000) * (0.6 + rr.next()));
+        for (let i = 0; i < n; i++) {
+          const cell = fin.floorDecals[Math.floor(rr.next() * fin.floorDecals.length)];
+          const sz = 50 + rr.next() * 90;
+          api.flat(B, cell, (rr.next() - 0.5) * (r.w - sz), 0.25 + i * 0.002, (rr.next() - 0.5) * (r.h - sz), sz * (cell === 'blood_trail' ? 2.2 : 1), sz * (cell === 'blood_trail' ? 0.55 : 1), rr.next() * 6.28);
+        }
+      }
     }
     // ceiling
     if (fin.ceilKind === 'none') return;
@@ -810,11 +857,12 @@ export function createInteriorArt(ctx, deps, level) {
         const q = rr.next();
         if (q > miss) continue;
         const cx = x0 + (i + 0.5) * step, cz = z0 + (j + 0.5) * step;
-        B.quad('std', [cx, H + 0.2, cz], [step - 1, 0, 0], [0, 0, step - 1], '#0b0b0c', { noAO: true, surf: [0, 1, 0] });
-        if (q < miss * 0.4 && lod() >= 2) {
-          // a tile hanging by a corner, cables dangling
-          B.box('std', cx + step * 0.2, H - step * 0.35, cz, step - 2, 1, step - 2, fin.ceil, [0.2, 0, 1.05], S(DET.ceiltile, 0.9, 0));
-          B.cyl('std', cx - step * 0.2, H - 24, cz, 0.35, 24, '#1a1a1a', 4, 1, null, S(0, 0.6, 0.1));
+        B.quad('std', [cx, H + 0.2, cz], [step - 1, 0, 0], [0, 0, step - 1], '#16140f', { noAO: true, surf: [0, 1, 0] });
+        if (lod() >= 1) B.cyl('std', cx + step * 0.2, H - 14, cz - step * 0.1, 0.35, 14, '#1a1a1a', 4, 1, null, S(0, 0.6, 0.1));
+        if (q < miss * 0.3 && lod() >= 2) {
+          // a tile hanging from one edge
+          const th = 0.8 + rr.next() * 0.5, sz = step - 3;
+          B.box('std', cx, H - Math.sin(th) * sz / 2, cz - sz / 2 + Math.cos(th) * sz / 2, sz, 1, sz, fin.ceil, [th, 0, 0], S(DET.ceiltile, 0.9, 0));
         }
       }
     }
@@ -848,8 +896,8 @@ export function createInteriorArt(ctx, deps, level) {
       const fin = finishOf(r);
       if (!fin || !fin.fixture || fin.ceilKind === 'none') continue;
       const fx = fin.fixture;
-      const H = r.height;
-      const mine = lights.filter((l) => Math.abs(l.x - r.x) <= r.w / 2 && Math.abs(l.y - r.y) <= r.h / 2 && Number.isFinite(l.h) && l.h >= H - 40 && l.h <= H + 12);
+      const H = r.height, rb = roomBase(r);
+      const mine = lights.filter((l) => Math.abs(l.x - r.x) <= r.w / 2 && Math.abs(l.y - r.y) <= r.h / 2 && Number.isFinite(l.h) && l.h - rb >= H - 40 && l.h - rb <= H + 12);
       // a regular grid of fixtures across the room; the ones by a map light are lit
       const along = r.w >= r.h;
       const len = along ? r.w : r.h, wid = along ? r.h : r.w;
@@ -864,13 +912,13 @@ export function createInteriorArt(ctx, deps, level) {
           const lit = near && nd < Math.max(stepA, 120) * 0.9 ? near : (hash01(Math.round(wx * 3 + wy)) < (fx.stray ?? 0.12) ? { color: fx.color || '#e8f0ff', flicker: 0.6 } : null);
           const flick = lit && lit.flicker > 0.3;
           const Bf = builderFor(r.section, flick);
-          at(Bf, wx, wy, along ? 0 : HALF, Math.round(wx + wy), 0);
+          at(Bf, wx, wy, along ? 0 : HALF, Math.round(wx + wy), rb);
           const color = lit ? lit.color : null;
           try {
             if (level.fixture) level.fixture({ B: Bf, r, fin, fx, lit: !!lit, color, H, ...api });
             else troffer(Bf, H, fx, color);
           } catch (err) { warnOnce('fixture', err); }
-          if (lit && lit.color && near === lit && lod() >= 1) api.halo(wx, wy, H - 2, lit.color, fx.halo ?? 46, fx.haloK ?? 0.3, lit.flicker || 0);
+          if (lit && lit.color && near === lit && lod() >= 1) api.halo(wx, wy, rb + H - 2, lit.color, fx.halo ?? 46, fx.haloK ?? 0.3, lit.flicker || 0);
         }
       }
     }
@@ -934,9 +982,10 @@ export function createInteriorArt(ctx, deps, level) {
       n++;
       // the window's opening corners in world space, cast along -sun onto the floor
       const tx = Math.cos(it.a || 0), ty = Math.sin(it.a || 0);
-      const y0 = it.sill, y1 = it.sill + it.h;
+      const fb = roomBase(room), wb = winBase(it);
+      const y0 = wb + it.sill, y1 = wb + it.sill + it.h;
       const corner = (t, y) => [it.x + tx * t, y, it.y + ty * t];
-      const proj = (p) => { const k = p[1] / sy; return [p[0] - sx * k, 0.4, p[2] - sz * k]; };
+      const proj = (p) => { const k = (p[1] - fb) / sy; return [p[0] - sx * k, fb + 0.4, p[2] - sz * k]; };
       const w2 = it.w / 2 - 3;
       const a = corner(-w2, y1), b = corner(w2, y1), c = corner(w2, y0), d = corner(-w2, y0);
       const A = proj(a), Bp = proj(b), C = proj(c), Dp = proj(d);

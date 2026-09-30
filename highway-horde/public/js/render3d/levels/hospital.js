@@ -11,10 +11,13 @@
 //   BUCKETS, createLevelArt(ctx, deps) → { obstacle, roof, props, finish, update, setQuality, dispose,
 //   material, gateModel, setLights }
 
-import { createInteriorArt, KIT_BUCKETS, T, DET, S, STEEL, CHROME, PAINT, CONC, shadeHex, mixHex, hash01 } from './hospital-kit.js';
+import * as THREE from 'three';
+import { createInteriorArt, KIT_BUCKETS, T, DET, S, STEEL, CHROME, PAINT, PLAST, CONC, shadeHex, mixHex, hash01 } from './hospital-kit.js';
 import { hospitalAtlas } from './hospital-atlas.js';
 import { OBSTACLES, ITEMS, lampsOf } from './hospital-props.js';
 import { roomId } from '../world-arch.js';
+import { building } from '../world-bld.js';
+import { FABRIC } from './hospital-kit.js';
 
 /** Extra geo-builder buckets of this level. */
 export const BUCKETS = { ...KIT_BUCKETS };
@@ -26,29 +29,88 @@ const TROFFER = { kind: 'troffer', step: 160, rowStep: 210, color: '#e8f0ff', st
 const TUBE = { kind: 'tube', step: 200, rowStep: 260, color: '#e8f0ff', stray: 0.05 };
 const ROUND = { kind: 'round', step: 150, rowStep: 180, color: '#ffe8c8', stray: 0.05 };
 
+const WARD_PROPS = ['gel', 'ext', 'poster', 'clock', 'sharps', 'glove', 'bin', 'chair', 'notice', 'blood', 'panel', 'gel', 'bin', 'cart'];
+const CORR_PROPS = ['gel', 'ext', 'poster', 'bin', 'chair', 'blood', 'notice', 'evac', 'cart', 'wheelchair', 'phone', 'poster'];
+const PLAIN_PROPS = ['ext', 'panel', 'bin', 'blood', 'poster'];
+const BLOODY = ['blood_trail', 'blood_pool', 'blood_splat', 'grime', 'blood_trail'];
+
 const ROOMS = {
-  'hs-wait': { floor: '#a4a197', floorDet: DET.terrazzo, floorRough: 0.28, lower: '#6c8c86', lowerH: 38, lowerDet: DET.wallpaper, upper: '#d9dbd2', rail: '#7a5a3c', railSurf: S(DET.wood, 0.6, 0), railY: 38, railH: 4, skirt: '#2c3230', ceil: '#dcdcd4', ceilKind: 'grid', fixture: TROFFER, blinds: 0.6, grime: 0.55, missing: 0.05 },
-  'hs-resus': { floor: '#7c979a', floorDet: DET.linoleum, lower: '#dfe5e4', lowerH: 56, lowerDet: DET.tile, upper: '#c8d5d7', rail: '#aab4b8', skirt: '#48585c', ceil: '#dfe0dc', ceilKind: 'grid', fixture: TROFFER, blinds: 0.9, grime: 0.7, grimeCells: ['blood_hand', 'blood_splat', 'grime'] },
-  'hs-pit': { floor: '#8da3a5', floorDet: DET.linoleum, lower: '#b5c5c2', lowerH: 32, lowerDet: DET.linoleum, upper: '#dfe3dd', rail: '#4f8790', railH: 5, skirt: '#2f4a50', ceil: '#dcdcd6', ceilKind: 'grid', fixture: TROFFER, grime: 0.6, missing: 0.07, stripe: ['#b3261e', '#2a6ab0'] },
-  'hs-pharm': { floor: '#8d8c85', floorDet: DET.linoleum, upper: '#d2d1c8', skirt: '#3a3d3e', ceil: '#d8d8d0', ceilKind: 'grid', fixture: TROFFER, grime: 0.3 },
+  'hs-wait': { wallProps: CORR_PROPS, floorDecals: BLOODY, floor: '#a4a197', floorDet: DET.terrazzo, floorRough: 0.28, lower: '#6c8c86', lowerH: 38, lowerDet: DET.wallpaper, upper: '#d9dbd2', rail: '#7a5a3c', railSurf: S(DET.wood, 0.6, 0), railY: 38, railH: 4, skirt: '#2c3230', ceil: '#dcdcd4', ceilKind: 'grid', fixture: TROFFER, blinds: 0.6, grime: 0.55, missing: 0.05 },
+  'hs-resus': { wallProps: WARD_PROPS, floorDecals: ['blood_pool', 'blood_splat', 'blood_trail'], decalArea: 60000, floor: '#7c979a', floorDet: DET.linoleum, lower: '#dfe5e4', lowerH: 56, lowerDet: DET.tile, upper: '#c8d5d7', rail: '#aab4b8', skirt: '#48585c', ceil: '#dfe0dc', ceilKind: 'grid', fixture: TROFFER, blinds: 0.9, grime: 0.7, grimeCells: ['blood_hand', 'blood_splat', 'grime'] },
+  'hs-pit': { wallProps: WARD_PROPS, floorDecals: BLOODY, decalArea: 90000, floor: '#8da3a5', floorDet: DET.linoleum, lower: '#b5c5c2', lowerH: 32, lowerDet: DET.linoleum, upper: '#dfe3dd', rail: '#4f8790', railH: 5, skirt: '#2f4a50', ceil: '#dcdcd6', ceilKind: 'grid', fixture: TROFFER, grime: 0.6, missing: 0.07, stripe: ['#b3261e', '#2a6ab0'] },
+  'hs-pharm': { wallProps: PLAIN_PROPS, floorDecals: ['grime', 'blood_splat'], floor: '#8d8c85', floorDet: DET.linoleum, upper: '#d2d1c8', skirt: '#3a3d3e', ceil: '#d8d8d0', ceilKind: 'grid', fixture: TROFFER, grime: 0.3 },
   'hs-xray': { floor: '#6c7276', floorDet: DET.linoleum, upper: '#c4c9ca', lower: '#8a9296', lowerH: 34, skirt: '#2c3032', ceil: '#d4d6d4', ceilKind: 'plain', fixture: ROUND, grime: 0.3 },
-  'hs-staff': { floor: '#7d6c5a', floorDet: DET.wood, floorRough: 0.5, upper: '#d9cfba', lower: '#a89a82', lowerH: 34, rail: '#6b5038', skirt: '#3a2e22', ceil: '#dad8d0', ceilKind: 'grid', fixture: TROFFER, grime: 0.4 },
-  'hs-store': { floor: '#74746d', floorDet: DET.concrete, floorRough: 0.7, upper: '#bdbdb4', lower: '#6d7a70', lowerH: 26, skirt: '#2c2e2c', ceil: '#9a9a94', ceilKind: 'slab', fixture: TUBE, grime: 0.6, grimeCells: ['grime', 'mold', 'grime2'] },
-  'hs-bay': { floor: '#a3a58e', floorDet: DET.linoleum, lower: '#b7c4a6', lowerH: 34, lowerDet: DET.linoleum, upper: '#e3e5d6', rail: '#88a39f', railH: 4.5, skirt: '#3c4a44', ceil: '#dcdcd4', ceilKind: 'grid', fixture: { ...TROFFER, color: '#fff0dc', step: 180 }, blinds: 0.85, grime: 0.5, grimeCells: ['grime', 'blood_hand', 'grime2'] },
-  'hs-recovery': { floor: '#9aa8a2', floorDet: DET.linoleum, lower: '#b9c9c2', lowerH: 34, upper: '#e4e7de', rail: '#7ea09a', skirt: '#35463f', ceil: '#dcdcd4', ceilKind: 'grid', fixture: TROFFER, blinds: 0.85, grime: 0.4 },
-  'hs-corr': { floor: '#8e999c', floorDet: DET.linoleum, lower: '#9cafad', lowerH: 30, lowerDet: DET.linoleum, upper: '#dcdfd7', rail: '#5d8a94', railH: 5.5, railY: 30, skirt: '#2f4448', ceil: '#dadad2', ceilKind: 'grid', fixture: { ...TROFFER, step: 150 }, grime: 0.7, grimeCells: ['grime', 'blood_trail', 'blood_hand', 'grime2', 'g_help', 'g_dead'], missing: 0.06, stripe: ['#2a6ab0', '#d2a52a'] },
+  'hs-staff': { wallProps: ['poster', 'clock', 'notice', 'bin', 'chair'], floorDecals: ['grime'], floor: '#7d6c5a', floorDet: DET.wood, floorRough: 0.5, upper: '#d9cfba', lower: '#a89a82', lowerH: 34, rail: '#6b5038', skirt: '#3a2e22', ceil: '#dad8d0', ceilKind: 'grid', fixture: TROFFER, grime: 0.4 },
+  'hs-store': { wallProps: PLAIN_PROPS, floorDecals: ['grime', 'mold'], floor: '#74746d', floorDet: DET.concrete, floorRough: 0.7, upper: '#bdbdb4', lower: '#6d7a70', lowerH: 26, skirt: '#2c2e2c', ceil: '#9a9a94', ceilKind: 'slab', fixture: TUBE, grime: 0.6, grimeCells: ['grime', 'mold', 'grime2'] },
+  'hs-bay': { wallProps: WARD_PROPS, floorDecals: BLOODY, decalArea: 90000, floor: '#a3a58e', floorDet: DET.linoleum, lower: '#b7c4a6', lowerH: 34, lowerDet: DET.linoleum, upper: '#e3e5d6', rail: '#88a39f', railH: 4.5, skirt: '#3c4a44', ceil: '#dcdcd4', ceilKind: 'grid', fixture: { ...TROFFER, color: '#fff0dc', step: 180 }, blinds: 0.85, grime: 0.5, grimeCells: ['grime', 'blood_hand', 'grime2'] },
+  'hs-recovery': { wallProps: WARD_PROPS, floorDecals: BLOODY, floor: '#9aa8a2', floorDet: DET.linoleum, lower: '#b9c9c2', lowerH: 34, upper: '#e4e7de', rail: '#7ea09a', skirt: '#35463f', ceil: '#dcdcd4', ceilKind: 'grid', fixture: TROFFER, blinds: 0.85, grime: 0.4 },
+  'hs-corr': { wallProps: CORR_PROPS, wallStep: 130, floorDecals: BLOODY, decalArea: 70000, floor: '#8e999c', floorDet: DET.linoleum, lower: '#9cafad', lowerH: 30, lowerDet: DET.linoleum, upper: '#dcdfd7', rail: '#5d8a94', railH: 5.5, railY: 30, skirt: '#2f4448', ceil: '#dadad2', ceilKind: 'grid', fixture: { ...TROFFER, step: 150 }, grime: 0.7, grimeCells: ['grime', 'blood_trail', 'blood_hand', 'grime2', 'g_help', 'g_dead'], missing: 0.06, stripe: ['#2a6ab0', '#d2a52a'] },
   'hs-records': { floor: '#7a796f', floorDet: DET.carpet, floorRough: 0.9, upper: '#d0cdc1', skirt: '#3a3730', ceil: '#d6d4cc', ceilKind: 'grid', fixture: TROFFER, grime: 0.3 },
-  'hs-station': { floor: '#8e999c', floorDet: DET.linoleum, upper: '#e2dfd2', lower: '#8fb0aa', lowerH: 32, rail: '#5d8a94', skirt: '#2f4448', ceil: '#dadad2', ceilKind: 'grid', fixture: TROFFER, grime: 0.4 },
+  'hs-station': { wallProps: ['poster', 'clock', 'notice', 'phone'], floor: '#8e999c', floorDet: DET.linoleum, upper: '#e2dfd2', lower: '#8fb0aa', lowerH: 32, rail: '#5d8a94', skirt: '#2f4448', ceil: '#dadad2', ceilKind: 'grid', fixture: TROFFER, grime: 0.4 },
   'hs-meds': { floor: '#8d8c85', floorDet: DET.linoleum, upper: '#d2d1c8', skirt: '#3a3d3e', ceil: '#d8d8d0', ceilKind: 'grid', fixture: TROFFER },
-  'hs-sluice': { floor: '#707a78', floorDet: DET.tile, floorRough: 0.35, lower: '#cfd8d5', lowerH: 84, lowerDet: DET.tile, upper: '#d6dbd6', skirt: '#4a5250', ceil: '#d4d6d2', ceilKind: 'plain', fixture: TUBE, grime: 0.8, grimeCells: ['mold', 'grime2', 'blood_drip'] },
-  'hs-plant': { floor: '#6a6a63', floorDet: DET.concrete, floorRough: 0.75, lower: '#56624f', lowerH: 28, lowerDet: DET.brick, upper: '#9ea196', upperDet: DET.brick, skirt: '#2a2c28', ceil: '#8f8f88', ceilKind: 'slab', fixture: TUBE, grime: 0.8, grimeCells: ['grime', 'mold', 'grime2'] },
-  'hs-or': { floor: '#6e8d84', floorDet: DET.linoleum, floorRough: 0.3, upper: '#a1bdb3', upperDet: DET.tile, upperRough: 0.4, skirt: '#44625a', skirtH: 8, ceil: '#e2e6e4', ceilKind: 'or', fixture: { kind: 'orpanel', step: 200, rowStep: 260, color: '#f0f8ff', stray: 0 }, grime: 0.5, grimeCells: ['blood_splat', 'blood_hand', 'blood_drip'] },
-  'hs-corr-or': { floor: '#86a098', floorDet: DET.linoleum, lower: '#a9c2b9', lowerH: 32, upper: '#dbe4de', rail: '#6d958b', railH: 5, skirt: '#35524a', ceil: '#dde0dc', ceilKind: 'grid', fixture: { ...TROFFER, step: 150 }, grime: 0.6, grimeCells: ['blood_trail', 'grime', 'blood_hand'], stripe: ['#d8231b'] },
-  'hs-scrub': { floor: '#7d918c', floorDet: DET.tile, floorRough: 0.3, lower: '#d6e0dc', lowerH: 90, lowerDet: DET.tile, upper: '#dfe5e1', skirt: '#4d5e59', ceil: '#dcdfdc', ceilKind: 'plain', fixture: TROFFER },
-  'hs-lobby-lift': { floor: '#7d8a8c', floorDet: DET.linoleum, lower: '#8f9c9a', lowerH: 32, upper: '#cfd3cc', rail: '#5d7a80', skirt: '#2f3c40', ceil: '#cfd0ca', ceilKind: 'grid', fixture: TROFFER, grime: 0.8, missing: 0.12, grimeCells: ['blood_trail', 'g_roof', 'grime', 'blood_hand'] },
+  'hs-sluice': { floorDecals: ['mold', 'grime2', 'blood_pool'], floor: '#707a78', floorDet: DET.tile, floorRough: 0.35, lower: '#cfd8d5', lowerH: 84, lowerDet: DET.tile, upper: '#d6dbd6', skirt: '#4a5250', ceil: '#d4d6d2', ceilKind: 'plain', fixture: TUBE, grime: 0.8, grimeCells: ['mold', 'grime2', 'blood_drip'] },
+  'hs-plant': { wallProps: ['panel', 'ext', 'panel'], floorDecals: ['grime2', 'grime'], floor: '#6a6a63', floorDet: DET.concrete, floorRough: 0.75, lower: '#56624f', lowerH: 28, lowerDet: DET.brick, upper: '#9ea196', upperDet: DET.brick, skirt: '#2a2c28', ceil: '#8f8f88', ceilKind: 'slab', fixture: TUBE, grime: 0.8, grimeCells: ['grime', 'mold', 'grime2'] },
+  'hs-or': { wallProps: ['panel', 'gel', 'glove', 'sharps'], floorDecals: ['blood_pool', 'blood_splat', 'blood_trail'], decalArea: 70000, floor: '#6e8d84', floorDet: DET.linoleum, floorRough: 0.3, upper: '#a1bdb3', upperDet: DET.tile, upperRough: 0.4, skirt: '#44625a', skirtH: 8, ceil: '#e2e6e4', ceilKind: 'or', fixture: { kind: 'orpanel', step: 200, rowStep: 260, color: '#f0f8ff', stray: 0 }, grime: 0.5, grimeCells: ['blood_splat', 'blood_hand', 'blood_drip'] },
+  'hs-corr-or': { wallProps: CORR_PROPS, floorDecals: BLOODY, decalArea: 70000, floor: '#86a098', floorDet: DET.linoleum, lower: '#a9c2b9', lowerH: 32, upper: '#dbe4de', rail: '#6d958b', railH: 5, skirt: '#35524a', ceil: '#dde0dc', ceilKind: 'grid', fixture: { ...TROFFER, step: 150 }, grime: 0.6, grimeCells: ['blood_trail', 'grime', 'blood_hand'], stripe: ['#d8231b'] },
+  'hs-scrub': { wallProps: ['gel', 'glove', 'poster'], floor: '#7d918c', floorDet: DET.tile, floorRough: 0.3, lower: '#d6e0dc', lowerH: 90, lowerDet: DET.tile, upper: '#dfe5e1', skirt: '#4d5e59', ceil: '#dcdfdc', ceilKind: 'plain', fixture: TROFFER },
+  'hs-lobby-lift': { wallProps: CORR_PROPS, floorDecals: BLOODY, decalArea: 60000, floor: '#7d8a8c', floorDet: DET.linoleum, lower: '#8f9c9a', lowerH: 32, upper: '#cfd3cc', rail: '#5d7a80', skirt: '#2f3c40', ceil: '#cfd0ca', ceilKind: 'grid', fixture: TROFFER, grime: 0.8, missing: 0.12, grimeCells: ['blood_trail', 'g_roof', 'grime', 'blood_hand'] },
   'hs-lift': { floor: '#5c6062', floorDet: DET.panel, floorRough: 0.35, upper: '#8d9498', upperSurf: STEEL, skirt: '#3a3e40', ceil: '#6d7274', ceilKind: 'plain', fixture: ROUND },
   'hs-stair': { noFloor: true, ceilKind: 'none', upper: '#b9b8ae', upperDet: DET.brick, upperRough: 0.85, tall: 600 },
 };
+
+// ---- things on the walls (hospital-kit's wall props) ---------------------------------------------------
+/** A wall prop at t along a wall face (W.s: which face, W.z its plane, W.ry the turn facing out of it). */
+function wallProp(W) {
+  const { B, s, t, z, ry, base, kind, seed } = W;
+  const out = (d) => z + s * d;
+  switch (kind) {
+    case 'gel': B.rblock('std', t, base + 48, out(2.2), 6, 10, 4.4, 0.6, '#e8e8e4', [0, ry, 0], PLAST); W.pic(B, 'hs_handgel', t, base + 54, out(4.5), 5, 6.5, ry); break;
+    case 'ext': {
+      B.rblock('std', t, base + 22, out(3.4), 8, 20, 6, 3, '#c62828', null, PAINT);
+      B.box('std', t, base + 43.5, out(3.4), 3, 3, 3, '#1a1a1a', null, STEEL);
+      B.box('std', t, base + 80, out(0.8), 16, 16, 0.6, '#c62828', [0, ry, 0], PAINT);
+      break;
+    }
+    case 'poster': W.pic(B, ['hs_poster1', 'hs_poster2', 'hs_poster3'][seed % 3], t, base + 62, out(0.4), 17, 24, ry); break;
+    case 'evac': W.pic(B, 'hs_evac', t, base + 60, out(0.4), 22, 17, ry); break;
+    case 'clock': W.pic(B, 'hs_clock', t, base + 96, out(0.8), 12, 12, ry); B.cyl('std', t, base + 96, out(0.3), 6.2, 0.8, '#2a2c2e', 14, 1, [Math.PI / 2, 0, 0], PLAST); break;
+    case 'notice': B.box('std', t, base + 64, out(0.6), 44, 34, 1.2, '#6b4a2c', [0, ry, 0], S(DET.wood, 0.7, 0)); W.pic(B, 'hs_notice', t, base + 64, out(1.3), 40, 30, ry); break;
+    case 'sharps': B.rblock('std', t, base + 42, out(3), 8, 9, 6, 0.8, '#f2c21a', null, PLAST); B.box('std', t, base + 51.4, out(3), 8, 1.4, 6, '#c62828', null, PLAST); break;
+    case 'glove': for (let k = 0; k < 3; k++) B.rblock('std', t - 8 + k * 8, base + 58, out(2.2), 7, 4, 4, 0.4, ['#8ab0d8', '#a8d8a8', '#d8a8c8'][k], null, PLAST); break;
+    case 'panel': B.rblock('std', t, base + 70, out(2), 16, 20, 4, 0.6, '#b8b6aa', null, S(DET.panel, 0.5, 0.5)); B.box('std', t, base + 95, out(1.4), 3, 30, 2.4, '#8a9096', null, STEEL); break;
+    case 'phone': B.rblock('std', t, base + 58, out(2), 8, 14, 4, 0.8, '#d8d4c8', null, PLAST); B.rblock('std', t - 2, base + 56, out(4.4), 2, 10, 2, 0.8, '#2a2c2e', null, PLAST); break;
+    case 'blood': W.decal(B, seed % 2 ? 'blood_hand' : 'blood_drip', t, base + 50, out(0.5), 34, 44, ry); break;
+    case 'bin': {
+      B.cyl('std', t, base, out(10), 8, 22, seed % 3 ? '#8a9094' : '#c62828', 12, 0.95, null, PLAST);
+      B.cyl('std', t, base + 22, out(10), 8.4, 1.6, '#5a6066', 12, 1, null, STEEL);
+      break;
+    }
+    case 'chair': {
+      const fall = seed % 4 === 0;
+      const r = [fall ? Math.PI / 2 : 0, ry + (seed % 5) * 0.2, 0];
+      B.rblock('std', t, base + (fall ? 8 : 16), out(14), 16, 2, 15, 0.6, '#3f6f7a', r, PLAST);
+      if (!fall) {
+        B.rblock('std', t, base + 18, out(5.5), 16, 16, 2, 0.6, '#3f6f7a', [0, ry, 0], PLAST);
+        for (const [dx, dz] of [[-6, 8], [6, 8], [-6, 20], [6, 20]]) B.box('std', t + dx, base + 8, out(dz), 1.2, 16, 1.2, '#2a2c2e', null, STEEL);
+      }
+      break;
+    }
+    case 'cart': {
+      // a linen cart: a steel frame and a canvas bag
+      B.rblock('std', t, base + 4, out(18), 40, 34, 24, 2, '#6a8aa8', null, S(DET.fabric, 0.9, 0));
+      B.box('std', t, base + 39, out(18), 42, 1.6, 26, '#9aa0a4', null, STEEL);
+      for (const [dx, dz] of [[-18, 8], [18, 8], [-18, 28], [18, 28]]) B.cylZ('std', t + dx, base + 2, out(dz), 2, 1.4, '#1c1c1c', 8, S(DET.rubber, 0.9, 0));
+      break;
+    }
+    case 'wheelchair': {
+      for (const e of [-1, 1]) { B.cylZ('std', t + e * 9, base + 10, out(16), 10, 1.2, '#2a2c2e', 16, STEEL); }
+      B.box('std', t, base + 18, out(16), 18, 2, 16, '#1d2a3a', null, FABRIC);
+      B.box('std', t, base + 28, out(8), 18, 18, 1.6, '#1d2a3a', [0, ry, 0], FABRIC);
+      break;
+    }
+    default: break;
+  }
+}
 
 // ---- façades ------------------------------------------------------------------------------------------
 const PRECAST = '#cdc8bd', PRECAST_D = '#a39e93', GRANITE = '#3a3c3d', BAND = '#8e897e';
@@ -342,6 +404,88 @@ function gate(P) {
   void T; void CONC;
 }
 
+// ---- the city round the hospital: a street of buildings across the avenue and the road behind, a skyline ----
+const FACADES = ['#8c8478', '#9a8a72', '#7a6a5a', '#a09080', '#6a6258', '#8a7a6a', '#7a8088', '#b0a28c'];
+
+/** Buildings along a line outside the map (art only): fronts facing the hospital. */
+function streetRow(B, x0, x1, y, a, seed) {
+  let x = x0, i = 0;
+  while (x < x1) {
+    const L = 260 + hash01(seed + i * 7) * 260, W = 170 + hash01(seed + i * 3) * 90;
+    const cx = x + L / 2;
+    const off = W / 2 + 6;
+    const o = { id: seed + i, kind: 'building', w: L, h: W, a, color: FACADES[Math.floor(hash01(seed + i * 11) * FACADES.length)], roof: '#4e4a45', top: 160 + Math.round(hash01(seed + i * 5) * 80) };
+    // (a = 0: the front faces +y (south); a = PI: north; a = PI/2: west)
+    const px = a === Math.PI / 2 ? y + off : cx, py = a === Math.PI / 2 ? cx : a === 0 ? y - off : y + off;
+    o.x = px; o.y = py;
+    B.obj(px, py, a, o.id * 31);
+    B.setJitter(0.05);
+    try { building(B, o, L, W, null); } catch (err) { /* a backdrop building is not worth a warning */ }
+    x += L + 20 + hash01(seed + i) * 40;
+    i++;
+  }
+}
+
+/** The city skyline beyond the backdrop (one mesh): boxes with lit windows, red lights on the tall ones. */
+function skyline(api, root, day) {
+  const list = [];
+  let k = 0;
+  const add = (x, y, w, d, h) => list.push({ x, y, w, d, h, s: k++ });
+  for (let x = -600; x < 10400; x += 260 + hash01(k * 3) * 300) add(x, -700 - hash01(k * 7) * 900, 180 + hash01(k) * 200, 180 + hash01(k * 5) * 160, 260 + hash01(k * 11) * 700);
+  for (let y = 400; y < 5600; y += 300 + hash01(k * 3) * 300) add(9500 + hash01(k * 7) * 900, y, 160 + hash01(k) * 200, 180 + hash01(k * 5) * 200, 220 + hash01(k * 11) * 600);
+  const pos = [], nor = [], uv = [], col = [], idx = [];
+  let vi = 0;
+  const quad = (a, b, c, d, n, u1, v1, kk) => {
+    for (const p of [a, b, c, d]) { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); }
+    uv.push(0, 0, u1, 0, u1, v1, 0, v1);
+    for (let i = 0; i < 4; i++) col.push(kk, kk, kk);
+    idx.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3);
+    vi += 4;
+  };
+  for (const s of list) {
+    const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, z0 = s.y - s.d / 2, z1 = s.y + s.d / 2, h = s.h;
+    const t = 0.7 + hash01(s.s) * 0.5;
+    const uw = s.w / 90, ud = s.d / 90, vh = h / 60;
+    quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1], uw, vh, t);
+    quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1], uw, vh, t * 0.9);
+    quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1], [1, 0, 0], ud, vh, t * 0.8);
+    quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0], [-1, 0, 0], ud, vh, t * 0.85);
+    quad([x0, h, z1], [x1, h, z1], [x1, h, z0], [x0, h, z0], [0, 1, 0], 0.01, 0.01, t * 0.5);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  // a window texture: dark glass and concrete, a few lit rooms (the emissive map: only the lit ones glow)
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const c2 = cv.getContext('2d');
+  const cl = document.createElement('canvas');
+  cl.width = cl.height = 256;
+  const g2 = cl.getContext('2d');
+  c2.fillStyle = day ? '#6a727a' : '#14171c'; c2.fillRect(0, 0, 256, 256);
+  g2.fillStyle = '#000'; g2.fillRect(0, 0, 256, 256);
+  for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 8; xx++) {
+    const lit = hash01(xx * 7 + yy * 13 + 1) < 0.14;
+    c2.fillStyle = day ? (hash01(xx + yy * 5) < 0.5 ? '#3a4652' : '#4a5866') : lit ? '#e8c890' : '#0a0c10';
+    c2.fillRect(xx * 32 + 6, yy * 32 + 8, 20, 16);
+    if (lit && !day) { g2.fillStyle = hash01(xx * 3 + yy) < 0.3 ? '#9ab8ff' : '#ffd8a0'; g2.fillRect(xx * 32 + 6, yy * 32 + 8, 20, 16); }
+  }
+  const tex = new THREE.CanvasTexture(cv), emi = new THREE.CanvasTexture(cl);
+  for (const t of [tex, emi]) { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }
+  const mat = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.8, metalness: 0.1, emissive: new THREE.Color('#ffffff'), emissiveMap: emi, emissiveIntensity: day ? 0 : 0.8 });
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'lv-skyline';
+  mesh.frustumCulled = false;
+  root.add(mesh);
+  // aviation lights on the tall ones
+  const halos = api.halos;
+  for (const s of list) if (s.h > 700) halos.push({ x: s.x, y: s.y, h: s.h + 6, color: '#ff2a1a', size: 40, blink: 1, strength: 0.6 });
+  return { mesh, dispose() { root.remove(mesh); g.dispose(); mat.dispose(); tex.dispose(); emi.dispose(); } };
+}
+
 /** The atlas cells a wall's grime can use (by room when the finish lists none). */
 const GRIME = ['grime', 'grime2', 'blood_hand', 'mold'];
 
@@ -351,6 +495,7 @@ const GRIME = ['grime', 'grime2', 'blood_hand', 'mold'];
  */
 export function createLevelArt(ctx, deps) {
   const map = ctx.map;
+  let sky = null;
   const level = {
     id: 'hospital',
     atlas: hospitalAtlas(),
@@ -369,6 +514,18 @@ export function createLevelArt(ctx, deps) {
     doorFrame: (it) => (it.style === 'stair' ? { color: '#6d7074', surf: STEEL, jamb: 3 } : it.style === 'hosp-ext' ? { color: '#4a5056', surf: STEEL, jamb: 4 } : { color: '#9aa2a8', surf: S(DET.panel, 0.45, 0.5), jamb: 3 }),
     leafColor: (it) => (it.style === 'plant' ? '#5d6a5a' : it.style === 'lift' ? '#8d9498' : ['#8fa6ae', '#a8b4a0', '#9aa8b8', '#b0a894'][Math.floor(hash01(Math.round(it.x + it.y)) * 4)]),
     windowFrame: () => ({ color: '#dcdcd4', surf: S(DET.panel, 0.5, 0.2) }),
+    wallProp,
+    // the city round it: a street of buildings across Mercy Avenue, the road behind, the skyline
+    props(P) {
+      // (each row in one cell per bucket: a backdrop is seen whole, few draw calls beat culling here)
+      P.B.setCell('hs-street-n');
+      streetRow(P.B, -200, 9000, 0, 0, 5000);
+      P.B.setCell('hs-street-s');
+      if (P.lod() >= 1) streetRow(P.B, -200, 9000, 4600, Math.PI, 6000);
+      P.B.setCell(null);
+    },
+    finish(P) { sky = skyline(P, P.root, P.day); },
+    dispose() { if (sky) sky.dispose(); },
   };
   void HALF;
   return createInteriorArt(ctx, deps, level);
