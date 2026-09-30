@@ -168,10 +168,22 @@ export class ZoneDirector {
     this._rects = null;
     this._rectsKey = '';
     this._fogRects = null;
+    /** Scripted stops (POI indices) of a mission, else null: see setStops(). */
+    this.stops = null;
+    this.stopI = 0;
     if (map.width * map.height > ZONE.navRangeArea) {
       game.flow.maxDist = ZONE.navRange;
       game.flowBig.maxDist = ZONE.navRange;
     }
+  }
+
+  /**
+   * Road to Haven: replace the random POI sequence by a fixed list of stops (anchors
+   * {x, y}: each maps to the nearest point of interest). Call before begin().
+   */
+  setStops(stops) {
+    this.stops = stops.map((a) => nearestPoi(this.pois, a.x, a.y));
+    this.stopI = 0;
   }
 
   /** First zone: announced at game start, the countdown is the prep phase. */
@@ -192,7 +204,9 @@ export class ZoneDirector {
     const prev = this.pois[this.poi];
     const back = first ? -1 : this.cur;
     this.cur = this.poi;
-    this.poi = pickNextPoi(this.pois, this.cur, this.seqRng, back);
+    this.poi = this.stops && this.stops.length
+      ? this.stops[Math.min(this.stopI++, this.stops.length - 1)]
+      : pickNextPoi(this.pois, this.cur, this.seqRng, back);
     const p = this.pois[this.poi];
     this.stage = STAGE_MOVE;
     setCircle(this.circle, p.x, p.y, p.r);

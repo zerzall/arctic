@@ -9,6 +9,7 @@
 
 import { buildMap } from './maps.js';
 import { GameCore } from './sim/core.js';
+import { mapBuildOptions } from './story/registry.js';
 
 /** The match simulation of SPEC §3.1 (GameCore with the map built from mapId/seed). */
 export class Game extends GameCore {
@@ -20,7 +21,7 @@ export class Game extends GameCore {
    *   players          [{ id, name, color, cls, bot? }] — bot: true makes an AI survivor
    */
   constructor(opts = {}) {
-    const map = opts.map || buildMap(opts.mapId, opts.seed, { mode: opts.settings && opts.settings.mode });
+    const map = opts.map || buildMap(opts.mapId, opts.seed, mapBuildOptions(opts.settings));
     super({ ...opts, map, mapId: opts.mapId || map.id });
   }
 }

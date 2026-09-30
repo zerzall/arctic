@@ -27,6 +27,8 @@ import { ZOMBIE_IDS } from './zombies.js';
 import { PICKUP_KINDS } from './items.js';
 import { Z_UNIT } from './jump.js';
 import { CAMPAIGN_EVENTS } from './campaign.js';
+import { CLASS_IDS } from './classes.js';
+import { STEP_KINDS, MARKER_KINDS, INTERACT_KIND_IDS, NPC_STATES, NPC_ACCESSORIES } from './story-defs.js';
 
 /** Message type tags (first byte of every binary message). */
 export const MSG = {
@@ -68,6 +70,12 @@ const PICKUP_INDEX = indexMap(PICKUP_KINDS);
 const PHASE_INDEX = indexMap(PHASES);
 const STATE_INDEX = indexMap(PLAYER_STATES);
 const HAZARD_INDEX = indexMap(HAZARD_KINDS);
+const STEP_INDEX = indexMap(STEP_KINDS);
+const MARKER_INDEX = indexMap(MARKER_KINDS);
+const INTERACT_INDEX = indexMap(INTERACT_KIND_IDS);
+const NPC_STATE_INDEX = indexMap(NPC_STATES);
+const ACCESSORY_INDEX = indexMap(NPC_ACCESSORIES);
+const CLASS_INDEX = indexMap(CLASS_IDS);
 
 function kindIndex(map, v) {
   const i = map.get(v);
@@ -284,6 +292,9 @@ const ENUMS = {
   buyfail: ['cash', 'closed', 'max', 'invalid', 'owned'],
   zone: ['next', 'lock', 'shrink'],
   campaign: CAMPAIGN_EVENTS,
+  objective: ['start', 'progress', 'done', 'fail'],
+  radioKind: ['radio', 'say'],
+  npcWhat: ['down', 'up', 'dead', 'arrive'],
 };
 
 const EVENT_SCHEMAS = [
@@ -325,6 +336,13 @@ const EVENT_SCHEMAS = [
   ['zone', [['stage', ENUMS.zone], ['poi', 'u16'], ['x', 'pos'], ['y', 'pos'], ['r', 'rad'], ['time', 'u16']]],
   // Campaign (SPEC §3.8): a stage or floor change, the breakout, the zip line waking up, a ride, an escape
   ['campaign', [['what', ENUMS.campaign], ['stage', 'pid'], ['floor', 'pid'], ['pid', 'pid']]],
+  // Road to Haven (STORY.md §5): the objective tracker, subtitles, hold-to-use, talking, story items, NPCs
+  ['objective', [['what', ENUMS.objective], ['step', 'pid'], ['id', 'str'], ['text', 'txt'], ['cur', 'u16'], ['max', 'u16']]],
+  ['radio', [['who', 'str'], ['text', 'txt'], ['ms', 'u16'], ['kind', ENUMS.radioKind]]],
+  ['interact', [['pid', 'pid'], ['id', 'str'], ['kind', 'str']]],
+  ['talk', [['pid', 'pid'], ['npc', 'str']]],
+  ['item', [['pid', 'pid'], ['item', 'str'], ['x', 'pos'], ['y', 'pos'], ['n', 'u16'], ['of', 'u16']]],
+  ['npc', [['what', ENUMS.npcWhat], ['npc', 'str'], ['id', 'pid']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */
@@ -360,6 +378,7 @@ function fits(codec, v) {
     case 'ztype': return ZOMBIE_INDEX.has(v);
     case 'pkind': return PICKUP_INDEX.has(v);
     case 'str': return typeof v === 'string' && v.length <= 60;
+    case 'txt': return typeof v === 'string' && v.length <= 240;
     case 'rays':
       if (!Array.isArray(v) || v.length > 255) return false;
       for (const r of v) if (!isPoint(r) || !isInt(r.hit, 255)) return false;
@@ -392,6 +411,12 @@ function writeField(w, codec, v) {
     case 'str': {
       const b = TEXT_ENCODER.encode(v);
       w.u8(b.length);
+      w.bytesOf(b);
+      break;
+    }
+    case 'txt': {
+      const b = TEXT_ENCODER.encode(v);
+      w.u16(b.length);
       w.bytesOf(b);
       break;
     }
@@ -428,6 +453,7 @@ function readField(r, codec) {
     case 'ztype': return kindAt(ZOMBIE_IDS, r.u8());
     case 'pkind': return kindAt(PICKUP_KINDS, r.u8());
     case 'str': return TEXT_DECODER.decode(r.bytes(r.u8()));
+    case 'txt': return TEXT_DECODER.decode(r.bytes(r.u16()));
     case 'rays': {
       const n = r.u8();
       const out = new Array(n);
@@ -506,7 +532,9 @@ function readEvents(r) {
 // ---- snapshot
 
 const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32, P_ESCAPED = 64;
-const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8;
+const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8, H_STORY = 16;
+/** Story block parts (its own flags byte). */
+const SB_STORY = 1, SB_NPCS = 2, SB_INTS = 4;
 
 const snapWriter = new Writer(32 * 1024);
 
@@ -707,6 +735,177 @@ function readCampaign(r) {
   };
 }
 
+// ---- Road to Haven (STORY.md §5): the story block, NPCs and hold-to-use spots
+
+function writeStr(w, v, max) {
+  const b = TEXT_ENCODER.encode(typeof v === 'string' ? v.slice(0, max) : '');
+  const n = Math.min(255, b.length);
+  w.u8(n);
+  w.bytesOf(n === b.length ? b : b.subarray(0, n));
+}
+
+function readStr(r) {
+  return TEXT_DECODER.decode(r.bytes(r.u8()));
+}
+
+function hexByte(h, i) {
+  const v = parseInt(String(h).slice(1 + i * 2, 3 + i * 2), 16);
+  return Number.isFinite(v) ? v : 128;
+}
+
+function writeRgb(w, hex) {
+  w.u8(hexByte(hex, 0));
+  w.u8(hexByte(hex, 1));
+  w.u8(hexByte(hex, 2));
+}
+
+function readRgb(r) {
+  const c = (v) => v.toString(16).padStart(2, '0');
+  return `#${c(r.u8())}${c(r.u8())}${c(r.u8())}`;
+}
+
+/**
+ * The story block (SPEC §4 `story`): mode, mission clock (0.1 s), team downs, up to 6 objectives
+ * (step index, kind, optional flag, text, progress, timer), up to 16 markers, up to 32 items.
+ */
+function writeStory(w, st) {
+  w.u8(st.mode === 'hideout' ? 0 : 1);
+  w.u16(qFixed(st.time, 10, 65535));
+  w.u8(qInt(st.downs, 255));
+  const steps = arr(st.steps);
+  const ns = Math.min(steps.length, 6);
+  w.u8(ns);
+  for (let i = 0; i < ns; i++) {
+    const s = steps[i];
+    w.u8(qInt(s.i, 255));
+    w.u8(kindIndex(STEP_INDEX, s.kind));
+    w.u8(s.opt ? 1 : 0);
+    writeStr(w, s.text, 100);
+    w.u16(qInt(s.cur, 65535));
+    w.u16(qInt(s.max, 65535));
+    w.u16(qFixed(s.t, 10, 65535));
+    w.u16(qFixed(s.total, 10, 65535));
+  }
+  const marks = arr(st.marks);
+  const nm = Math.min(marks.length, 16);
+  w.u8(nm);
+  for (let i = 0; i < nm; i++) {
+    const m = marks[i];
+    w.u8(kindIndex(MARKER_INDEX, m.kind));
+    w.u16(qPos(m.x));
+    w.u16(qPos(m.y));
+    w.u16(qInt(m.r, 65535));
+  }
+  const items = arr(st.items);
+  const ni = Math.min(items.length, 32);
+  w.u8(ni);
+  for (let i = 0; i < ni; i++) {
+    const it = items[i];
+    w.u16(qInt(it.id, 65535));
+    writeStr(w, it.item, 16);
+    w.u16(qPos(it.x));
+    w.u16(qPos(it.y));
+  }
+}
+
+function readStory(r) {
+  const st = { mode: r.u8() === 0 ? 'hideout' : 'mission', time: r.u16() / 10, downs: r.u8(), steps: [], marks: [], items: [] };
+  const ns = r.u8();
+  for (let i = 0; i < ns; i++) {
+    const idx = r.u8();
+    const kind = kindAt(STEP_KINDS, r.u8()) || 'custom';
+    const opt = (r.u8() & 1) !== 0;
+    st.steps.push({ i: idx, kind, opt, text: readStr(r), cur: r.u16(), max: r.u16(), t: r.u16() / 10, total: r.u16() / 10 });
+  }
+  const nm = r.u8();
+  for (let i = 0; i < nm; i++) st.marks.push({ kind: kindAt(MARKER_KINDS, r.u8()) || 'objective', x: dqPos(r.u16()), y: dqPos(r.u16()), r: r.u16() });
+  const ni = r.u8();
+  for (let i = 0; i < ni; i++) st.items.push({ id: r.u16(), item: readStr(r), x: dqPos(r.u16()), y: dqPos(r.u16()) });
+  return st;
+}
+
+function writeLook(w, look) {
+  const l = look && typeof look === 'object' ? look : {};
+  w.u8(kindIndex(CLASS_INDEX, l.cls));
+  writeRgb(w, l.skin || '#c68e6a');
+  writeRgb(w, l.hair || '#2a1d14');
+  const outfit = arr(l.outfit).slice(0, 3);
+  w.u8(outfit.length);
+  for (const c of outfit) writeRgb(w, c);
+  w.u8(kindIndex(ACCESSORY_INDEX, l.accessory));
+  w.u8(qInt((Number.isFinite(l.scale) ? l.scale : 1) * 100, 255));
+}
+
+function readLook(r) {
+  const cls = kindAt(CLASS_IDS, r.u8()) || 'soldier';
+  const skin = readRgb(r), hair = readRgb(r);
+  const n = r.u8();
+  const outfit = [];
+  for (let i = 0; i < n; i++) outfit.push(readRgb(r));
+  const accessory = kindAt(NPC_ACCESSORIES, r.u8()) || 'none';
+  return { cls, skin, hair, outfit, accessory, scale: r.u8() / 100 };
+}
+
+/** NPCs (up to 16): id, key, name, look, position (0.25 px), height (whole units), angle u8, state, hp (255 = invulnerable). */
+function writeNpcs(w, npcs) {
+  const n = Math.min(npcs.length, 16);
+  w.u8(n);
+  for (let i = 0; i < n; i++) {
+    const c = npcs[i];
+    w.u8(qInt(c.id, 255));
+    writeStr(w, c.key, 16);
+    writeStr(w, c.name, 20);
+    writeLook(w, c.look);
+    w.u16(qPos(c.x));
+    w.u16(qPos(c.y));
+    w.u16(qInt(c.z, 65535));
+    w.u8(qAngle8(c.angle));
+    w.u8(kindIndex(NPC_STATE_INDEX, c.state));
+    w.u8(num(c.hp) < 0 ? 255 : qInt(num(c.hp) * 254, 254));
+  }
+}
+
+function readNpcs(r) {
+  const n = r.u8();
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const id = r.u8(), key = readStr(r), name = readStr(r), look = readLook(r);
+    const x = dqPos(r.u16()), y = dqPos(r.u16()), z = r.u16(), angle = dqAngle8(r.u8());
+    const state = kindAt(NPC_STATES, r.u8()) || 'idle';
+    const hp = r.u8();
+    out[i] = { id, key, name, look, x, y, z, angle, state, hp: hp === 255 ? -1 : hp / 254 };
+  }
+  return out;
+}
+
+/** Hold-to-use spots (up to 32): id, kind, position, radius, flags (hold | on | done), progress, who holds. */
+function writeInteractables(w, list) {
+  const n = Math.min(list.length, 32);
+  w.u8(n);
+  for (let i = 0; i < n; i++) {
+    const it = list[i];
+    w.u8(qInt(it.id, 255));
+    w.u8(kindIndex(INTERACT_INDEX, it.kind));
+    w.u16(qPos(it.x));
+    w.u16(qPos(it.y));
+    w.u16(qInt(it.r, 65535));
+    w.u8((it.hold ? 1 : 0) | (it.on ? 2 : 0) | (it.done ? 4 : 0));
+    w.u8(qUnitNz(it.prog));
+    w.u8(qInt(it.user, 255));
+  }
+}
+
+function readInteractables(r) {
+  const n = r.u8();
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const id = r.u8(), kind = kindAt(INTERACT_KIND_IDS, r.u8()) || 'use';
+    const x = dqPos(r.u16()), y = dqPos(r.u16()), rad = r.u16(), f = r.u8();
+    out[i] = { id, kind, x, y, r: rad, hold: (f & 1) !== 0, on: (f & 2) !== 0, done: (f & 4) !== 0, prog: r.u8() / 255, user: r.u8() };
+  }
+  return out;
+}
+
 /**
  * Encode a Snapshot (SPEC §4) into a fresh ArrayBuffer.
  *
@@ -725,7 +924,10 @@ export function encodeSnapshot(snap) {
   const obj = snap.objective;
   const zone = snap.zone && typeof snap.zone === 'object' ? snap.zone : null;
   const campaign = snap.campaign && typeof snap.campaign === 'object' ? snap.campaign : null;
-  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0));
+  const story = snap.story && typeof snap.story === 'object' ? snap.story : null;
+  const npcs = arr(snap.npcs), ints = arr(snap.interactables);
+  const storyBits = (story ? SB_STORY : 0) | (npcs.length ? SB_NPCS : 0) | (ints.length ? SB_INTS : 0);
+  w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0) | (storyBits ? H_STORY : 0));
   w.u8(qInt(snap.match, 255));
   w.u32(qInt(snap.tick, 0xffffffff));
   w.u8(kindIndex(PHASE_INDEX, snap.phase));
@@ -741,6 +943,12 @@ export function encodeSnapshot(snap) {
   w.u8(qInt(snap.readyCount, 255));
   if (zone) writeZone(w, zone);
   if (campaign) writeCampaign(w, campaign);
+  if (storyBits) {
+    w.u8(storyBits);
+    if (story) writeStory(w, story);
+    if (npcs.length) writeNpcs(w, npcs);
+    if (ints.length) writeInteractables(w, ints);
+  }
 
   const players = arr(snap.players);
   const np = Math.min(players.length, 255);
@@ -865,6 +1073,9 @@ export function decodeSnapshot(buf) {
     readyCount: 0,
     zone: null,
     campaign: null,
+    story: null,
+    npcs: [],
+    interactables: [],
     players: null,
     zombies: null,
     projectiles: null,
@@ -880,6 +1091,12 @@ export function decodeSnapshot(buf) {
   snap.readyCount = r.u8();
   snap.zone = flags & H_ZONE ? readZone(r) : null;
   snap.campaign = flags & H_CAMPAIGN ? readCampaign(r) : null;
+  if (flags & H_STORY) {
+    const bits = r.u8();
+    if (bits & SB_STORY) snap.story = readStory(r);
+    if (bits & SB_NPCS) snap.npcs = readNpcs(r);
+    if (bits & SB_INTS) snap.interactables = readInteractables(r);
+  }
 
   const np = r.u8();
   const players = new Array(np);

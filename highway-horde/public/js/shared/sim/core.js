@@ -26,11 +26,15 @@ import {
   updateProjectiles, updateHazards, updateTurrets, rebuildBarricades,
 } from './combat.js';
 import {
-  updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, spawnZombie, HEAVY_BODY_RADIUS,
+  updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, spawnZombie, pickType, HEAVY_BODY_RADIUS,
 } from './zombies.js';
 import { createBrain, updateBots } from './bots.js';
 import { ZoneDirector } from './zone.js';
 import { CampaignDirector } from './campaign.js';
+import { StoryDirector } from './story.js';
+import { simModeOf } from '../story/registry.js';
+import { updateInteractables, interactablesSnapshot } from './interact.js';
+import { updateNpcs, npcsSnapshot, npcTargetable } from './npcs.js';
 import { mapModes } from '../zone.js';
 import { resolveTime } from '../timeofday.js';
 
@@ -87,19 +91,44 @@ export class GameCore {
     this.seed = seed >>> 0;
     this.settings = { ...DEFAULT_SETTINGS, ...settings };
     this.settings.waves = Math.max(0, Math.floor(Number(this.settings.waves) || 0));
+    // Road to Haven (STORY.md §5.1): a mission / hideout brings its own difficulty.
+    if (this.settings.story && typeof this.settings.story === 'object' && DIFFICULTIES[this.settings.story.difficulty]) {
+      this.settings.difficulty = this.settings.story.difficulty;
+    }
     this.diff = DIFFICULTIES[this.settings.difficulty] || DIFFICULTIES.normal;
     // Game mode (SPEC §3.7): 'zone' needs the map's points of interest; a map that only
     // plays 'zone' plays it whatever was asked. The zone mode has no objective to defend.
     const modes = mapModes(map);
-    let mode = modes.includes(this.settings.mode) ? this.settings.mode : modes[0];
+    const storyMode = this.settings.mode === 'mission' || this.settings.mode === 'hideout';
+    let mode = storyMode ? this.settings.mode : modes.includes(this.settings.mode) ? this.settings.mode : modes[0];
     if (mode === 'zone' && !(map.pois && map.pois.length >= 2)) mode = 'defend';
     // The campaign (SPEC §3.8) needs the map's campaign extension (maps-campaign.js).
     if (mode === 'campaign' && !(map.campaign && map.campaign.hill)) mode = modes.includes('defend') ? 'defend' : 'zone';
+    // A mission runs on the sim mode its script asks for ('defend' | 'zone' | 'campaign' | 'free').
+    let simMode = mode;
+    if (mode === 'mission') {
+      simMode = simModeOf(this.settings);
+      if (simMode === 'zone' && !(map.pois && map.pois.length >= 2)) simMode = 'free';
+      if (simMode === 'campaign' && !(map.campaign && map.campaign.hill)) simMode = 'free';
+    } else if (mode === 'hideout') {
+      simMode = 'free';
+    }
     this.mode = mode;
+    /** The wave machine behind the game: 'defend' | 'zone' | 'campaign' (missions: also 'free'). */
+    this.simMode = simMode;
     this.settings.mode = mode;
     // Time of day (SPEC §7.5.1): cosmetic only (lighting); a day-only map plays day whatever was asked.
     this.settings.time = resolveTime(map, this.settings.time);
-    if (mode === 'zone' || mode === 'campaign') this.settings.objective = false;
+    if (mode === 'zone' || mode === 'campaign' || storyMode) this.settings.objective = false;
+    /** Road to Haven: nothing can hurt a survivor in a hideout. */
+    this.safe = mode === 'hideout';
+    /** Wave-equivalent added to the wave number for zombie scaling (missions on the zone / campaign directors). */
+    this.tierBonus = 0;
+    /** Multiplier on the spawn interval of the wave spawner (a mission's `pace`). */
+    this.spawnPace = 1;
+    /** Story NPCs (sim/npcs.js) and hold-to-use spots (sim/interact.js). */
+    this.npcs = [];
+    this.interactables = [];
     this.rng = createRng((this.seed ^ hashString('highway-horde-sim')) >>> 0);
 
     this.world = createCollisionWorld(map);
@@ -111,10 +140,19 @@ export class GameCore {
     // "fits along the centre line".
     this.flowBig = new FlowField(map, { colliders, pad: HEAVY_BODY_RADIUS, mask: MASK_HEAVY });
     this.zgrid = new SpatialHash(map.width, map.height, 64);
+    /** The mission director (sim/story.js) of a 'mission' or 'hideout' game, else null. */
+    this.story = storyMode ? new StoryDirector(this, mode === 'hideout') : null;
+    /** Multiplier on the size of a wave (a mission's `waveScale`). */
+    this.waveScale = this.story ? this.story.waveScale : 1;
+    if (this.story) {
+      this.settings.waves = this.story.plannedWaves(this.settings.waves);
+      if (simMode === 'zone' || simMode === 'campaign') this.tierBonus = Math.max(0, this.story.tier - 1);
+    }
     /** The moving safe zone of an Evac Run (sim/zone.js), else null. */
-    this.zone = mode === 'zone' ? new ZoneDirector(this) : null;
+    this.zone = simMode === 'zone' ? new ZoneDirector(this) : null;
+    if (this.zone && this.story) this.story.configureZone(this.zone);
     /** The four-stage campaign director (sim/campaign.js), else null. */
-    this.campaign = mode === 'campaign' ? new CampaignDirector(this) : null;
+    this.campaign = simMode === 'campaign' ? new CampaignDirector(this) : null;
 
     this.tick = 0;
     this.time = 0;
@@ -163,6 +201,8 @@ export class GameCore {
     this.waveBosses = 0;
     this.waveTotal = 0;
     this.aliveCount = 0;
+    /** A mission took over after a cleared wave (the phase stays 'wave' but no wave is running). */
+    this.waveIdle = false;
 
     this.events = [];
     this._tickShots = new Map();
@@ -179,9 +219,16 @@ export class GameCore {
     // Evac Run: the first zone is announced at once; getting there is the prep phase.
     if (this.zone) this.timer = this.zone.begin();
     if (this.campaign) this.timer = this.campaign.begin();
+    // A mission / hideout has no prep phase of its own: the script starts at once (a mission on
+    // the zone or campaign director keeps that director's first prep phase).
+    if (this.story && !this.zone && !this.campaign) {
+      this.phase = 'wave';
+      this.timer = 0;
+    }
     /** Set once the constructor is done: later players join at the zone (zone mode). */
     this.started = true;
     this._rebuildFlow('all');
+    if (this.story) this.story.begin();
   }
 
   // ---------------------------------------------------------------------------------
@@ -198,7 +245,7 @@ export class GameCore {
     const existing = this.getPlayer(info.id);
     if (existing) return existing;
     // (the campaign's breakout and roof waves never clear: a joiner there enters alive)
-    const midWave = (this.phase === 'wave' && !(this.campaign && this.campaign.lateAlive())) || this.phase === 'gameover' || this.phase === 'victory';
+    const midWave = (this.phase === 'wave' && !this.story && !(this.campaign && this.campaign.lateAlive())) || this.phase === 'gameover' || this.phase === 'victory';
     const p = this._addPlayer(info, midWave ? 'dead' : 'alive');
     const key = departKey(p);
     const rec = this.departed.get(key);
@@ -282,17 +329,20 @@ export class GameCore {
     this._updatePhase();
     if (this.zone) this.zone.update();
     if (this.campaign) this.campaign.update();
+    if (this.story) this.story.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
     // AI survivors decide now and queue their cmds like everyone else's input.
     if (this.bots.length) this._runBots();
     updatePlayers(this);
+    if (this.interactables.length || this.npcs.length) updateInteractables(this);
     updateDowned(this);
     updatePickups(this);
     updateTurrets(this);
     updateProjectiles(this);
     updateHazards(this);
     if (this.barricadesDirty) rebuildBarricades(this);
+    if (this.npcs.length) updateNpcs(this);
     // The two fields rebuild half an interval apart to spread the cost.
     if (this.tick % NAV_TICKS === 0) this._rebuildFlow('small');
     else if (this.tick % NAV_TICKS === (NAV_TICKS >> 1)) this._rebuildFlow('big');
@@ -334,6 +384,9 @@ export class GameCore {
       readyCount,
       zone: this.zone ? this.zone.snapshot() : null,
       campaign: this.campaign ? this.campaign.snapshot() : null,
+      story: this.story ? this.story.snapshot() : null,
+      npcs: this.npcs.length ? npcsSnapshot(this) : [],
+      interactables: this.interactables.length ? interactablesSnapshot(this) : [],
       players: this.players.map((p) => playerSnapshot(this, p)),
       zombies: zs,
       projectiles: this.projectiles.filter((pr) => !pr.dead).map((pr) => ({
@@ -366,6 +419,23 @@ export class GameCore {
   /** Spawn a zombie of `type` at (x, y) scaled for the current wave (zone harassers, tools). */
   spawnZombieAt(type, x, y, elite = false) {
     return spawnZombie(this, type, x, y, elite);
+  }
+
+  /** A zombie type drawn by the spawn weights of wave (or mission tier) `w`. */
+  pickZombieType(w) {
+    return pickType(this, w);
+  }
+
+  /** Take an NPC out of the game (sim/npcs.js). */
+  removeNpc(n) {
+    const i = this.npcs.indexOf(n);
+    if (i >= 0) this.npcs.splice(i, 1);
+    for (const z of this.zombies) if (z.tgt === n) z.retargetT = 0;
+  }
+
+  /** Rebuild both flow fields now (the objective or a barricade changed). */
+  rebuildFlowNow() {
+    this._rebuildFlow('all');
   }
 
   // ---------------------------------------------------------------------------------
@@ -433,6 +503,7 @@ export class GameCore {
       targets[n++] = p;
     }
     for (const t of this.turrets) if (!t.dead) targets[n++] = t;
+    if (this.npcs.length) for (const c of this.npcs) if (npcTargetable(c)) targets[n++] = c;
     const hunters = n;
     if (this.objective && this.objective.hp > 0 && this.objTarget) targets[n++] = this.objTarget;
     targets.length = n;
@@ -463,10 +534,11 @@ export class GameCore {
     this.wave = w;
     this.phase = 'wave';
     this.timer = 0;
+    this.waveIdle = false;
     for (const p of this.players) p.ready = false;
     const players = Math.max(1, this.players.length);
     this.wavePlayers = players;
-    this.waveTotal = waveZombieCount(w, players, this.diff);
+    this.waveTotal = Math.max(1, Math.round(waveZombieCount(w + this.tierBonus, players, this.diff) * this.waveScale));
     const boss = w % BOSS_EVERY === 0;
     this.waveBosses = boss ? Math.ceil(players / 3) : 0;
     this.bossQueue = this.waveBosses;
@@ -494,10 +566,17 @@ export class GameCore {
     for (const pr of this.projectiles) if (pr.kind === 'acid' || !pr.owner) pr.dead = true;
     // (Evac Run: the reward is the supply drop waiting in the next zone.)
     if (!this.zone) dropCrate(this);
-    if (!this.campaign && this.settings.waves > 0 && w >= this.settings.waves) {
-      this.phase = 'victory';
-      this.over = 'victory';
-      this.emit({ type: 'victory' });
+    // Road to Haven: the mission decides what a cleared wave of the zone / campaign means.
+    if (this.story && this.story.onWaveClear(w)) {
+      if (!this.over) {
+        this.phase = 'wave';
+        this.timer = 0;
+        this.waveIdle = true;
+      }
+      return;
+    }
+    if (!this.campaign && !this.story && this.settings.waves > 0 && w >= this.settings.waves) {
+      this._victory();
       return;
     }
     this.phase = 'intermission';
@@ -510,10 +589,25 @@ export class GameCore {
     this.spawnQueue = 0;
     this.bossQueue = 0;
     this.emit({ type: 'gameover', reason });
+    if (this.story) this.story.onEnd('defeat', reason);
+  }
+
+  /** The game is won: all waves cleared, the campaign's last survivor out, or the mission done. */
+  _victory() {
+    if (this.over) return;
+    this.phase = 'victory';
+    this.over = 'victory';
+    this.spawnQueue = 0;
+    this.bossQueue = 0;
+    this.emit({ type: 'victory' });
+    if (this.story) this.story.onEnd('victory');
   }
 
   _checkEnd() {
     if (this.phase === 'gameover' || this.phase === 'victory') return;
+    // A hideout is a safe place: no waves, nobody falls, nothing ends.
+    if (this.mode === 'hideout') return;
+    if (this.story && this.story.checkEnd()) return;
     if (this.objective && this.objective.hp <= 0) {
       this._gameOver('objective');
       return;
@@ -523,15 +617,12 @@ export class GameCore {
     if (this.campaign) {
       // the roof: the last survivor out of the zip line wins the game
       if (this.campaign.checkEnd() === 'victory') {
-        this.phase = 'victory';
-        this.over = 'victory';
-        this.spawnQueue = 0;
-        this.bossQueue = 0;
-        this.emit({ type: 'victory' });
+        this._victory();
         return;
       }
     }
-    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0 && !(this.campaign && this.campaign.holdsWave())) {
+    if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0 && !(this.campaign && this.campaign.holdsWave())
+      && !(this.story && !this.story.ownsWaves()) && !this.waveIdle) {
       let any = false;
       for (const z of this.zombies) if (!z.dead) { any = true; break; }
       if (!any) {

@@ -127,6 +127,7 @@ export function killZombie(game, z, by, gib) {
   z.dead = true;
   z.hp = 0;
   if (game.campaign) game.campaign.onKill();
+  if (game.story) game.story.onKill(z, by);
   game.emit({
     type: 'zdie', id: z.id, ztype: z.type, x: Math.round(z.x), y: Math.round(z.y), angle: z.angle,
     by: by || 0, gib: !!gib,

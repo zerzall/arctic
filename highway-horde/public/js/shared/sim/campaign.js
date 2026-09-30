@@ -100,6 +100,34 @@ export class CampaignDirector {
   }
 
   /**
+   * Road to Haven: start the run at a later stage than the hill ('breakout' | 'tower' | 'roof' | 'zip').
+   * Call once, right after the game is built (the team is on the hill, in the first prep phase).
+   */
+  startAt(name) {
+    const g = this.game, plan = this.plan;
+    switch (name) {
+      case 'breakout':
+        g.wave = plan.hill;
+        this.sub = SUB.BRIEF;
+        break;
+      case 'tower':
+        g.wave = plan.hill + 1;
+        this.stage = 2;
+        this.arrive();
+        break;
+      case 'roof':
+      case 'zip':
+        g.wave = plan.hill + 1 + this.cfg.floors.length;
+        this.stage = 3;
+        this.floor = this.cfg.floors.length;
+        this.moveUp();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
    * A wave was cleared (after the clear bonus, the respawns and the revives): what comes
    * next, and the length of the intermission.
    * @returns {number} seconds

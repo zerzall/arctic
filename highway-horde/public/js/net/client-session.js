@@ -14,6 +14,7 @@ import {
   decodeSnapshot, encodeInputs, quantizeInput, messageType, MSG, MAX_INPUTS_PER_MESSAGE,
 } from '../shared/protocol.js';
 import { buildMap } from '../shared/maps.js';
+import { mapBuildOptions } from '../shared/story/registry.js';
 import { createCollisionWorld, stepPlayerMovement } from '../shared/movement.js';
 import { copyVertical } from '../shared/jump.js';
 import { WEAPONS } from '../shared/weapons.js';
@@ -449,7 +450,7 @@ export class ClientSession extends Emitter {
     const build = this.hooks.buildMap || buildMap;
     let map;
     try {
-      map = build(msg.mapId, msg.seed, { mode: msg.settings && msg.settings.mode });
+      map = build(msg.mapId, msg.seed, mapBuildOptions(msg.settings));
     } catch (err) {
       console.error('[net] could not build map', err);
       this._disconnect('Game version mismatch');

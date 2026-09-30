@@ -14,6 +14,8 @@ import { MASK_HEAVY, mantleSpot } from '../movement.js';
 import { JUMP_GRAVITY } from '../jump.js';
 import { turnTowards, TAU } from '../math.js';
 import { damagePlayer } from './players.js';
+import { damageNpc, npcTargetable } from './npcs.js';
+import { NPC } from '../story-defs.js';
 import { OBJECTIVE_BIAS, OBJECTIVE_BIAS_BIG } from './core.js';
 import {
   damageZombie, damageTurret, damageBarricade, damageObjective, lobAcid, MAX_ZOMBIE_RADIUS,
@@ -25,7 +27,7 @@ export const MODE_CHARGE = 1;
 export const MODE_WINDUP = 2;
 export const MODE_STUN = 3;
 
-const TK_NONE = 0, TK_PLAYER = 1, TK_TURRET = 2, TK_OBJECTIVE = 3;
+const TK_NONE = 0, TK_PLAYER = 1, TK_TURRET = 2, TK_OBJECTIVE = 3, TK_NPC = 5;
 const SK_BARRICADE = 4;
 
 const DIRECT_RANGE = 200;       // steer straight at the target inside this range (with a clear line)
@@ -102,7 +104,7 @@ export function updateSpawning(game) {
     game.spawnTimer = 0.5;
     return;
   }
-  const w = game.wave;
+  const w = game.wave + game.tierBonus;
   const sp = SPAWN_PACING;
   const group = Math.min(game.spawnQueue, room, rng.int(sp.groupMin, sp.groupMax + Math.floor(w / sp.groupPerWaves)));
   const rect = pickSpawnRect(game);
@@ -117,10 +119,11 @@ export function updateSpawning(game) {
   game.spawnQueue -= group;
   const crowd = (1 + WAVE_ZOMBIES.perPlayer * (game.wavePlayers - 1)) * game.diff.count;
   const base = Math.max(sp.min, Math.min(sp.start, sp.start - sp.perWave * (w - 1)));
-  game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25) * (game.campaign ? game.campaign.pace() : 1);
+  game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25) * (game.campaign ? game.campaign.pace() : 1) * game.spawnPace;
 }
 
-function pickType(game, w) {
+/** A zombie type drawn by the spawn weights of wave (or tier) `w`. */
+export function pickType(game, w) {
   let total = 0;
   for (const t of SPAWN_TYPES) total += Math.max(0, ZOMBIES[t].weight(w));
   let r = game.rng.next() * total;
@@ -139,7 +142,7 @@ function pickType(game, w) {
 export function pickSpawnRect(game) {
   let rects = game.map.zombieSpawns, farD = 700;
   // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges.
-  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : null;
+  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : game.story ? game.story.spawnRects() : null;
   if (zr) {
     rects = zr.rects;
     farD = zr.far;
@@ -187,7 +190,7 @@ function spawnPoint(game, rect, r, mask = MASK_MOVE) {
 export function spawnZombie(game, type, x, y, elite = false) {
   const def = ZOMBIES[type];
   const rng = game.rng;
-  const w = Math.max(1, game.wave);
+  const w = Math.max(1, game.wave + game.tierBonus);
   const boss = type === 'boss';
   const sp = def.special;
   // Boss hp: (hpBase + hpPerPlayer × players) shared by the wave's ceil(players / 3)
@@ -268,6 +271,18 @@ function chooseTarget(game, z) {
       ref = t;
     }
   }
+  // Story NPCs out in the open (an escort, a helper) are prey too, a little less than a survivor.
+  if (game.npcs.length) {
+    for (const n of game.npcs) {
+      if (!npcTargetable(n)) continue;
+      const d = Math.hypot(n.x - z.x, n.y - z.y) - n.radius + NPC.targetBias;
+      if (d < best) {
+        best = d;
+        kind = TK_NPC;
+        ref = n;
+      }
+    }
+  }
   z.tgtKind = kind;
   z.tgt = ref;
   refreshTarget(game, z);
@@ -312,13 +327,14 @@ function pinnedOnObjective(game, z) {
 function refreshTarget(game, z) {
   switch (z.tgtKind) {
     case TK_PLAYER:
-    case TK_TURRET: {
+    case TK_TURRET:
+    case TK_NPC: {
       const t = z.tgt;
       z.tgtX = t.x;
       z.tgtY = t.y;
       const d = Math.hypot(t.x - z.x, t.y - z.y);
       z.tgtDist = d;
-      z.tgtGap = d - z.radius - (z.tgtKind === TK_PLAYER ? PLAYER_RADIUS : TURRET.radius);
+      z.tgtGap = d - z.radius - (z.tgtKind === TK_PLAYER ? PLAYER_RADIUS : z.tgtKind === TK_NPC ? t.radius : TURRET.radius);
       break;
     }
     case TK_OBJECTIVE: {
@@ -340,6 +356,7 @@ function targetValid(game, z) {
   switch (z.tgtKind) {
     case TK_PLAYER: return z.tgt.state !== 'dead' && !z.tgt.escaped && !(z.tgt.riding > 0) && game.players.includes(z.tgt);
     case TK_TURRET: return !z.tgt.dead;
+    case TK_NPC: return !z.tgt.down && !z.tgt.dead && game.npcs.includes(z.tgt);
     case TK_OBJECTIVE: return !!game.objective && game.objective.hp > 0;
     default: return false;
   }
@@ -593,6 +610,9 @@ function moveZombie(game, z, vx, vy, separate) {
     if (t.dead) continue;
     pushed = pushOutOf(z, t.x, t.y, TURRET.radius) || pushed;
   }
+  if (game.npcs.length) {
+    for (const n of game.npcs) if (!n.down && !n.dead) pushed = pushOutOf(z, n.x, n.y, n.radius) || pushed;
+  }
   if (pushed) world.resolveCircle(z, z.body, z.mask, z.z);
   if (z.z > 0 || z.vz !== 0 || !world.terrain.flat) stepHeight(game, z);
   z.vx = (z.x - ox) / DT;
@@ -817,6 +837,9 @@ function resolveSwing(game, z) {
     }
     case TK_TURRET:
       if (!ref.dead && Math.hypot(ref.x - z.x, ref.y - z.y) - z.radius - TURRET.radius <= reach) damageTurret(game, ref, z.damage);
+      break;
+    case TK_NPC:
+      if (!ref.dead && !ref.down && Math.hypot(ref.x - z.x, ref.y - z.y) - z.radius - ref.radius <= reach) damageNpc(game, ref, z.damage, z.x, z.y);
       break;
     case TK_OBJECTIVE:
       if (game.objObb && distToObb(game.objObb, z.x, z.y) - z.radius <= reach) {
