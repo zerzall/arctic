@@ -772,7 +772,7 @@ function motel(B) {
   const office = B.ob('building', 2560, 4200, 150, 130, PI, { color: '#7d9089', roof: '#4a4038', section: sec });
   office.arch = 'house'; office.top = 120; office.lit = 1; office.style = 'mr-rhoffice';
   ob(B, 'building', 'mr-rhdiner', 600, 4100, 300, 170, PI, { sec, color: '#c8cdd0' });
-  ob(B, 'ipillar', 'mr-rhsign', 3050, 3830, 20, 20, 0, { sec });
+  ob(B, 'ipillar', 'mr-rhsign', 3050, 3830, 20, 20, PI, { sec });
   B.anchor('motel_sign', 3000, 3920, 150);
   B.anchor('motel_lot', 2000, 3890, 220);
   B.anchor('motel_door', 2560, 4080, 100);
