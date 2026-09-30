@@ -407,16 +407,22 @@ function gate(P) {
 // ---- the city round the hospital: a street of buildings across the avenue and the road behind, a skyline ----
 const FACADES = ['#8c8478', '#9a8a72', '#7a6a5a', '#a09080', '#6a6258', '#8a7a6a', '#7a8088', '#b0a28c'];
 
-/** Buildings along a line outside the map (art only): fronts facing the hospital. */
-function streetRow(B, x0, x1, y, a, seed) {
+/**
+ * Buildings along a line outside the map (art only), their fronts facing the map. A row along x at
+ * `y` (a = 0: fronts face +y, the row stands north of the line; a = PI: fronts face -y) or along y at
+ * x = `y` (a = PI/2: fronts face -x, the row east of the line; a = -PI/2: fronts face +x). o: { tall }.
+ */
+export function streetRow(B, x0, x1, y, a, seed, o2 = {}) {
   let x = x0, i = 0;
+  const fx = -Math.sin(a), fy = Math.cos(a);               // the fronts' direction (sim axes)
+  const vertical = Math.abs(fx) > 0.5;
   while (x < x1) {
     const L = 260 + hash01(seed + i * 7) * 260, W = 170 + hash01(seed + i * 3) * 90;
     const cx = x + L / 2;
     const off = W / 2 + 6;
-    const o = { id: seed + i, kind: 'building', w: L, h: W, a, color: FACADES[Math.floor(hash01(seed + i * 11) * FACADES.length)], roof: '#4e4a45', top: 160 + Math.round(hash01(seed + i * 5) * 80) };
-    // (a = 0: the front faces +y (south); a = PI: north; a = PI/2: west)
-    const px = a === Math.PI / 2 ? y + off : cx, py = a === Math.PI / 2 ? cx : a === 0 ? y - off : y + off;
+    const tall = o2.tall || [160, 80];
+    const o = { id: seed + i, kind: 'building', w: L, h: W, a, color: FACADES[Math.floor(hash01(seed + i * 11) * FACADES.length)], roof: '#4e4a45', top: tall[0] + Math.round(hash01(seed + i * 5) * tall[1]) };
+    const px = vertical ? y - fx * off : cx, py = vertical ? cx : y - fy * off;
     o.x = px; o.y = py;
     B.obj(px, py, a, o.id * 31);
     B.setJitter(0.05);
@@ -426,13 +432,26 @@ function streetRow(B, x0, x1, y, a, seed) {
   }
 }
 
-/** The city skyline beyond the backdrop (one mesh): boxes with lit windows, red lights on the tall ones. */
-function skyline(api, root, day) {
+/** Saint Mercy's skyline: the city north and east of the hospital. */
+const HOSP_SKY = [
+  { axis: 'x', from: -600, to: 10400, at: -700, depth: -900, h: [260, 700] },
+  { axis: 'y', from: 400, to: 5600, at: 9500, depth: 900, h: [220, 600] },
+];
+
+/**
+ * The city skyline beyond the backdrop (one mesh): boxes with lit windows, red lights on the tall ones.
+ * rows: [{ axis: 'x' | 'y', from, to, at, depth (a random offset away from the map), h: [min, range] }]
+ */
+export function skyline(api, root, day, rows = HOSP_SKY) {
   const list = [];
   let k = 0;
   const add = (x, y, w, d, h) => list.push({ x, y, w, d, h, s: k++ });
-  for (let x = -600; x < 10400; x += 260 + hash01(k * 3) * 300) add(x, -700 - hash01(k * 7) * 900, 180 + hash01(k) * 200, 180 + hash01(k * 5) * 160, 260 + hash01(k * 11) * 700);
-  for (let y = 400; y < 5600; y += 300 + hash01(k * 3) * 300) add(9500 + hash01(k * 7) * 900, y, 160 + hash01(k) * 200, 180 + hash01(k * 5) * 200, 220 + hash01(k * 11) * 600);
+  for (const r of rows) {
+    for (let t = r.from; t < r.to; t += 260 + hash01(k * 3) * 300) {
+      const off = r.at + hash01(k * 7) * r.depth, w = 180 + hash01(k) * 200, d = 180 + hash01(k * 5) * 160, h = r.h[0] + hash01(k * 11) * r.h[1];
+      if (r.axis === 'x') add(t, off, w, d, h); else add(off, t, w, d, h);
+    }
+  }
   const pos = [], nor = [], uv = [], col = [], idx = [];
   let vi = 0;
   const quad = (a, b, c, d, n, u1, v1, kk) => {

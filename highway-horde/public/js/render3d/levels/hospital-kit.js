@@ -538,16 +538,18 @@ export function createInteriorArt(ctx, deps, level) {
     const holes = holesOf(o);
     const faces = [];
     let top = ws.top || 0;
+    const n = Math.max(1, Math.round(L / 50));
     for (const s of [1, -1]) {
       // sample the rooms along the face
       const segs = [];
-      const n = Math.max(1, Math.round(L / 50));
+      const bins = [];
       for (let i = 0; i < n; i++) {
         const t0 = -L / 2 + (i * L) / n, t1 = -L / 2 + ((i + 1) * L) / n;
         const [wx, wy] = toWorld(o, (t0 + t1) / 2, s * (W / 2 + 16));
         const room = roomAt(wx, wy);
         const last = segs[segs.length - 1];
         if (last && last.room === room) last.t1 = t1; else segs.push({ t0, t1, room });
+        bins.push(segs[segs.length - 1]);
       }
       for (const sg of segs) {
         sg.fin = finishOf(sg.room);
@@ -555,7 +557,7 @@ export function createInteriorArt(ctx, deps, level) {
         sg.base = sg.room && !sg.fin.tall ? roomBase(sg.room) : 0;
         if (sg.base + sg.h > top) top = sg.base + sg.h;
       }
-      faces.push({ s, segs });
+      faces.push({ s, segs, bins });
     }
     if (!top) top = ws.h || 120;
     for (const f of faces) {
@@ -566,11 +568,44 @@ export function createInteriorArt(ctx, deps, level) {
         } else plainFace(B, o, f.s, sg.t0, sg.t1, 0, top, ws.face || FIN_DEFAULT.upper, holes, S(DET.drywall, 0.85, 0));
       }
     }
-    // the top and the two ends
-    const topH = Math.max(top, ...faces.flatMap((f) => f.segs.map((sg) => (sg.room ? sg.base + sg.h : (ws.facadeTop || top)))));
+    // the top, in runs of one height (a wall between a tall hall and a low shop steps down), and the ends
+    const binTop = (i) => {
+      let h = 0;
+      for (const f of faces) {
+        const sg = f.bins[i];
+        const t = -L / 2 + ((i + 0.5) * L) / n;
+        h = Math.max(h, sg.room ? sg.base + sg.h : facadeTopAt(ws, o, t, top));
+      }
+      return h;
+    };
+    const runs = [];
+    for (let i = 0; i < n; i++) {
+      const h = binTop(i), t0 = -L / 2 + (i * L) / n, t1 = -L / 2 + ((i + 1) * L) / n;
+      const last = runs[runs.length - 1];
+      if (last && Math.abs(last.h - h) < 0.5) last.t1 = t1; else runs.push({ t0, t1, h });
+    }
+    const topH = Math.max(top, ...runs.map((r) => r.h));
     if (ws.after) { try { ws.after(P(B, o, { ws, faces, top: topH })); } catch (err) { warnOnce('wall after ' + o.style, err); } at(B, o.x, o.y, o.a || 0, o.id * 31, base); }
-    B.quad('std', [0, topH, 0], [L, 0, 0], [0, 0, -W], shadeHex(ws.face || '#8a877e', -0.2), S(DET.concrete, 0.9, 0));
-    for (const e of [-1, 1]) B.quad('std', [e * L / 2, topH / 2, 0], [0, 0, -e * W], [0, topH, 0], shadeHex(ws.face || '#9a968c', -0.1), S(DET.drywall, 0.9, 0));
+    const capC = shadeHex(ws.face || '#8a877e', -0.2), endC = shadeHex(ws.face || '#9a968c', -0.1);
+    runs.forEach((r, i) => {
+      B.quad('std', [(r.t0 + r.t1) / 2, r.h, 0], [r.t1 - r.t0, 0, 0], [0, 0, -W], capC, S(DET.concrete, 0.9, 0));
+      const nx = runs[i + 1];
+      if (nx) {
+        // the step between two runs, facing the lower one
+        const lo = Math.min(r.h, nx.h), hi = Math.max(r.h, nx.h), e = nx.h > r.h ? -1 : 1;
+        B.quad('std', [r.t1, (lo + hi) / 2, 0], [0, 0, -e * W], [0, hi - lo, 0], endC, S(DET.drywall, 0.9, 0));
+      }
+    });
+    const h0 = runs[0].h, h1 = runs[runs.length - 1].h;
+    B.quad('std', [-L / 2, h0 / 2, 0], [0, 0, W], [0, h0, 0], endC, S(DET.drywall, 0.9, 0));
+    B.quad('std', [L / 2, h1 / 2, 0], [0, 0, -W], [0, h1, 0], endC, S(DET.drywall, 0.9, 0));
+  }
+
+  /** The height a wall's outside face rises to at t along it: `ws.facadeTop` (a number, or fn(x, y) of the world point). */
+  function facadeTopAt(ws, o, t, fallback) {
+    const f = ws.facadeTop;
+    if (typeof f === 'function') { const [wx, wy] = toWorld(o, t, 0); return f(wx, wy); }
+    return f || fallback;
   }
 
   /** A face quad (along the wall, t0..t1, y0..y1) at the face s·W/2 (+ out), cut round the holes. */
@@ -675,7 +710,7 @@ export function createInteriorArt(ctx, deps, level) {
     const ra = roomAt(ax, ay), rb = roomAt(bx, by);
     const fa = finishOf(ra), fb = finishOf(rb);
     const ws = (level.walls && level.walls[it.style]) || {};
-    const topOf = (rm, fin) => (rm ? (fin.tall || roomBase(rm) + rm.height) : (ws.facadeTop || ws.top || 150)) - base;
+    const topOf = (rm, fin) => (rm ? (fin.tall || roomBase(rm) + rm.height) : facadeTopAt(ws, it, 0, ws.top || 150)) - base;
     const topA = topOf(ra, fa), topB = topOf(rb, fb);
     const top = Math.max(topA, topB);
     const frame = (level.doorFrame && level.doorFrame(it)) || { color: '#8a8f94', surf: STEEL, jamb: 3.2 };
@@ -915,7 +950,7 @@ export function createInteriorArt(ctx, deps, level) {
           at(Bf, wx, wy, along ? 0 : HALF, Math.round(wx + wy), rb);
           const color = lit ? lit.color : null;
           try {
-            if (level.fixture) level.fixture({ B: Bf, r, fin, fx, lit: !!lit, color, H, ...api });
+            if (level.fixture) level.fixture({ B: Bf, r, fin, fx, lit: !!lit, color, H, wx, wy, ...api });
             else troffer(Bf, H, fx, color);
           } catch (err) { warnOnce('fixture', err); }
           if (lit && lit.color && near === lit && lod() >= 1) api.halo(wx, wy, rb + H - 2, lit.color, fx.halo ?? 46, fx.haloK ?? 0.3, lit.flicker || 0);
@@ -996,6 +1031,28 @@ export function createInteriorArt(ctx, deps, level) {
       quad(a, d, Dp, A, s * 0.8, 0);
       quad(b, c, C, Bp, s * 0.8, 0);
       quad(A, Bp, C, Dp, 0.22 * facing, 0.22 * facing);
+    }
+    // skylights and glass roofs: level.skylights [{ x0, y0, x1, y1, h, floor?, k?, clip? }] (horizontal openings)
+    for (const sk of level.skylights || []) {
+      const fb = sk.floor ?? gy((sk.x0 + sk.x1) / 2, (sk.y0 + sk.y1) / 2);
+      const kk = (sk.k ?? 1) * Math.min(1, sy * 1.4);
+      const y = sk.h, k = (y - fb) / sy;
+      const dx = -sx * k, dz = -sz * k;
+      const a = [sk.x0, y, sk.y0], b = [sk.x1, y, sk.y0], c = [sk.x1, y, sk.y1], d = [sk.x0, y, sk.y1];
+      const low = (p) => [p[0] + dx, fb + 0.4, p[2] + dz];
+      const A = low(a), Bp = low(b), C = low(c), Dp = low(d);
+      const s = 0.06 * kk;
+      quad(a, b, Bp, A, s, 0);
+      quad(c, d, Dp, C, s, 0);
+      quad(b, c, C, Bp, s * 0.8, 0);
+      quad(d, a, A, Dp, s * 0.8, 0);
+      // the patch on the floor, clipped to the room below (a vault's patch must not spill outside)
+      const cl = sk.clip || { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 };
+      const px0 = Math.max(cl.x0, sk.x0 + dx), px1 = Math.min(cl.x1, sk.x1 + dx), pz0 = Math.max(cl.y0, sk.y0 + dz), pz1 = Math.min(cl.y1, sk.y1 + dz);
+      if (px1 > px0 && pz1 > pz0) {
+        const pk = (sk.patch ?? 0.12) * kk;
+        quad([px0, fb + 0.4, pz0], [px1, fb + 0.4, pz0], [px1, fb + 0.4, pz1], [px0, fb + 0.4, pz1], pk, pk);
+      }
     }
     if (!pos.length) return;
     const g = new THREE.BufferGeometry();

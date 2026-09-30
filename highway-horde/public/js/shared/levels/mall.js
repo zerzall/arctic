@@ -264,6 +264,9 @@ function buildShell(B, K) {
   K.wall(S.x0, S.y0, S.x0, 2130, { t: EXT, style: 'mall-ext', section: 'atrium' });
   K.gateIn('mall_doors', 'door', S.x0, 2230, 200, false, { t: EXT, section: 'atrium', label: 'Mall entrance', frame: 'mall-ext', h: 96 });
   K.wall(S.x0, 2330, S.x0, S.y1, { t: EXT, style: 'mall-ext', section: 'atrium' });
+  // the atrium's glass wall onto the car park either side of the doors (the sun comes in through it)
+  K.windowRow(S.x0, 1530, S.x0, 2120, 150, { w: 124, h: 210, sill: 12, t: EXT, section: 'atrium', style: 'mall-ext' });
+  K.windowRow(S.x0, 2340, S.x0, 3090, 150, { w: 124, h: 210, sill: 12, t: EXT, section: 'atrium', style: 'mall-ext' });
   // north (atrium + food court), south (all along), the food court / garage wall
   K.wall(S.x0, S.y0, 7200, S.y0, { t: EXT, style: 'mall-ext', section: 'atrium' });
   K.wall(S.x0, S.y1, S.x1, S.y1, { t: EXT, style: 'mall-ext', section: 'store' });
@@ -276,8 +279,8 @@ function buildShell(B, K) {
   B.box('asphalt', S.x0 + 16, 60, 7200, S.y0 - 12);
   B.box('asphalt', S.x0 + 16, S.y1 + 12, 9800, 4400);
   // the rooftops (the art: gravel, plant, the glass vault)
-  K.put('mallroof', 3800, 2350, 0, { x0: S.x0, y0: S.y0, x1: 7200, y1: S.y1, h: 330 });
-  K.put('mallroof', 8500, 2900, 0, { x0: 7200, y0: 1800, x1: S.x1, y1: S.y1, h: 240 });
+  K.put('mallroof', 3800, 2350, 0, { x0: S.x0, y0: S.y0, x1: 7200, y1: S.y1, h: 330, skirt: 'e' });
+  K.put('mallroof', 8500, 2900, 0, { x0: 7200, y0: 1800, x1: S.x1, y1: S.y1, h: 240, skirt: 'n' });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -308,6 +311,8 @@ function buildAtrium(B, K) {
   R(3620, U.y0, 4180, GY, 'wg-security', { h: 125 });
   R(3000, U.y0, 3620, GY, 'wg-backroom', { h: 125 });
   R(U.x0, GY, U.x1, U.y1, 'wg-gallery', { h: 140, dark: 0.45 });
+  // (the closed shops behind their shutters: shut rooms, no way in)
+  for (const [x0, x1] of [[U.x0, 3000], [4180, 4600], [4600, U.x1]]) R(x0, U.y0, x1, GY, 'wg-void', { h: 120 });
   B.ob('desk', 3760, 960, 150, 50, 0, { style: 'secdesk', section: S });
   B.ob('cabinet', 4150, 1000, 40, 200, 0, { style: 'monitors', section: S });
   B.ob('cabinet', 3660, 1100, 40, 180, 0, { style: 'lockers-mall', section: S });
@@ -329,6 +334,7 @@ function buildAtrium(B, K) {
   for (const x of [3500, 3900, 4500]) K.wall(x, SY + 8, x, 3984, { section: S, style: 'mall' });
   R(2616, SY, 3500, 3984, 'wg-shop-phone', { h: 150 });
   R(3900, SY, 4500, 3984, 'wg-shop-clothes', { h: 150 });
+  for (const [x0, x1] of [[3500, 3900], [4500, 4984]]) R(x0, SY, x1, 3984, 'wg-void', { h: 150 });
   K.put('shopfront', 3700, SY - 9, Math.PI, { w: 380, h: 146, base: 0, kind: 'shutter', name: 'g5' });
   K.put('shopfront', 4740, SY - 9, Math.PI, { w: 470, h: 146, base: 0, kind: 'shutter', name: 'g6' });
   K.windowRow(2616, SY, 3500, SY, 170, { w: 150, h: 96, sill: 12, section: S, style: 'mall-shop', skip: [[2900, 3100]] });
@@ -562,9 +568,14 @@ function buildGarage(B, K) {
   for (const y of [285, 565]) B.ob('wall', (9100 + D.x0) / 2, y, D.x0 - 9100, 10, 0, { style: 'deckedge', section: S, solid: false });
   // the exit lane under deck B's edge is closed off from the lower deck (the way is over the top)
   K.wall(9620, D.y1, 9620, 1784, { t: 20, section: S, style: 'garage-int' });
-  // roofs: the lower deck and the exit lane under slabs; deck B is open to the sky
-  K.roof(7216, 76, 9600, 1784, { kind: 'industrial', height: 110, section: S, style: 'wg-garage', dark: 0.7 });
-  K.roof(9640, D.y1 + 10, 11584, 1784, { kind: 'industrial', height: 110, section: S, style: 'wg-garage', dark: 0.75 });
+  // roofs: the lower deck and the exit lane under slabs (open over the ramps: you drive up into the
+  // daylight); deck B is open to the sky
+  const G = (x0, y0, x1, y1, dark) => K.roof(x0, y0, x1, y1, { kind: 'industrial', height: 110, section: S, style: 'wg-garage', dark });
+  G(7216, 560, 9600, 1784, 0.7); G(7216, 76, 9600, 290, 0.7); G(7216, 290, 9100, 560, 0.7);
+  G(9640, D.y1 + 10, 11100, 1784, 0.75); G(11400, D.y1 + 10, 11584, 1784, 0.75); G(11100, 1640, 11400, 1784, 0.75);
+  // the lower deck's top and the exit lane's (seen from deck B), with the ramps' openings
+  K.put('mallroof', 8400, 930, 0, { x0: 7200, y0: 60, x1: 9600, y1: 1800, h: 122, kind: 'deck', holes: [{ x0: 9100, y0: 290, x1: 9600, y1: 560 }] });
+  K.put('mallroof', 10600, 1500, 0, { x0: 9620, y0: D.y1, x1: 11600, y1: 1800, h: 122, kind: 'deck', holes: [{ x0: 11100, y0: D.y1, x1: 11400, y1: 1640 }] });
   K.put('deckB', (D.x0 + D.x1) / 2, (D.y0 + D.y1) / 2, 0, { x0: D.x0, y0: D.y0, x1: D.x1, y1: D.y1, h: D.h });
   // pillars on both decks (clear of the lanes), parked cars
   for (let x = 7500; x < 9400; x += 320) for (const y of [620, 1240]) B.ob('ipillar', x, y, 30, 30, 0, { style: 'garage-col', section: S, top: 110 });
