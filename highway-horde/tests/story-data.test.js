@@ -618,6 +618,23 @@ describe('dialogue', () => {
     for (const [stage, npcs] of Object.entries(present)) for (const n of npcs) assert.ok(DIALOGUE.talk[n] && DIALOGUE.talk[n][stage], `${n} has a ${stage} conversation`);
   });
 
+  test('conditional scene lines (epilogue, arrivals) use known flags and stay a minority', () => {
+    const flags = producedFlags();
+    let conditional = 0, total = 0;
+    for (const c of CHAPTERS) for (const [name, scene] of [['arrival', c.arrival && c.arrival.scene], ['epilogue', c.epilogue]]) {
+      if (!scene) continue;
+      scene.forEach((l, i) => {
+        total++;
+        if (l.when) { conditional++; checkWhen(l.when, `ch${c.n}.${name}[${i}]`, flags); }
+      });
+    }
+    assert.ok(conditional >= 3 && conditional < total / 5, `${conditional} of ${total} scene lines are conditional`);
+    // the two outcomes of the optional dog quest each have a line
+    const epi = CHAPTERS[5].epilogue;
+    assert.ok(epi.some((l) => l.when && l.when.flags && l.when.flags.includes('found_biscuit')));
+    assert.ok(epi.some((l) => l.when && l.when.notFlags && l.when.notFlags.includes('found_biscuit')));
+  });
+
   test('stage selection and the conversation helper', () => {
     const w = { progress: { completed: {}, flags: {} } };
     assert.equal(story.stageFor('roadhouse', w), 'rh1');

@@ -138,6 +138,7 @@ export const EPILOGUE = [
   L('wren', 'Ruth Delaney. Teacher. Day eight, second boat, with a Mr. Abernathy who drove a bus. She asked for a yellow bus at the pier every single day.'),
   L('june', 'I told her I\'d stay put. I counted to a thousand three times.'),
   L('mara', 'You did. You stayed.'),
+  { ...L('june', 'You can keep the green cap. It worked.'), when: { flags: ['june_lucky_cap'] } },
   L('deke', 'Would there be a Harlan on that list?'),
   L('wren', 'Harlan. Harlan... Calvin. Cal. Day fourteen, third boat. Mechanic\'s apprentice. He fixed our generator with a hairpin and told everybody his dad could do it better.'),
   L('deke', '...'),

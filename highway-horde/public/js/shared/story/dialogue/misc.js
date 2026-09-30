@@ -27,7 +27,7 @@ export const BANTER = [
   b('b18', ['priya', "Do you ever stop looking for him?"], ['wendell', "No. Do you ever stop drawing where you've been?"], { when: { done: ['m3_2'] } }),
   b('b19', ['okafor', "Sergeant Okafor requests seconds."], ['roz', "Sergeant Okafor requests a bigger plate."], { when: { done: ['m4_1'] } }),
   b('b20', ['danny', "Ozzy, what's your favorite frequency?"], ['ozzy', "Seven-oh-seven-four. It sounds like a nice place to be lonely."], { when: { done: ['m4_2'] } }),
-  b('b21', ['dutch', "You owe me for that hat, Quill."], ['quill', "I've never worn your hat."], { when: { done: ['m2_3'] } }),
+  b('b21', ['dutch', "You owe me for that hat, Quill."], ['quill', "I have never worn your hat."], { when: { done: ['m2_3'] } }),
   b('b22', ['june', "Miss Mara, do the sad ones count too?"], ['mara', "The sad ones count the most."]),
   b('b23', ['priya', "You keep patting your pocket, Deke."], ['deke', "It's nothing."], { when: { done: ['m3_1'] } }),
   b('b24', ['deke', "I fixed your stove, Roz."], ['roz', "It wasn't broken."]),

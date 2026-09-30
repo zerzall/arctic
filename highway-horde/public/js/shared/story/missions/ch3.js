@@ -2,7 +2,7 @@
 // mission board, 3.2 follows on the road; the chapter ends by settling in the Blackwater Depot.
 // Zombies: bloaters (3.1) and spitters (3.1/3.2) appear; crawlers live in the mud.
 
-import { radio, say, L, P, kill, noteStep } from './lib.js';
+import { radio, L, P, kill, noteStep } from './lib.js';
 
 export const CH3 = [
   // ------------------------------------------------------------------------------------------

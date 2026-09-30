@@ -88,7 +88,7 @@ export const TALK_MORE = {
           ['okafor', "Convoy on the lake road, you on the hill. Kessler leads, I bring up the rear. If it goes wrong, I do not want anyone to feel it was theirs."],
         ]),
         t('okafor_fs_kip', "About Kip.", [
-          ['okafor', "I have his tag. I gave Ruiz his letter. It said 'save me a seat.' Ruiz asked if I would sit next to him. I said yes. I have never sat next to anyone."],
+          ['okafor', "I have his tag. Kip told Ruiz to save him a seat on the bus home. Ruiz asked if I would sit next to him. I said yes. I have never sat next to anyone."],
         ], { when: { done: ['m4_3'] } }),
         t('okafor_fs_mara', "You and Mara...", [
           ['okafor', "We are both counting. We do it differently. I do not think either of us knows how to stop."],
@@ -109,7 +109,7 @@ export const TALK_MORE = {
           ['quill', "I have four. One of them is true. Unfortunately I have forgotten which. Shall I recite all four?"],
         ]),
         t('quill_rh2_wagon', "What's in the wagon?", [
-          ['quill', "Everything a person could need and several things nobody ever would. Item: a jar of buttons. Item: a signed photograph of a man I don't know. Item: a pie tin. The pie is gone. The tin remains."],
+          ['quill', "Everything a person could need and several things nobody ever would. Item: a jar of buttons. Item: a signed photograph of a man I do not know. Item: a pie tin. The pie is gone. The tin remains."],
         ]),
         t('quill_rh2_pie', "Do you miss the pie?", [
           ['quill', "Sir, I have never been so sick of a thing in my life, and I miss it dearly."],
@@ -129,7 +129,7 @@ export const TALK_MORE = {
           ['quill', "It was a kidney-shaped rock. I am a trader, not a monster."],
         ]),
         t('quill_dp1_rumor', "Any new rumors?", [
-          ['quill', "There is an army checkpoint to the south where a sergeant has never smiled. I don't say it is true. I say a man told me."],
+          ['quill', "There is an army checkpoint to the south where a sergeant has never smiled. I do not say it is true. I say a man told me."],
         ]),
       ],
     },
@@ -157,7 +157,7 @@ export const TALK_MORE = {
           ['quill', "Every rumor I ever told you was a guess. Every guess was a wish. And every wish, so far, has come true. I am reconsidering my career."],
         ]),
         t('quill_fs_last', "One last rumor?", [
-          ['quill', "The lake is warm. The gulls are polite. Someone is waiting on the pier with a hot drink. It's a rumor. It's free."],
+          ['quill', "The lake is warm. The gulls are polite. Someone is waiting on the pier with a hot drink. It is a rumor. It is free."],
         ]),
       ],
     },

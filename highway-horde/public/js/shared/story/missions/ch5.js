@@ -2,7 +2,7 @@
 // 5.1 is an Evac Run (moving safe zones); 5.2 is a collect-and-hold with the first boss.
 // The chapter ends at the Harlan Farmstead. Zombies: the full mix, virtual wave 5-7.
 
-import { radio, say, L, P, kill, boss, noteStep } from './lib.js';
+import { radio, L, P, kill, boss, noteStep } from './lib.js';
 
 export const CH5 = [
   // ------------------------------------------------------------------------------------------
