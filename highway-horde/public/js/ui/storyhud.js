@@ -276,7 +276,13 @@ export function createStoryHud(parent, root, { map, showBanner, toast, nameOf, p
     }
     if (it) {
       const stat = map.interactables && map.interactables[it.id - 1];
-      const label = interactLabel({ label: stat && stat.label, kind: it.kind });
+      // a mission's device reads like the objective that asks for it ("Cut the horn wire under the bus dash")
+      let named = stat && stat.label;
+      if (!named && view.story) {
+        const row = view.story.steps.find((r) => r.kind === 'activate' && !r.opt) || view.story.steps.find((r) => r.kind === 'activate');
+        if (row && row.text) named = row.text.replace(/\s*\(hold [^)]*\)\s*$/i, '').replace(/[.:]+$/, '').trim();
+      }
+      const label = interactLabel({ label: named, kind: it.kind });
       if (it.hold) {
         const mine = it.prog > 0 && it.user === localId;
         const other = it.prog > 0 && it.user && it.user !== localId;

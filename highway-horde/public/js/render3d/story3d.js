@@ -11,7 +11,7 @@
 // Built lazily: a game without a story pays nothing.
 
 import * as THREE from 'three';
-import { itemInfo, markColor, MARKER_COLORS } from '../shared/story-defs.js';
+import { itemInfo, MARKER_COLORS } from '../shared/story-defs.js';
 
 const TAU = Math.PI * 2;
 const PX_PER_M = 32;
@@ -385,7 +385,7 @@ export function createStory3D(ctx) {
   function colorOf(kind) {
     let c = colorCache.get(kind);
     if (!c) {
-      c = new THREE_.Color(markColor(kind));
+      c = new THREE_.Color(MARKER_COLORS[kind] || MARKER_COLORS.objective);
       colorCache.set(kind, c);
     }
     return c;
