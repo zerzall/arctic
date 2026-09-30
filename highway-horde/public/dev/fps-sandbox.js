@@ -155,12 +155,15 @@ function hubViewpoints(map) {
   }
   const n = Math.max(1, hub.stations.length);
   void n;
-  v.push(at('overview', sp.x, map.height - 220, sp.x, sp.y - 300, 0.02));
-  v.push(at('overview2', map.width - 260, map.height - 260, sp.x - 200, sp.y - 200, 0.0));
-  v.push(at('overview3', 260, map.height - 260, sp.x + 300, sp.y - 200, 0.0));
-  v.push(at('north', sp.x, 420, sp.x, map.height, 0.0));
-  v.push(at('west', 300, sp.y, map.width, sp.y, 0.0));
-  v.push(at('east', map.width - 300, sp.y, 0, sp.y, 0.0));
+  const by = (hub.bounds ? hub.bounds.y1 : map.height) - 110;
+  v.push(at('overview', sp.x, by, sp.x, sp.y - 300, 0.02));
+  const bx1 = hub.bounds ? hub.bounds.x1 : map.width, bx0 = hub.bounds ? hub.bounds.x0 : 0;
+  v.push(at('overview2', bx1 - 60, by - 30, sp.x - 200, sp.y - 200, 0.0));
+  v.push(at('overview3', bx0 + 60, by - 30, sp.x + 300, sp.y - 200, 0.0));
+  v.push(at('north', sp.x, (hub.bounds ? hub.bounds.y0 : 0) + 200, sp.x, map.height, 0.0));
+  v.push(at('west', bx0 + 120, sp.y, map.width, sp.y, 0.0));
+  v.push(at('sunset', bx1 - 200, sp.y + 100, 0, sp.y - 60, 0.05));
+  v.push(at('east', bx1 - 120, sp.y, 0, sp.y, 0.0));
   for (const n2 of hub.npcs) v.push(at('npc-' + n2.id, n2.x - Math.cos(n2.angle) * 130, n2.y - Math.sin(n2.angle) * 130, n2.x, n2.y, -0.05));
   return v;
 }

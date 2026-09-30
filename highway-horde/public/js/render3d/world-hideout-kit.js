@@ -269,14 +269,14 @@ export function tarpSheet(B, corners, color = C.tarpB, seg = 3) {
   }
 }
 
-/** A flat-bottomed cot (canvas on a frame) along local x. */
+/** A flat-bottomed cot (canvas on a frame) along local x; `o.y0` lifts it (a bunk on a floor). */
 export function cot(B, x, z, rot = 0, blanket = '#7a3a3a', o = {}) {
-  const L = o.L || 34, W = o.W || 15, h = 8;
+  const L = o.L || 34, W = o.W || 15, y0 = o.y0 || 0, h = 8 + y0;
   B.add('std', T.box(), [x, h, z], [L, 1.2, W], [0, rot, 0], '#8a8060', CANVAS);
   for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const cx = x + (Math.cos(rot) * dx * (L / 2 - 2)) - (Math.sin(rot) * dz * (W / 2 - 1));
     const cz = z + (Math.sin(rot) * dx * (L / 2 - 2)) + (Math.cos(rot) * dz * (W / 2 - 1));
-    B.cyl('std', cx, 0, cz, 0.8, h, '#5a5e62', 5, 1, null, RUSTY);
+    B.cyl('std', cx, y0, cz, 0.8, 8, '#5a5e62', 5, 1, null, RUSTY);
   }
   // pillow and blanket
   const px = x - Math.cos(rot) * (L / 2 - 6), pz = z - Math.sin(rot) * (L / 2 - 6);

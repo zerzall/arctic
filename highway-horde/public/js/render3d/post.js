@@ -77,6 +77,8 @@ export function normPostSettings(s) {
 export function nightGradeFor(map) {
   const base = { contrast: 1.08, saturation: 0.92, lift: [0.006, 0.010, 0.020], gamma: [1, 1, 1.02], gain: [1.02, 1.0, 0.97], vignette: 0.32, grain: 0.038, bloom: 0.5, bloomThreshold: 1.2 };
   const id = map && map.id;
+  // a story hideout brings its own night grade (map.look.night.grade)
+  if (map && map.look && map.look.night && map.look.night.grade) return { ...base, ...map.look.night.grade };
   const tweak = {
     highway: { saturation: 0.95, lift: [0.005, 0.009, 0.022], gain: [1.03, 1.0, 0.96] },
     truckstop: { saturation: 0.98, lift: [0.010, 0.010, 0.016], gain: [1.05, 1.0, 0.93], gamma: [1, 1, 1.0] },

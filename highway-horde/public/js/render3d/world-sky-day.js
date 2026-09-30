@@ -38,6 +38,7 @@ export function makeDaySky(amb, radius, fx) {
     uRidge: { value: amb.ridge.clone() },
     uCover: { value: amb.cover },
     uHeat: { value: amb.heat },
+    uWarm: { value: amb.warm || 0 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -49,7 +50,7 @@ export function makeDaySky(amb, radius, fx) {
       }`,
     fragmentShader: NOISE + `
       uniform vec3 uHorizon, uZenith, uFogCol, uSunDir, uSunColor, uRidge;
-      uniform float uCover, uHeat;
+      uniform float uCover, uHeat, uWarm;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
@@ -61,6 +62,14 @@ export function makeDaySky(amb, radius, fx) {
         // the sky is brighter and warmer toward the sun, and washed out low down
         col = mix(col, uHorizon * 1.05, exp(-max(h, 0.0) * 9.0) * 0.55);
         col += uSunColor * (pow(sd, 5.0) * 0.16 + pow(sd, 32.0) * 0.32 + pow(sd, 400.0) * 0.9);
+        // golden hour (uWarm): the low sun paints the horizon band gold and rose, strongest on its own side
+        if (uWarm > 0.0) {
+          float az = pow(max(dot(normalize(d.xz + 1e-5), normalize(uSunDir.xz + 1e-5)), 0.0), 2.0);
+          vec3 gold = mix(vec3(1.0, 0.5, 0.2), vec3(1.0, 0.62, 0.42), smoothstep(0.0, 0.35, h));
+          col = mix(col, gold * 1.05, uWarm * exp(-max(h, 0.0) * 5.5) * (0.28 + 0.72 * az));
+          col += vec3(1.0, 0.55, 0.25) * uWarm * pow(sd, 3.0) * 0.55;
+          col = mix(col, col * vec3(1.06, 0.92, 0.82), uWarm * 0.6);
+        }
         // sun disc: HDR, well above the bloom knee so the bloom draws its halo
         float disc = smoothstep(0.99962, 0.99978, sd);
         // clouds: projected onto a plane so they compress toward the horizon
@@ -76,8 +85,8 @@ export function makeDaySky(amb, radius, fx) {
         // lit from the sun's side: the edge nearer the sun is bright, the belly greyer-blue
         float toSun = fbm(cp * 0.85 + vec2(drift * 3.0, drift) + uSunDir.xz * 0.35);
         float lit = clamp(0.6 + (lowC - toSun) * 3.2, 0.0, 1.0);
-        vec3 cloudLit = vec3(1.02, 1.0, 0.97) * (0.95 + 0.35 * pow(sd, 6.0));
-        vec3 cloudShade = mix(uHorizon, uZenith, 0.45) * 0.78;
+        vec3 cloudLit = mix(vec3(1.02, 1.0, 0.97), vec3(1.25, 0.78, 0.5), uWarm) * (0.95 + 0.35 * pow(sd, 6.0));
+        vec3 cloudShade = mix(uHorizon, uZenith, 0.45) * mix(vec3(0.78), vec3(0.86, 0.66, 0.66), uWarm);
         vec3 cloud = mix(cloudShade, cloudLit, lit * (1.0 - 0.45 * dens * detail));
         // silver lining where thin cloud crosses the sun
         cloud += uSunColor * pow(sd, 12.0) * (1.0 - dens) * 0.5;

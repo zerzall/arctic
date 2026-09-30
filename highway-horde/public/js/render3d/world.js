@@ -336,7 +336,7 @@ export function createWorld(ctx, deps) {
   // ---- bridge fascias / piers over water edges ----
   for (const w of ground.waters) {
     for (const e of w.edges) {
-      if (!e.bridge) continue;
+      if (!e.bridge || hub) continue;   // (a hideout's dock lane is planked by the hub, not walled in concrete)
       const S = { surf: [DET.concrete, 0.88, 0] };
       if (e.axis === 'y') {
         const len = w.x1 - w.x0, cx = (w.x0 + w.x1) / 2;
@@ -449,7 +449,7 @@ export function createWorld(ctx, deps) {
     const lampish = src && src.h > 150;
     // a fire up on an overpass deck lights the deck, not the ground under it: no fake pool
     const aloft = !Number.isFinite(l.h) && deckHeightAt(map, l.x, l.y) > 0;
-    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2, base: gy(l.x, l.y) };
+    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: (aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2) * (Number.isFinite(l.k) ? l.k : 1), base: gy(l.x, l.y) };
   });
   // the canopies' fluorescent strips light the forecourt under them
   for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: gy(c.x, c.y) });

@@ -31,7 +31,7 @@ import { tierAtLeast } from './tier.js';
 
 const MODELS = { ...COMMON_MODELS, ...ROADHOUSE_MODELS, ...DEPOT_MODELS, ...FARM_MODELS, ...UP_MODELS };
 /** Obstacles/objectives whose model adds to the default one instead of replacing it. */
-const EXTRAS = new Set(['rhoffice', 'rhdiner']);
+const EXTRAS = new Set(['rhoffice', 'rhdiner', 'orchardtree']);
 
 /** The geo-builder buckets this module adds (world.js merges them into its own). */
 export const HUB_BUCKETS = {
@@ -68,8 +68,7 @@ export function createHideout(ctx, deps) {
   own.low.hubflick = own.hi.hubflick;
 
   const dyn = {
-    smoke: [], sparks: [], chimneys: [], chickens: [], flags: [], blades: [], searchlights: [], dummies: [], lanterns: [],
-    windmills: [], ducks: [],
+    smoke: [], sparks: [], chimneys: [], chickens: [], searchlights: [], spinners: [],
   };
   const warned = new Set();
   let seedN = 0;
@@ -135,7 +134,7 @@ export function createHideout(ctx, deps) {
     for (const m of upMeshes) { deps.root.remove(m); m.geometry.dispose(); }
     for (const m of upFxMeshes) { deps.root.remove(m); m.geometry.dispose(); m.material.dispose(); }
     upMeshes = []; upFxMeshes = []; upLights = []; upFires = []; upPools = null;
-    for (const key of ['searchlights', 'blades', 'chimneys', 'lanterns']) dyn[key] = dyn[key].filter((e) => !e.up);
+    for (const key of ['searchlights', 'spinners', 'smoke', 'sparks', 'chickens']) dyn[key] = dyn[key].filter((e) => !e.up);
   }
 
   function buildUpgrades() {
@@ -232,6 +231,15 @@ export function createHideout(ctx, deps) {
       return (t === 'low' ? own.low : own.hi)[bucket];
     },
     obstacle, objective, objectiveExtras, props,
+    /** The view without the range's dummy zombies (hideout3d draws those). */
+    stripDummies(view) {
+      const rt = hub.range && hub.range.targets;
+      if (!rt || !rt.length || !view || !view.zombies || !view.zombies.length) return view;
+      const isDummy = (z) => { for (let i = 0; i < rt.length; i++) if (Math.abs(z.x - rt[i].x) < 1.5 && Math.abs(z.y - rt[i].y) < 1.5) return true; return false; };
+      let any = false;
+      for (let i = 0; i < view.zombies.length; i++) if (isDummy(view.zombies[i])) { any = true; break; }
+      return any ? { ...view, zombies: view.zombies.filter((z) => !isDummy(z)) } : view;
+    },
     finish() { buildUpgrades(); },
     update,
     setUpgrades(raw) {

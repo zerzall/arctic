@@ -53,7 +53,7 @@ function perimeter(P) {
       B.box('std', x + plen * 0.2, h * 0.6, 1.4, 5, h * 0.7, 0.3, shadeHex(col, -0.4), null, RUSTY);
     } else if (k === 2) {
       // a house door stood on its edge, painted
-      const dc = ['#3b5f8a', '#a02a2a', '#2f6a4a', '#c9a02a'][Math.floor(hash01(i * 5) * 4)];
+      const dc = (style === 'depot' ? ['#4a5a68', '#6a3a30', '#3a5a4a', '#8a7a4a'] : ['#3b5f8a', '#a02a2a', '#2f6a4a', '#c9a02a'])[Math.floor(hash01(i * 5) * 4)];
       B.block('std', x, 0, 0, plen - 6, h - 6, 3, dc, null, WOOD);
       B.box('std', x + plen * 0.28, h * 0.42, 2.2, 2.4, 2.4, 1.6, '#c8b060', null, METAL);
     } else {
@@ -68,6 +68,14 @@ function perimeter(P) {
   for (let i = 0; i < pn; i++) {
     const x = -L / 2 + (i * L) / (pn - 1);
     if (style === 'farmstead') { post(B, x, 0, 0, 2.6, 56, C.woodD, WOOD, 5); continue; }
+    if (style === 'depot') {
+      // rail-iron posts: an I-section with a web and two flanges
+      B.box('std', x, 47, 0, 1.6, 94, 6, '#5a5048', null, RUSTY);
+      B.box('std', x, 47, -2.8, 6, 94, 1.4, '#5a5048', null, RUSTY);
+      B.box('std', x, 47, 2.8, 6, 94, 1.4, '#5a5048', null, RUSTY);
+      B.box('std', x, 96, 0, 2, 5, 12, '#3a3630', [0, 0, 0.6], RUSTY);
+      continue;
+    }
     post(B, x, 0, 0, 2.8, 94, C.woodD, WOOD, 5);
     B.box('std', x, 96, 0, 2, 5, 12, C.woodD, [0, 0, 0.6], WOOD);
   }
@@ -123,6 +131,17 @@ function logseat(P) {
   const r = B.rng;
   const rad = 9.8;
   const len = L - 3;
+  if (P.hub.id === 'depot') {
+    // a railway sleeper on two short stumps: creosote-dark, tie plates and spikes, a folded blanket
+    B.rblock('std', 0, 6, 0, len, 13.6, 20, 1, mixHex('#3a2a20', '#4a3a2c', hash01(Math.round(o.x + o.y))), null, S(DET.wood, 0.92, 0));
+    for (const s of [-1, 1]) {
+      B.box('std', s * len * 0.3, 19.7, 0, 9, 0.5, 14, '#5a5048', null, RUSTY);
+      for (const dz of [-4, 4]) B.cyl('std', s * len * 0.3, 19.6, dz, 0.9, 1.8, '#2a2622', 5, 1, null, RUSTY);
+    }
+    for (const s of [-1, 1]) B.rblock('std', s * len * 0.36, 0, 0, 8, 7, 18, 0.5, '#3a3630', null, S(DET.concrete, 0.9, 0));
+    if (hash01(Math.round(o.x * 3 + o.y)) < 0.4) B.add('std', T.pillow(8, 5, 0.5), [len * 0.2, 21, 0], [len * 0.2, 2.4, 9], [0, 0.1, 0.03], ['#a63d3d', '#3d6aa6', '#c98a2e'][Math.floor(hash01(o.x) * 3)], CANVAS);
+    return;
+  }
   B.cylX('std', 0, rad, 0, rad, len, '#57402a', 10, S(DET.bark, 0.92, 0));
   for (const s of [-1, 1]) B.cylX('std', s * (len / 2 + 0.1), rad, 0, rad * 0.94, 0.5, '#b39064', 10, S(DET.wood, 0.85, 0));
   // a knot, a broken branch, a scrap of bark peeling
@@ -175,7 +194,7 @@ function maptable(P) {
   B.add('std', T.torus(10, 0.22, 4), [rx - 8, topY + 3.2, rz + 14], [4.6, 4.6, 4.6], [HALF, 0, 0], '#222', S(DET.rubber, 0.8, 0));
   B.add('std', T.sphere(6, 4), [rx - 8, topY + 2.4, rz + 14 - 4.4], [1.6, 2.2, 1.4], null, '#222', S(DET.rubber, 0.8, 0));
   // a hurricane lamp, two mugs, a stack of paper, a rolled map
-  lantern(B, halos, -L / 2 + 12, topY, W / 2 - 12, P.it.x + (-L / 2 + 12), P.it.y + (W / 2 - 12), { h: 10, halo: 70, strength: 0.6 });
+  lantern(B, halos, -L / 2 + 12, topY, W / 2 - 12, P.it.x + (-L / 2 + 12), P.it.y + (W / 2 - 12), { h: 10, halo: 46, strength: 0.5 });
   mug(B, L / 2 - 30, topY, W / 2 - 10, '#e0d8c0');
   mug(B, -8, topY, W / 2 - 8, '#b6543a');
   B.add('std', T.cyl(8), [L / 2 - 10, topY + 3, 6], [2.6, 34, 2.6], [HALF, 0, 0.3], '#d8caa0', CANVAS);
@@ -220,7 +239,7 @@ function workbench(P) {
   rod(B, 'std', [lx, topY + 32, lz], [lx - 12, topY + 30, lz + 8], 0.7, '#3a3e42', METAL, 5);
   B.rblock('std', lx - 13, topY + 26, lz + 9, 9, 6, 6, 0.8, '#e0b020', [0.3, 0.6, 0], METAL);
   B.box('glow', lx - 14, topY + 25, lz + 12.4, 6.4, 3.6, 0.5, '#fff0d0', [0.3, 0.6, 0], { emissive: 4.2, uv: atlasUV('white'), noAO: true });
-  halos.push({ x: P.it.x + lx * Math.cos(P.o.a) - (lz + 12) * Math.sin(P.o.a), y: P.it.y + lx * Math.sin(P.o.a) + (lz + 12) * Math.cos(P.o.a), h: topY + 26, color: '#fff0d0', size: 90, strength: 0.6 });
+  halos.push({ x: P.it.x + lx * Math.cos(P.o.a) - (lz + 12) * Math.sin(P.o.a), y: P.it.y + lx * Math.sin(P.o.a) + (lz + 12) * Math.cos(P.o.a), h: topY + 26, color: '#fff0d0', size: 56, strength: 0.5 });
   P.dyn.sparks.push({ x: P.it.x, y: P.it.y, h: topY + 6 });
 }
 
@@ -289,7 +308,7 @@ function leanto(P) {
     B.box('std', 0, hi + 0.8, -d / 2 - 4, w + 14, 2, 3, '#6a6e72', null, METAL);
   }
   // a lantern hung from the middle of the front rafter
-  lantern(B, halos, 0, lo - 19, d / 2 - 12, it.x + Math.cos(it.a) * 0 - Math.sin(it.a) * (d / 2 - 12), it.y + Math.sin(it.a) * 0 + Math.cos(it.a) * (d / 2 - 12), { h: 9, hang: 10, halo: 88, strength: 0.62 });
+  lantern(B, halos, 0, lo - 19, d / 2 - 12, it.x + Math.cos(it.a) * 0 - Math.sin(it.a) * (d / 2 - 12), it.y + Math.sin(it.a) * 0 + Math.cos(it.a) * (d / 2 - 12), { h: 9, hang: 10, halo: 56, strength: 0.5 });
 }
 
 // ---- lights and signs ------------------------------------------------------------------------------------
@@ -305,7 +324,7 @@ function lanternModel(P) {
   // a standing lantern on a low crate / the ground
   const z = it.z || 0;
   if (z > 4) B.cyl('std', 0, 0, 0, 5, z, C.woodD, 6, 0.9, null, WOOD);
-  lantern(B, halos, 0, z, 0, it.x, it.y, { h: 9, halo: 64, strength: 0.5 });
+  lantern(B, halos, 0, z, 0, it.x, it.y, { h: 9, halo: 42, strength: 0.45 });
 }
 
 function bunting(P) {
@@ -382,7 +401,7 @@ function picnic(P) {
   mug(B, 14, 27.6, 10, '#7a9ab0');
   // playing cards fanned out
   for (let i = 0; i < 4; i++) B.box('std', 24 + i * 1.4, 27.8 + i * 0.05, 4 + i * 1.6, 5, 0.2, 3.4, '#f0ece0', [0, 0.3 + i * 0.25, 0], CANVAS);
-  lantern(B, halos, 0, 27.6, 0, it.x, it.y, { h: 9, halo: 74, strength: 0.55 });
+  lantern(B, halos, 0, 27.6, 0, it.x, it.y, { h: 9, halo: 46, strength: 0.5 });
   B.add('std', T.pillow(8, 5, 0.5), [-24, 30, 8], [4.6, 3.4, 4.6], [0, 0.4, 0], '#9a7a58', S(DET.fabric, 0.9, 0));
 }
 
@@ -446,7 +465,7 @@ function pinboard(P) {
 function bedlamp(P) {
   const { B, halos, it } = P;
   post(B, 0, 0, 0, 1.8, 56, '#3a3a40', METAL, 6);
-  lantern(B, halos, 0, 52, 0, it.x, it.y, { h: 9, halo: 84, strength: 0.6 });
+  lantern(B, halos, 0, 52, 0, it.x, it.y, { h: 9, halo: 50, strength: 0.5 });
   B.add('std', T.box(), [12, 0.5, 0], [30, 1, 44], [0, 0, 0], '#7a3a2a', CANVAS);
   B.add('hub', T.plane(), [12, 1.05, 0], [24, 36, 1], [-HALF, HALF, 0], '#ffffff', { uv: hubUV('paper'), noAO: true, noJitter: true });
   for (const s of [-1, 1]) B.add('std', T.pillow(6, 4, 0.6), [12, 2.6, s * 4], [6, 2, 2.4], [0, s * 0.2, 0], '#a86a8a', CANVAS);
@@ -463,7 +482,7 @@ function lookoutnest(P) {
   // (sandbags stack from y = 0: lift them by the roof height)
   void z;
   crate(B, -14, z + 2, -8, 10, 0.3);
-  lantern(B, halos, -14, z + 12, -8, it.x - 14, it.y - 8, { h: 9, halo: 70, strength: 0.55 });
+  lantern(B, halos, -14, z + 12, -8, it.x - 14, it.y - 8, { h: 9, halo: 46, strength: 0.5 });
   // a folding chair and a blanket
   B.box('std', 10, z + 12, 2, 12, 1.4, 12, '#3a5a8a', [0, 0.3, 0], CANVAS);
   B.box('std', 4, z + 20, 2, 1.4, 16, 12, '#3a5a8a', [0, 0.3, 0.1], CANVAS);
@@ -490,6 +509,26 @@ function roofantenna(P) {
 function gate(P) {
   const { B, it, halos } = P;
   const w = it.w || 200;
+  if (it.farm) {
+    // a farm lane gate: whitewashed posts, two five-bar leaves, an arch with the farm's name, lanterns
+    for (const s of [-1, 1]) {
+      post(B, s * (w / 2 + 6), 0, 0, 4.4, 128, '#efe8d4', WOOD, 6);
+      B.box('std', s * (w / 2 + 6), 130, 0, 11, 3, 11, '#c9c0a8', null, WOOD);
+    }
+    B.box('std', 0, 122, 0, w + 20, 6, 5, '#efe8d4', null, WOOD);
+    pic2(B, 'p_farm', 0, 138, 0, 118, 30, HALF);
+    for (const s of [-1, 1]) {
+      const x0 = s * 4, x1 = s * (w / 2 - 2);
+      for (const y of [16, 34, 52, 70, 86]) B.box('std', (x0 + x1) / 2, y, 0, Math.abs(x1 - x0), 5, 2.4, '#efe8d4', null, WOOD);
+      for (const x of [x0, (x0 + x1) / 2, x1]) B.box('std', x, 50, 0, 3.6, 78, 2.6, '#efe8d4', null, WOOD);
+      rod(B, 'std', [x0, 18, 0], [x1, 84, 0], 1.4, '#efe8d4', WOOD, 5);
+    }
+    for (const s of [-1, 1]) {
+      rod(B, 'std', [s * (w / 2 + 6), 116, 6], [s * (w / 2 + 6), 108, 6], 0.3, '#2a2622', METAL, 3);
+      lantern(B, halos, s * (w / 2 + 6), 98, 6, it.x + s * (w / 2 + 6), it.y + 6, { h: 9, halo: 60, strength: 0.6 });
+    }
+    return;
+  }
   for (const s of [-1, 1]) {
     post(B, s * (w / 2 + 6), 0, 0, 4.4, 112, C.woodD);
     B.box('std', s * (w / 2 + 6), 113, 0, 12, 3, 12, '#3a3e42', null, METAL);
@@ -512,6 +551,11 @@ function gate(P) {
     halos.push({ x: it.x + s * (w / 2 + 6), y: it.y, h: 118, color: '#ffb020', size: 64, blink: 1, strength: 0.6 });
   }
   pic(B, 'p_noparking', -w / 4, 100, 4.4, 20, 20, 0);
+  if (it.rail) {
+    // (the track gates are taller and marked for trains)
+    B.box('std', 0, 96, 0, w + 24, 5, 6, '#3a3e42', null, METAL);
+    B.add('glow', T.plane(), [w / 4, 62, 4.6], [w / 2 - 12, 8, 1], null, '#ffffff', { uv: atlasUV('stripeRW'), emissive: 0.5, noAO: true });
+  }
 }
 
 /** A floodlight on a pole aimed along `aim`. */

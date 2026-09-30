@@ -25,7 +25,7 @@ function rhdiner(P) {
   B.rblock('std', -L * 0.12, 0, W / 2 + 12, 46, 14, 10, 0.5, '#7a5a38', null, WOOD);
   B.cyl('std', -L * 0.12 + 24, 0, W / 2 + 12, 4.6, 7, '#a0522d', 9, 0.8, null, S(DET.tile, 0.8, 0));
   const [lx, ly] = toWorld(it, -L * 0.12 - 12, W / 2 + 12);
-  lantern(B, halos, -L * 0.12 - 12, 14, W / 2 + 12, lx, ly, { h: 9, halo: 60, strength: 0.5 });
+  lantern(B, halos, -L * 0.12 - 12, 14, W / 2 + 12, lx, ly, { h: 9, halo: 44, strength: 0.45 });
   const [sx, sy] = toWorld(it, -L * 0.3, -W * 0.25);
   dyn.smoke.push({ x: sx, y: sy, h: 118, rate: 2.2, r: 3, warm: 0 });
 }
@@ -36,7 +36,7 @@ function rhoffice(P) {
   const L = it.w, W = it.h;
   pic(B, 'p_office', 0, 60, W / 2 + 0.8, 36, 9, 0);
   const [lx, ly] = toWorld(it, 24, W / 2 + 4);
-  lantern(B, halos, 24, 26, W / 2 + 4, lx, ly, { h: 9, halo: 62, strength: 0.5 });
+  lantern(B, halos, 24, 26, W / 2 + 4, lx, ly, { h: 9, halo: 44, strength: 0.45 });
   // firewood stacked against the side wall
   for (let i = 0; i < 10; i++) {
     const row = Math.floor(i / 4);

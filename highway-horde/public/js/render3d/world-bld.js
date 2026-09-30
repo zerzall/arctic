@@ -45,6 +45,7 @@ const SHOPFRONTS = ['#5a2a22', '#22344a', '#2f4a3a', '#242424', '#d9d2bf', '#1f4
 const FRAMES = ['#2a2622', '#e8e2d4', '#1d2a3a', '#3a4a3a', '#5a5e62'];
 
 function archetypeOf(o, L, W, H) {
+  if (o.arch) return o.arch;   // (a story hideout names its buildings' archetype)
   if (Number.isFinite(o.top) && o.top > 250) return 'steeple';
   const c = new THREE.Color(o.color);
   const big = Math.max(L, W);
@@ -126,7 +127,7 @@ function makeCtx(B, o, L, W, H, arch) {
     awn: AWNINGS[Math.floor(hash01(id * 13 + 4) * AWNINGS.length)],
     shopCol: SHOPFRONTS[Math.floor(hash01(id * 17 + 6) * SHOPFRONTS.length)],
     surf,
-    litRate: arch === 'house' || arch === 'shack' ? 0.28 : 0.17,
+    litRate: o.lit !== undefined ? o.lit : arch === 'house' || arch === 'shack' ? 0.28 : 0.17,
     R: 3.8,
   };
 }
@@ -187,7 +188,7 @@ function wallsOf(B, o, ctx, opts) {
         const roll = hash01(id * 131 + fi * 37 + fl * 11 + i);
         const roll2 = hash01(id * 53 + fi * 19 + fl * 5 + i + 7);
         let state = roll < ctx.litRate ? 'lit' : 'dark';
-        if (state === 'dark') state = roll2 < 0.12 ? 'boarded' : roll2 < 0.2 ? 'broken' : roll2 < 0.23 ? 'blank' : 'dark';
+        if (state === 'dark' && o.lit === undefined) state = roll2 < 0.12 ? 'boarded' : roll2 < 0.2 ? 'broken' : roll2 < 0.23 ? 'blank' : 'dark';
         const ww = win.w * (0.9 + hash01(id + fi * 3 + i) * 0.2);
         holes.push({ t0: t - ww / 2, t1: t + ww / 2, y0: yc - win.h / 2, y1: yc + win.h / 2 });
         wins.push({ t, yc, ww, wh: win.h, state, fl, i, seed: id * 977 + fi * 131 + fl * 17 + i, type: state === 'broken' || state === 'boarded' ? 4 : opts.rooms || 0 });
@@ -541,7 +542,7 @@ function motel(B, o, ctx, sign) {
         const t = g.tAt(i);
         const seed = o.id * 13 + fl * 31 + i;
         const roll = hash01(seed);
-        const state = roll < 0.22 ? 'lit' : roll < 0.3 ? 'boarded' : 'dark';
+        const state = roll < (o.lit !== undefined ? o.lit : 0.22) ? 'lit' : o.lit === undefined && roll < 0.3 ? 'boarded' : 'dark';
         holes.push({ t0: t - 14.5, t1: t - 1.5, y0: g.y0 + 14, y1: g.y0 + 32 });
         holes.push({ t0: t + 3, t1: t + 16, y0: g.y0, y1: g.y0 + 32 });
         wins.push({ unit: (FF) => {
