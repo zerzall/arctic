@@ -31,7 +31,7 @@ const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS,
 export const DRESS_MODELLED = Object.freeze(Object.keys(BUILDERS));
 
 /** Triangles the dressing may add per tier (only the biggest maps reach it). */
-const TRI_BUDGET = { cinematic: 2400000, ultra: 650000, high: 400000, low: 170000 };
+export const TRI_BUDGET = { cinematic: 2500000, ultra: 650000, high: 400000, low: 170000 };
 /** Tall props that make the skyline: built into the far set. */
 const FAR = new Set(['pole', 'wire', 'billboard', 'watertower', 'flagpole', 'banner', 'deadtree']);
 /** The small props are not drawn past this distance (the far set is). */

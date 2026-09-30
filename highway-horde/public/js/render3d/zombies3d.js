@@ -40,7 +40,7 @@ const SCALE = { walker: 1, runner: 0.95, crawler: 0.9, bloater: 1.12, spitter: 1
 // stride length (units per gait cycle at scale 1) — sets how fast legs cycle for a speed
 const STRIDE = { walker: 44, runner: 74, crawler: 36, bloater: 36, spitter: 46, screamer: 50, brute: 58, boss: 72 };
 // LOD distances (units) per quality; scaled by the zombie's size
-const LOD_DIST = { cinematic: [470, 1150], ultra: [340, 950], high: [270, 720], low: [160, 460] };
+export const LOD_DIST = { cinematic: [520, 1350], ultra: [340, 950], high: [270, 720], low: [160, 460] };
 
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();

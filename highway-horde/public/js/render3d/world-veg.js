@@ -141,8 +141,8 @@ export function buildTreeLine(B, map, waters) {
 // ---- grass field -------------------------------------------------------------------------------
 
 // height stays well under a crawler's back (~20): grass must never hide a zombie
-const GRASS = {
-  cinematic: { grid: 196, cell: 3.9, height: 10, density: 1.0, cin: true },
+export const GRASS = {
+  cinematic: { grid: 232, cell: 3.9, height: 10, density: 1.0, cin: true },
   ultra: { grid: 180, cell: 4.6, height: 9.5, density: 0.95 },
   high: { grid: 128, cell: 6, height: 9.5, density: 0.9 },
 };
