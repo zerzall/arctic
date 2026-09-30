@@ -6,7 +6,11 @@
 //   World = { v:1, id, name, rev, createdAt, updatedAt, difficulty, day,
 //     progress:{ node, completed:{[missionId]:{stars,time}}, flags:{[k]:true} },
 //     hideout:{ current, upgrades:{[id]:tier}, recruited:{[npcId]:true}, stash:{ scrap, parts, medkit, ammo, frag ... } },
-//     members:{[profileId]:{ name, lastSeen }} }
+//     members:{[profileId]:{ name, lastSeen }}, settings:{ daylight } }
+//
+// `settings` are the crew's campaign options (JOURNEY.md §2.1): `daylight` = every mission and side
+// job plays by day, whatever its script says (shared/story/daylight.js). Worlds saved before the
+// option existed read as all options off.
 //
 // `progress.node` is always 'hideout:<id>' in a saved world: a mission in progress is not
 // saved (leaving mid-mission keeps everyone's profile and the crew resumes at the hideout).
@@ -41,6 +45,22 @@ function int(v, lo, hi, fallback = lo) {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
 }
 
+/** The campaign options a world may carry, with their defaults. */
+export const WORLD_SETTINGS = Object.freeze({ daylight: false });
+
+/** Clean campaign options: known keys only, booleans. */
+export function cleanWorldSettings(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const out = {};
+  for (const k of Object.keys(WORLD_SETTINGS)) out[k] = typeof src[k] === 'boolean' ? src[k] : WORLD_SETTINGS[k];
+  return out;
+}
+
+/** True when the crew chose "Daylight only": every mission plays by day. */
+export function isDaylightOnly(world) {
+  return !!(world && world.settings && world.settings.daylight === true);
+}
+
 /** The stash a new campaign starts with. */
 export function startingStash() {
   return { scrap: 40, parts: 0, medkit: 2, ammo: 0, frag: 4, molotov: 2, armor: 2, barricade: 2, turret: 0, selfrevive: 0 };
@@ -48,7 +68,7 @@ export function startingStash() {
 
 /**
  * A new campaign.
- * @param {{ name?: string, difficulty?: string, profile?: object, now?: number, id?: string }} [opts]
+ * @param {{ name?: string, difficulty?: string, profile?: object, now?: number, id?: string, daylight?: boolean }} [opts]
  */
 export function createWorld(opts = {}) {
   const now = Number.isFinite(opts.now) ? opts.now : Date.now();
@@ -64,6 +84,7 @@ export function createWorld(opts = {}) {
     progress: { node: `hideout:${FIRST_HIDEOUT}`, completed: {}, flags: {} },
     hideout: { current: FIRST_HIDEOUT, upgrades: {}, recruited: {}, stash: startingStash() },
     members: {},
+    settings: cleanWorldSettings({ daylight: opts.daylight === true }),
   };
   if (opts.profile) world.members[opts.profile.id] = { name: cleanText(opts.profile.name), lastSeen: now };
   return world;
@@ -141,6 +162,7 @@ export function sanitizeWorld(raw, opts = {}) {
     progress: { node: `hideout:${current}`, completed, flags },
     hideout: { current, upgrades, recruited, stash },
     members,
+    settings: cleanWorldSettings(raw.settings),
   };
   return { world, notes };
 }

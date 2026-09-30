@@ -19,7 +19,7 @@ import { cleanText } from './profile.js';
 import { contentFlags } from './content.js';
 
 /** Action ids a client may send. */
-export const ACTIONS = ['loadout', 'tier', 'buygun', 'perk', 'reset', 'hideout', 'donate', 'kit', 'buykit', 'talk', 'flag', 'diff', 'rename'];
+export const ACTIONS = ['loadout', 'tier', 'buygun', 'perk', 'reset', 'hideout', 'donate', 'kit', 'buykit', 'talk', 'flag', 'diff', 'rename', 'daylight'];
 
 /** Flags a player may set from the client: conversations heard and scenes seen (plus the ones dialogue topics set). */
 const CLIENT_FLAG = /^(talked|seen)_[a-z0-9_]{1,32}$/;
@@ -134,6 +134,13 @@ export function applyAction(state, act) {
       if (!DIFFICULTY_IDS.includes(act.difficulty)) return fail('invalid');
       if (act.difficulty === world.difficulty) return { ok: true, profile, world };
       return { ok: true, profile, world: changeWorld(world, (d) => { d.difficulty = act.difficulty; }, now) };
+    }
+    case 'daylight': {
+      // the campaign option "Daylight only" (JOURNEY.md §2.1): every mission and side job plays by day
+      if (!state.actor || !state.actor.isHost) return fail('host');
+      if (typeof act.on !== 'boolean') return fail('invalid');
+      if (!!(world.settings && world.settings.daylight) === act.on) return { ok: true, profile, world };
+      return { ok: true, profile, world: changeWorld(world, (d) => { d.settings = { ...(d.settings || {}), daylight: act.on }; }, now) };
     }
     case 'rename': {
       if (!state.actor || !state.actor.isHost) return fail('host');
