@@ -26,6 +26,7 @@ import { createCollisionWorld, ledgeAhead } from '../shared/movement.js';
 import { nearSupply } from '../shared/zone.js';
 import { createZoneHud } from './zonehud.js';
 import { createCampaignHud } from './campaignhud.js';
+import { createStoryHud } from './storyhud.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
@@ -66,8 +67,11 @@ function pct(v) {
  *   invite-link copy in the scoreboard header
  * @param {'fps'|'topdown'} [opts.view] first person adds the compass and the radar minimap
  * @param {boolean} [opts.minimapRotate] first person: rotating radar (default true)
+ * @param {'defend'|'zone'|'campaign'} [opts.mode] the wave machine behind the game (zone / campaign panels)
+ * @param {{ title?: string }|null} [opts.story] Road to Haven (STORY.md): a mission or hideout — adds the
+ *   objective tracker, radio strip and story prompts (ui/storyhud.js)
  */
-export function createHud(root, { map, renderClassPortrait, audio, invite = null, view = 'topdown', minimapRotate = true, mode = 'defend' }) {
+export function createHud(root, { map, renderClassPortrait, audio, invite = null, view = 'topdown', minimapRotate = true, mode = 'defend', story = null }) {
   root.replaceChildren();
   root.hidden = false;
   const fps = view === 'fps';
@@ -189,13 +193,19 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const scoreboard = createScoreboard(root.parentElement || root, { invite });
   const zoneMode = mode === 'zone';
   const campMode = mode === 'campaign' && !!map.campaign;
-  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode, campaign: campMode });
-  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode, campaign: campMode }) : null;
+  const storyMode = !!story;
+  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode, campaign: campMode, story: storyMode });
+  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode, campaign: campMode, story: storyMode }) : null;
   // Evac Run: the zone panel under the compass, the outside warning (SPEC §3.7)
   const zoneHud = zoneMode ? createZoneHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a) }) : null;
   // The Campaign: the stage panel, the horde warning, the title card (SPEC §3.8)
   const campaignHud = campMode
     ? createCampaignHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id) })
+    : null;
+
+  // Road to Haven: the objective tracker, the radio strip, the story prompts
+  const storyHud = storyMode
+    ? createStoryHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id), promptEl: prompt, title: story.title || '' })
     : null;
 
   // ---- state -----------------------------------------------------------------------------
@@ -338,6 +348,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     for (const e of events) {
       if (zoneHud) zoneHud.addEvent(e);
       if (campaignHud && campaignHud.addEvent(e, lastView, localId)) continue;
+      if (storyHud && storyHud.addEvent(e, lastView, localId)) continue;
       switch (e.type) {
         case 'zdie': {
           const common = COMMON_ZOMBIES.has(e.ztype);
@@ -528,6 +539,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const me = localPlayer(v);
     if (zoneHud) zoneHud.update(v, me, info.localPos, dt);
     if (campaignHud) campaignHud.update(v, me, info.localPos, dt);
+    if (storyHud) storyHud.update(v, me, info.localPos, dt);
     root.dataset.phase = v.phase;
 
     // wave / phase
@@ -550,6 +562,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       if (cw.left && v.phase === 'wave') setText(waveLeft, cw.left);
     }
     setShown(waveLeft, true);
+    // (a mission counts its own waves in the tracker; the zone / campaign panels keep theirs)
+    setShown(wavePanel, !storyMode || zoneMode || campMode);
     if (between) {
       const secs = Math.max(0, Math.ceil(v.timer));
       const total = v.players.length;
@@ -630,7 +644,10 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
 
     // Same wave number as the wave panel (prep counts toward wave 1, not "wave 0").
     const waveShown = v.phase === 'prep' ? 1 : v.wave;
-    scoreboard.update(v, roster, localId, dt, v.totalWaves ? `Wave ${waveShown} of ${v.totalWaves}` : `Wave ${waveShown} · Endless`);
+    const boardLabel = storyMode && !zoneMode && !campMode
+      ? (story.title ? `Road to Haven · ${story.title}` : 'Road to Haven')
+      : v.totalWaves ? `Wave ${waveShown} of ${v.totalWaves}` : `Wave ${waveShown} · Endless`;
+    scoreboard.update(v, roster, localId, dt, boardLabel);
 
     // After this frame's DOM writes, so the measurement sees the new text.
     if (keyMode === 'touch') {
@@ -797,6 +814,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     let prog = null;
     let hintText = '';
     const pos = info.localPos || me;
+    if (storyHud) storyHud.resetRing();
+    let sp = null;
     if (!me) {
       text = 'Joining the fight…';
     } else if (v.phase === 'gameover' || v.phase === 'victory') {
@@ -846,6 +865,10 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
         }
         if (crate) {
           text = `Press ${keys.interact} to take the ${crate.weapon && WEAPONS[crate.weapon] ? WEAPONS[crate.weapon].name : 'weapon crate'}`;
+        } else if (storyHud && (sp = storyHud.prompt(v, me, pos, keys, localId))) {
+          // (a station, a terminal, an NPC to talk to or revive)
+          text = sp.text;
+          prog = sp.ring ? null : sp.prog;
         } else if (campaignHud && (text = campaignHud.prompt(v, me, pos, keys))) {
           // (the zip gantry)
         } else if (v.phase === 'wave' && nearSupply(map, v.zone || v.campaign, pos.x, pos.y, SUPPLY_RADIUS)) {
@@ -905,6 +928,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       clearTouchLayout();
       if (zoneHud) zoneHud.destroy();
       if (campaignHud) campaignHud.destroy();
+      if (storyHud) storyHud.destroy();
       scoreboard.destroy();
       root.replaceChildren();
       root.hidden = true;

@@ -230,12 +230,17 @@ export function buildRoadhouse(B) {
   K.lamp(1560, 1310, 190, 250, '#ff5a9c', 0, 0.55);
   K.lamp(1420, 1240, 70, 200, '#ffb060', 0.4, 0.6);
 
-  // ---- NPCs: idle spots (sitting by the fire, one on the lookout, one at the workbench...)
-  K.npc('mara', 'Mara Voss', 'medic', 612, 800, 0, 'stand', { station: 'infirmary' });
-  K.npc('deke', 'Deke Harlan', 'mechanic', 1852, 712, 0.1, 'work', { station: 'workbench' });
-  K.npc('ozzy', 'Ozzy', 'radio', 1560, 432, PI / 2, 'stand', { station: 'board' });
-  K.npc('june', 'June', 'kid', 1002, 930, -0.55, 'sit');
-  K.npc('lookout', 'Lookout', 'guard', 1838, 296, PI / 2, 'watch', { z: 98 });
+  // ---- NPCs: idle spots. `id` is the cast key (shared/story/cast.js: name, look and voice come from
+  // there); `pose` is a hint (the NPC layer stands them on the spot), `recruit` (the mission that unlocks
+  // them) keeps a spot empty until the host lists the NPC in settings.story.npcs. Roz and June live here.
+  K.npc('roz', 'Roz Pruitt', 'cook', 1132, 942, -2.26, 'work', { station: 'campfire' });
+  K.npc('june', 'June', 'kid', 1002, 930, -0.55, 'sit', { station: 'bed' });
+  K.npc('mara', 'Mara Voss', 'medic', 612, 800, 0, 'stand', { station: 'infirmary', recruit: 'm1_1' });
+  K.npc('deke', 'Deke Harlan', 'mechanic', 1852, 712, 0.1, 'work', { station: 'workbench', recruit: 'm1_2' });
+  K.npc('ozzy', 'Ozzy', 'radio', 1560, 432, PI / 2, 'stand', { station: 'board', recruit: 'm1_3' });
+  K.npc('quill', 'Silas Quill', 'trader', 1290, 610, 2.23, 'stand', { recruit: 'm2_1' });
+  // the road crew's boss keeps watch: a slow patrol along the south fence
+  K.npc('dutch', 'Dutch Kessler', 'guard', 1250, 1215, -2.04, 'watch', { recruit: 'm2_3', mode: 'walk', loop: true, route: [{ x: 1250, y: 1215 }, { x: 1700, y: 1180 }] });
 
   B.sprinkle('grass_tuft', 150, 60, 60, 2140, 1540, { s: [0.6, 1.3], off: ['asphalt', 'concrete'] });
   B.sprinkle('bush', 14, 60, 60, 2140, 1540, { s: [0.7, 1.2], keep: true, off: ['asphalt', 'concrete'] });

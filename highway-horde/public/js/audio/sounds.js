@@ -980,6 +980,50 @@ export const SOUNDS = {
     return S.mix(out, S.env(S.filter(S.noise(sr, 2.2, rng), sr, 'highpass', 3500, 0.7), sr, 0.004, 2), sr, 0.12, 0.45);
   } },
 
+  // Road to Haven (STORY.md §5): an objective done / new, the radio's static blip, the tick while
+  // a hold-to-use fills, a story pickup, a finished use. Warm and small: they sit under the score.
+  obj_done: { srate: 0.5, cat: 'stinger', v: 1, g: 0.5, prio: 100, wet: 0.4, group: 'st_obj', lim: [0.7, 1], render: (sr) => {
+    // two rising bell notes over a soft major third: "checked off"
+    const out = S.makeBuf(sr, 1.5);
+    S.mix(out, S.fmBell(sr, 1.0, 659.25, { ratio: 2, index: 1.4, decay: 1.1 }), sr, 0.6);
+    S.mix(out, S.fmBell(sr, 1.2, 987.77, { ratio: 2, index: 1.4, decay: 1.2 }), sr, 0.6, 0.16);
+    const pad = S.filter(chord(sr, 1.2, [329.63, 415.3, 493.88], 0), sr, 'lowpass', S.curve([[0, 500], [0.2, 2400], [1.2, 900]]));
+    S.mix(out, S.env(pad, sr, 0.05, 0.8, 0.3), sr, 0.35, 0.02);
+    return S.mix(out, thud(sr, 130, 80, 0.25, 0.04), sr, 0.3);
+  } },
+  obj_new: { cat: 'ui', v: 1, g: 0.3, prio: 90, wet: 0.25, group: 'st_objnew', lim: [0.5, 1], render: (sr) => {
+    const out = S.makeBuf(sr, 0.6);
+    S.mix(out, S.fmBell(sr, 0.5, 523.25, { ratio: 2, index: 1, decay: 0.7 }), sr, 0.6);
+    return S.mix(out, S.fmBell(sr, 0.5, 659.25, { ratio: 2, index: 1, decay: 0.7 }), sr, 0.5, 0.11);
+  } },
+  radio_blip: { cat: 'ui', v: 2, g: 0.28, prio: 95, wet: 0.05, group: 'radio', lim: [0.3, 1], render: (sr, rng) => {
+    // a squelch: a click, a burst of band-limited static, a short tone dropping out
+    const out = S.makeBuf(sr, 0.34);
+    S.mix(out, click(sr, rng, 2300, 0.012, 3), sr, 0.6);
+    const st = S.filter(S.noise(sr, 0.2, rng), sr, 'bandpass', J(rng, 2100, 0.2), 1.3);
+    S.mix(out, S.env(st, sr, 0.004, 0.16), sr, 0.55, 0.01);
+    S.mix(out, S.env(S.osc(sr, 0.09, 'square', J(rng, 1180, 0.05)), sr, 0.004, 0.06), sr, 0.16, 0.05);
+    return S.mix(out, S.env(S.filter(S.noise(sr, 0.1, rng), sr, 'highpass', 3600, 0.7), sr, 0.002, 0.08), sr, 0.18, 0.2);
+  } },
+  hold_tick: { cat: 'ui', v: 1, g: 0.22, prio: 80, wet: 0, group: 'hold_tick', lim: [0.08, 1], pv: 0.02, render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.07);
+    S.mix(out, S.env(S.osc(sr, 0.06, 'sine', 1560), sr, 0.001, 0.04), sr, 0.6);
+    return S.mix(out, click(sr, rng, 3200, 0.006, 3), sr, 0.5);
+  } },
+  pick_story: { cat: 'pickup', v: 1, g: 0.45, prio: 65, wet: 0.2, range: 0.6, lim: [0.1, 3], group: 'pickup', render: (sr) => {
+    const out = S.makeBuf(sr, 0.5);
+    S.mix(out, S.fmBell(sr, 0.4, 783.99, { ratio: 3, index: 1.2, decay: 0.6 }), sr, 0.6);
+    return S.mix(out, S.fmBell(sr, 0.4, 1174.66, { ratio: 3, index: 1.2, decay: 0.6 }), sr, 0.5, 0.07);
+  } },
+  interact_done: { cat: 'ui', v: 1, g: 0.42, prio: 85, wet: 0.15, group: 'st_interact', lim: [0.25, 1], render: (sr, rng) => {
+    // a solid clunk and a short rising blip
+    const out = S.makeBuf(sr, 0.5);
+    S.mix(out, thud(sr, 180, 70, 0.16, 0.03, 1.6), sr, 0.9);
+    S.mix(out, click(sr, rng, 1900, 0.02, 2), sr, 0.5);
+    S.mix(out, S.env(S.osc(sr, 0.2, 'tri', S.expSweep(520, 1040, 0.16)), sr, 0.004, 0.15), sr, 0.45, 0.07);
+    return out;
+  } },
+
   // Evac Run (SPEC §3.7): a new safe zone is announced — a radio click, then a bright two-note
   // call over a warm major chord (heroic, not horror); and the short double beep that
   // repeats while you stand in the blight.

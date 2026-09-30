@@ -1,4 +1,4 @@
-// A story hideout in the classic top-down view (SPEC §3.9): glowing station rings with a small
+// A story hideout in the classic top-down view (SPEC §3.10): glowing station rings with a small
 // icon and label, the upgrade slots with their tier pips, the range's target stands (the sim's
 // dummies are drawn as targets instead of zombies) with the damage numbers floating up from every
 // hit. The 3D view has the real props; this is the same information at a glance. Nothing here

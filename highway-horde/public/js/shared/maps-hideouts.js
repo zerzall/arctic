@@ -14,7 +14,7 @@
 // The hideouts are NOT in MAP_LIST (the lobby never offers them). Their layout is hand made
 // and identical for every seed; the seed only moves the small scatter (tufts, pebbles).
 //
-// SEAMS (documented in SPEC §3.9):
+// SEAMS (documented in SPEC §3.10):
 //   * Stations  hub.stations[] = { id, kind, x, y, r, label, h } — `kind` is one of
 //     STATION_KINDS. The matching interactable has the same id/kind/x/y/r, `hold: 0`.
 //   * NPCs      hub.npcs[] = { id, name, role, x, y, angle, pose, z?, recruit? } — idle spots for

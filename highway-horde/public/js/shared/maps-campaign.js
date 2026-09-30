@@ -116,7 +116,25 @@ export function buildCampaign(B, id) {
   buildTower(B, site, camp);
   buildAnnex(B, annex, terrain, camp);
   buildSkyline(B, site, annex, camp);
+  campaignAnchors(B, camp);
   return map;
+}
+
+/**
+ * Road to Haven (STORY.md §5.2): the campaign variant's named places. maps.js snaps them to
+ * clear ground when the map is finished. A base-map `hill` anchor (Checkpoint Delta) moves
+ * to the real hill.
+ */
+function campaignAnchors(B, camp) {
+  const h = camp.hill, roof = camp.roof, land = camp.landing;
+  B.anchor('ridgeHill', h.x, h.y, 320);
+  const gx = h.x + Math.cos(h.gate) * (h.plateau + 90), gy = h.y + Math.sin(h.gate) * (h.plateau + 90);
+  B.anchor('breakout', gx, gy, 220);
+  B.anchor('towerDoor', camp.entrance.x, camp.entrance.y, camp.entrance.r);
+  B.anchor('roof', roof.pad.x, roof.pad.y, 200);
+  B.anchor('zipStart', roof.zip.ix, roof.zip.iy, roof.zip.r);
+  B.anchor('landing', land.x, land.y, 160);
+  if (B.map.anchors.hill) B.anchor('hill', h.x, h.y, 320);
 }
 
 // ---------------------------------------------------------------------------------------

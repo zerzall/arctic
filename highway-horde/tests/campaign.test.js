@@ -547,7 +547,7 @@ describe('bots', () => {
 // ---------------------------------------------------------------------------------------------
 describe('the wire', () => {
   test('protocol 8: the campaign block, the ride and escape flags and tall zombie heights round-trip', () => {
-    assert.equal(PROTOCOL_VERSION, 8);
+    assert.ok(PROTOCOL_VERSION >= 8, 'the campaign block belongs to protocol 8 and later');
     const g = campaignGame({ n: 2 });
     g.players[0].escaped = true;
     g.players[1].riding = 100;

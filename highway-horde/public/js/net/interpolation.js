@@ -91,6 +91,10 @@ export function interpolateSnapshots(a, b, u) {
     readyCount: b.readyCount,
     zone: blendZone(useA, b, u),
     campaign: blendCampaign(useA, b, u),
+    // Road to Haven: the objective tracker and the spots are taken from the newer snapshot, NPCs glide
+    story: b.story || null,
+    npcs: b.npcs && b.npcs.length ? blendList(useA, b, 'npcs', u, true, true) : [],
+    interactables: b.interactables || [],
     players: blendList(useA, b, 'players', u, true, true),
     zombies: blendList(useA, b, 'zombies', u, true, true),
     projectiles: blendList(useA, b, 'projectiles', u, false),

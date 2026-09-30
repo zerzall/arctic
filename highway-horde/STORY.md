@@ -112,11 +112,19 @@ count scales with party size; rewards scale with difficulty.
 ## 5. Interfaces between the parts (the contract)
 
 ### 5.1 Game settings & phases
-`new Game({ map, settings: { mode:'mission'|'hideout', story:{ worldId, nodeId, difficulty, party:[{pid, profile}], flags:{...}, hideoutUpgrades:{...}, npcs:[...] }, ... } })`.
+`new Game({ map, settings: { mode:'mission'|'hideout', story:{ nodeId | mission, simMode?, difficulty, title?, party:[{pid, loadout?, perks?, armor?}], npcs:[{id, name?, look?, x, y, mode?}], worldId, flags, hideoutUpgrades, ... }, ... } })`.
+`nodeId` is a mission id (the written fifteen are always known: `shared/story/registry.js`); `mission` is the script itself
+(tests, tools); `simMode` overrides the script's `mode`. The host and every client build the map with
+`buildMap(id, seed, mapBuildOptions(settings))` (a campaign mission uses the campaign variant of its map). `party[]`
+is what a survivor's profile gives them in the sim: `loadout` (up to three weapon ids), `perks` (a `perks` object as
+in classes.js) and `armor`. SPEC §3.9 is the executor's reference.
 Existing modes are untouched. In `'hideout'` mode there are no waves and no zombies (unless a
 raid is scripted); players can walk, jump, shoot the range targets, interact. In `'mission'`
 mode the **mission director** (`shared/sim/story.js`, owned by S2) runs the mission script.
-When a mission ends the sim emits `{ type:'storyend', result:'victory'|'defeat', stars, stats:{...per player...} }` and stops spawning; the host session handles rewards.
+When a mission ends the sim emits `{ type:'storyend', result:'victory'|'defeat', reason, mission, stars (0 on defeat,
+else 1 + time + clean run), met:{time,noDowns,optional,perfect}, time, downs, stats:{[pid]:{name,kills,downs,revives,damage,items}},
+items:{[id]:n}, flags:{k:true} (the flags the steps set) }` and stops spawning; the host session handles rewards
+(`mission.rewards`) and merges `flags` into the world.
 
 ### 5.2 Map extensions (data on the map object)
 * `map.anchors = { [name]:{x,y,r} }` — named places mission scripts refer to (S2 adds them to
@@ -128,17 +136,23 @@ When a mission ends the sim emits `{ type:'storyend', result:'victory'|'defeat',
   - harlan: the ten POI names in camelCase (`mainStreet`, `gasNGo`, `haskellFarm`, `stJudes`, `fieldHospital`, `i70Interchange`, `millerQuarry`, `radioHill`, `shadyPines`, `lakeMarina`) + campaign: `ridgeHill`, `breakout`, `towerDoor`, `roof`, `zipStart`, `landing`
 * `map.interactables = [{ id, kind, x, y, r, label, hold }]` — generic press-E spots. `hold` =
   seconds of holding E (0 = tap). Sim emits `{type:'interact', pid, id, kind}` on completion
-  and tracks hold progress (snapshot). Owner: S2. Hideout stations and mission terminals use it.
+  and tracks hold progress (snapshot). Owner: S2. Hideout stations and mission terminals use it. A hub map that lists
+  only `map.hub.stations` gets a tap-only spot per station (`{id, kind, x, y, r}`); mission devices (`activate` steps)
+  are created by the director at their anchor.
 * `map.hub = { id, name, stations:[{ id, kind:'board'|'workbench'|'armory'|'infirmary'|'upgrades'|'bed'|'range'|'campfire', x, y, r }], npcs:[{ id, role, x, y, angle }], upgradeSlots:{...} }` — owner: S3.
 * Hub maps are ordinary map objects built by `buildMap('roadhouse'|'depot'|'farmstead')` with
   `kind:'hideout'`, not listed in the normal lobby map list, size ≈ 2200×1600, a safe boundary,
   day/night per world time, no spawn zones.
 
 ### 5.3 NPCs (owner: S2)
-`snapshot.npcs = [{ id, name, look, x, y, angle, state, hp? }]`. States: `idle`, `talk`,
+`snapshot.npcs = [{ id, key, name, look, x, y, z, angle, state, hp }]` (`key` = cast id, `hp` 0..1, -1 = invulnerable;
+`look = { cls, skin, hair, hairStyle, outfit:[1..3 hex], accessory, scale }`, the vocabularies are `NPC_ACCESSORIES` and
+`NPC_HAIR_STYLES` in story-defs.js; the people themselves are `shared/story/cast.js`). States: `idle`, `talk`,
 `walk` (follow a route), `follow` (follows the players), `escort` (walks its route when players
 are near), `down`. Rendered in 3D and top-down with the survivor character kit (each has a
-distinct outfit), a name tag and an "E — Talk" prompt within range. Talking emits
+distinct outfit), a name tag and an "E — Talk" prompt within range. A hub's `hub.npcs[{id, x, y, angle, mode?}]` spawn as
+NPCs whose `id` is the cast key (name and look from `shared/story/cast.js`; `settings.story.npcs` entries with the same id
+override them); a mission's `npcs` and an `escort` step's `npc` do the same. Talking emits
 `{type:'talk', pid, npc}`; the UI (S1) shows dialogue from story data.
 
 ### 5.4 Mission script format (data, owner S4 writes, S2 executes; see `shared/story/missions.js`)
@@ -150,15 +164,24 @@ distinct outfit), a name tag and an "E — Talk" prompt within range. Talking em
   rewards:{ xp, scrap, weapon?:id, upgradePoints?, flags?:{k:true}, unlockNpc?:id },
   debrief:[{ who, text }...], stars:{ time:secs, noDowns:true, optional?:'collectAll' } }
 ```
-Step types (S2 implements all of these): `defend` {target:anchor, waves} · `waves` {count, pace}
-(plain wave pressure, no objective) · `survive` {seconds} · `collect` {item, count, at:[anchors]} ·
-`reach` {at, hold?} · `activate` {at:[anchors|ids], hold, pressure?} · `escort` {npc, route:[anchors]} ·
-`kill` {type, count} · `boss` {type} · `evac` {stops:[anchors]} (zone runs) · `campaignStage`
-{stage} (hill / breakout / tower / roof / zip) · `wait` {seconds} · `dialogue` {lines}.
-Every `radio`/`say` line is `{ who, text, ms? }` shown as subtitles + optional speech.
-Steps may run `parallel:true` with the next one. Pressure (`pressure:{ waves, pace, specials }`)
-is how zombies are spawned during non-wave steps. Anything an author needs that is missing:
-note it in a `todo` field and in the report; S2 owns the final shape.
+Step types (all implemented in `shared/sim/story-steps.js`; `shared/story/validate.js` checks every field):
+`defend` {target:anchor (the map's objective), waves | seconds, scale, boss, gap, heal} · `waves` {count, scale, boss, gap}
+(plain waves, no objective) · `survive` {seconds} · `collect` {item, count, at:[anchors], scatter, note} ·
+`reach` {at, hold?, radius?, who?:'all'|'any'} · `activate` {at:[anchors|ids], hold, kind?, label?, effect?:'lure'|'explode',
+lure:{to,seconds}, blast:{at,r,damage}} · `escort` {npc, route:[anchors], hp?, fail?, invulnerable?} ·
+`kill` {zombie (alias `enemy`; the step's own `type` is 'kill'), count (written for a party of four), at?} ·
+`boss` {zombie, count?, at?} · `evac` {stops:[anchors]} (zone missions) · `campaignStage` {stage, waves?} (hill / breakout /
+tower / roof / zip; campaign missions) · `wait` {seconds} · `dialogue` {lines, npc?, talk?}.
+Every `radio`/`say` line is `{ type?, who, text, ms? }` shown as subtitles (`radio` adds static). Mission fields beyond the
+example: `startAt`, `npcs:[{id, at, mode}]`, `bonus:[steps]` (optional steps live from the start or from the step named by
+`since`; never block), `requires`, `hub`, `after`, `notes` (S4's graph), `tier`, `respawn`, `timeLimit`, `waveScale`.
+Step fields: `parallel` (runs beside the next step, cancelled when it ends unless `required`), `optional`, `flags:{k:true}`
+(set when done), `follow` / `unfollow` / `remove` / `npcs` (NPC housekeeping), `timeout`, `pressure`.
+**Pressure** (`pressure:{ waves, pace, specials }`, or `false`) is how zombies come during steps without waves of their
+own: `waves` is the virtual wave number (hp, speed, type mix), `pace` the tempo relative to a wave's, `specials` types
+forced into the mix; on `defend`/`waves` it is the first wave's number, on `evac`/`campaignStage` it sets the game's own
+difficulty for the step. **Stars:** 1 for the win, +1 for `stars.time`, +1 for `noDowns` (and, with `optional:'collectAll'`,
+every optional and bonus step). Anything an author needs that is missing: note it in a `todo` field and in the report.
 
 ### 5.5 Session/UI events (owner S1)
 The host session emits to the UI: `story` state changes (`hub`, `briefing`, `mission`,

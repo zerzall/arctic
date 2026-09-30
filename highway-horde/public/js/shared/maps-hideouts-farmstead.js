@@ -161,12 +161,15 @@ export function buildFarmstead(B) {
   K.lamp(1180, 1330, 150, 240, '#ffc27a', 0, 0.5);
   K.hub.firefly = [{ x: 620, y: 1160, w: 500, h: 400 }, { x: 1150, y: 1100, w: 500, h: 300 }];
   K.hub.chickens = [{ x: 1240, y: 690, r: 62, n: 10 }];
-  K.npc('mara', 'Mara Voss', 'medic', 410, 1010, 0, 'stand', { station: 'infirmary' });
-  K.npc('deke', 'Deke Harlan', 'mechanic', 1655, 500, 0.1, 'work', { station: 'workbench' });
-  K.npc('ozzy', 'Ozzy', 'radio', 640, 468, HALF, 'stand', { station: 'board' });
-  K.npc('june', 'June', 'kid', 930, 820, -0.5, 'sit');
-  K.npc('okafor', 'Sgt. Okafor', 'quartermaster', 380, 770, PI, 'stand', { station: 'armory', recruit: 'okafor' });
-  K.npc('priya', 'Priya Nair', 'scout', 1500, 585, HALF, 'watch', { z: 110, recruit: 'priya' });
+  // (`id` is the cast key, shared/story/cast.js; `recruit` = the mission that unlocks the NPC, see the roadhouse)
+  K.npc('june', 'June', 'kid', 930, 820, -0.5, 'sit', { station: 'bed' });
+  K.npc('mara', 'Mara Voss', 'medic', 410, 1010, 0, 'stand', { station: 'infirmary', recruit: 'm1_1' });
+  K.npc('deke', 'Deke Harlan', 'mechanic', 1655, 500, 0.1, 'work', { station: 'workbench', recruit: 'm1_2' });
+  K.npc('ozzy', 'Ozzy', 'radio', 640, 468, HALF, 'stand', { station: 'board', recruit: 'm1_3' });
+  K.npc('priya', 'Priya Nair', 'scout', 1500, 585, HALF, 'watch', { station: 'upgrades', recruit: 'm3_1' });
+  K.npc('wendell', 'Wendell Pike', 'handler', 1410, 1111, 0, 'stand', { station: 'range', recruit: 'm3_2' });
+  K.npc('okafor', 'Sgt. Okafor', 'quartermaster', 380, 770, PI, 'stand', { station: 'armory', recruit: 'm4_1' });
+  K.npc('wren', 'Wren Alcott', 'warden', 1100, 640, 2.16, 'stand', { recruit: 'm6_2' });
   // ground clutter: tufts, pebbles, wildflowers (small decor, no collision)
   B.sprinkle('grass_tuft', 260, 60, 60, 2140, 1540, { s: [0.7, 1.5] });
   B.sprinkle('bush', 26, 60, 60, 2140, 1540, { s: [0.7, 1.3], keep: true });

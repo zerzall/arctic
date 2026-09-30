@@ -1,4 +1,4 @@
-// The three story hideouts (SPEC §3.9, STORY.md §5.2): deterministic hub maps with stations,
+// The three story hideouts (SPEC §3.10, STORY.md §5.2): deterministic hub maps with stations,
 // NPC idle spots, a party spawn ring by the campfire, the upgrade-slot seam (every tier of every
 // upgrade), hand placed dressing, the shooting range in the sim, the ambience/score hooks and the
 // renderer's model registry. The pictures (day + night, upgrades none/max) are checked visually in
@@ -25,6 +25,8 @@ import { SOUNDS, renderSound } from '../public/js/audio/sounds.js';
 import { MUSIC_STATES, buildPhrase } from '../public/js/audio/music.js';
 import { createRng } from '../public/js/shared/rng.js';
 import { makeGame, place, run, cmd } from './helpers/sim-helpers.js';
+import { Game } from '../public/js/shared/sim.js';
+import { CAST } from '../public/js/shared/story/cast.js';
 import { MockAudioContext } from './fixtures/audio-mock-context.js';
 
 // three.js from the vendored copy (the renderer modules import it by its bare name)
@@ -215,6 +217,10 @@ for (const id of HIDEOUT_IDS) {
       assert.ok(hub.npcs.length >= 4);
       for (const n of hub.npcs) {
         assert.ok(finite(n.x, n.y, n.angle) && typeof n.role === 'string' && typeof n.name === 'string' && n.pose, `${n.id}`);
+        // `id` is a cast key (shared/story/cast.js) whose station, when it has one, is the one it tends here
+        assert.ok(CAST[n.id] && !CAST[n.id].radioOnly && !CAST[n.id].system, `${n.id} is not a walking member of the cast`);
+        if (CAST[n.id].station) assert.equal(n.station, CAST[n.id].station, `${n.id}'s station`);
+        if (n.station) assert.ok(hub.stations.some((st) => st.kind === n.station), `${n.id} tends a station this hub has`);
         assert.ok(n.x > hub.bounds.x0 && n.x < hub.bounds.x1 && n.y > hub.bounds.y0 && n.y < hub.bounds.y1, `${n.id} outside the yard`);
         for (const o of m.obstacles) if (o.solid) assert.ok(!inRect(o, n.x, n.y, -2), `${n.id} stands inside solid ${o.kind} #${o.id}`);
         // on foot (or on a seat / behind a counter within a step of open ground), unless up on a lookout
@@ -396,9 +402,14 @@ test('range: dummies stand still, take no damage and report every hit', () => {
   const targets = m.hub.range.targets;
   assert.equal(g.zombies.length, targets.length);
   for (const z of g.zombies) assert.ok(z.dummy && isRangeTarget(m, z.x, z.y) && z.hp === DUMMY_HP);
-  // no waves in a hideout, whatever the timers say
-  for (let i = 0; i < 60 * 40; i++) g.step();
-  assert.equal(g.phase, 'prep');
+  // no waves and no zombies in a hideout (the story director's safe mode): only the dummies stand
+  assert.ok(g.safe, 'nothing can hurt a survivor');
+  const waves = [];
+  for (let i = 0; i < 60 * 40; i++) {
+    g.step();
+    if (i % 60 === 0) for (const e of g.snapshot().events) if (e.type === 'wave') waves.push(e);
+  }
+  assert.deepEqual(waves, []);
   assert.equal(g.zombies.length, targets.length);
   assert.equal(g.remaining(), 0, 'dummies are not a threat');
 
@@ -429,16 +440,50 @@ test('range: other modes and maps are untouched', () => {
     assert.equal(g.mode, 'defend');
     assert.equal(g.zombies.length, 0);
   }
-  // asking a battlefield for the hideout mode gives its own first mode
+  // the hideout mode on a battlefield is a story hideout without a hub: no range, no dummies
   const g = makeGame({ map: buildMap('highway', 1), settings: { mode: 'hideout' }, sandbox: true });
-  assert.equal(g.mode, 'defend');
+  assert.equal(g.mode, 'hideout');
   assert.equal(g.range, null);
+  assert.equal(g.zombies.length, 0);
   // a hideout map with a non-hideout mode request plays as a hideout (its only mode) with the range
   const h = makeGame({ map: buildMap('depot', 1), settings: { mode: 'defend' }, sandbox: false });
   assert.equal(h.mode, 'hideout');
   assert.ok(h.range);
   assert.ok(!isRangeTarget(buildMap('highway', 1), 100, 100));
 });
+
+// ---- the story layer on the hubs -------------------------------------------------------------------
+
+for (const id of HIDEOUT_IDS) {
+  test(`${id}: a real hideout game stands the cast on their spots and offers every station`, () => {
+    const players = [{ id: 1, name: 'A', color: 0, cls: 'soldier' }];
+    const g = new Game({ mapId: id, seed: 1, settings: { mode: 'hideout', waves: 0 }, players });
+    const hub = g.map.hub;
+    assert.equal(g.mode, 'hideout');
+    assert.ok(g.safe, 'nobody can be hurt');
+    assert.equal(g.zombies.length, hub.range.targets.length, 'only the range dummies');
+    // one tap-to-use interactable per station, same ids and kinds
+    assert.deepEqual(g.interactables.map((it) => [it.id, it.kind]).sort(), hub.stations.map((s) => [s.id, s.kind]).sort());
+    assert.ok(g.interactables.every((it) => it.hold === 0 || it.kind === 'bed'), 'taps (the bed holds)');
+    // every NPC without a recruit condition is there, on its spot (nudged off a collider by a few px at most)
+    const stays = hub.npcs.filter((n) => !n.recruit);
+    assert.ok(stays.length >= 1, 'someone lives here');
+    assert.equal(g.npcs.length, hub.npcs.length, 'everyone is listed when the host names nobody');
+    for (const spot of hub.npcs) {
+      const n = g.npcs.find((q) => q.key === spot.id);
+      assert.ok(n, `${spot.id} is missing`);
+      assert.ok(Math.hypot(n.x - spot.x, n.y - spot.y) < 40, `${spot.id} was pushed off its spot`);
+    }
+    // the host lists the recruited cast: the others keep their spots empty
+    const g2 = new Game({ mapId: id, seed: 1, settings: { mode: 'hideout', waves: 0, story: { npcs: [{ id: 'mara' }] } }, players });
+    const keys = g2.npcs.map((n) => n.key);
+    for (const spot of g2.map.hub.npcs) assert.equal(keys.includes(spot.id), !spot.recruit || spot.id === 'mara', `${spot.id} recruit filter`);
+    // ten seconds later nothing has been spawned but the cast: no waves, no zombies
+    for (let t = 0; t < 600; t++) g.step();
+    assert.equal(g.zombies.length, hub.range.targets.length);
+    assert.ok(g.players.every((p) => p.state === 'alive'));
+  });
+}
 
 // ---- audio ------------------------------------------------------------------------------------------
 

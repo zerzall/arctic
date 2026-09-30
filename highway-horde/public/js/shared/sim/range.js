@@ -1,4 +1,4 @@
-// The shooting range of a story hideout (SPEC §3.9). In `mode: 'hideout'` a map with
+// The shooting range of a story hideout (SPEC §3.10). In `mode: 'hideout'` a map with
 // `hub.range.targets` gets one immobile DUMMY per target: an ordinary walker entity (so every
 // weapon, blast and flame already knows how to hit it, and the existing zombie snapshot carries
 // it) flagged `dummy`. It never walks, attacks, burns, freezes, is shoved or dies: damage

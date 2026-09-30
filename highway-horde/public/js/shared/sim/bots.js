@@ -46,6 +46,8 @@ const HUNT_AFTER = 3;
 /** Zombies seen chewing on the objective before a bot treats them as the top priority. */
 const OBJ_ALARM = 4;
 const STUCK_MOVE = 12;
+/** Road to Haven: a bot heads for its mission goal only when no zombie is this close. */
+const STORY_CLEAR = 130;
 const PROBE_DIST = 30;
 
 /**
@@ -304,7 +306,7 @@ export function createBrain(game, p, level = 1) {
     // aim
     aim: p.angle, target: null, reactT: 0, aimErr: 0, lastSeenT: -100, burstT: 0, pauseT: 0,
     // intent
-    mode: 'defend', goalX: p.x, goalY: p.y, goalR: 30, reviveRef: null, pickRef: null,
+    mode: 'defend', goalX: p.x, goalY: p.y, goalR: 30, reviveRef: null, pickRef: null, storyUse: null,
     ax: p.x, ay: p.y, anchorHuman: false,
     spotX: p.x, spotY: p.y, spotT: 0, spotAX: NaN, spotAY: NaN,
     // movement
@@ -645,6 +647,17 @@ function strategy(game, b, index) {
     return;
   }
   b.reviveRef = null;
+  // Road to Haven: the mission's current objective (items, terminals, the escort ...) while
+  // nothing is chewing on us; otherwise the ordinary fight-and-hold below.
+  b.storyUse = null;
+  if (game.story && b.nearestAdj > STORY_CLEAR) {
+    const sg = game.story.botGoal(b, index);
+    if (sg) {
+      b.storyUse = sg.use || null;
+      setGoal(b, sg.mode, sg.x, sg.y, sg.r);
+      return;
+    }
+  }
   const brk = phase === 'prep' || phase === 'intermission';
   // Evac Run: the shop is open everywhere between waves, so nobody walks to the station;
   // the break is for getting to the next zone.
@@ -1179,7 +1192,7 @@ function steer(game, b) {
       dx = b._dx;
       dy = b._dy;
       const errand = b.mode === 'revive' || b.mode === 'shop' || b.mode === 'resupply' || b.mode === 'crate' || b.mode === 'evac'
-        || b.mode === 'zip' || b.mode === 'stairs';
+        || b.mode === 'zip' || b.mode === 'stairs' || b.mode === 'quest' || b.mode === 'use';
       b.sprint = !downed && errand && gd > 350 && b.nearestAdj > 300 && p.stamina > 45 && !p.sprintLock;
     }
   }
@@ -1529,6 +1542,15 @@ function melee(game, b, cmd) {
 
 function interact(game, b, cmd) {
   const p = b.p;
+  // Road to Haven: hold the terminal / generator / repair spot the mission sent us to
+  if (b.mode === 'use' && b.storyUse) {
+    const it = b.storyUse;
+    if (it.on && !it.done && Math.hypot(it.x - p.x, it.y - p.y) <= it.r * 0.8) {
+      cmd.interact = true;
+      b.holding = true;
+    }
+    return;
+  }
   if (b.mode === 'zip' && game.campaign && game.campaign.zip) {
     const z = game.campaign.cfg.roof.zip;
     if (!p.prevInteract && Math.hypot(z.ix - p.x, z.iy - p.y) <= z.r * 0.7) cmd.interact = true;

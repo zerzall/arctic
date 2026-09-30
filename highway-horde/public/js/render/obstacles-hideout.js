@@ -1,4 +1,4 @@
-// Top-down art of the hideouts' hero obstacles (SPEC §3.9): the fire ring and its log seats, a
+// Top-down art of the hideouts' hero obstacles (SPEC §3.10): the fire ring and its log seats, a
 // couch, the mission table, the workbench, the range bench, hay bales, the painted boards. The
 // classic view's counterpart of render3d/world-hideout*.js: only the obstacles the map marks
 // with a `prop` are drawn here; every other obstacle keeps the default art of obstacles.js.

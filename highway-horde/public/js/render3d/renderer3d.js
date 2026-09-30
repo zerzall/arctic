@@ -33,6 +33,8 @@ import * as overlayMod from './overlay.js';
 import * as zoneMod from './zone3d.js';
 import * as campaignMod from './campaign3d.js';
 import * as hideoutMod from './hideout3d.js';
+import * as npcsMod from './npcs3d.js';
+import * as storyMod from './story3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
@@ -216,7 +218,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['ambient3d', ambientMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['hideout3d', hideoutMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['ambient3d', ambientMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['hideout3d', hideoutMod], ['npcs3d', npcsMod], ['story3d', storyMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {

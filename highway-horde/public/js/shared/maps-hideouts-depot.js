@@ -168,12 +168,15 @@ export function buildDepot(B) {
   K.prop('stringlights', 0, 0, 0, { id: 'base2', pts: [[1200, 909, 106], [1130, 730, 146], [1000, 560, 120]], sag: 12 });
   K.prop('stringlights', 0, 0, 0, { id: 'base3', pts: [[1390, 909, 106], [1250, 770, 140], [1130, 730, 146]], sag: 12 });
   for (const [x, y] of [[1000, 700], [1200, 660], [1080, 820], [880, 560], [1500, 880]]) K.prop('lantern', x, y, 0, { z: 8 });
-  K.npc('mara', 'Mara Voss', 'medic', 1300, 1212, -HALF, 'stand', { station: 'infirmary' });
-  K.npc('deke', 'Deke Harlan', 'mechanic', 430, 515, -HALF, 'work', { station: 'workbench' });
-  K.npc('ozzy', 'Ozzy', 'radio', 830, 452, HALF, 'stand', { station: 'board' });
-  K.npc('june', 'June', 'kid', 1000, 760, 0.3, 'sit');
-  K.npc('priya', 'Priya Nair', 'scout', 1600, 470, HALF, 'watch', { z: 204, recruit: 'priya' });
-  K.npc('okafor', 'Sgt. Okafor', 'quartermaster', 1110, 1338, -HALF, 'stand', { station: 'armory', recruit: 'okafor' });
+  // (`id` is the cast key, shared/story/cast.js; `recruit` = the mission that unlocks the NPC, see the roadhouse)
+  K.npc('june', 'June', 'kid', 1000, 760, 0.3, 'sit', { station: 'bed' });
+  K.npc('mara', 'Mara Voss', 'medic', 1300, 1212, -HALF, 'stand', { station: 'infirmary', recruit: 'm1_1' });
+  K.npc('deke', 'Deke Harlan', 'mechanic', 430, 515, -HALF, 'work', { station: 'workbench', recruit: 'm1_2' });
+  K.npc('ozzy', 'Ozzy', 'radio', 830, 452, HALF, 'stand', { station: 'board', recruit: 'm1_3' });
+  K.npc('priya', 'Priya Nair', 'scout', 1600, 470, HALF, 'watch', { station: 'upgrades', recruit: 'm3_1' });
+  K.npc('wendell', 'Wendell Pike', 'handler', 1445, 1204, 0, 'stand', { station: 'range', recruit: 'm3_2' });
+  K.npc('okafor', 'Sgt. Okafor', 'quartermaster', 1110, 1338, -HALF, 'stand', { station: 'armory', recruit: 'm4_1' });
+  K.npc('danny', 'Pvt. Danny Ruiz', 'soldier', 1023, 1257, -1.44, 'stand', { station: 'armory', recruit: 'm4_2' });
   B.sprinkle('grass_tuft', 200, 60, 60, 2140, 1540, { s: [0.6, 1.3] });
   B.sprinkle('bush', 16, 60, 60, 2140, 1540, { s: [0.7, 1.2], keep: true });
   B.sprinkle('rock', 24, 60, 60, 2140, 1540, { s: [0.5, 1.2] });

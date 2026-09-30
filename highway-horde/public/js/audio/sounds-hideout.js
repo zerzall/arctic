@@ -1,4 +1,4 @@
-// The ambience of the story hideouts (SPEC §3.9): a night bed of crickets, wind and an owl,
+// The ambience of the story hideouts (SPEC §3.10): a night bed of crickets, wind and an owl,
 // a day bed of birds, bees and breeze, the murmur of a radio, a generator's hum, the forge's
 // bellows and hammer, chickens in the run, water lapping with frogs, a windmill's creak.
 // Recipes in the same shape as sounds.js (rendered offline by synth.js, deterministic per

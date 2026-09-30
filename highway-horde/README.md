@@ -67,7 +67,7 @@ else opens the invite link.
   barn, porch, orchard and pond at golden hour (chickens, a windmill, hanging lanterns). Seven
   upgrades (Generator, Watchtower, Infirmary, Armory, Radio Mast, Garden, Palisade, three tiers each)
   visibly grow the camp; the hideouts have their own ambience (crickets, fire crackle, a distant
-  radio) and a warm, slow score. See SPEC §3.9; try them in `public/dev/fps-sandbox.html?map=roadhouse&up=3`.
+  radio) and a warm, slow score. See SPEC §3.10; try them in `public/dev/fps-sandbox.html?map=roadhouse&up=3`.
 - **Night or day.** The lobby's **Time** row (next to Mode) sets Night (the original moonlit,
   flashlight-and-fire-light look, the default) or Day: a bright sunny variant of every map with a
   gradient sky, sun and drifting clouds, long soft shadows, haze in the distance, the lamps off and
@@ -251,7 +251,9 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 ```bash
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
-                            #   first-person solo, first-person 2-player relay, an Evac Run and the Campaign
+                            #   first-person solo, first-person 2-player relay, an Evac Run, the Campaign and a
+                            #   Road to Haven story mission
+FULL_MISSIONS=1 npm test    # also plays the fifteen story missions to the end with four bots (about a minute)
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 node scripts/balance.js --mode campaign             # ... of the whole Campaign

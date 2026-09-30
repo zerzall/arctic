@@ -1,4 +1,4 @@
-// The hideouts' part of the static world (WORLD, SPEC §3.9): world.js hands every obstacle,
+// The hideouts' part of the static world (WORLD, SPEC §3.10): world.js hands every obstacle,
 // the objective and the hideout's free props to this module, which draws the hero models
 // (world-hideout-props.js, -roadhouse.js, -depot.js, -farmstead.js) through the world's own
 // geo builder, and owns the UPGRADE LAYER — the parts of the hideout the crew builds up,

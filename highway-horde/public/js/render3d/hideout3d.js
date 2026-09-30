@@ -1,4 +1,4 @@
-// The living part of a story hideout (SPEC §3.9), a renderer3d sub-system created only when the
+// The living part of a story hideout (SPEC §3.10), a renderer3d sub-system created only when the
 // map is a hideout (ctx.hideout is set by world.js): smoke from chimneys and the fire ring,
 // sparks at the workbench, fireflies and moths round the lamps, station highlights, the
 // searchlight of the watchtower, spinning things (windmill, radar dish), a flock of chickens,
