@@ -76,7 +76,7 @@ export function buildRoadhouse(B) {
     seats.push([r1(sx), r1(sy), r3(ang + PI / 2)]);
     K.ob('rock', 'logseat', sx, sy, 66, 24, ang + PI / 2, { solid: false, color: '#5b4128' });
   }
-  K.ob('rock', 'couch', 930, 792, 92, 34, -0.45, { solid: false, color: '#6a3f34' });
+  K.ob('rock', 'couch', 905, 722, 92, 34, -0.84, { solid: false, color: '#6a3f34' });
 
   // ---- gate, the repaired pickup, oil drum fires and the sandbag-and-pallet funnel
   K.prop('gate', 1080, 1362, 0, { w: 240 });

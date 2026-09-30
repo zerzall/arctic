@@ -445,6 +445,8 @@ export class GameCore {
   }
 
   _updatePhase() {
+    // A hideout (STORY.md §5.1) has no waves: the game rests in its first phase.
+    if (this.mode === 'hideout') return;
     const ph = this.phase;
     if (ph === 'prep' || ph === 'intermission') {
       this.timer -= DT;
