@@ -509,7 +509,7 @@ function buildFreight(B, A) {
   B.zspawn(9800, 1400, 200, 80, 1, 'freight');
   B.zspawn(10150, 3200, 120, 200, 1.2, 'freight');
   B.zspawn(8800, 2180, 160, 50, 0.8, 'freight');
-  B.zspawn(8500, 3200, 200, 60, 1, 'freight');
+  B.zspawn(8850, 3270, 160, 50, 1, 'freight');
   B.zspawn(10150, 1500, 120, 200, 1.2, 'freight');
 }
 
