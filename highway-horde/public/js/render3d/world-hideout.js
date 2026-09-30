@@ -27,7 +27,7 @@ import { FARM_MODELS } from './world-hideout-farmstead.js';
 import { UP_MODELS } from './world-hideout-up.js';
 import { hideoutUpgradeSet, normalizeUpgrades, UPGRADE_KINDS } from '../shared/maps-hideouts.js';
 import { makeFlames, makeEmbers, makeSmoke, makeHalos, makePools } from './world-fx.js';
-import { tierAtLeast } from './tier.js';
+import { tierAtLeast, baseTier } from './tier.js';
 
 const MODELS = { ...COMMON_MODELS, ...ROADHOUSE_MODELS, ...DEPOT_MODELS, ...FARM_MODELS, ...UP_MODELS };
 /** Obstacles/objectives whose model adds to the default one instead of replacing it. */
@@ -251,7 +251,7 @@ export function createHideout(ctx, deps) {
       return true;
     },
     setQuality(q) {
-      tier = q === 'low' || q === 'ultra' ? q : 'high';
+      tier = baseTier(q);
       for (const m of upMeshes) m.material = deps.matOf(m.userData.bucket, tier);
     },
     dispose() {
