@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { setStoryContent, clearStoryContent, getMissions, getChapters, getEpilogue, playableLines, conversationFor, castOf, contentFlags, getMission } from '../public/js/shared/story/content.js';
 import { nextNodes, resolveNext, pendingArrival } from '../public/js/shared/story/graph.js';
-import { createWorld, changeWorld } from '../public/js/shared/story/world.js';
+import { createWorld, changeWorld, availableMissions, currentChapter } from '../public/js/shared/story/world.js';
 import { createProfile } from '../public/js/shared/story/profile.js';
 import { settleMission } from '../public/js/shared/story/rewards.js';
 import { applyAction } from '../public/js/shared/story/actions.js';
@@ -65,7 +65,8 @@ test('walking the whole campaign: the graph follows the writers\' own nextNodes 
       w = res.world;
       seen.push(id);
     }
-    assert.equal(seen.length, story.MISSIONS.length + 4, 'every mission, three arrivals and the ending');
+    assert.equal(seen.length, story.STORY_MISSIONS.length + 4, 'every story mission, three arrivals and the ending');
+    assert.ok(seen.every((id) => !String(id).startsWith('sj_')), 'no side job on the road');
     assert.equal(seen.at(-1), 'epilogue');
     assert.equal(resolveNext(w).done, true);
     assert.ok(w.day > 41, 'the days went by');
@@ -113,6 +114,43 @@ test('the chapters cover the missions and their arrivals point at hideouts the g
       assert.ok(m.hub === null || ['roadhouse', 'depot', 'farmstead'].includes(m.hub), `${m.id} hub`);
       assert.ok(m.rewards && m.rewards.xp > 0, `${m.id} pays XP`);
     }
+  } finally {
+    clearStoryContent();
+  }
+});
+
+test('side jobs through the session\'s own rules: pickable once open, the chapter follows the story, back to the same hideout', { skip }, () => {
+  setStoryContent({ story });
+  try {
+    const missions = getMissions();
+    assert.deepEqual(missions.slice(0, 12).map((m) => m.id), story.STORY_MISSIONS.map((m) => m.id), 'the registry keeps the story first');
+    const done = (w, ...ids) => changeWorld(w, (d) => { for (const id of ids) d.progress.completed[id] = { stars: 1, time: 1 }; });
+    let w = createWorld({ name: 'Side' });
+    assert.ok(!availableMissions(w, missions).some((m) => m.side), 'nothing on the board before the Roadhouse');
+    w = changeWorld(done(w, 'm1_1', 'm1_2'), (d) => { d.progress.flags.seen_arrival_roadhouse = true; d.hideout.current = 'roadhouse'; });
+    const open = availableMissions(w, missions).filter((m) => m.side).map((m) => m.id);
+    assert.deepEqual(open, ['sj_fuel', 'sj_diner'], 'the host lets the crew pick the first two side jobs');
+    // S1's chapter rule (the first unfinished mission) follows the story while side jobs wait on the board
+    assert.equal(currentChapter(w, missions), 2);
+    w = done(w, 'm2_1', 'm2_2', 'm3_1', 'm3_2');
+    w = changeWorld(w, (d) => { d.progress.flags.seen_arrival_depot = true; d.hideout.current = 'depot'; });
+    assert.equal(currentChapter(w, missions), 4, 'unplayed chapter-2 side jobs do not hold the chapter back');
+    // a side job won at the depot: the crew stays at the depot, the story's next node is unchanged
+    const before = resolveNext(w);
+    const res = settleMission({ world: w, mission: getMission('sj_fuel'), result: WIN, party: [{ pid: 1, profile: createProfile({ name: 'A', cls: 'soldier' }), human: true }], now: 5 });
+    assert.equal(res.victory, true);
+    assert.equal(res.world.hideout.current, 'depot');
+    assert.deepEqual(resolveNext(res.world), before);
+    assert.deepEqual(res.unlocks.next, { kind: 'hideout', hideout: 'depot' });
+    // the whole story done and the ending seen: the campaign rests at the farm, side jobs still open
+    let end = done(w, ...story.STORY_MISSIONS.map((m) => m.id));
+    end = changeWorld(end, (d) => { d.progress.flags.seen_arrival_farmstead = true; d.progress.flags.seen_epilogue = true; d.hideout.current = 'farmstead'; });
+    assert.equal(resolveNext(end).done, true);
+    const onlyStory = story.SIDE_JOBS.filter((m) => m.requires.every((r) => !r.startsWith('sj_'))).map((m) => m.id);
+    assert.deepEqual(availableMissions(end, missions).filter((m) => m.side).map((m) => m.id), onlyStory, 'every side job the story opens is on the board');
+    const all = done(end, ...story.SIDE_JOBS.map((m) => m.id));
+    assert.equal(availableMissions(all, missions).filter((m) => m.side).length, 12, 'and stays there to be replayed');
+    assert.equal(currentChapter(all, missions), 7, 'with everything done, the board is where the crew is');
   } finally {
     clearStoryContent();
   }

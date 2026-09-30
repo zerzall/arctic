@@ -45,7 +45,10 @@ export const CH5 = [
       },
 
       // ---- CONCOURSE ----------------------------------------------------------------------
-      arrive('concourse', 'concourse', 'Down into the concourse', ['THE CONCOURSE', 'Harlan Metro. Line 2'], { onStart: [A.dark('concourse')] }),
+      arrive('concourse', 'concourse', 'Down into the concourse', ['THE CONCOURSE', 'Harlan Metro. Line 2'], {
+        onStart: [A.dark('concourse')],
+        lines: [say('priya', 'Ticket office on the left, shops on the right, and the staff door at the end. Key cards live in ticket offices.')],
+      }),
       {
         id: 'keycard', type: 'collect', item: 'keycard', count: 1, at: ['ticket_office'], text: 'Find a staff key card in the ticket office', pressure: PS('concourse', 6, 0.7),
         onStart: [A.horde('concourse_shops', 10)],
@@ -53,7 +56,9 @@ export const CH5 = [
       },
 
       // ---- LINE 2 PLATFORM ----------------------------------------------------------------
-      arrive('platform', 'platform', 'Through the staff door onto the platform', ['LINE 2 PLATFORM', 'Next train: never']),
+      arrive('platform', 'platform', 'Through the staff door onto the platform', ['LINE 2 PLATFORM', 'Next train: never'], {
+        lines: [say('priya', 'The 8:14 to Harlan Square. The doors are shut and the windows are fogged. From the inside.')],
+      }),
       {
         id: 'train', type: 'survive', seconds: 45, text: 'The train doors are opening', pressure: PS('platform', 7, 1.2),
         onStart: [A.horde('platform_train', 14), A.music('battle'), say('priya', 'Every car of that train was full. Is emptying. Back up!')],
@@ -64,7 +69,11 @@ export const CH5 = [
       },
 
       // ---- TUNNEL 2 ----------------------------------------------------------------------
-      arrive('tunnel', 'tunnel', 'Into Tunnel 2', ['TUNNEL 2', 'Station Street to Harlan Square'], { onStart: [A.dark('tunnel')], music: 'tension' }),
+      arrive('tunnel', 'tunnel', 'Into Tunnel 2', ['TUNNEL 2', 'Station Street to Harlan Square'], {
+        onStart: [A.dark('tunnel')],
+        music: 'tension',
+        lines: [radio('ozzy', 'I lost you for a second. Concrete eats radio. Keep talking so I know you\'re there.')],
+      }),
       kill('brute', 'brute', 1, 'Something is filling the tunnel ahead', {
         at: 'tunnel_junction', pressure: PS('tunnel', 7, 0.5, ['crawler']),
         onStart: [A.shake(0.4), say('priya', 'That isn\'t an echo. Those are footsteps. Very big footsteps.')],
@@ -75,7 +84,9 @@ export const CH5 = [
       },
 
       // ---- THE SUMP ----------------------------------------------------------------------
-      arrive('sump', 'flooded', 'Through the bulkhead into the flooded section', ['THE SUMP', 'Knee deep and rising']),
+      arrive('sump', 'flooded', 'Through the bulkhead into the flooded section', ['THE SUMP', 'Knee deep and rising'], {
+        lines: [say('priya', 'The pump room is up the ladder. The valve is down in the water. Everybody guess which one I\'m taking.')],
+      }),
       {
         id: 'pumps', type: 'activate', at: ['pump_room'], hold: 16, text: 'Start the sump pumps (hold E, together is faster)', kind: 'pump', pressure: PS('flooded', 7, 1.0, ['spitter']),
         onStart: [A.music('battle'), A.horde('sump_valve', 8)],
@@ -86,7 +97,10 @@ export const CH5 = [
       },
 
       // ---- THE WORKS --------------------------------------------------------------------
-      arrive('works', 'maintenance', 'Into the maintenance works', ['THE WORKS', 'Harlan Metro maintenance'], { music: 'tension' }),
+      arrive('works', 'maintenance', 'Into the maintenance works', ['THE WORKS', 'Harlan Metro maintenance'], {
+        music: 'tension',
+        lines: [say('priya', 'Somebody built a wall of lockers across the workshop door. From this side. Let\'s not open the workshop.')],
+      }),
       {
         id: 'breaker', type: 'activate', at: ['breaker'], hold: 10, text: 'Throw the main breaker for the exit lift (hold E)', kind: 'switch', pressure: PS('maintenance', 7, 0.8),
         onDone: [A.light('maintenance'), A.light('tunnel'), A.shake(0.6), say('priya', 'Lights. And... something in the workshop just woke up with them.')],
@@ -188,7 +202,9 @@ export const CH5 = [
       },
 
       // ---- CAMPGROUND ------------------------------------------------------------------
-      arrive('camp', 'campground', 'Through the gate into the campground', ['BLACKPINE CAMPGROUND', 'Sites one to forty']),
+      arrive('camp', 'campground', 'Through the gate into the campground', ['BLACKPINE CAMPGROUND', 'Sites one to forty'], {
+        lines: [say('danny', 'Ma\'am, there are tents with sleeping bags still in them. Ma\'am, I\'m not going to look in the sleeping bags.')],
+      }),
       {
         id: 'supplies', type: 'collect', item: 'supplies', count: 3, at: ['camp_rv', 'camp_showers'], text: 'Search the campground for supplies (0/3)',
         pressure: PS('campground', 7, 0.8, ['crawler']),
@@ -205,7 +221,9 @@ export const CH5 = [
       },
 
       // ---- RANGER STATION ----------------------------------------------------------------
-      arrive('ranger', 'ranger', 'Into the ranger compound', ['RANGER STATION', 'Fire lookout. Elevation 2,400']),
+      arrive('ranger', 'ranger', 'Into the ranger compound', ['RANGER STATION', 'Fire lookout. Elevation 2,400'], {
+        lines: [say('okafor', 'Radio in the station, lookout on the ridge, a truck in the yard. Somebody ran this place well. Let us borrow it.')],
+      }),
       {
         id: 'rangerradio', type: 'activate', at: ['ranger_radio'], hold: 6, text: 'Call the trucks on the ranger radio (hold E)', kind: 'radio', pressure: PS('ranger', 7, 0.6),
         onDone: [radio('deke', 'Trucks here. The county road is slow and the fog is thick. Give us something to steer by.')],
@@ -234,7 +252,9 @@ export const CH5 = [
       },
 
       // ---- CUTTER'S GORGE ----------------------------------------------------------------
-      arrive('gorge', 'gorge', 'Through the rockfall to Cutter\'s Gorge', ['CUTTER\'S GORGE', 'Footbridge. Long way down']),
+      arrive('gorge', 'gorge', 'Through the rockfall to Cutter\'s Gorge', ['CUTTER\'S GORGE', 'Footbridge. Long way down'], {
+        lines: [say('danny', 'The bridge is hanging off the far side, ma\'am. There\'s a winch. I\'m not saying I want to use the winch.')],
+      }),
       {
         id: 'winch', type: 'activate', at: ['gorge_winch'], hold: 14, text: 'Winch the footbridge back up (hold E, together is faster)', kind: 'winch', pressure: PS('gorge', 8, 1.0),
         onStart: [A.horde('gorge_far', 10)],
@@ -246,7 +266,9 @@ export const CH5 = [
       },
 
       // ---- HARLAN LUMBER ------------------------------------------------------------------
-      arrive('mill', 'lumbermill', 'Through the gate into the lumber mill', ['HARLAN LUMBER', 'Closed Sundays, and forever']),
+      arrive('mill', 'lumbermill', 'Through the gate into the lumber mill', ['HARLAN LUMBER', 'Closed Sundays, and forever'], {
+        lines: [say('okafor', 'The farm is on the far side of this yard. Something big is moving between the log stacks. Two somethings.')],
+      }),
       kill('brutes', 'brute', 2, 'Brutes in the log yard (0/2)', {
         at: 'mill_yard', pressure: PS('lumbermill', 8, 0.5, ['screamer']),
         onStart: [A.music('boss'), say('danny', 'Ma\'am, those are the biggest ones I\'ve ever seen, ma\'am.')],
@@ -263,7 +285,9 @@ export const CH5 = [
       },
 
       // ---- THE FARM FENCE ----------------------------------------------------------------
-      arrive('farm', 'farmgate', 'Through the fence onto the Harlan farm', ['THE HARLAN FARM', 'The Haskell place. Last stop']),
+      arrive('farm', 'farmgate', 'Through the fence onto the Harlan farm', ['THE HARLAN FARM', 'The Haskell place. Last stop'], {
+        lines: [say('okafor', 'A barn, a house, a well. And the lake, past the ridge. We hold the gate until the trucks are in.')],
+      }),
       {
         id: 'hold_gate', type: 'defend', target: 'farm_gate', seconds: 90, text: 'Hold the farm gate until the trucks arrive', pressure: PS('lumbermill', 8, 1.2),
         onStart: [A.music('battle'), radio('deke', 'County road! We\'re on the farm road! Hold that gate!')],

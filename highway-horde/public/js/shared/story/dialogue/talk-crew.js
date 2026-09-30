@@ -288,6 +288,9 @@ export const TALK_CREW = {
         t('ozzy_rh2_answer', "Does she answer now?", [
           ['ozzy', "Every time. She says 'um' a lot. I told her Haven doesn't say um. She said Haven is her, so Haven says um now."],
         ]),
+        t('ozzy_rh2_list', "What's on the Warden's list?", [
+          ['ozzy', "Fuel, a regulator, injectors. She read it twice and apologised twice. I wrote it on the board in marker. The permanent kind."],
+        ]),
         t('ozzy_rh2_ok', "Are you okay, Ozzy?", [
           ['ozzy', "I was right for nine nights and I didn't know what to do with it. Now I'm scared for her, which is a new kind of right."],
         ]),

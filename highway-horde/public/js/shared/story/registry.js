@@ -4,6 +4,7 @@
 // getMission(), so host and clients agree on a mission without the script travelling on the wire.
 
 import { MISSIONS } from './missions.js';
+import { getMission as installedMission } from './content.js';
 
 const WRITTEN = new Map(MISSIONS.map((m) => [m.id, m]));
 const REG = new Map();
@@ -13,9 +14,13 @@ export function registerMissions(list) {
   for (const m of list || []) if (m && typeof m.id === 'string') REG.set(m.id, m);
 }
 
-/** The mission with this id (a registered one first, then the written campaign), or null. */
+/**
+ * The mission with this id, or null: a registered one first, then the story content the session
+ * installed (content.js: the written campaign in the game, a stand-in in tests and tools, so the sim
+ * always plays the very mission the session briefed), then the written campaign.
+ */
 export function getMission(id) {
-  return REG.get(id) || WRITTEN.get(id) || null;
+  return REG.get(id) || installedMission(id) || WRITTEN.get(id) || null;
 }
 
 /** Every mission the game knows: the written campaign, then the registered ones. */

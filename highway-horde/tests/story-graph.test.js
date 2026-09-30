@@ -87,6 +87,38 @@ test('road missions chain directly; the arrival scene follows the chapter; hub m
   }
 });
 
+test('side jobs are never nodes: the road, the arrivals and the ending ignore them, the crew stays where it is', () => {
+  const SIDE = { side: true, chapter: 7, after: 'hideout', rewards: { xp: 5 } };
+  setStoryContent({
+    ...ROAD,
+    missions: [
+      ...ROAD.missions,
+      { ...SIDE, id: 's1', index: 1, title: 'S1', requires: ['a2'], hub: 'roadhouse' },
+      { ...SIDE, id: 's2', index: 2, title: 'S2', requires: ['s1'], hub: 'roadhouse' },
+    ],
+    chapters: [...ROAD.chapters, { n: 7, title: 'Side Jobs', side: true, missions: ['s1', 's2'], hub: null, arrival: null }],
+  });
+  try {
+    let w = done(createWorld({ name: 'W' }), 'a1', 'a2');
+    w = flag(w, 'seen_arrival_roadhouse');
+    assert.deepEqual(nextNodes(w).map((n) => n.id), ['b1', 'b2'], 's1 is open on the board but never a node');
+    assert.deepEqual(resolveNext(w), { kind: 'hideout', hideout: 'roadhouse' });
+    // a side job played: nothing moves on the road
+    const after = done(w, 's1');
+    assert.deepEqual(nextNodes(after), nextNodes(w));
+    assert.deepEqual(resolveNext(after), resolveNext(w));
+    // the story finished with no side job played: the ending plays, then the campaign rests
+    let end = done(w, 'b1', 'b2', 'b3');
+    assert.deepEqual(nextNodes(end), [{ kind: 'epilogue', id: 'epilogue' }]);
+    assert.equal(epiloguePending(end), true, 'side jobs never hold the ending back');
+    end = flag(end, 'seen_epilogue');
+    assert.deepEqual(nextNodes(end), []);
+    assert.deepEqual(resolveNext(changeWorld(end, (d) => { d.hideout.current = 'depot'; })), { kind: 'hideout', hideout: 'depot', done: true }, 'the crew stays at its hideout');
+  } finally {
+    clearStoryContent();
+  }
+});
+
 test('content may bring its own nextNodes, and a broken one falls back to the default', () => {
   setStoryContent({ ...ROAD, nextNodes: () => [{ kind: 'mission', id: 'b2', chapter: 2, hub: 'depot', direct: false }] });
   try {

@@ -113,7 +113,7 @@ export const NOTES = {
   },
   n26: {
     id: 'n26', mission: 'm3_1', at: 'security_office', day: 40, title: 'Camera log, Westgate security',
-    text: 'Day 33: the power died in Harrow\'s. Day 35: a crowd in the food court, waiting at the shutter. They wait at doors. Day 40: a voice on the radio says Haven is open. I have started talking back. — P.N.',
+    text: 'Day 33, the power died in Harrow\'s, and by Day 35 a crowd was waiting at the food court shutter, because they wait at doors. Day 40, a voice on the radio says Haven is open, and I have started talking back. — P.N.',
   },
   n27: {
     id: 'n27', mission: 'm3_1', at: 'store_pharmacy', day: 4, title: 'Sign on Harrow\'s pharmacy counter',
@@ -121,7 +121,7 @@ export const NOTES = {
   },
   n28: {
     id: 'n28', mission: 'm3_2', at: 'control_radio', day: 20, title: 'Dam keeper\'s log',
-    text: 'Reservoir at ninety-four percent and nobody to call. Opened spill gate two by hand. Tomorrow I walk to the lake. Whoever comes next: the valve sticks on the third turn. — H. Dawes',
+    text: 'Reservoir at ninety-four percent and nobody to call, so I opened spill gate two by hand. Tomorrow I walk to the lake. Whoever comes next: the valve sticks on the third turn. — Hal Dawes, keeper',
   },
   n29: {
     id: 'n29', mission: 'm3_2', at: 'river_boat', day: 15, title: 'Note in a jar on the boat slip',
@@ -129,7 +129,7 @@ export const NOTES = {
   },
   n30: {
     id: 'n30', mission: 'm4_1', at: 'siding_tower', day: 11, title: 'Yardmaster\'s board',
-    text: 'Loco 2217, main line, fueled, crew missing. Day 11: the army wants her for Delta. Day 11, later: the army isn\'t coming. Leave her ready. Somebody will need her.',
+    text: 'Loco 2217, main line, fueled, crew missing. Day 11: the army wants her for Delta; later the same day, the army isn\'t coming. Leave her ready, because somebody will need her.',
   },
   n31: {
     id: 'n31', mission: 'm4_1', at: 'signal_lever', day: 12, title: 'Signalman\'s log',

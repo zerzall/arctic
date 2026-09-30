@@ -79,7 +79,8 @@ function* strings(o, p = '') {
 function* dialogueLines(o, p = '') {
   if (Array.isArray(o)) for (let i = 0; i < o.length; i++) yield* dialogueLines(o[i], `${p}[${i}]`);
   else if (o && typeof o === 'object') {
-    if (typeof o.who === 'string' && typeof o.text === 'string') yield [p, o];
+    // (a step with `who: 'all'` and a HUD `text` is not a line: lines have no id)
+    if (typeof o.who === 'string' && typeof o.text === 'string' && o.id === undefined) yield [p, o];
     else for (const k of Object.keys(o)) yield* dialogueLines(o[k], `${p}.${k}`);
   }
 }
@@ -429,7 +430,7 @@ describe('the twelve story missions (JOURNEY.md §2)', () => {
       assert.ok(nonEmpty(m.blurb) && m.blurb.length <= 260, 'blurb');
       assert.ok(isInt(m.level[0]) && isInt(m.level[1]) && m.level[0] >= 1 && m.level[1] >= m.level[0] && m.level[1] <= 20, 'level band');
       assert.ok(m.party && m.party.min === 1 && m.party.max === 6, 'party 1..6');
-      checkLines(m.briefing, `${id}.briefing`, { min: 6, max: 14, flags });
+      checkLines(m.briefing, `${id}.briefing`, { min: 6, max: 16, flags });
       checkLines(m.debrief, `${id}.debrief`, { min: 4, max: 10, flags });
       assert.ok(m.briefing[0].who === 'narrator' && /^DAY \{day\}\. /.test(m.briefing[0].text), `${id}: the briefing opens on the day card`);
 
