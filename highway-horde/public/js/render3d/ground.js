@@ -654,7 +654,7 @@ export function makeGroundMaterial(tex, uniforms) {
           float near = 1.0 - smoothstep(60.0, 240.0, gDist);
           if (near > 0.0) {
             vec4 m = texture(uDetail, vec3(xz / 8.5 + 0.13, 23.0 + ${DET_LAYERS}.0));
-            gD.xy += (m.xy - 0.5) * 0.55 * near;
+            gD.xy += (m.xy - 0.5) * 0.55 * near * (1.0 - 0.6 * wetness * clamp(wA + wC, 0.0, 1.0));
             gD.a *= 1.0 + (m.b - 0.5) * 0.3 * near;
           }
         }
@@ -673,7 +673,9 @@ export function makeGroundMaterial(tex, uniforms) {
         // real lighting, but leave bright paint and litter as they are (no glare)
         float gLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
         diffuseColor.rgb *= mix(1.45, 1.0, smoothstep(0.08, 0.35, gLum));
-        diffuseColor.rgb *= (0.8 + 0.4 * gD.a) * (0.9 + 0.2 * gN.b);
+        // the layers' albedo: firmer on the hard surfaces (slab joints, stains, aggregate read in the sun),
+        // gentler on the soft ground whose painted colour already varies
+        diffuseColor.rgb *= mix(0.74 + 0.52 * gD.a, 0.62 + 0.76 * gD.a, gHard * (1.0 - gPaint * 0.7)) * (0.9 + 0.2 * gN.b);
         // the layers' own colour (stones of different rock, dry blades in the grass, rusty soil), not on paint
         {
           vec3 c = diffuseColor.rgb;
@@ -742,7 +744,10 @@ export function makeGroundMaterial(tex, uniforms) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           // world-aligned tangent frame: u = +x, v = +z, the flat ground's normal = +y
+          // (wet hard ground: a film of water fills between the stones, so the lamps' reflections stay long
+          // smooth streaks instead of a glitter of every grain)
           vec2 dn = (gD.xy * 2.0 - 1.0) * (1.0 - gPuddle * 0.97) * 0.9 * (1.0 - clamp(gMip * 0.12 - 0.1, 0.0, 0.55));
+          dn *= 1.0 - 0.45 * wetness * gHard - 0.3 * gDamp;
           // a curb's face leans toward the road, its top edge back the other way
           dn += gCurbN * gCurb * 1.5;
           if (uRain > 0.0) {

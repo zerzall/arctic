@@ -38,7 +38,7 @@ Object.entries({
 // added near the eye (0..1) and the weathering class the world material reads:
 // 0 other, 1 masonry, 2 metal, 3 wood, 4 rock, 5 soft (ground, bark, rubber, cloth, glass), 6 interior
 const LAYER_DEF = {
-  none: [0, 0, 0], brick: [0.55, 0.7, 1], concrete: [0.12, 1, 1], siding: [0.55, 0.3, 1], corrugated: [0.45, 0.2, 2],
+  none: [0, 0, 0], brick: [0.55, 0.7, 1], concrete: [0.12, 1, 1], siding: [0.55, 0.3, 3], corrugated: [0.45, 0.2, 2],
   panel: [0, 0.15, 0], char: [0.3, 0.8, 0], wood: [0.3, 0.5, 3], fabric: [0.06, 0.3, 5], bark: [1.1, 0.7, 5],
   rubber: [0.45, 0.3, 5], shingle: [0.55, 0.8, 0], hesco: [0.5, 0.6, 0], stucco: [0.25, 0.9, 1], rock: [0.9, 0.9, 4],
   glass: [0, 0, 5], asphalt: [0.2, 1, 5], slab: [0.12, 1, 1], grass: [0.2, 0.6, 5], gravel: [0.55, 0.8, 5],
@@ -722,13 +722,13 @@ const RECIPES = {
         // angular aggregate of two sizes set in the binder, worn flat on top by the traffic; stones of
         // different rock (grey, pale quartzite, rusty), some polished; tar bleeding up in patches
         const eL = F.w32.f2[i] - F.w32.f1[i], eM = F.w64.f2[i] - F.w64.f1[i];
-        const big = F.w32.id[i] < 0.62 ? smooth(0.05, 0.16, eL) : 0;
-        const med = F.w64.id[i] < 0.7 ? smooth(0.06, 0.18, eM) : 0;
+        const big = F.w32.id[i] < 0.62 ? smooth(0.03, 0.22, eL) : 0;
+        const med = F.w64.id[i] < 0.7 ? smooth(0.04, 0.24, eM) : 0;
         const useBig = big > med * 0.8;
         const stone = useBig ? big : med;
         const sid = useBig ? F.w32.id[i] / 0.62 : F.w64.id[i] / 0.7;
         const sand = F.n[(i + 21 * 40503) & F.M];
-        const bleed = smooth(0.66, 0.74, F.f16[i] * 0.7 + F.f4[i] * 0.3);
+        const bleed = smooth(0.68, 0.76, F.f16[i] * 0.75 + F.f64[i] * 0.25);
         const binder = 0.3 + (sand - 0.5) * 0.08 + (F.f64[i] - 0.5) * 0.06;
         const tilt = ((F.w32.f1[i] - 0.3) * (sid - 0.5)) * 0.2;
         const top = 0.36 + stone * (useBig ? 0.3 : 0.24) + tilt * stone;
@@ -743,7 +743,7 @@ const RECIPES = {
       }
     });
     yield* grime(c, 0.08, 2, { gain: 3, rough: 0.3 });
-    return 1.7;
+    return 1.4;
   },
 
   *slab(c) {
@@ -784,7 +784,7 @@ const RECIPES = {
         const gapK = smooth(0.42, 0.28, blades * 0.6 + clump * 0.25 + F.f16[i] * 0.15);
         const straw = stroke > 0.88 ? 1 : 0;
         h[i] = 0.25 + blades * 0.45 + clump * 0.15 + (stroke - 0.5) * 0.12 - gapK * 0.1;
-        a[i] = 0.5 + (blades - 0.5) * 0.3 + (F.f4[i] - 0.5) * 0.2 + (stroke - 0.5) * 0.12 + straw * 0.12 - gapK * 0.18;
+        a[i] = 0.5 + (blades - 0.5) * 0.3 + (F.f4[i] - 0.5) * 0.06 + (F.f16[i] - 0.5) * 0.08 + (stroke - 0.5) * 0.12 + straw * 0.12 - gapK * 0.18;
         co[i] = (cid - 0.5) * 0.06 + straw * 0.12 + gapK * 0.1;
         cg[i] = (cid - 0.5) * 0.05 - straw * 0.08 - gapK * 0.12;
         ds[i] = straw * 0.3;
@@ -879,9 +879,9 @@ const RECIPES = {
         const twig = F.scr[i] > 0 && F.w16.id[i] < 0.4 ? 1 : 0;
         const ridged = 1 - Math.abs(F.f16[i] - 0.5) * 2;
         h[i] = 0.4 + clod * 0.22 + (F.f32[i] - 0.5) * 0.3 + (F.f64[i] - 0.5) * 0.22 + ridged * 0.08 + stone * 0.2 + (crumb - 0.5) * 0.1 - damp * 0.04;
-        a[i] = 0.5 + (F.f8[i] - 0.5) * 0.2 + (F.w32.id[i] - 0.5) * 0.08 * clod + (F.f64[i] - 0.5) * 0.08 + stone * 0.18 - damp * 0.14
+        a[i] = 0.5 + (F.f8[i] - 0.5) * 0.08 + (F.f32[i] - 0.5) * 0.1 + (F.w32.id[i] - 0.5) * 0.08 * clod + (F.f64[i] - 0.5) * 0.08 + stone * 0.18 - damp * 0.14
           + (crumb > 0.96 ? 0.08 : 0) - twig * 0.14;
-        co[i] = (F.f4[i] - 0.5) * 0.1 - stone * 0.03 + twig * 0.03;
+        co[i] = (F.f16[i] - 0.5) * 0.05 - stone * 0.03 + twig * 0.03;
         cg[i] = (F.f16[i] - 0.5) * 0.03;
         ds[i] = stone * 0.5;
         r[i] = 0.84 - damp * 0.2 + (F.f16[i] - 0.5) * 0.08;
@@ -1045,7 +1045,7 @@ const RECIPES = {
         const curl = smooth(0.32, 0.1, edge) * (1 - crack);
         const plate = F.w16.id[i];
         h[i] = 0.42 + smooth(0.02, 0.35, edge) * (0.26 + 0.12 * plate) + curl * 0.08 - crack * 0.24 + (F.f64[i] - 0.5) * 0.07 + (F.f32[i] - 0.5) * 0.1;
-        a[i] = 0.5 + (plate - 0.5) * 0.12 - crack * 0.34 + (F.f4[i] - 0.5) * 0.14 + curl * 0.07 + (F.f64[i] - 0.5) * 0.06;
+        a[i] = 0.5 + (plate - 0.5) * 0.12 - crack * 0.34 + (F.f4[i] - 0.5) * 0.05 + curl * 0.07 + (F.f64[i] - 0.5) * 0.06;
         co[i] = (plate - 0.5) * 0.04 + crack * 0.04;
         ds[i] = curl * 0.15;
         r[i] = 0.86 - crack * 0.1;
@@ -1171,7 +1171,7 @@ const RECIPES = {
         const g = F.n[(i + 36 * 40503) & F.M];
         const peb = F.w64.id[i] < 0.03 ? smooth(0.28, 0.12, F.w64.f1[i]) : 0;
         h[i] = 0.45 + rip * 0.35 + (F.f64[i] - 0.5) * 0.12 + (g - 0.5) * 0.04 + peb * 0.2;
-        a[i] = 0.5 + (rip - 0.5) * 0.1 + (F.f4[i] - 0.5) * 0.14 + (F.f64[i] - 0.5) * 0.07 + (g > 0.94 ? 0.1 : g < 0.05 ? -0.14 : 0) - peb * 0.1;
+        a[i] = 0.5 + (rip - 0.5) * 0.1 + (F.f4[i] - 0.5) * 0.05 + (F.f16[i] - 0.5) * 0.06 + (F.f64[i] - 0.5) * 0.07 + (g > 0.94 ? 0.1 : g < 0.05 ? -0.14 : 0) - peb * 0.1;
         co[i] = (g > 0.9 && g < 0.94 ? 0.06 : 0) + (F.f16[i] - 0.5) * 0.04;
         cg[i] = 0;
         ds[i] = g < 0.05 ? 0.5 : peb * 0.5;
@@ -1521,7 +1521,8 @@ function* pack(c, data, id, k, raw) {
     yield* eachRow(N, (y) => {
       for (let x = 0; x < N; x++) {
         const i = y * N + x;
-        g[i] = F.f64[i] * 0.45 + F.n[(i + 99 * 40503) & F.M] * 0.35 + (F.w64.f1[i] < 0.2 ? 0.2 - F.w64.f1[i] : 0) * 1.5;
+        // (a soft grain: per-texel white noise here glittered on wet ground under a lamp)
+        g[i] = F.f64[i] * 0.6 + F.f32[i] * 0.2 + F.n[(i + 99 * 40503) & F.M] * 0.08 + (F.w64.f1[i] < 0.2 ? 0.2 - F.w64.f1[i] : 0) * 1.2;
       }
     }, 32);
     yield* eachRow(N, (y) => {

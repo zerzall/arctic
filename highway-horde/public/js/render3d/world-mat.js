@@ -386,6 +386,9 @@ const WEATHER_GLSL = `
   // splash dirt along the foot of walls: mud thrown up by rain, worn by feet and bins, darkest in the joints
   float foot = wall * smoothstep(-3.0, 0.5, hhWp.y) * (1.0 - smoothstep(3.0, 14.0 + 16.0 * m2.g + 6.0 * m1.a, hhWp.y));
   foot *= (cSolid + cIn * 0.45) * (1.0 - cMetal * 0.5);
+#ifdef HH_PAINT
+  foot = 0.0;   // (vehicle paint has its own road dust, below)
+#endif
   float crev = 1.0 - hhC.a;
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.6, 0.52) + vec3(0.03, 0.024, 0.016) * outK, foot * (0.35 + 0.35 * crev));
   hhDirt = foot * 0.3 * outK;
@@ -397,8 +400,9 @@ const WEATHER_GLSL = `
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62 + vec3(0.075, 0.063, 0.046), up * 0.42 * (0.45 + 0.55 * m2.g) * cSolid);
   // moss / lichen on the shaded (north, -z) side of stone, brick and wood, deepest in the joints
   float north = smoothstep(0.05, -0.7, hhWn.z) * wall;
-  float moss = (north * (cMason * 0.85 + cRock + cWood * 0.6) + up * cRock * 0.4) * smoothstep(0.56, 0.78, m1.a * 0.55 + m2.g * 0.45 + crev * 0.12) * smoothstep(110.0, 8.0, hhWp.y);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.11, 0.2, 0.06) * (0.7 + 0.6 * m2.a), moss * 0.55);
+  float moss = (north * (cMason * 0.85 + cRock + cWood * 0.6) + up * cRock * 0.4) * smoothstep(0.58, 0.8, m1.a * 0.55 + m2.g * 0.45) * smoothstep(110.0, 8.0, hhWp.y);
+  moss *= 0.55 + 0.9 * clamp(crev - 0.3, 0.0, 0.5);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.08, 0.13, 0.05) * (0.7 + 0.6 * m2.a), moss * 0.5);
   // rust: blooms and runs on metal
   hhRust = cMetal * smoothstep(0.66, 0.9, m1.g * 0.5 + st * 0.38 + m2.a * 0.3) * (1.0 - 0.7 * step(0.7, vSurf.y));
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.34, 0.14, 0.05) * (0.6 + 0.9 * m2.a), hhRust * 0.45);
