@@ -31,6 +31,8 @@ const MAX_FIX_LIGHTS = 4;
 const FIX_NEAR = 1500;
 /** By day, the strength a fixture light keeps (before the pool's own day scale). */
 const FIX_DAY_K = 0.2;
+/** A fixture's glow while its section's power is out (of its lit level). */
+const GLOW_OFF = 0.01;
 
 /** Per kind: ceiling and roof colours and surfaces, fixture light colour and strength. */
 const KIND = {
@@ -391,7 +393,8 @@ export function createRoofs(ctx, deps) {
   /** Sections whose lights are out (bit i = section i). */
   function setDark(bits) {
     dark = bits >>> 0;
-    for (const g of glowMeshes) g.mat.color.setScalar(g.si >= 0 && (dark & (1 << g.si)) ? 0.04 : dayK);
+    // (the fixtures' glow is HDR, ×2–3 in the vertex colours: a dead tube is a hundredth of that)
+    for (const g of glowMeshes) g.mat.color.setScalar(g.si >= 0 && (dark & (1 << g.si)) ? GLOW_OFF : dayK);
   }
 
   const fixColor = recs.map((rc) => KIND[rc.kind].light);
