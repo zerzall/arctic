@@ -93,6 +93,7 @@ function tables() {
     ['lights FLASH_MAP', mods.lights.FLASH_MAP],
     ['lights SUN_MAP', mods.lights.SUN_MAP],
     ['lights SUN_SPAN', mods.lights.SUN_SPAN],
+    ['lights LAMP_SHADOWS', mods.lights.LAMP_SHADOWS],
     ['fx-core QUALITY', mods.fx.QUALITY],
     ['ground GROUND_TEXELS', mods.ground.GROUND_TEXELS],
     ['ground GROUND_DENSITY', mods.ground.GROUND_DENSITY],
@@ -127,6 +128,7 @@ test('every per-tier table has a cinematic row that is at least as generous as u
 test('the cinematic budgets are the ones the brief asks for', () => {
   assert.equal(mods.lights.LIGHT_POOL.cinematic, 20);
   assert.equal(mods.lights.SUN_MAP.cinematic, 4096);
+  assert.ok(mods.lights.LAMP_SHADOWS.cinematic >= 2 && mods.lights.LAMP_SHADOWS.ultra === 0, 'shadow-casting lamps are a Cinematic feature');
   assert.equal(mods.lights.FLASH_MAP.cinematic, 4096);
   assert.equal(mods.dress.TRI_BUDGET.cinematic, 2500000, 'set-dressing cap 650k -> 2.5M');
   assert.equal(mods.dress.TRI_BUDGET.ultra, 650000);

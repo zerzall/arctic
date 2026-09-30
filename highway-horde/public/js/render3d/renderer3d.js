@@ -590,7 +590,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     postSet = normPostSettings(s);
     if (post) post.configure(postSet, q);
     // the cascaded sun's map size follows the shadow setting (cinematic; the default is on)
-    lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh });
+    lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh, lightShadows: postSet.lightShadows === undefined ? true : postSet.lightShadows });
     if (postSet.renderScale !== prev) {
       const target = postSet.renderScale === 'auto' ? renderScale : postSet.renderScale;
       if (postSet.renderScale === 'auto') dyn.reset(renderScale);
@@ -684,7 +684,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       }
       try { world.setQuality(n); } catch (err) { logErr('setQuality world', err); }
       if (post) post.configure(postSet, n);
-      lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh });
+      lights.setOptions({ shadowsHigh: postSet.shadowsHigh === undefined ? true : postSet.shadowsHigh, lightShadows: postSet.lightShadows === undefined ? true : postSet.lightShadows });
       // a new tier has a new pixel-ratio cap and ceiling: let dynamic resolution start over from full
       dyn = makeDyn();
       if (postSet.renderScale === 'auto') { renderScale = 1; dyn.reset(1); }

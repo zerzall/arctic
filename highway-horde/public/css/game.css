@@ -1619,7 +1619,6 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 .minimap { width: 13.25rem; height: 9.375rem; padding: 0.1875rem; }
 .minimap-canvas { display: block; width: 100%; height: 100%; }
 .hud-net {
-  white-space: pre-line;
   text-align: right;
   padding: 0.125rem 0.5rem;
   background: rgba(8, 10, 12, 0.55);
@@ -1629,7 +1628,7 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   color: var(--text-dim);
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: pre;      /* the stats readout has up to three lines (statsLine) */
 }
 .killfeed { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1875rem; width: 20rem; }
 .kf-item {

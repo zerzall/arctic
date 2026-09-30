@@ -9,7 +9,10 @@
 //     shadow filter,
 //   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'/'ultra',
 //     4096² on 'cinematic'),
-//   - a fixed pool of PointLights (20 on 'cinematic', 12 on 'ultra', 8 on 'high', 4 on 'low'). Each frame the pool is handed
+//   - a fixed pool of PointLights (20 on 'cinematic', 12 on 'ultra', 8 on 'high', 4 on 'low'; on
+//     'cinematic' at night the first three cast the shadow of the STATIC world: they are handed the
+//     nearest map lights (lamps, fires: fixed position and radius) and their cube maps are redrawn,
+//     one per frame, only when a slot changes hands). Each frame the pool is handed
 //     to the most relevant sources near the camera: the map's lamps and fires, steady()
 //     registrations from sub-systems (burning zombies, hazards, turrets...) and flash()
 //     transients (muzzle flashes, explosions). Pool slots fade in and out so lights never
@@ -42,6 +45,8 @@ export const LIGHT_POOL = { cinematic: 20, ultra: 12, high: 8, low: 4 };
 export const FLASH_MAP = { cinematic: 4096, ultra: 2048, high: 1024, low: 1024 };
 /** Sun / moon shadow map size (px; per cascade on 'cinematic') per tier. */
 export const SUN_MAP = { cinematic: 4096, ultra: 2048, high: 1024, low: 1024 };
+/** Pool lights that cast a (static) shadow: the nearest street lamps and fires, Cinematic at night. */
+export const LAMP_SHADOWS = { cinematic: 3, ultra: 0, high: 0, low: 0 };
 /** Half-extent (units) of the single sun / moon map that follows the camera (not used by the cinematic cascades). */
 export const SUN_SPAN = { cinematic: 1300, ultra: 1300, high: 1000, low: 1000 };
 
@@ -161,7 +166,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   if (moon.target) group.add(moon.target);
   const moonShadow = { cx: NaN, cy: 0, cz: NaN, span: 1000, k: 0 };
   // cinematic extras the settings can switch (renderer3d applySettings → setOptions)
-  const opts = { shadowsHigh: true };
+  const opts = { shadowsHigh: true, lightShadows: true };
 
   // flashlight: warm-white, a slightly soft cone, from just right of and below the eye
   // decay a little over 1: bright enough to read zombies at 400+, without the hot spot on
@@ -260,7 +265,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       // fires sit right against wrecks: at 1.1 a pale tanker cap 30 units away blew out white
       intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9, lamp: isLamp,
       radius: isLamp ? Math.hypot(l.r, h) * 1.05 : l.r * (fire ? 1.25 : 1.1),
-      flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0,
+      flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0, isMap: true,
     };
   });
   const mapLevel = new Float32Array(mapSources.length);
@@ -275,20 +280,45 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   const poolLights = [];
   // per pool slot: 1 = a street lamp under its shade (the atmosphere pass keeps its haze below it)
   let poolKinds = new Float32Array(0);
+  // shadow-casting slots (0..K-1): the nearest map lights, static shadows (see the header)
+  let K = 0;
+  let slotKey = [];
+  let dirty = [];
+  let casterPts = [];
+  const lampCount = () => (cine && opts.lightShadows && !day ? tierRow(LAMP_SHADOWS, tier) : 0);
   function buildPool(n) {
-    for (const s of pool) { group.remove(s.light); s.light.dispose(); }
+    for (const s of pool) { group.remove(s.light); dropMap(s.light.shadow); s.light.dispose(); }
+    for (const c of casterPts) shadowScene.remove(c);
+    casterPts = [];
     pool.length = 0;
     poolLights.length = 0;
+    K = Math.min(lampCount(), n);
+    slotKey = new Array(K).fill(null);
+    dirty = new Array(K).fill(true);
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight('#ffffff', 0, 300, 0);
-      light.castShadow = false;
+      light.castShadow = i < K;
+      if (i < K) {
+        const sh = light.shadow;
+        sh.mapSize.set(1024, 1024);
+        sh.autoUpdate = false;
+        sh.camera.near = 4;
+        sh.bias = -0.0008;
+        sh.normalBias = 1.2;
+        sh.radius = 3;
+        // the same shadow object drives the caster in the shadow-only scene (like the sun's)
+        const c = new THREE.PointLight('#ffffff', 0, 300, 0);
+        c.castShadow = true;
+        c.shadow = sh;
+        shadowScene.add(c);
+        casterPts.push(c);
+      }
       group.add(light);
       pool.push({ light, src: null, level: 0 });
       poolLights.push(light);
     }
     poolKinds = new Float32Array(n);
   }
-  buildPool(tierRow(LIGHT_POOL, tier));
 
   const cands = [];
   const _fwd = new THREE.Vector3();
@@ -384,17 +414,32 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       const s = cands[i];
       if (s.slot) continue;
       let free = null;
-      for (const p of pool) if (!p.src) { free = p; break; }
+      // the shadow slots (0..K-1) are for map lights (their static shadow maps fit them), the rest for everything
+      if (K > 0 && s.isMap) for (let k = 0; k < K; k++) if (!pool[k].src) { free = pool[k]; break; }
+      if (!free) for (let k = K; k < pool.length; k++) if (!pool[k].src) { free = pool[k]; break; }
       if (!free && s.flash) {
         // steal the weakest non-flash slot for a flash
         let worst = null;
-        for (const p of pool) if (!p.src.flash && (!worst || p.src.score < worst.src.score)) worst = p;
+        for (let k = K; k < pool.length; k++) { const p = pool[k]; if (!p.src.flash && (!worst || p.src.score < worst.src.score)) worst = p; }
         if (worst && worst.src.score < s.score) { worst.src.slot = null; worst.src = null; worst.level = 0; free = worst; }
       }
       if (!free) continue;
       free.src = s;
       free.level = s.flash ? 1 : 0;
       s.slot = free;
+    }
+
+    // a shadow slot that changed hands needs its cube map redrawn (updateLampShadows)
+    for (let i = 0; i < K; i++) {
+      const src = pool[i].src, key = src ? src.key : null;
+      if (key !== slotKey[i]) {
+        slotKey[i] = key;
+        if (src) {
+          dirty[i] = true;
+          pool[i].light.position.set(src.x, src.h, src.y);
+          pool[i].light.distance = src.radius;
+        }
+      }
     }
 
     mapLevel.fill(0);
@@ -435,6 +480,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     return c;
   }
   let casterLight = makeCaster();
+  buildPool(tierRow(LIGHT_POOL, tier));
   const blindCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1);
   blindCam.position.set(0, -1e6, 0);
   blindCam.lookAt(0, -2e6, 0);
@@ -448,7 +494,9 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
    * @returns {boolean} whether the map was re-rendered this frame
    */
   function updateMoonShadow(renderer, scene, casters) {
-    if (!moon.castShadow || !casters || !casters.length) return false;
+    if (!casters || !casters.length) return false;
+    updateLampShadows(renderer, casters);
+    if (!moon.castShadow) return false;
     if (cascaded) return updateCascades(renderer, casters);
     const S = moonShadow.span;
     camera.getWorldDirection(_mf);
@@ -469,6 +517,35 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     return true;
   }
 
+  /**
+   * The static world's shadow for the shadow-casting pool slots: a slot that changed hands gets its
+   * cube map redrawn (the first time, all of them, so no lit draw samples a missing map); one per frame after.
+   */
+  function updateLampShadows(renderer, casters) {
+    if (K <= 0) return;
+    ensureProxies(casters);
+    let did = 0;
+    const all = dirty.every(Boolean);
+    for (let i = 0; i < K; i++) {
+      if (!dirty[i]) continue;
+      const src = pool[i].src;
+      const L = pool[i].light, c = casterPts[i];
+      // an empty slot is drawn once too (from the map's middle): the shader needs a map to sample
+      const x = src ? src.x : map.width / 2, h = src ? src.h : 100, y = src ? src.y : map.height / 2, r = src ? src.radius : 300;
+      L.position.set(x, h, y);
+      L.distance = r;
+      c.position.set(x, h, y);
+      c.distance = r;
+      c.updateMatrixWorld();
+      L.updateMatrixWorld();
+      c.shadow.needsUpdate = true;
+      dirty[i] = false;
+      did++;
+      if (!all) break;
+    }
+    if (did) drawShadowScene(renderer, false);
+  }
+
   function ensureProxies(casters) {
     if (proxies) return;
     proxies = casters.map((m) => {
@@ -482,10 +559,10 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     });
   }
 
-  function drawShadowScene(renderer) {
+  function drawShadowScene(renderer, sun = true) {
     if (!blindRT) blindRT = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
     const prev = renderer.getRenderTarget();
-    moon.shadow.needsUpdate = true;
+    if (sun) moon.shadow.needsUpdate = true;
     try {
       renderer.setRenderTarget(blindRT);
       renderer.render(shadowScene, blindCam);
@@ -590,14 +667,25 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       setShadows();
       setMoonShadow();
     },
-    /** Cinematic extras from the graphics settings: { shadowsHigh } (4096 px cascades and flashlight map). */
+    /** Cinematic extras from the graphics settings: { shadowsHigh } (4096 px cascades and flashlight map), { lightShadows } (shadow-casting lamps). */
     setOptions(o) {
-      if (!o || !!o.shadowsHigh === opts.shadowsHigh) return;
+      if (!o) return;
+      if (o.lightShadows !== undefined && !!o.lightShadows !== opts.lightShadows) {
+        opts.lightShadows = !!o.lightShadows;
+        if (cine) {
+          for (const src of mapSources) src.slot = null;
+          for (const src of steadyMap.values()) src.slot = null;
+          for (const src of flashes) src.slot = null;
+          buildPool(tierRow(LIGHT_POOL, tier));
+        }
+      }
+      if (o.shadowsHigh === undefined || !!o.shadowsHigh === opts.shadowsHigh) return;
       opts.shadowsHigh = !!o.shadowsHigh;
       if (cine) { setShadows(); setMoonShadow(); }
     },
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
     dispose() {
+      for (const p of pool) dropMap(p.light.shadow);
       dropMap(flash.shadow);
       cookie.dispose();
       dropMap(moon.shadow);

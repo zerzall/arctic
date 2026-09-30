@@ -154,7 +154,7 @@ export function gpuLabel(info, o = {}) {
   if (!info || !info.name) return '';
   const rec = recommendedTier(info, o);
   const label = rec === 'cinematic' ? 'Cinematic' : rec === 'ultra' ? 'Ultra' : '';
-  if (info.class === 'software') return `${info.name} — no graphics card found: use Low or Medium settings`;
+  if (info.class === 'software') return `${info.name} — software rendering (no graphics card): the Low preset fits best`;
   return label ? `${info.name} — ${label} recommended` : info.name;
 }
 

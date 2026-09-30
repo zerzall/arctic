@@ -178,13 +178,22 @@ class DepthAOPass extends Pass {
     // (the denoise radius is in AO pixels: twice as many at full resolution for the same footprint)
     this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: this.full ? 13 : ultra ? 8 : 6, rings: this.full ? 3 : 2, samples: this.full ? 16 : ultra ? 12 : 8 });
     this.blend.uniforms.intensity.value = ultra ? 0.92 : 0.85;
-    const scale = this.full ? 1 : 0.5;
-    if (scale !== this.scale) { this.scale = scale; this.setSize(this.w, this.h); }
+    this._fit();
+  }
+
+  /** Full resolution, but never more than a 4K frame's worth of AO pixels (above that the frame is supersampled anyway). */
+  _fit() {
+    const scale = this.full ? Math.min(1, Math.sqrt(8.9e6 / Math.max(1, this.w * this.h))) : 0.5;
+    if (Math.abs(scale - this.scale) > 1e-6) {
+      this.scale = scale;
+      this.gtao.setSize(Math.max(1, Math.round(this.w * this.scale)), Math.max(1, Math.round(this.h * this.scale)));
+    }
   }
 
   setSize(w, h) {
     this.w = w; this.h = h;
-    this.gtao.setSize(Math.max(1, Math.round(w * this.scale)), Math.max(1, Math.round(h * this.scale)));
+    this.scale = -1;         // (forces the resize below)
+    this._fit();
   }
 
   render(renderer, writeBuffer, readBuffer) {

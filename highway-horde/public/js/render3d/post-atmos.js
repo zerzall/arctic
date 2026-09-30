@@ -471,7 +471,11 @@ export class AtmosPass extends Pass {
   setSize(w, h) {
     this.w = w; this.h = h;
     const ultra = tierAtLeast(this.tier, 'ultra');
-    const vs = this.hi ? 1 : ultra ? 0.5 : 0.25, ss = this.hi ? 0.75 : ultra ? 0.5 : 0.25;
+    // (cinematic: full-resolution mist and shafts, 3/4-resolution reflections, but never more than a 4K
+    // frame's worth of pixels for the one, 6 M for the other: above that the frame is supersampled anyway)
+    const px = Math.max(1, w * h);
+    const vs = this.hi ? Math.min(1, Math.sqrt(8.9e6 / px)) : ultra ? 0.5 : 0.25;
+    const ss = this.hi ? Math.min(0.75, Math.sqrt(6e6 / px)) : ultra ? 0.5 : 0.25;
     const vw = Math.max(1, Math.round(w * vs)), vh = Math.max(1, Math.round(h * vs));
     const sw = Math.max(1, Math.round(w * ss)), sh = Math.max(1, Math.round(h * ss));
     // targets only take memory while their part is on

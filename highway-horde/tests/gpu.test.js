@@ -126,7 +126,7 @@ test('the Settings line names the card and the recommendation', () => {
   assert.equal(gpuLabel(g, { coarse: true }), 'NVIDIA GeForce RTX 4070 Ti SUPER');
   assert.equal(gpuLabel(classifyGpu('NVIDIA GeForce RTX 2060')), 'NVIDIA GeForce RTX 2060 — Ultra recommended');
   assert.equal(gpuLabel(classifyGpu('Intel(R) UHD Graphics 630')), 'Intel UHD Graphics 630');
-  assert.match(gpuLabel(classifyGpu('llvmpipe (LLVM 15.0.7, 256 bits)')), /no graphics card/);
+  assert.match(gpuLabel(classifyGpu('llvmpipe (LLVM 15.0.7, 256 bits)')), /software rendering/);
   assert.equal(gpuLabel(null), '');
   assert.equal(gpuLabel(classifyGpu('')), '');
 });
