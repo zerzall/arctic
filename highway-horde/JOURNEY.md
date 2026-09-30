@@ -287,3 +287,70 @@ Merge order: **E → C1 → C2 → C3 → W → Z → T**. The coordinator recon
 `SPEC.md`, `README.md`, this file and the e2e scenario letters. Each agent works in its own worktree,
 commits often, and never pushes. At the end it reports what it did, the files it changed, the test
 results, screenshots, and anything it needs from another agent.
+
+## 8. E seams (what the engine gives the level agents, W, and the next person)
+
+Everything below is a no-op on any map that is not a level (`map.kind === 'level'`).
+
+**Shared runtime** (`shared/level.js`, pure, used by the sim, prediction, both renderers, UI and audio):
+`levelGates(map)` → `[{ i, id, kind, label, ids, obs, x, y, x0, y0, x1, y1, from, to }]` in `map.gates`
+order (the snapshot's order; `from`/`to` from the SPEC, else from where the gate stands),
+`gateIndex(map, id)`, `setGateColliders(world, map, i, open)` / `syncGateColliders(world, map, gates)`
+(an open gate's colliders get `mask 0`, a shut one its own mask back), `sectionIndex`, `sectionAt` (the
+highest section containing a point), `nearestSection`, `inSection`, `checkpointsOf(map, i)`,
+`levelSupplies(map)` / `nearestSupply(map, x, y)` (any obstacle with `prop: 'supply'`), `gateOutOf(map, i)`,
+`wayForward(map, i, open)`. Constants `GATE_ANIM_TIME` (1.2 s), `MAX_GATES`, `MAX_SECTIONS` (32 each).
+
+**Host sim** (`shared/sim/level.js`: `game.level`, a `LevelDirector`; `shared/sim/level-actions.js`):
+`setGate(idOrIndex, open)` (colliders, `FlowField.patchRegion` on every field incl. the bots', push-out on
+shut, `story.onGates()`), `setLights(section, on)`, `setCheckpoint(section)`, `spawnPoint(i)` (respawns and
+late joiners), `defendAt(anchor, label)` / `clearDefend()` (a 64 × 64 defend box with `DEFEND_HP` 5000
+× (1 + 0.25 (n − 1)), the story's `objective` hp), `spawnRects(hint, all)` / `spawnSpot(rng, hint, all, r)`
+(the current and next section; rects behind a shut gate weigh 0.35 and drop out when ≥ 8 + 3n zombies are
+penned), culling of zombies a section behind and 1500 px from everyone, `stats` `{ culled, gates, patchMs }`.
+Scripted actions: `runAction(dir, action)`; `story.say()` queues them in order with their `delay`.
+
+**Snapshot** `view.level` (null off a level): `{ section, checkpoint, dark (u32: bit i = section i's lights
+out), gates: [{ open, t (tick it changed; 0 = as built) }], defend (the defend point's name or null) }`.
+**Wire** (protocol 11): header flag `H_LEVEL` (32); u8 section, u8 checkpoint, u32 dark, u8 n, per gate u8
+open + u16 age in ticks, str defend (≤ 40). Clients' prediction follows the gate bits (`_syncGates`).
+
+**Events** (binary schemas; all in `IMPORTANT_EVENTS`): `gate {id, open}`, `area {id, name, i}` (first entry
+into a section), `title {text, sub}`, `music {state}`, `shake {k, x, y, r}`, `lights {section, on}`,
+`checkpoint {section}`, `horde {x, y, n}`; `explode` goes out as an ordinary `explosion` (`kind: 'rocket'`).
+
+**3D** (`render3d/gates3d.js`, `roofs3d.js`, `indoor.js`; `world.js` wires them, `world.gates / roofs /
+indoor`): gate obstacles leave the merged statics and animate per kind; `art.gateModel(B, gate, o)`
+returning true supplies the model (drawn in the obstacle's frame, animated whole). `art.roof(B, r)`
+returning true replaces E's ceiling and roof for that roof; walls under a roof are topped up to the ceiling
+(`roofs.wallTop`); fixture lights (`roof:<i>:<k>` pool sources) only where the level placed no light under
+the roof. The indoor mask: `patchIndoor(material)` (Standard / Lambert / Phong; the renderer patches the
+whole scene once and new materials every 120 frames), uniforms `INDOOR_UNIFORMS`, openness spills in
+through doorways, windows, open gates and mall skylights. By day a room keeps 22 % of the sky light at
+`dark` 0.78, the fixtures 20 % (`FIX_DAY_K`) and the level's own interior lights 15 % (`INTERIOR_DAY_K`);
+the sun stays and the roofs' shadows do the rest. `lights.setDark(bits)` / `isDark(i)`. No grass field,
+weeds, tufts, bushes or plant dressing under a roof.
+
+**Top-down** (`render/level2d.js`): shut gates drawn with hazard rims, fading out over the animation, gone
+while open; roofs translucent (0.86), fading to 0.08 over the followed player's own room; a dark section's
+lamps and light pools off; `shake` events shake the camera.
+
+**UI** (`ui/levelhud.js`, `ui/minimap.js`, `shared/maps.js mapMeta(id)`): the location card (section name,
+level name, PART n OF m) on `area`, the mission's card on `title`; toasts for gates, checkpoints, power and
+hordes; the objective bar shows `view.level.defend`; the minimap draws roofs, the route and the party's
+section, and gates live (amber shut, green gap open). `mapMeta(id)` finds match maps, hideouts and levels.
+
+**Audio**: `gate` → the kind's sound at the gate (`GATE_SOUNDS` in `audio.js`); `lights`, `checkpoint`,
+`horde` sounds; `music` → `music.hold(state, 45 s)` (`calm | tension | battle | boss`, `waveclear` cues,
+anything else lets the intensity lead).
+
+**Dev**: `dev/fps-sandbox.html?map=<level>&demo=rooms` adds walled rooms under every roof kind (views
+`room:<kind>`, `door:<kind>`); `__fps.gate(id, open)`, `__fps.lights(section, on)`;
+`node scripts/shot-plan.js <dir> "<query>" '<plan JSON>'` scripts views, gates, lights, steps and shots.
+Tests: `tests/level-engine.test.js` (validateLevel, helpers, patchRegion), `level-engine-sim.test.js`,
+`level-engine-render.test.js`, `level-engine-2d.test.js`, `level-engine-audio.test.js`; e2e scenario `n`.
+The test mission is `tests/fixtures/level-mission.js`.
+
+**Measured** (node, this machine under load): a synthetic 12000 × 4000 level, 170 zombies and 6 bots: sim
+step 0.60 ms on average; a gate opening (three flow fields patched) 6.8–7.4 ms. Mill Road with 3 bots:
+0.23–0.53 ms a step, 16 ms for the first gate.
