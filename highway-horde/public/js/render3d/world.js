@@ -324,6 +324,8 @@ export function createWorld(ctx, deps) {
 
   // ---- decor ----
   map.decor.forEach((d, i) => {
+    // (nothing grows indoors: a level's grass tufts and bushes stay out from under its roofs)
+    if (roofs && (d.kind === 'grass_tuft' || d.kind === 'bush') && roofs.ceilingAt(d.x, d.y) > 0) return;
     B.obj(d.x, d.y, d.a || 0, i * 17 + 3);
     B.setJitter(0.1);
     try {

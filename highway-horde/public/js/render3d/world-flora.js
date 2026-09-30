@@ -649,6 +649,12 @@ export function scatterFlora(B, map, waters = []) {
     addTo(grid, o.x - ex, o.y - ey, o.x + ex, o.y + ey, { o, c, s: sn });
   }
   for (const a of map.areas) if (a.kind === 'asphalt' || a.kind === 'concrete') addTo(hard, a.x - a.w / 2 - 6, a.y - a.h / 2 - 6, a.x + a.w / 2 + 6, a.y + a.h / 2 + 6, a);
+  // a story level's roofs: indoors counts as hard floor (no weeds, ferns or ivy inside a room)
+  for (const r of map.roofs || []) {
+    const c = Math.cos(r.a || 0), sn = Math.sin(r.a || 0);
+    const ex = Math.abs(c) * r.w / 2 + Math.abs(sn) * r.h / 2 + 6, ey = Math.abs(sn) * r.w / 2 + Math.abs(c) * r.h / 2 + 6;
+    addTo(hard, r.x - ex, r.y - ey, r.x + ex, r.y + ey, { roof: r, c, s: sn });
+  }
   const blocked = (x, y, pad = 6) => {
     const arr = grid.get(Math.floor(x / CELL) + ',' + Math.floor(y / CELL));
     if (!arr) return false;
@@ -661,7 +667,12 @@ export function scatterFlora(B, map, waters = []) {
   const onRoad = (x, y) => {
     const arr = hard.get(Math.floor(x / CELL) + ',' + Math.floor(y / CELL));
     if (!arr) return false;
-    for (const a of arr) if (Math.abs(x - a.x) < a.w / 2 + 3 && Math.abs(y - a.y) < a.h / 2 + 3) return true;
+    for (const a of arr) {
+      if (a.roof) {
+        const dx = x - a.roof.x, dy = y - a.roof.y;
+        if (Math.abs(dx * a.c + dy * a.s) < a.roof.w / 2 + 3 && Math.abs(-dx * a.s + dy * a.c) < a.roof.h / 2 + 3) return true;
+      } else if (Math.abs(x - a.x) < a.w / 2 + 3 && Math.abs(y - a.y) < a.h / 2 + 3) return true;
+    }
     return false;
   };
   const place = (x, y, seed) => { B.obj(x, y, rng.range(0, 6.28), seed); B.setJitter(0.12); items++; };
