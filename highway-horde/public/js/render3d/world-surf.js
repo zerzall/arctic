@@ -850,7 +850,7 @@ const RECIPES = {
         const deep = F.f16[i];
         h[i] = 0.55 + rust * ((F.f64[i] - 0.5) * 0.3 + (F.n[(i + 25 * 40503) & F.M] - 0.5) * 0.12 - 0.08) + rim * 0.06 - pit * 0.12;
         a[i] = 0.5 - rust * (0.06 + deep * 0.14) + rim * 0.06 - runK * 0.1 + (F.streak[i] - 0.5) * 0.08 - pit * 0.06;
-        co[i] = rust * (0.16 + (1 - deep) * 0.1) + runK * 0.14;
+        co[i] = rust * (0.1 + (1 - deep) * 0.08) + runK * 0.1;
         cg[i] = rust * 0.01;
         ds[i] = rim * 0.3;
         r[i] = 0.44 + rust * 0.42 + runK * 0.2 + (F.f16[i] - 0.5) * 0.08;
@@ -1389,7 +1389,7 @@ const RECIPES = {
         r[i] = 0.22 + lane * 0.2 + (F.f16[i] - 0.5) * 0.06 - chip * 0.04 + crack * 0.2 - strip * 0.06;
       }
     });
-    return 0.5;
+    return 1.4;
   },
 };
 
@@ -1436,6 +1436,7 @@ function* generateSteps(n) {
     }
   }
   const F = {};
+  at = 'noise';
   F.f4 = yield* sliced(fbm(N, 4, 4, 5, 11)); F.f8 = yield* sliced(fbm(N, 8, 8, 4, 23)); F.f16 = yield* sliced(fbm(N, 16, 16, 4, 37));
   F.f32 = yield* sliced(fbm(N, 32, 32, 3, 41)); F.f64 = yield* sliced(fbm(N, 64, 64, 2, 53));
   F.streak = yield* sliced(fbm(N, 24, 2, 4, 61));          // vertical streaks (stretched along v)
@@ -1443,14 +1444,18 @@ function* generateSteps(n) {
   F.barkN = yield* sliced(fbm(N, 10, 2, 4, 83));
   F.broom = yield* sliced(fbm(N, 2, 128, 2, 97));          // brushed across v
   F.blades = yield* sliced(fbm(N, 96, 12, 2, 109, 0.6));
+  at = 'worley';
   F.w8 = yield* sliced(worley(N, 8, 5, 1)); F.w16 = yield* sliced(worley(N, 16, 7)); F.w32 = yield* sliced(worley(N, 32, 9));
   F.w64 = yield* sliced(worley(N, 64, 13));
   // sparse fine scratches for painted metal (and twigs in the dirt)
+  at = 'scratches';
   F.scr = scratches(N);
-  yield;
   // per-texel white noise (grain, granules, flecks): recipes read it at index offsets, F.n[(i + k) & F.M]
-  F.n = whiteNoise(NN, 9091);
+  F.n = new Float32Array(NN);
   F.M = NN - 1;
+  const rw = rngOf(9091);
+  yield* sliced(eachRow(N, (y) => { for (let i = y * N, e = i + N; i < e; i++) F.n[i] = rw(); }, 64));
+  at = 'alloc';
   lap();
   const fieldsMs = tWork;
   const data = new Uint8Array(NN * 4 * LAYERS * 2);
@@ -1495,12 +1500,6 @@ function scratches(N) {
   return out;
 }
 
-function whiteNoise(n, seed) {
-  const out = new Float32Array(n), rw = rngOf(seed);
-  for (let i = 0; i < n; i++) out[i] = rw();
-  return out;
-}
-
 /**
  * Write one layer's two slices: normal (from the height, gain k), roughness and albedo; hue
  * shifts, desaturation and height. The macro layer's fields go in raw. Returns the layer's mean
@@ -1539,6 +1538,9 @@ function* pack(c, data, id, k, raw) {
   }
   const kk = k * 2 * (N / 256);     // (a texel of the 512² layer is half as wide: the same slope needs twice the gain)
   const acc = { v2: 0 };
+  // the roughness slice modulates the vertex's roughness: centre it (keeping a third of the layer's
+  // own bias), so a rough recipe does not pin every texel at the clamp and lose its variation
+  const rShift = (0.5 - meanOf(r)) * 0.7;
   // (one 32-bit store per texel and slice: the texel bytes are R, G, B, A in memory order)
   const d32 = new Uint32Array(data.buffer, data.byteOffset, data.length >> 2), b32 = base >> 2, c32 = baseC >> 2;
   yield* eachRow(N, (y) => {
@@ -1551,13 +1553,19 @@ function* pack(c, data, id, k, raw) {
       const ny = -(h[yp + x] - h[ym + x]) * kk;
       const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
       const i = yc + x;
-      d32[b32 + i] = (((nx * inv * 127.5 + 128) | 0) | (((ny * inv * 127.5 + 128) | 0) << 8) | (q8(r[i]) << 16) | (q8(a[i]) << 24)) >>> 0;
+      d32[b32 + i] = (((nx * inv * 127.5 + 128) | 0) | (((ny * inv * 127.5 + 128) | 0) << 8) | (q8(r[i] + rShift) << 16) | (q8(a[i]) << 24)) >>> 0;
       d32[c32 + i] = (q8(co[i] + 0.5) | (q8(cg[i] + 0.5) << 8) | (q8(ds[i]) << 16) | (q8(h[i]) << 24)) >>> 0;
       v2 += (nx * nx + ny * ny) * inv * inv;
     }
     acc.v2 += v2;
   }, 16);
   return acc.v2 / NN;
+}
+
+function meanOf(a) {
+  let m = 0;
+  for (let i = 0; i < a.length; i++) m += a[i];
+  return m / a.length;
 }
 
 /** 0..1 → a byte (clamped, rounded). */
@@ -1587,32 +1595,36 @@ export function makeDetailArray(anisotropy = 1) {
 }
 
 /** Longest stretch of work per slice of the 512² generation (ms). */
-const SLICE_MS = 6;
+const SLICE_MS = 5;
 
+let pending512 = null;
 /**
  * The cinematic 512² detail array, generated in time slices (a few seconds of wall time, each
  * slice under ~8 ms). Resolves with a fresh GPU texture array once done; every layer keeps its
  * tile size in world units (DET_TILE), so swapping it in just sharpens the surfaces.
  */
 export async function makeDetailArrayAsync(anisotropy = 1) {
-  if (!cpuCache.has(512)) {
-    const g = generateSteps(512);
-    await new Promise((resolve, reject) => {
-      const step = () => {
-        try {
-          const t0 = now();
-          let r;
-          do r = g.next(); while (!r.done && now() - t0 < SLICE_MS);
-          const dt = now() - t0;
-          stats.slices++;
-          if (dt > stats.maxSliceMs) stats.maxSliceMs = dt;
-          if (r.done) resolve(); else setTimeout(step, 0);
-        } catch (err) { reject(err); }
-      };
-      step();
-    });
-  }
+  // (one generation at a time: a second renderer asking meanwhile waits for the same one)
+  if (!cpuCache.has(512)) await (pending512 || (pending512 = generate512().finally(() => { pending512 = null; })));
   return arrayTexture(cpuCache.get(512), 512, anisotropy);
+}
+
+function generate512() {
+  const g = generateSteps(512);
+  return new Promise((resolve, reject) => {
+    const step = () => {
+      try {
+        const t0 = now();
+        let r;
+        do r = g.next(); while (!r.done && now() - t0 < SLICE_MS);
+        const dt = now() - t0;
+        stats.slices++;
+        if (dt > stats.maxSliceMs) stats.maxSliceMs = dt;
+        if (r.done) resolve(); else setTimeout(step, 0);
+      } catch (err) { reject(err); }
+    };
+    step();
+  });
 }
 
 /** Milliseconds the one-time 256² generation took (0 until it ran). */

@@ -221,6 +221,24 @@ float hhFlip = 1.0;
 float hhLod = 0.0;
 float hhRust = 0.0;
 float hhDirt = 0.0;
+// the parallaxed point, for the relief's own shadow from the sun (cinematic)
+vec2 hhUvG, hhDxG, hhDyG;
+mat3 hhTbnG;
+float hhClG = 0.0, hhPdG = 0.0, hhH0 = 1.0;
+float hhSelfShadow(vec3 L) {
+  if (hhPdG <= 1e-5 || uDetQ.x < 1.5) return 1.0;
+  vec3 Lt = vec3(dot(L, hhTbnG[0]), dot(L, hhTbnG[1]) * hhFlip, dot(L, hhTbnG[2]));
+  if (Lt.z <= 0.04) return 1.0;
+  float dh = (1.0 - hhH0) / 6.0;
+  if (dh < 0.004) return 1.0;
+  vec2 duv = Lt.xy / Lt.z * dh * hhPdG;
+  float occ = 0.0;
+  for (int k = 1; k <= 6; k++) {
+    float h = textureGrad(uDetail, vec3(hhUvG + duv * float(k), hhClG), hhDxG, hhDyG).a;
+    occ = max(occ, (h - (hhH0 + dh * float(k))) * (1.0 - float(k) / 7.0));
+  }
+  return 1.0 - clamp(occ * 7.0, 0.0, 0.8);
+}
 float hhIs(float a, float b) { return 1.0 - step(0.5, abs(a - b)); }
 // hash of an integer cell → 0..1 (per brick / slab tone that never repeats with the texture)
 float hhCell(vec2 c) {
@@ -268,7 +286,7 @@ const DETAIL_COLOR_GLSL = `
     hhLod = log2(max(max(length(hhDx), length(hhDy)) * float(textureSize(uDetail, 0).x), 1e-4));
     float hhCl = hhL + ${DET_LAYERS}.0;
     // parallax occlusion: step down the height field along the view ray (ultra / cinematic)
-    float hhPd = hhP.x * uDetQ.x * (1.0 - smoothstep(uDetQ.w * 0.55, uDetQ.w, hhDist)) * (1.0 - smoothstep(1.5, 3.5, hhLod));
+    float hhPd = hhP.x * step(0.5, uDetQ.x) * (1.0 - smoothstep(uDetQ.w * 0.55, uDetQ.w, hhDist)) * (1.0 - smoothstep(1.5, 3.5, hhLod));
     if (hhPd > 1e-5) {
       vec3 V = normalize(vViewPosition);
       vec3 Vt = vec3(dot(V, hhTbn[0]), dot(V, hhTbn[1]) * hhFlip, dot(V, hhTbn[2]));
@@ -291,6 +309,7 @@ const DETAIL_COLOR_GLSL = `
     }
     hhD = textureGrad(uDetail, vec3(hhUv, hhL), hhDx, hhDy);
     hhC = textureGrad(uDetail, vec3(hhUv, hhCl), hhDx, hhDy);
+    hhUvG = hhUv; hhDxG = hhDx; hhDyG = hhDy; hhTbnG = hhTbn; hhClG = hhCl; hhPdG = hhPd; hhH0 = hhC.a;
     // elements (bricks, slabs, shingles): a tone and a hue of their own from their place in the world
     vec4 hhG = uDetG[int(hhL)];
     if (hhG.w > 0.0) {
@@ -389,16 +408,21 @@ const WEATHER_GLSL = `
 }
 `;
 
+// three's light loop with the relief's self-shadow applied to the sun / directional lights
+const ShaderLib_lightsBegin = THREE.ShaderChunk.lights_fragment_begin
+  .replace('getSunLightInfo( sunLight, directLight );', 'getSunLightInfo( sunLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );')
+  .replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );');
+
 /** Parallax quality of the lit world materials: x on/off, y min steps, z max steps, w range (units). */
 const DETAIL_Q = {
   low: [0, 4, 8, 0], high: [0, 4, 8, 0],
-  ultra: [1, 6, 14, 220], cinematic: [1, 10, 26, 360],
+  ultra: [1, 6, 14, 220], cinematic: [2, 10, 26, 360],
 };
 /** The shared parallax-quality uniform (one live world at a time; ground.js sets it with the tier). */
 export const DETAIL_TIER = { value: new THREE.Vector4(0, 4, 8, 0) };
 /**
  * Pick the detail quality of the world materials for a tier: parallax on ultra (short range) and
- * cinematic (longer, more steps); none below.
+ * cinematic (longer, more steps, and the relief shadows the sun); none below.
  * @param {string} tier 'low' | 'high' | 'ultra' | 'cinematic'
  */
 export function setDetailTier(tier) {
@@ -483,6 +507,7 @@ export function patchDetail(mat, shared, key, opts = {}) {
           float hhE = clamp(length(fwidth(nonPerturbedNormal)) * 5.0, 0.0, 1.0) * (1.0 - smoothstep(30.0, 190.0, length(vViewPosition)));
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.3 + 0.025, hhE * 0.4);
         }`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>', ShaderLib_lightsBegin);
     if (rooms) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += hhRoomCol;');
     }
