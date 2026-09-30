@@ -123,6 +123,7 @@ test('top-down renderer draws a level: roofs, gates, dark sections, day and nigh
       assert.ok(log.strokes > 0, 'gate rims drawn');
       g.level.setGate(gate.id, true);
       g.level.setLights(map.sections[1].id, false);
+      r.addEvents([{ type: 'shake', k: 0.6, x: p.x, y: p.y, r: 1800 }, { type: 'gate', id: gate.id, open: true }], { localId: 1 });
       frame(90);
       // walk into the room: its roof fades out
       p.x = roof.x; p.y = roof.y;

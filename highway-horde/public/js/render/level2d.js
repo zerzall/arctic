@@ -37,6 +37,7 @@ function inRect(r, x, y, pad = 0) {
  *   drawGates(ctx, view, viewRect, time): void,
  *   drawRoofs(ctx, view, viewRect, local, dt): void,
  *   tick(view, dt): void,
+ *   addEvents(events, camX, camY, shake(amount)): void,
  * }} null off a level
  */
 export function createLevel2D(map, deps = {}) {
@@ -171,5 +172,14 @@ export function createLevel2D(map, deps = {}) {
     ctx.globalAlpha = 1;
   }
 
-  return { gateAlpha, lightOff, drawGates, drawRoofs, tick };
+  /** A level's `shake` events shake the camera (by their strength, fading to nothing at their reach). */
+  function addEvents(events, camX, camY, shake) {
+    for (const e of events) {
+      if (!e || e.type !== 'shake') continue;
+      const d = Math.hypot((e.x || 0) - camX, (e.y || 0) - camY), r = e.r || 1800;
+      if (d < r) shake(clamp(e.k || 0.5, 0, 1) * (1 - d / r) * 0.8);
+    }
+  }
+
+  return { gateAlpha, lightOff, drawGates, drawRoofs, tick, addEvents };
 }

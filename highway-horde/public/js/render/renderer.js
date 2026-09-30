@@ -1229,6 +1229,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       env.time = time;
       effects.addEvents(events, env);
       if (hideout2d) hideout2d.addEvents(events, time);
+      if (level2d) level2d.addEvents(events, camera.x, camera.y, (a) => camera.addTrauma(a));
     },
     /** Story hideouts: show these upgrade tiers ({ generator: 2, ... }) on the slots (same call as the 3D renderer's). */
     setHideoutUpgrades(u) {
