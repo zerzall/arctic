@@ -1737,7 +1737,8 @@ refresh rate (for example Auto on a 4070 Ti Super at 1080p, 100-150 % at 4K on U
   Off by default; timing costs nothing while the overlay is hidden.
 - `public/dev/fps-sandbox.html` parameters (see the header of `fps-sandbox.js`): `q=cinematic`,
   `msaa=0|2|4|8`, `dof=0|1`, `mb=0|1`, `shadows=`, `contact=`, `aofull=`, `fxhigh=`, `lens=`,
-  `lightshadows=`, `bright= contrast= sat=`, `timing=1`, and the existing `scale=`,
+  `lightshadows=`, `bright= contrast= sat=`, `timing=1`, `hp=<1..100>` (low health: the hurt look and
+  depth of field in the ghost view), and the existing `scale=`,
   `zombies=`, `time=`, `wave=`.
 - `public/dev/benchmark.html`: a 20-second fly-through of the highway map on a fixed
   camera path (`bench-stats.js` `pathAt`), with `q=`, `scale=`, `msaa=`, `secs=`, `auto=1`
