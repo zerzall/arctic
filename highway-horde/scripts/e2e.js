@@ -36,6 +36,12 @@
 //                   zip line, escape, "Escaped" end screen), then first person: hill, tower
 //                   floor and roof
 //
+//   l  story        Road to Haven: Story → New campaign (solo) → the first stage (the hideout of the
+//                   stub content, or the first road briefing of the real one) → a mission briefed,
+//                   deployed and won → the debrief (stars, XP bar, level-up, perk point spent) →
+//                   on to the next stage; then the saves: reload, the campaign is listed, Export a
+//                   file, Delete, Import it back, Continue resumes it
+//
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
 // localStorage before every page load); g and h play first person at quality 'low', i both.
 // First-person test hooks (window.__HH, set by ui/match.js):
@@ -1828,6 +1834,169 @@ async function scenarioCampaign(sc) {
   await sc.screenshots('-fps-roof', FPS_SHOT_MS);
 }
 
+/**
+ * l. Story: the persistent campaign, one whole loop and its saves. Works with the stub content
+ * (a hideout on the Roadhouse map, missions with a timer) and with the real campaign (a road
+ * mission first, no hideout): the mission is won by the clock when it has one, else forced
+ * through the host's own result path.
+ */
+async function scenarioStory(sc) {
+  const pl = await sc.player('story');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Wanderer', cls: 'soldier' });
+  const { page } = pl;
+  const story = (fn, arg) => page.evaluate(fn, arg);
+  const stage = () => story(() => (window.__HH_STORY ? window.__HH_STORY.stage : null));
+  const skipScenes = async () => {
+    for (let i = 0; i < 12 && await story(() => !!(window.__HH_STORY && window.__HH_STORY.dialogueOpen)); i++) {
+      await story(() => window.__HH_STORY.skipScene());
+      await sleep(250);
+    }
+  };
+
+  // ---- the menu, a new campaign
+  expect(await visible(pl, '#btn-story'), 'the title has no Story button');
+  await page.click('#btn-story');
+  await waitFor(pl, () => !document.querySelector('#screen-story').hidden, null, 'the Story screen');
+  expect(await visible(pl, '#story-wrap [data-act="new"]'), 'the Story screen has no New campaign button');
+  expect((await page.textContent('#story-wrap')).includes('No campaign yet'), 'a fresh browser should have no campaign');
+  await page.click('#story-wrap [data-act="new"]');
+  await waitFor(pl, () => !document.querySelector('#dlg-campaign').hidden, null, 'the new-campaign dialog');
+  await page.fill('#nc-name', 'The E2E Crew');
+  await page.click('#dlg-campaign [data-act="solo"]');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the story lobby');
+  expect(await visible(pl, '#story-lobby-panel'), 'the story lobby panel is not visible');
+  expect(await page.inputValue('#story-lobby-panel .st-crew-input') === 'The E2E Crew', 'the story lobby should show the crew name');
+  await sc.screenshots('-lobby');
+  await page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH && window.__HH.getView() && window.__HH_STORY, null, 'the story game screen');
+
+  // ---- the first stage: a hideout to walk (stub), or a briefing right away (road)
+  await waitFor(pl, () => ['hideout', 'briefing'].includes(window.__HH_STORY.stage), null, 'the first stage');
+  await sleep(900);
+  await skipScenes();
+  const first = await stage();
+  log(`    story: first stage "${first}"`);
+  if (first === 'hideout') {
+    // the stations: every panel opens and closes
+    for (const kind of ['workbench', 'armory', 'infirmary', 'upgrades', 'perks', 'board']) {
+      await story((k) => window.__HH_STORY.open(k), kind);
+      await waitFor(pl, (k) => window.__HH_STORY.panel === k, kind, `the ${kind} panel`, 5000);
+      expect(await visible(pl, '.st-panel-layer'), `${kind} panel is not visible`);
+      await story(() => window.__HH_STORY.close());
+      await waitFor(pl, () => window.__HH_STORY.panel === null, null, 'the panel closing', 5000);
+    }
+    await story(() => window.__HH_STORY.open('board'));
+    await waitFor(pl, () => window.__HH_STORY.panel === 'board', null, 'the mission board', 5000);
+    await sc.screenshots('-board');
+    await page.click('.st-panel-layer [data-act="brief"]');
+    await waitFor(pl, () => window.__HH_STORY.stage === 'briefing', null, 'the briefing', 8000);
+    await sleep(500);
+    await skipScenes();
+  }
+  expect(await visible(pl, '.st-brief'), 'the briefing screen is not visible');
+  const missionId = await story(() => window.__HH_STORY.session.story.missionId);
+  expect(!!missionId, 'no mission is being briefed');
+  expect(await visible(pl, '.st-brief [data-act="deploy"]'), 'the host has no Deploy button');
+  await sc.screenshots('-briefing');
+
+  // ---- deploy, win
+  await page.click('.st-brief [data-act="deploy"]');
+  await waitFor(pl, () => window.__HH_STORY.stage === 'mission', null, 'the mission stage', 10e3);
+  await sleep(1500);
+  const debriefed = await page.waitForFunction(() => window.__HH_STORY.stage === 'debrief', null, { timeout: 14e3, polling: 100 }).then(() => true, () => false);
+  if (!debriefed) {
+    // (no clock on this mission: end it through the host's result path)
+    await story(() => {
+      const st = window.__HH_STORY.session.story;
+      st._finish(st._synth('victory'));
+    });
+    await waitFor(pl, () => window.__HH_STORY.stage === 'debrief', null, 'the debrief', 8000);
+  }
+  await waitFor(pl, () => !!document.querySelector('.st-debrief:not([hidden]) .st-result-row.me'), null, 'the result screen', 8000);
+  // the XP bar fills and rolls into a level-up
+  await waitFor(pl, () => {
+    const el = document.querySelector('.st-debrief .st-result-row.me .st-xp-gain');
+    return !!el && /\+[1-9][0-9,]* XP/.test(el.textContent);
+  }, null, 'the XP counter running', 8000);
+  await sleep(3800);
+  await skipScenes();
+  const res = await story(() => {
+    const d = window.__HH_STORY.session.story.debrief;
+    const p = window.__HH_STORY.session.story.profile;
+    return {
+      result: d.result, stars: d.stars, xp: p.xp, level: p.level, points: p.perkPoints, scrap: p.scrap,
+      lvlBadge: document.querySelector('.st-debrief .st-result-row.me .st-lvl-badge').textContent, next: d.next,
+    };
+  });
+  log(`    story: won ${missionId}: ${res.stars} stars, xp ${res.xp}, level ${res.level}, ${res.points} perk points, scrap ${res.scrap}, next ${JSON.stringify(res.next)}`);
+  expect(res.result === 'victory', `the mission should be won, got ${res.result}`);
+  expect(res.stars >= 1 && res.xp > 0 && res.level >= 2 && res.points >= 1, `a win should give XP and a level: ${JSON.stringify(res)}`);
+  expect(res.lvlBadge === `LV ${res.level}`, `the animated level badge should end on LV ${res.level}, got ${res.lvlBadge}`);
+  await sc.screenshots('-debrief');
+
+  // ---- spend the perk point from the debrief
+  await page.click('.st-debrief [data-act="perks"]');
+  await waitFor(pl, () => window.__HH_STORY.panel === 'perks', null, 'the perk tree', 5000);
+  await page.click('.st-panel-layer [data-act="perk"][data-perk="steady"]');
+  await waitFor(pl, (p) => window.__HH_STORY.session.story.profile.perkPoints === p - 1 && window.__HH_STORY.session.story.profile.perks.steady === 1, res.points, 'the perk being bought', 5000);
+  await story(() => window.__HH_STORY.close());
+  await waitFor(pl, () => window.__HH_STORY.panel === null, null, 'the perk tree closing', 5000);
+
+  // ---- on to the next stage
+  await page.click('.st-debrief [data-act="back"]');
+  await waitFor(pl, () => window.__HH_STORY.stage !== 'debrief' && !!window.__HH.getView(), null, 'the next stage', 10e3);
+  await sleep(700);
+  await skipScenes();
+  const after = await story(() => {
+    const st = window.__HH_STORY.session.story;
+    return { stage: st.stage, done: Object.keys(st.world.progress.completed), day: st.world.day, perks: st.profile.perks };
+  });
+  log(`    story: next stage "${after.stage}", completed ${after.done.join()}, day ${after.day}`);
+  expect(after.done.includes(missionId), `the world should record ${missionId} as completed`);
+  expect(after.day > 41, `each mission moves the day on (day ${after.day})`);
+  expect(after.perks.steady === 1, 'the bought perk should be on the profile');
+  expect(['hideout', 'briefing'].includes(after.stage), `after the debrief the crew is in the hideout or a briefing, not "${after.stage}"`);
+  await sc.screenshots('-after');
+
+  // ---- saves: reload, the campaign is listed with its progress
+  await page.reload();
+  await waitFor(pl, () => !document.querySelector('#app').classList.contains('booting') && !document.querySelector('#screen-title').hidden, null, 'the title after a reload');
+  await page.click('#btn-story');
+  await waitFor(pl, () => !!document.querySelector('#story-wrap .st-world'), null, 'the saved campaign');
+  const card = (await page.textContent('#story-wrap .st-world')).replace(/\s+/g, ' ');
+  expect(card.includes('The E2E Crew'), `the campaign card should carry the crew name: ${card}`);
+  expect(/missions\s*1\s*\//i.test(card), `the campaign card should show 1 mission done: ${card}`);
+  expect((await page.textContent('#story-wrap .st-survivor')).includes('Wanderer'), 'the survivor card should show the profile');
+  await sc.screenshots('-saves');
+
+  // export → delete → import
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 8000 }), page.click('#story-wrap .st-world [data-act="export"]')]);
+  const file = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+  expect(file.format === 'highway-horde-save', `the export should be a save file, got ${file.format}`);
+  const exported = Object.values(file.worlds || {});
+  expect(exported.length === 1 && exported[0].progress.completed[missionId], 'the export should hold the campaign with its progress');
+  expect(file.profile && file.profile.perks.steady === 1, 'the export should hold the survivor');
+  const saved = path.join(OUT, 'story-export.json');
+  await dl.saveAs(saved);
+  await page.click('#story-wrap .st-world [data-act="delete"]');
+  await waitFor(pl, () => !document.querySelector('#dlg-confirm').hidden, null, 'the delete confirmation');
+  await page.click('#confirm-yes');
+  await waitFor(pl, () => !document.querySelector('#story-wrap .st-world'), null, 'the campaign being deleted');
+  await page.setInputFiles('#screen-story input[type="file"]', saved);
+  await waitFor(pl, () => !!document.querySelector('#story-wrap .st-world'), null, 'the imported campaign', 8000);
+  expect((await page.textContent('#story-wrap .st-world')).includes('The E2E Crew'), 'the imported campaign should be back');
+
+  // Continue resumes it where it was
+  await page.click('#story-wrap .st-world [data-act="continue"]');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the lobby of the resumed campaign');
+  await page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH_STORY && ['hideout', 'briefing'].includes(window.__HH_STORY.stage), null, 'the resumed campaign', 15e3);
+  const resumed = await story(() => ({ done: Object.keys(window.__HH_STORY.session.story.world.progress.completed), perk: window.__HH_STORY.session.story.profile.perks.steady }));
+  expect(resumed.done.includes(missionId) && resumed.perk === 1, `the resumed campaign keeps its progress: ${JSON.stringify(resumed)}`);
+  log(`    story: saves ok (export ${(fs.statSync(saved).size / 1024).toFixed(1)} KB), resumed with ${resumed.done.join()} done`);
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -1840,6 +2009,7 @@ const SCENARIOS = [
   ['i', 'zone', scenarioZone, 360e3],
   ['j', 'day', scenarioDay, 300e3],
   ['k', 'campaign', scenarioCampaign, 420e3],
+  ['l', 'story', scenarioStory, 200e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------
