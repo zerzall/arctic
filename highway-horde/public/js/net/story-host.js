@@ -322,8 +322,12 @@ export class StoryHost extends StoryView {
       id: r.id, name: r.name, color: r.color, cls: r.cls, bot: !!r.bot, story: this.specFor(r),
     }));
     const create = session.hooks.createGame || ((opts) => createStoryGame(opts, stage));
-    const ok = session._launchGame({ mapId, gameSettings: game, players, create, story: this.startInfo() });
-    if (ok) this._emit('state', this.stateInfo());
+    const info = this.startInfo();
+    const ok = session._launchGame({ mapId, gameSettings: game, players, create, story: info });
+    if (ok) {
+      this.stageInfo = { map: info.map || null, arrival: info.arrival || null, epilogue: !!info.epilogue };
+      this._emit('state', this.stateInfo());
+    }
     return ok;
   }
 

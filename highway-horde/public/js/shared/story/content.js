@@ -212,14 +212,24 @@ export function expandTokens(text, ctx = {}) {
   return String(text).replace(/\{(day|crew|scrap)\}/g, (_, k) => (ctx[k] !== undefined ? String(ctx[k]) : ''));
 }
 
+/** The values {day} {crew} {scrap} stand for in this world. */
+export function sceneContext(world) {
+  return {
+    day: world && Number.isFinite(world.day) ? world.day : START_DAY,
+    crew: world && world.name ? world.name : 'the crew',
+    scrap: world && world.hideout && world.hideout.stash ? world.hideout.stash.scrap | 0 : 0,
+  };
+}
+
 /**
  * Scene lines ready to play: lines whose `when` fails are dropped, tokens are filled in.
  * @param {object[]} lines
  * @param {object|null} world
  * @param {{ crew?: string, day?: number, scrap?: number }} [ctx]
  */
-export function playableLines(lines, world, ctx = {}) {
+export function playableLines(lines, world, ctx = null) {
   if (!Array.isArray(lines)) return [];
+  if (!ctx) ctx = sceneContext(world);
   const out = [];
   for (const l of lines) {
     if (!l || typeof l.text !== 'string') continue;
@@ -303,6 +313,34 @@ export function getScene(id) {
     }
   }
   return null;
+}
+
+/** The pre-mission pep talk of a mission (lines) or null. */
+export function pepFor(missionId) {
+  const pep = content.dialogue && content.dialogue.pep;
+  return pep && Object.hasOwn(pep, missionId) && Array.isArray(pep[missionId]) ? pep[missionId] : null;
+}
+
+/**
+ * A quip for the retry screen (one line, as a scene of one) or null.
+ * @param {string} missionId
+ * @param {number} pick 0..1
+ */
+export function retryQuip(missionId, pick = 0) {
+  const r = content.dialogue && content.dialogue.retry;
+  if (!r) return null;
+  const own = r.byMission && Object.hasOwn(r.byMission, missionId) ? r.byMission[missionId] : null;
+  const pool = [...(Array.isArray(own) ? own : []), ...(Array.isArray(r.general) ? r.general : [])];
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.min(0.999, Math.max(0, pick)) * pool.length)];
+}
+
+/** A line of station flavour ("Scrap in, damage out. You have {scrap}."), or null. */
+export function stationLine(kind, pick = 0) {
+  const s = content.dialogue && content.dialogue.stations;
+  const e = s && Object.hasOwn(s, kind) ? s[kind] : null;
+  if (!e || !Array.isArray(e.lines) || !e.lines.length) return null;
+  return e.lines[Math.floor(Math.min(0.999, Math.max(0, pick)) * e.lines.length)];
 }
 
 /** Reset to no content (tests). */

@@ -6,6 +6,7 @@
 import { h } from './dom.js';
 import { castOf } from '../shared/story/content.js';
 import { drawCastPortrait } from './story-kit.js';
+import { padNavigate } from './padnav.js';
 
 /** Typewriter speed (characters per second). */
 const CPS = 62;
@@ -31,10 +32,12 @@ export function createDialogue({ root, audio, voice, deps }) {
   const live = h('span.st-sr', { 'aria-live': 'polite' });
   const hint = h('div.st-hint');
   const next = h('span.st-next', { text: '▶', 'aria-hidden': 'true' });
+  const menu = h('div.st-menu-topics', { hidden: true, role: 'menu', 'aria-label': 'Ask about' });
   const box = h('div.st-box', null, [
     h('div.st-plate', null, [plateName, plateRole]),
     text,
     live,
+    menu,
     h('div.st-box-foot', null, [hint, next]),
   ]);
   const title = h('div.st-scene-title');
@@ -66,6 +69,7 @@ export function createDialogue({ root, audio, voice, deps }) {
   let raf = 0;
   let last = 0;
   let done = false;
+  let menuOn = false;
   const seen = [];
 
   function showCard(who) {
@@ -89,7 +93,9 @@ export function createDialogue({ root, audio, voice, deps }) {
   }
 
   function setHint() {
-    hint.textContent = done ? 'Space · click · A — continue     Esc · B — skip' : 'Space · click · A — continue     Esc · B — skip     L — log';
+    if (menuOn) hint.textContent = '1–9 · click · A — ask     Esc · B — leave     L — log';
+    else if (opts && opts.menu) hint.textContent = 'Space · click · A — continue     Esc · B — leave     L — log';
+    else hint.textContent = done ? 'Space · click · A — continue     Esc · B — skip' : 'Space · click · A — continue     Esc · B — skip     L — log';
   }
 
   function tick(now) {
@@ -133,7 +139,9 @@ export function createDialogue({ root, audio, voice, deps }) {
       el.classList.add('line-done');
       return;
     }
+    if (menuOn) return;
     if (idx + 1 >= lines.length) {
+      if (opts && opts.menu && showMenu()) return;
       finish(false);
       return;
     }
@@ -142,8 +150,55 @@ export function createDialogue({ root, audio, voice, deps }) {
     showLine();
   }
 
+  /** The topic list after a greeting (or after a topic was heard). @returns {boolean} whether there is anything to ask */
+  function showMenu() {
+    const topics = opts && opts.menu ? opts.menu.topics() : [];
+    if (!topics.length) return false;
+    menuOn = true;
+    el.classList.add('has-menu');
+    menu.hidden = false;
+    menu.replaceChildren(
+      ...topics.map((tp, i) => h('button.btn.st-topic', {
+        type: 'button', role: 'menuitem', dataset: { topic: tp.id },
+        onclick: () => pickTopic(tp),
+      }, [h('span.st-topic-n', { text: String(i + 1) }), h('span', { text: tp.prompt })])),
+      h('button.btn.btn-ghost.st-topic.st-leave', { type: 'button', role: 'menuitem', dataset: { act: 'leave' }, onclick: () => finish(false) }, [h('span.st-topic-n', { text: 'Esc' }), h('span', { text: opts.menu.leave || 'Leave' })]),
+    );
+    done = true;
+    setHint();
+    requestAnimationFrame(() => {
+      const b = menu.querySelector('button');
+      if (b && menuOn) b.focus({ preventScroll: true });
+    });
+    return true;
+  }
+
+  function hideMenu() {
+    menuOn = false;
+    el.classList.remove('has-menu');
+    menu.hidden = true;
+    menu.replaceChildren();
+  }
+
+  function pickTopic(tp) {
+    if (!open || !menuOn) return;
+    hideMenu();
+    audio.ui('click');
+    logList.appendChild(h('div.st-log-line.st-you', null, [h('b', { text: 'You' }), h('span', { text: ` ${tp.prompt}` })]));
+    const more = opts.menu.pick(tp) || [];
+    if (!more.length) {
+      if (!showMenu()) finish(false);
+      return;
+    }
+    lines = more;
+    idx = 0;
+    done = false;
+    showLine();
+  }
+
   function finish(skipped) {
     if (!open) return;
+    hideMenu();
     open = false;
     cancelAnimationFrame(raf);
     voice.cancel();
@@ -161,7 +216,15 @@ export function createDialogue({ root, audio, voice, deps }) {
   window.addEventListener('keydown', (e) => {
     if (!open) return;
     const k = e.key;
-    if (k === ' ' || k === 'Enter' || k === 'ArrowRight') {
+    if (menuOn && /^[1-9]$/.test(k)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const b = menu.querySelectorAll('.st-topic:not(.st-leave)')[Number(k) - 1];
+      if (b) b.click();
+    } else if (menuOn && (k === ' ' || k === 'Enter')) {
+      // the focused topic button handles it (Enter / Space click a button)
+      e.stopImmediatePropagation();
+    } else if (k === ' ' || k === 'Enter' || k === 'ArrowRight') {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (!logPanel.hidden) logPanel.hidden = true;
@@ -189,7 +252,9 @@ export function createDialogue({ root, audio, voice, deps }) {
     /**
      * Play a scene.
      * @param {{ who: string, text: string }[]} sceneLines
-     * @param {{ title?: string, onDone?: (skipped: boolean) => void }} [o]
+     * @param {{ title?: string, onDone?: (skipped: boolean) => void,
+     *   menu?: { topics: () => { id: string, prompt: string }[], pick: (topic: object) => object[], leave?: string } }} [o]
+     *   `menu`: after the lines a list of topics to ask about; picking one plays the lines `pick` returns.
      */
     play(sceneLines, o = {}) {
       const list = (Array.isArray(sceneLines) ? sceneLines : []).filter((l) => l && typeof l.text === 'string' && l.text);
@@ -198,6 +263,7 @@ export function createDialogue({ root, audio, voice, deps }) {
         return false;
       }
       if (open) finish(true);
+      hideMenu();
       lines = list;
       idx = 0;
       opts = o;
@@ -229,7 +295,11 @@ export function createDialogue({ root, audio, voice, deps }) {
     /** Gamepad edges: A continues, B skips, LB opens the log. */
     nav(n) {
       if (!open || !n) return;
-      if (n.accept) advance();
+      if (menuOn) {
+        if (n.back) this.escape();
+        else if (n.tabPrev) toggleLog();
+        else padNavigate(menu, n);
+      } else if (n.accept) advance();
       else if (n.back) this.escape();
       else if (n.tabPrev) toggleLog();
     },

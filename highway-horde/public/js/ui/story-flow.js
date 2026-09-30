@@ -7,11 +7,20 @@ import { h, setText } from './dom.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { xpBar } from '../shared/story/progression.js';
-import { castOf, getMission, HIDEOUT_NAMES } from '../shared/story/content.js';
+import { castOf, getMission, HIDEOUT_NAMES, playableLines, pepFor, retryQuip } from '../shared/story/content.js';
 import { pips, chip, weaponIcon, num } from './story-kit.js';
 import { MAX_TIER, KIT_ITEMS, KIT_IDS } from '../shared/story/upgrades.js';
 
 const ANIM_MS = 2600;
+
+/** What the debrief's way-on button says, from where the story goes next (`debrief.next`). */
+function wayOnLabel(next, victory) {
+  if (!next || next.done) return 'Back to the hideout';
+  if (next.kind === 'briefing') return victory ? 'Next mission' : 'Back to the briefing';
+  if (next.epilogue) return 'Continue';
+  if (next.arrival) return `On to ${HIDEOUT_NAMES[next.hideout] || 'the next hideout'}`;
+  return 'Back to the hideout';
+}
 
 function ease(t) {
   return 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
@@ -89,7 +98,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const foot = h('footer.st-brief-foot', null, isHost
       ? [
         menuBtn,
-        h('button.btn', { type: 'button', dataset: { act: 'cancel' }, onclick: () => st.cancelBriefing() }, 'Back to the hideout'),
+        st.direct ? null : h('button.btn', { type: 'button', dataset: { act: 'cancel' }, onclick: () => st.cancelBriefing() }, 'Back to the hideout'),
         h('button.btn.btn-primary.btn-big', {
           type: 'button', dataset: { act: 'deploy', autofocus: '' },
           onclick: () => {
@@ -135,8 +144,10 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     renderBriefing();
     if (first) {
       audio.ui('stage');
-      const lines = st.mission.briefing;
-      if (Array.isArray(lines) && lines.length) dialogue.play(lines, { title: `${st.mission.chapter}.${st.mission.index} · ${st.mission.title}` });
+      // the briefing itself, then the send-off the mission's pep talk gives
+      const lines = [...(Array.isArray(st.mission.briefing) ? st.mission.briefing : []), ...(pepFor(st.mission.id) || [])];
+      const playable = playableLines(lines, st.world);
+      if (playable.length) dialogue.play(playable, { title: `${st.mission.chapter}.${st.mission.index} · ${st.mission.title}` });
     }
     requestAnimationFrame(() => {
       const b = briefEl.querySelector('[data-autofocus]') || briefEl.querySelector('button');
@@ -173,11 +184,13 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const mission = getMission(d.mission);
     const me = d.players.find((p) => p.pid === session.localId) || null;
     const roster = new Map(session.roster.map((r) => [r.id, r]));
+    const quip = victory ? null : retryQuip(d.mission, Math.random());
     const starEls = [0, 1, 2].map((i) => h('span.st-star' + (i < d.stars ? '.on' : ''), { text: '★', style: { '--i': String(i) } }));
     const head = h('header.st-debrief-head', null, [
       h('div.st-debrief-kicker', { text: mission ? `Chapter ${mission.chapter} · ${mission.title}` : d.title }),
       h('h2.st-debrief-title', { text: victory ? (d.replay ? 'Mission complete' : 'Mission complete') : 'Mission failed' }),
       victory ? h('div.st-stars-row', { 'aria-label': `${d.stars} stars` }, starEls) : h('p.st-sub', { text: 'The crew fell back. Nothing from the mission is kept.' }),
+      quip ? h('p.st-quip', null, [h('b', { text: castOf(quip.who).name, style: { color: castOf(quip.who).color } }), ` “${quip.text}”`]) : null,
       d.time ? h('div.st-sub', { text: `Time ${Math.floor(d.time / 60)}:${String(d.time % 60).padStart(2, '0')}${d.replay ? ' · replay' : ''}` }) : null,
     ]);
 
@@ -232,7 +245,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
         menuBtn,
         perkBtn,
         !victory ? h('button.btn.btn-primary.btn-big', { type: 'button', dataset: { act: 'retry', autofocus: '' }, onclick: () => st.retry() }, 'Retry the mission') : null,
-        h('button.btn' + (victory ? '.btn-primary.btn-big' : ''), { type: 'button', dataset: victory ? { act: 'back', autofocus: '' } : { act: 'back' }, onclick: () => st.backToHideout() }, 'Back to the hideout'),
+        h('button.btn' + (victory ? '.btn-primary.btn-big' : ''), { type: 'button', dataset: victory ? { act: 'back', autofocus: '' } : { act: 'back' }, onclick: () => st.backToHideout() }, wayOnLabel(d.next, victory)),
       ]
       : [menuBtn, perkBtn, h('span.st-wait', { text: 'Waiting for the host to head back…' })]);
     debriefEl.replaceChildren(h('div.st-debrief-inner', null, [head, h('ul.st-results', null, rows), crew, foot]));
@@ -242,7 +255,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     if (onChange) onChange();
     animate(anims, () => {
       if (victory && me && mission && Array.isArray(mission.debrief) && mission.debrief.length && !d.replay) {
-        dialogue.play(mission.debrief, { title: `${mission.title} — afterwards` });
+        dialogue.play(playableLines(mission.debrief, st.world), { title: `${mission.title} — afterwards` });
       }
     });
     requestAnimationFrame(() => {

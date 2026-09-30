@@ -10,8 +10,8 @@ import { $, h, setText, setShown } from './dom.js';
 import { createProfile, sanitizeProfile } from '../shared/story/profile.js';
 import { createWorld } from '../shared/story/world.js';
 import { loadProfile, saveProfile, saveWorld, loadWorlds } from '../shared/story/save.js';
-import { getScene, talkLines, castOf, getMission, getMissions } from '../shared/story/content.js';
-import { currentChapter } from '../shared/story/world.js';
+import { getScene, castOf, getMission, conversationFor, playableLines, getEpilogue } from '../shared/story/content.js';
+import { pendingArrival } from '../shared/story/graph.js';
 import { xpBar } from '../shared/story/progression.js';
 import { flashToast } from './menus.js';
 import { padNavigate } from './padnav.js';
@@ -28,7 +28,9 @@ const STATION_PANELS = {
   board: 'board', radio: 'board', workbench: 'workbench', armory: 'armory', stash: 'armory', infirmary: 'infirmary', upgrades: 'upgrades',
 };
 
-const STATION_LABELS = { board: 'Mission board', workbench: 'Workbench', armory: 'Armory', infirmary: 'Infirmary', upgrades: 'Upgrade board', perks: 'Perks' };
+const STATION_LABELS = {
+  board: 'Mission board', workbench: 'Workbench', armory: 'Armory', infirmary: 'Infirmary', upgrades: 'Upgrade board', perks: 'Perks', talk: 'Talk', sleep: 'Sleep',
+};
 
 const BUY_ACTS = new Set(['tier', 'perk', 'hideout', 'kit', 'buykit', 'buygun', 'donate']);
 
@@ -45,7 +47,10 @@ export function createStoryApp(ctx, hooks) {
   let dockEl = null;
   let promptEl = null;
   let lastPrompt = '';
-  let introFor = null;
+  /** Scenes already started this session (a flag name each): a scene never plays twice. */
+  const played = new Set();
+  /** Topics heard on this hideout visit (dialogue `once`). */
+  let heard = new Set();
 
   const voice = createVoice(() => prefs.settings);
   const dialogue = createDialogue({ root, audio, voice, deps });
@@ -124,8 +129,10 @@ export function createStoryApp(ctx, hooks) {
         if (ctx.lobby) ctx.lobby.render();
         break;
       case 'result':
-        if (e.ok) audio.ui(BUY_ACTS.has(e.a) ? 'buy' : e.a === 'heal' ? 'ready' : 'click');
-        else {
+        if (e.ok) {
+          audio.ui(BUY_ACTS.has(e.a) ? 'buy' : e.a === 'heal' || e.a === 'bed' ? 'ready' : 'click');
+          if (e.a === 'bed') flashToast(e.note && e.note.day ? `You rest. Day ${e.note.day}.` : 'You rest.', 'good');
+        } else {
           audio.ui('deny');
           if (e.reason !== 'busy') flashToast(reasonText(e.reason), 'bad');
         }
@@ -155,7 +162,8 @@ export function createStoryApp(ctx, hooks) {
       const mine = loadWorlds()[s.story.world.id];
       if (mine && mine.rev > s.story.world.rev) s.story._act({ a: 'sync', world: mine });
     }
-    introFor = null;
+    played.clear();
+    heard = new Set();
     window.__HH_STORY = api;
   }
 
@@ -165,7 +173,8 @@ export function createStoryApp(ctx, hooks) {
     flow.sync();
     dialogue.escape();
     lobby.reset();
-    introFor = null;
+    played.clear();
+    heard = new Set();
     window.__HH_STORY = null;
   }
 
@@ -188,7 +197,7 @@ export function createStoryApp(ctx, hooks) {
       hudEl.appendChild(promptEl);
     }
     if (!dockEl || !dockEl.isConnected) {
-      dockEl = h('nav.st-dock', { hidden: true, 'aria-label': 'Hideout stations' }, ['board', 'workbench', 'armory', 'infirmary', 'upgrades', 'perks'].map((k) => h('button.btn.btn-small', {
+      dockEl = h('nav.st-dock', { hidden: true, 'aria-label': 'Hideout stations' }, ['board', 'workbench', 'armory', 'infirmary', 'upgrades', 'perks', 'talk', 'sleep'].map((k) => h('button.btn.btn-small', {
         type: 'button', dataset: { station: k }, title: STATION_LABELS[k], onclick: () => openStation(k),
       }, STATION_LABELS[k])));
       hudEl.appendChild(dockEl);
@@ -200,6 +209,17 @@ export function createStoryApp(ctx, hooks) {
     if (!canOpenPanels()) return false;
     const st = session.story;
     if (st.stage === 'briefing' && kind === 'board') return false;
+    // the stub hideout has no people and no bed: the dock stands in for them
+    if (kind === 'talk') {
+      if (dialogue.isOpen || panels.isOpen) return false;
+      talkTo('mara');
+      return true;
+    }
+    if (kind === 'sleep') {
+      if (st.stage !== 'hideout') return false;
+      st.sleep();
+      return true;
+    }
     return panels.open(kind);
   }
 
@@ -226,22 +246,8 @@ export function createStoryApp(ctx, hooks) {
     if (st.stage === 'hideout') {
       const name = (mh.map && (mh.map.name || (mh.map.hub && mh.map.hub.name))) || 'Hideout';
       mh.toast(name, 'good', 3);
-      // the very first arrival: the opening scene (the host records that it was seen)
-      if (introFor !== st.world.id && !st.world.progress.flags.talked_intro && !dialogue.isOpen) {
-        introFor = st.world.id;
-        const lines = getScene('intro');
-        if (lines) {
-          setTimeout(() => {
-            dialogue.play(lines, { title: 'Day 41', onDone: () => {
-              if (st.isHost) st.talked('intro');
-              changed();
-            } });
-            changed();
-          }, 700);
-        } else if (st.isHost) {
-          st.talked('intro');
-        }
-      }
+      heard = new Set();
+      openingScene(st);
     } else if (st.stage === 'mission') {
       const m = getMission(st.missionId);
       if (m) mh.toast(`${m.chapter}.${m.index} · ${m.title}`, 'danger', 3.5);
@@ -270,17 +276,80 @@ export function createStoryApp(ctx, hooks) {
         if (panel) {
           if (canOpenPanels() && !dialogue.isOpen && !flow.debriefOpen) openStation(panel);
         } else if (ev.kind === 'bed') {
-          flashToast('You rest. The campaign is saved.', 'good');
+          if (canOpenPanels() && !dialogue.isOpen) session.story.sleep();
         }
       } else if (ev.type === 'talk' && typeof ev.npc === 'string') {
-        const st = session.story;
-        if (!dialogue.isOpen && canOpenPanels()) {
-          const lines = talkLines(ev.npc, { chapter: currentChapter(st.world, getMissions()), flags: st.world.progress.flags, completed: st.world.progress.completed });
-          dialogue.play(lines, { title: castOf(ev.npc).name, onDone: () => { st.talked(ev.npc); changed(); } });
-          changed();
-        }
+        if (!dialogue.isOpen && canOpenPanels() && !panels.isOpen) talkTo(ev.npc);
       }
     }
+  }
+
+  // ---- scenes ------------------------------------------------------------------------------------------------------
+
+  /** Play scene lines with the world's conditions and {day} {crew} {scrap} applied. */
+  function scene(lines, o = {}) {
+    const st = session && session.story;
+    return dialogue.play(playableLines(lines, st ? st.world : null), o);
+  }
+
+  /**
+   * The scene a hideout visit opens with: the campaign's opening, the arrival at a new
+   * hideout, or the ending. Whoever watches it to the end (or skips) records that it was seen.
+   */
+  function openingScene(st) {
+    const world = st.world;
+    const info = st.stageInfo || {};
+    let pick = null;
+    if (info.epilogue) {
+      const ep = getEpilogue();
+      if (ep.lines) pick = { flag: ep.flag, lines: ep.lines, title: 'Epilogue', ending: true };
+    } else if (info.arrival) {
+      const pa = pendingArrival(world, info.arrival.hideout);
+      if (pa) pick = { flag: pa.flag, lines: pa.scene, title: `Day ${world.day}` };
+    } else if (!Object.keys(world.progress.completed).length) {
+      const lines = getScene('intro');
+      if (lines) pick = { flag: 'seen_intro', lines, title: `Day ${world.day}` };
+    }
+    if (!pick || world.progress.flags[pick.flag] || played.has(pick.flag)) return;
+    played.add(pick.flag);
+    setTimeout(() => {
+      if (!session || session.story !== st || st.stage !== 'hideout' || dialogue.isOpen) return;
+      scene(pick.lines, {
+        title: pick.title,
+        onDone: () => {
+          st.setFlag(pick.flag);
+          if (pick.ending) flashToast('The campaign is complete. The hideout is yours; the road stays open.', 'good');
+          changed();
+        },
+      });
+      changed();
+    }, 700);
+  }
+
+  /** Walk up to somebody in the hideout: a greeting, then things to ask about. */
+  function talkTo(npc) {
+    const st = session.story;
+    const w = st.world;
+    const c = conversationFor(npc, w.hideout.current, w, heard, Math.random());
+    const topics = () => conversationFor(npc, st.world.hideout.current, st.world, heard, 0).topics || [];
+    const greet = [{ who: npc, text: c.greet }];
+    scene(greet, {
+      title: castOf(npc).name,
+      menu: (c.topics || []).length ? {
+        topics,
+        leave: 'Leave',
+        pick: (tp) => {
+          heard.add(tp.id);
+          for (const f of Object.keys(tp.setFlags || {})) st.setFlag(f);
+          return playableLines(tp.lines, st.world);
+        },
+      } : undefined,
+      onDone: () => {
+        st.talked(npc);
+        changed();
+      },
+    });
+    changed();
   }
 
   function matchFrame(view, local) {
