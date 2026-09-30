@@ -21,6 +21,7 @@ import {
   isCompleted,
 } from '../shared/story/world.js';
 import { resolveNext, pendingArrival, epiloguePending } from '../shared/story/graph.js';
+import { missionTime } from '../shared/story/daylight.js';
 import { applyAction } from '../shared/story/actions.js';
 import { specFromProfile } from '../shared/story/mods.js';
 import { settleMission } from '../shared/story/rewards.js';
@@ -306,7 +307,8 @@ export class StoryHost extends StoryView {
     const stage = { stage: 'mission', mapId: m.map, stub: staging ? null : m.stub || null };
     this.stageLaunch = stage;
     const simMode = ['defend', 'zone', 'campaign', 'free'].includes(m.mode) ? m.mode : 'defend';
-    const time = simMode === 'campaign' || m.time === 'day' ? 'day' : 'night';
+    // the script's time, day for the campaign finale, day for every mission when the crew chose "Daylight only"
+    const time = missionTime(m, w, simMode);
     const extra = { simMode, title: m.title };
     return this._launch(stage, {
       mapId: m.map,

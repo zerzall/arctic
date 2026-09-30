@@ -13,17 +13,21 @@ import { BANTER, STATIONS, PEP, RETRY, TIPS, TITLE, CREDITS } from './dialogue/m
 
 export { TIPS, BANTER, STATIONS, PEP, RETRY, TITLE, CREDITS };
 
-/** Hideout visit stages. The stage of a visit is the LAST one whose hideout matches and `when` holds. */
+/**
+ * Hideout visit stages. The stage of a visit is the LAST one whose hideout matches and `when` holds.
+ * rh1 the Roadhouse after Mill Road (and Hollow Creek), rh2 after Saint Mercy (the Warden is fifteen),
+ * dp1 Blackwater Depot after the dam, dp2 after the rail yard and Fort Harlan (Okafor's unit), fs the farm.
+ */
 export const STAGES = {
-  rh1: { id: 'rh1', hideout: 'roadhouse', label: 'The Roadhouse, arrival', when: { notDone: ['m2_1'] } },
-  rh2: { id: 'rh2', hideout: 'roadhouse', label: 'The Roadhouse, chapter 2', when: { done: ['m2_1'] } },
-  dp1: { id: 'dp1', hideout: 'depot', label: 'Blackwater Depot, arrival', when: { notDone: ['m4_1'] } },
-  dp2: { id: 'dp2', hideout: 'depot', label: 'Blackwater Depot, chapter 4', when: { done: ['m4_1'] } },
+  rh1: { id: 'rh1', hideout: 'roadhouse', label: 'The Roadhouse, arrival', when: { notDone: ['m2_2'] } },
+  rh2: { id: 'rh2', hideout: 'roadhouse', label: 'The Roadhouse, after Saint Mercy', when: { done: ['m2_2'] } },
+  dp1: { id: 'dp1', hideout: 'depot', label: 'Blackwater Depot, arrival', when: { notDone: ['m4_2'] } },
+  dp2: { id: 'dp2', hideout: 'depot', label: 'Blackwater Depot, after Fort Harlan', when: { done: ['m4_2'] } },
   fs: { id: 'fs', hideout: 'farmstead', label: 'Harlan Farmstead', when: null },
 };
 export const STAGE_IDS = Object.keys(STAGES);
 
-/** talk[npcId][stageId] = { greet:[string...], topics:[{ id, prompt, lines:[{who,text}], when?, once?, setFlags? }] } */
+/** talk[npcId][stageId] = { greet:[string...], topics:[{ id, prompt, lines:[{who,text}], when?, once?, setFlags?:{[flag]:true} }] } */
 export const TALK = { ...TALK_CREW, ...TALK_MORE };
 
 /** Generic lines for an NPC with nothing new to say (or no tree for this stage). */

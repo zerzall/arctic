@@ -8,6 +8,10 @@
 //        { kind:'mission', id, chapter, hub, direct }             an available mission
 //        { kind:'epilogue', id:'epilogue' }                        every mission done, ending not seen
 //
+// Side jobs (`side: true`, JOURNEY.md §2) are never nodes: they wait on the hideout board, optional and
+// replayable, and the story goes on without them. After one the crew is back where the story stands
+// (resolveNext() of the world), which is the hideout it left from.
+//
 // Pure functions of the world and the installed content.
 
 import { getMissions, getChapters, getNextNodesOverride, getEpilogue } from './content.js';
@@ -19,6 +23,21 @@ function doneOf(world) {
 
 function flagsOf(world) {
   return (world && world.progress && world.progress.flags) || {};
+}
+
+/** Is this mission a side job of the hideout board (never part of the story's chain)? */
+export function isSideJob(m) {
+  return !!(m && m.side === true);
+}
+
+/** The story's own missions (the side jobs left out), in campaign order. */
+export function mainMissions(missions = getMissions()) {
+  return missions.filter((m) => !isSideJob(m));
+}
+
+/** The side jobs, in board order. */
+export function sideJobs(missions = getMissions()) {
+  return missions.filter(isSideJob);
 }
 
 /** Is a mission available (not done, every prerequisite done)? */
@@ -44,7 +63,7 @@ export function nextNodes(world) {
       // fall back to the default below
     }
   }
-  const missions = getMissions();
+  const missions = mainMissions();
   const done = doneOf(world), flags = flagsOf(world);
   for (const ch of getChapters()) {
     if (!ch.arrival || !Array.isArray(ch.missions) || !ch.missions.length) continue;
@@ -74,10 +93,10 @@ export function pendingArrival(world, hideoutId) {
   return null;
 }
 
-/** True while the ending has not been seen and every mission is done. */
+/** True while the ending has not been seen and every mission of the story is done (side jobs never count). */
 export function epiloguePending(world) {
   const ep = getEpilogue();
-  const missions = getMissions();
+  const missions = mainMissions();
   return !!ep.lines && missions.length > 0 && missions.every((m) => isCompleted(world, m.id)) && !flagsOf(world)[ep.flag];
 }
 

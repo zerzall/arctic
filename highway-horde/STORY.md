@@ -8,8 +8,10 @@ exactly as before.
 
 ## 1. What the player gets
 
-Friends (1–6, online or solo with AI survivors) play a **persistent story campaign**: fifteen
-missions in six chapters across the game's maps, connected by **hideouts** — safe, walkable hub
+Friends (1–6, online or solo with AI survivors) play a **persistent story campaign**: twelve
+story missions in six chapters that travel across the county (the bus on the highway, nine story
+levels, the marina finale; JOURNEY.md), twelve optional **side jobs** on the hideout board, all
+connected by **hideouts** — safe, walkable hub
 areas where the crew heals, talks to survivors, upgrades weapons, spends supplies on improving
 the hideout and picks the next mission. Progress is saved: the *world* (chapter, hideout
 upgrades, story flags, stash) and each player's own *profile* (level, perks, weapon upgrades,
@@ -38,17 +40,48 @@ nerd (mission board / radio). **Sgt. Okafor** — army sergeant holding Checkpoi
 (armory). **Priya Nair** — scout/engineer who joins in chapter 3. **June** — a child from the
 school bus (mascot; never in danger on screen). **The Warden** — radio only.
 
-| Ch | Title | Map (mode) | Missions | Hideout after |
-|----|-------|-----------|----------|---------------|
-| 1 | Dead Highway | highway (night) | 1.1 Pileup (defend the bus) · 1.2 Fuel Run (collect) · 1.3 Beacon (hold the overpass) | **The Roadhouse** (motel) |
-| 2 | Last Chance | truckstop | 2.1 Diner Siege · 2.2 Radio Parts (collect from trucks) · 2.3 Night Hauler (escort) | (Roadhouse) |
-| 3 | Blackwater | bridge | 3.1 The Crossing (repair the APC while defending) · 3.2 Sunken Cargo (collect) | **Blackwater Depot** (rail depot) |
-| 4 | Delta | checkpoint | 4.1 Hold the Tower · 4.2 Broken Line (activate 3 generators) · 4.3 Ghosts (survive + kill the Brute pack) | (Depot) |
-| 5 | Harlan County | harlan (Evac Run) | 5.1 Down the Interstate (zone run) · 5.2 Field Hospital (collect + defend) | **Harlan Farmstead** |
-| 6 | Haven | harlan (Campaign) | 6.1 Last Stand (hill) · 6.2 The Tower (ascent, roof, zip line) | — (epilogue) |
+The road, deepened (the written campaign). The crew walks off the highway on Day 42: Deke is holed up
+at Mill Road Gas with a tow truck, Ozzy has logged the Haven message for nine nights from a trailer
+with an antenna, and Roz lets everybody into the Roadhouse. In Hollow Creek, June's teacher Ruth
+Delaney wrote on a school chalkboard on Day 7 that the bus was on Highway 9 and that she had gone to
+the lake for boats; Mara keeps it from June until she knows how the story ends. On Saint Mercy's
+helipad the crew hears the Warden live for the first time: a frightened fifteen-year-old reading her
+grandfather's script so it does not stop, who reads out his list for the ferry (fuel, a regulator,
+injectors). The road fills the list without meaning to: a turbine regulator from the Blackwater
+dam, locomotive injectors from the Harlan rail yard ("they put that engine in tugboats"), army JP-8
+from Fort Harlan, medicine from Hollow Creek and Saint Mercy. Sgt. Okafor held Checkpoint Delta
+until Day 47, then fell back to Fort Harlan airfield with eleven soldiers and said "Delta" into the
+tower radio every ten minutes until someone answered. Under Harlan City and through the Blackpine
+fog the crew reaches the Haskell farm; from the fire lookout they light a signal fire, and across the
+lake the Warden leaves the harbor light on for them. On the tower she finally says her name: Wren
+Alcott. Quill, Dutch and Wendell (with Biscuit) join only through side jobs, and the finale speaks
+of them only when they came.
 
-Fifteen missions. Difficulty ramps with chapter; recommended player levels are in the mission
-data (level 1 → ~14 by the end; cap 20 for replays and "Heroic" difficulty).
+The campaign as written (JOURNEY.md §2; `shared/story/missions.js`). `->` a mission that follows
+at once on the road, `=>` a hideout arrival scene. Day or night is the mission's own; the
+"Daylight only" option (§3) plays everything by day.
+
+| Ch | Title | Missions (map, time): the beat | Hideout after |
+|----|-------|--------------------------------|---------------|
+| 1 | Dead Highway | 1.1 **Pileup** (highway, night): defend the bus until dawn -> 1.2 **Mill Road** (millroad, day): walk west through the jam, meet Deke at Mill Road Gas and Ozzy at Shady Acres, reach the Roadhouse gate | => **The Roadhouse** (motel) |
+| 2 | Hollow Creek | 2.1 **Hollow Creek** (hollowcreek, day): antibiotics from the Rexall's back room, St. Anne's bell, Ms. Delaney's chalkboard, the police lot · 2.2 **Saint Mercy** (hospital, night): Mara's old hospital, case files, insulin, the generator, the helipad radio: the Warden is fifteen | (Roadhouse) |
+| 3 | Blackwater | 3.1 **Westgate** (mall, day): Priya in the security office, the food court, Harrow's in the dark, the box truck -> 3.2 **Blackwater Dam** (dam, day, storm): the spillway, the crest in the wind, turbine two (a regulator for the ferry), the river road | => **Blackwater Depot** (rail depot) |
+| 4 | Delta | 4.1 **The Rail Yard** (railyard, day to sunset): injectors from the sheds, the signal box, the first Brute on the rail bridge, locomotive 2217 -> 4.2 **Fort Harlan** (airbase, night, rain): Okafor's eleven in the tower, JP-8 for the ferry, the runway lit for the supply drop | (Depot) |
+| 5 | Harlan County | 5.1 **Underground** (metro, day): under the jammed interchange, the dead train, the sump, the Abomination in the works, daylight in Harlan Square -> 5.2 **Blackpine** (forest, day, fog): the signal fire the Warden sees across the lake, the gorge, the mill, the farm gate | => **Harlan Farmstead** |
+| 6 | Haven | 6.1 **Last Stand** (harlan campaign, day): the hill -> 6.2 **The Tower** (harlan campaign, day): tower, roof, zip line; the Warden says her name | epilogue |
+| 7 | Side Jobs | Fuel Run, Beacon, Diner Siege, Radio Parts, Night Hauler (from ch. 2) · The Crossing, Sunken Cargo (ch. 3) · Hold the Tower, Broken Line, Ghosts (ch. 4) · Down the Interstate, Field Hospital (ch. 5) | back to the hideout |
+
+Twelve story missions and twelve side jobs. The side jobs are the first campaign's missions on the
+classic maps (highway, truckstop, bridge, checkpoint, harlan): `side: true`, filed under chapter 7
+so they never hold the story's chapter back, `opens` = the story chapter they belong to,
+`requires` = what puts them on the board, `after: 'hideout'` = back to the hideout the crew is in.
+They are optional and replayable, never a node of `nextNodes()`, and three of them bring people home
+(Quill, Dutch, Wendell). Difficulty ramps with chapter; recommended player levels are in the mission
+data (the story alone takes a party from level 1 to ~14; side jobs add on top; cap 20).
+
+Old saves: the story missions kept the first campaign's ids by chapter and position (m1_1 .. m6_2),
+so an old World's `completed` already names the matching point of the new road (`index.js
+LEGACY_MISSIONS`, `tests/story-legacy.test.js`).
 
 ## 3. Persistence (all client-side; the game has no server)
 
@@ -65,8 +98,11 @@ Profile = { v:1, id:'uuid', name, xp, level, perkPoints, perks:{[perkId]:rank}, 
 World = { v:1, id:'uuid', name:'Crew name', rev:int, createdAt, updatedAt, difficulty,
   progress:{ node:'m1_1'|'hideout:roadhouse', completed:{[missionId]:{ stars:1..3, time }}, flags:{[k]:true} },
   hideout:{ current:'roadhouse', upgrades:{[upgradeId]:tier}, recruited:{[npcId]:true}, stash:{ scrap, medkit, ammo... } },
-  members:{[profileId]:{ name, lastSeen }} }
+  members:{[profileId]:{ name, lastSeen }}, settings:{ daylight:false } }
 ```
+`settings` are the crew's campaign options: `daylight` ("Daylight only", set by the host in the story
+lobby) plays every mission and side job by day (`shared/story/daylight.js missionTime()`); worlds saved
+before it read as all options off.
 **Every participant keeps a copy of the World** (host broadcasts it after each save;
 `rev` increases on every change). Whoever hosts later picks the highest-`rev` copy it has, so
 the campaign survives its original host leaving. Profiles are per browser; a joining player sends
@@ -113,7 +149,7 @@ count scales with party size; rewards scale with difficulty.
 
 ### 5.1 Game settings & phases
 `new Game({ map, settings: { mode:'mission'|'hideout', story:{ nodeId | mission, simMode?, difficulty, title?, party:[{pid, loadout?, perks?, armor?}], npcs:[{id, name?, look?, x, y, mode?}], worldId, flags, hideoutUpgrades, ... }, ... } })`.
-`nodeId` is a mission id (the written fifteen are always known: `shared/story/registry.js`); `mission` is the script itself
+`nodeId` is a mission id (the written story missions and side jobs are always known: `shared/story/registry.js`, after the content the session installed); `mission` is the script itself
 (tests, tools); `simMode` overrides the script's `mode`. The host and every client build the map with
 `buildMap(id, seed, mapBuildOptions(settings))` (a campaign mission uses the campaign variant of its map). `party[]`
 is what a survivor's profile gives them in the sim: `loadout` (up to three weapon ids), `perks` (a `perks` object as
@@ -204,7 +240,7 @@ the story layer (`shared/story/*`, pure functions, unit-tested) and applied by t
 * **S3 — hideouts:** three hub maps (`shared/maps-hideouts.js`), 3D/2D world content for
   them (`render3d/world-hideout*.js`) including visible upgrade tiers, lighting/ambience,
   stations' 3D props, shooting-range targets, tests. Consumes S2's interactables/NPC API.
-* **S4 — narrative content:** `shared/story/missions.js` (15 missions), `shared/story/cast.js`
+* **S4 — narrative content:** `shared/story/missions.js` (the missions and side jobs), `shared/story/cast.js`
   (characters), `shared/story/dialogue.js` (hideout conversations per chapter, idle banter,
   lore notes, radio chatter), title/credits text. Pure data + a validator test
   (`tests/story-data.test.js`: schema, anchors exist, ids unique, rewards sane).

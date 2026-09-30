@@ -1,8 +1,10 @@
-// CHAPTER 6 — HAVEN (harlan, Campaign). 6.1 is the campaign director's HILLTOP stage on Radio Hill,
-// 6.2 is BREAKOUT -> ASCENT (three floors) -> ROOFTOP -> ZIP. The story is told over the radio: the
-// convoy (trucks, soldiers, kids) slips down the lake road while the crew keeps the whole county
-// looking at the hill. Timed radio events use the wait chain: `parallel:true` waits that start
-// together with the next step and speak when their seconds are up.
+// CHAPTER 6 — HAVEN (harlan, Campaign, by day). 6.1 is the campaign director's HILLTOP stage on Radio
+// Hill, 6.2 is BREAKOUT -> ASCENT (three floors) -> ROOFTOP -> ZIP. The story is told over the radio:
+// the convoy (trucks, soldiers, kids) slips down the lake road while the crew keeps the whole county
+// looking at the hill, and on the tower the Warden finally says her name. Timed radio events use the
+// wait chain: `parallel:true` waits that start together with the next step and speak when their
+// seconds are up. Characters who only join on a side job (Dutch, Quill, Wendell) speak in the
+// briefings only when they are with the crew (`when`), never on the radio of a mission.
 
 import { radio, say, L, noteStep } from './lib.js';
 
@@ -14,10 +16,11 @@ export const CH6 = [
     map: 'harlan', time: 'day', mode: 'campaign', level: [12, 13], party: { min: 1, max: 6 },
     requires: ['m5_2'], hub: 'farmstead', after: 'm6_2',
     briefing: [
-      L('narrator', 'DAY 57. HASKELL FARM. THE NIGHT BEFORE.'),
+      L('narrator', 'DAY {day}. HASKELL FARM. THE NIGHT BEFORE.'),
       L('okafor', 'Plan. The lake road runs along the north ridge. Two miles of open ground, and every dead thing in the county between us and the water.'),
       L('priya', 'I counted. Ish.'),
-      L('okafor', 'The convoy takes the lake road at dawn: the tow truck, Kessler\'s rig, both buses, my soldiers. We need the horde looking the other way.'),
+      L('okafor', 'The convoy takes the lake road at dawn: the tow truck, the box truck, the kids\' bus, my soldiers. We need the horde looking the other way.'),
+      { ...L('dutch', 'And my rig in front, with my diesel in it. Nobody leads my diesel but me.'), when: { flags: ['met_dutch'] } },
       L('mara', 'That\'s us.'),
       L('okafor', 'That is you. Radio Hill. Highest ground in the county. Light it up, make noise, hold it. Every dead thing will climb that hill to find you.'),
       L('deke', 'Nice.'),
@@ -32,11 +35,11 @@ export const CH6 = [
     steps: [
       {
         id: 't1', type: 'wait', seconds: 20, parallel: true,
-        onDone: [radio('okafor', 'Convoy is rolling. Kessler leads. He is complaining. That is how we know it is working.')],
+        onDone: [radio('okafor', 'Convoy is rolling. Mr. Harlan leads in the tow truck. He is complaining. That is how we know it is working.')],
       },
       {
         id: 't2', type: 'wait', seconds: 100, parallel: true,
-        onDone: [radio('dutch', 'For the record, the lake road is beautiful and I hate it. Three cornfields and a horse.')],
+        onDone: [radio('roz', 'For the record, the lake road is beautiful and I hate it. Three cornfields and a horse. The horse looked hungry.')],
       },
       {
         id: 't3', type: 'wait', seconds: 200, parallel: true,
@@ -63,7 +66,7 @@ export const CH6 = [
       },
       {
         id: 'after', type: 'dialogue', lines: [
-          L('ozzy', 'Convoy is on the ferry! Everyone is on the ferry! Even Quill\'s wagon, God help us.'),
+          L('ozzy', 'Convoy is on the ferry! Everyone is on the ferry! Every kid, every soldier, Roz\'s four chickens!'),
           L('okafor', 'Your turn. The tower is ahead, the dead are behind. Move like you mean it.'),
           L('mara', 'I\'m on the deck. Don\'t make me wait.'),
         ],
@@ -71,7 +74,7 @@ export const CH6 = [
     ],
     bonus: [noteStep('n19', 'ridgeHill', 'Check the transmitter console on the hill (optional)', 'hill')],
     rewards: {
-      xp: 700, scrap: 200, weapon: 'rocket', upgradePoints: 1, flags: { convoy_through: true },
+      xp: 820, scrap: 200, weapon: 'rocket', upgradePoints: 1, flags: { convoy_through: true },
     },
     debrief: [
       L('okafor', 'The convoy reached the water. Every truck, every soldier, every child.'),
@@ -94,24 +97,24 @@ export const CH6 = [
     map: 'harlan', time: 'day', mode: 'campaign', level: [13, 14], party: { min: 1, max: 6 },
     requires: ['m6_1'], hub: null, after: 'epilogue',
     briefing: [
-      L('narrator', 'DAY 58. THE LAKE ROAD. NOON.'),
+      L('narrator', 'DAY {day}. THE LAKE ROAD. NOON.'),
       L('ozzy', 'The convoy is at the marina. Everyone is on the ferry. Everyone except you.'),
-      L('deke', 'The engine caught. Cough, cough, cough, and it caught. She isn\'t pretty, but she runs.'),
+      L('deke', 'Injectors from the rail yard, a regulator from the dam, army fuel from Fort Harlan. The engine caught. Cough, cough, cough, and it caught.'),
       L('priya', 'The docks are packed with the dead. The only way onto the boat is the tower: the roof, the cable, the ferry deck.'),
       L('okafor', 'The boiler needs pressure, and the storm needs no encouragement. The ferry has to cast off by mid-afternoon. It cannot wait.'),
-      L('dutch', 'You have my diesel and my invoice. Come get them.'),
+      { ...L('dutch', 'You have my diesel and my invoice. Come get them.'), when: { flags: ['met_dutch'] } },
       L('warden', 'Hello? Hello, KD9-OZZ? I can see the hill from the tower. I saw the candle. It was... thank you.'),
       L('mara', 'Warden, this is Mara. We\'ll be on the roof in an hour.'),
       L('warden', 'Copy. Mara. Copy. The cable will hold. Grandpa rigged it. It\'ll hold.'),
-      L('ozzy', 'Grandpa?'),
-      L('warden', '...The old Warden. Never mind. Over.'),
+      L('ozzy', 'You never told us about Grandpa. Not really.'),
+      L('warden', '...On the cable. I\'ll tell you on the cable. Over.'),
       L('mara', 'See you on the deck.'),
       L('june', 'Miss Mara, don\'t be slow!'),
     ],
     steps: [
       {
         id: 'b1', type: 'wait', seconds: 45, parallel: true,
-        onDone: [radio('dutch', 'The dead are all facing your direction. You\'re very popular. It isn\'t a compliment.')],
+        onDone: [radio('danny', 'Ma\'am, the dead are all facing your direction. You\'re very popular. Sarge says it isn\'t a compliment.')],
       },
       {
         id: 'breakout', type: 'campaignStage', stage: 'breakout', text: 'Break out: run for the tower door',
@@ -137,7 +140,7 @@ export const CH6 = [
           radio('ozzy', 'Not on Haven. Haven says "stand by." Haven says "over." You\'ve said "um" eleven times today.', 4600),
           radio('warden', '...You counted?', 2200),
           radio('ozzy', 'I count everything.', 2200),
-          radio('warden', 'I\'m not a Warden. I mean, I am, sort of. I\'m Wren. I\'m fifteen. My grandfather was the Warden.', 5400),
+          radio('warden', 'I\'m not a Warden. I mean, I am, sort of. My name is Wren. I never said. My grandfather was the Warden.', 5400),
           radio('wren', 'He went to check the north pier on the eighteenth. He said back before dark. He wrote the script and left it on the console.', 5600),
           radio('wren', 'It says "Haven is open." It isn\'t. But if I say it enough nights, somebody might come and make it true.', 5600),
           radio('mara', 'Wren. It\'s Mara. How long have you been alone?', 3600),
@@ -145,7 +148,7 @@ export const CH6 = [
           radio('ozzy', 'You had me.', 2000),
           radio('wren', '...I had you.', 2400),
           radio('priya', 'Nobody is alone on my map, Wren. Not anymore.', 3600),
-          radio('dutch', 'You\'re the ferry LADY? You\'re the ferry lady. I need to renegotiate my rate.', 4200),
+          radio('roz', 'Wren, honey, it\'s Roz. There\'s soup on your stove. Somebody should have made you soup forty days ago.', 4600),
         ],
       },
       {
@@ -195,7 +198,7 @@ export const CH6 = [
       L('ozzy', 'I was listening the whole time. Just so everybody knows. The whole time.'),
       L('wren', 'I know. You said "copy" like it mattered.'),
       L('ozzy', 'It did matter.'),
-      L('dutch', 'The engine\'s running. The storm isn\'t polite. Somebody cast off this boat.'),
+      L('deke', 'The engine\'s running. The storm isn\'t polite. Somebody cast off this boat.'),
       L('wren', 'Yes, sir. Casting off. Everyone hold on.'),
     ],
     stars: { time: 1200, noDowns: true, optional: 'collectAll' },

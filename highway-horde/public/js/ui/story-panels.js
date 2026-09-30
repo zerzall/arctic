@@ -394,33 +394,52 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
     const { profile, world } = st;
     const missions = getMissions();
     const entries = missionBoard(world, missions);
-    const nextOpen = entries.find((e) => e.status !== 'done' && e.status !== 'locked');
+    // the road (the story's missions) and the side jobs (`side: true`, JOURNEY.md §2): two lists
+    const road = entries.filter((e) => !e.mission.side);
+    const jobs = entries.filter((e) => e.mission.side);
+    const nextOpen = road.find((e) => e.status !== 'done' && e.status !== 'locked') || jobs.find((e) => e.status === 'available');
     if (!sel.mission || !entries.some((e) => e.mission.id === sel.mission && e.status !== 'locked')) sel.mission = (nextOpen || entries[0] || {}).mission ? (nextOpen || entries[0]).mission.id : null;
-    const byChapter = new Map();
-    for (const e of entries) {
-      if (!byChapter.has(e.mission.chapter)) byChapter.set(e.mission.chapter, []);
-      byChapter.get(e.mission.chapter).push(e);
-    }
-    const list = h('div.st-missions', { role: 'listbox', 'aria-label': 'Missions' });
-    for (const [ch, group] of byChapter) {
-      list.appendChild(h('div.st-chapter', { text: `Chapter ${ch} — ${chapterTitle(ch)}` }));
-      for (const e of group) {
-        const m = e.mission;
-        list.appendChild(h('button.st-mission-row.' + e.status + (m.id === sel.mission ? '.on' : ''), {
-          type: 'button', role: 'option', disabled: e.status === 'locked', dataset: { mission: m.id, status: e.status },
-          'aria-selected': m.id === sel.mission ? 'true' : 'false',
-          onclick: () => {
-            sel.mission = m.id;
-            audio.ui('click');
-            render();
-          },
-        }, [
-          h('span.st-mission-id', { text: `${m.chapter}.${m.index}` }),
-          h('span.st-mission-title', { text: m.title }),
-          e.status === 'done' ? h('span.st-stars', { text: '★'.repeat(e.stars) + '☆'.repeat(3 - e.stars), 'aria-label': `${e.stars} stars` }) : e.status === 'locked' ? h('span.st-lock', { text: '🔒', 'aria-label': 'locked' }) : h('span.st-new', { text: 'NEW' }),
-        ]));
+    const row = (e, label) => {
+      const m = e.mission;
+      return h('button.st-mission-row.' + e.status + (m.side ? '.side' : '') + (m.id === sel.mission ? '.on' : ''), {
+        type: 'button', role: 'option', disabled: e.status === 'locked', dataset: { mission: m.id, status: e.status, side: m.side ? '1' : '0' },
+        'aria-selected': m.id === sel.mission ? 'true' : 'false',
+        onclick: () => {
+          sel.mission = m.id;
+          audio.ui('click');
+          render();
+        },
+      }, [
+        h('span.st-mission-id', { text: label }),
+        h('span.st-mission-title', { text: m.title }),
+        e.status === 'done' ? h('span.st-stars', { text: '★'.repeat(e.stars) + '☆'.repeat(3 - e.stars), 'aria-label': `${e.stars} stars` }) : e.status === 'locked' ? h('span.st-lock', { text: '🔒', 'aria-label': 'locked' }) : h('span.st-new', { text: m.side ? 'JOB' : 'NEW' }),
+      ]);
+    };
+    const group = (list, key) => {
+      const by = new Map();
+      for (const e of list) {
+        const k = key(e.mission);
+        if (!by.has(k)) by.set(k, []);
+        by.get(k).push(e);
       }
+      return by;
+    };
+    const list = h('div.st-missions', { role: 'listbox', 'aria-label': 'Missions' });
+    for (const [ch, grp] of group(road, (m) => m.chapter)) {
+      list.appendChild(h('div.st-chapter', { text: `Chapter ${ch} — ${chapterTitle(ch)}` }));
+      for (const e of grp) list.appendChild(row(e, `${e.mission.chapter}.${e.mission.index}`));
     }
+    // the side jobs: optional, replayable, grouped by the story chapter they belong to; the locked ones stay hidden
+    // until the road reaches them (a board full of padlocks is a spoiler)
+    const shown = jobs.filter((e) => e.status !== 'locked');
+    list.appendChild(h('div.st-chapter.st-side-head', { text: `Side jobs — ${shown.filter((e) => e.status === 'done').length} of ${jobs.length} done` }));
+    if (!shown.length) list.appendChild(h('p.st-note', { text: 'Jobs from the radio and the rumor mill show up here once the crew has a hideout. They are optional, and they pay.' }));
+    for (const [ch, grp] of group(shown, (m) => m.opens || m.chapter)) {
+      list.appendChild(h('div.st-chapter.st-side-chapter', { text: `From chapter ${ch} · ${chapterTitle(ch)}` }));
+      for (const e of grp) list.appendChild(row(e, `S${e.mission.index}`));
+    }
+    const locked = jobs.length - shown.length;
+    if (locked > 0 && shown.length) list.appendChild(h('p.st-note', { text: `${locked} more job${locked === 1 ? '' : 's'} further down the road.` }));
     const m = missions.find((q) => q.id === sel.mission);
     const roster = getSession().roster;
     let detail;
@@ -440,12 +459,13 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
           close();
         },
       }, [
-        h('span.btn-title', { text: isHost ? (entry.status === 'done' ? 'Replay this mission' : 'Brief the crew') : 'Waiting for the host' }),
+        h('span.btn-title', { text: isHost ? (entry.status === 'done' ? (m.side ? 'Take the job again' : 'Replay this mission') : m.side ? 'Take the job' : 'Brief the crew') : 'Waiting for the host' }),
         h('span.btn-sub', { text: isHost ? 'Everyone confirms in the briefing before you deploy' : 'The host picks the mission at the board' }),
       ]);
       detail = h('div.st-mission-detail', null, [
         h('div.st-mission-map', null, [h('span.st-tag', { text: map ? map.name : m.map }), h('span.st-tag', { text: m.time === 'day' ? 'Day' : 'Night' }), m.mode ? h('span.st-tag', { text: m.mode }) : null]),
         h('h3', { text: m.title }),
+        m.side ? h('p.st-note.good', { text: `Side job from chapter ${m.opens} · ${chapterTitle(m.opens)}. Optional and replayable: the road waits for you.` }) : null,
         h('p.st-blurb', { text: m.blurb || '' }),
         h('div.st-mission-facts', null, [
           chip('RECOMMENDED', `Lv ${lv[0]}–${lv[1]}`, under ? 'no' : 'ok'),
@@ -464,7 +484,12 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
       ]);
     }
     const s = worldSummary(world, missions);
-    return shell('board', [h('div.st-split', null, [list, detail])], [chip('CHAPTER', `${s.chapter} · ${s.chapterTitle}`), chip('DONE', `${s.missionsDone}/${s.missionsTotal}`), chip('STARS', `${s.stars}/${s.starsTotal}`)]);
+    const doneOf = (l) => l.filter((e) => e.status === 'done').length;
+    const starsOf = (l) => l.reduce((a, e) => a + (e.status === 'done' ? e.stars : 0), 0);
+    return shell('board', [h('div.st-split', null, [list, detail])], [
+      chip('CHAPTER', `${s.chapter} · ${s.chapterTitle}`), chip('ROAD', `${doneOf(road)}/${road.length}`), chip('SIDE JOBS', `${doneOf(jobs)}/${jobs.length}`),
+      chip('STARS', `${starsOf(entries)}/${entries.length * 3}`),
+    ]);
   }
 
   const RENDER = { workbench, armory, upgrades, infirmary, perks, board };

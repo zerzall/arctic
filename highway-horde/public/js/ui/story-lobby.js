@@ -6,13 +6,19 @@
 import { $, h, setText } from './dom.js';
 import { DIFFICULTIES, DIFFICULTY_IDS } from '../shared/constants.js';
 import { getMissions, HIDEOUT_NAMES, chapterTitle } from '../shared/story/content.js';
-import { worldSummary } from '../shared/story/world.js';
+import { worldSummary, isDaylightOnly } from '../shared/story/world.js';
 import { resolveNext } from '../shared/story/graph.js';
 import { hideoutEffects, HIDEOUT_IDS, upgradeTier } from '../shared/story/upgrades.js';
 import { exportSave, exportFileName } from '../shared/story/save.js';
 import { downloadText } from './story-screen.js';
 import { flashToast } from './menus.js';
 import { xpStrip, chip, num } from './story-kit.js';
+
+/** The campaign's time-of-day option (JOURNEY.md §2.1): the missions' own times, or daylight for all. */
+const DAYLIGHT = [
+  { on: false, name: 'As written', hint: 'Most of the road is travelled by day; a few missions play at night.' },
+  { on: true, name: 'Daylight only', hint: 'Every mission and side job plays by day.' },
+];
 
 const DIFF_HINT = {
   easy: 'Fewer, weaker zombies. Rewards ×0.8',
@@ -39,7 +45,7 @@ export function createStoryLobby(ctx) {
     const world = st.world;
     const s = worldSummary(world, getMissions());
     setText($('#lobby-title'), session.transport === 'local' ? 'Story · solo' : session.isHost ? 'Story · your room' : 'Story lobby');
-    setText($('#settings-owner'), session.isHost ? 'You choose the difficulty' : 'The host chooses the difficulty');
+    setText($('#settings-owner'), session.isHost ? 'You choose the difficulty and the time of day' : 'The host chooses the difficulty and the time of day');
     const start = $('#btn-start');
     // (a road campaign opens on a briefing, not in a hideout)
     const road = resolveNext(world).kind === 'briefing';
@@ -53,7 +59,8 @@ export function createStoryLobby(ctx) {
       setText($('#lobby-status'), others.length ? `${others.length} friend${others.length === 1 ? '' : 's'} in the room. Ready to ${go}?` : 'Waiting for friends — share the invite link. Anyone who has played this campaign can rejoin.');
     }
 
-    const stamp = `${world.rev}:${world.name}:${world.difficulty}:${session.isHost}:${st.profile ? st.profile.xp + ':' + st.profile.scrap + ':' + st.profile.perkPoints : ''}:${session.roster.length}`;
+    const daylight = isDaylightOnly(world);
+    const stamp = `${world.rev}:${world.name}:${world.difficulty}:${daylight}:${session.isHost}:${st.profile ? st.profile.xp + ':' + st.profile.scrap + ':' + st.profile.perkPoints : ''}:${session.roster.length}`;
     if (stamp === key && !panel.hidden && panel.childElementCount) return;
     if (nameInput && document.activeElement === nameInput) return; // never rebuild under the cursor while renaming
     key = stamp;
@@ -76,6 +83,17 @@ export function createStoryLobby(ctx) {
         st.setDifficulty(id);
       },
     }, DIFFICULTIES[id].name)));
+    // "Daylight only": the host picks; the host session plays every mission by day (shared/story/daylight.js)
+    const setDaylight = (on) => (typeof st.setDaylight === 'function' ? st.setDaylight(on) : st._act({ a: 'daylight', on }));
+    const light = h('div.seg', { role: 'radiogroup', 'aria-label': 'Time of day' }, DAYLIGHT.map((o) => h('button.seg-btn', {
+      type: 'button', role: 'radio', 'aria-checked': o.on === daylight ? 'true' : 'false', 'aria-disabled': editable ? 'false' : 'true',
+      tabindex: editable ? '0' : '-1', dataset: { daylight: String(o.on) }, title: o.hint,
+      onclick: () => {
+        if (!editable || o.on === daylight) return;
+        audio.ui('click');
+        setDaylight(o.on);
+      },
+    }, o.name)));
     const fx = hideoutEffects(world.hideout.upgrades);
     const built = HIDEOUT_IDS.reduce((n, id) => n + upgradeTier(world.hideout.upgrades, id), 0);
     const bar = st.profile ? xpStrip(st.profile) : null;
@@ -88,6 +106,9 @@ export function createStoryLobby(ctx) {
           h('div.field-label', { text: 'Difficulty' }),
           seg,
           h('div.opt-hint', { text: DIFF_HINT[world.difficulty] }),
+          h('div.field-label', { text: 'Time of day' }),
+          light,
+          h('div.opt-hint', { text: DAYLIGHT[daylight ? 1 : 0].hint }),
           h('div.st-progress', { role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': 'Campaign progress' }, h('i', { style: { width: `${pct}%` } })),
           h('div.st-chips', null, [
             chip('CHAPTER', s.complete ? 'Done' : `${s.chapter} · ${s.chapterTitle}`),

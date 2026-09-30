@@ -92,7 +92,17 @@ export const STORY_ITEMS = Object.freeze({
   pump: { name: 'Marine pump', short: 'Pump', color: '#4a90b8', shape: 'pump' },
   tag: { name: 'Dog tag', short: 'Tag', color: '#c8ccd0', shape: 'tag' },
   player: { name: 'Tape player', short: 'Tape player', color: '#7a7a82', shape: 'tape' },
+  // the story levels (JOURNEY.md): what the crew carries out of a town, a hospital, a dam, a rail yard
+  files: { name: 'Case files', short: 'Files', color: '#d9c89a', shape: 'case' },
+  insulin: { name: 'Insulin cooler', short: 'Insulin', color: '#8ec6e8', shape: 'case' },
+  keycard: { name: 'Key card', short: 'Key card', color: '#e6e6e0', shape: 'tag' },
+  fuse: { name: 'Fuse', short: 'Fuse', color: '#d8a040', shape: 'part' },
+  charge: { name: 'Demolition charge', short: 'Charge', color: '#8a6a3a', shape: 'box', mark: '#d03030' },
+  injector: { name: 'Injector pump', short: 'Injector', color: '#6a8aa8', shape: 'pump' },
 });
+
+/** The chapter number the side jobs are filed under (after the six of the story, so they never hold it back). */
+export const SIDE_CHAPTER = 7;
 
 /** Item ids at most 16 characters, letters/digits/underscore, starting with a letter. */
 export function isItemId(id) {

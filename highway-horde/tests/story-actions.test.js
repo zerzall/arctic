@@ -20,7 +20,7 @@ function state(over = {}) {
 }
 
 test('every action id is listed and unknown ones are refused', () => {
-  assert.deepEqual(ACTIONS.slice().sort(), ['buygun', 'buykit', 'diff', 'donate', 'flag', 'hideout', 'kit', 'loadout', 'perk', 'rename', 'reset', 'talk', 'tier']);
+  assert.deepEqual(ACTIONS.slice().sort(), ['buygun', 'buykit', 'daylight', 'diff', 'donate', 'flag', 'hideout', 'kit', 'loadout', 'perk', 'rename', 'reset', 'talk', 'tier']);
   const s = state();
   for (const bad of [null, undefined, 'x', 5, {}, { a: 5 }, { a: 'format' }, { a: '__proto__' }]) {
     const r = applyAction(s, bad);

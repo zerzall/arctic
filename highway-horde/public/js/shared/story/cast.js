@@ -6,9 +6,10 @@
 //   name      display name (name tag, dialogue box)
 //   role      one-line job title
 //   station   the hideout station the character tends (hint for S3's hub layouts; may be null)
-//   joins     when the character becomes available: { mission } = reward.unlockNpc of that mission,
-//             { hideout } = lives at that hideout from the first visit, { start } = with the crew
-//             from the start, { reveal } = only exists after the finale twist
+//   joins     when the character becomes available: { mission } = with the crew once that story
+//             mission or side job is done (Deke and Ozzy both join on Mill Road, Okafor and Danny at
+//             Fort Harlan; Quill, Dutch and Wendell only through their side jobs), { hideout } = lives
+//             at that hideout from the first visit, { reveal } = only exists after the finale twist
 //   bio       1-3 sentences (journal / cast screen)
 //   voice     { pitch, rate } for optional speechSynthesis (pitch 0..2, rate 0.1..10)
 //   look      the NPC model: { cls, skin, hair, hairStyle, outfit:[hex...], accessory, scale }
@@ -47,7 +48,7 @@ export const CAST = {
 
   ozzy: {
     id: 'ozzy', name: 'Ozzy', role: 'Radio Operator', station: 'board', age: 17,
-    joins: { mission: 'm1_3' },
+    joins: { mission: 'm1_2' },
     bio: 'Oswald Pryce, seventeen, licensed ham (call sign KD9-OZZ) and the only person who insisted the Warden was a live human being. Lives on snacks, static and being right.',
     voice: { pitch: 1.3, rate: 1.15 },
     look: { cls: 'scout', skin: '#8d5a3b', hair: '#1c1410', hairStyle: 'curly', outfit: ['#6d4c9f', '#2e2e2e', '#d8d8d8'], accessory: 'headset', scale: 0.96 },
@@ -56,8 +57,8 @@ export const CAST = {
 
   okafor: {
     id: 'okafor', name: 'Sgt. Okafor', role: 'Army Sergeant', station: 'armory', age: 36,
-    joins: { mission: 'm4_1' },
-    bio: 'Holds Checkpoint Delta on orders nobody has cancelled. Her soldiers are nineteen years old and she counts them every morning out loud, in case anyone is listening.',
+    joins: { mission: 'm4_2' },
+    bio: 'Held Checkpoint Delta on orders nobody cancelled, then fell back to Fort Harlan airfield. Her soldiers are nineteen years old and she counts them every morning out loud, in case anyone is listening.',
     voice: { pitch: 0.9, rate: 1.0 },
     look: { cls: 'soldier', skin: '#5a3a28', hair: '#161616', hairStyle: 'cropped', outfit: ['#4e5b31', '#3b4424', '#2b2b2b'], accessory: 'beret', scale: 1.02 },
     portrait: { mood: 'stern', expression: 'deadpan', pose: 'attention', bg: '#2f3524', accent: '#9ccc65' },
@@ -101,7 +102,7 @@ export const CAST = {
 
   quill: {
     id: 'quill', name: 'Silas Quill', role: 'Trader', station: null, age: 52,
-    joins: { mission: 'm2_1' },
+    joins: { mission: 'sj_diner' },
     bio: 'Purveyor of Fine Goods, Rare Rumors and, until recently, Pie. Half of what he says is a lie and the other half is a sales pitch, but he always knows where the good stuff is.',
     voice: { pitch: 0.85, rate: 1.1 },
     look: { cls: 'scout', skin: '#c99a70', hair: '#5a4b3c', hairStyle: 'slicked', outfit: ['#6a1b3d', '#d7c49e', '#2a2a2a'], accessory: 'top-hat', scale: 1.0 },
@@ -110,7 +111,7 @@ export const CAST = {
 
   dutch: {
     id: 'dutch', name: 'Dutch Kessler', role: 'Road Crew Boss', station: null, age: 45,
-    joins: { mission: 'm2_3' },
+    joins: { mission: 'sj_hauler' },
     bio: 'Runs the Mile Marker crew, which is now mostly Dutch. Bills for everything, hoards diesel, and would never admit that the invoices are how he says he cares.',
     voice: { pitch: 0.6, rate: 1.0 },
     look: { cls: 'heavy', skin: '#e8bd98', hair: '#7a3f1b', hairStyle: 'bald-beard', outfit: ['#a1301f', '#37474f', '#d0c3a0'], accessory: 'trucker-cap', scale: 1.1 },
@@ -119,7 +120,7 @@ export const CAST = {
 
   wendell: {
     id: 'wendell', name: 'Wendell Pike', role: 'Retired K-9 Handler', station: 'range', age: 68,
-    joins: { mission: 'm3_2' },
+    joins: { mission: 'sj_cargo' },
     bio: 'Thirty-one years handling police dogs. His last partner, a shepherd named Biscuit, ran off in the first week. Wendell talks to everyone the way he talks to a good dog, which turns out to work.',
     voice: { pitch: 0.75, rate: 0.85 },
     look: { cls: 'soldier', skin: '#f0c9a6', hair: '#d8d8d8', hairStyle: 'thin', outfit: ['#37474f', '#5c6b3a', '#2a2a2a'], accessory: 'leash', scale: 1.0 },
