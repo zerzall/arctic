@@ -2635,3 +2635,36 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd { disp
 @media (orientation: landscape) and (max-height: 430px) {
   .touch-btn-fire { width: 80px; height: 80px; font-size: 15px; }
 }
+
+/* ---- loading screen (#loading, ui/loading.js) ---------------------------------------------
+   Painted with the page and animated with CSS only (transform/opacity run on the compositor), so
+   the bar keeps moving while the page is busy starting or building a world. */
+.loading {
+  position: fixed; inset: 0; z-index: 2500;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.1rem;
+  padding: 2rem; text-align: center; color: #e8eaec;
+  background: radial-gradient(ellipse at 50% 40%, #171b20 0%, #0b0d10 70%);
+  font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+.loading[hidden] { display: none; }
+.loading.fade { opacity: 0; }
+.loading-logo { display: flex; flex-direction: column; align-items: center; line-height: 0.95; margin-bottom: 0.6rem; font-family: 'Black Ops One', 'Barlow Condensed', Impact, sans-serif; text-transform: uppercase; letter-spacing: 0.08em; }
+.loading-logo .ll1 { font-size: clamp(2rem, 6vw, 4rem); color: #ffc400; }
+.loading-logo .ll2 { font-size: clamp(2.6rem, 8vw, 5.4rem); color: #f2f2f2; }
+.loading-bar { position: relative; width: min(30rem, 70vw); height: 0.6rem; overflow: hidden; background: #1a1e23; border: 1px solid #2b3138; }
+.loading-bar::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 38%;
+  background: repeating-linear-gradient(-45deg, #ffc400 0 0.7rem, #14161a 0.7rem 1.4rem);
+  animation: ld-slide 1.25s ease-in-out infinite alternate;
+}
+@keyframes ld-slide { from { transform: translateX(-5%); } to { transform: translateX(165%); } }
+.loading-text { margin: 0; font-size: clamp(1.1rem, 2.4vw, 1.6rem); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.loading-sub { margin: -0.5rem 0 0; font-size: 1rem; color: #9aa3ad; letter-spacing: 0.08em; text-transform: uppercase; }
+.loading-more { margin: 0; max-width: 34rem; font-size: 0.95rem; color: #ffb74d; opacity: 0; }
+.loading.run .loading-more { animation: ld-reveal 0.5s ease 7s forwards; }
+@keyframes ld-reveal { to { opacity: 1; } }
+.loading-tip { margin: 0.4rem 0 0; max-width: 36rem; font-size: 1rem; line-height: 1.45; color: #b9c0c8; }
+.loading-tip[hidden], .loading-sub[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .loading-bar::before { animation-duration: 3s; } }

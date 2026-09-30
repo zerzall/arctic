@@ -24,6 +24,16 @@
   <script type="module" src="js/ui/main.js"></script>
 </head>
 <body>
+  <!-- Loading screen: painted with the page itself (no script needed), hidden by js/ui/app.js once the
+       title screen is up and shown again by ui/loading.js while a match is built. -->
+  <div id="loading" class="loading run" role="status" aria-live="polite">
+    <div class="loading-logo"><span class="ll1">Highway</span><span class="ll2">Horde</span></div>
+    <div class="loading-bar" aria-hidden="true"></div>
+    <p class="loading-text">Loading the game…</p>
+    <p class="loading-sub" hidden></p>
+    <p class="loading-more">Still working — the first start can take a few seconds. Please don't close the tab.</p>
+    <p class="loading-tip" hidden></p>
+  </div>
   <div id="app" class="app booting">
 
     <!-- ================= TITLE ================= -->
@@ -521,6 +531,7 @@
       bootErrors.push('promise: ' + (r && r.message ? r.message : String(r)));
     });
     function report() {
+      var cover = document.getElementById('loading');
       var app = document.getElementById('app');
       var status = document.getElementById('server-status');
       if (app && app.classList.contains('booting') && status) {
@@ -529,6 +540,7 @@
           : bootErrors.length
             ? 'The game hit an error while starting. Your browser is probably fine: please send the details below to the developer.'
             : 'The game is taking too long to start. Wait a few seconds, then reload the page (Ctrl+F5).';
+        if (cover) cover.hidden = true;
         status.style.color = '#ff5b4f';
         status.style.fontSize = '1.1rem';
         var box = document.createElement('pre');

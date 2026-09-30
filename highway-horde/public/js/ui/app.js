@@ -3,6 +3,7 @@
 // (main.js) and the dev sandbox (dev/ui-sandbox.js, with a mock session) share this code.
 
 import { $, createScope } from './dom.js';
+import { showLoading, hideLoading, hideWhenDrawn, randomTip } from './loading.js';
 import { loadPrefs, savePrefs, randomName, cleanName, isCoarsePointer } from './storage.js';
 import {
   createModals, createTitle, createJoinDialog, createStatusDialogs, createSettingsDialog, createHowTo,
@@ -290,8 +291,9 @@ export function startApp(deps) {
   }
 
   let waiting3d = false;
+  let starting = false;
   function beginMatch() {
-    if (!session || match) return;
+    if (!session || match || starting) return;
     // The first-person renderer (three.js) loads in the background after boot. A game that
     // starts before it arrives waits for it, rather than silently dropping to top-down.
     if (prefs.settings.view !== 'topdown' && !deps.createRenderer3D && deps.renderer3dReady && !deps.renderer3dFailed) {
@@ -307,29 +309,51 @@ export function startApp(deps) {
     }
     lobby.hide();
     ctx.modals.close($('#dlg-confirm'));
-    try {
-      match = startMatch(ctx, session);
-    } catch (err) {
-      console.error('[ui] could not start the match', err);
-      match = null;
-      const s = session;
-      teardown();
+    // Building the world blocks the page for a moment (seconds on a big map the first time): put the
+    // loading screen up and let it paint before the work starts, so the game never looks frozen.
+    const s = session;
+    starting = true;
+    const map = s.getMap && s.getMap();
+    const story = s.story && map && map.kind === 'hideout' ? 'Heading to the hideout…' : s.story ? 'Preparing the mission…' : 'Building the world…';
+    showLoading(story, map && map.name ? map.name : '', randomTip());
+    afterPaint(() => {
+      starting = false;
+      if (session !== s || match || !s.inGame) { hideLoading(); return; }
       try {
-        s.leave();
-      } catch {
-        // ignore
+        match = startMatch(ctx, s);
+        hideWhenDrawn(() => (window.__HH && window.__HH.getLook ? window.__HH.getLook().frames : 0));
+      } catch (err) {
+        console.error('[ui] could not start the match', err);
+        match = null;
+        hideLoading();
+        teardown();
+        try {
+          s.leave();
+        } catch {
+          // ignore
+        }
+        ctx.dialogs.error('Couldn\'t start the game', err && err.message ? err.message : String(err), () => showTitle());
       }
-      ctx.dialogs.error('Couldn\'t start the game', err && err.message ? err.message : String(err), () => showTitle());
-    }
+    });
+  }
+
+  /** Run `cb` after the browser has painted (two animation frames), or after 250 ms if it does not paint (a hidden tab). */
+  function afterPaint(cb) {
+    let done = false;
+    const run = () => { if (!done) { done = true; cb(); } };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+    setTimeout(run, 250);
   }
 
   function backToLobby() {
+    hideLoading();
     if (match) match.stop();
     match = null;
     if (session) lobby.show(session);
   }
 
   function teardown() {
+    hideLoading();
     if (match) match.stop();
     match = null;
     if (ctx.story) ctx.story.detach();
@@ -491,6 +515,7 @@ export function startApp(deps) {
 
   $('#app').classList.remove('booting');
   showTitle();
+  hideLoading();
   // Without a GPU the animated menu backdrop repaints the whole screen on the CPU every
   // frame: detect it once the title is up and keep the menus still (game.css). The same probe
   // names the graphics card: a profile that never picked a quality starts on the tier the card is
