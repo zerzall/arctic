@@ -68,7 +68,8 @@ try {
       await page.evaluate(() => window.__fps.step(1));
       await page.waitForTimeout(300);
       const name = `${mapId}-${s.shot.replace(/[^a-z0-9_-]+/gi, '_')}.png`;
-      await page.screenshot({ path: join(outDir, name), timeout: 120000 });
+      // (software GL on a busy machine: a 720p frame can take minutes)
+      await page.screenshot({ path: join(outDir, name), timeout: Number(process.env.SHOT_TIMEOUT || 400000) });
       console.log('wrote', join(outDir, name));
     }
   }

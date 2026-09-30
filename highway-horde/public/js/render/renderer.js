@@ -30,6 +30,7 @@ import { createCampaign2D, drawCampaignPreview } from './campaign2d.js';
 import { createHideout2D } from './hideout2d.js';
 import { applyHideoutUpgrades } from '../shared/maps-hideouts.js';
 import { createStory2D } from './story2d.js';
+import { createLevel2D } from './level2d.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
@@ -149,6 +150,8 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   const hideout2d = map.kind === 'hideout' && map.hub ? createHideout2D(map) : null;
   // Road to Haven: story items, hold-to-use devices, NPCs, objective markers (story2d.js)
   const story2d = createStory2D(map);
+  // A story level: gates that open, roofs over its rooms, sections whose lights go out (level2d.js)
+  const level2d = createLevel2D(map, { effects });
 
   // obstacle sprites (lazy)
   const obSprites = new Array(map.obstacles.length).fill(null);
@@ -506,8 +509,17 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       const o = obs[i];
       const ext = (o.w > o.h ? o.w : o.h) * 0.75 + 12;
       if (!inView(o.x, o.y, ext)) continue;
+      // (a level's gate: gone while open, fading while it moves)
+      const ga = level2d ? level2d.gateAlpha(i, view) : 1;
+      if (ga <= 0) continue;
       const spr = obSprites[i] || buildObSprite(i);
+      if (ga < 1) ctx.globalAlpha = ga;
       blit(spr, o.x, o.y, o.a || 0);
+      if (ga < 1) ctx.globalAlpha = 1;
+    }
+    if (level2d && view) {
+      setWorld();
+      level2d.drawGates(ctx, view, viewRect, time);
     }
     // objective
     const ob = map.objective;
@@ -852,6 +864,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     // lamp bulbs
     for (const l of overhead.lamps) {
       if (!l.light || !inView(l.x, l.y, 40)) continue;
+      if (level2d && level2d.lightOff(l.x, l.y, view)) continue;
       const fl = l.light.flicker ? (Math.sin(time * 23 + l.x) > -0.6 ? 1 : 0.35) : 1;
       ctx.globalAlpha = 0.8 * fl;
       ctx.drawImage(tintedGlow(l.light.color), l.x + Math.cos(l.a) * 4 - 16, l.y + Math.sin(l.a) * 4 - 16, 32, 32);
@@ -950,6 +963,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     lighting.begin(K, night);
     for (const L of map.lights) {
       if (!inView(L.x, L.y, L.r)) continue;
+      if (level2d && level2d.lightOff(L.x, L.y, view)) continue;
       let i = 0.9;
       if (L.flicker) i *= 1 - L.flicker * 0.45 * (0.5 + 0.5 * Math.sin(time * 11 + L.x) * Math.sin(time * 7.3 + L.y));
       lighting.point(L.x, L.y, L.r, i, L.color);
@@ -1144,6 +1158,11 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     overhead.drawCanopies(ctx, viewRect, players, dt, spriteScale, K);
     setWorld();
     overhead.drawOverpass(ctx, viewRect, players, dt);
+    if (level2d) {
+      level2d.tick(V, dt);
+      setWorld();
+      level2d.drawRoofs(ctx, V, viewRect, target, dt);
+    }
     mark('particles');
 
     drawLighting(V || NO_VIEW, lightingOn);
