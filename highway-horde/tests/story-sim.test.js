@@ -11,14 +11,14 @@ import { GameCore } from '../public/js/shared/sim/core.js';
 import { FlowField } from '../public/js/shared/flowfield.js';
 import { mapColliders } from '../public/js/shared/geom.js';
 import { walkComponents, componentAt } from '../public/js/shared/sim/zone.js';
-import { createNpc, npcByKey, damageNpc } from '../public/js/shared/sim/npcs.js';
+import { createNpc, npcByKey, damageNpc, normLook } from '../public/js/shared/sim/npcs.js';
 import { addInteractable } from '../public/js/shared/sim/interact.js';
 import { encodeSnapshot, decodeSnapshot, EVENT_TYPES } from '../public/js/shared/protocol.js';
-import { PROTOCOL_VERSION, DT } from '../public/js/shared/constants.js';
+import { PROTOCOL_VERSION, DT, waveZombieCount } from '../public/js/shared/constants.js';
 import { mapBuildOptions, registerMissions, clearMissions, getMission } from '../public/js/shared/story/registry.js';
 import { validateMission } from '../public/js/shared/story/validate.js';
 import {
-  ANCHOR_VOCAB, CAMPAIGN_ANCHORS, DEFEND_ANCHOR, STEP_TYPES, INTERACT_KINDS, normLine, missionTier, NPC,
+  ANCHOR_VOCAB, CAMPAIGN_ANCHORS, DEFEND_ANCHOR, STEP_TYPES, INTERACT_KINDS, normLine, missionTier, NPC, CAST, NPC_HAIR_STYLES, NPC_ACCESSORIES,
 } from '../public/js/shared/story-defs.js';
 import { ANCHOR_PAD } from '../public/js/shared/maps.js';
 import { addZombie, cmd } from './helpers/sim-helpers.js';
@@ -420,7 +420,7 @@ describe('the mission director: every step type, end to end, with AI survivors',
     assert.equal(end.result, 'victory');
     assert.equal(end.mission, 'fx_foot');
     assert.equal(end.stars, 3, 'time, no downs and the optional note');
-    assert.deepEqual(end.met, { time: true, noDowns: true, optional: true });
+    assert.deepEqual(end.met, { time: true, noDowns: true, optional: true, perfect: true });
     assert.equal(end.items.fuel, 3);
     assert.equal(end.items.note, 1);
     assert.ok(Object.keys(end.stats).length === 2 && end.stats[1].name === 'Bot1');
@@ -515,7 +515,7 @@ describe('the mission director: every step type, end to end, with AI survivors',
           { id: 'reach', type: 'reach', at: a, pressure: false },
           { id: 'collect', type: 'collect', item: 'part', count: 2, at: [a, b], pressure: false },
           { id: 'use', type: 'activate', at: [b], hold: 1, pressure: false },
-          { id: 'kill', type: 'kill', enemy: 'walker', count: 3, pressure: { every: 4, delay: 1, size: 4, waves: 3 } },
+          { id: 'kill', type: 'kill', enemy: 'walker', count: 3, pressure: { every: 4, delay: 1, size: 4, bursts: 3 } },
           { id: 'waves', type: 'waves', count: 1, scale: 0.15 },
           { id: 'guard', type: 'defend', target: home, waves: 1, scale: 0.15 },
         ],
@@ -531,7 +531,7 @@ describe('the mission director: every step type, end to end, with AI survivors',
   test('pressure spawns zombies during a step, in bursts, off-screen, capped', () => {
     const mission = {
       id: 'press', map: 'highway', mode: 'free', level: [1, 1], startAt: 'overpass', steps: [
-        { id: 'stay', type: 'survive', seconds: 60, pressure: { every: 10, delay: 2, size: 6, waves: 3, tier: 1 } },
+        { id: 'stay', type: 'survive', seconds: 60, pressure: { every: 10, delay: 2, size: 6, bursts: 3, tier: 1 } },
       ],
     };
     const g = missionGame(mission, { bots: 1, humans: 1 });
@@ -623,7 +623,7 @@ describe('the end of a mission', () => {
     assert.equal(g2.over, 'timeout');
   });
 
-  test('stars: 1 for finishing, +1 per condition met (time, no downs, everything optional), at most 3', () => {
+  test('stars: 1 for finishing, +1 for the time, +1 for the clean run (no downs and every bonus), at most 3', () => {
     const base = { id: 's', map: 'highway', mode: 'free', startAt: 'bus', steps: [{ id: 'w', type: 'wait', seconds: 5 }] };
     const run = (stars, prep = () => {}) => {
       const g = missionGame({ ...base, stars }, { bots: 0, humans: 1 });
@@ -954,6 +954,312 @@ describe('mission scripts', () => {
     const used = new Set();
     for (const m of FIXTURE_MISSIONS) for (const s of m.steps) used.add(s.type);
     for (const t of STEP_TYPES) assert.ok(used.has(t), `fixtures cover ${t}`);
+  });
+});
+
+// -------------------------------------------------------------------------------------
+describe('what the written missions ask for (bonus steps, wave-number pressure, lures, blasts ...)', () => {
+  const IDLE = (extra) => ({ id: 'x', map: 'highway', mode: 'free', level: [1, 1], startAt: 'overpass', ...extra });
+
+  test('mission.bonus: optional steps that start with the mission or with the step named by `since`, never block, and count for "collectAll"', () => {
+    const mission = IDLE({
+      stars: { optional: 'collectAll' },
+      steps: [
+        { id: 'first', type: 'wait', seconds: 4, pressure: false },
+        { id: 'later', type: 'wait', seconds: 30, pressure: false },
+      ],
+      bonus: [
+        { id: 'n1', type: 'collect', item: 'note', note: 'n01', count: 1, at: ['bus'], text: 'Find the first note (optional)', flags: { read_first: true } },
+        { id: 'n2', type: 'collect', item: 'note', note: 'n02', count: 1, at: ['overpass'], since: 'later', text: 'Find the second note (optional)' },
+      ],
+    });
+    assert.ok(validateMission({ ...mission, id: 'x', chapter: 1, index: 1, title: 't', blurb: 'b', time: 'night', party: { min: 1, max: 6 }, briefing: [{ who: 'a', text: 'x' }], debrief: [{ who: 'a', text: 'x' }], rewards: { xp: 1, scrap: 1 } }).ok);
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const d = g.story;
+    assert.equal(d.bonusSteps.length, 2);
+    assert.equal(d.bonusSteps[0].state, 'active', 'no `since`: live from the start');
+    assert.equal(d.bonusSteps[1].state, 'wait', '`since` a step that has not started');
+    const snap = g.snapshot().story;
+    const row = snap.steps.find((s) => s.opt);
+    assert.ok(row && /first note/.test(row.text), 'a bonus shows in the tracker as an optional row');
+    // take the first note
+    const item = d.items.find((q) => q.step === d.bonusSteps[0]);
+    assert.equal(item.note, 'n01');
+    const p = g.getPlayer(1);
+    p.x = item.x;
+    p.y = item.y;
+    const ev = play(g, 2);
+    const got = ofType(ev, 'item')[0];
+    assert.ok(got && got.note === 'n01' && got.item === 'note', 'the pickup event names the note');
+    assert.equal(d.bonusSteps[0].state, 'done');
+    assert.ok(d.flags.read_first, 'a step flag is set when the bonus is done');
+    // the second bonus becomes live when `later` starts; the mission ends without it
+    const ev2 = play(g, 40);
+    assert.equal(d.bonusSteps[1].state, 'cancelled', 'never picked up: cancelled at the end');
+    assert.equal(g.phase, 'victory', 'a bonus never blocks the end');
+    const end = storyEnd(ev2);
+    assert.equal(end.stars, 1, 'the win only: "collectAll" needs every bonus');
+    assert.equal(end.met.optional, false);
+    assert.equal(end.flags.read_first, true, 'step flags travel with storyend');
+  });
+
+  test('a bonus that is done in time gives the clean-run star (with noDowns); two conditions give stars 1 + time + clean', () => {
+    const mission = IDLE({
+      stars: { time: 120, noDowns: true, optional: 'collectAll' },
+      steps: [{ id: 'w', type: 'wait', seconds: 3, pressure: false }],
+      bonus: [{ id: 'r', type: 'reach', at: 'overpass', hold: 0, text: 'Stand there (optional)' }],
+    });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const end = storyEnd(play(g, 20));
+    assert.equal(end.result, 'victory');
+    assert.equal(end.stars, 3, 'time, no downs, and the bonus (standing on the anchor at the start)');
+    assert.equal(end.met.perfect, true);
+    const g2 = missionGame({ ...mission, bonus: [{ id: 'r', type: 'reach', at: 'bus', hold: 0, text: 'Far away (optional)' }] }, { bots: 0, humans: 1 });
+    const end2 = storyEnd(play(g2, 20));
+    assert.equal(end2.stars, 2, 'on time but the bonus was missed');
+  });
+
+  test('pressure.waves is the virtual wave number: it picks the type mix and scales hp; pace is the tempo; specials are forced in', () => {
+    const run = (pressure, seconds = 90) => {
+      const mission = IDLE({ steps: [{ id: 's', type: 'survive', seconds, pressure }] });
+      const g = missionGame(mission, { bots: 0, humans: 1, seed: 11 });
+      const seen = new Map();
+      let maxHp = 0;
+      for (let t = 0; t < seconds * 60; t++) {
+        g.step();
+        for (const z of g.zombies) if (!z.seen) {
+          z.seen = true;
+          seen.set(z.type, (seen.get(z.type) || 0) + 1);
+          maxHp = Math.max(maxHp, z.type === 'walker' ? z.maxHp : 0);
+        }
+        g.getPlayer(1).hp = 9999;
+        g.getPlayer(1).maxHp = 9999;
+      }
+      return { seen, total: [...seen.values()].reduce((a, b) => a + b, 0), maxHp };
+    };
+    const w1 = run({ waves: 1, pace: 0.6 });
+    assert.deepEqual([...w1.seen.keys()], ['walker'], 'wave 1: walkers only');
+    const w6 = run({ waves: 6, pace: 0.6 });
+    assert.ok(w6.seen.size >= 4, `wave 6 mixes types: ${[...w6.seen.keys()].join(',')}`);
+    assert.ok(w6.maxHp > w1.maxHp * 1.3, `hp grows with the wave number (${w1.maxHp} -> ${w6.maxHp})`);
+    const slow = run({ waves: 1, pace: 0.3, cap: 300 }, 40), fast = run({ waves: 1, pace: 1.2, cap: 300 }, 40);
+    assert.ok(fast.total > slow.total * 2, `pace scales the tempo (${slow.total} vs ${fast.total})`);
+    const sp = run({ waves: 1, pace: 0.6, specials: ['crawler'] });
+    assert.ok(sp.seen.get('crawler') > 0, 'a forced type shows up at wave 1');
+  });
+
+  test('a script\'s waves never get the every-fifth-wave boss or its discount', () => {
+    const mission = IDLE({ steps: [{ id: 'w', type: 'waves', count: 1, pressure: { waves: 5, pace: 1 } }] });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const ev = play(g, 12, () => g.wave >= 5);
+    assert.equal(g.wave, 5);
+    assert.equal(g.waveBosses, 0, 'no boss');
+    assert.ok(g.waveTotal >= Math.round(waveZombieCount(5, 1, g.diff) / 0.65) - 1, `full-size wave: ${g.waveTotal}`);
+    assert.ok(ofType(ev, 'wave').every((e) => !e.boss));
+  });
+
+  test('kill counts are for a party of four: 0.5x solo, 1x for four, 1.5x for six', () => {
+    const mission = IDLE({ steps: [{ id: 'k', type: 'kill', zombie: 'walker', count: 8, pressure: false, spawn: false }] });
+    const maxOf = (n) => missionGame(mission, { bots: n - 1, humans: 1 }).snapshot().story.steps[0].max;
+    assert.equal(maxOf(1), 4);
+    assert.equal(maxOf(4), 8);
+    assert.equal(maxOf(6), 12);
+  });
+
+  test('a kill step makes up the numbers itself (`at` says where the pack comes from)', () => {
+    const mission = IDLE({ steps: [{ id: 'k', type: 'kill', zombie: 'brute', count: 1, at: 'bus', pressure: false }] });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const brutes = g.zombies.filter((z) => z.type === 'brute');
+    assert.equal(brutes.length, 1);
+    const bus = g.map.anchors.bus;
+    assert.ok(Math.hypot(brutes[0].x - bus.x, brutes[0].y - bus.y) < 400, 'it comes from the anchor');
+    brutes[0].dead = true;
+    g.zombies.length = 0;
+    // (another one is sent when none is left and the count is not reached)
+    for (let t = 0; t < 60 * 8; t++) g.step();
+    assert.equal(g.zombies.filter((z) => z.type === 'brute' && !z.dead).length, 1);
+  });
+
+  test('activate effect "lure": the horde walks to the noise for a while, then goes back to the survivors', () => {
+    const mission = IDLE({
+      startAt: 'overpass',
+      steps: [
+        { id: 'horn', type: 'activate', at: ['overpass'], hold: 1, effect: 'lure', lure: { to: 'westEnd', seconds: 12 }, pressure: false, text: 'Sound the horn (hold E)' },
+        { id: 'w', type: 'wait', seconds: 60 },
+      ],
+    });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const it = g.interactables[0];
+    const lure = g.map.anchors.westEnd;
+    const p = g.getPlayer(1);
+    p.x = it.x;
+    p.y = it.y;
+    // a walker halfway between the survivor and the lure, out of sight of the survivor
+    const zx = (lure.x + it.x) / 2, zy = (lure.y + it.y) / 2;
+    const z = addZombie(g, 'walker', zx, zy);
+    for (let t = 0; t < 200; t++) {
+      g.setInput(1, cmd({ seq: t + 1, interact: t < 120 }));
+      g.step();
+      g.snapshot();
+      if (g.lure) break;
+    }
+    assert.ok(g.lure, 'the lure is on once the hold is done');
+    const d0 = Math.hypot(z.x - lure.x, z.y - lure.y);
+    for (let t = 0; t < 60 * 6; t++) {
+      g.setInput(1, cmd({ seq: 300 + t }));
+      g.step();
+      g.snapshot();
+    }
+    const d1 = Math.hypot(z.x - lure.x, z.y - lure.y);
+    assert.ok(d1 < d0 - 60, `the zombie walked to the noise (${d0.toFixed(0)} -> ${d1.toFixed(0)})`);
+    for (let t = 0; t < 60 * 10; t++) {
+      g.setInput(1, cmd({ seq: 700 + t }));
+      g.step();
+    }
+    assert.equal(g.lure, null, 'the lure wears off');
+  });
+
+  test('activate effect "explode": a scripted blast hurts zombies and only zombies', () => {
+    const mission = IDLE({
+      steps: [
+        { id: 'boom', type: 'activate', at: ['overpass'], hold: 0.5, effect: 'explode', blast: { at: 'bus', r: 300, damage: 9999 }, pressure: false, text: 'Blow it' },
+        { id: 'w', type: 'wait', seconds: 30 },
+      ],
+    });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const bus = g.map.anchors.bus;
+    const near = addZombie(g, 'walker', bus.x + 40, bus.y + 20);
+    const far = addZombie(g, 'walker', bus.x + 900, bus.y);
+    const it = g.interactables[0];
+    const p = g.getPlayer(1);
+    p.x = bus.x + 60;
+    p.y = bus.y;
+    p.x = it.x;
+    p.y = it.y;
+    const hp0 = p.hp;
+    let blasts = 0;
+    for (let t = 0; t < 200; t++) {
+      g.setInput(1, cmd({ seq: t + 1, interact: t < 60 }));
+      g.step();
+      blasts += ofType(g.snapshot().events, 'explosion').length;
+    }
+    assert.equal(blasts, 3, 'three blasts over a second');
+    assert.ok(near.dead, 'the zombie in the blast died');
+    assert.ok(!far.dead, 'the one outside did not');
+    assert.equal(p.hp, hp0, 'no harm to the survivors');
+  });
+
+  test('a chain of parallel `wait` steps is a timeline of radio events; the ones after the lead ends never fire', () => {
+    const say = (t) => [{ who: 'ozzy', text: t, ms: 300 }];
+    const mission = IDLE({
+      steps: [
+        { id: 't1', type: 'wait', seconds: 2, parallel: true, onDone: say('two') },
+        { id: 't2', type: 'wait', seconds: 5, parallel: true, onDone: say('five') },
+        { id: 't3', type: 'wait', seconds: 30, parallel: true, onDone: say('thirty') },
+        { id: 'lead', type: 'survive', seconds: 8, pressure: false },
+      ],
+    });
+    const g = missionGame(mission, { bots: 0, humans: 1 });
+    const times = {};
+    for (let t = 0; t < 60 * 12; t++) {
+      g.step();
+      for (const e of g.snapshot().events) if (e.type === 'radio') times[e.text] = g.time;
+      if (g.over) break;
+    }
+    assert.ok(times.two >= 2 && times.two < 3.2, `two at ${times.two}`);
+    assert.ok(times.five >= 5 && times.five < 6.5, `five at ${times.five}`);
+    assert.equal(times.thirty, undefined, 'cancelled with the lead');
+    assert.equal(g.phase, 'victory');
+  });
+
+  test('evac / campaignStage `pressure.waves` sets the difficulty of the game\'s own waves, restored afterwards', () => {
+    const m = JSON.parse(JSON.stringify(FX_EVAC));
+    m.steps = m.steps.map((s) => (s.type === 'evac' ? { ...s, pressure: { waves: 5, pace: 0.5 } } : s));
+    const g = missionGame(m, { bots: 2, humans: 0 });
+    assert.equal(g.tierBonus, 4, 'wave 1 of the run is scaled like wave 5');
+    assert.equal(g.spawnPace, 0.5);
+    play(g, 400);
+    assert.equal(g.phase, 'victory');
+    assert.equal(g.spawnPace, 1);
+  });
+
+  test('the written cast: every character with a body has a valid look that survives the wire (hair style, accessory, scale)', () => {
+    for (const id of Object.keys(CAST)) {
+      const c = CAST[id];
+      if (!c.look) continue;
+      const look = normLook(c.look, id);
+      assert.ok(NPC_HAIR_STYLES.includes(look.hairStyle), `${id}: hair style ${look.hairStyle}`);
+      assert.ok(NPC_ACCESSORIES.includes(look.accessory), `${id}: accessory ${look.accessory}`);
+    }
+    assert.equal(normLook(CAST.deke.look, 'deke').accessory, 'wrench-belt');
+    assert.equal(normLook(CAST.june.look, 'june').hairStyle, 'pigtails');
+    const g = new GameCore({ map: buildMap('highway', 1), seed: 2, settings: { mode: 'mission', story: { mission: SANDBOX } }, players: [HUMAN] });
+    for (const id of ['mara', 'deke', 'ozzy', 'june', 'quill', 'wendell', 'roz', 'dutch', 'danny', 'okafor', 'priya', 'wren']) {
+      createNpc(g, { key: id, x: 500 + Math.random() * 0, y: 500 });
+    }
+    const snap = g.snapshot();
+    const back = decodeSnapshot(encodeSnapshot(snap));
+    assert.equal(back.npcs.length, 12);
+    for (const n of back.npcs) {
+      const want = snap.npcs.find((q) => q.key === n.key);
+      assert.equal(n.look.hairStyle, want.look.hairStyle, `${n.key} hair`);
+      assert.equal(n.look.accessory, want.look.accessory, `${n.key} accessory`);
+      assert.equal(n.look.cls, want.look.cls);
+      assert.deepEqual(n.look.outfit, want.look.outfit);
+      assert.ok(Math.abs(n.look.scale - want.look.scale) < 0.011);
+    }
+  });
+
+  test('a 6-player storyend with flags still fits the wire (the JSON fallback is 1 KB)', () => {
+    const g = missionGame(IDLE({ stars: { time: 100, noDowns: true }, steps: [{ id: 'w', type: 'wait', seconds: 1 }] }), { bots: 5, humans: 1 });
+    g.story.flags = { met_mara: true, bus_saved: true, tow_truck_running: true, met_deke: true, found_biscuit: true, has_tape_player: true };
+    g.story.itemCount = { fuel: 6, note: 3, battery: 3, part: 4 };
+    for (const p of g.players) {
+      p.name = 'A long player name';
+      p.kills = 12345;
+      p.damage = 987654;
+    }
+    const ev = play(g, 10);
+    const snap = { ...g.snapshot(), events: ofType(ev, 'storyend') };
+    const back = decodeSnapshot(encodeSnapshot(snap));
+    const end = back.events.find((e) => e && e.type === 'storyend');
+    assert.ok(end, 'the storyend event arrived');
+    assert.equal(end.result, 'victory');
+    assert.equal(Object.keys(end.stats).length, 6);
+    assert.equal(end.flags.met_mara, true);
+  });
+
+  test('the validator takes the written forms and rejects broken effects, bonuses and pressure', () => {
+    const maps = (id, o) => buildMap(id, 1, o || undefined);
+    const good = {
+      id: 'v1', chapter: 1, index: 1, title: 'T', blurb: 'B', map: 'truckstop', time: 'night', mode: 'free', level: [2, 3], party: { min: 1, max: 6 },
+      requires: ['m0'], hub: 'roadhouse', after: 'hideout:roadhouse', notes: ['n1'],
+      briefing: [{ who: 'mara', text: 'x' }], debrief: [{ who: 'mara', text: 'y' }], rewards: { xp: 10, scrap: 10 }, stars: { time: 300, noDowns: true, optional: 'collectAll' },
+      steps: [
+        { id: 'horn', type: 'activate', at: ['roadNorth'], hold: 6, effect: 'lure', lure: { to: 'roadNorth', seconds: 75 }, pressure: { waves: 3, pace: 0.6 }, text: 'Horn' },
+        { id: 'blast', type: 'activate', at: ['pumps'], hold: 4, effect: 'explode', blast: { at: 'pumps', r: 260, damage: 400 }, text: 'Blow' },
+        { id: 'k', type: 'kill', zombie: 'crawler', count: 8, at: 'roadSouth', parallel: true, text: 'Kill' },
+        { id: 'end', type: 'wait', seconds: 300, text: '' },
+      ],
+      bonus: [{ id: 'n1', type: 'collect', item: 'note', note: 'n1', count: 1, at: ['diner'], since: 'horn', flags: { read: true }, text: 'Note' }],
+    };
+    const r = validateMission(good, { maps });
+    assert.deepEqual(r.errors, []);
+    const bad = (patch, re) => {
+      const res = validateMission({ ...good, ...patch }, { maps });
+      assert.ok(res.errors.some((e) => re.test(e)), `${JSON.stringify(patch).slice(0, 80)} should fail /${re.source}/: ${res.errors.join(' | ')}`);
+    };
+    bad({ steps: [{ ...good.steps[0], effect: 'boom' }, good.steps[3]] }, /effect must be/);
+    bad({ steps: [{ ...good.steps[0], lure: { to: 'nowhere', seconds: 10 } }, good.steps[3]] }, /lure.to/);
+    bad({ steps: [{ ...good.steps[0], lure: undefined }, good.steps[3]] }, /needs lure/);
+    bad({ steps: [{ ...good.steps[1], blast: { at: 'pumps', r: 5, damage: 400 } }, good.steps[3]] }, /blast.r/);
+    bad({ bonus: [{ id: 'b', type: 'defend', target: 'diner', waves: 1 }] }, /cannot be a bonus/);
+    bad({ bonus: [{ ...good.bonus[0], at: ['nowhere'] }] }, /not an anchor/);
+    bad({ steps: [{ ...good.steps[0], pressure: { waves: 0 } }, good.steps[3]] }, /virtual wave/);
+    bad({ requires: 'm0' }, /requires must be/);
+    bad({ after: 3 }, /after must be/);
+    const dup = validateMission({ ...good, bonus: [{ ...good.bonus[0], id: 'horn' }] }, { maps });
+    assert.ok(dup.errors.some((e) => /duplicate step id/.test(e)));
   });
 });
 

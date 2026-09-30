@@ -16,7 +16,7 @@ import { DT, REVIVE_RADIUS } from '../constants.js';
 import { MASK_MOVE } from '../geom.js';
 import { CLASSES, CLASS_IDS } from '../classes.js';
 import {
-  NPC, NPC_STATES, NPC_ACCESSORIES, TALK_RANGE, npcDefaults,
+  NPC, NPC_STATES, NPC_ACCESSORIES, NPC_HAIR_STYLES, TALK_RANGE, npcDefaults,
 } from '../story-defs.js';
 import { angleDiff, turnTowards } from '../math.js';
 import { fireHitscan } from './combat.js';
@@ -33,7 +33,7 @@ const HELPER_GUN = {
   damage: NPC.shootDamage, pellets: 1, spread: 0.06, range: NPC.shootRange, pierce: 1, falloff: 0.7, knockback: 40,
 };
 
-/** A look with every field valid: { cls, skin, hair, outfit: [1..3 hex], accessory, scale }. */
+/** A look with every field valid: { cls, skin, hair, hairStyle, outfit: [1..3 hex], accessory, scale }. */
 export function normLook(look, key = '') {
   const base = npcDefaults(key).look;
   const l = look && typeof look === 'object' ? look : {};
@@ -45,6 +45,7 @@ export function normLook(look, key = '') {
     skin: typeof l.skin === 'string' && HEX.test(l.skin) ? l.skin.toLowerCase() : base.skin,
     hair: typeof l.hair === 'string' && HEX.test(l.hair) ? l.hair.toLowerCase() : base.hair,
     outfit: outfit.length ? outfit.map((c) => c.toLowerCase()) : (l.cls && !look.outfit ? [CLASSES[cls].look.outfit] : base.outfit.slice()),
+    hairStyle: NPC_HAIR_STYLES.includes(l.hairStyle) ? l.hairStyle : (base.hairStyle && !l.cls ? base.hairStyle : 'default'),
     accessory: NPC_ACCESSORIES.includes(l.accessory) ? l.accessory : base.accessory || 'none',
     scale: Math.round(scale * 100) / 100,
   };

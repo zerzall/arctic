@@ -19,11 +19,13 @@
 
 import {
   DT, PLAYER_RADIUS, RESPAWN_HP, OBJECTIVE_HP_PER_PLAYER, PICKUP_LIFETIME, WAVE_CLEAR_BONUS, waveZombieCount,
+  SPAWN_PACING, BOSS_EVERY, WAVE_ZOMBIES,
 } from '../constants.js';
 import { createRng, hashString } from '../rng.js';
 import { MASK_MOVE } from '../geom.js';
 import { TAU } from '../math.js';
 import { WEAPONS } from '../weapons.js';
+import { ZOMBIES } from '../zombies.js';
 import {
   ITEM_PICKUP_RADIUS, itemInfo, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS,
 } from '../story-defs.js';
@@ -95,6 +97,18 @@ export class StoryDirector {
     if (this.mission && Array.isArray(this.mission.steps)) {
       this.steps = this.mission.steps.map((def, i) => this._makeStep(def, i));
     }
+    /** `mission.bonus[]`: optional steps that never block the end (they start with the mission or with the step named by `since`). */
+    this.bonusSteps = [];
+    if (this.mission && Array.isArray(this.mission.bonus)) {
+      const n0 = this.steps.length;
+      this.bonusSteps = this.mission.bonus.slice(0, 24).map((def, k) => {
+        const s = this._makeStep({ ...(def && typeof def === 'object' ? def : {}), optional: true }, n0 + k);
+        s.bonus = true;
+        return s;
+      });
+    }
+    /** Timed callbacks (scripted blasts): { t, fn } in sim seconds. */
+    this.timers = [];
   }
 
   _makeStep(def, i) {
@@ -131,6 +145,9 @@ export class StoryDirector {
     this._spawnStoryNpcs();
     if (this.hideout || !this.mission) return;
     this._prepareUnderlying();
+    // bonus steps that wait for no step of the script start with the mission
+    const ids = new Set(this.steps.map((q) => q.id));
+    for (const b of this.bonusSteps) if (!b.def.since || !ids.has(b.def.since)) this._startStep(b);
     this._startNext();
   }
 
@@ -321,9 +338,14 @@ export class StoryDirector {
     s.text = d.text !== undefined ? clampText(d.text, 88) : clampText(defaultText(this, s), 88);
     if (d.onStart) this.say(d.onStart);
     if (s.text) this._objective(s, 'start');
-    if (s.press === null && d.pressure !== false) {
+    // zombies while the step has no waves of its own (bonus steps add none of their own)
+    if (s.press === null && d.pressure !== false && !s.impl.ownWaves && !s.bonus) {
       if (d.pressure) this.setPressure(s, d.pressure);
-      else if (s.impl.pressure) this.setPressure(s, s.impl.pressure);
+      else if (s.impl.pressure && !s.optional) this.setPressure(s, s.impl.pressure);
+    }
+    // bonus steps that were waiting for this one
+    if (this.bonusSteps.length && !s.bonus) {
+      for (const b of this.bonusSteps) if (b.state === 'wait' && b.def.since === s.id) this._startStep(b);
     }
   }
 
@@ -407,6 +429,7 @@ export class StoryDirector {
     this._speak();
     this._pickupItems();
     this._respawns();
+    this._timers();
     const act = this.active;
     for (let k = 0; k < act.length; k++) {
       const s = act[k];
@@ -456,6 +479,28 @@ export class StoryDirector {
       this.complete = true;
       this._victory();
     }
+  }
+
+  /** Scripted things that happen a moment later (the blasts of an `explode` activation) and the end of a lure. */
+  _timers() {
+    const g = this.game;
+    if (g.lure && this.time >= g.lure.until) {
+      g.lure = null;
+      g.rebuildFlowNow();
+    }
+    const list = this.timers;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const q = list[i];
+      q.t -= DT;
+      if (q.t > 0) continue;
+      list.splice(i, 1);
+      q.fn();
+    }
+  }
+
+  /** Run `fn` after `sec` seconds of mission time. */
+  later(sec, fn) {
+    this.timers.push({ t: sec, fn });
   }
 
   /** The game asks each tick whether the mission has ended (true = handled). */
@@ -620,8 +665,8 @@ export class StoryDirector {
   // Story items
 
   /** Put a story pickup on the ground; returns its record. */
-  addItem(item, x, y, step) {
-    const it = { id: this._itemId++, item: isItemId(item) ? item : 'crate', x, y, step: step || null };
+  addItem(item, x, y, step, note = '') {
+    const it = { id: this._itemId++, item: isItemId(item) ? item : 'crate', x, y, step: step || null, note: String(note || '').slice(0, 24) };
     this.items.push(it);
     return it;
   }
@@ -648,7 +693,7 @@ export class StoryDirector {
         const step = it.step;
         if (step && step.impl && step.impl.onItem) step.impl.onItem(this, step, it, p);
         const of = step && step.max ? Math.round(step.max) : 0;
-        g.emit({ type: 'item', pid: p.id, item: it.item, x: Math.round(it.x), y: Math.round(it.y), n: step ? Math.round(step.cur) : this.itemCount[it.item], of });
+        g.emit({ type: 'item', pid: p.id, item: it.item, note: it.note || '', x: Math.round(it.x), y: Math.round(it.y), n: step ? Math.round(step.cur) : this.itemCount[it.item], of });
         break;
       }
     }
@@ -663,8 +708,16 @@ export class StoryDirector {
   // Pressure: zombies while a step has no waves of its own
 
   /**
-   * Give step `s` a stream of bursts: cfg { tier?, waves?, size?, every?, pace?, specials?, at?, cap?, delay? }.
-   * `waves` is the number of bursts (default: unlimited).
+   * Give step `s` a stream of zombies. cfg (STORY.md §5.4 `pressure`):
+   *   waves     the VIRTUAL WAVE NUMBER the zombies are scaled for (hp, speed, the type mix: walkers at 1,
+   *             runners from 2, crawlers 3, bloaters + spitters 4, brutes 5, screamers 6); `tier` is an alias
+   *   pace      spawn tempo as a multiple of a normal wave's at that number (1 = a wave's tempo)
+   *   specials  zombie types forced into the mix
+   *   at        anchor the zombies come towards (default: the survivors)   cap  most zombies alive at once
+   *   delay     seconds before the first group
+   * The stream sends groups the way a wave does (4..6+ at a time from one spot on open ground 650..1000 px
+   * away); with `size` / `every` / `scale` / `bursts` set it sends fixed bursts instead ({size or scale x a
+   * wave} every `every` s, `bursts` of them, unlimited by default).
    */
   setPressure(s, cfg) {
     if (!cfg || typeof cfg !== 'object') {
@@ -672,20 +725,33 @@ export class StoryDirector {
       return;
     }
     const g = this.game;
-    const tier = Math.max(1, Math.round(cfg.tier || s.def.tier || this.tier));
+    const tier = Math.max(1, Math.min(30, Math.round(cfg.tier || cfg.waves || s.def.tier || this.tier)));
     const players = Math.max(1, g.players.length);
-    const wave = waveZombieCount(tier, players, g.diff);
     const pace = cfg.pace > 0 ? cfg.pace : 1;
-    s.press = {
-      tier,
-      left: Number.isFinite(cfg.waves) && cfg.waves >= 0 ? Math.floor(cfg.waves) : Infinity,
-      size: Math.max(2, Math.round(cfg.size > 0 ? cfg.size : wave * (cfg.scale > 0 ? cfg.scale : 0.3))),
-      every: Math.max(4, (cfg.every > 0 ? cfg.every : 30) / pace),
-      specials: Array.isArray(cfg.specials) ? cfg.specials.filter((t) => typeof t === 'string') : [],
+    const specials = Array.isArray(cfg.specials) ? cfg.specials.filter((t) => typeof t === 'string') : [];
+    const burst = cfg.size > 0 || cfg.every > 0 || cfg.scale > 0 || cfg.bursts >= 0;
+    const pr = {
+      tier, pace, specials, burst,
       at: cfg.at !== undefined ? cfg.at : null,
-      cap: cfg.cap > 0 ? cfg.cap : 22 + 8 * players,
-      t: cfg.delay >= 0 ? cfg.delay : 6 + this.rng.range(0, 6),
+      cap: cfg.cap > 0 ? cfg.cap : Math.min(g.diff.maxAlive, 18 + 8 * players),
+      t: cfg.delay >= 0 ? cfg.delay : 5 + this.rng.range(0, 5),
+      left: Number.isFinite(cfg.bursts) && cfg.bursts >= 0 ? Math.floor(cfg.bursts) : Infinity,
+      size: 0, every: 0,
     };
+    if (burst) {
+      const wave = waveZombieCount(tier, players, g.diff);
+      pr.size = Math.max(2, Math.round(cfg.size > 0 ? cfg.size : wave * (cfg.scale > 0 ? cfg.scale : 0.3)));
+      pr.every = Math.max(4, (cfg.every > 0 ? cfg.every : 30) / pace);
+    }
+    s.press = pr;
+  }
+
+  /** Seconds between two groups of a stream at virtual wave `w` and `pace` (a wave's own rhythm, sim/zombies.js). */
+  _groupGap(w, pace) {
+    const g = this.game, sp = SPAWN_PACING;
+    const crowd = (1 + WAVE_ZOMBIES.perPlayer * (Math.max(1, g.players.length) - 1)) * g.diff.count;
+    const base = Math.max(sp.min, Math.min(sp.start, sp.start - sp.perWave * (w - 1)));
+    return (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * this.rng.range(0.75, 1.25) / pace;
   }
 
   _pressure(s) {
@@ -697,22 +763,30 @@ export class StoryDirector {
     let alive = 0;
     for (const z of g.zombies) if (!z.dead) alive++;
     if (alive >= pr.cap) {
-      pr.t = 2;
+      pr.t = 1.5;
       return;
     }
     const at = pr.at !== null ? this.anchor(pr.at) : null;
-    const fx = at ? at.x : this.centre().x, fy = at ? at.y : this.centre().y;
-    this.burst(fx, fy, pr.size, pr.tier, pr.specials, at ? 200 : 0);
-    pr.left--;
-    pr.t = pr.every * this.rng.range(0.8, 1.25);
+    const c = at || this.centre();
+    if (pr.burst) {
+      this.burst(c.x, c.y, pr.size, pr.tier, pr.specials, at ? 200 : 0);
+      pr.left--;
+      pr.t = pr.every * this.rng.range(0.8, 1.25);
+    } else {
+      const sp = SPAWN_PACING;
+      const n = Math.min(this.rng.int(sp.groupMin, sp.groupMax + Math.floor(pr.tier / sp.groupPerWaves)), pr.cap - alive);
+      this.burst(c.x, c.y, n, pr.tier, pr.specials, at ? 200 : 0, 0.25);
+      pr.t = this._groupGap(pr.tier, pr.pace);
+    }
     this.stats.bursts++;
   }
 
   /**
-   * Send `n` zombies (tier-scaled types, plus one of each of `specials`) at (fx, fy) from a
-   * ring of open ground 650..1000 px away, behind the survivors' backs when possible.
+   * Send `n` zombies (types by the mix of virtual wave `tier`) at (fx, fy) from a ring of open ground
+   * 650..1000 px away, behind the survivors' backs when possible. `specials` are forced into the mix:
+   * `share` > 0 makes that fraction of the group one of them, else one of each is added to the group.
    */
-  burst(fx, fy, n, tier, specials, inner = 0) {
+  burst(fx, fy, n, tier, specials, inner = 0, share = 0) {
     const g = this.game;
     const spot = this.ringSpot(fx, fy, 650 + inner, 1000 + inner, 560);
     if (!spot) return 0;
@@ -720,9 +794,13 @@ export class StoryDirector {
     g.wave = tier - g.tierBonus;
     let made = 0;
     const list = [];
-    for (let i = 0; i < n; i++) list.push(g.pickZombieType(tier));
-    for (const t of specials) list.push(t);
+    for (let i = 0; i < n; i++) {
+      if (share > 0 && specials.length && this.rng.chance(share)) list.push(specials[this.rng.int(0, specials.length - 1)]);
+      else list.push(g.pickZombieType(tier));
+    }
+    if (!(share > 0)) for (const t of specials) list.push(t);
     for (const type of list) {
+      if (!ZOMBIES[type]) continue;
       const x = spot.x + this.rng.range(-70, 70), y = spot.y + this.rng.range(-70, 70);
       const ok = g.world.isCircleFree(x, y, 26, true);
       g.spawnZombieAt(type, ok ? x : spot.x, ok ? y : spot.y);
@@ -800,7 +878,9 @@ export class StoryDirector {
     g.wave = tier - g.tierBonus;
     const players = Math.max(1, g.players.length);
     g.wavePlayers = players;
-    g.waveTotal = Math.max(3, Math.round(waveZombieCount(tier, players, g.diff) * (boss ? 0.65 : 1) * scale * this.waveScale));
+    // (a script's waves never get the automatic every-fifth-wave discount: bosses come from `boss` steps)
+    const auto = tier % BOSS_EVERY === 0 ? WAVE_ZOMBIES.bossWave : 1;
+    g.waveTotal = Math.max(3, Math.round((waveZombieCount(tier, players, g.diff) / auto) * (boss ? 0.65 : 1) * scale * this.waveScale));
     g.waveBosses = boss ? Math.ceil(players / 3) : 0;
     g.bossQueue = g.waveBosses;
     g.bossTimer = 10;
@@ -894,17 +974,20 @@ export class StoryDirector {
       };
       downs += p.downs;
     }
+    // "collect everything": every optional step and every bonus step of the script is done
     let optionalDone = true;
     for (const s of this.steps) if (s.optional && s.state !== 'done') optionalDone = false;
+    for (const s of this.bonusSteps) if (s.state !== 'done') optionalDone = false;
     const st = (this.mission && this.mission.stars) || {};
     let stars = 0;
-    const met = { time: false, noDowns: false, optional: false };
+    const met = { time: false, noDowns: false, optional: false, perfect: false };
     if (result === 'victory') {
+      // 1 star for the win, 1 for beating the time, 1 for the clean run (no downs and, when asked, every bonus)
       if (st.time > 0 && this.time <= st.time) met.time = true;
       if (st.noDowns && downs === 0) met.noDowns = true;
       if (st.optional && optionalDone) met.optional = true;
-      const n = (met.time ? 1 : 0) + (met.noDowns ? 1 : 0) + (met.optional ? 1 : 0);
-      stars = 1 + Math.min(2, n);
+      met.perfect = !!(st.noDowns || st.optional) && (!st.noDowns || met.noDowns) && (!st.optional || met.optional);
+      stars = 1 + (met.time ? 1 : 0) + (met.perfect ? 1 : 0);
     }
     g.emit({
       type: 'storyend', result, reason: result === 'victory' ? '' : String(reason || 'wiped'), mission: this.missionId,

@@ -18,10 +18,7 @@ const RADIO_MIN = 1400;
 const DONE_LINGER = 2.2;
 const MAX_ROWS = 4;
 const MAX_CHIPS = 3;
-/** Speaker colours (by cast key; anyone else gets one from their name). */
-const SPEAKER_COLORS = {
-  mara: '#7fd6c6', deke: '#e8b86a', ozzy: '#c79bff', okafor: '#9fd070', priya: '#ffb070', june: '#ffc2dd', warden: '#ff8a80',
-};
+/** Speaker colours: the cast's portrait accent (story-defs CAST), anyone else gets one from their name. */
 const FALLBACK_COLORS = ['#8ecbff', '#ffd27f', '#b6f59c', '#f0a0ff', '#ffab91', '#80e0d8'];
 
 function clock(sec) {
@@ -38,7 +35,7 @@ function speakerName(who) {
 
 function speakerColor(who) {
   const k = String(who || '').toLowerCase();
-  if (SPEAKER_COLORS[k]) return SPEAKER_COLORS[k];
+  if (CAST[k] && CAST[k].color) return CAST[k].color;
   let hsh = 0;
   for (let i = 0; i < k.length; i++) hsh = (hsh * 31 + k.charCodeAt(i)) >>> 0;
   return FALLBACK_COLORS[hsh % FALLBACK_COLORS.length];

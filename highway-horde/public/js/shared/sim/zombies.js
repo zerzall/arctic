@@ -124,6 +124,9 @@ export function updateSpawning(game) {
 
 /** A zombie type drawn by the spawn weights of wave (or tier) `w`. */
 export function pickType(game, w) {
+  // a story step's forced types (`pressure.specials`) make up about a quarter of the mix
+  const forced = game.forceTypes;
+  if (forced && forced.length && game.rng.chance(0.25)) return forced[game.rng.int(0, forced.length - 1)];
   let total = 0;
   for (const t of SPAWN_TYPES) total += Math.max(0, ZOMBIES[t].weight(w));
   let r = game.rng.next() * total;

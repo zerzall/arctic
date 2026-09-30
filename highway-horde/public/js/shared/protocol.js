@@ -28,7 +28,7 @@ import { PICKUP_KINDS } from './items.js';
 import { Z_UNIT } from './jump.js';
 import { CAMPAIGN_EVENTS } from './campaign.js';
 import { CLASS_IDS } from './classes.js';
-import { STEP_KINDS, MARKER_KINDS, INTERACT_KIND_IDS, NPC_STATES, NPC_ACCESSORIES } from './story-defs.js';
+import { STEP_KINDS, MARKER_KINDS, INTERACT_KIND_IDS, NPC_STATES, NPC_ACCESSORIES, NPC_HAIR_STYLES } from './story-defs.js';
 
 /** Message type tags (first byte of every binary message). */
 export const MSG = {
@@ -75,6 +75,7 @@ const MARKER_INDEX = indexMap(MARKER_KINDS);
 const INTERACT_INDEX = indexMap(INTERACT_KIND_IDS);
 const NPC_STATE_INDEX = indexMap(NPC_STATES);
 const ACCESSORY_INDEX = indexMap(NPC_ACCESSORIES);
+const HAIRSTYLE_INDEX = indexMap(NPC_HAIR_STYLES);
 const CLASS_INDEX = indexMap(CLASS_IDS);
 
 function kindIndex(map, v) {
@@ -341,7 +342,7 @@ const EVENT_SCHEMAS = [
   ['radio', [['who', 'str'], ['text', 'txt'], ['ms', 'u16'], ['kind', ENUMS.radioKind]]],
   ['interact', [['pid', 'pid'], ['id', 'str'], ['kind', 'str']]],
   ['talk', [['pid', 'pid'], ['npc', 'str']]],
-  ['item', [['pid', 'pid'], ['item', 'str'], ['x', 'pos'], ['y', 'pos'], ['n', 'u16'], ['of', 'u16']]],
+  ['item', [['pid', 'pid'], ['item', 'str'], ['note', 'str'], ['x', 'pos'], ['y', 'pos'], ['n', 'u16'], ['of', 'u16']]],
   ['npc', [['what', ENUMS.npcWhat], ['npc', 'str'], ['id', 'pid']]],
 ];
 
@@ -833,6 +834,7 @@ function writeLook(w, look) {
   w.u8(outfit.length);
   for (const c of outfit) writeRgb(w, c);
   w.u8(kindIndex(ACCESSORY_INDEX, l.accessory));
+  w.u8(kindIndex(HAIRSTYLE_INDEX, l.hairStyle));
   w.u8(qInt((Number.isFinite(l.scale) ? l.scale : 1) * 100, 255));
 }
 
@@ -843,7 +845,8 @@ function readLook(r) {
   const outfit = [];
   for (let i = 0; i < n; i++) outfit.push(readRgb(r));
   const accessory = kindAt(NPC_ACCESSORIES, r.u8()) || 'none';
-  return { cls, skin, hair, outfit, accessory, scale: r.u8() / 100 };
+  const hairStyle = kindAt(NPC_HAIR_STYLES, r.u8()) || 'default';
+  return { cls, skin, hair, hairStyle, outfit, accessory, scale: r.u8() / 100 };
 }
 
 /** NPCs (up to 16): id, key, name, look, position (0.25 px), height (whole units), angle u8, state, hp (255 = invulnerable). */

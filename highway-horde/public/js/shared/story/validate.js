@@ -22,16 +22,16 @@ const TIMES = ['night', 'day'];
 /** Keys every step may carry. */
 const COMMON = new Set([
   'id', 'type', 'text', 'parallel', 'optional', 'required', 'onStart', 'onDone', 'pressure', 'tier', 'timeout', 'flags', 'setFlag',
-  'follow', 'unfollow', 'remove', 'npcs', 'supply', 'todo', 'note',
+  'follow', 'unfollow', 'remove', 'npcs', 'supply', 'todo', 'note', 'since',
 ]);
 /** Keys per step type (besides the common ones). */
 const PARAMS = {
   defend: ['target', 'waves', 'seconds', 'scale', 'boss', 'gap', 'heal', 'pace', 'at', 'delay'],
   waves: ['count', 'pace', 'scale', 'boss', 'gap', 'at', 'delay'],
   survive: ['seconds', 'at'],
-  collect: ['item', 'count', 'at', 'scatter'],
+  collect: ['item', 'count', 'at', 'scatter', 'note'],
   reach: ['at', 'hold', 'radius', 'who'],
-  activate: ['at', 'hold', 'kind', 'label', 'radius', 'burst', 'specials'],
+  activate: ['at', 'hold', 'kind', 'label', 'radius', 'burst', 'specials', 'effect', 'lure', 'blast'],
   escort: ['npc', 'route', 'hp', 'fail', 'invulnerable'],
   kill: ['enemy', 'zombie', 'count', 'spawn', 'at'],
   boss: ['enemy', 'zombie', 'count', 'at'],
@@ -40,10 +40,12 @@ const PARAMS = {
   wait: ['seconds'],
   dialogue: ['lines', 'npc', 'talk'],
 };
-const PRESSURE_KEYS = new Set(['tier', 'waves', 'size', 'scale', 'every', 'pace', 'specials', 'at', 'cap', 'delay']);
+const PRESSURE_KEYS = new Set(['tier', 'waves', 'size', 'scale', 'every', 'pace', 'specials', 'at', 'cap', 'delay', 'bursts']);
+const EFFECTS = ['lure', 'explode'];
 const MISSION_KEYS = new Set([
   'id', 'chapter', 'index', 'title', 'blurb', 'map', 'time', 'mode', 'level', 'party', 'briefing', 'steps', 'rewards', 'debrief',
   'stars', 'startAt', 'npcs', 'tier', 'respawn', 'timeLimit', 'waveScale', 'todo', 'note', 'pressure', 'difficulty',
+  'bonus', 'requires', 'hub', 'after', 'notes',
 ]);
 
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -98,6 +100,10 @@ export function validateMission(m, { maps = null } = {}) {
   if (m.timeLimit !== undefined && !isNum(m.timeLimit, 30, 7200)) err('timeLimit must be seconds 30..7200');
   if (m.waveScale !== undefined && !isNum(m.waveScale, 0.05, 3)) err('waveScale must be 0.05..3');
   if (m.difficulty !== undefined && !DIFFICULTIES[m.difficulty]) err('difficulty must be an existing difficulty');
+  if (m.requires !== undefined && !(Array.isArray(m.requires) && m.requires.every(isStr))) err('requires must be an array of mission ids');
+  if (m.hub !== undefined && m.hub !== null && !isStr(m.hub)) err('hub must be null or a hideout id');
+  if (m.after !== undefined && !isStr(m.after)) err('after must be a mission id, "hideout:<id>" or "epilogue"');
+  if (m.notes !== undefined && !(Array.isArray(m.notes) && m.notes.every(isStr))) err('notes must be an array of note ids');
 
   const lines = (list, label, required = false) => {
     if (list === undefined) {
@@ -136,7 +142,7 @@ export function validateMission(m, { maps = null } = {}) {
     if (st.time !== undefined && !isNum(st.time, 30, 7200)) err('stars.time must be seconds 30..7200');
     if (st.noDowns !== undefined && typeof st.noDowns !== 'boolean') err('stars.noDowns must be a boolean');
     if (st.optional !== undefined && !isStr(st.optional)) err('stars.optional must be a string');
-    if (st.optional && !(m.steps || []).some((s) => s && s.optional)) warn('stars.optional is set but no step is optional');
+    if (st.optional && !(m.steps || []).some((s) => s && s.optional) && !(Array.isArray(m.bonus) && m.bonus.length)) warn('stars.optional is set but no step is optional and there is no bonus');
   }
 
   // ---- anchors
@@ -171,8 +177,7 @@ export function validateMission(m, { maps = null } = {}) {
   const ids = new Set();
   let evacs = 0, campaigns = 0, lastStage = 0;
   const zombieOk = (t) => t === 'any' || (typeof t === 'string' && Object.hasOwn(ZOMBIES, t));
-  m.steps.forEach((s, i) => {
-    const at = `steps[${i}]`;
+  const checkStep = (s, at, bonus) => {
     if (!s || typeof s !== 'object') {
       err(`${at} is not an object`);
       return;
@@ -190,6 +195,9 @@ export function validateMission(m, { maps = null } = {}) {
     if (s.text !== undefined && typeof s.text !== 'string') err(`${label}: text must be a string`);
     else if (typeof s.text === 'string' && s.text.length > 88) warn(`${label}: text is long (${s.text.length} characters, 88 fit)`);
     if (!['dialogue', 'wait'].includes(s.type) && s.text === undefined) warn(`${label}: no text (the HUD line is generated)`);
+    if (s.since !== undefined && !bonus) warn(`${label}: since only means something on a bonus step`);
+    if (bonus && s.since !== undefined && !(m.steps || []).some((q) => q && q.id === s.since)) warn(`${label}: since "${s.since}" is not a step id (it starts with the mission)`);
+    if (bonus && s.parallel) warn(`${label}: bonus steps already run beside the script (parallel is ignored)`);
     for (const k of ['parallel', 'optional', 'required']) if (s[k] !== undefined && typeof s[k] !== 'boolean') err(`${label}: ${k} must be a boolean`);
     if (s.tier !== undefined && !isInt(s.tier, 1, 30)) err(`${label}: tier must be an integer 1..30`);
     if (s.timeout !== undefined && !isNum(s.timeout, 10, 7200)) err(`${label}: timeout must be seconds 10..7200`);
@@ -213,7 +221,8 @@ export function validateMission(m, { maps = null } = {}) {
       if (!p || typeof p !== 'object') err(`${label}: pressure must be false or an object`);
       else {
         for (const k of Object.keys(p)) if (!PRESSURE_KEYS.has(k)) warn(`${label}: unknown pressure field "${k}"`);
-        if (p.waves !== undefined && !isInt(p.waves, 0, 99)) err(`${label}: pressure.waves must be an integer 0..99`);
+        if (p.waves !== undefined && !isInt(p.waves, 1, 30)) err(`${label}: pressure.waves (the virtual wave number) must be an integer 1..30`);
+        if (p.bursts !== undefined && !isInt(p.bursts, 0, 99)) err(`${label}: pressure.bursts must be an integer 0..99`);
         if (p.size !== undefined && !isInt(p.size, 1, 80)) err(`${label}: pressure.size must be an integer 1..80`);
         if (p.every !== undefined && !isNum(p.every, 3, 300)) err(`${label}: pressure.every must be seconds 3..300`);
         if (p.pace !== undefined && !isNum(p.pace, 0.2, 5)) err(`${label}: pressure.pace must be 0.2..5`);
@@ -249,6 +258,7 @@ export function validateMission(m, { maps = null } = {}) {
         if (!isInt(s.count, 1, 24)) err(`${label}: count must be an integer 1..24`);
         if (!Array.isArray(s.at) || !s.at.length) err(`${label}: at must be a non-empty array of anchors`);
         else s.at.forEach((a, j) => anchorErr(a, `${label} at[${j}]`));
+        if (s.note !== undefined && !isStr(s.note)) err(`${label}: note must be a note id`);
         break;
       case 'reach':
         anchorErr(s.at, `${label} at`);
@@ -263,6 +273,23 @@ export function validateMission(m, { maps = null } = {}) {
         });
         if (s.hold !== undefined && !isNum(s.hold, 0, 120)) err(`${label}: hold must be seconds 0..120`);
         if (s.kind !== undefined && !INTERACT_KINDS[s.kind]) err(`${label}: kind "${s.kind}" is not an interactable kind`);
+        if (s.effect !== undefined && !EFFECTS.includes(s.effect)) err(`${label}: effect must be one of ${EFFECTS.join(', ')}`);
+        if (s.effect === 'lure') {
+          if (!s.lure || typeof s.lure !== 'object') err(`${label}: effect "lure" needs lure: { to, seconds }`);
+          else {
+            anchorErr(s.lure.to, `${label} lure.to`);
+            if (!isNum(s.lure.seconds, 5, 600)) err(`${label}: lure.seconds must be 5..600`);
+          }
+        }
+        if (s.effect === 'explode') {
+          if (!s.blast || typeof s.blast !== 'object') err(`${label}: effect "explode" needs blast: { at, r, damage }`);
+          else {
+            anchorErr(s.blast.at, `${label} blast.at`);
+            if (!isNum(s.blast.r, 30, 600)) err(`${label}: blast.r must be 30..600`);
+            if (!isNum(s.blast.damage, 1, 5000)) err(`${label}: blast.damage must be 1..5000`);
+          }
+        }
+        if (s.effect === undefined && (s.lure !== undefined || s.blast !== undefined)) warn(`${label}: lure / blast without an effect do nothing`);
         break;
       case 'escort':
         if (!isStr(s.npc)) err(`${label}: npc is required`);
@@ -310,7 +337,7 @@ export function validateMission(m, { maps = null } = {}) {
         break;
       }
       case 'wait':
-        if (!isNum(s.seconds, 0, 120)) err(`${label}: seconds must be 0..120`);
+        if (!isNum(s.seconds, 0, 1800)) err(`${label}: seconds must be 0..1800`);
         break;
       case 'dialogue':
         lines(s.lines, `${at}.lines`, true);
@@ -320,7 +347,18 @@ export function validateMission(m, { maps = null } = {}) {
       default:
         break;
     }
-  });
+  };
+  m.steps.forEach((s, i) => checkStep(s, `steps[${i}]`, false));
+  if (m.bonus !== undefined) {
+    if (!Array.isArray(m.bonus)) err('bonus must be an array of steps');
+    else {
+      if (m.bonus.length > 24) err('too many bonus steps (24 at most)');
+      m.bonus.forEach((s, i) => {
+        if (s && typeof s === 'object' && ['defend', 'waves', 'evac', 'campaignStage', 'escort', 'boss', 'survive'].includes(s.type)) err(`bonus[${i}] (${s.type}): a ${s.type} step cannot be a bonus (use collect, reach, activate, kill or dialogue)`);
+        checkStep(s, `bonus[${i}]`, true);
+      });
+    }
+  }
   if (m.mode === 'zone' && !evacs) err('mode "zone" needs an evac step');
   if (m.mode === 'campaign' && !campaigns) err('mode "campaign" needs a campaignStage step');
   if (map && m.mode === 'zone' && !(map.pois && map.pois.length >= 2)) err(`map ${m.map} has no points of interest for an evac run`);

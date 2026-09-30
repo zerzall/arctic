@@ -17,7 +17,7 @@ export const FX_FOOT = {
     { id: 'hello', type: 'dialogue', lines: [say('mara', 'Radio check. Nice and easy.', 800), say('ozzy', 'Copy that.', 600)] },
     { id: 'pause', type: 'wait', seconds: 1 },
     { id: 'walk', type: 'reach', at: 'bus', hold: 2, text: 'Get to the bus', pressure: false, onDone: [say('mara', 'That is the bus.', 700)] },
-    { id: 'fuel', type: 'collect', item: 'fuel', count: 3, at: ['bus'], text: 'Find the fuel cans', pressure: { waves: 1, every: 5, delay: 3, size: 5, tier: 1 } },
+    { id: 'fuel', type: 'collect', item: 'fuel', count: 3, at: ['bus'], text: 'Find the fuel cans', pressure: { bursts: 1, every: 5, delay: 3, size: 5, tier: 1 } },
     { id: 'power', type: 'activate', at: ['bus', 'overpass'], hold: 2, kind: 'terminal', text: 'Hack both terminals', pressure: false },
     { id: 'note', type: 'collect', item: 'note', count: 1, at: ['overpass'], optional: true, text: 'Find the note', pressure: false },
     { id: 'haul', type: 'escort', npc: 'hauler', route: ['overpass', 'bus'], text: 'Walk the hauler to the bus', pressure: false, onStart: [say('deke', 'Move out.', 600)] },
@@ -34,7 +34,7 @@ export const FX_FIGHT = {
   startAt: 'bus', tier: 1, respawn: 20,
   steps: [
     { id: 'kills', type: 'kill', enemy: 'walker', count: 4, text: 'Kill four zombies', pressure: { every: 6, size: 4, delay: 2, tier: 1 } },
-    { id: 'hold', type: 'survive', seconds: 10, pressure: { every: 6, size: 4, delay: 2, waves: 2 }, text: 'Hold out' },
+    { id: 'hold', type: 'survive', seconds: 10, pressure: { every: 6, size: 4, delay: 2, bursts: 2 }, text: 'Hold out' },
     { id: 'waves', type: 'waves', count: 2, scale: 0.22, gap: 3, text: 'Fight off the waves' },
     { id: 'guard', type: 'defend', target: 'bus', waves: 1, scale: 0.2, text: 'Defend the bus' },
     { id: 'big', type: 'boss', enemy: 'brute', text: 'Kill the brute' },

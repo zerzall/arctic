@@ -9,6 +9,8 @@
 //   NPCs            states, the default cast and their looks
 //   markers         the icons the HUD and the 3D view draw for the current objective
 
+import { CAST as STORY_CAST } from './story/cast.js';
+
 // ---------------------------------------------------------------------------------------
 // Step types
 
@@ -56,7 +58,7 @@ export const DEFEND_ANCHOR = Object.freeze({
 /**
  * Known story items. Any other id (letters, digits, `_`, at most 16) is a generic crate; a
  * new id only needs an entry here to get its own look.
- * shape: 'can' | 'box' | 'part' | 'note' | 'sack' | 'case'
+ * shape: 'can' | 'box' | 'part' | 'note' | 'sack' | 'case' | 'tape' | 'tag' | 'pump'
  */
 export const STORY_ITEMS = Object.freeze({
   fuel: { name: 'Fuel can', short: 'Fuel', color: '#d8402e', shape: 'can' },
@@ -70,6 +72,9 @@ export const STORY_ITEMS = Object.freeze({
   ammo: { name: 'Ammo case', short: 'Ammo', color: '#5a6a3a', shape: 'case' },
   key: { name: 'Key', short: 'Key', color: '#f0c040', shape: 'part' },
   crate: { name: 'Crate', short: 'Crate', color: '#b08a50', shape: 'box', mark: '#6a5230' },
+  pump: { name: 'Marine pump', short: 'Pump', color: '#4a90b8', shape: 'pump' },
+  tag: { name: 'Dog tag', short: 'Tag', color: '#c8ccd0', shape: 'tag' },
+  player: { name: 'Tape player', short: 'Tape player', color: '#7a7a82', shape: 'tape' },
 });
 
 /** Item ids at most 16 characters, letters/digits/underscore, starting with a letter. */
@@ -144,29 +149,42 @@ export const TALK_RANGE = 78;
 /** NPC states (STORY.md §5.3), wire order. */
 export const NPC_STATES = Object.freeze(['idle', 'talk', 'walk', 'follow', 'escort', 'down']);
 
-/** Accessory options of an NPC look (wire order; the renderers draw what they can). */
-export const NPC_ACCESSORIES = Object.freeze(['none', 'glasses', 'cap', 'beanie', 'bandana', 'scarf', 'hat', 'headset', 'backpack', 'bandage']);
+/**
+ * Accessory options of an NPC look (wire order; the renderers draw what they can, an unknown one is
+ * drawn as nothing). The first ten are the basic set, the rest the props of the story cast (shared/story/cast.js).
+ */
+export const NPC_ACCESSORIES = Object.freeze([
+  'none', 'glasses', 'cap', 'beanie', 'bandana', 'scarf', 'hat', 'headset', 'backpack', 'bandage',
+  'stethoscope', 'wrench-belt', 'beret', 'map-satchel', 'apron', 'top-hat', 'trucker-cap', 'leash', 'radio-pack', 'captain-cap',
+]);
+
+/** Hair styles of an NPC look (wire order); 'default' = whatever the class model has. */
+export const NPC_HAIR_STYLES = Object.freeze([
+  'default', 'bun', 'buzz', 'curly', 'cropped', 'braid', 'pigtails', 'curls', 'slicked', 'bald-beard', 'thin', 'ponytail',
+]);
 
 /**
- * The recurring cast (STORY.md §2): who they are and how they look until story data
- * (shared/story/cast.js) says otherwise. `look = { cls, skin, hair, outfit: [shirt, trousers?], accessory, scale? }`.
+ * The recurring cast (STORY.md §2): who they are and how they look. The people come from the
+ * story data (shared/story/cast.js: `look = { cls, skin, hair, hairStyle, outfit: [1..3 hex],
+ * accessory, scale }`); `color` is the speaker colour of the radio strip (the portrait accent).
+ * Two extras exist for scripts and tests that need a body without a name: `hauler`, `survivor`.
  */
-export const CAST = Object.freeze({
-  mara: { name: 'Mara Voss', look: { cls: 'medic', skin: '#e0b090', hair: '#5a3220', outfit: ['#4a7c8c', '#2d3a44'], accessory: 'none' } },
-  deke: { name: 'Deke Harlan', look: { cls: 'engineer', skin: '#8a5a3c', hair: '#b8b4ac', outfit: ['#7a5a30', '#3a3226'], accessory: 'cap' } },
-  ozzy: { name: 'Ozzy', look: { cls: 'scout', skin: '#d8a880', hair: '#1c1410', outfit: ['#7a3a8a', '#28283a'], accessory: 'headset', scale: 0.94 } },
-  okafor: { name: 'Sgt. Okafor', look: { cls: 'soldier', skin: '#5e3c28', hair: '#151010', outfit: ['#4e5b31', '#3b4424'], accessory: 'none' } },
-  priya: { name: 'Priya Nair', look: { cls: 'scout', skin: '#b8804c', hair: '#1a0e0a', outfit: ['#c07030', '#2c3a3a'], accessory: 'backpack' } },
-  june: { name: 'June', look: { cls: 'scout', skin: '#e6c0a0', hair: '#c8a050', outfit: ['#e08aa8', '#4a5a8a'], accessory: 'beanie', scale: 0.7 } },
-  hauler: { name: 'Big Ray', look: { cls: 'heavy', skin: '#c89a78', hair: '#3a2a1a', outfit: ['#a04030', '#38424a'], accessory: 'cap' } },
-  survivor: { name: 'Survivor', look: { cls: 'demo', skin: '#d0a078', hair: '#4a3020', outfit: ['#6a6a50', '#3a3a30'], accessory: 'none' } },
-});
+export const CAST = Object.freeze((() => {
+  const out = {};
+  for (const id of Object.keys(STORY_CAST)) {
+    const c = STORY_CAST[id];
+    out[id] = { name: c.name, color: (c.portrait && c.portrait.accent) || '#e5e7eb', look: c.look ? { ...c.look, outfit: c.look.outfit.slice() } : null };
+  }
+  out.hauler = { name: 'Big Ray', color: '#f0b070', look: { cls: 'heavy', skin: '#c89a78', hair: '#3a2a1a', hairStyle: 'buzz', outfit: ['#a04030', '#38424a'], accessory: 'cap', scale: 1 } };
+  out.survivor = { name: 'Survivor', color: '#e5e7eb', look: { cls: 'demo', skin: '#d0a078', hair: '#4a3020', hairStyle: 'default', outfit: ['#6a6a50', '#3a3a30'], accessory: 'none', scale: 1 } };
+  return out;
+})());
 
 /** The default NPC record for a cast key or a plain look, with `name` and `look` filled in. */
 export function npcDefaults(key) {
   const c = CAST[key];
-  if (c) return { name: c.name, look: { ...c.look, outfit: c.look.outfit.slice() } };
-  return { name: String(key || 'Survivor'), look: { ...CAST.survivor.look, outfit: CAST.survivor.look.outfit.slice() } };
+  if (c && c.look) return { name: c.name, look: { ...c.look, outfit: c.look.outfit.slice() } };
+  return { name: c ? c.name : String(key || 'Survivor'), look: { ...CAST.survivor.look, outfit: CAST.survivor.look.outfit.slice() } };
 }
 
 /** NPC tuning. Distances px, speeds px/s, times s. */

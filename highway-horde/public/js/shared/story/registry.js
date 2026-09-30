@@ -1,9 +1,11 @@
-// Where the game finds a mission script by its id. shared/story/missions.js (the fifteen
-// real missions) registers itself here with registerMissions(MISSIONS); tests and tools
-// register their own. The sim and the map builder resolve `settings.story.nodeId` through
-// getMission(), so host and clients agree on a mission without the script travelling on the
-// wire.
+// Where the game finds a mission script by its id. The fifteen written missions
+// (shared/story/missions.js, agent S4) are always there; tests and tools register their own with
+// registerMissions(). The sim and the map builder resolve `settings.story.nodeId` through
+// getMission(), so host and clients agree on a mission without the script travelling on the wire.
 
+import { MISSIONS } from './missions.js';
+
+const WRITTEN = new Map(MISSIONS.map((m) => [m.id, m]));
 const REG = new Map();
 
 /** Register (or replace) mission scripts by their `id`. */
@@ -11,17 +13,19 @@ export function registerMissions(list) {
   for (const m of list || []) if (m && typeof m.id === 'string') REG.set(m.id, m);
 }
 
-/** The mission with this id, or null. */
+/** The mission with this id (a registered one first, then the written campaign), or null. */
 export function getMission(id) {
-  return REG.get(id) || null;
+  return REG.get(id) || WRITTEN.get(id) || null;
 }
 
-/** Every registered mission (registration order). */
+/** Every mission the game knows: the written campaign, then the registered ones. */
 export function allMissions() {
-  return [...REG.values()];
+  const out = new Map(WRITTEN);
+  for (const [id, m] of REG) out.set(id, m);
+  return [...out.values()];
 }
 
-/** Forget every registered mission (tests). */
+/** Forget the missions registered with registerMissions() (tests); the written campaign stays. */
 export function clearMissions() {
   REG.clear();
 }

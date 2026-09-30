@@ -21,6 +21,7 @@ import { componentAt } from './zone.js';
 import { pickType } from './zombies.js';
 import { createNpc, npcByKey } from './npcs.js';
 import { SUB } from '../campaign.js';
+import { explode } from './combat.js';
 
 const RUN = 0, DONE = 1, FAIL = -1;
 const REACH_MARGIN = 20;
@@ -64,13 +65,58 @@ function nearestHuman(dir, x, y) {
 // -------------------------------------------------------------------------------------
 // Waves (defend, waves)
 
+/** `pressure:{ waves, pace, specials }` of a step that runs waves of its own (the first wave's number, their tempo, forced types). */
+function waveFeel(dir, s) {
+  const pr = s.def.pressure && typeof s.def.pressure === 'object' ? s.def.pressure : {};
+  return {
+    tier: Math.max(1, Math.round(pr.waves || pr.tier || s.def.tier || dir.tier)),
+    pace: pr.pace > 0 ? pr.pace : s.def.pace > 0 ? s.def.pace : 1,
+    specials: Array.isArray(pr.specials) ? pr.specials.filter((t) => typeof t === 'string' && ZOMBIES[t]) : [],
+  };
+}
+
+/** The virtual wave a kill / boss step's own zombies are scaled for (its pressure's `waves`, else the mission's tier). */
+function killTier(dir, s) {
+  const pr = s.def.pressure && typeof s.def.pressure === 'object' ? s.def.pressure : null;
+  return Math.max(1, Math.round((pr && (pr.waves || pr.tier)) || s.def.tier || dir.tier));
+}
+
+/** How many of a script's "for a party of four" things a party of this size faces (0.5 .. 1.5 x). */
+function partyScale(dir) {
+  return Math.max(0.5, Math.min(1.5, Math.max(1, dir.game.players.length) / 4));
+}
+
+/** A step on the game's own wave machine (evac, campaignStage) bends its tempo and difficulty to `pressure`. */
+function feelStart(dir, s) {
+  const g = dir.game;
+  const pr = s.def.pressure && typeof s.def.pressure === 'object' ? s.def.pressure : null;
+  if (!pr) return;
+  s.feel = { tierBonus: g.tierBonus, pace: g.spawnPace, force: g.forceTypes };
+  if (pr.waves > 0) g.tierBonus = Math.max(0, Math.round(pr.waves) - 1);
+  if (pr.pace > 0) g.spawnPace = pr.pace;
+  const sp = Array.isArray(pr.specials) ? pr.specials.filter((t) => typeof t === 'string' && ZOMBIES[t]) : [];
+  if (sp.length) g.forceTypes = sp;
+}
+
+function feelStop(dir, s) {
+  if (!s.feel) return;
+  const g = dir.game;
+  g.tierBonus = s.feel.tierBonus;
+  g.spawnPace = s.feel.pace;
+  g.forceTypes = s.feel.force;
+  s.feel = null;
+}
+
 function wavesStart(dir, s, total) {
-  s.tier = Math.max(1, Math.round(s.def.tier || dir.tier));
+  const feel = waveFeel(dir, s);
+  s.tier = feel.tier;
   s.max = total;
   s.cur = 0;
   s.wv = { k: 0, state: 'pre', t: s.def.delay >= 0 ? s.def.delay : 3 };
   s.paceSaved = dir.game.spawnPace;
-  dir.game.spawnPace = s.def.pace > 0 ? s.def.pace : 1;
+  dir.game.spawnPace = feel.pace;
+  s.forceSaved = dir.game.forceTypes;
+  dir.game.forceTypes = feel.specials.length ? feel.specials : null;
 }
 
 function wavesUpdate(dir, s) {
@@ -105,6 +151,7 @@ function wavesUpdate(dir, s) {
 function wavesStop(dir, s) {
   const g = dir.game;
   g.spawnPace = s.paceSaved || 1;
+  g.forceTypes = s.forceSaved || null;
   // a cancelled step leaves nothing queued behind
   if (s.wv && s.wv.state === 'fight') {
     g.spawnQueue = 0;
@@ -114,10 +161,42 @@ function wavesStop(dir, s) {
 
 // -------------------------------------------------------------------------------------
 
+/**
+ * What a finished `activate` does besides ticking the objective:
+ *   effect 'lure'    { lure: { to: anchor, seconds } } the noise draws the horde to that place for a while
+ *   effect 'explode' { blast: { at: anchor, r, damage } } a scripted explosion (three blasts in a second) that hurts zombies only
+ */
+function activateEffect(dir, s) {
+  const d = s.def, g = dir.game;
+  if (s.fx) return;
+  s.fx = true;
+  if (d.effect === 'lure' && d.lure) {
+    const a = dir.anchor(d.lure.to);
+    if (a) {
+      const secs = Math.max(5, Math.min(600, Number(d.lure.seconds) || 60));
+      g.lure = { x: a.x, y: a.y, until: dir.time + secs, target: { x: a.x, y: a.y } };
+      g.rebuildFlowNow();
+      g.emit({ type: 'drop', x: Math.round(a.x), y: Math.round(a.y) });
+    }
+  } else if (d.effect === 'explode' && d.blast) {
+    const a = dir.anchor(d.blast.at);
+    if (a) {
+      const r = Math.max(60, Math.min(600, Number(d.blast.r) || 240)), dmg = Math.max(1, Number(d.blast.damage) || 300);
+      const spread = r * 0.35;
+      for (let k = 0; k < 3; k++) {
+        const ang = k * 2.1 + 0.4;
+        const x = a.x + Math.cos(ang) * spread * (k ? 1 : 0), y = a.y + Math.sin(ang) * spread * (k ? 1 : 0);
+        dir.later(k * 0.4, () => explode(g, x, y, r, 0, null, 'rocket', { zombieDmg: dmg, playerDmg: 0, structDmg: 0, credit: s.by || 0 }));
+      }
+    }
+  }
+}
+
 export const STEP_IMPL = {
   // ---- defend ------------------------------------------------------------------------
   defend: {
     supply: true,
+    ownWaves: true,
     label(dir, s) {
       const o = dir.map.objective;
       const nm = o ? o.name : 'the objective';
@@ -132,7 +211,7 @@ export const STEP_IMPL = {
         s.total = d.seconds;
         s.t = d.seconds;
         s.tier = Math.max(1, Math.round(d.tier || dir.tier));
-        dir.setPressure(s, d.pressure || { every: 15, scale: 0.4, tier: s.tier });
+        dir.setPressure(s, d.pressure || { pace: 0.4, tier: s.tier });
       } else {
         wavesStart(dir, s, Math.max(1, Math.floor(d.waves) || 3));
       }
@@ -162,6 +241,7 @@ export const STEP_IMPL = {
   // ---- waves -------------------------------------------------------------------------
   waves: {
     supply: true,
+    ownWaves: true,
     label(dir, s) {
       return `Survive the waves: ${Math.min(s.max, s.cur + 1)} of ${s.max}`;
     },
@@ -184,7 +264,7 @@ export const STEP_IMPL = {
   // ---- survive -----------------------------------------------------------------------
   survive: {
     timed: true,
-    pressure: { every: 14, scale: 0.35 },
+    pressure: { pace: 0.4 },
     label(dir, s) {
       return 'Survive';
     },
@@ -217,7 +297,7 @@ export const STEP_IMPL = {
 
   // ---- collect -----------------------------------------------------------------------
   collect: {
-    pressure: { every: 28, scale: 0.3 },
+    pressure: { pace: 0.3 },
     label(dir, s) {
       return `Collect ${itemPlural(s.item, s.max)}`;
     },
@@ -240,7 +320,7 @@ export const STEP_IMPL = {
           if (g.world.isCircleFree(x, y, 22, false) && componentAt(g.flow, dir.comp, x, y) === dir.mainComp) spot = { x, y };
         }
         if (!spot) spot = dir.freeNear(a.x, a.y, 120, 22);
-        dir.addItem(s.item, spot.x, spot.y, s);
+        dir.addItem(s.item, spot.x, spot.y, s, d.note);
       }
     },
     update(dir, s) {
@@ -275,7 +355,7 @@ export const STEP_IMPL = {
   // ---- reach -------------------------------------------------------------------------
   reach: {
     timed: true,
-    pressure: { every: 34, scale: 0.25 },
+    pressure: { pace: 0.25 },
     label(dir, s) {
       return s.def.hold > 0 ? 'Hold the position' : 'Get to the marker';
     },
@@ -320,14 +400,16 @@ export const STEP_IMPL = {
 
   // ---- activate ----------------------------------------------------------------------
   activate: {
-    pressure: { every: 24, scale: 0.3 },
+    pressure: { pace: 0.3 },
     label(dir, s) {
       const k = s.kind;
       return k === 'generator' ? 'Start the generators' : k === 'beacon' ? 'Light the beacon' : k === 'repair' ? 'Repair it' : 'Activate the terminals';
     },
     start(dir, s) {
       const d = s.def, g = dir.game;
-      s.kind = d.kind || 'terminal';
+      s.kind = d.kind || 'use';
+      // the prompt reads like the objective ("Cut the horn wire under the bus dash"), without its "(hold E)"
+      const label = d.label || (typeof d.text === 'string' ? d.text.replace(/\s*\(hold [^)]*\)\s*$/i, '').replace(/[.:]+$/, '').slice(0, 38) : '');
       s.its = [];
       const refs = Array.isArray(d.at) ? d.at : d.at === undefined ? [] : [d.at];
       for (const ref of refs) {
@@ -344,16 +426,19 @@ export const STEP_IMPL = {
         const a = dir.anchor(ref);
         if (!a) continue;
         const pos = dir.freeNear(a.x, a.y, 90, 34);
-        s.its.push(dir.addTerminal(s, pos.x, pos.y, { kind: s.kind, hold: d.hold, label: d.label, r: d.radius > 0 ? d.radius : 64 }));
+        s.its.push(dir.addTerminal(s, pos.x, pos.y, { kind: s.kind, hold: d.hold, label, r: d.radius > 0 ? d.radius : 64 }));
       }
       s.max = s.its.length;
       s.cur = 0;
     },
     update(dir, s) {
-      return s.cur >= s.max ? DONE : RUN;
+      if (s.cur < s.max) return RUN;
+      activateEffect(dir, s);
+      return DONE;
     },
     onInteract(dir, s, it, p) {
       s.cur++;
+      s.by = p ? p.id : 0;
       if (s.def.burst > 0) dir.burst(it.x, it.y, Math.round(s.def.burst), Math.max(1, Math.round(s.def.tier || dir.tier)), s.def.specials || []);
     },
     stop(dir, s) {
@@ -376,7 +461,7 @@ export const STEP_IMPL = {
   // ---- escort ------------------------------------------------------------------------
   escort: {
     timed: true,
-    pressure: { every: 24, scale: 0.3 },
+    pressure: { pace: 0.3 },
     label(dir, s) {
       return `Escort ${s.npc ? s.npc.name : 'the survivor'}`;
     },
@@ -472,17 +557,28 @@ export const STEP_IMPL = {
     },
     start(dir, s) {
       const d = s.def;
-      // (the step's own `type` is 'kill': the zombie type is `enemy`)
-      s.type = String(d.enemy || d.zombie || 'any');
-      s.max = Math.max(1, Math.floor(d.count) || 10);
+      // (the step's own `type` is 'kill': the zombie type is `zombie`, alias `enemy`)
+      s.type = String(d.zombie || d.enemy || 'any');
+      // a script counts for a party of four
+      s.max = Math.max(1, Math.round((Math.floor(d.count) || 10) * partyScale(dir)));
       s.cur = 0;
+      s.topT = 4;
       if (s.type !== 'any' && d.spawn !== false && ZOMBIES[s.type]) {
-        s.pack = packSpawn(dir, s, s.type, s.max, d.at, Math.max(1, Math.round(d.tier || dir.tier)));
+        s.pack = packSpawn(dir, s, s.type, s.max, d.at, killTier(dir, s));
       }
-      if (s.type === 'any' && !d.pressure) dir.setPressure(s, { every: 9, scale: 0.5 });
+      if (s.type === 'any' && !d.pressure) dir.setPressure(s, { pace: 0.6 });
     },
     update(dir, s) {
-      return s.cur >= s.max ? DONE : RUN;
+      if (s.cur >= s.max) return DONE;
+      // the director makes up the numbers when the stream has not brought enough of the kind
+      if (s.type !== 'any' && s.def.spawn !== false && ZOMBIES[s.type] && (s.topT -= DT) <= 0) {
+        s.topT = 5;
+        let alive = 0;
+        for (const z of dir.game.zombies) if (!z.dead && z.type === s.type) alive++;
+        const short = s.max - s.cur - alive;
+        if (short > 0) packSpawn(dir, s, s.type, Math.min(short, 6), s.def.at, killTier(dir, s));
+      }
+      return RUN;
     },
     onKill(dir, s, z) {
       if (s.type === 'any' || z.type === s.type) s.cur++;
@@ -528,7 +624,7 @@ export const STEP_IMPL = {
       const savedB = g.waveBosses, savedP = g.wavePlayers;
       g.waveBosses = count;
       g.wavePlayers = Math.max(1, g.players.length);
-      s.bosses = packSpawn(dir, s, type, count, d.at, Math.max(1, Math.round(d.tier || dir.tier)), true);
+      s.bosses = packSpawn(dir, s, type, count, d.at, killTier(dir, s), true);
       g.waveBosses = savedB;
       g.wavePlayers = savedP;
       for (const z of s.bosses) g.emit({ type: 'bossspawn', id: z.id, x: Math.round(z.x), y: Math.round(z.y) });
@@ -553,12 +649,17 @@ export const STEP_IMPL = {
 
   // ---- evac (the zone director: sim/zone.js) -----------------------------------------
   evac: {
+    ownWaves: true,
     label(dir, s) {
       return `Reach the safe zone ${Math.min(s.max, s.cur + 1)} of ${s.max}`;
     },
     start(dir, s) {
       s.max = Math.max(1, (dir.game.zone && dir.game.zone.stops ? dir.game.zone.stops.length : (s.def.stops || []).length) || 1);
       s.cur = 0;
+      feelStart(dir, s);
+    },
+    stop(dir, s) {
+      feelStop(dir, s);
     },
     update(dir, s) {
       return s.cur >= s.max || s.finished ? DONE : RUN;
@@ -582,6 +683,7 @@ export const STEP_IMPL = {
   // ---- campaignStage (the campaign director: sim/campaign.js) ------------------------
   campaignStage: {
     supply: true,
+    ownWaves: true,
     label(dir, s) {
       const c = dir.game.campaign;
       switch (s.def.stage) {
@@ -597,6 +699,10 @@ export const STEP_IMPL = {
       s.max = s.def.stage === 'hill' && c ? c.plan.hill : 1;
       s.cur = 0;
       s.lastStep = !dir.steps.some((q) => q.i > s.i && !q.optional && !q.parallel);
+      feelStart(dir, s);
+    },
+    stop(dir, s) {
+      feelStop(dir, s);
     },
     update(dir, s) {
       const c = dir.game.campaign;

@@ -126,6 +126,10 @@ export class GameCore {
     this.tierBonus = 0;
     /** Multiplier on the spawn interval of the wave spawner (a mission's `pace`). */
     this.spawnPace = 1;
+    /** Zombie types a story step forces into the mix (null = none), see zombies.js pickType. */
+    this.forceTypes = null;
+    /** A story lure (sim/story-steps.js activate): { x, y, until, target } while the horde is drawn to a point. */
+    this.lure = null;
     /** Story NPCs (sim/npcs.js) and hold-to-use spots (sim/interact.js). */
     this.npcs = [];
     this.interactables = [];
@@ -504,8 +508,12 @@ export class GameCore {
     }
     for (const t of this.turrets) if (!t.dead) targets[n++] = t;
     if (this.npcs.length) for (const c of this.npcs) if (npcTargetable(c)) targets[n++] = c;
-    const hunters = n;
-    if (this.objective && this.objective.hp > 0 && this.objTarget) targets[n++] = this.objTarget;
+    let hunters = n;
+    if (this.lure) {
+      // a horn / alarm: every zombie that is not on top of a survivor walks to the noise
+      targets[0] = this.lure.target;
+      n = hunters = 1;
+    } else if (this.objective && this.objective.hp > 0 && this.objTarget) targets[n++] = this.objTarget;
     targets.length = n;
     if (which !== 'big') this.flow.update(targets, n);
     if (which !== 'small') this.flowBig.update(targets, hunters > 0 ? hunters : n);
