@@ -277,6 +277,16 @@ export function levelKit(B, o = {}) {
       }
     },
 
+    /** The same along y (dir +1 = rising toward +y), across x0..x1; the top step's plateau reaches `to`. */
+    flightY(ya, yb, x0, x1, h0, h1, dir, to, n = 60) {
+      const run = (yb - ya) / n, dh = (h1 - h0) / n;
+      for (let j = 1; j <= n; j++) {
+        const h = h0 + j * dh;
+        if (dir > 0) K.plateau(x0, ya + j * run, x1, to, h);
+        else K.plateau(x0, to, x1, yb - j * run, h);
+      }
+    },
+
     // ---- set dressing (shared/dress.js kinds, drawn by world-dress.js) ---------------------------------
     /** One hand placed dress item. `q` ranks it (low = kept on the low tiers). */
     dress(k, x, y, a = 0, s = 1, q = null) {
@@ -331,6 +341,9 @@ export const HOSPITAL = Object.freeze({
  */
 export function build(B) {
   const K = levelKit(B, { wall: 16, door: 78, style: 'hosp' });
+  // a clear, cold night over the city: the fog thins so the skyline shows from the roof; less sky light
+  // indoors (the lamps light the rooms)
+  B.map.look = { night: { fogDensity: 0.00082, horizon: '#2a2a2e', fog: '#0f1116', hemi: 0.72, moonI: 0.42 } };
   const { rng } = B;
   const EXT = 24;          // exterior walls
   const P = HOSPITAL.podium;
@@ -368,6 +381,10 @@ export function build(B) {
     K.windowRow(x0, P.y1, x1, P.y1, 150, { t: EXT, w: 84, h: 46, sill: 34, section: s });
   }
   K.windowRow(P.x0, 1612, P.x0, 2330, 170, { t: EXT, w: 96, h: 50, sill: 30, section: 'er' });
+  // hard floors under the whole building (no grass, no weeds indoors), the service road behind it
+  B.box('concrete', P.x0, P.y0, HOSPITAL.tower.x1, P.y1);
+  B.box('asphalt', 0, P.y1 + 16, 8800, 4600);
+  B.line('white', 0, 4420, 8800, 4420, 3);
   // the rooftop of the podium (two storeys: the first floor is the building's mass)
   K.put('rooftop', (P.x0 + P.x1) / 2, (P.y0 + P.y1) / 2, 0, { w: P.x1 - P.x0, d: P.y1 - P.y0, h: HOSPITAL.podiumTop, style: 'hosp' });
   void sec;
@@ -393,7 +410,8 @@ export function build(B) {
 function buildParking(B, K) {
   const { rng, drng } = B;
   // ground: the avenue, the sidewalk, the car park asphalt, the drop-off concrete by the canopy
-  B.box('asphalt', 0, 60, 8800, 320);                  // Mercy Avenue
+  B.box('concrete', 0, 0, 8800, 64);                   // the far sidewalk
+  B.box('asphalt', 0, 64, 8800, 320);                  // Mercy Avenue
   B.box('concrete', 0, 320, 8800, 390);                // north sidewalk strip of the car park
   B.box('asphalt', 60, 390, 8740, 1560);               // the car park
   B.box('concrete', 400, 1110, 2700, 1590);            // ambulance bay apron
