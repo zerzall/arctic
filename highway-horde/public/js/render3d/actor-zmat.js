@@ -30,6 +30,8 @@ uniform float uZLite;   // the low tier: no relief bump, no bib streaks (a cheap
 float zSpec = 1.0;
 float zDry = 0.0;
 float zCav = 0.0;
+float zSheen = 0.0;
+vec3 zSheenCol = vec3(0.0);
 float zHash(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
 // bump from a height field in view units (Mikkelsen's surface gradient, unnormalised so a
 // relief in model units keeps its slope whatever the distance)
@@ -135,7 +137,7 @@ export const Z_SHADE = /* glsl */`
     liv *= 0.45 + 0.55 * smoothstep(0.2, 0.8, m);
     c = mix(c, c * vec3(0.62, 0.36, 0.5), clamp(liv, 0.0, 1.0) * 0.75);
     // sores, blisters (wet), peeling skin on the rotten
-    float sore = smoothstep(0.72, 0.86, hhD2.g) * v2.z;
+    float sore = smoothstep(0.72, 0.86, hhD2.g) * v2.z * smoothstep(0.35, 0.7, hhD.b * 0.7 + hhD2.b * 0.5);
     c = mix(c, vec3(0.3, 0.17, 0.12) * (0.6 + hhD.r * 0.5), sore * 0.85);
     hhWet = max(hhWet, sore * 0.55);
     float slip = smoothstep(0.8, 0.92, hhD.r * 0.55 + hhD2.a * 0.55) * rot;
@@ -160,6 +162,20 @@ export const Z_SHADE = /* glsl */`
     }
     // weave and wear: threadbare spots, darker slubs
     c *= 0.72 + hhD.g * 0.46;
+    // a garment is sewn: seams down the sides of a top and the outside of a trouser leg, a
+    // button placket down a shirt that buttons
+    if (hhPart == 1 || hhPart == 18) {
+      c *= 1.0 - 0.28 * smoothstep(0.16, 0.03, abs(vMP.x - 0.1)) * step(2.4 * uBody2.w, abs(vMP.z));
+      float nkS = hhT(${T_COL5}).w;
+      if (nkS > 0.5 && nkS < 1.5 && vMP.x > 1.0 && !shirtFront) {
+        float pl = smoothstep(0.22, 0.12, abs(vMP.z));
+        c *= 1.0 - 0.22 * pl * smoothstep(0.04, 0.0, abs(abs(vMP.z) - 0.17));
+        vec2 bq = vec2(vMP.z, (fract(vMP.y / 1.8) - 0.5) * 1.8);
+        c = mix(c, vec3(0.2, 0.19, 0.17), smoothstep(0.13, 0.08, length(bq)) * 0.8);
+      }
+    } else if (hhPart == 3 || hhPart == 19 || hhPart == 21) {
+      c *= 1.0 - 0.25 * smoothstep(0.16, 0.03, abs(vMP.x - 0.3)) * step(uBody2.z + 0.4, abs(vMP.z));
+    }
     // faded by sun and washing toward a dusty grey
     float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(c, vec3(lum) * vec3(1.03, 1.0, 0.94), 0.22 + 0.22 * hhD.r);
@@ -176,6 +192,9 @@ export const Z_SHADE = /* glsl */`
     c = mix(c, c * vec3(0.5, 0.47, 0.3), clamp(fluid, 0.0, 1.0) * 0.6);
     diffuseColor.rgb = c;
     zSpec = 0.28;
+    // fibres: a soft grazing sheen (full on cinematic, lighter on ultra, none below)
+    zSheen = uCin > 0.5 ? 1.0 : uZLite > 0.5 ? 0.0 : 0.6;
+    zSheenCol = c * 0.6 + 0.004;
   } else if (hhM == 3 || hhM == 10) {
     diffuseColor.rgb *= 0.78 + hhD.r * 0.3;
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.5, 0.42), hhD.b * 0.6);
@@ -235,7 +254,7 @@ export const Z_BLOOD = /* glsl */`
   if (hhM != 7 && hhM != 8 && hhM != 13) {
     // fresh (red, wet) on the newly dead and where it still runs; old blood dries to a brown-black crust
     float fresh = clamp((1.0 - rot) * 0.8 + smoothstep(0.75, 1.0, vI.y) * 0.3 - bib * 0.3, 0.0, 1.0);
-    vec3 bc = mix(vec3(0.05, 0.018, 0.011), vec3(0.15, 0.012, 0.01), fresh);
+    vec3 bc = mix(vec3(0.05, 0.018, 0.011), vec3(0.11, 0.01, 0.008), fresh);
     bc = mix(bc, bc * 0.55, hhD.b * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, bc, bm * 0.94);
     hhWet = max(hhWet, bm * fresh * 0.8);
@@ -287,6 +306,19 @@ export const Z_NORMAL = /* glsl */`
       normal = zPerturb(normal, -vViewPosition, h);
     }
   }`;
+
+/**
+ * Cloth fuzz (inside three's direct light, after the diffuse): fibres catch light at grazing
+ * angles, a soft sheen rolling round the silhouette of a garment instead of a specular
+ * highlight — what makes a sleeve read as cloth rather than a painted shell. Ultra and
+ * cinematic (zSheen is 0 on the other tiers and on everything but cloth).
+ */
+export const Z_SHEEN = /* glsl */`
+	if (zSheen > 0.0) {
+		float zNoV = saturate( dot( geometryNormal, geometryViewDir ) );
+		float zFuzz = pow( 1.0 - zNoV, 3.0 ) * 0.7 + 0.06;
+		reflectedLight.directDiffuse += directLight.color * saturate( dotNL * 0.75 + 0.25 ) * zFuzz * zSheen * zSheenCol;
+	}`;
 
 /** Specular scale (after lights_physical_fragment): no plastic sheen on dry skin and cloth. */
 export const Z_SPEC = /* glsl */`

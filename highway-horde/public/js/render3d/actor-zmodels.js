@@ -206,7 +206,7 @@ function buildModel(type, L, tier) {
     subdiv: sdRelief(L, 3) > 1 ? sdRelief(L, 3) : sd(L),
     slot: L < 2 ? SLOT.SKIN : SLOT.CLOTH, mat: L < 2 ? MAT.SKIN : MAT.CLOTH, color: '#ffffff', part: L < 2 ? PART.TORSO : PART.NONE,
     noise: L === 0 ? { amp: 0.1, freq: 0.5 } : null,
-    disp: HERO(L) ? torsoRelief(P) : null,
+    disp: HERO(L) ? torsoRelief(P) : null, shade: torsoShade(P),
     paint: 0.12,
   });
 
@@ -236,8 +236,8 @@ function buildModel(type, L, tier) {
   // ---- neck + head --------------------------------------------------------------------
   const headDef = head(sb, P, L, type);
 
-  // ---- torn strips below the top's hem (near models, ultra and cinematic) ----------------
-  if (HERO(L) && shell && P.shellFrom <= 1) tatters(sb, P, shell);
+  // ---- torn strips below the top's hem (near models of high, ultra and cinematic) --------
+  if (L === 0 && tier < 2 && shell && P.shellFrom <= 1) tatters(sb, P, shell);
 
   // ---- accessories (hats, hair, gear, gore, armour) ------------------------------------
   if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDef, has, CIN() && L === 0);
@@ -306,7 +306,7 @@ function topShell(sb, P, L, torsoRings, profile, type) {
   rings.push(...shellRings(P, torsoRings, P.shellFrom));
   sb.tube(rings, {
     seg: L === 0 ? dq(20) : 8, profile: withFolds(profile, folds(L, 1.3, 0.024, 0.55, 26)), subdiv: HERO(L) ? 2 : sd(L), slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', part: PART.TOP,
-    noise: L === 0 ? { amp: 0.3, freq: 0.3, seed: 5 } : null, paint: (x, y) => (y < P.hip + 3 ? 0.55 : y > P.chest + 2 ? 0.4 : 0.28),
+    noise: L === 0 ? { amp: 0.3, freq: 0.3, seed: 5 } : null, shade: torsoShade(P), paint: (x, y) => (y < P.hip + 3 ? 0.55 : y > P.chest + 2 ? 0.4 : 0.28),
   });
   if (type === 'boss' && L < 2) {
     // tattered cape hanging off the boss' back
@@ -375,6 +375,23 @@ function legTatters(sb, P, side, shell, TH, SH) {
   }
 }
 
+// Baked cavity occlusion (vertex colour): where the body hides itself from the sky — the flanks
+// under the arms, the inside of the arms and thighs, the throat under the jaw. Under a high sun
+// the ambient fill otherwise lights a body as evenly as a doll's.
+function torsoShade(P) {
+  return (x, y, z, nx, ny, nz) => {
+    const env = smooth01((y - P.waist + 3) / 5) * smooth01((P.sY + 0.2 - y) / 2.5);
+    const side = Math.max(0, Math.abs(nz)) ** 2;
+    return 1 - 0.3 * side * env - 0.12 * Math.max(0, -ny) * smooth01((P.hip + 2 - y) / 3);
+  };
+}
+function limbShade(side, top, bottom, k) {
+  return (x, y, z, nx, ny, nz) => 1 - k * Math.max(0, -nz * side) * smooth01((y - bottom) / 3) * (0.6 + 0.4 * smooth01((y - (top - 4)) / 3));
+}
+function neckShade(P) {
+  return (x, y, z, nx, ny) => 1 - 0.38 * Math.max(0, nx + 0.2) * smooth01((y - P.neck) / 2.5) - 0.2 * Math.max(0, -ny);
+}
+
 /** Relief of a bare leg: the kneecap and the shin bone, the ankle bones. */
 function legRelief(P, z0) {
   const g = Math.max(0.35, P.gaunt);
@@ -428,13 +445,13 @@ function legs(sb, P, L, side, type) {
   sb.tube(HERO(L) ? rings.map((r) => ({ ...r })) : pr, {
     seg, subdiv: HERO(L) ? sdRelief(L, 2) : sd(L), profile: HERO(L) ? null : folds(L, side * 2.1, 0.03, 0.55, 30), cap0: 'round', capRings: 1,
     slot: HERO(L) ? SLOT.SKIN : legSlot, mat: HERO(L) ? MAT.SKIN : MAT.CLOTH, color: '#ffffff', paint: (x, y) => (y < kneeY - 3 ? 0.5 : 0.28), dec: L === 2 ? 2 : 1,
-    noise: L === 0 ? { amp: 0.12, freq: 0.45, seed: side * 3 } : null, part: HERO(L) ? PART.LIMB : PART.LEG, disp: HERO(L) ? legRelief(P, z) : null,
+    noise: L === 0 ? { amp: 0.12, freq: 0.45, seed: side * 3 } : null, part: HERO(L) ? PART.LIMB : PART.LEG, disp: HERO(L) ? legRelief(P, z) : null, shade: limbShade(side, hip, kneeY - 6, 0.26),
   });
   if (HERO(L)) {
     // near models: the bony leg is its own skin and the trousers a loose shell over it (cut
     // away below the per-instance hem), fraying into strips
     sb.tube(pr, { seg, subdiv: sd(L), profile: folds(L, side * 2.1, 0.03, 0.55, 30), slot: legSlot, mat: MAT.CLOTH, color: '#ffffff', paint: (x, y) => (y < kneeY - 3 ? 0.5 : 0.28),
-      noise: { amp: 0.2, freq: 0.35, seed: side * 3 }, part: PART.TROUSER, cap0: 'round', capRings: 1 });
+      noise: { amp: 0.2, freq: 0.35, seed: side * 3 }, part: PART.TROUSER, cap0: 'round', capRings: 1, shade: limbShade(side, hip, kneeY - 6, 0.26) });
     legTatters(sb, P, side, pr.slice().reverse(), TH, SH);
   }
   // the foot: bare skin (toes), shoes are option groups over it
@@ -496,14 +513,14 @@ function arm(sb, P, L, side, type) {
   ];
   sb.tube(rings, { seg, subdiv: sdRelief(L, 2) > 1 ? sdRelief(L, 2) : sd(L), cap0: 'round', capRings: L ? 1 : 2, cap1: 'flat', slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', dec: L === 2 ? 2 : 1,
     paint: (x, y) => (y < elbow ? 0.45 : 0.15), noise: L === 0 ? { amp: 0.08 * k, freq: 0.6, seed: side } : null, part: L < 2 ? PART.LIMB : PART.NONE,
-    disp: HERO(L) ? armRelief(P, elbow, wrist, side) : null });
+    disp: HERO(L) ? armRelief(P, elbow, wrist, side) : null, shade: limbShade(side, top, wrist, 0.3) });
   // sleeves: long, cut to length per instance; loose over the thin arm (the elbow's knob does not show through)
   if (L < 2) {
     const srings = rings.slice(0, 7).map((q, i) => {
       const bag = i >= 3 && i <= 5 ? Math.max(0, (rings[2].rx - (q.rx ?? q.r)) * 0.7) : 0;
       return { ...q, rx: (q.rx ?? q.r) + 0.5 + bag, rz: (q.rz ?? q.r) + 0.5 + bag, r: undefined };
     });
-    sb.tube(srings, { seg, subdiv: sd(L), profile: folds(L, side * 1.7, 0.04, 0.62, 32), slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', paint: 0.25, part: PART.SLEEVE, noise: L === 0 ? { amp: 0.22, freq: 0.5 } : null });
+    sb.tube(srings, { seg, subdiv: sd(L), profile: folds(L, side * 1.7, 0.04, 0.62, 32), slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', paint: 0.25, part: PART.SLEEVE, noise: L === 0 ? { amp: 0.22, freq: 0.5 } : null, shade: limbShade(side, top, wrist, 0.3) });
   }
   hand(sb, P, L, side, HD, [0.3, wrist, z], r, k);
 }
@@ -609,7 +626,7 @@ function head(sb, P, L, type) {
     { c: [0.0, P.neck - 1.6, 0], rx: 1.95 * nk, rz: 2.3 * nk, bone: [B.CHEST, B.NECK, 0.3] },
     { c: [0.35, P.neck + 0.9, 0], rx: 1.55 * nk, rz: 1.65 * nk, bone: B.NECK },
     { c: [c[0] - 0.9, c[1] - r[1] * 0.55, 0], rx: 1.7 * nk, rz: 1.8 * nk, bone: [B.NECK, B.HEAD, 0.7] },
-  ], { seg: L === 0 ? dq(14) : 7, subdiv: sd(L) > 1 ? 4 : L === 0 ? 2 : 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3, part: L < 2 ? PART.TORSO : PART.NONE,
+  ], { seg: L === 0 ? dq(14) : 7, subdiv: sd(L) > 1 ? 4 : L === 0 ? 2 : 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3, part: L < 2 ? PART.TORSO : PART.NONE, shade: neckShade(P),
     profile: L === 0 ? (th) => 1 + 0.12 * Math.pow(Math.abs(Math.cos(th - 0.6)), 8) + 0.12 * Math.pow(Math.abs(Math.cos(th + 0.6)), 8) + 0.05 * Math.pow(Math.max(0, Math.cos(th)), 12) - 0.05 * Math.pow(Math.max(0, -Math.cos(th)), 2) : null });
   // skull (the mouth hollow is dark wet flesh)
   const inMouth = (x, y, z) => {
@@ -735,22 +752,18 @@ function extras(sb, P, L, type) {
     });
     if (L < 2) {
       for (let k = 0; k < (L === 0 ? 14 : 7); k++) {
-        // blisters scattered over the front and sides (golden-angle spiral), sizes varying
+        // weeping blisters scattered over the front and sides (golden-angle spiral), sizes
+        // varying; a few glow faintly with the sickness inside, the rest are pus and wet skin
         const u = (k + 0.5) / 14, th = k * 2.39996;
         const ph = -0.7 + u * 1.4;
         const lon = Math.sin(th) * 1.3;
         const cy = Math.sin(ph), cr = Math.cos(ph);
-        const s = 0.3 + ((k * 0.77) % 1) * 0.45;
-        sb.ellipsoid([4.0 + Math.cos(lon) * cr * 8.3, 32.6 + cy * 9.3, Math.sin(lon) * cr * 9.1], [s, s * 0.85, s], { segW: 6, segH: 4, slot: SLOT.GLOW, mat: MAT.GLOW, color: GLOWC.bloater, bone: B.X1 });
+        const s = 0.25 + ((k * 0.77) % 1) * 0.4;
+        const lit = k % 3 === 0;
+        sb.ellipsoid([4.0 + Math.cos(lon) * cr * 8.25, 32.6 + cy * 9.25, Math.sin(lon) * cr * 9.05], [s, s * 0.8, s], { segW: 6, segH: 4, slot: lit ? SLOT.GLOW : SLOT.FIXED, mat: lit ? MAT.GLOW : MAT.FLESH, color: lit ? GLOWC.bloater : '#7a7440', bone: B.X1, paint: lit ? 0 : 0.1 });
       }
       // split navel
-      sb.ellipsoid([12.3, 30.8, 0], [0.4, 1.7, 0.6], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#4a1010', bone: B.X1 });
-      // distended veins across the belly
-      if (L === 0) for (let v = 0; v < 4; v++) {
-        const pts = [];
-        for (let i = 0; i <= 7; i++) { const t = i / 7, a = -1.0 + t * 2.0 + v * 0.3; pts.push({ c: [4.0 + Math.cos(a) * 8.5 * Math.cos(0.25 - v * 0.3), 32.6 + Math.sin(0.25 - v * 0.3 + t * 0.6) * 9.45, Math.sin(a) * 9.3 * Math.cos(0.25 - v * 0.3)], r: 0.2 + 0.06 * Math.sin(t * 9 + v) }); }
-        sb.tube(pts, { seg: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#2e3438', bone: B.X1, paint: 0.1 });
-      }
+      sb.ellipsoid([12.3, 30.8, 0], [0.4, 1.7, 0.6], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#3a0e0e', bone: B.X1 });
     }
   } else if (type === 'spitter') {
     // a distended throat: a goitre of acid under stretched, split skin (the acid shows through the cracks)
@@ -800,7 +813,9 @@ function extras(sb, P, L, type) {
     // hump, exposed spine, spikes along the spine and shoulders, tumours, a withered third arm, flayed belly
     sb.ellipsoid([-4, P.sY - 1, 0], [5.8, 7.2, 8.6], { segW: L === 0 ? 20 : 10, segH: L === 0 ? 14 : 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', bone: B.X1, paint: 0.35, part: PART.TORSO,
       deform: (p) => { const k = 1 + 0.1 * Math.sin(p.x * 6 + 1) * Math.sin(p.y * 5) * Math.sin(p.z * 4 + 2); p.x *= k; p.y *= k; p.z *= k; } });
-    sb.ellipsoid([4.2, P.waist + 1, 0], [2.8, 5.2, 5.2], { segW: L === 0 ? 14 : 8, segH: L === 0 ? 10 : 5, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#6a1c20', bone: B.SPINE, paint: 0.8 });
+    // the flayed belly: a raw wound laid open over the gut (mostly sunk into the body)
+    sb.ellipsoid([P.frontX(P.waist + 1) - 1.4, P.waist + 1, 0], [1.9, 5.0, 4.6], { segW: L === 0 ? 14 : 8, segH: L === 0 ? 10 : 5, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#4a1418', bone: B.SPINE, paint: 0.9,
+      deform: (p) => { const k = 1 + 0.12 * Math.sin(p.y * 9 + p.z * 4) * Math.sin(p.z * 7); p.x *= k; } });
     if (L < 2) {
       // flayed strip down the back with the spine bare: vertebrae and rib stubs
       sb.ellipsoid([-9.6, P.sY - 6, 0], [1.4, 16.5, 3.1], { segW: L ? 6 : 10, segH: L ? 8 : 14, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#4a1418', bone: B.X1, paint: 0.9 });

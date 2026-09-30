@@ -349,8 +349,9 @@ export function createZombies3D(ctx) {
         spineZ = 0.16; chestZ = 0.05; chestX = -sw * 0.08 * amp;
         neckZ = 0.1; headZ = 0.05; headX = s.tilt * 1.2 + Math.sin(time * 0.9 + seed * 3) * 0.12;
         // arms held out from the swollen belly, dangling a little
-        uaLZ = 0.55 + sw * 0.15 * amp + (mode === 0 ? 0.5 : 0); uaRZ = 0.55 - sw * 0.15 * amp + (mode === 0 ? 0.5 : 0); uaLX = 0.6; uaRX = -0.6; uaLY = 0; uaRY = 0;
-        faLZ = 0.35; faRZ = 0.35;
+        uaLZ = 0.4 + sw * 0.15 * amp + (mode === 0 ? 0.35 : 0) - still * 0.15; uaRZ = 0.4 - sw * 0.15 * amp + (mode === 0 ? 0.35 : 0) - still * 0.15;
+        uaLX = 0.36 + (seed - 0.5) * 0.12; uaRX = -0.34 - (seed2 - 0.5) * 0.12; uaLY = -0.2; uaRY = 0.2;
+        faLZ = 0.45 + seed * 0.2; faRZ = 0.4 + seed2 * 0.2;
         thL = sw * 0.3 * amp; thR = -sw * 0.3 * amp; thLX = 0.1; thRX = -0.1;
         shL = -Math.max(0, Math.sin(ph + 1.4)) * 0.45 * amp; shR = -Math.max(0, -Math.sin(ph + 1.4)) * 0.45 * amp;
         // belly: wobble with the steps and a slow, sickly pulse

@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import {
   T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3,
 } from './actor-consts.js';
-import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC } from './actor-zmat.js';
+import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC, Z_SHEEN } from './actor-zmat.js';
 
 const RIG_VERT_HEAD = /* glsl */`
 uniform highp sampler2D uRigTex;
@@ -199,7 +199,7 @@ vec3 hhPattern(int pat, vec3 c, vec2 uv, float y) {
 
 // Patch three's physical direct light: wrapped diffuse for skin ("subsurface": the terminator
 // is soft and reddish instead of a hard line).
-function withSSS(chunk) {
+function withSSS(chunk, zombie = false) {
   const needle = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );';
   if (!chunk.includes(needle)) return chunk;
   return chunk.replace(needle, needle + `
@@ -207,7 +207,7 @@ function withSSS(chunk) {
 		float rawNL = dot( geometryNormal, directLight.direction );
 		float wrapNL = saturate( ( rawNL + hhSSS ) / ( 1.0 + hhSSS ) );
 		reflectedLight.directDiffuse += directLight.color * ( wrapNL - dotNL ) * hhSSSCol * BRDF_Lambert( material.diffuseContribution );
-	}`);
+	}` + (zombie ? Z_SHEEN : ''));
 }
 
 // ---- the colour stage, in pieces: the zombies swap some for actor-zmat.js's (the survivors'
@@ -489,7 +489,7 @@ export function makeMaterials(shared, opts = {}) {
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
     let frag = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_HEAD + (Z ? Z_HEAD : ''))
-      .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment))
+      .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment, !!Z))
       .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + COLOR_CLOTH + (Z ? Z_SHADE : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
       .replace('#include <roughnessmap_fragment>', Z ? Z_ROUGH : ROUGH_BASE)
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')

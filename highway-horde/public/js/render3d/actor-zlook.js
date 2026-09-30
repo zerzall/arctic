@@ -288,9 +288,13 @@ export function zombieLook(type, id, theme = '') {
   let skin = mixRgb(human, [hl, hl, hl], 0.3 + stage * 0.35);
   const tl = luma(tint) || 1;
   skin = mixRgb(skin, [tint[0] * hl / tl, tint[1] * hl / tl, tint[2] * hl / tl], 0.2 + stage * 0.35);
-  if (hl < 0.08) skin = mixRgb(skin, [0.07, 0.068, 0.062], 0.15 + stage * 0.2);   // dark skin goes ashen
+  if (hl < 0.1) skin = mixRgb(skin, [0.085, 0.082, 0.074], 0.25 + stage * 0.3);   // dark skin goes ashen grey
   const dark = 0.92 - stage * 0.16;
-  look.skin = capL([skin[0] * dark, skin[1] * dark, skin[2] * dark], 0.2);
+  skin = [skin[0] * dark, skin[1] * dark, skin[2] * dark];
+  // (and never so dark the face's hollows stop reading in daylight)
+  const sl = luma(skin);
+  if (sl < 0.04) { const k = 0.04 / Math.max(1e-4, sl); skin = [skin[0] * k, skin[1] * k, skin[2] * k]; }
+  look.skin = capL(skin, 0.2);
   look.rot = Math.min(1, stage + r() * 0.12);
   look.veins = stage > 0.6 ? range(r, 0.4, 1) : chance(r, 0.35) ? range(r, 0.2, 0.6) : 0;
   look.sores = chance(r, T === 'spitter' || T === 'bloater' ? 0.6 : 0.16) ? range(r, 0.3, 1) : 0;

@@ -85,7 +85,7 @@ test('the types stay unmistakable in silhouette', () => {
 });
 
 test('budgets: triangles per type and LOD on every tier (dozens on screen at 4K)', () => {
-  const MAX = { '-1': [62000, 4000, 1000], 0: [22000, 4000, 1000], 1: [10000, 4000, 1000], 2: [10000, 3200, 1000] };
+  const MAX = { '-1': [62000, 4000, 1000], 0: [22000, 4000, 1000], 1: [12000, 4000, 1000], 2: [10000, 3200, 1000] };
   for (const type of TYPES) {
     for (const tier of [-1, 0, 1, 2]) {
       for (let L = 0; L < 3; L++) {
