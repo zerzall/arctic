@@ -141,7 +141,7 @@ A few rules follow from how the sim works:
   the long side.
 * **`start`** is an anchor in the first section, and `B.pspawn` places up to six player spawns there.
   `B.supply` (the ammo crate) goes near the start. More supply crates can be placed as
-  `B.ob('crate', ..., {prop: 'supply'})` (E makes them refill ammo).
+  `B.ob('counter', x, y, 44, 30, a, {prop: 'supply', style: 'crate'})` (any kind carrying `prop: 'supply'`; there is no 'crate' kind) (E makes them refill ammo).
 * **Water** (`B.box('water', ...)`, the dam and the flooded metro) works as on the bridge map.
 * **Time** comes from the mission (`mission.time`). `SPEC.time` is the level's default. Night levels need
   their own lights (`B.light`): street lamps, fires, fluorescent tubes, emergency lights.
