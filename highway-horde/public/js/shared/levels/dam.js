@@ -526,8 +526,8 @@ function buildControl(B, A) {
   B.ob('desk', 4300, 1330, 180, 40, 0, { style: 'radiodesk', ...S });
   B.ob('cabinet', 4400, 1470, 30, 90, 0, { style: 'rack', ...S });
   B.ob('counter', 4300, 1840, 160, 30, 0, { style: 'counter', ...S });
-  B.roof((3720 + K.x1) / 2, (K.y0 + K.y1) / 2, K.x1 - 3720, K.y1 - K.y0, 0, { kind: 'office', height: 150, section: 'control', dark: 0.7 });
-  B.roof(3620, (1740 + K.y1) / 2, 200, K.y1 - 1740, 0, { kind: 'plain', height: 150, section: 'control', dark: 0.8 });
+  B.roof((3720 + K.x1) / 2, (K.y0 + K.y1) / 2, K.x1 - 3720, K.y1 - K.y0, 0, { kind: 'office', height: 150, section: 'control', dark: 0.7, style: 'controlroom' });
+  B.roof(3620, (1740 + K.y1) / 2, 200, K.y1 - 1740, 0, { kind: 'plain', height: 150, section: 'control', dark: 0.8, style: 'stairhall' });
   // lamps: tube rows, the red emergency light in the stair hall, the radio's lamp
   for (const [x, y] of [[3880, 1420], [3880, 1740], [4060, 1560], [4300, 1440], [4300, 1720]]) B.light(x, y, 230, '#e4ecff', x === 4060 ? 0.3 : 0, 140);
   B.light(3620, 1820, 200, '#ff3a2a', 0.5, 130);
