@@ -195,6 +195,51 @@ function round3(v) {
   return Math.round(v * 1000) / 1000;
 }
 
+/** Clearance (px) an anchor keeps from every obstacle, the objective, water and the map edge. */
+export const ANCHOR_PAD = 24;
+const ANCHOR_EDGE = 60;
+
+/** True if a survivor-sized circle at (x, y) touches nothing static (obstacles of any kind, the objective, water). */
+function spotClear(map, x, y, pad) {
+  if (x < ANCHOR_EDGE || y < ANCHOR_EDGE || x > map.width - ANCHOR_EDGE || y > map.height - ANCHOR_EDGE) return false;
+  for (const o of map.obstacles) {
+    const reach = Math.hypot(o.w, o.h) / 2 + pad;
+    if (Math.abs(x - o.x) > reach || Math.abs(y - o.y) > reach) continue;
+    if (pointInRect(x, y, o, pad)) return false;
+  }
+  if (map.objective && pointInRect(x, y, map.objective, pad)) return false;
+  for (const a of map.areas) if (a.kind === 'water' && pointInRect(x, y, a, pad)) return false;
+  return true;
+}
+
+/**
+ * Snap every anchor of a finished map to clear ground: the wished spot when it is clear,
+ * else the nearest clear spot on growing rings (deterministic, at most 320 px away).
+ */
+function resolveAnchors(map) {
+  for (const name of Object.keys(map.anchors)) {
+    const a = map.anchors[name];
+    let x = a.x, y = a.y;
+    if (!spotClear(map, x, y, ANCHOR_PAD)) {
+      let found = false;
+      for (let d = 12; d <= 320 && !found; d += 12) {
+        const n = Math.max(8, Math.round((TAU * d) / 24));
+        for (let k = 0; k < n; k++) {
+          const ang = (k / n) * TAU;
+          const cx = a.x + Math.cos(ang) * d, cy = a.y + Math.sin(ang) * d;
+          if (spotClear(map, cx, cy, ANCHOR_PAD)) {
+            x = cx;
+            y = cy;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+    map.anchors[name] = { x: Math.round(x), y: Math.round(y), r: Math.round(a.r) };
+  }
+}
+
 function normAngle(a) {
   a %= TAU;
   if (a > Math.PI) a -= TAU;
@@ -234,6 +279,9 @@ function createBuilder(meta, seed) {
     supply: null,
     overpass: null,
     pois: [],
+    // Road to Haven (STORY.md §5.2): named places for mission scripts and hold-to-use spots.
+    anchors: {},
+    interactables: [],
   };
   // Modes the map plays (absent = every mode, shared/zone.js mapModes).
   if (meta.modes) map.modes = meta.modes.slice();
@@ -516,6 +564,18 @@ function createBuilder(meta, seed) {
     poi(name, x, y, r) {
       map.pois.push({ name, x, y, r });
     },
+    /**
+     * A named place for mission scripts (STORY.md §5.2): a walkable spot near the feature it
+     * names. finish() moves it to the nearest clear ground if a wreck or a jittered tree
+     * stands on it, so it is valid on every seed.
+     */
+    anchor(name, x, y, r = 200) {
+      map.anchors[name] = { x, y, r };
+    },
+    /** A press-E spot (STORY.md §5.2); `hold` = seconds of holding E (0 = tap). */
+    interactable(id, kind, x, y, r, label = '', hold = 0) {
+      map.interactables.push({ id, kind, x, y, r, label, hold });
+    },
     /** Zombie spawn rect; `weight` (optional, all or none of a map's rects) biases the pick. */
     zspawn(x, y, w, h, weight = undefined) {
       map.zombieSpawns.push(weight === undefined ? { x, y, w, h } : { x, y, w, h, weight });
@@ -711,6 +771,7 @@ function createBuilder(meta, seed) {
 
     finish() {
       if (!map.objective || !map.supply) throw new Error(`map ${map.id} is missing its objective or supply`);
+      resolveAnchors(map);
       return map;
     },
   };
@@ -1034,6 +1095,17 @@ function buildHighway(B) {
   for (const [name, x, y] of [['Mill Road Gas', 1100, 620], ['The Bus', 3800, 1100], ['I-44 Overpass', 2900, 1650],
     ['Farmyard', 4620, 480], ['Red Barn', 4700, 1730], ['County Road 12', 5960, 760], ['Motel', 6180, 1480],
     ['Old Church', 1000, 1560], ['West End', 450, 1100]]) B.poi(name, x, y, 520);
+
+  // Road to Haven anchors (STORY.md §5.2)
+  B.anchor('bus', 3800, 1180, 220);
+  B.anchor('crossroadsW', XA, 1100, 220);
+  B.anchor('crossroadsE', XB, 1100, 220);
+  B.anchor('gasStation', 880, 800, 200);
+  B.anchor('overpass', OX, 1100, 260);
+  B.anchor('westEnd', 450, 1100, 300);
+  B.anchor('eastEnd', 7150, 1100, 300);
+  B.anchor('motel', 6180, 1540, 200);
+  B.anchor('diner', 6000, 730, 200);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1209,6 +1281,17 @@ function buildTruckStop(B) {
   B.groundClutter({ cracks: 70, oil: 16, paper: 40, debris: 50, blood: 18, tires: 8, tufts: 170, bushes: 60, rocks: 70, tuftOn: ['sand', 'dirt', 'ground'] });
   for (const [name, x, y] of [['The Diner', 1700, 1320], ['Fuel Pumps', 900, 1600], ['Truck Lot', 2680, 1250],
     ['Motel', 760, 660], ['Junkyard', 2560, 650], ['Desert Road', 2300, 2000]]) B.poi(name, x, y, 440);
+
+  // Road to Haven anchors (STORY.md §5.2)
+  B.anchor('diner', 1700, 1240, 220);
+  B.anchor('pumps', 900, 1410, 240);
+  B.anchor('truckLot', 2680, 1250, 300);
+  B.anchor('motelRow', 760, 640, 220);
+  B.anchor('roadNorth', 1700, 1500, 160);
+  B.anchor('roadSouth', 1700, 2110, 160);
+  B.anchor('trailerA', 2440, 1090, 150);
+  B.anchor('trailerB', 2700, 1420, 150);
+  B.anchor('trailerC', 2960, 1140, 150);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1351,6 +1434,15 @@ function buildBridge(B) {
   B.groundClutter({ cracks: 80, oil: 14, paper: 30, debris: 30, blood: 16, tires: 6, tufts: 300, bushes: 70, rocks: 30 });
   for (const [name, x, y] of [['The Bridge', 2000, 1000], ['Boat Shack', 1320, 690], ['West Road', 650, 1000],
     ['Roadblock', 3250, 1000], ['Bait Shop', 2920, 1640], ['River Road', 2700, 420]]) B.poi(name, x, y, 440);
+
+  // Road to Haven anchors (STORY.md §5.2)
+  B.anchor('apc', APC.x, APC.y + 64, 160);
+  B.anchor('bankW', 1350, 1000, 260);
+  B.anchor('bankE', 2650, 1000, 260);
+  B.anchor('deckMid', 2000, 880, 200);
+  B.anchor('cargoA', 1500, 450, 160);
+  B.anchor('cargoB', 2500, 1550, 160);
+  B.anchor('cargoC', 1480, 1500, 160);
 }
 
 // ---------------------------------------------------------------------------------
@@ -1544,4 +1636,13 @@ function buildCheckpoint(B) {
   B.sprinkle('rubble', 16, K0 - 60, K0 - 60, K1 + 60, K1 + 60, { off: ['asphalt'], s: [0.5, 0.9] });
   for (const [name, x, y] of [['The Compound', C, C + 250], ['Farmhouse', C + 950, C - 780], ['Gas Station Ruin', C - 940, C + 1120],
     ['The Houses', C + 1080, C + 1030], ['North Road', C, 300], ['West Woods', C - 950, C - 700]]) B.poi(name, x, y, 440);
+  // Road to Haven anchors (STORY.md §5.2)
+  B.anchor('tower', C, C + 110, 180);
+  B.anchor('gate', K1 + 40, C, 180);
+  B.anchor('compound', C, C + 250, 300);
+  B.anchor('genA', IN0 + 160, C + 200, 150);
+  B.anchor('genB', HX, HY + 130, 150);
+  B.anchor('genC', R1 + 160, IN1 - 110, 150);
+  B.anchor('hill', K1 + 560, C - 60, 300);
 }
+

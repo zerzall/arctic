@@ -460,4 +460,10 @@ export function buildHarlan(B) {
   B.decor('sign', 5100, 4000, -Math.PI / 2, 1);
   B.groundClutter({ cracks: 220, oil: 40, paper: 140, debris: 110, blood: 50, tires: 22, tufts: 1100, bushes: 320, rocks: 160 });
   B.sprinkle('bush', 80, 0, 0, W, H, { keep: true, s: [0.6, 1.2], on: ['grass', 'ground'] });
+  // Road to Haven anchors (STORY.md §5.2): the ten points of interest, by camelCase name
+  for (const [name, i, r] of [['mainStreet', 0, 300], ['gasNGo', 1, 240], ['haskellFarm', 2, 300], ['stJudes', 3, 260],
+    ['fieldHospital', 4, 280], ['i70Interchange', 5, 280], ['millerQuarry', 6, 280], ['radioHill', 7, 260],
+    ['shadyPines', 8, 280], ['lakeMarina', 9, 260]]) {
+    B.anchor(name, HARLAN_POIS[i].x, HARLAN_POIS[i].y, r);
+  }
 }
