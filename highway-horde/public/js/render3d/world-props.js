@@ -9,6 +9,8 @@ import { T, mixHex, shadeHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
 import { signalMode } from '../render/maplayer.js';
+import { DETAIL } from './world-arch.js';
+import * as CIN from './world-props-cin.js';
 
 const CONCRETE = '#8a877e';
 const POLE = '#6e757b';    // galvanised steel: a black pole vanished against the night sky
@@ -40,6 +42,7 @@ export function jersey(B, L, W, color) {
     }
     // lifting slots at the foot
     B.box('std', x, 2.5, 0, 8, 3, W * 1.02, '#2a2926', null, { surf: [0, 0.95, 0] });
+    if (DETAIL.level >= 3) CIN.cinJersey(B, x, seg, W, r);
   }
 }
 
@@ -55,7 +58,9 @@ export function sandbags(B, L, W, color) {
     for (let i = 0; i < n; i++) {
       const x = -L / 2 + ((i + 0.5 + off * (i < n - 1 ? 1 : 0)) * L) / n;
       const c = mixHex(color, r.chance(0.5) ? '#a09070' : '#5e5238', r.range(0, 0.35));
-      B.add('std', T.pillow(12, 7, 0.4), [x, bagH * 0.5 + row * (bagH - 0.8), r.range(-1, 1)], [bagL / 2 + 0.6, bagH * 0.6, depth / 2 - row * 1.1], [r.range(-0.05, 0.05), r.range(-0.1, 0.1), r.range(-0.06, 0.06)], c, { surf: [DET.fabric, 0.92, 0] });
+      const bz = r.range(-1, 1), ba = r.range(-0.1, 0.1);
+      B.add('std', T.pillow(12, 7, 0.4), [x, bagH * 0.5 + row * (bagH - 0.8), bz], [bagL / 2 + 0.6, bagH * 0.6, depth / 2 - row * 1.1], [r.range(-0.05, 0.05), ba, r.range(-0.06, 0.06)], c, { surf: [DET.fabric, 0.92, 0] });
+      if (DETAIL.level >= 3) CIN.cinSandbag(B, x, row * (bagH - 0.8) + bagH * 0.5, bz, bagL, bagH, depth, ba, c, r);
     }
   }
 }
@@ -65,6 +70,7 @@ export function guardrail(B, L, W, color) {
   const n = Math.max(2, Math.round(L / 38) + 1);
   const steel = mixHex(color, '#9aa0a4', 0.5);
   const S = [DET.rust, 0.5, 0.75];
+  if (DETAIL.level >= 3) CIN.cinGuardrail(B, Array.from({ length: n }, (_, i) => -L / 2 + (i * L) / (n - 1)), L, W);
   for (let i = 0; i < n; i++) {
     const x = -L / 2 + (i * L) / (n - 1);
     B.block('std', x, 0, -1, 3, 20, 2.4, '#50565a', null, { surf: S });
@@ -92,6 +98,7 @@ export function fence(B, L, W, color) {
       if (r.chance(0.12)) continue;
       B.block('std', x, 1, 3.6, 5.6, 36 + r.range(-2, 2), 0.9, shadeHex(color, r.range(-0.15, 0.08)), [0, 0, r.range(-0.03, 0.03)], { surf: [DET.wood, 0.85, 0] });
     }
+    if (DETAIL.level >= 3) CIN.cinFence(B, L, true, Array.from({ length: n }, (_, i) => -L / 2 + (i * L) / (n - 1)), r, color);
   } else {
     const n = Math.max(2, Math.round(L / 60) + 1);
     const S = [DET.rust, 0.45, 0.9];
@@ -99,6 +106,7 @@ export function fence(B, L, W, color) {
     B.cylX('std', 0, 41, 0, 1.1, L, '#8c9296', 8, { surf: S });
     B.cylX('std', 0, 3, 0, 0.7, L, '#8c9296', 6, { surf: S });
     B.add('fence', T.plane(), [0, 21, 0], [L, 38, 1], null, '#7a8084', { uvScale: [L / 16, 38 / 16] });
+    if (DETAIL.level >= 3) CIN.cinFence(B, L, false, Array.from({ length: n }, (_, i) => -L / 2 + (i * L) / (n - 1)), r, color);
   }
 }
 
@@ -168,6 +176,7 @@ export function container(B, o, L, W) {
       B.add('std', T.profile('dumpster' + L, [[-L / 2, 4], [L / 2, 4], [L / 2, 52], [-L / 2, 46]], 1.2, W), [0, 0, 0], [1, 1, 1], null, color, { surf: [DET.rust, 0.7, 0.4] });
       B.rbox('std', 0, 53, 0, L + 2, 2, W + 2, 0.8, shadeHex(color, -0.35), [0, 0, 0.1], { surf: [DET.plastic, 0.5, 0] });
       trashBags(B, r, 2 + Math.floor(r.next() * 3), L, W / 2 + 5);
+      if (DETAIL.level >= 3) CIN.cinDumpster(B, L, W, color, r);
     }
     return;
   }
@@ -185,6 +194,7 @@ export function container(B, o, L, W) {
   }
   for (const y of [1.5, H - 1.5]) for (const z of [-1, 1]) B.box('std', 0, y, z * (W / 2 + 0.3), L, 3, 1, shadeHex(color, -0.3), null, { surf: [DET.rust, 0.7, 0.6] });
   if (r.chance(0.6)) B.add('decal', T.plane(), [r.range(-L * 0.25, L * 0.25), H * 0.7, W / 2 + 1.2], [22, 7, 1], null, '#ffffff', { uv: atlasUV('stripeYB'), noAO: true });
+  if (DETAIL.level >= 3) CIN.cinContainer(B, L, W, H, color, r);
 }
 
 /**
@@ -213,6 +223,7 @@ export function pump(B, L, W, color) {
     B.add('std', T.torus(10, 0.12, 5), [s * (L * 0.36 + 2.5), 16, W * 0.18], [7, 9, 7], [0, s * Math.PI / 2, 0], RUBBER, { surf: [0, 0.6, 0] });
   }
   B.add('glow', T.plane(), [0, 53, W * 0.36 + 0.3], [L * 0.7, 3, 1], null, '#ff3a2a', { emissive: 1.4, uv: atlasUV('white') });
+  if (DETAIL.level >= 3) CIN.cinPump(B, L, W);
 }
 
 export function pillar(B, L, W, color) {
@@ -307,6 +318,7 @@ export function booth(B, L, W, color, roof) {
 }
 
 export function rock(B, L, W, color, H) {
+  if (DETAIL.level >= 3) { CIN.cinRock(B, L, W, color, H); return; }
   B.add('std', T.dodeca(), [0, H * 0.32, 0], [L * 0.52, H * 0.75, W * 0.52], [0, B.rng.range(0, 6), 0], color, { wobble: { amp: 0.28, seed: Math.floor(B.rng.next() * 1000) }, surf: [DET.rock, 0.82, 0] });
   B.add('std', T.dodeca(), [L * 0.25, H * 0.15, W * 0.2], [L * 0.25, H * 0.4, W * 0.25], [0.3, 1, 0], shadeHex(color, -0.1), { wobble: { amp: 0.3, seed: 7 }, surf: [DET.rock, 0.82, 0] });
 }
@@ -336,6 +348,7 @@ export function lampPost(B, d, lit, color) {
   B.cyl('std', -16, 0, 0, 2.8, H - 6, POLE, 10, 0.62, null, { surf: S });
   B.rblock('std', -16, 0, 0, 8, 5, 8, 1, CONCRETE, null, { surf: [DET.concrete, 0.85, 0] });
   B.cyl('std', -16, 5, 0, 4, 3, '#2a2d30', 8, 0.8, null, { surf: S });
+  if (DETAIL.level >= 3) CIN.cinLampBase(B, -16, H);
   // arm: rises from the pole top and bends out
   B.add('std', T.cyl(6), [-12.5, H - 7, 0], [1.3, 10, 1.3], [0, 0, -0.9], POLE, { surf: S, map: 'cyl' });
   B.add('std', T.cyl(6), [-3, H - 3.4, 0], [1.2, 12, 1.2], [0, 0, Math.PI / 2 - 0.08], POLE, { surf: S, map: 'cyl' });
@@ -441,9 +454,15 @@ export function tires(B, d) {
   const r = B.rng;
   const stack = r.chance(0.35) ? 2 + Math.floor(r.next() * 2) : 1;
   for (let k = 0; k < stack; k++) {
-    B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [r.range(-1, 1), R * 0.45 + k * R * 0.9, r.range(-1, 1)], [R, R * 0.9, R], [r.range(-0.08, 0.08), r.range(0, 6), r.range(-0.08, 0.08)], RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
+    const at = [r.range(-1, 1), R * 0.45 + k * R * 0.9, r.range(-1, 1)], rt = [r.range(-0.08, 0.08), r.range(0, 6), r.range(-0.08, 0.08)];
+    if (DETAIL.level >= 3) CIN.cinTyre(B, at, [R, R * 0.9, R], rt);
+    else B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), at, [R, R * 0.9, R], rt, RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
   }
-  if (stack === 1 && r.chance(0.4)) B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [R * 1.6, R, 0], [R, R * 0.9, R], [Math.PI / 2 - 0.25, r.range(0, 6), 0], RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
+  if (stack === 1 && r.chance(0.4)) {
+    const rt = [Math.PI / 2 - 0.25, r.range(0, 6), 0];
+    if (DETAIL.level >= 3) CIN.cinTyre(B, [R * 1.6, R, 0], [R, R * 0.9, R], rt);
+    else B.add('std', T.lathe('tyre', TYRE_PROFILE, 18), [R * 1.6, R, 0], [R, R * 0.9, R], rt, RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
+  }
 }
 
 /** Rubble heap: broken concrete and brick chunks, a bent rebar or pipe. */
@@ -454,7 +473,7 @@ export function rubble(B, d) {
   for (let k = 0; k < 13; k++) {
     const sz = r.range(3, 10) * s;
     const brick = r.chance(0.3);
-    B.add('std', r.chance(0.5) ? T.box() : T.dodeca(), [r.range(-R, R) * 0.8, sz * 0.3, r.range(-R, R) * 0.7], [sz * r.range(1, 2), sz, sz * r.range(0.8, 1.5)], [r.range(0, 1), r.range(0, 6), r.range(0, 1)],
+    B.add('std', r.chance(0.5) ? T.box() : DETAIL.level >= 3 ? CIN.chunk(k) : T.dodeca(), [r.range(-R, R) * 0.8, sz * 0.3, r.range(-R, R) * 0.7], [sz * r.range(1, 2), sz, sz * r.range(0.8, 1.5)], [r.range(0, 1), r.range(0, 6), r.range(0, 1)],
       brick ? r.pick(['#7a3a2c', '#8a4a34']) : r.pick(['#7a766e', '#5f5b54', '#8d887d', '#6b5a48']), { surf: [brick ? DET.brick : DET.concrete, 0.9, 0] });
   }
   for (let k = 0; k < 2; k++) B.add('std', T.cyl(5), [r.range(-R, R) * 0.5, 4, r.range(-R, R) * 0.5], [0.6, R * 1.4, 0.6], [r.range(-0.4, 0.4), r.range(0, 3), 1.3], '#6a4a38', { surf: [DET.rust, 0.7, 0.8], map: 'cyl' });
@@ -492,6 +511,7 @@ export function roadSign(B, d, i) {
   const cell = hash01(i * 7 + 2) < 0.5 ? 'sign' : 'roadSign';
   // retro-reflective sheeting: lit by the flashlight, a little by itself
   B.add('glow', T.plane(), [0, 64, 0.1], [Ls - 1, 25, 1], null, '#ffffff', { emissive: 0.4, uv: atlasUV(cell) });
+  if (DETAIL.level >= 3) CIN.cinSign(B, Ls, 26, 64, -1.2, [-Ls * 0.35, Ls * 0.35]);
 }
 
 /** A few blades of grass (the map's grass_tuft decor). */

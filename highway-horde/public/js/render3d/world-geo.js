@@ -181,7 +181,7 @@ export const T = {
   dodeca: () => tpl('dodeca', () => new THREE.DodecahedronGeometry(1, 0)),
   sphere: (w = 8, h = 6) => { w = bsp(w); h = bsp(h); return tpl(`sph${w}:${h}`, () => new THREE.SphereGeometry(1, w, h)); },
   /** Sack: unit-radius pillow shape (sandbags, trash bags). */
-  pillow: (w = 10, h = 6, p = 0.35) => { w = bsp(w); h = bsp(h); return tpl(`pil${w}:${h}:${p}`, () => pillow(w, h, p)); },
+  pillow: (w = 10, h = 6, p = 0.35) => { if (SEG_BOOST > 1) { w = Math.round(w * 1.45); h = Math.round(h * 1.5); } return tpl(`pil${w}:${h}:${p}`, () => pillow(w, h, p)); },
   /** Quad in the XY plane facing +z. */
   plane: () => tpl('plane', () => new THREE.PlaneGeometry(1, 1)),
   /** A grass blade: a thin upright triangle (base width 1 on x, height 1), both sides. */

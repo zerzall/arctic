@@ -20,7 +20,7 @@ export async function resolve(spec, ctx, next) {
   return next(spec, ctx);
 }`));
 
-let tierMod, zm, sm, shape, tex, geo, arch, veh, bld, flora, consts, THREE;
+let tierMod, zm, sm, shape, tex, geo, arch, veh, bld, flora, props, consts, THREE;
 
 before(async () => {
   THREE = await import('three');
@@ -34,6 +34,7 @@ before(async () => {
   veh = await import('../public/js/render3d/world-veh.js');
   bld = await import('../public/js/render3d/world-bld.js');
   flora = await import('../public/js/render3d/world-flora.js');
+  props = await import('../public/js/render3d/world-props.js');
   consts = await import('../public/js/render3d/actor-consts.js');
 });
 
@@ -237,6 +238,30 @@ test('buildings and trees grow at level 3 and stay finite', () => {
     const a = buildAt(2, fn), b = buildAt(3, fn);
     assert.equal(b.bad, 0, k + ' finite');
     assert.ok(b.tris > a.tris * 1.3, `${k}: ${a.tris} → ${b.tris}`);
+  }
+});
+
+test('obstacle props: level 2 is exactly the old geometry, level 3 adds finite detail', () => {
+  // triangle counts of the old code (de88dae) at level 2, measured before the V2 pass
+  const cases = {
+    jersey: [(B) => props.jersey(B, 240, 24, '#8a877e'), 464],
+    sandbags: [(B) => props.sandbags(B, 120, 24, '#8a7a5a'), 3456],
+    guardrail: [(B) => props.guardrail(B, 240, 20, '#8a9096'), 260],
+    fenceWood: [(B) => props.fence(B, 200, 6, '#8a6a4a'), 420],
+    fenceChain: [(B) => props.fence(B, 200, 6, '#6a7a8a'), 186],
+    container: [(B) => props.container(B, { color: '#a83a2a', roof: '#6a2a1a' }, 200, 56), 386],
+    dumpster: [(B) => props.container(B, { color: '#2f5a3a' }, 60, 36), 280],
+    pump: [(B) => props.pump(B, 46, 30, '#c8281e'), 442],
+    rock: [(B) => props.rock(B, 70, 60, '#7a766e', 50), 72],
+    tires: [(B) => props.tires(B, { s: 1 }), 252],
+    rubble: [(B) => props.rubble(B, { s: 1 }), 340],
+  };
+  for (const [k, [fn, old]] of Object.entries(cases)) {
+    const a = buildAt(2, fn), b = buildAt(3, fn);
+    assert.equal(Math.round(a.tris), old, k + ' level 2 is unchanged');
+    assert.equal(b.bad, 0, k + ' finite');
+    assert.ok(b.tris > a.tris * 1.5, `${k}: ${a.tris} → ${b.tris}`);
+    assert.equal(buildAt(3, fn).tris, b.tris, k + ' is deterministic');
   }
 });
 
