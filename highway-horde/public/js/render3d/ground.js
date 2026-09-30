@@ -26,6 +26,7 @@ import { periodicFbm, createRng } from '../render/util.js';
 import { terrainOf } from '../shared/terrain.js';
 import { planGroundExtras } from './ground-extra.js';
 import { normTier, tierAtLeast, tierRow, anisoFor } from './tier.js';
+import { setDetailTier } from './world-mat.js';
 
 const TILE = 1024;              // playable-area tile size (world units): ~10 visible draw calls
 const SKIRT = 1300;             // how far the ground continues past the map bounds
@@ -50,6 +51,8 @@ export function createGround({ scene, map, quality, renderer, detail }) {
   const high = quality !== 'low';
   const ultra = tierAtLeast(quality, 'ultra');
   let tier = normTier(quality);
+  // (the world materials' parallax follows the tier: world.js tells the ground about tier changes)
+  setDetailTier(tier);
   // texels per world unit: ultra paints the ground at full detail; a very long map is
   // painted a little coarser (a texel budget per tier: the detail layers carry the close-up
   // grain) so its canvases and textures stay near the other maps' memory
@@ -268,6 +271,7 @@ export function createGround({ scene, map, quality, renderer, detail }) {
     const nt = normTier(q);
     if (nt === tier) return;
     tier = nt;
+    setDetailTier(tier);
     for (const t of tiles) {
       const cur = t.mesh.material;
       if (tier === 'low') {

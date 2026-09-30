@@ -20,6 +20,7 @@
 // program and a mesh created later hits the program cache.
 
 import * as THREE from 'three';
+import { DET_LAYERS, DET_PARAMS, DET_CELLS } from './world-surf.js';
 
 const DETAIL_VERT_PARS = `
 attribute vec3 aDet;
@@ -207,11 +208,27 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
 const DETAIL_FRAG_PARS = `
 uniform highp sampler2DArray uDetail;
 uniform float uDetN;
+uniform vec4 uDetP[${DET_LAYERS}];
+uniform vec4 uDetG[${DET_LAYERS}];
+uniform vec4 uDetQ;
 varying vec3 vDet;
 varying vec2 vSurf;
 vec4 hhD;
+vec4 hhC = vec4(0.5, 0.5, 0.0, 0.5);
+vec4 hhP = vec4(0.0);
+vec2 hhUv;
+float hhFlip = 1.0;
+float hhLod = 0.0;
 float hhRust = 0.0;
+float hhDirt = 0.0;
 float hhIs(float a, float b) { return 1.0 - step(0.5, abs(a - b)); }
+// hash of an integer cell → 0..1 (per brick / slab tone that never repeats with the texture)
+float hhCell(vec2 c) {
+  uvec2 q = uvec2(ivec2(c) + 32768);
+  uint h = q.x * 1664525u ^ (q.y * 1013904223u + 0x9e3779b9u);
+  h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+  return float(h) * (1.0 / 4294967295.0);
+}
 // three's derivative tangent frame (no tangent attribute needed for the detail normals)
 mat3 hhTangentFrame(vec3 eyePos, vec3 N, vec2 uv) {
   vec3 q0 = dFdx(eyePos), q1 = dFdy(eyePos);
@@ -226,16 +243,94 @@ mat3 hhTangentFrame(vec3 eyePos, vec3 N, vec2 uv) {
 `;
 
 /**
- * World-space weathering: macro variation that hides the tiling, rain streaks and stains on
- * masonry, dust on ledges, moss on the north side, rust on metal. Reads the detail array's
- * macro layer (id 23: R broad, G mid, B vertical streaks, A blotches) and the surface class
- * from the vertex's layer id.
+ * The surface layer of a fragment (world-surf.js): orientation, parallax, the layer's normal /
+ * roughness / albedo slice and its hue / height slice, the near-eye grain, and the colour.
+ * Rows of a layer run up the surface; where a face's v runs down (one slope of a gable roof) it is
+ * flipped, so shingles overlap downhill and rust runs down on every face.
+ * Parallax (uDetQ.x > 0: ultra and cinematic) marches the height field of the layers that have
+ * relief (DET_PARAMS depth) near the eye: mortar joints, shingle courses and gravel get real depth.
+ */
+const DETAIL_COLOR_GLSL = `
+  hhD = vec4(0.5);
+  bool hhPane = vDet.z >= 100.0;
+  // (derivatives outside the branches: the layer id changes between faces of one draw)
+  vec2 hhDx = dFdx(vDet.xy), hhDy = dFdy(vDet.xy);
+  mat3 hhTbn = hhTangentFrame(-vViewPosition, normalize(vNormal), vDet.xy);
+  hhUv = vDet.xy;
+  if (vDet.z > 0.5 && !hhPane) {
+    float hhL = floor(vDet.z + 0.5);
+    hhP = uDetP[int(hhL)];
+    vec3 hhUp = (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+    hhFlip = dot(hhTbn[1], hhUp) < -0.05 ? -1.0 : 1.0;
+    hhUv.y *= hhFlip;
+    hhDx.y *= hhFlip; hhDy.y *= hhFlip;
+    float hhDist = length(vViewPosition);
+    hhLod = log2(max(max(length(hhDx), length(hhDy)) * float(textureSize(uDetail, 0).x), 1e-4));
+    float hhCl = hhL + ${DET_LAYERS}.0;
+    // parallax occlusion: step down the height field along the view ray (ultra / cinematic)
+    float hhPd = hhP.x * uDetQ.x * (1.0 - smoothstep(uDetQ.w * 0.55, uDetQ.w, hhDist)) * (1.0 - smoothstep(1.5, 3.5, hhLod));
+    if (hhPd > 1e-5) {
+      vec3 V = normalize(vViewPosition);
+      vec3 Vt = vec3(dot(V, hhTbn[0]), dot(V, hhTbn[1]) * hhFlip, dot(V, hhTbn[2]));
+      float vz = max(Vt.z, 0.2);
+      float steps = floor(mix(uDetQ.z, uDetQ.y, vz));
+      vec2 dUv = Vt.xy / vz * hhPd / steps;
+      float lay = 1.0 / steps;
+      vec2 uvC = hhUv, uvP = hhUv;
+      float dC = 0.0, dP = 0.0;
+      float hC = 1.0 - textureGrad(uDetail, vec3(uvC, hhCl), hhDx, hhDy).a, hP = hC;
+      for (int k = 0; k < 32; k++) {
+        if (float(k) >= steps || dC >= hC) break;
+        uvP = uvC; dP = dC; hP = hC;
+        uvC -= dUv; dC += lay;
+        hC = 1.0 - textureGrad(uDetail, vec3(uvC, hhCl), hhDx, hhDy).a;
+      }
+      float after = hC - dC, before = hP - dP;
+      float w = after / min(after - before, -1e-5);
+      hhUv = mix(uvC, uvP, clamp(w, 0.0, 1.0));
+    }
+    hhD = textureGrad(uDetail, vec3(hhUv, hhL), hhDx, hhDy);
+    hhC = textureGrad(uDetail, vec3(hhUv, hhCl), hhDx, hhDy);
+    // elements (bricks, slabs, shingles): a tone and a hue of their own from their place in the world
+    vec4 hhG = uDetG[int(hhL)];
+    if (hhG.w > 0.0) {
+      vec2 cu = hhUv * hhG.xy;
+      float row = floor(cu.y);
+      vec2 cell = vec2(floor(cu.x + hhG.z * mod(row, 2.0)), row);
+      float e1 = hhCell(cell), e2 = hhCell(cell + vec2(71.0, 13.0));
+      hhD.a *= 1.0 + (e1 - 0.5) * hhG.w * 2.0;
+      hhC.r += (e2 - 0.5) * hhG.w * 0.3;
+    }
+    // fine grain close to the eye: at 4K the layer alone was magnified ~5x there
+    float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y;
+    if (hhNear > 0.0) {
+      vec4 m = texture(uDetail, vec3(hhUv * 6.7 + 0.31, 23.0 + ${DET_LAYERS}.0));
+      hhD.xy += (m.xy - 0.5) * 0.5 * hhNear;
+      hhD.a *= 1.0 + (m.b - 0.5) * 0.3 * hhNear;
+    }
+  }
+  {
+    // the layer's colour: desaturate (mortar, bare metal, ash), shift the hue, scale the brightness
+    vec3 c = diffuseColor.rgb;
+    c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), hhC.b);
+    float co = hhC.r - 0.5, cg = hhC.g - 0.5;
+    c *= max(vec3(1.0 + co - cg, 1.0 + cg, 1.0 - co - cg), 0.0);
+    diffuseColor.rgb = c * hhD.a * 2.0;
+  }
+`;
+
+/**
+ * World-space weathering: macro variation that hides the tiling, rain streaks, drips and stains on
+ * masonry, splash dirt along the foot of walls, dust on ledges, moss on the north sides, rust on
+ * metal, grime settling into the layer's low spots where the surface is dirty. Reads the detail
+ * array's macro layer (id 23: R broad, G mid, B drips and streaks, A blotches) and the layer's
+ * weathering class (DET_PARAMS: 1 masonry, 2 metal, 3 wood, 4 rock, 5 soft, 6 interior).
  */
 const WEATHER_GLSL = `
 {
   vec3 hhWp = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
   vec3 hhWn = normalize((vec4(vNormal, 0.0) * viewMatrix).xyz);
-  float L = vDet.z > 0.5 && vDet.z < 50.0 ? floor(vDet.z + 0.5) : 0.0;
+  float cls = vDet.z > 0.5 && vDet.z < 50.0 ? hhP.w : 0.0;
   float nY = hhWn.y;
   float horiz = step(0.6, abs(nY));
   bool alongX = abs(hhWn.x) <= abs(hhWn.z);
@@ -243,27 +338,41 @@ const WEATHER_GLSL = `
   float along = horiz > 0.5 ? hhWp.x : (alongX ? hhWp.x : hhWp.z);
   vec4 m1 = texture(uDetail, vec3(pw / 230.0, 23.0));
   vec4 m2 = texture(uDetail, vec3(pw / 57.0 + 0.31, 23.0));
+  vec4 m0 = texture(uDetail, vec3(pw / 900.0 + 0.57, 23.0));
   float st = texture(uDetail, vec3(along / 66.0, hhWp.y / 340.0, 23.0)).b;
   float wall = 1.0 - smoothstep(0.35, 0.7, abs(nY));
-  float cMason = hhIs(L, 1.0) + hhIs(L, 2.0) + hhIs(L, 3.0) + hhIs(L, 13.0) + hhIs(L, 24.0) + hhIs(L, 17.0) + hhIs(L, 27.0);
-  float cMetal = min(1.0, hhIs(L, 4.0) + hhIs(L, 20.0) + hhIs(L, 26.0) + step(0.45, vSurf.y));
-  float cWood = hhIs(L, 7.0);
-  float cRock = hhIs(L, 14.0) + hhIs(L, 29.0);
-  float cGround = hhIs(L, 18.0) + hhIs(L, 19.0) + hhIs(L, 22.0) + hhIs(L, 9.0) + hhIs(L, 16.0) + hhIs(L, 15.0) + hhIs(L, 10.0) + hhIs(L, 8.0);
-  float cSolid = 1.0 - cGround;
-  // large-scale tone: the same tile never reads as a tile
-  diffuseColor.rgb *= 0.84 + 0.32 * mix(m1.r, m2.g, 0.4) * cSolid + 0.16 * cGround;
-  // rain streaks under ledges and parapets, water stains
-  float streak = wall * (cMason + cWood * 0.6) * smoothstep(0.5, 0.9, st) * (0.3 + 0.7 * smoothstep(0.35, 0.7, m1.g));
-  diffuseColor.rgb *= 1.0 - 0.2 * streak;
+  float cMason = hhIs(cls, 1.0);
+  float cMetal = min(1.0, hhIs(cls, 2.0) + step(0.45, vSurf.y));
+  float cWood = hhIs(cls, 3.0);
+  float cRock = hhIs(cls, 4.0);
+  float cGround = hhIs(cls, 5.0);
+  float cIn = hhIs(cls, 6.0);
+  float cSolid = 1.0 - cGround - cIn;
+  float outK = 1.0 - cIn;
+  // large-scale tone and a slow warm / cool drift: the same tile never reads as a tile
+  float tone = mix(m1.r, m2.g, 0.4) * 0.75 + m0.r * 0.25;
+  diffuseColor.rgb *= 0.84 + 0.32 * tone * cSolid + 0.16 * (cGround + cIn);
+  diffuseColor.rgb *= mix(vec3(1.0), vec3(1.05, 1.0, 0.93), (m0.g - 0.5) * 1.6 * outK);
+  // rain streaks and drips under ledges, sills and parapets; water stains
+  float streak = wall * (cMason + cWood * 0.6 + cRock * 0.4) * smoothstep(0.45, 0.9, st) * (0.3 + 0.7 * smoothstep(0.35, 0.7, m1.g));
+  diffuseColor.rgb *= 1.0 - 0.22 * streak;
   float stain = wall * (cMason + cRock) * smoothstep(0.52, 0.8, m1.r * 0.5 + m2.a * 0.5);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.95, 0.91, 0.84) * 0.9, stain * 0.22);
+  // splash dirt along the foot of walls: mud thrown up by rain, worn by feet and bins, darkest in the joints
+  float foot = wall * smoothstep(-3.0, 0.5, hhWp.y) * (1.0 - smoothstep(3.0, 14.0 + 16.0 * m2.g + 6.0 * m1.a, hhWp.y));
+  foot *= (cSolid + cIn * 0.45) * (1.0 - cMetal * 0.5);
+  float crev = 1.0 - hhC.a;
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.6, 0.52) + vec3(0.03, 0.024, 0.016) * outK, foot * (0.35 + 0.35 * crev));
+  hhDirt = foot * 0.3 * outK;
+  // grime settles into the layer's low spots where the wall gets dirty (drips, stains, the foot)
+  float dirty = max(max(streak, stain), foot) + 0.25 * outK * smoothstep(0.5, 0.8, m2.a);
+  diffuseColor.rgb *= 1.0 - clamp(crev - 0.35, 0.0, 1.0) * 0.45 * dirty;
   // dust and grit settled on ledges, roofs and the tops of things
   float up = smoothstep(0.65, 0.95, nY);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62 + vec3(0.075, 0.063, 0.046), up * 0.42 * (0.45 + 0.55 * m2.g) * cSolid);
-  // moss / lichen on the shaded (north, -z) side of stone, brick and wood
+  // moss / lichen on the shaded (north, -z) side of stone, brick and wood, deepest in the joints
   float north = smoothstep(0.05, -0.7, hhWn.z) * wall;
-  float moss = (north * (cMason * 0.85 + cRock + cWood * 0.6) + up * cRock * 0.4) * smoothstep(0.56, 0.78, m1.a * 0.55 + m2.g * 0.45) * smoothstep(110.0, 8.0, hhWp.y);
+  float moss = (north * (cMason * 0.85 + cRock + cWood * 0.6) + up * cRock * 0.4) * smoothstep(0.56, 0.78, m1.a * 0.55 + m2.g * 0.45 + crev * 0.12) * smoothstep(110.0, 8.0, hhWp.y);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.11, 0.2, 0.06) * (0.7 + 0.6 * m2.a), moss * 0.55);
   // rust: blooms and runs on metal
   hhRust = cMetal * smoothstep(0.66, 0.9, m1.g * 0.5 + st * 0.38 + m2.a * 0.3) * (1.0 - 0.7 * step(0.7, vSurf.y));
@@ -280,6 +389,26 @@ const WEATHER_GLSL = `
 }
 `;
 
+/** Parallax quality of the lit world materials: x on/off, y min steps, z max steps, w range (units). */
+const DETAIL_Q = {
+  low: [0, 4, 8, 0], high: [0, 4, 8, 0],
+  ultra: [1, 6, 14, 220], cinematic: [1, 10, 26, 360],
+};
+/** The shared parallax-quality uniform (one live world at a time; ground.js sets it with the tier). */
+export const DETAIL_TIER = { value: new THREE.Vector4(0, 4, 8, 0) };
+/**
+ * Pick the detail quality of the world materials for a tier: parallax on ultra (short range) and
+ * cinematic (longer, more steps); none below.
+ * @param {string} tier 'low' | 'high' | 'ultra' | 'cinematic'
+ */
+export function setDetailTier(tier) {
+  const q = DETAIL_Q[tier] || DETAIL_Q.high;
+  DETAIL_TIER.value.set(q[0], q[1], q[2], q[3]);
+}
+/** The per-layer parameters uniform (world-surf.js DET_PARAMS, filled in when the layers are generated). */
+const DETAIL_PARAMS = { value: DET_PARAMS };
+const DETAIL_CELLS = { value: DET_CELLS };
+
 /**
  * Patch a MeshStandard/Physical material to read the per-vertex surface attributes.
  * @param {THREE.Material} mat
@@ -292,6 +421,9 @@ export function patchDetail(mat, shared, key, opts = {}) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = shared.uDetail;
     sh.uniforms.uDetN = shared.uDetN;
+    sh.uniforms.uDetP = DETAIL_PARAMS;
+    sh.uniforms.uDetG = DETAIL_CELLS;
+    sh.uniforms.uDetQ = DETAIL_TIER;
     if (rooms) {
       sh.uniforms.uRoomAmb = shared.uRoomAmb;
     }
@@ -304,19 +436,7 @@ export function patchDetail(mat, shared, key, opts = {}) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', head)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        hhD = vec4(0.5);
-        bool hhPane = vDet.z >= 100.0;
-        if (vDet.z > 0.5 && !hhPane) {
-          hhD = texture(uDetail, vDet);
-          // micro grain close to the eye: at 4K the layer alone was magnified ~5x there
-          float hhNear = 1.0 - smoothstep(70.0, 260.0, length(vViewPosition));
-          if (hhNear > 0.0) {
-            vec4 m = texture(uDetail, vec3(vDet.xy * 6.7 + 0.31, 13.0));
-            hhD.xy += (m.xy - 0.5) * 0.55 * hhNear;
-            hhD.a *= 1.0 + (m.a - 0.5) * 0.35 * hhNear;
-          }
-        }
-        diffuseColor.rgb *= hhD.a * 2.0;
+        ${DETAIL_COLOR_GLSL}
         ${weather ? 'if (!hhPane) ' + WEATHER_GLSL : ''}
         ${rooms ? `
         vec3 hhRoomCol = vec3(0.0);
@@ -336,6 +456,9 @@ export function patchDetail(mat, shared, key, opts = {}) {
         // floor 0.14: nothing on the map is a mirror under a light carried at the eye
         roughnessFactor = clamp(roughnessFactor + (hhD.b - 0.5) * 0.9, 0.14, 1.0);
         roughnessFactor = mix(roughnessFactor, 0.86, hhRust * 0.8);
+        roughnessFactor = mix(roughnessFactor, 0.97, hhDirt);
+        // the normal detail the mips average away turns into roughness (no glossy far walls, no sparkle)
+        roughnessFactor = sqrt(roughnessFactor * roughnessFactor + hhP.z * uDetN * uDetN * smoothstep(0.5, 4.5, hhLod));
         ${rooms ? 'if (hhPane) roughnessFactor = 0.14;' : ''}`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         if (vSurf.y >= 0.0 && !hhPane) metalnessFactor = vSurf.y;
@@ -352,6 +475,7 @@ export function patchDetail(mat, shared, key, opts = {}) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (vDet.z > 0.5 && !hhPane) {
           vec3 dn = vec3((hhD.xy * 2.0 - 1.0) * uDetN, 1.0);
+          dn.y *= hhFlip;
           normal = normalize(hhTangentFrame(-vViewPosition, normal, vDet.xy) * dn);
         }
         // edge wear: rounded edges (where the interpolated normal turns quickly) are rubbed bright and dry
@@ -512,16 +636,16 @@ export function createWorldMaterials(tex) {
   const track = (m) => { all.push(m); return m; };
 
   const hi = {
-    std: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.7 }), shared, 'hh-std-v2')),
+    std: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.7 }), shared, 'hh-std-v3')),
     paint: track(patchDetail(new THREE.MeshPhysicalMaterial({
       // the flashlight sits at the eye: its specular peak on a near-mirror coat came straight
       // back into the camera as a blooming glare (a white disc on the bus at the crosshair),
       // so the coat is glossy, not a mirror
       vertexColors: true, roughness: 0.42, metalness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.22, envMapIntensity: 1.1,
-    }), shared, 'hh-paint-v2', { paint: true })),
+    }), shared, 'hh-paint-v3', { paint: true })),
     // glass: mostly Fresnel + the probe; low metalness keeps the flashlight's reflection
     // off camera-facing panes from blowing out. Panes show a dim interior-mapped room.
-    glass: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.16, metalness: 0.32, envMapIntensity: 2.6 }), shared, 'hh-glass-v2', { weather: false, rooms: true })),
+    glass: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.16, metalness: 0.32, envMapIntensity: 2.6 }), shared, 'hh-glass-v3', { weather: false, rooms: true })),
     vglass: track(vglassMaterial()),
     decal: track(new THREE.MeshStandardMaterial({ vertexColors: true, map: tex.atlas, roughness: 0.55, metalness: 0.05, envMapIntensity: 0.8 })),
     // graffiti and stains: the atlas blended over the wall (its alpha), just off the surface
