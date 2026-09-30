@@ -129,7 +129,9 @@ export function createRoofs(ctx, deps) {
     const cs = { surf: [K.cs, 0.9, 0] };
     // the roof over the ceiling: a slab a little wider than the room, a parapet round it
     const roofS = { surf: [K.rs, 0.95, rc.kind === 'industrial' || rc.kind === 'mall' ? 0.5 : 0] };
-    B.block('std', 0, H + 6, 0, w + 10, 10, d + 10, K.roof, null, roofS);
+    // (a mall with skylights lays its slab in pieces round the openings: mallCeiling)
+    if (!(rc.kind === 'mall' && skylightsOf(r).length)) B.block('std', 0, H + 6, 0, w + 10, 10, d + 10, K.roof, null, roofS);
+    rc.roofS = roofS;
     for (const [x, z, sx, sz] of [[0, -d / 2 - 3, w + 10, 4], [0, d / 2 + 3, w + 10, 4], [-w / 2 - 3, 0, 4, d + 10], [w / 2 + 3, 0, 4, d + 10]]) {
       B.block('std', x, H + 16, z, sx, 8, sz, shadeHex(K.roof, 0.12), null, { surf: [DET.concrete, 0.9, 0] });
     }
@@ -226,34 +228,41 @@ export function createRoofs(ctx, deps) {
       const lx = dx * c + dy * s, ly = -dx * s + dy * c;
       return { t: along ? lx : ly, len: along ? q.w : q.h, wid: along ? q.h : q.w };
     }).sort((a, b) => a.t - b.t);
-    // the ceiling in pieces between the skylights (and beside them)
-    const piece = (t0, t1) => {
-      if (t1 - t0 < 1) return;
-      const m = (t0 + t1) / 2, len = t1 - t0;
-      if (along) B.block('std', m, H, 0, len, 6, Wd, K.ceil, null, cs);
-      else B.block('std', 0, H, m, Wd, 6, len, K.ceil, null, cs);
-    };
-    let t = -L / 2;
-    for (const q of at) {
-      piece(t, q.t - q.len / 2);
-      // beside the glass: two strips
-      const side = (Wd - q.wid) / 2;
-      for (const sgn of [-1, 1]) {
-        const off = sgn * (q.wid / 2 + side / 2);
-        if (along) B.block('std', q.t, H, off, q.len, 6, side, K.ceil, null, cs);
-        else B.block('std', off, H, q.t, side, 6, q.len, K.ceil, null, cs);
+    // the ceiling (y = H, 6 thick) and the roof slab over it (y = H + 6, 10 thick, 5 wider all
+    // round) in pieces between the skylights and beside them: the openings go right through
+    const slab = (y, th, grow, color, surf) => {
+      const piece = (t0, t1) => {
+        if (t1 - t0 < 1) return;
+        const m = (t0 + t1) / 2, len = t1 - t0;
+        if (along) B.block('std', m, y, 0, len, th, Wd + grow, color, null, surf);
+        else B.block('std', 0, y, m, Wd + grow, th, len, color, null, surf);
+      };
+      let t = -L / 2 - grow / 2;
+      for (const q of at) {
+        piece(t, q.t - q.len / 2);
+        const side = (Wd + grow - q.wid) / 2;
+        for (const sgn of [-1, 1]) {
+          const off = sgn * (q.wid / 2 + side / 2);
+          if (along) B.block('std', q.t, y, off, q.len, th, side, color, null, surf);
+          else B.block('std', off, y, q.t, side, th, q.len, color, null, surf);
+        }
+        t = q.t + q.len / 2;
       }
-      // the lantern over the opening: glass panes on a steel frame
+      piece(t, L / 2 + grow / 2);
+    };
+    slab(H, 6, 0, K.ceil, cs);
+    if (lights.length) slab(H + 6, 10, 10, K.roof, rc.roofS);
+    for (const q of at) {
+      // the lantern over the opening: an open steel frame with its glazing bars (glass would
+      // shadow the sun: the light and the rain come in through it)
       const lx = along ? q.t : 0, lz = along ? 0 : q.t;
       const gx = along ? q.len : q.wid, gz = along ? q.wid : q.len;
-      B.box('glass', lx, H + 22, lz, gx - 4, 1.5, gz - 4, '#9fb6c4', null, { surf: [DET.glass, 0.1, 0.1] });
       for (const [fx, fz, fsx, fsz] of [[0, -gz / 2, gx, 3], [0, gz / 2, gx, 3], [-gx / 2, 0, 3, gz], [gx / 2, 0, 3, gz]]) {
         B.block('std', lx + fx, H, lz + fz, fsx, 24, fsz, '#50555a', null, { surf: [DET.rust, 0.5, 0.7] });
       }
       for (let k = -gx / 2 + 30; k < gx / 2; k += 30) B.box('std', lx + k, H + 21, lz, 1.5, 2, gz, '#50555a', null, { surf: [DET.rust, 0.5, 0.7] });
-      t = q.t + q.len / 2;
+      B.box('std', lx, H + 21, lz, gx, 2, 1.5, '#50555a', null, { surf: [DET.rust, 0.5, 0.7] });
     }
-    piece(t, L / 2);
     // two rows of recessed spots along the mall
     for (const row of [-0.3, 0.3]) {
       for (let u = -L / 2 + 50; u < L / 2 - 20; u += 90) {
