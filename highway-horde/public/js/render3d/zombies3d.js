@@ -98,7 +98,7 @@ export function createZombies3D(ctx) {
     const rim = t === 'boss' ? '#d8a0ff' : t === 'spitter' ? '#b8ff8a' : t === 'screamer' ? '#c8d8ff' : '#9fc0ff';
     const lods = [];
     for (let L = 0; L < 3; L++) {
-      const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier)), sk, {
+      const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier < 0 ? 0 : tier)), sk, {
         rim, rimStrength: 0.3, castShadow: high && L === 0, receiveShadow: high && L === 0, name: 'z-' + t + L,
       });
       root.add(m.mesh);
@@ -107,7 +107,29 @@ export function createZombies3D(ctx) {
     types[t] = { lods, P: sk.P, scale: SCALE[t] || 1, def: ZOMBIES[t] };
   }
   pool.warm();
+  pool.shared.uCin.value = quality === 'cinematic' ? 1 : 0;
   upgradeTextures();
+  // cinematic: the hero models (LOD 0, ~40k triangles a type) are built one type at a time in the
+  // first seconds and swapped in as they finish; the ultra ones stand in meanwhile
+  let heroTimer = 0;
+  function scheduleHeroes() {
+    clearTimeout(heroTimer);
+    const todo = ZOMBIE_IDS.slice();
+    const next = () => {
+      if (gone || tier >= 0) return;
+      const t = todo.shift();
+      if (!t) return;
+      const m = types[t].lods[0];
+      const g = instancedGeometry(modelArrays(t, 0, -1));
+      m.mesh.geometry.dispose();
+      m.mesh.geometry = g;
+      m.geometry = g;
+      stats.heroes = (stats.heroes || 0) + 1;
+      heroTimer = setTimeout(next, 120);
+    };
+    heroTimer = setTimeout(next, 900);
+  }
+  if (tier < 0) scheduleHeroes();
 
   const eliteEye = [1.0, 0.03, 0.01];
   const eliteEyeCol = new THREE.Color(1.0, 0.23, 0.1);
@@ -147,7 +169,7 @@ export function createZombies3D(ctx) {
   let gn = 0;
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 
-  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0], hiTex: 0 };
+  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0], hiTex: 0, heroes: 0 };
 
   function getState(z) {
     let s = state.get(z.id);
@@ -982,18 +1004,20 @@ export function createZombies3D(ctx) {
     setQuality(q) {
       quality = q;
       high = q !== 'low';
+      pool.shared.uCin.value = q === 'cinematic' ? 1 : 0;
       upgradeTextures();
       if (tierOf(q) !== tier) {
         // a different tier of models: swap every mesh's geometry (the old ones are freed)
         tier = tierOf(q);
         for (const t of ZOMBIE_IDS) {
           types[t].lods.forEach((m, L) => {
-            const g = instancedGeometry(modelArrays(t, L, tier));
+            const g = instancedGeometry(modelArrays(t, L, tier < 0 ? 0 : tier));
             m.mesh.geometry.dispose();
             m.mesh.geometry = g;
             m.geometry = g;
           });
         }
+        if (tier < 0) scheduleHeroes();
       }
       for (const t of ZOMBIE_IDS) {
         types[t].lods.forEach((m, L) => { m.mesh.castShadow = high && L === 0; m.mesh.receiveShadow = high && L === 0; });
@@ -1001,6 +1025,7 @@ export function createZombies3D(ctx) {
     },
     dispose() {
       gone = true;
+      clearTimeout(heroTimer);
       pool.dispose();
       tex.detail.dispose();
       tex.normal.dispose();

@@ -22,34 +22,37 @@ const STEEL = '#3a3d42';
 
 // ---- templates ------------------------------------------------------------------------------------
 
+/** A cylinder that the cinematic tier's segment boost leaves alone (axles, shafts, small fittings). */
+const lowCyl = (seg) => T.custom('lowcyl' + seg, () => new THREE.CylinderGeometry(1, 1, 1, seg, 1));
+
 /** A ten-spoke alloy face, unit radius, facing +y, y = 0 at the barrel's middle (rimTemplate's frame). */
 function alloyFace() {
   return T.custom('alloy10', () => {
     const parts = [];
-    const barrel = new THREE.CylinderGeometry(1, 1, 0.9, 40, 1, true);
+    const barrel = new THREE.CylinderGeometry(1, 1, 0.9, 28, 1, true);
     parts.push(barrel);
-    const lip = new THREE.TorusGeometry(0.975, 0.055, 6, 40);
+    const lip = new THREE.TorusGeometry(0.975, 0.055, 4, 28);
     lip.rotateX(Math.PI / 2);
     lip.translate(0, 0.44, 0);
     parts.push(lip);
-    const lip2 = new THREE.TorusGeometry(0.975, 0.04, 5, 40);
+    const lip2 = new THREE.TorusGeometry(0.975, 0.04, 3, 28);
     lip2.rotateX(Math.PI / 2);
     lip2.translate(0, -0.44, 0);
     parts.push(lip2);
     // the dish behind the spokes, a hub with a raised centre cap
-    const dish = new THREE.CylinderGeometry(0.34, 0.5, 0.16, 20);
+    const dish = new THREE.CylinderGeometry(0.34, 0.5, 0.16, 14);
     dish.translate(0, 0.2, 0);
     parts.push(dish);
-    const cap = new THREE.CylinderGeometry(0.15, 0.2, 0.09, 20);
+    const cap = new THREE.CylinderGeometry(0.15, 0.2, 0.09, 12);
     cap.translate(0, 0.32, 0);
     parts.push(cap);
-    const capTop = new THREE.SphereGeometry(0.15, 14, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+    const capTop = new THREE.SphereGeometry(0.15, 10, 3, 0, Math.PI * 2, 0, Math.PI / 2);
     capTop.translate(0, 0.36, 0);
     parts.push(capTop);
     // ten spokes: tapered, bevelled prisms from the hub to the rim
     const shape = new THREE.Shape();
     shape.moveTo(0.19, -0.05); shape.lineTo(0.95, -0.105); shape.lineTo(0.95, 0.105); shape.lineTo(0.19, 0.05); shape.closePath();
-    const spokeGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1, steps: 1 });
+    const spokeGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.09, bevelEnabled: false, steps: 1 });
     spokeGeo.rotateX(-Math.PI / 2);
     spokeGeo.translate(0, 0.22, 0);
     for (let k = 0; k < 10; k++) {
@@ -59,7 +62,7 @@ function alloyFace() {
     }
     // five lug nuts on the hub and the valve stem
     for (let k = 0; k < 5; k++) {
-      const nut = new THREE.CylinderGeometry(0.038, 0.038, 0.07, 6);
+      const nut = new THREE.CylinderGeometry(0.038, 0.038, 0.07, 5);
       const a = (k / 5) * Math.PI * 2 + 0.3;
       nut.translate(Math.cos(a) * 0.29, 0.29, Math.sin(a) * 0.29);
       parts.push(nut);
@@ -76,20 +79,20 @@ function alloyFace() {
 function brakeDisc() {
   return T.custom('brake-disc', () => {
     const parts = [];
-    const disc = new THREE.CylinderGeometry(0.66, 0.66, 0.05, 32);
+    const disc = new THREE.CylinderGeometry(0.66, 0.66, 0.05, 24);
     disc.translate(0, 0.02, 0);
     parts.push(disc);
-    const rim = new THREE.TorusGeometry(0.66, 0.025, 4, 32);
+    const rim = new THREE.TorusGeometry(0.66, 0.025, 3, 24);
     rim.rotateX(Math.PI / 2);
     rim.translate(0, 0.02, 0);
     parts.push(rim);
-    const hat = new THREE.CylinderGeometry(0.26, 0.3, 0.14, 20);
+    const hat = new THREE.CylinderGeometry(0.26, 0.3, 0.14, 12);
     hat.translate(0, 0.08, 0);
     parts.push(hat);
-    for (let k = 0; k < 12; k++) {
+    for (let k = 0; k < 8; k++) {
       const slot = new THREE.BoxGeometry(0.02, 0.06, 0.2);
       slot.translate(0.5, 0.03, 0);
-      slot.rotateY((k / 12) * Math.PI * 2);
+      slot.rotateY((k / 8) * Math.PI * 2);
       parts.push(slot);
     }
     return mergeParts(parts);
@@ -100,11 +103,11 @@ function brakeDisc() {
 function tyreCin() {
   return T.custom('tyre-cin', () => {
     // [radius, y]: bead, lower sidewall, the raised letter band, shoulder, crown
-    const half = [[0.6, -0.5], [0.66, -0.53], [0.73, -0.505], [0.79, -0.485], [0.82, -0.5], [0.86, -0.51], [0.9, -0.49], [0.945, -0.465], [0.98, -0.43], [0.995, -0.38], [1.0, -0.3]];
+    const half = [[0.6, -0.5], [0.68, -0.525], [0.79, -0.49], [0.83, -0.505], [0.9, -0.49], [0.96, -0.45], [0.995, -0.38], [1.0, -0.3]];
     const pts = [];
     for (const p of half) pts.push(new THREE.Vector2(p[0], p[1]));
     for (let i = half.length - 1; i >= 0; i--) pts.push(new THREE.Vector2(half[i][0], -half[i][1]));
-    return new THREE.LatheGeometry(pts, 48);
+    return new THREE.LatheGeometry(pts, 36);
   });
 }
 
@@ -161,14 +164,14 @@ export function cinLamps(B, v, frontX, rearX, yF, yR, spread, sizeF, sizeR) {
     const z = sd * spread;
     // ---- head lamp: chrome bezel, reflector bowl, bulb, clear lens over it, amber signal below
     B.rbox('std', frontX - 0.35, yF, z, fd + 0.5, fh + 1.6, fw + 1.6, 0.6, CHROME, null, { surf: [0, 0.14, 1] });
-    B.add('std', T.cyl(20, 0.35, false), [frontX - 0.5, yF, z], [Math.min(fh, fw) * 0.5 + 0.2, fd * 1.3, Math.min(fh, fw) * 0.5 + 0.2], [0, 0, -Math.PI / 2], '#b9bec4', { surf: [0, 0.18, 1], map: 'cyl' });
-    B.add('glow', T.sphere(10, 8), [frontX - 0.05, yF, z], [0.7, 0.9, 0.9], null, HEAD, { emissive: lit ? 6 : 0.22, uv: atlasUV('white'), noAO: true });
+    B.add('std', T.custom('reflector', () => new THREE.CylinderGeometry(0.35, 1, 1, 14, 1)), [frontX - 0.5, yF, z], [Math.min(fh, fw) * 0.5 + 0.2, fd * 1.3, Math.min(fh, fw) * 0.5 + 0.2], [0, 0, -Math.PI / 2], '#b9bec4', { surf: [0, 0.18, 1], map: 'cyl' });
+    B.add('glow', T.custom('bulb', () => new THREE.SphereGeometry(1, 8, 5)), [frontX - 0.05, yF, z], [0.7, 0.9, 0.9], null, HEAD, { emissive: lit ? 6 : 0.22, uv: atlasUV('white'), noAO: true });
     B.rbox('glow', frontX + 0.15, yF, z, fd * 0.3, fh * 0.9, fw * 0.92, 0.4, HEAD, null, { emissive: lit ? 2.2 : 0.16, uv: atlasUV('white') });
     B.rbox('vglass', frontX + 0.3, yF, z, fd * 0.45, fh + 0.4, fw + 0.4, 0.45, '#cfd8de', null, { uv: atlasUV('white') });
     B.rbox('glow', frontX + 0.05, yF - fh * 0.5 - 1.5, z * 1.02, fd * 0.5, 1.6, fw * 0.8, 0.3, AMBER, null, { emissive: v.hazards ? 0.3 : 0.4, uv: atlasUV('white') });
     // fog lamp low in the bumper
-    B.add('std', T.cyl(16, 1, false), [frontX - 0.2, yF - fh * 0.5 - 6.4, z * 0.82], [1.5, 0.8, 1.5], [0, 0, -Math.PI / 2], CHROME, { surf: [0, 0.15, 1], map: 'cyl' });
-    B.add('glow', T.cyl(14, 1, false), [frontX + 0.25, yF - fh * 0.5 - 6.4, z * 0.82], [1.15, 0.2, 1.15], [0, 0, -Math.PI / 2], HEAD, { emissive: lit ? 1.2 : 0.14, uv: atlasUV('white'), noAO: true });
+    B.add('std', lowCyl(12), [frontX - 0.2, yF - fh * 0.5 - 6.4, z * 0.82], [1.5, 0.8, 1.5], [0, 0, -Math.PI / 2], CHROME, { surf: [0, 0.15, 1], map: 'cyl' });
+    B.add('glow', lowCyl(10), [frontX + 0.25, yF - fh * 0.5 - 6.4, z * 0.82], [1.15, 0.2, 1.15], [0, 0, -Math.PI / 2], HEAD, { emissive: lit ? 1.2 : 0.14, uv: atlasUV('white'), noAO: true });
     // ---- tail lamp: brake (red), turn (amber), reverse (white) sections behind a ribbed lens
     B.rbox('std', rearX + 0.2, yR, z, rd + 0.6, rh + 1, rw + 1, 0.4, '#141416', null, { surf: [DET.plastic, 0.5, 0.1] });
     const wsec = rw / 3;
@@ -192,7 +195,7 @@ export function cinGrille(B, L, W, frontY, hw) {
   B.rbox('std', L / 2 - 0.1, frontY - 1, 0, 1.2, 6.4, gz + 1.6, 0.5, CHROME, null, { surf: [0, 0.16, 1] });
   B.box('std', L / 2 + 0.05, frontY - 1, 0, 1, 5.2, gz, '#0b0c0d', null, { surf: [DET.corrugated, 0.5, 0.6] });
   for (let k = 0; k < 5; k++) B.box('std', L / 2 + 0.45, frontY - 3 + k * 1.1, 0, 0.5, 0.42, gz - 0.4, k % 2 ? '#2a2c2e' : CHROME, null, { surf: [0, 0.22, 1], noAO: true });
-  B.add('std', T.sphere(12, 6), [L / 2 + 0.7, frontY - 1, 0], [0.5, 1.5, 2.2], null, CHROME, { surf: [0, 0.12, 1], noAO: true });
+  B.add('std', T.custom('badge', () => new THREE.SphereGeometry(1, 10, 5)), [L / 2 + 0.7, frontY - 1, 0], [0.5, 1.5, 2.2], null, CHROME, { surf: [0, 0.12, 1], noAO: true });
   // lower intake
   B.box('std', L / 2 + 0.2, frontY - 8.4, 0, 1, 2.6, gz * 1.45, '#0a0a0b', null, { surf: [DET.corrugated, 0.5, 0.5] });
   void hw;
@@ -239,21 +242,21 @@ export function cinUnder(B, L, W, R, xs, rocker = 10) {
   const dark = '#141415', rust = { surf: [DET.rust, 0.7, 0.5], noAO: true };
   const hw = W / 2 - 4;
   for (const x of xs) {
-    B.cylZ('std', x, R, 0, 1.3, hw * 2, dark, 10, rust);
-    B.add('std', T.sphere(12, 8), [x, R - 0.4, 0], [3.6, 2.8, 3.6], null, '#26272a', { surf: [DET.rust, 0.6, 0.6], noAO: true });
+    B.add('std', lowCyl(6), [x, R, 0], [1.3, hw * 2, 1.3], [Math.PI / 2, 0, 0], dark, { ...rust, map: 'cyl' });
+    B.add('std', T.custom('diff', () => new THREE.SphereGeometry(1, 10, 6)), [x, R - 0.4, 0], [3.6, 2.8, 3.6], null, '#26272a', { surf: [DET.rust, 0.6, 0.6], noAO: true });
     for (const sd of [-1, 1]) {
       B.box('std', x + 1.2, R + 1.4, sd * (hw * 0.5), 1, 0.9, hw * 0.9, dark, [0, sd * 0.14, 0], rust);
-      B.cyl('std', x - 2.0, R - 2.2, sd * (hw - 3), 0.7, 5.2, '#cfd3d6', 8, 1, null, { surf: [0, 0.2, 1], noAO: true });   // shock absorber
+      B.add('std', lowCyl(6), [x - 2.0, R - 2.2 + 2.6, sd * (hw - 3)], [0.7, 5.2, 0.7], null, '#cfd3d6', { surf: [0, 0.2, 1], noAO: true, map: 'cyl' });   // shock absorber
     }
   }
   // exhaust: pipe along the right, muffler, a chrome tip at the rear
   const ez = W * 0.2;
-  B.cylX('std', -L * 0.06, rocker - 3.4, ez, 0.75, L * 0.52, '#3c3a37', 8, rust);
-  B.add('std', T.cyl(14), [-L * 0.36, rocker - 3, ez], [2.6, 15, 2.6], [0, 0, Math.PI / 2], '#4a4744', { surf: [DET.rust, 0.7, 0.7], map: 'cyl', noAO: true });
-  B.cylX('std', -L / 2 + 0.6, rocker - 2.6, ez, 1.05, 3.4, CHROME, 12, { surf: [0, 0.15, 1], noAO: true });
+  B.add('std', lowCyl(8), [-L * 0.06, rocker - 3.4, ez], [0.75, L * 0.52, 0.75], [0, 0, Math.PI / 2], '#3c3a37', { ...rust, map: 'cyl' });
+  B.add('std', lowCyl(12), [-L * 0.36, rocker - 3, ez], [2.6, 15, 2.6], [0, 0, Math.PI / 2], '#4a4744', { surf: [DET.rust, 0.7, 0.7], map: 'cyl', noAO: true });
+  B.add('std', lowCyl(10), [-L / 2 + 0.6, rocker - 2.6, ez], [1.05, 3.4, 1.05], [0, 0, Math.PI / 2], CHROME, { surf: [0, 0.15, 1], noAO: true, map: 'cyl' });
   // fuel tank and driveshaft
   B.rbox('std', -L * 0.2, rocker - 1, -W * 0.16, 17, 4, 15, 1.2, '#1c1d20', null, { surf: [DET.rust, 0.7, 0.4], noAO: true });
-  B.cylX('std', L * 0.05, rocker - 2.4, 0, 0.9, L * 0.36, '#202124', 8, rust);
+  B.add('std', lowCyl(6), [L * 0.05, rocker - 2.4, 0], [0.9, L * 0.36, 0.9], [0, 0, Math.PI / 2], '#202124', { ...rust, map: 'cyl' });
 }
 
 // ---- interiors --------------------------------------------------------------------------------------------
@@ -305,7 +308,7 @@ export function cinInterior(B, id, c, lit = false) {
   B.rbox('std', dx - 5.2, c.floor + 9.5, c.hw * 0.05, 3, 5, c.hw * 0.3, 0.5, shadeHex(dash, 0.1), null, P);
   // steering wheel on the driver's (left, -z) side and its column
   const wz = -c.hw * 0.42;
-  B.add('std', T.torus(20, 0.16, 6), [dx - 9.6, c.floor + 13.6, wz], [2.2, 2.2, 2.2], [0, Math.PI / 2 + 0.25, 0.9], '#141416', { surf: [DET.rubber, 0.6, 0], noAO: true });
+  B.add('std', T.custom('steer', () => new THREE.TorusGeometry(1, 0.16, 5, 16)), [dx - 9.6, c.floor + 13.6, wz], [2.2, 2.2, 2.2], [0, Math.PI / 2 + 0.25, 0.9], '#141416', { surf: [DET.rubber, 0.6, 0], noAO: true });
   B.cyl('std', dx - 8.4, c.floor + 11.2, wz, 0.55, 5.4, '#18181a', 8, 1, [0, 0, -0.9], P);
   B.add('std', T.cyl(12), [dx - 9.5, c.floor + 13.5, wz], [0.9, 0.6, 0.9], [0, 0, Math.PI / 2 - 0.9], '#2a2b2e', P);
   // centre console with a shifter
@@ -348,4 +351,48 @@ export function cinBusInterior(B, id, L, W, sag, x0, x1, hood) {
   B.rbox('std', fx - 3.6, floor + 12.5, -hw * 0.5, 2.6, 12, 9, 1, '#26262a', [0, 0, 0.1], S);
   B.add('std', T.torus(22, 0.2, 6), [fx + 9.5, floor + 15, -hw * 0.5], [4.6, 4.6, 4.6], [0, Math.PI / 2, 0.55], '#141416', { surf: [DET.rubber, 0.6, 0], noAO: true });
   B.rbox('std', x1 - 2, floor + 8, 0, 4, 12, hw * 2 * 0.96, 1, '#1f1e1c', null, { surf: [DET.plastic, 0.55, 0], noAO: true });
+}
+
+
+// ---- trucks, trailers, buses --------------------------------------------------------------------------------
+
+const RIVET = () => T.custom('rivet', () => new THREE.SphereGeometry(1, 5, 3, 0, Math.PI * 2, 0, Math.PI / 2));
+
+/** A row of domed rivets or bolt heads along +x at (y, z), pointing out along sd. */
+export function cinRivets(B, x0, x1, y, z, sd, color = '#6a6d70', step = 3.6, r = 0.36) {
+  for (let x = x0; x <= x1; x += step) B.add('std', RIVET(), [x, y, z], [r, r, r], [sd > 0 ? Math.PI / 2 : -Math.PI / 2, 0, 0], color, { surf: [0, 0.4, 0.8], noAO: true, noJitter: true });
+}
+
+/** Horizontal embossed ribs along both flanks (bus, box trailer, van body). */
+export function cinRibs(B, x0, x1, ys, hw, color, surf) {
+  for (const y of ys) for (const sd of [-1, 1]) B.rbox('std', (x0 + x1) / 2, y, sd * (hw + 0.28), x1 - x0, 1.5, 0.7, 0.25, color, null, { surf, noAO: true, noJitter: true });
+}
+
+/** A rubber mud flap hanging behind a wheel, with a paler strip near the bottom. */
+export function cinMudflap(B, x, z, R) {
+  B.rbox('std', x - R - 1.8, R * 0.95, z, 0.6, R * 1.15, 11, 0.2, '#111112', null, { surf: [DET.rubber, 0.85, 0], noAO: true });
+  B.box('std', x - R - 2.2, R * 0.5, z, 0.25, 2.6, 7, '#c8c8c0', null, { surf: [0, 0.6, 0.1], noAO: true });
+  B.add('std', lowCyl(6), [x - R - 1.6, R * 1.6, z], [0.45, 12, 0.45], [Math.PI / 2, 0, 0], '#26272a', { surf: [DET.rust, 0.6, 0.7], noAO: true });   // its bracket
+}
+
+/** Air tanks, brake chambers and hoses under a trailer or tanker. */
+export function cinChassis(B, L, W, y, xs) {
+  const rust = { surf: [DET.rust, 0.65, 0.6], noAO: true };
+  B.add('std', lowCyl(10), [-L * 0.1, y - 3, W * 0.22], [3.6, 18, 3.6], [0, 0, Math.PI / 2], '#2a2c2e', { ...rust, map: 'cyl' });
+  B.add('std', lowCyl(10), [-L * 0.1, y - 3, -W * 0.22], [3.6, 18, 3.6], [0, 0, Math.PI / 2], '#2a2c2e', { ...rust, map: 'cyl' });
+  for (const x of xs) for (const sd of [-1, 1]) {
+    B.add('std', lowCyl(8), [x, y - 1, sd * (W * 0.32)], [2.4, 4, 2.4], [Math.PI / 2, 0, 0], '#3a3d40', { ...rust, map: 'cyl' });
+    B.add('std', lowCyl(6), [x + 3, y - 2.5, sd * (W * 0.3)], [0.5, 9, 0.5], [0, 0, 0.6], '#131314', { surf: [DET.rubber, 0.8, 0], noAO: true });
+  }
+  for (const sd of [-1, 1]) B.add('std', lowCyl(6), [L * 0.34, y + 2, sd * 6], [0.6, 12, 0.6], [Math.PI / 2, 0.2, 0], '#e6c020', { surf: [DET.rubber, 0.7, 0], noAO: true });   // the coiled service lines
+}
+
+/** A gladhand pair, gauge and valve manifold at the back of a tanker. */
+export function cinManifold(B, x, y, W) {
+  const brass = { surf: [0, 0.3, 0.9], noAO: true };
+  for (let k = -2; k <= 2; k++) {
+    B.add('std', lowCyl(8), [x, y, k * 4.4], [0.9, 7, 0.9], [0, 0, Math.PI / 2], k % 2 ? '#b8862a' : '#8a8f94', { ...brass, map: 'cyl' });
+    B.add('std', lowCyl(8), [x - 3.8, y, k * 4.4], [1.5, 1.2, 1.5], [0, 0, Math.PI / 2], '#b02a1c', { surf: [0, 0.5, 0.4], noAO: true });   // valve wheel
+  }
+  B.add('std', lowCyl(10), [x - 1, y + 3.5, -W * 0.1], [1.6, 0.8, 1.6], [0, 0, Math.PI / 2], '#d8d8d0', { surf: [0, 0.3, 0.3], noAO: true });   // gauge
 }

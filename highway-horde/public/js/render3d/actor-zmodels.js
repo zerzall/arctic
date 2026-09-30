@@ -195,7 +195,7 @@ function buildModel(type, L, tier) {
   const headDef = head(sb, P, L, type);
 
   // ---- accessories (hats, hair, gear, gore, armour) ------------------------------------
-  if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDef, has);
+  if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDef, has, CIN() && L === 0);
 
   // ---- per-type extras ----------------------------------------------------------------
   extras(sb, P, L, type);
@@ -328,7 +328,7 @@ function hand(sb, P, L, side, HD, w, r, k) {
   const H = { part: PART.HAND };
   // palm
   sb.ellipsoid([w[0] + 0.4 * s, w[1] - 2.2 * s, w[2]], [1.25 * s, 2.3 * s, 1.75 * s * (L === 2 ? 1 : 0.95)], {
-    ...H, segW: L === 0 ? 10 : L === 1 ? 7 : 5, segH: L === 0 ? 6 : 4, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0', bone: HD, paint: 0.5,
+    ...H, segW: L === 0 ? dq(10) : L === 1 ? 7 : 5, segH: L === 0 ? dq(6) : 4, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0', bone: HD, paint: 0.5,
   });
   if (L === 2) return;
   if (L === 1) {
@@ -342,16 +342,20 @@ function hand(sb, P, L, side, HD, w, r, k) {
     const len = [2.6, 3.1, 3.0, 2.3][f] * s;
     const x0 = w[0] + 0.6 * s, y0 = w[1] - 4.1 * s;
     const pts = [];
-    for (let j = 0; j <= 3; j++) {
-      const t = j / 3, curl = t * t * 1.1;
-      pts.push({ c: [x0 + Math.sin(curl) * len * t, y0 - Math.cos(curl * 0.8) * len * t, fz], r: 0.42 * s * (1 - t * 0.28) });
+    const cinH = CIN();
+    const JN = cinH ? 6 : 3;
+    for (let j = 0; j <= JN; j++) {
+      const t = j / JN, curl = t * t * 1.1;
+      // (the cinematic finger has real joints: a knuckle swell at each of the three)
+      const knuckle = cinH ? 1 + 0.16 * (gauss(t - 0.05, 0.07) + gauss(t - 0.4, 0.06) + gauss(t - 0.72, 0.055)) : 1;
+      pts.push({ c: [x0 + Math.sin(curl) * len * t, y0 - Math.cos(curl * 0.8) * len * t, fz], r: 0.42 * s * (1 - t * 0.28) * knuckle });
     }
-    sb.tube(pts, { ...H, seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e6e6e6', bone: HD, paint: 0.55 });
-    const tip = pts[3].c;
+    sb.tube(pts, { ...H, seg: cinH ? 10 : 6, subdiv: cinH ? 2 : 1, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e6e6e6', bone: HD, paint: 0.55 });
+    const tip = pts[JN].c;
     if (claw) {
       sb.tube(lineRings([tip[0] - 0.1, tip[1] + 0.2, tip[2]], [tip[0] + 0.9 * s, tip[1] - 1.2 * s, tip[2]], 0.28 * s, 0.02, 3), { seg: 5, slot: SLOT.FIXED, mat: MAT.BONE, color: '#bfb49a', bone: HD });
     } else {
-      sb.ellipsoid([tip[0] + 0.12, tip[1] + 0.1, tip[2]], [0.3 * s, 0.4 * s, 0.32 * s], { segW: 5, segH: 3, slot: SLOT.FIXED, mat: MAT.BONE, color: NAIL, bone: HD });
+      sb.ellipsoid([tip[0] + 0.12, tip[1] + 0.1, tip[2]], [0.3 * s, 0.4 * s, 0.32 * s], { segW: cinH ? 10 : 5, segH: cinH ? 6 : 3, slot: SLOT.FIXED, mat: MAT.BONE, color: NAIL, bone: HD });
     }
   }
   // thumb

@@ -120,6 +120,7 @@ export class RigPool {
       uDetail2: { value: o.textures.detail2 },
       uNrm: { value: o.textures.normal },
       uTime: { value: 0 },
+      uCin: { value: 0 },
     };
     this.texture = null;
     this.data = null;

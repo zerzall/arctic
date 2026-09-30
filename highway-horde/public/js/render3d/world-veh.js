@@ -597,6 +597,16 @@ function militaryTruck(B, o, v, L, W, sag) {
   } else {
     for (let x = -0.45; x < 0.1; x += 0.13) B.add('std', T.torus(8, 0.05), [x * L, 62 + sag, 0], [W * 0.46, W * 0.46, W * 0.46], [0, Math.PI / 2, 0], '#1a1a18', { surf: [DET.char, 0.9, 0.5] });
   }
+  if (DETAIL.level >= 3 && !v.wrecked) {
+    CIN.cinInterior(B, o.id, { x0: 0.12 * L, x1: 0.285 * L, floor: 30 + sag, roof: 74 + sag, hw: W * 0.42, rows: [0.2 * L], bench: false }, v.lightsOn);
+    CIN.cinRibs(B, 0.13 * L, 0.27 * L, [42 + sag], W * 0.48, shadeHex(olive, -0.06), ps);
+    for (let x = -0.44; x < 0.06; x += 0.1) for (const sd of [-1, 1]) B.rbox('std', x * L, 50 + sag, sd * W * 0.488, 1.8, 30, 0.5, 0.2, shadeHex(canvasC, -0.32), null, { surf: [DET.fabric, 0.9, 0], noAO: true });   // the canvas ties
+    for (const sd of [-1, 1]) {
+      B.box('std', 0.31 * L, 60 + sag, sd * (W * 0.5 + 3), 0.8, 0.8, 5, '#1a1a18', null, { surf: [DET.rust, 0.5, 0.7] });     // mirror arms
+      B.rbox('std', 0.31 * L, 62 + sag, sd * (W * 0.5 + 6), 1.2, 8, 4, 0.5, '#23251c', null, { surf: [DET.rust, 0.5, 0.6] });
+    }
+    for (let k = 0; k < 5; k++) B.box('std', 0.44 * L, 30 + sag + k * 2.2, 0, 0.5, 0.6, W * 0.4, '#0a0a08', null, { surf: [0, 0.6, 0.3], noAO: true });                       // grille slots
+  }
   // fuel tank, spare wheel, jerrycans
   B.cylX('std', 0.05 * L, 20 + sag, W * 0.44, 5, 0.14 * L, shadeHex(olive, -0.2), 10, { surf: [DET.panel, 0.6, 0.4] });
   if (!v.wrecked) for (let k = 0; k < 2; k++) B.rblock('std', -0.5 * L + 3, 20 + sag, -W * 0.3 + k * 6, 3, 10, 5, 0.6, '#3a4a2a', null, { surf: [DET.panel, 0.6, 0.3] });
@@ -644,6 +654,14 @@ export function buildSemiCab(B, o) {
     B.box('std', 0.34 * L, 16 + sag, sd * W * 0.5, 8, 1.2, 4, '#2a2a2a', null, { surf: [DET.corrugated, 0.5, 0.8] });
     if (!v.wrecked) mirrors(B, 0.42 * L, 70 + sag, W / 2, TRIM);
   }
+  if (DETAIL.level >= 3 && !v.wrecked) {
+    CIN.cinInterior(B, o.id, { x0: -0.16 * L, x1: 0.47 * L, floor: 30 + sag, roof: 91 + sag, hw: W * 0.44, rows: [0.24 * L], bench: false }, v.lightsOn);
+    for (const sd of [-1, 1]) {
+      CIN.cinRibs(B, -0.24 * L, 0.42 * L, [40 + sag], W * 0.485, shadeHex(v.color, -0.06), ps);
+      B.rbox('std', 0.42 * L, 19 + sag, sd * (W * 0.5 + 1), 6, 1.4, 5, 0.4, '#2a2a2a', null, { surf: [DET.corrugated, 0.5, 0.8] });    // the second step
+      B.cylX('std', 0.5 * L + 2.6, 24 + sag, sd * W * 0.44, 1.7, 3, '#e8e8e0', 10, { surf: [0, 0.3, 0.3] });                            // fog lamps
+    }
+  }
   // grille and bumper
   B.rbox('std', 0.5 * L + 0.6, 40 + sag, 0, 1.6, 32, W * 0.62, 0.6, v.wrecked ? '#222' : CHROME, null, { surf: [DET.corrugated, v.wrecked ? 0.9 : 0.25, 1] });
   B.rbox('std', 0.5 * L + 1.4, 20 + sag, 0, 3.4, 9, W * 1.01, 1.2, v.wrecked ? '#262626' : CHROME, null, { surf: [0, v.wrecked ? 0.9 : 0.2, 1] });
@@ -682,6 +700,17 @@ export function buildTrailer(B, o) {
     // side marker lights and a strip of conspicuity tape
     for (let x = -0.45; x <= 0.45; x += 0.3) B.box('glow', x * L, 27 + sag, sd * (W / 2 + 0.9), 2, 1.6, 0.4, AMBER, null, { emissive: v.wrecked ? 0.2 : 1.6, uv: atlasUV('white') });
     if (!v.wrecked) B.box('glow', 0, 30 + sag, sd * (W / 2 + 0.95), L * 0.94, 1.4, 0.3, '#ffffff', null, { emissive: 0.5, uv: atlasUV('stripeRW') });
+  }
+  if (DETAIL.level >= 3) {
+    if (!v.wrecked) {
+      for (const sd of [-1, 1]) {
+        CIN.cinRivets(B, -L / 2 + 6, L / 2 - 6, 24.6 + sag, sd * (W / 2 + 1.08), sd);
+        CIN.cinRivets(B, -L / 2 + 6, L / 2 - 6, 122.4 + sag, sd * (W / 2 + 1.08), sd);
+        CIN.cinMudflap(B, -0.37 * L, sd * (W / 2 - 6), 13);
+      }
+      B.rbox('std', -L / 2 - 1.8, 84 + sag, 0, 0.6, 3, 8, 0.3, '#1a1a1a', null, { surf: [DET.rust, 0.6, 0.6] });                        // the rear door handle
+    }
+    CIN.cinChassis(B, L, W, 16 + sag, [-0.37 * L, -0.29 * L]);
   }
   if (!v.wrecked) trailerLivery(B, o, L, W, sag);
   if (!v.wrecked && r.chance(0.6)) {
@@ -727,6 +756,14 @@ export function buildTanker(B, o) {
   }
   if (!v.wrecked) B.add('decal', T.plane(), [-L / 2 - 0.4 - R * 0.3, cy, 0], [11, 11, 1], [0, -Math.PI / 2, Math.PI / 4], '#ffffff', { uv: atlasUV('hazmat'), noAO: true });
   for (const x of [-0.36, -0.28]) for (const sd of [-1, 1]) wheel(B, x * L, 13, sd * (W / 2 - 6), 11, sd, { wrecked: v.wrecked, spokes: 0 });
+  if (DETAIL.level >= 3) {
+    CIN.cinChassis(B, L, W, 16 + sag, [-0.36 * L, -0.28 * L]);
+    if (!v.wrecked) {
+      for (const sd of [-1, 1]) CIN.cinMudflap(B, -0.36 * L, sd * (W / 2 - 6), 13);
+      CIN.cinManifold(B, -L / 2 - 4, 40 + sag, W);
+      for (const x of [-0.4, -0.2, 0, 0.2, 0.4]) CIN.cinRivets(B, x * L - 8, x * L + 8, cy + R + 0.4, 5.5, 1, '#8a8d90', 4, 0.5);   // the manway bolts
+    }
+  }
   for (const sd of [-1, 1]) B.box('glow', -L / 2 - 0.6, 22 + sag, sd * W * 0.36, 0.6, 3, 6, TAIL, null, { emissive: v.wrecked ? 0.2 : 0.8, uv: atlasUV('white') });
 }
 
@@ -780,6 +817,14 @@ export function buildBus(B, o, objective) {
     B.rbox('std', 0.5 * L + 5, 72 + sag, sd * (W / 2 + 4), 2, 12, 5, 0.8, '#1a1a1a', null, { surf: [0, 0.5, 0.2] });   // mirrors
   }
   if (DETAIL.level >= 3 && !v.wrecked && !objective) CIN.cinBusInterior(B, o.id || 3, L, W, sag, x0, (school ? 0.3 : 0.36) * L, hood);
+  if (DETAIL.level >= 3 && !v.wrecked) {
+    CIN.cinRibs(B, -L / 2 + 6, L / 2 - hood - 4, school ? [22 + sag, 60 + sag] : [24 + sag], W / 2, shadeHex(bc, -0.05), ps);
+    for (const sd of [-1, 1]) for (const y of school ? [44 + sag, 52 + sag] : [44 + sag]) CIN.cinRivets(B, -L * 0.46, L / 2 - hood - 6, y + 1.7, sd * (W / 2 + 0.6), sd, shadeHex(bc, -0.3));
+    B.rbox('std', -L * 0.05, 91 + sag, 0, 16, 2.6, 14, 0.8, shadeHex(bc, -0.08), null, { surf: ps });                              // roof hatch
+    B.rbox('std', -L * 0.05, 93.4 + sag, 0, 12, 1.4, 10, 0.6, shadeHex(bc, -0.14), null, { surf: ps });
+    for (const sd of [-1, 1]) B.box('std', -L / 2 - 1.4, 44 + sag, sd * W * 0.32, 1, 60, 0.8, '#2a2c2e', null, { surf: [DET.rust, 0.6, 0.7] });   // the rear ladder
+    for (let y = 22; y < 80; y += 7) B.box('std', -L / 2 - 1.5, y + sag, 0, 1, 0.8, W * 0.64, '#2a2c2e', null, { surf: [DET.rust, 0.6, 0.7] });
+  }
   // windshield, door, rear emergency door
   const fx = L / 2 - hood;
   if (!v.wrecked) {

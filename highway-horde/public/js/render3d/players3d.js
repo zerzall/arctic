@@ -142,13 +142,33 @@ export function createPlayers3D(ctx) {
   const bodies = {};
   for (const cls of CLASS_IDS) {
     bodies[cls] = [0, 1].map((L) => {
-      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L, tierOf(ctx.quality))), sk, { rim: '#b8d0ff', rimStrength: 0.34, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
+      const m = pool.addModel(instancedGeometry(soldierArrays(cls, L, Math.max(0, tierOf(ctx.quality)))), sk, { rim: '#b8d0ff', rimStrength: 0.34, castShadow: high, receiveShadow: high && L === 0, name: 'p-' + cls + L });
       root.add(m.mesh);
       return m;
     });
   }
   pool.warm();
+  pool.shared.uCin.value = ctx.quality === 'cinematic' ? 1 : 0;
   upgradeTextures();
+  // cinematic: the hero models are built one class at a time in the first seconds (see zombies3d)
+  let heroTimer = 0;
+  function scheduleHeroes() {
+    clearTimeout(heroTimer);
+    const todo = CLASS_IDS.slice();
+    const next = () => {
+      if (gone || curTier >= 0) return;
+      const cls = todo.shift();
+      if (!cls) return;
+      const m = bodies[cls][0];
+      const g = instancedGeometry(soldierArrays(cls, 0, -1));
+      m.mesh.geometry.dispose();
+      m.mesh.geometry = g;
+      m.geometry = g;
+      heroTimer = setTimeout(next, 150);
+    };
+    heroTimer = setTimeout(next, 1100);
+  }
+  if (curTier < 0) scheduleHeroes();
   // Shader warm-up: the renderer compiles what is visible right after creation. Teammates'
   // guns are plain (non-instanced) meshes with a solid, a glow and a shadow depth variant
   // that nothing else in the scene uses, so without this stand-in they compiled on the
@@ -747,23 +767,26 @@ export function createPlayers3D(ctx) {
     setQuality(q) {
       high = q !== 'low';
       ctxQuality = q;
+      pool.shared.uCin.value = q === 'cinematic' ? 1 : 0;
       upgradeTextures();
       if (tierOf(q) !== curTier) {
         curTier = tierOf(q);
         for (const cls of CLASS_IDS) {
           bodies[cls].forEach((m, L) => {
-            const g = instancedGeometry(soldierArrays(cls, L, curTier));
+            const g = instancedGeometry(soldierArrays(cls, L, Math.max(0, curTier)));
             m.mesh.geometry.dispose();
             m.mesh.geometry = g;
             m.geometry = g;
           });
         }
+        if (curTier < 0) scheduleHeroes();
       }
       for (const cls of CLASS_IDS) bodies[cls].forEach((m, L) => { m.mesh.castShadow = high; m.mesh.receiveShadow = high && L === 0; });
       for (const g of guns.values()) for (const o of [g.obj, g.left]) if (o) o.traverse((c) => { if (c.isMesh) c.castShadow = high; });
     },
     dispose() {
       gone = true;
+      clearTimeout(heroTimer);
       dropWarmGun();
       for (const pid of [...guns.keys()]) hideGun(pid, true);
       pool.dispose();

@@ -28,6 +28,8 @@ import {
 const RIG_VERT_HEAD = /* glsl */`
 uniform highp sampler2D uRigTex;
 uniform float uRowOffset;
+uniform float uTime;
+uniform float uCin;
 attribute vec2 aBones;
 attribute vec4 aInfo;
 attribute vec2 aExt;
@@ -49,6 +51,20 @@ void rigSkin() {
   }
   vec4 p = vec4(position, 1.0);
   rigP = vec3(dot(r0, p), dot(r1, p), dot(r2, p));
+  if (uCin > 0.5) {
+    // cinematic secondary motion: hair hangs and drifts, hems and skirts trail (cheap sine sway
+    // weighted by how far the vertex is below its anchor; each instance has its own phase)
+    int prt = int(aExt.y + 0.5);
+    float ph = float(gl_InstanceID) * 1.618;
+    if (prt == 9) {
+      float w = clamp((58.0 - position.y) / 18.0, 0.0, 1.0);
+      w *= w;
+      rigP += vec3(sin(uTime * 2.3 + ph + position.y * 0.35), 0.0, cos(uTime * 1.9 + ph * 1.3 + position.y * 0.3)) * 0.5 * w;
+    } else if (prt == 1) {
+      float w = smoothstep(32.0, 10.0, position.y);
+      rigP += vec3(sin(uTime * 1.7 + ph + position.z * 0.25), 0.0, sin(uTime * 1.3 + ph * 0.7 + position.x * 0.25)) * 0.42 * w;
+    }
+  }
   rigN = normalize(vec3(dot(r0.xyz, normal), dot(r1.xyz, normal), dot(r2.xyz, normal)));
   // accessory groups: hidden unless the instance switched the group's bit on
   rigHide = false;
@@ -203,6 +219,7 @@ export function makeMaterials(shared, opts = {}) {
   const uniforms = {
     uRigTex: shared.uRigTex, uDetail: shared.uDetail, uDetail2: shared.uDetail2, uNrm: shared.uNrm, uTime: shared.uTime,
     uRowOffset: { value: 0 },
+    uCin: shared.uCin,
     uRimColor: { value: new THREE.Color(opts.rim || '#8fb4ff') },
     uRimStrength: { value: opts.rimStrength ?? 0.35 },
   };
@@ -465,7 +482,7 @@ export function makeMaterials(shared, opts = {}) {
   #endif
   gl_FragColor.rgb += hhRimCol * rigRim;`);
   };
-  mat.customProgramCacheKey = () => 'hh-rig4-std';
+  mat.customProgramCacheKey = () => 'hh-rig5-std';
 
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
@@ -475,6 +492,6 @@ export function makeMaterials(shared, opts = {}) {
       .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
   };
-  depth.customProgramCacheKey = () => 'hh-rig4-depth';
+  depth.customProgramCacheKey = () => 'hh-rig5-depth';
   return { material: mat, depth, uniforms };
 }
