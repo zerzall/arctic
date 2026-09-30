@@ -19,7 +19,7 @@ export const CH6 = [
       L('narrator', 'DAY {day}. HASKELL FARM. THE NIGHT BEFORE.'),
       L('okafor', 'Plan. The lake road runs along the north ridge. Two miles of open ground, and every dead thing in the county between us and the water.'),
       L('priya', 'I counted. Ish.'),
-      L('okafor', 'The convoy takes the lake road at dawn: the tow truck, the box truck, both buses, my soldiers. We need the horde looking the other way.'),
+      L('okafor', 'The convoy takes the lake road at dawn: the tow truck, the box truck, the kids\' bus, my soldiers. We need the horde looking the other way.'),
       { ...L('dutch', 'And my rig in front, with my diesel in it. Nobody leads my diesel but me.'), when: { flags: ['met_dutch'] } },
       L('mara', 'That\'s us.'),
       L('okafor', 'That is you. Radio Hill. Highest ground in the county. Light it up, make noise, hold it. Every dead thing will climb that hill to find you.'),

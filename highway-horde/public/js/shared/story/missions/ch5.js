@@ -18,7 +18,7 @@ export const CH5 = [
     npcs: [{ id: 'priya', at: 'start', mode: 'follow' }],
     briefing: [
       L('narrator', 'DAY {day}. BLACKWATER DEPOT. DEPARTURE.'),
-      L('okafor', 'The convoy moves today. Every truck, both buses, and the train as far as the line goes. The line ends at Harlan Central.'),
+      L('okafor', 'The convoy moves today. Every truck, the kids\' bus, and the train as far as the line goes. The line ends at Harlan Central.'),
       L('priya', 'And Harlan Central ends at the interchange: eleven lanes of cars, three high. Nothing drives through that.'),
       L('priya', 'Line 2 of the metro runs under it, Station Street to Harlan Square. The trucks go round by the ring road if someone opens the square from inside.'),
       L('deke', 'So you want to walk under a city.'),
