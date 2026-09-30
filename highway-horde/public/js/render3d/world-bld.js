@@ -21,6 +21,7 @@ import { T, shadeHex, mixHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
 import { trashBags } from './world-props.js';
+import { cinGable, cinFlatRoof } from './world-bld-cin.js';
 import {
   Face, DETAIL, skinBand, windowUnit, doorUnit, awning, signBoard, shutter, cornice, downspout, conduit, railing, balcony,
   fireEscape, acUnit, ventStack, waterTank, antenna, dish, hatch, chimney, roomId,
@@ -234,6 +235,19 @@ function wallsOf(B, o, ctx, opts) {
       B.rblock('std', sx * (L / 2 - 3.1), 0, sz * (W / 2 - 3.1), 7.4, wallH, 7.4, 0.5, shadeHex(ctx.color, 0.06), null, { surf: [DET.concrete, 0.86, 0], noJitter: true });
     }
   }
+  // cinematic: quoins (alternating long and short dressed stones) up every corner, a water table on the plinth
+  if (DETAIL.level >= 3 && (ctx.surf[0] === DET.brick || ctx.surf[0] === DET.plaster || ctx.surf[0] === DET.concrete)) {
+    const qc = shadeHex(ctx.color, 0.12), qo = { noJitter: true, surf: [DET.concrete, 0.86, 0] };
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      let k = 0;
+      for (let y = plinth + 1; y + 6 < wallH - 4; y += 6.4, k++) {
+        const long = k % 2 ? 7 : 4.2, short = k % 2 ? 4.2 : 7;
+        B.rbox('std', sx * (L / 2 - long / 2 + 0.25), y + 3, sz * (W / 2 + 0.25), long, 5.6, 1.6, 0.35, qc, null, qo);
+        B.rbox('std', sx * (L / 2 + 0.25), y + 3, sz * (W / 2 - short / 2 + 0.25), 1.6, 5.6, short, 0.35, qc, null, qo);
+      }
+    }
+    for (const F of faces) F.box('std', 0, plinth + 0.6, 0, F.len + 1.4, 1.5, 1.4, shadeHex(ctx.color, -0.18), qo);       // water table
+  }
   // cornice
   if (opts.cornice) for (const F of faces) cornice(F, wallH, shadeHex(ctx.color, 0.14), 4.2, opts.cornice);
   return { faces, floorY };
@@ -332,6 +346,7 @@ function flatRoof(B, o, ctx, sign, opts = {}) {
     B.add('neon', T.plane(), [0, wallH + 60, W / 2 - 11.2], [194, 48, 1], null, '#ffffff', { emissive: 2.4, uv: atlasUV(sign.cell) });
     B.add('neon', T.plane(), [0, wallH + 60, W / 2 - 16.8], [194, 48, 1], [0, Math.PI, 0], '#ffffff', { emissive: 2.2, uv: atlasUV(sign.cell) });
   }
+  if (DETAIL.level >= 3) cinFlatRoof(B, ctx, ph);
 }
 
 /**
@@ -374,6 +389,10 @@ function gableRoof(B, ctx, opts) {
       B.add('std', T.box(), map(0, ey - 1.6, sd * (span / 2 + oh - 0.4)), [len + gh * 2, 3, 1.1], [0, rotY, 0], ctx.trim, { surf: [DET.wood, 0.8, 0], noJitter: true });
       B.add('std', T.cyl(6), map(0, ey - 3.4, sd * (span / 2 + oh + 0.6)), [1, len + gh * 2, 1], new THREE.Euler(0, rotY, Math.PI / 2, 'YXZ'), '#5a5e62', { surf: [DET.rust, 0.5, 0.7], map: 'cyl', noJitter: true });
     }
+  }
+  if (DETAIL.level >= 3) {
+    const hx = (span / 2 + oh) / 2;
+    cinGable(B, ctx, { rise, span, len, map, rotY }, { th, oh, gh, phi, slopeLen, hx, cy: wallH + rise - hx * Math.tan(phi) - th * 0.5 / Math.cos(phi) }, rc, layer);
   }
   return { rise, span, len, axis, map, rotY };
 }

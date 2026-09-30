@@ -116,7 +116,7 @@ function hats(sb, P, L, has) {
 // ---------------------------------------------------------------------------------------
 // hair
 
-function hair(sb, P, L, has, headDef) {
+function hair(sb, P, L, has, headDef, cin = false) {
   const c = P.headC, r = P.headR;
   const on = (x, y, z, inset) => {
     const l = Math.hypot(x, y, z);
@@ -127,8 +127,8 @@ function hair(sb, P, L, has, headDef) {
   const S = { slot: SLOT.HAIR, mat: MAT.HAIR, color: '#ffffff', bone: B.HEAD };
   if (has('hair_scalp')) {
     // a thin, matted scalp layer (the hair material thins it into bald patches)
-    sb.ellipsoid([c[0] - 0.15, c[1] + 0.05, 0], [r[0] * 1.012, r[1] * 1.01, r[2] * 1.018], {
-      ...S, opt: 'hair_scalp', segW: L ? 8 : 14, segH: L ? 5 : 9,
+    sb.ellipsoid([c[0] - 0.15, c[1] + 0.05, 0], cin ? [r[0] * 1.03, r[1] * 1.026, r[2] * 1.035] : [r[0] * 1.012, r[1] * 1.01, r[2] * 1.018], {
+      ...S, opt: 'hair_scalp', segW: L ? 8 : cin ? 40 : 14, segH: L ? 5 : cin ? 28 : 9,
       deform: (p) => {
         headDef(p);
         const hl = 0.25 + Math.max(0, p.x) * 0.3 - Math.max(0, -p.x) * 0.4;
@@ -138,22 +138,23 @@ function hair(sb, P, L, has, headDef) {
   }
   if (has('hair_strands')) {
     // long strands from the crown and the back; the instance cuts them to length
-    const n = L ? 6 : 18;
+    const n = L ? 6 : cin ? 72 : 18;
     for (let i = 0; i < n; i++) {
       const h1 = ((i * 0.618034) % 1), h2 = ((i * 0.414214 + 0.3) % 1);
-      const lon = Math.PI * 0.32 + (i / (n - 1)) * Math.PI * 1.36;
-      const lat = 0.28 + h2 * 0.4;
+      const lon = Math.PI * (cin ? 0.28 : 0.32) + (i / (n - 1)) * Math.PI * (cin ? 1.44 : 1.36);
+      const lat = cin ? 0.18 + h2 * 0.55 : 0.28 + h2 * 0.4;
       const ux = Math.cos(lon) * Math.cos(lat), uz = Math.sin(lon) * Math.cos(lat), uy = Math.sin(lat);
       const root = on(ux, uy, uz, 0.97);
       const len = 17 * (0.8 + h1 * 0.3);
       const pts = [];
-      const nr = L ? 3 : 4;
+      const nr = L ? 3 : cin ? 6 : 4;
+      const wob = cin ? Math.sin(i * 2.3) * 0.5 : 0;
       for (let j = 0; j <= nr; j++) {
         const t = j / nr, sag = t * t;
-        pts.push({ c: [root[0] + ux * 0.35 * t - sag * 1.3, root[1] - len * sag - t * 0.8, root[2] + uz * 0.3 * t + sag * uz * 0.7],
-          rx: 0.42 - t * 0.16, rz: (1.15 - t * 0.55) * 1.05, bone: t < 0.3 ? B.HEAD : t < 0.7 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+        pts.push({ c: [root[0] + ux * 0.35 * t - sag * 1.3, root[1] - len * sag - t * 0.8, root[2] + uz * 0.3 * t + sag * uz * 0.7 + wob * Math.sin(t * 3.1 + i)],
+          rx: cin ? 0.2 - t * 0.12 : 0.42 - t * 0.16, rz: cin ? (0.78 - t * 0.5) * (0.85 + h1 * 0.4) : (1.15 - t * 0.55) * 1.05, bone: t < 0.3 ? B.HEAD : t < 0.7 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
       }
-      sb.tube(pts, { ...S, opt: 'hair_strands', part: PART.HAIR, seg: 4, cap1: 'round', capRings: 1, ref: [ux, uy, uz] });
+      sb.tube(pts, { ...S, opt: 'hair_strands', part: PART.HAIR, seg: 4, subdiv: cin ? 2 : 1, cap1: 'round', capRings: 1, ref: [ux, uy, uz] });
     }
   }
   if (L > 0 && !has('hair_afro')) return;
@@ -529,10 +530,10 @@ function armour(sb, P, L, has) {
  * @param {(p: object) => void} headDef the head shape's deform (unit space)
  * @param {(name: string) => boolean} has whether this type's model carries the group at all
  */
-export function addAccessories(sb, P, L, headDef, has = () => true) {
+export function addAccessories(sb, P, L, headDef, has = () => true, cin = false) {
   if (L === 2) return;
   hats(sb, P, L, has);
-  hair(sb, P, L, has, headDef);
+  hair(sb, P, L, has, headDef, cin);
   face(sb, P, L, has, headDef);
   torsoGear(sb, P, L, has);
   backGear(sb, P, L, has);

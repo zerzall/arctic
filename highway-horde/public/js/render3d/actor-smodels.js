@@ -13,6 +13,8 @@ import { addClassGear, GLOVES } from './actor-sgear.js';
 import { B } from './actor-rig.js';
 import { CLASSES } from '../shared/classes.js';
 import { shadeHex, mixHex } from './actor-kit.js';
+import { cinFaceRelief, cinSoldierFace } from './actor-zcin.js';
+import { CLASS_SKIN } from './actor-sgear.js';
 
 const gauss = (x, s) => Math.exp(-(x * x) / (s * s));
 const smooth01 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -53,15 +55,19 @@ const BOOT = '#1f1a15', SOLE = '#121010', GLOVE = '#26211c', STRAP = '#2a261e', 
 /**
  * @param {string} cls classes.js id
  * @param {number} L 0 near · 1 far
- * @param {number} [tier] quality tier (2 = low: no class gear beyond the base kit)
+ * @param {number} [tier] quality tier (2 = low: no class gear beyond the base kit; -1 = cinematic hero, near model only)
  */
 export function buildSoldier(cls, L, tier = 0) {
+  if (tier < 0 && L > 0) tier = 0;
+  const cin = tier < 0;
+  const Q = (n) => (cin ? Math.round(n * 1.7) : n);
+  const SD = cin ? 2 : 1;
   const P = SP;
   const look = (CLASSES[cls] || CLASSES.soldier).look;
   const vest = look.vest, hat = look.hat;
   const heavy = cls === 'heavy';
   const sb = new ShapeBuilder();
-  const seg = (a, b) => (L === 0 ? a : b);
+  const seg = (a, b) => (L === 0 ? Q(a) : b);
 
   // ---- torso (shirt in the outfit colour) ----
   const tor = [
@@ -76,13 +82,13 @@ export function buildSoldier(cls, L, tier = 0) {
     [0.1, P.neck + 0.2, 2.2, 3.0, bw(B.CHEST, B.NECK, 0.3)],
   ];
   const rings = tor.map(([x, y, rx, rz, bone]) => ({ c: [x, y, 0], rx, rz, bone }));
-  sb.tube(rings, { seg: seg(18, 10), cap0: 'round', cap1: 'round', capRings: seg(3, 1), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', paint: 0.05, part: PART.TOP,
+  sb.tube(rings, { seg: seg(18, 10), subdiv: SD, cap0: 'round', cap1: 'round', capRings: seg(3, 1), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', paint: 0.05, part: PART.TOP,
     profile: (th) => 1 - 0.1 * Math.max(0, -Math.cos(th)) });
   // ---- vest: a thicker shell over the chest with pouches ----
   const vk = heavy ? 1.2 : 1;
   const vr = rings.slice(2, 8).map((r, i) => ({ c: [r.c[0] + 0.1, r.c[1] + (i === 5 ? -0.8 : 0), 0], rx: r.rx + 0.9 * vk, rz: r.rz + 0.7 * vk, bone: r.bone }));
   vr[0].c[1] -= 0.8;
-  sb.tube(vr, { seg: seg(18, 10), cap0: 'flat', slot: SLOT.FIXED, mat: MAT.LEATHER, color: vest, paint: 0.05,
+  sb.tube(vr, { seg: seg(18, 10), subdiv: SD, cap0: 'flat', slot: SLOT.FIXED, mat: MAT.LEATHER, color: vest, paint: 0.05,
     profile: (th) => 1 - 0.08 * Math.max(0, -Math.cos(th)) });
   // shoulder straps
   for (const s of [-1, 1]) {
@@ -149,7 +155,7 @@ export function buildSoldier(cls, L, tier = 0) {
       { c: [0.1, P.knee - 3, z], rx: cr * 1.08, rz: cr * 0.98, bone: bw(TH, SH, 0.9) },
       { c: [-0.2, P.knee - 6.5, z], rx: cr * 1.05, rz: cr * 0.95, bone: SH },
       { c: [0.1, P.ankle + 2.4, z], rx: cr * 0.85, rz: cr * 0.8, bone: SH },
-    ], { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e8e8e8', paint: 0.12, part: PART.LEG });
+    ], { seg: seg(12, 7), subdiv: SD, cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#e8e8e8', paint: 0.12, part: PART.LEG });
     // cargo pocket
     if (L === 0) roundBox(sb, [0.4, P.hip - 6.5, z + s * 2.9], [2.6, 3.4, 0.9], '#d6d6d6', TH, MAT.CLOTH, SLOT.CLOTH);
     // knee pad
@@ -162,6 +168,7 @@ export function buildSoldier(cls, L, tier = 0) {
     sb.ellipsoid([1.6, 1.9, z], [3.8, 2.1, 2.05], { segW: seg(14, 7), segH: seg(7, 4), slot: SLOT.FIXED, mat: MAT.LEATHER, color: BOOT, bone: FT,
       deform: (p) => { if (p.y < -0.25) p.y = -0.25 - (p.y + 0.25) * 0.2; if (p.x < -0.3) p.x *= 0.85; } });
     sb.ellipsoid([1.8, 0.45, z], [4.1, 0.5, 2.15], { segW: seg(12, 6), segH: 3, slot: SLOT.FIXED, mat: MAT.RUBBER, color: SOLE, bone: FT });
+    if (cin && L === 0) bootDetail(sb, P, z, SH, FT, cr);
   }
   // hips (trouser seat)
   sb.tube([
@@ -192,7 +199,7 @@ export function buildSoldier(cls, L, tier = 0) {
       sb.tube(arm.slice(3), { seg: seg(10, 6), slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff' });
       sb.tube(lineRings([-0.3, el + 1.6, z], [-0.3, el - 0.2, z], r + 0.6, r + 0.55, 2), { seg: seg(12, 7), slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#d8d8d8', bone: bw(UA, FA, 0.3) });
     } else {
-      sb.tube(arm.map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.25, rz: (q.rz ?? q.r) + 0.25, r: undefined })), { seg: seg(12, 7), cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', part: PART.SLEEVE });
+      sb.tube(arm.map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.25, rz: (q.rz ?? q.r) + 0.25, r: undefined })), { seg: seg(12, 7), subdiv: SD, cap0: 'round', capRings: 1, slot: SLOT.CLOTH, mat: MAT.CLOTH, color: '#ffffff', part: PART.SLEEVE });
     }
     // armband in the player's colour
     sb.tube(lineRings([0.05, top - 3.2, z], [0.05, top - 5.2, z], r * 1.22, r * 1.12, 2), { seg: seg(12, 7), slot: SLOT.ACCENT, mat: MAT.CLOTH, color: '#ffffff', bone: UA });
@@ -207,13 +214,54 @@ export function buildSoldier(cls, L, tier = 0) {
     { c: [0.3, P.neck + 0.8, 0], rx: 2.0, rz: 2.2, bone: B.NECK },
     { c: [0.6, P.headC[1] - P.headR[1] * 0.55, 0], rx: 2.0, rz: 2.2, bone: bw(B.NECK, B.HEAD, 0.7) },
   ], { seg: seg(12, 7), slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0' });
-  face(sb, P, L, hat === 'none');
+  face(sb, P, L, hat === 'none', cin, cls);
   headgear(sb, P, hat, look, L);
   if (tier < 2) addClassGear(sb, P, cls, look, L);
   return sb;
 }
 
 /** Rounded box as a squashed ellipsoid-cube (superellipsoid-ish). */
+/**
+ * Cinematic boots: a rolled cuff, a tongue, five lace crossings with eyelets, a toe cap seam, a heel
+ * block and lugs along the sole. `cr` is the calf radius the shaft was built with.
+ */
+function bootDetail(sb, P, z, SH, FT, cr) {
+  const lace = '#d6cfb6', leather = shadeHex(BOOT, -0.18);
+  const fx = 0.1 + cr * 0.95;                                    // the shaft's front at z = 0
+  // rolled cuff at the top of the shaft
+  sb.tube([
+    { c: [0.1, P.ankle + 3.9, z], r: cr * 0.99, bone: SH },
+    { c: [0.1, P.ankle + 3.35, z], r: cr * 1.04, bone: SH },
+    { c: [0.1, P.ankle + 2.8, z], r: cr * 0.98, bone: SH },
+  ], { seg: 22, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.LEATHER, color: shadeHex(BOOT, 0.06), bone: SH });
+  // the tongue standing a little proud of the front
+  roundBox(sb, [fx + 0.05, P.ankle + 3.0, z], [0.5, 3.2, 1.6], leather, SH, MAT.LEATHER, SLOT.FIXED, 8);
+  // laces: V-shaped crossings up the front, each end with an eyelet
+  for (let k = 0; k < 5; k++) {
+    const y = 4.3 + k * ((P.ankle + 3.3 - 4.3) / 4);
+    const bn = k < 2 ? bw(SH, FT, 0.4) : SH;
+    for (const e of [-1, 1]) {
+      const x0 = fx - 0.32, x1 = fx + 0.34;
+      sb.tube([
+        { c: [x0, y - 0.35, z + e * 1.25], r: 0.16, bone: bn },
+        { c: [x1, y + 0.05, z + e * 0.15], r: 0.17, bone: bn },
+      ], { seg: 5, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.CLOTH, color: lace, bone: bn });
+      sb.ellipsoid([x0 - 0.05, y - 0.35, z + e * 1.3], [0.2, 0.2, 0.2], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.METAL, color: '#8a8a82', bone: bn });
+    }
+  }
+  // toe cap seam, heel block, sole lugs
+  sb.tube(lineRings([3.05, 2.5, z - 1.55], [3.05, 2.5, z + 1.55], 0.18, 0.18, 7, (r, t) => {
+    const u = (t - 0.5) * 2;
+    r.c[0] = 3.1 - u * u * 1.1;
+    r.c[1] = 2.35 + (1 - u * u) * 0.5;
+  }), { seg: 5, slot: SLOT.FIXED, mat: MAT.LEATHER, color: leather, bone: FT });
+  roundBox(sb, [-1.7, 0.95, z], [1.5, 0.9, 1.75], SOLE, FT, MAT.RUBBER, SLOT.FIXED, 8);
+  for (let k = 0; k < 6; k++) {
+    const x = -1.4 + k * 1.05;
+    for (const e of [-1, 1]) roundBox(sb, [x, 0.25, z + e * 1.7], [0.35, 0.35, 0.5], SOLE, FT, MAT.RUBBER, SLOT.FIXED, 6);
+  }
+}
+
 export function roundBox(sb, c, size, color, bone, mat = MAT.LEATHER, slot = SLOT.FIXED, seg = 8) {
   sb.ellipsoid(c, [size[0] / 2, size[1] / 2, size[2] / 2], {
     segW: seg, segH: Math.max(4, seg - 2), slot, mat, color, bone,
@@ -290,10 +338,14 @@ function faceDeform() {
   };
 }
 
-function face(sb, P, L, bald) {
+function face(sb, P, L, bald, cin = false, cls = 'soldier') {
   const c = P.headC, r = P.headR;
-  const def = faceDeform();
-  sb.ellipsoid(c, r, { segW: L ? 14 : 24, segH: L ? 10 : 18, deform: def, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', bone: B.HEAD,
+  let def = faceDeform();
+  if (cin && L === 0) {
+    const base = def, relief = cinFaceRelief({ nose: 0.16 });
+    def = (p) => { base(p); relief(p); };
+  }
+  sb.ellipsoid(c, r, { segW: L ? 14 : (cin ? 64 : 24), segH: L ? 10 : (cin ? 46 : 18), deform: def, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', bone: B.HEAD,
     colorFn: L === 0 ? (x, y, z) => {
       const ux = (x - c[0]) / r[0], uy = (y - c[1]) / r[1], uz = z / r[2];
       // stubble on the jaw, darker lips
@@ -307,7 +359,9 @@ function face(sb, P, L, bald) {
     def(p);
     return [c[0] + p.x * r[0] * inset, c[1] + p.y * r[1] * inset, c[2] + p.z * r[2] * inset];
   };
-  for (const s of [-1, 1]) {
+  if (cin && L === 0) {
+    cinSoldierFace(sb, P, cls, at, CLASS_SKIN[cls] || CLASS_SKIN.soldier, mixHex);
+  } else for (const s of [-1, 1]) {
     // eyes (white + dark iris) and brows
     const e = at(0.9, 0.12, s * 0.36, 0.93);
     sb.ellipsoid(e, [0.5, 0.42, 0.55], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: '#d8d4cc', bone: B.HEAD });

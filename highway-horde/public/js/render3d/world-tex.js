@@ -633,15 +633,25 @@ export const LEAF_CELLS = {
   frond: [0.5, 0, 0.75, 0.5], birch: [0.75, 0, 1, 0.5], fern: [0.5, 0.5, 0.75, 1], ivy: [0.75, 0.5, 1, 1],
 };
 
-let leafCanvas = null;
-let leafData = null;   // straight-alpha RGBA of leafCanvas (see makeLeafTexture)
-export function makeLeafTexture(anisotropy = 4) {
+const leafCache = new Map();   // scale → { canvas, data (straight-alpha RGBA of the canvas, see makeLeafTexture) }
+/**
+ * @param {number} [anisotropy]
+ * @param {number} [scale] 1 = 1024×512 (256² cells); 2 = the cinematic 2048×1024 atlas: same
+ *   layout, painted with veins, shaded leaf halves and finer needles
+ */
+export function makeLeafTexture(anisotropy = 4, scale = 1) {
+  let ent = leafCache.get(scale);
+  if (!ent) { ent = { canvas: null, data: null }; leafCache.set(scale, ent); }
+  let leafCanvas = ent.canvas;
+  let leafData = ent.data;
+  const fine = scale > 1;
   if (!leafCanvas) {
     const S = 256, CW = 1024, CH = 512;
-    leafCanvas = document.createElement('canvas');
-    leafCanvas.width = CW;
-    leafCanvas.height = CH;
+    leafCanvas = ent.canvas = document.createElement('canvas');
+    leafCanvas.width = CW * scale;
+    leafCanvas.height = CH * scale;
     const g = leafCanvas.getContext('2d');
+    g.scale(scale, scale);
     g.clearRect(0, 0, CW, CH);
     const rng = createRng(9001);
     const H = S;
@@ -649,12 +659,34 @@ export function makeLeafTexture(anisotropy = 4) {
       g.save();
       g.translate(x, y);
       g.rotate(ang);
-      g.fillStyle = `rgb(${shade},${shade},${shade})`;
-      g.beginPath();
-      g.moveTo(0, 0);
-      g.quadraticCurveTo(len * 0.5, -wid, len, 0);
-      g.quadraticCurveTo(len * 0.5, wid, 0, 0);
-      g.fill();
+      if (fine) {
+        // one half of the blade lit, the other in shade; a pointed tip, a midrib and side veins
+        const s0 = Math.max(0, shade - 16), s1 = Math.min(255, shade + 14);
+        const gr = g.createLinearGradient(0, -wid, 0, wid);
+        gr.addColorStop(0, `rgb(${s1},${s1},${s1})`);
+        gr.addColorStop(1, `rgb(${s0},${s0},${s0})`);
+        g.fillStyle = gr;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.bezierCurveTo(len * 0.25, -wid * 1.15, len * 0.7, -wid * 0.9, len, 0);
+        g.bezierCurveTo(len * 0.7, wid * 0.9, len * 0.25, wid * 1.15, 0, 0);
+        g.fill();
+        if (len * scale > 22) {
+          g.strokeStyle = `rgba(${Math.min(255, shade + 50)},${Math.min(255, shade + 50)},${Math.min(255, shade + 50)},0.55)`;
+          g.lineWidth = 0.55;
+          g.beginPath();
+          g.moveTo(0, 0); g.lineTo(len * 0.96, 0);
+          for (let v = 1; v < 4; v++) { const t = v / 4.4; g.moveTo(len * t, 0); g.lineTo(len * (t + 0.18), -wid * 0.6 * (1 - t)); g.moveTo(len * t, 0); g.lineTo(len * (t + 0.18), wid * 0.6 * (1 - t)); }
+          g.stroke();
+        }
+      } else {
+        g.fillStyle = `rgb(${shade},${shade},${shade})`;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.quadraticCurveTo(len * 0.5, -wid, len, 0);
+        g.quadraticCurveTo(len * 0.5, wid, 0, 0);
+        g.fill();
+      }
       g.restore();
     };
     const cluster = (ox, oy, n, spread, len, wid, pineMode) => {
@@ -680,12 +712,12 @@ export function makeLeafTexture(anisotropy = 4) {
         if (pineMode) {
           // needles: bundles of thin strokes along a bough
           g.strokeStyle = `rgb(${shade},${shade},${shade})`;
-          g.lineWidth = 1.6;
+          g.lineWidth = fine ? 1.05 : 1.6;
           const ang = a + rng.range(-0.4, 0.4);
-          for (let m = 0; m < 5; m++) {
+          for (let m = 0; m < (fine ? 9 : 5); m++) {
             g.beginPath();
             g.moveTo(x, y);
-            g.lineTo(x + Math.cos(ang + (m - 2) * 0.25) * len, y + Math.sin(ang + (m - 2) * 0.25) * len);
+            g.lineTo(x + Math.cos(ang + (m - (fine ? 4 : 2)) * (fine ? 0.14 : 0.25)) * len, y + Math.sin(ang + (m - (fine ? 4 : 2)) * (fine ? 0.14 : 0.25)) * len);
             g.stroke();
           }
         } else {
@@ -843,6 +875,7 @@ export function makeLeafTexture(anisotropy = 4) {
         leafData[o + 3] = src[i + 3];
       }
     }
+    ent.data = leafData;
   }
   const tex = new THREE.DataTexture(leafData, leafCanvas.width, leafCanvas.height, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.colorSpace = THREE.SRGBColorSpace;

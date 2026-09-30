@@ -14,7 +14,7 @@ import { T, shadeHex, mixHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
 
-/** Geometry detail of the buildings: 0 low, 1 high, 2 ultra (set by world.js from the tier). */
+/** Geometry detail of the buildings: 0 low, 1 high, 2 ultra, 3 cinematic (set by world.js from the tier). */
 export const DETAIL = { level: 2 };
 export function setDetailLevel(l) { DETAIL.level = l; }
 
@@ -144,7 +144,7 @@ export function windowUnit(F, s) {
     const fb = 1.5;
     const fc = s.frame;
     const fo = { noJitter: true, surf: [DET.panel, 0.6, 0.15] };
-    if (lod >= 2 && yc < 80) {
+    if ((lod >= 2 && yc < 80) || lod >= 3) {
       F.box('std', t, y1 - fb / 2, -R + 0.3, ww, fb, 1.5, fc, fo);
       F.box('std', t, y0 + fb / 2, -R + 0.3, ww, fb, 1.5, fc, fo);
       F.box('std', t - ww / 2 + fb / 2, yc, -R + 0.3, fb, wh - 2 * fb, 1.5, fc, fo);
@@ -181,6 +181,7 @@ export function windowUnit(F, s) {
   // sill and lintel
   if (s.sill) F.box('std', t, y0 - 1.15, -R, ww + 5, 2.3, R + 2.6, s.trim, { noJitter: true, surf: [DET.concrete, 0.85, 0] });
   if (s.lintel && lod >= 1) F.box('std', t, y1 + 1.5, 0, ww + 5, 3, 1.8, s.trim, { noJitter: true, surf: [DET.concrete, 0.85, 0] });
+  if (lod >= 3 && s.state !== 'blank') windowCin(F, s, t, yc, ww, wh, y0, y1, R);
   if (s.shutters && lod >= 1) {
     for (const sd of [-1, 1]) F.box('std', t + sd * (ww / 2 + 3.6), yc, 0, ww * 0.42, wh + 1, 1.2, s.shutters, { noJitter: true, surf: [DET.siding, 0.85, 0] });
   }
@@ -188,6 +189,32 @@ export function windowUnit(F, s) {
     // a window air conditioner: grille, a drip stain below
     F.rbox('std', t, y0 + wh * 0.32, -1, ww * 0.82, wh * 0.5, 9, 0.8, '#b8b9b4', { surf: [DET.panel, 0.5, 0.4] });
     F.rect('std', t, y0 + wh * 0.3, 8.1, ww * 0.6, wh * 0.28, '#2b2d2e', { noJitter: true, surf: [DET.hesco, 0.5, 0.6] });
+  }
+}
+
+/**
+ * Cinematic window trim: a meeting rail and glazing bars in the sash, corbels under the sill, a drip
+ * cap and a keystone over the lintel, a thin dark shadow gap under the sill.
+ */
+function windowCin(F, s, t, yc, ww, wh, y0, y1, R) {
+  const fc = s.frame, fo = { noJitter: true, surf: [DET.panel, 0.6, 0.15] };
+  const light = shadeHex(s.trim, 0.08);
+  const co = { noJitter: true, surf: [DET.concrete, 0.85, 0] };
+  if (s.state !== 'boarded') {
+    // meeting rail of the double-hung sash and glazing bars over the pane
+    F.box('std', t, yc, -R + 0.25, ww - 3, 1.5, 1.7, fc, fo);
+    if (ww > 12) for (const k of [-1, 1]) F.box('std', t + k * ww / 6, yc + wh * 0.25, -R + 0.5, 0.55, wh * 0.46, 1.1, fc, fo);
+    if (ww > 12) for (const k of [-1, 1]) F.box('std', t + k * ww / 6, yc - wh * 0.25, -R + 0.5, 0.55, wh * 0.46, 1.1, fc, fo);
+    F.box('std', t, yc + wh * 0.26, -R + 0.5, ww - 3, 0.55, 1.1, fc, fo);
+    F.box('std', t, yc - wh * 0.26, -R + 0.5, ww - 3, 0.55, 1.1, fc, fo);
+  }
+  if (s.sill) {
+    for (const k of [-1, 1]) F.box('std', t + k * (ww / 2 - 0.4), y0 - 3.7, -R * 0.4, 1.7, 2.6, R * 0.7 + 1.6, light, co);     // corbels
+    F.box('std', t, y0 - 2.5, -R + 0.4, ww + 1.4, 0.5, 1, '#0a0a0b', { noJitter: true, surf: [0, 0.9, 0] });                  // shadow under the sill
+  }
+  if (s.lintel) {
+    F.box('std', t, y1 + 3.35, 0.2, ww + 7.2, 0.9, 2.7, light, co);          // drip cap
+    F.box('std', t, y1 + 1.6, 0.5, 3.2, 3.4, 2.3, light, co);                 // keystone
   }
 }
 
@@ -226,6 +253,7 @@ export function doorUnit(F, s) {
         F.box('std', t, py, -R + 1.2, w * 0.66, ph, 0.9, shadeHex(s.leaf, 0.08), wood);
       }
       F.box('std', t + w * 0.32, yc - 2, -R + 0.4, 1.6, 1.6, 1.6, '#c9a24a', { noJitter: true, surf: [0, 0.3, 0.9] });
+      if (lod >= 3) doorCin(F, s, t, w, h, y0, yc, R);
     }
   }
   // frame and head
@@ -244,6 +272,26 @@ export function doorUnit(F, s) {
     F.box('std', t + w / 2 + 6.5, y1 - 3, 0, 3.6, 5, 3, '#2a2c2e', { noJitter: true, surf: [DET.panel, 0.5, 0.5] });
     F.box('glow', t + w / 2 + 6.5, y1 - 3.4, 3, 2.6, 3.2, 1.2, '#ffd79a', { emissive: 4, uv: atlasUV('white'), noAO: true });
   }
+}
+
+/** Cinematic door furniture: panel mouldings, hinges, a lever handle on a rose, a kick plate, a house number. */
+function doorCin(F, s, t, w, h, y0, yc, R) {
+  const brass = { noJitter: true, surf: [0, 0.28, 0.95] };
+  const wood = { noJitter: true, surf: [DET.wood, 0.8, 0] };
+  const mould = shadeHex(s.leaf, 0.16);
+  for (const [py, ph] of [[y0 + h * 0.25, h * 0.32], [y0 + h * 0.72, h * 0.34]]) {
+    const pw = w * 0.66;
+    F.box('std', t, py + ph / 2 + 0.3, -R + 0.75, pw + 1.2, 0.7, 0.5, mould, wood);
+    F.box('std', t, py - ph / 2 - 0.3, -R + 0.75, pw + 1.2, 0.7, 0.5, mould, wood);
+    for (const k of [-1, 1]) F.box('std', t + k * (pw / 2 + 0.3), py, -R + 0.75, 0.7, ph + 1.2, 0.5, mould, wood);
+  }
+  for (const y of [y0 + h * 0.16, yc, y0 + h * 0.86]) F.box('std', t - w * 0.47, y, -R + 0.5, 0.9, 3.4, 0.9, '#25262a', { noJitter: true, surf: [0, 0.4, 0.8] });
+  F.box('std', t + w * 0.32, yc - 2, -R + 0.15, 2.6, 5.2, 0.5, '#b9b2a2', brass);                                  // the handle rose
+  F.box('std', t + w * 0.28, yc - 2.4, -R - 0.3, 4.4, 0.8, 0.8, '#d2ccbc', brass);                               // the lever
+  F.box('std', t + w * 0.32, yc + 3.2, -R + 0.25, 1.4, 1.4, 1.2, '#b9b2a2', brass);                              // the deadbolt
+  F.box('std', t, y0 + 3.4, -R + 0.6, w * 0.8, 5.4, 0.35, '#8a8d90', { noJitter: true, surf: [0, 0.35, 0.8] });   // kick plate
+  F.box('std', t, y0 + h * 0.6, -R + 0.5, 1.1, 1.1, 0.4, '#1a1a1c', { noJitter: true, surf: [0, 0.2, 0.8] });     // peephole
+  F.box('std', t + w / 2 + 5, y0 + h * 0.7, 0.3, 2.6, 3.4, 0.6, '#d8d2c2', brass);                                // number plate
 }
 
 // ---- shop fronts, awnings, signs -------------------------------------------------------------------

@@ -13,6 +13,7 @@ import { T, shadeHex, seededRng, lin } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { LEAF_CELLS } from './world-tex.js';
 import { cardList, card, listGeo, PINE, LEAF, desertPiece, setBiome } from './world-flora.js';
+import { DETAIL } from './world-arch.js';
 import { normTier, tierRow } from './tier.js';
 
 // trees, bushes and their species (world-flora.js)
@@ -86,10 +87,11 @@ export function buildTreeLine(B, map, waters) {
       const cc = [0, 175 * s, 0];
       B.cyl('std', 0, 0, 0, 6 * s, 120 * s, '#3f3226', 6, 0.6, null, { surf: [DET.bark, 0.9, 0] });
       B.add('std', T.ico(0), cc, [R * 0.5, R * 0.4, R * 0.5], null, shadeHex('#2f4a26', -0.3), { surf: [DET.grass, 0.95, 0], noAO: true });
-      for (let k = 0; k < 4; k++) {
+      const cinL = DETAIL.level >= 3;
+      for (let k = 0; k < (cinL ? 6 : 4); k++) {
         const dir = k === 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(rng.range(-1, 1), rng.range(-0.1, 0.5), rng.range(-1, 1)).normalize();
         const ctr = [cc[0] + dir.x * R * 0.6, cc[1] + dir.y * R * 0.5, cc[2] + dir.z * R * 0.6];
-        for (let m = 0; m < 6; m++) {
+        for (let m = 0; m < (cinL ? 9 : 6); m++) {
           const f = new THREE.Vector3(rng.range(-1, 1), rng.range(-0.3, 1), rng.range(-1, 1)).normalize();
           card(cards, [ctr[0] + f.x * R * 0.35, ctr[1] + f.y * R * 0.3, ctr[2] + f.z * R * 0.35], f, rng.range(0, 6.28), R * 0.9, R * 0.9, cc, rng.chance(0.5) ? LEAF_CELLS.broadA : LEAF_CELLS.broadB, 3);
         }
@@ -100,15 +102,17 @@ export function buildTreeLine(B, map, waters) {
     const col = rng.pick(PINE);
     const top = rng.range(220, 330) * s;
     B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#2a2118', 5, 0.7, null, { surf: [DET.bark, 0.9, 0] });
-    B.cyl('std', 0, 40 * s, 0, 44 * s, top - 40 * s, shadeHex(col, -0.35), 7, 0.04, null, { surf: [DET.grass, 0.95, 0], noAO: true });
+    const cinL = DETAIL.level >= 3;
+    B.cyl('std', 0, 40 * s, 0, (cinL ? 26 : 44) * s, top - 40 * s, shadeHex(col, -0.35), cinL ? 9 : 7, 0.04, null, { surf: [DET.grass, 0.95, 0], noAO: true });
     // two rings of drooping bough cards over the cone: a ragged, needled silhouette
     const cards = cardList();
-    for (let k = 0; k < 3; k++) {
-      const t = k / 3;
+    const rings = cinL ? 7 : 3;
+    for (let k = 0; k < rings; k++) {
+      const t = k / rings;
       const y = 50 * s + t * (top - 90 * s);
       const rad = (58 - t * 36) * s;
-      for (let m = 0; m < 5; m++) {
-        const a = (m / 5) * Math.PI * 2 + k + rng.range(-0.3, 0.3);
+      for (let m = 0; m < (cinL ? 7 : 5); m++) {
+        const a = (m / (cinL ? 7 : 5)) * Math.PI * 2 + k + rng.range(-0.3, 0.3);
         const f = new THREE.Vector3(Math.cos(a) * 0.5, 0.8, Math.sin(a) * 0.5).normalize();
         card(cards, [Math.cos(a) * rad * 0.55, y, Math.sin(a) * rad * 0.55], f, a + Math.PI / 2, rad * 1.2, rad * 0.9, [0, y + 20, 0], LEAF_CELLS.pine);
       }
@@ -140,8 +144,7 @@ export function buildTreeLine(B, map, waters) {
 
 // height stays well under a crawler's back (~20): grass must never hide a zombie
 export const GRASS = {
-  // cinematic: 2x the tufts, a longer reach and every blade of the field
-  cinematic: { grid: 256, cell: 3.9, height: 9.5, density: 1.0 },
+  cinematic: { grid: 232, cell: 3.9, height: 10, density: 1.0, cin: true },
   ultra: { grid: 180, cell: 4.6, height: 9.5, density: 0.95 },
   high: { grid: 128, cell: 6, height: 9.5, density: 0.9 },
 };
@@ -170,6 +173,73 @@ function tuftGeometry(blades = 6) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('aTip', new THREE.Float32BufferAttribute(side, 1));
   g.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
+  g.setAttribute('aBlade', new THREE.Float32BufferAttribute(new Float32Array(side.length).fill(0.5), 1));
+  return g;
+}
+
+/**
+ * The cinematic tuft: nine curved, tapering blades of three quads each (indexed, so 7 vertices
+ * a blade), a flower on a stem (seven petals round a centre) that the shader shows on a few
+ * tufts. aTip runs 0 at the root to 1 at the tip (the wind bends by its square), aBlade
+ * (0..1) varies the tone blade to blade, aKind is 0 blade / 1 stem / 2 petal / 3 flower centre.
+ */
+function tuftGeometryCin(blades = 9) {
+  const pos = [], nor = [], tip = [], kind = [], bid = [], idx = [];
+  const r = seededRng(4243);
+  const vert = (x, y, z, nx, ny, nz, t, k, b) => { pos.push(x, y, z); nor.push(nx, ny, nz); tip.push(t); kind.push(k); bid.push(b); return pos.length / 3 - 1; };
+  for (let b = 0; b < blades; b++) {
+    const a = (b / blades) * Math.PI * 2 + r.range(-0.5, 0.5);
+    const d = r.range(0.2, 2.6);
+    const bx = Math.cos(a) * d, bz = Math.sin(a) * d;
+    const w = r.range(0.55, 1.15), h = r.range(0.55, 1.08);
+    const lean = r.range(0.1, 0.55) * 6;
+    const face = a + r.range(-0.7, 0.7);              // the blade's flat side faces this way
+    const px = -Math.sin(face), pz = Math.cos(face);
+    const nx = Math.cos(face), nz = Math.sin(face);
+    const bidv = r.next();
+    const rows = [0, 0.34, 0.68];
+    const base = pos.length / 3;
+    for (const t of rows) {
+      const hw = w * 0.5 * (1 - Math.pow(t, 1.5) * 0.85);
+      const cx = bx + Math.cos(a) * lean * t * t, cz = bz + Math.sin(a) * lean * t * t, cy = h * t;
+      const ny = 0.9 - t * 0.35;
+      vert(cx - px * hw, cy, cz - pz * hw, nx * 0.55, ny, nz * 0.55, t, 0, bidv);
+      vert(cx + px * hw, cy, cz + pz * hw, nx * 0.55, ny, nz * 0.55, t, 0, bidv);
+    }
+    vert(bx + Math.cos(a) * lean, h, bz + Math.sin(a) * lean, nx * 0.6, 0.55, nz * 0.6, 1, 0, bidv);
+    // rows: (0,1) (2,3) (4,5), tip 6
+    idx.push(base, base + 1, base + 3, base, base + 3, base + 2, base + 2, base + 3, base + 5, base + 2, base + 5, base + 4, base + 4, base + 5, base + 6);
+  }
+  // the flower: a stem (two quads) and seven petals round a small centre
+  const fx = 0.5, fz = -0.3, fh = 1.18, sw = 0.09;
+  const sb = pos.length / 3;
+  for (const t of [0, 0.5, 1]) {
+    const y = fh * t, cx = fx * t * t, cz = fz * t * t;
+    vert(cx - sw, y, cz, 0, 1, 0, t, 1, 0.5);
+    vert(cx + sw, y, cz, 0, 1, 0, t, 1, 0.5);
+  }
+  idx.push(sb, sb + 1, sb + 3, sb, sb + 3, sb + 2, sb + 2, sb + 3, sb + 5, sb + 2, sb + 5, sb + 4);
+  const NP = 7;
+  const cy0 = fh + 0.02;
+  const c0 = vert(fx, cy0 + 0.03, fz, 0, 1, 0, 1, 3, 0.5);
+  for (let p = 0; p < NP; p++) {
+    const a0 = (p / NP) * Math.PI * 2, a1 = ((p + 1) / NP) * Math.PI * 2;
+    const am = (a0 + a1) / 2;
+    const i0 = vert(fx + Math.cos(a0) * 0.32, cy0, fz + Math.sin(a0) * 0.32, 0, 1, 0, 1, 3, 0.5);
+    const i1 = vert(fx + Math.cos(a1) * 0.32, cy0, fz + Math.sin(a1) * 0.32, 0, 1, 0, 1, 3, 0.5);
+    idx.push(c0, i1, i0);
+    const pl = vert(fx + Math.cos(a0 + 0.1) * 0.5, cy0 - 0.02, fz + Math.sin(a0 + 0.1) * 0.5, 0.2, 1, 0.2, 1, 2, 0.5);
+    const pr = vert(fx + Math.cos(a1 - 0.1) * 0.5, cy0 - 0.02, fz + Math.sin(a1 - 0.1) * 0.5, 0.2, 1, 0.2, 1, 2, 0.5);
+    const pt = vert(fx + Math.cos(am) * 1.38, cy0 - 0.09, fz + Math.sin(am) * 1.38, 0.3, 1, 0.3, 1, 2, 0.5);
+    idx.push(pl, pr, pt);
+  }
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('aTip', new THREE.Float32BufferAttribute(tip, 1));
+  g.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
+  g.setAttribute('aBlade', new THREE.Float32BufferAttribute(bid, 1));
+  g.setIndex(idx);
   return g;
 }
 
@@ -218,6 +288,7 @@ export function createGrassField(scene, ground, quality) {
         attribute vec2 iOff;
         attribute float aTip;
         attribute float aKind;
+        attribute float aBlade;
         varying vec3 vGrass;
         float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
@@ -233,8 +304,8 @@ export function createGrassField(scene, ground, quality) {
         float fade = smoothstep(uRadius, uRadius * 0.7, distance(base, cameraPosition.xz));
         float s = step(h3, dens * uDensity) * fade * (0.65 + 0.7 * h4) * (0.55 + 0.45 * lush);
         // some tufts in the lush grass grow a flower (yellow, white, purple, red); the others hide theirs
-        float fl = step(0.93, fract(h4 * 7.13 + h1 * 3.7)) * step(0.5, lush) * step(1.5, aKind);
-        if (aKind > 1.5 && fl < 0.5) s = 0.0;
+        float fl = step(0.93, fract(h4 * 7.13 + h1 * 3.7)) * step(0.5, lush) * step(0.5, aKind);
+        if (aKind > 0.5 && fl < 0.5) s = 0.0;
         float ang = h1 * 6.2831;
         float ca = cos(ang), sa = sin(ang);
         vec3 transformed = position;
@@ -244,24 +315,28 @@ export function createGrassField(scene, ground, quality) {
         // wind: the tips sway, gusts roll across the field
         float gust = sin(uTime * 0.7 + base.x * 0.006 + base.y * 0.004) * 0.5 + 0.5;
         float sway = sin(uTime * 2.1 + base.x * 0.05 + base.y * 0.037) * (0.6 + gust * 1.6);
-        transformed.x += aTip * sway * s * 1.4;
-        transformed.z += aTip * sway * s * 0.7;
+        float bend = aTip * aTip;
+        transformed.x += bend * sway * s * 1.4;
+        transformed.z += bend * sway * s * 0.7;
         transformed.xz += base;
         transformed.y += hillHeight(base) * step(0.001, s);
         // colour: green on grass, straw on loose ground, lighter tips
         vec3 gcol = mix(vec3(0.05, 0.085, 0.03), vec3(0.11, 0.1, 0.05), 1.0 - lush);
-        gcol *= 0.75 + 0.5 * h2;
-        vGrass = mix(gcol * 0.45, gcol * 1.35, aTip);
+        gcol *= (0.75 + 0.5 * h2) * (0.82 + 0.36 * aBlade);
+        // blades pale toward the tip, and the odd blade is dry straw
+        gcol = mix(gcol, vec3(0.16, 0.13, 0.05), step(0.9, fract(aBlade * 13.7 + h3)) * 0.7);
+        vGrass = mix(gcol * 0.4, gcol * 1.4, aTip);
         if (aKind > 1.5) {
           float fk = fract(h2 * 5.3 + h3 * 2.1);
           vGrass = fk < 0.34 ? vec3(0.42, 0.32, 0.03) : fk < 0.6 ? vec3(0.42, 0.42, 0.38) : fk < 0.82 ? vec3(0.2, 0.08, 0.26) : vec3(0.4, 0.04, 0.03);
+          if (aKind > 2.5) vGrass = vec3(0.5, 0.36, 0.03);
         }`)
       .replace('#include <fog_vertex>', '#include <fog_vertex>');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGrass;')
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vGrass;');
   };
-  mat.customProgramCacheKey = () => 'hh-grass-v2';
+  mat.customProgramCacheKey = () => 'hh-grass-v3';
   let mesh = null;
   let geo = null;
   let tier = null;
@@ -274,7 +349,7 @@ export function createGrassField(scene, ground, quality) {
     if (mesh) { scene.remove(mesh); geo.dispose(); mesh = null; geo = null; }
     const cfg = tierRow(GRASS, t);
     if (!cfg) return;
-    geo = tuftGeometry(6);
+    geo = cfg.cin ? tuftGeometryCin(9) : tuftGeometry(6);
     const G = cfg.grid;
     const off = new Float32Array(G * G * 2);
     for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) { off[(j * G + i) * 2] = i - G / 2; off[(j * G + i) * 2 + 1] = j - G / 2; }

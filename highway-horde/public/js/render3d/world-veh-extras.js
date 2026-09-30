@@ -11,6 +11,7 @@ import { T, shadeHex, hash01, mixHex } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { dressUV } from './dress-atlas.js';
 import { atlasUV } from './world-tex.js';
+import { DETAIL } from './world-arch.js';
 
 const CHROME = '#c9ced3';
 const TRIM = '#222324';
@@ -261,10 +262,13 @@ export function fireTruck(B, o, v, L, W, wheelFn) {
     B.box('std', 0.5 * L, 22, sd * W * 0.36, 1, 6, 9, '#e8e8e0', null, S2);
   }
   // windshield, grille, bumper, siren and light bar
-  B.box('glass', 0.478 * L, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
-  B.box('std', 0.481 * L, 50, 0, 0.8, 16.6, 1.6, red, null, S2);
-  B.box('std', 0.481 * L, 58.2, 0, 0.8, 1.6, W * 0.88, red, null, S2);
-  B.box('std', 0.481 * L, 42, 0, 0.8, 1.4, W * 0.88, red, null, S2);
+  // (cinematic: the glass is see-through, so it stands a little proud of the cab's front with a dark plate behind it and the frame moves with it)
+  const wz = DETAIL.level >= 3 ? 1.5 : 0;
+  B.box(DETAIL.level >= 3 ? 'vglass' : 'glass', 0.478 * L + wz, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
+  if (DETAIL.level >= 3) B.box('std', 0.478 * L + 0.9, 50, 0, 0.5, 15, W * 0.84, '#0b0e11', null, { surf: [0, 0.85, 0], noAO: true });
+  B.box('std', 0.481 * L + wz, 50, 0, 0.8, 16.6, 1.6, red, null, S2);
+  B.box('std', 0.481 * L + wz, 58.2, 0, 0.8, 1.6, W * 0.88, red, null, S2);
+  B.box('std', 0.481 * L + wz, 42, 0, 0.8, 1.4, W * 0.88, red, null, S2);
   B.box('std', 0.48 * L + 0.3, 30, 0, 1, 18, W * 0.5, '#1a1a1a', null, { surf: [DET.corrugated, 0.4, 0.8] });
   B.rbox('std', 0.5 * L - 1, 18, 0, 5, 7, W * 1.02, 1.4, CHROME, null, Sm);
   lightBar(B, 0.34 * L, 76, W * 0.86, ['#ff2a1a', '#f4f4ec'], v);

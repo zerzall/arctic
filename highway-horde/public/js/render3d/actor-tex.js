@@ -17,8 +17,33 @@ const cache = new Map();
 
 function cached(key, fn) {
   let v = cache.get(key);
-  if (!v) { v = fn(); cache.set(key, v); }
+  if (!v) { v = fn(); if (v && typeof v.next === 'function') v = runSync(v); cache.set(key, v); }
   return v;
+}
+
+/** Run a generator to completion. */
+function runSync(gen) {
+  let r = gen.next();
+  while (!r.done) r = gen.next();
+  return r.value;
+}
+
+/**
+ * Run a generator in time slices (`budget` ms of work per slice, then a macrotask break),
+ * so building a big texture never freezes the page; resolves with the generator's result.
+ */
+export function driveAsync(gen, budget = 8) {
+  return new Promise((resolve, reject) => {
+    const step = () => {
+      try {
+        const t0 = performance.now();
+        let r;
+        do r = gen.next(); while (!r.done && performance.now() - t0 < budget);
+        if (r.done) resolve(r.value); else setTimeout(step, 0);
+      } catch (err) { reject(err); }
+    };
+    step();
+  });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -160,11 +185,11 @@ const V_512_39 = makeVn(512, 39);
 const V_8_16_512 = makeVn(8, 16, 512);
 const V_8_3 = makeVn(8, 3);
 
-function genActorDetail() {
-  const S = 512;
+function* genActorDetail(S = 512, fine = false) {
   const px = new Uint8Array(S * S * 4);
   const hSkin = new Float32Array(S * S), hCloth = new Float32Array(S * S);
   for (let y = 0; y < S; y++) {
+    if ((y & 7) === 7) yield y / S;
     const v = y / S;
     for (let x = 0; x < S; x++) {
       const u = x / S;
@@ -196,16 +221,26 @@ function genActorDetail() {
       const o = i * 4;
       px[o] = rot * 255; px[o + 1] = weave * 255; px[o + 2] = grime * 255; px[o + 3] = splat * 255;
       // heights for the normal maps
-      const ridge = 1 - Math.abs(F_8_4_91(u, v) * 2 - 1);
-      const pores = smooth(0.05, 0.45, worley(u, v, 56, 97));
       const vein = smooth(0.9, 0.99, 1 - Math.abs(F_5_3_101(u, v) * 2 - 1));
-      hSkin[i] = ridge * ridge * 0.55 + pores * 0.22 + vein * 0.35 + m * 0.4;
+      if (fine) {
+        // cinematic skin: fine pores and micro-wrinkles with no orange-peel lumps
+        const ridge = 1 - Math.abs(F_16_3_23(u * 3, v * 3) * 2 - 1);
+        const pores = smooth(0.06, 0.4, worley(u, v, 150, 97));
+        const crease = smooth(0.75, 0.97, 1 - Math.abs(F_32_2_51(u + F_8_2_33(u, v) * 0.05, v) * 2 - 1));
+        hSkin[i] = ridge * ridge * 0.16 + pores * 0.16 + crease * 0.12 + vein * 0.24 + m * 0.1;
+      } else {
+        const ridge = 1 - Math.abs(F_8_4_91(u, v) * 2 - 1);
+        const pores = smooth(0.05, 0.45, worley(u, v, 56, 97));
+        hSkin[i] = ridge * ridge * 0.55 + pores * 0.22 + vein * 0.35 + m * 0.4;
+      }
       hCloth[i] = thread * 0.35 + fibre * 0.45 + slub * 0.6;
     }
   }
   const nrm = new Uint8Array(S * S * 4);
-  heightToNormal(hSkin, S, S, 3.2, nrm, 0, 4);
-  heightToNormal(hCloth, S, S, 3.0, nrm, 2, 4);
+  // (a texel of the 1024 map is half as wide, so the same height slope needs twice the strength)
+  const k = S / 512;
+  heightToNormal(hSkin, S, S, (fine ? 2.4 : 3.2) * k, nrm, 0, 4);
+  heightToNormal(hCloth, S, S, 3.0 * k, nrm, 2, 4);
   return { detail: px, normal: nrm, size: S };
 }
 
@@ -242,10 +277,10 @@ function worleyEdge(u, v, p, seed) {
   return Math.sqrt(b2) - Math.sqrt(b1);
 }
 
-function genActorDetail2() {
-  const S = 512;
+function* genActorDetail2(S = 512) {
   const px = new Uint8Array(S * S * 4);
   for (let y = 0; y < S; y++) {
+    if ((y & 7) === 7) yield y / S;
     const v = y / S;
     for (let x = 0; x < S; x++) {
       const u = x / S;
@@ -284,21 +319,41 @@ function dataTex(data, size, aniso = 8) {
  * Fresh textures over the cached actor pixel data (caller disposes).
  * @returns {{ detail: THREE.DataTexture, normal: THREE.DataTexture, detail2: THREE.DataTexture }}
  */
-export function actorTextures(aniso = 8) {
-  const d = cached('actor', genActorDetail);
-  const d2 = cached('actor2', genActorDetail2);
+export function actorTextures(aniso = 8, scale = 1) {
+  const hi = scale > 1;
+  const d = cached(hi ? 'actor1024' : 'actor', () => genActorDetail(hi ? 1024 : 512, hi));
+  const d2 = cached(hi ? 'actor2-1024' : 'actor2', () => genActorDetail2(hi ? 1024 : 512));
   return { detail: dataTex(d.detail, d.size, aniso), normal: dataTex(d.normal, d.size, aniso), detail2: dataTex(d2.detail, d2.size, aniso) };
+}
+
+/**
+ * The cinematic 1024² actor textures, generated in time slices (about 2.5 s of work spread
+ * over frames). Resolves with fresh textures (caller disposes) once the pixels exist; the
+ * page keeps drawing with the 512² set meanwhile.
+ */
+let actorHiJob = null;
+export async function actorTexturesAsync(aniso = 8) {
+  // one generation however many sub-systems (zombies, survivors, the viewmodel) ask for it
+  if (!actorHiJob) {
+    actorHiJob = (async () => {
+      if (!cache.has('actor1024')) cache.set('actor1024', await driveAsync(genActorDetail(1024, true)));
+      if (!cache.has('actor2-1024')) cache.set('actor2-1024', await driveAsync(genActorDetail2(1024)));
+    })();
+  }
+  await actorHiJob;
+  return actorTextures(aniso, 2);
 }
 
 // ---------------------------------------------------------------------------------------
 // guns
 
-function genGunAtlas() {
-  const S = 1024, T = 512;
+function* genGunAtlas(S = 1024) {
+  const T = S / 2, K = S / 1024;       // (K = 2 for the cinematic 2048² atlas)
   const px = new Uint8Array(S * S * 4);
   const h = new Float32Array(T * T);
-  const tile = (ox, oy, fn, strength) => {
+  const tile = function* (ox, oy, fn, strength) {
     for (let y = 0; y < T; y++) {
+      if ((y & 15) === 15) yield y / T;
       for (let x = 0; x < T; x++) {
         const r = fn(x / T, y / T);
         h[y * T + x] = r.h;
@@ -308,7 +363,7 @@ function genGunAtlas() {
       }
     }
     const tmp = new Uint8Array(T * T * 4);
-    heightToNormal(h, T, T, strength, tmp, 0, 4);
+    heightToNormal(h, T, T, strength * K, tmp, 0, 4);
     for (let y = 0; y < T; y++) {
       for (let x = 0; x < T; x++) {
         const o = ((oy + y) * S + ox + x) * 4, s = (y * T + x) * 4;
@@ -320,9 +375,12 @@ function genGunAtlas() {
   const scratch = new Float32Array(T * T);
   let seed = 1234567;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let k = 0; k < 220; k++) {
+  // (the cinematic atlas is scratched more: the long strokes plus a haze of hairlines)
+  const nScratch = Math.round(220 * (K > 1 ? 1.5 * K : 1)) + (K > 1 ? 900 : 0);
+  for (let k = 0; k < nScratch; k++) {
     let x = rnd() * T, y = rnd() * T;
-    const a = (rnd() - 0.5) * 0.6 + (rnd() < 0.3 ? Math.PI / 2 : 0), L = 8 + rnd() * 60, w = 0.4 + rnd() * 0.6;
+    const hair = k >= 220 * (K > 1 ? 1.5 * K : 1);
+    const a = (rnd() - 0.5) * (hair ? 3.2 : 0.6) + (rnd() < 0.3 ? Math.PI / 2 : 0), L = (hair ? 3 + rnd() * 18 : 8 + rnd() * 60) * K, w = hair ? 0.18 + rnd() * 0.3 : 0.4 + rnd() * 0.6;
     for (let s = 0; s < L; s++) {
       const ix = ((Math.round(x) % T) + T) % T, iy = ((Math.round(y) % T) + T) % T;
       scratch[iy * T + ix] = Math.max(scratch[iy * T + ix], w * (1 - Math.abs(s / L - 0.5) * 1.4));
@@ -330,7 +388,7 @@ function genGunAtlas() {
     }
   }
   // metal: brushed along u, fine scratches, faint mottling
-  tile(0, 0, (u, v) => {
+  yield* tile(0, 0, (u, v) => {
     const brush = V_8_3(u, v) * 0.3 + F_4_3_7(u, v) * 0.2 + (V_256_9(u, v) - 0.5) * 0.15;
     // long streaks along u: few cells across u, many along v
     const streak = V_2_13(u, v) * 0.2 + (V_4_15_256(u, v) - 0.5) * 0.9 + (V_8_16_512(u, v) - 0.5) * 0.4;
@@ -339,14 +397,14 @@ function genGunAtlas() {
     return { h: streak * 0.6 + brush * 0.1 - sc * 0.9, a: 0.86 + (blot - 0.5) * 0.18 + sc * 0.3, r: 0.36 + streak * 0.16 + (blot - 0.5) * 0.25 - sc * 0.22 };
   }, 1.6);
   // polymer: fine stipple
-  tile(T, 0, (u, v) => {
+  yield* tile(T, 0, (u, v) => {
     const st = worley(u, v, 96, 21);
     const f = F_16_3_23(u, v);
     const sc = scratch[Math.floor(u * T) * T + Math.floor(v * T)];
     return { h: smooth(0.0, 0.5, st) * 0.6 + f * 0.3 - sc * 0.3, a: 0.92 + (f - 0.5) * 0.12, r: 0.62 + (f - 0.5) * 0.2 - sc * 0.15 };
   }, 2.2);
   // wood: grain lines along u with rings and pores
-  tile(0, T, (u, v) => {
+  yield* tile(0, T, (u, v) => {
     const warp = F_3_4_31(u, v) * 2.2 + F_8_2_33(u, v) * 0.4;
     const g = v * 14 + warp;
     const ring = 0.5 + 0.5 * Math.sin(g * Math.PI * 2);
@@ -356,7 +414,7 @@ function genGunAtlas() {
     return { h: ringSharp * 0.5 + fibre * 0.2 - pores * 0.6, a: 0.62 + ringSharp * 0.34 - pores * 0.25 + (fibre - 0.5) * 0.12, r: 0.5 + (1 - ring) * 0.15 + pores * 0.3 };
   }, 1.4);
   // knurl / checkered grip
-  tile(T, T, (u, v) => {
+  yield* tile(T, T, (u, v) => {
     const a = u * 40 + v * 40, b = u * 40 - v * 40;
     const da = Math.abs(a - Math.round(a)), db = Math.abs(b - Math.round(b));
     const d = Math.min(da, db);
@@ -366,10 +424,20 @@ function genGunAtlas() {
   return { data: px, size: S };
 }
 
-/** Fresh gun atlas texture (caller disposes). */
-export function gunAtlasTexture(aniso = 8) {
-  const d = cached('gun', genGunAtlas);
+/** Fresh gun atlas texture (caller disposes); scale 2 = the cinematic 2048² atlas (built synchronously). */
+export function gunAtlasTexture(aniso = 8, scale = 1) {
+  const d = cached(scale > 1 ? 'gun2048' : 'gun', () => genGunAtlas(scale > 1 ? 2048 : 1024));
   return dataTex(d.data, d.size, aniso);
+}
+
+/** The 2048² atlas pixels { data, size }, generated in time slices (about 3 s of work over frames). */
+let gunAtlasJob = null;
+export async function gunAtlasPixelsAsync() {
+  if (!cache.has('gun2048')) {
+    if (!gunAtlasJob) gunAtlasJob = driveAsync(genGunAtlas(2048)).then((d) => { cache.set('gun2048', d); });
+    await gunAtlasJob;
+  }
+  return cache.get('gun2048');
 }
 
 // ---------------------------------------------------------------------------------------

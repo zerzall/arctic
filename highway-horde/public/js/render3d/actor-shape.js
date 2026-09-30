@@ -63,6 +63,61 @@ function colorOf(c) {
   return _c.set(c || '#ffffff');
 }
 
+/** Bone spec (number | [a, b, w]) → { a, b, w }. */
+function boneSpec(b) {
+  if (Array.isArray(b)) return { a: b[0], b: b[1], w: b[2] };
+  const a = b | 0;
+  return { a, b: a, w: 0 };
+}
+
+/** Blend two bone specs (weights over at most two bones survive). */
+function blendBones(b0, b1, t) {
+  if (typeof b0 === 'function' || typeof b1 === 'function') return t < 0.5 ? b0 : b1;
+  const p = boneSpec(b0), q = boneSpec(b1);
+  const W = new Map();
+  const add = (bone, w) => { if (w > 1e-6) W.set(bone, (W.get(bone) || 0) + w); };
+  add(p.a, (1 - t) * (1 - p.w)); add(p.b, (1 - t) * p.w);
+  add(q.a, t * (1 - q.w)); add(q.b, t * q.w);
+  const top = [...W.entries()].sort((x, y) => y[1] - x[1]);
+  if (top.length === 1) return top[0][0];
+  const w0 = top[0][1], w1 = top[1][1];
+  const a = top[0][0], b = top[1][0];
+  return a === b ? a : [a, b, w1 / (w0 + w1)];
+}
+
+/** Catmull-Rom scalar through p1..p2 at t. */
+function cr(p0, p1, p2, p3, t) {
+  const t2 = t * t, t3 = t2 * t;
+  return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
+
+/** Insert n - 1 spline-interpolated rings between every pair of authored rings. */
+export function subdivideRings(R, n) {
+  if (R.length < 2 || n < 2) return R;
+  const out = [];
+  const at = (i) => R[Math.max(0, Math.min(R.length - 1, i))];
+  for (let i = 0; i < R.length - 1; i++) {
+    const r0 = at(i - 1), r1 = at(i), r2 = at(i + 1), r3 = at(i + 2);
+    out.push(r1);
+    for (let k = 1; k < n; k++) {
+      const t = k / n;
+      const ring = { ...r1 };
+      ring.c = [0, 1, 2].map((d) => cr(r0.c[d], r1.c[d], r2.c[d], r3.c[d], t));
+      const sx = (r) => r.rx ?? r.r, sz = (r) => r.rz ?? r.r;
+      ring.rx = Math.max(0.0001, cr(sx(r0), sx(r1), sx(r2), sx(r3), t));
+      ring.rz = Math.max(0.0001, cr(sz(r0), sz(r1), sz(r2), sz(r3), t));
+      ring.r = undefined;
+      if (r1.bone !== undefined && r2.bone !== undefined) ring.bone = blendBones(r1.bone, r2.bone, t);
+      if (r1.paint !== undefined && r2.paint !== undefined) ring.paint = r1.paint + (r2.paint - r1.paint) * t;
+      if (r1.tw !== undefined || r2.tw !== undefined) ring.tw = (r1.tw || 0) + ((r2.tw || 0) - (r1.tw || 0)) * t;
+      if (r1.color && r2.color && r1.color !== r2.color) ring.color = t < 0.5 ? r1.color : r2.color;
+      out.push(ring);
+    }
+  }
+  out.push(R[R.length - 1]);
+  return out;
+}
+
 /**
  * Accumulates organic parts into one indexed, smooth-shaded geometry.
  */
@@ -91,7 +146,9 @@ export class ShapeBuilder {
     const key = new Map();
     const canon = new Int32Array(n);
     for (let i = 0; i < n; i++) {
-      const k = Math.round(pos[i * 3] * 400) + ',' + Math.round(pos[i * 3 + 1] * 400) + ',' + Math.round(pos[i * 3 + 2] * 400);
+      // three 17-bit quantized coordinates packed into one exact double (numeric Map keys
+      // are several times faster than strings: the cinematic meshes have 100k+ vertices)
+      const k = ((Math.round(pos[i * 3] * 400) + 65536) * 131072 + (Math.round(pos[i * 3 + 1] * 400) + 65536)) * 131072 + (Math.round(pos[i * 3 + 2] * 400) + 65536);
       let c = key.get(k);
       if (c === undefined) { c = i; key.set(k, i); }
       canon[i] = c;
@@ -165,6 +222,8 @@ export class ShapeBuilder {
     let R = rings.slice();
     // far levels of detail: keep every dec-th ring (and the last)
     if (o.dec > 1) R = R.filter((_, i) => i % o.dec === 0 || i === R.length - 1);
+    // the cinematic tier: spline-interpolated rings between the authored ones (smooth curvature)
+    if (o.subdiv > 1) R = subdivideRings(R, o.subdiv);
     const capRings = o.capRings ?? Math.max(2, Math.round(seg / 4));
     const capOf = (end) => {
       const i0 = end ? R.length - 1 : 0, i1 = end ? R.length - 2 : 1;

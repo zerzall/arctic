@@ -5,6 +5,7 @@ import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { mix, shade, rgba, fillCircle, fillEllipse, fillRoundRect } from './util.js';
 import { classSkin, drawWeapon } from './actors.js';
+import { fineHead, fineFace, fineBody, fineFinish } from './portrait-fine.js';
 
 const HAIR = { soldier: '#2a1d14', medic: '#6b4a2a', engineer: '#1a1210', scout: '#3a2616', demo: '#8a4a22', heavy: '#1a1210' };
 
@@ -26,6 +27,8 @@ export function renderClassPortrait(canvas, classId, colorIndex) {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, W, H);
   const s = Math.min(W, H) / 100;
+  // (a big canvas — a 4K display, a sharpened lobby — gets the fine-detail pass of portrait-fine.js)
+  const fine = Math.min(W, H) >= 140;
   g.setTransform(s, 0, 0, s, (W - 100 * s) / 2, (H - 100 * s) / 2);
 
   // backdrop: dark with a glow in the player's colour and faint scan lines
@@ -127,6 +130,7 @@ export function renderClassPortrait(canvas, classId, colorIndex) {
       fillRoundRect(g, 48, 85, 4, 6, 1, '#c8c8c8');
   }
 
+  if (fine) fineBody(g, cls, outfit, vest);
   // neck
   fillRoundRect(g, 43, 58, 14, 15, 4, shade(skin, -0.2));
   // ears
@@ -143,6 +147,7 @@ export function renderClassPortrait(canvas, classId, colorIndex) {
   g.bezierCurveTo(67, 54, 60, 63, 50, 64);
   g.bezierCurveTo(40, 63, 33, 54, 33, 40);
   g.fill();
+  if (fine) fineHead(g, cls, skin);
   // hair (under the hat)
   g.fillStyle = HAIR[cls];
   if (look.hat === 'none') {
@@ -187,6 +192,7 @@ export function renderClassPortrait(canvas, classId, colorIndex) {
     g.lineWidth = 1.1;
     g.beginPath(); g.moveTo(59, 36); g.lineTo(62, 50); g.stroke();
   }
+  if (fine) fineFace(g, cls, skin, look);
   // dirt & a bloody scratch: they have been at this a while
   g.fillStyle = 'rgba(40,25,15,0.25)';
   fillEllipse(g, 38, 52, 3, 2);
@@ -198,6 +204,7 @@ export function renderClassPortrait(canvas, classId, colorIndex) {
 
   // frame
   g.setTransform(1, 0, 0, 1, 0, 0);
+  if (fine) fineFinish(g, W, H, cls, pc);
   g.strokeStyle = rgba(pc, 0.7);
   g.lineWidth = Math.max(1, s * 1.2);
   g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);

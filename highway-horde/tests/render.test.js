@@ -316,6 +316,9 @@ test('class portraits for every class and colour', () => {
   noRenderErrors(() => {
     for (const cls of CLASS_IDS) for (let c = 0; c < PLAYER_COLORS.length; c++) renderClassPortrait(mockCanvas(96, 96), cls, c);
     renderClassPortrait(mockCanvas(40, 40), 'unknown-class', 42);
+    // a big canvas gets the fine-detail pass (skin, eyes, stubble, weave, grain)
+    for (const cls of CLASS_IDS) renderClassPortrait(mockCanvas(320, 320), cls, 1);
+    renderClassPortrait(mockCanvas(200, 260), 'unknown-class', 3);
   });
 });
 

@@ -11,7 +11,9 @@
 
 import * as THREE from 'three';
 
-const N = 256;
+// (256² layers; the cinematic tier regenerates them at 512² in time slices: N is the size being generated)
+let N = 256;
+const S256 = () => N / 256;
 
 /** Layer ids (the third component of the `aDet` vertex attribute). 0 = no detail. */
 export const DET = Object.freeze({
@@ -130,7 +132,7 @@ function recipes(F) {
         for (let x = 0; x < N; x++) {
           const xx = (x + off) % N, col = Math.floor(xx / bl), fx = xx - col * bl;
           const edge = Math.min(fy, rh - 1 - fy, fx * 0.9, (bl - 1 - fx) * 0.9);
-          const m = smooth(0.6, 2.2, edge);           // 0 = mortar joint, 1 = brick face
+          const m = smooth(0.6 * S256(), 2.2 * S256(), edge);           // 0 = mortar joint, 1 = brick face
           const i = y * N + x;
           const tone = hash2(row, col) - 0.5;
           h[i] = 0.25 + 0.75 * m + (F.f16[i] - 0.5) * 0.12 * m - F.w32.f1[i] * 0.06 * m;
@@ -211,7 +213,7 @@ function recipes(F) {
         const p = Math.floor(y / ph), fy = y - p * ph;
         for (let x = 0; x < N; x++) {
           const i = y * N + x;
-          const gap = smooth(0.5, 1.6, Math.min(fy, ph - 1 - fy));
+          const gap = smooth(0.5 * S256(), 1.6 * S256(), Math.min(fy, ph - 1 - fy));
           const grain = F.grain[idx(x + p * 37, y)];
           h[i] = 0.3 + gap * 0.7 * (0.85 + grain * 0.15);
           a[i] = 0.5 + (hash2(p, 3) - 0.5) * 0.2 + (grain - 0.5) * 0.26 - (1 - gap) * 0.2;
@@ -351,7 +353,7 @@ function recipes(F) {
         for (let x = 0; x < N; x++) {
           const i = y * N + x;
           const jx = Math.min(x, N - 1 - x), jy = Math.min(y, N - 1 - y);
-          const joint = smooth(2.2, 0.6, Math.min(jx, jy));
+          const joint = smooth(2.2 * S256(), 0.6 * S256(), Math.min(jx, jy));
           const broom = F.broom[i];
           // the broom grooves stay faint: under a low fire light stronger ones read as wood grain
           h[i] = 0.55 - joint * 0.45 + (broom - 0.5) * 0.035 + (F.f64[i] - 0.5) * 0.07;
@@ -459,7 +461,7 @@ function recipes(F) {
       for (let y = 0; y < N; y++) {
         for (let x = 0; x < N; x++) {
           const i = y * N + x;
-          const sx = x % pw, seam = smooth(5.5, 0.6, Math.min(sx, pw - sx));
+          const sx = x % pw, seam = smooth(5.5 * S256(), 0.6 * S256(), Math.min(sx, pw - sx));
           const rust = smooth(0.55, 0.78, F.f8[i] * 0.55 + F.streak[i] * 0.45 + seam * 0.1);
           h[i] = 0.4 + seam * 0.55 + (F.f16[i] - 0.5) * 0.06 - rust * 0.05;
           a[i] = 0.5 - rust * 0.2 + (F.streak[i] - 0.5) * 0.16 - seam * 0.05 + (F.f64[i] - 0.5) * 0.05;
@@ -476,7 +478,7 @@ function recipes(F) {
         for (let x = 0; x < N; x++) {
           const i = y * N + x;
           const jx = Math.min(x % s, s - 1 - (x % s)), jy = Math.min(y % s, s - 1 - (y % s));
-          const joint = smooth(2.6, 0.7, Math.min(jx, jy));
+          const joint = smooth(2.6 * S256(), 0.7 * S256(), Math.min(jx, jy));
           const tone = hash2(Math.floor(x / s), Math.floor(y / s)) - 0.5;
           h[i] = 0.62 - joint * 0.5 + (F.f64[i] - 0.5) * 0.07 + (F.f16[i] - 0.5) * 0.05;
           a[i] = 0.5 + tone * 0.18 + (F.f4[i] - 0.5) * 0.12 - joint * 0.3 - smooth(0.6, 0.8, F.f8[i]) * 0.1 + (F.f64[i] - 0.5) * 0.06;
@@ -593,23 +595,46 @@ function recipes(F) {
   };
 }
 
-let cpuData = null;
+const cpuCache = new Map();   // size → RGBA8 texel data
 
-/** Generate (once) the RGBA8 texel data of every layer. */
+/** Generate (once per size) the RGBA8 texel data of every layer (synchronously, at 256²). */
 function generate() {
-  if (cpuData) return cpuData;
+  let d = cpuCache.get(256);
+  if (d) return d;
+  const g = generateSteps(256);
+  let r = g.next();
+  while (!r.done) r = g.next();
+  return r.value;
+}
+
+/**
+ * The generation as a generator of n² layers: it yields after the noise fields and after
+ * each layer, so a caller can spread the work over frames (N is put back to 256 at each
+ * yield and set again on resume, so a synchronous 256² generation can run in between).
+ */
+function* generateSteps(n) {
+  const cached = cpuCache.get(n);
+  if (cached) return cached;
+  N = n;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const tF = typeof performance !== 'undefined' ? performance.now() : 0;
-  const F = {
-    f4: fbm(4, 4, 5, 11), f8: fbm(8, 8, 4, 23), f16: fbm(16, 16, 4, 37), f32: fbm(32, 32, 3, 41), f64: fbm(64, 64, 2, 53),
-    streak: fbm(24, 2, 4, 61),          // vertical streaks (stretched along v)
-    grain: fbm(4, 48, 3, 71),           // wood grain along u
-    barkN: fbm(10, 2, 4, 83),
-    broom: fbm(2, 128, 2, 97),          // brushed across v
-    blades: fbm(96, 12, 2, 109, 0.6),
-    w8: worley(8, 5, 1), w16: worley(16, 7), w32: worley(32, 9), w64: worley(64, 13),
-    scr: null,
-  };
+  const pause = function* () { N = 256; yield; N = n; };
+  const F = {};
+  F.f4 = fbm(4, 4, 5, 11); F.f8 = fbm(8, 8, 4, 23); F.f16 = fbm(16, 16, 4, 37);
+  if (n > 256) yield* pause();
+  F.f32 = fbm(32, 32, 3, 41); F.f64 = fbm(64, 64, 2, 53);
+  F.streak = fbm(24, 2, 4, 61);          // vertical streaks (stretched along v)
+  F.grain = fbm(4, 48, 3, 71);           // wood grain along u
+  if (n > 256) yield* pause();
+  F.barkN = fbm(10, 2, 4, 83);
+  F.broom = fbm(2, 128, 2, 97);          // brushed across v
+  F.blades = fbm(96, 12, 2, 109, 0.6);
+  if (n > 256) yield* pause();
+  F.w8 = worley(8, 5, 1); F.w16 = worley(16, 7); F.w32 = worley(32, 9);
+  if (n > 256) yield* pause();
+  F.w64 = worley(64, 13);
+  F.scr = null;
+  if (n > 256) yield* pause();
   // sparse fine scratches for painted metal
   F.scr = new Float32Array(N * N);
   const rs = rngOf(777);
@@ -630,6 +655,7 @@ function generate() {
     const fn = R[name];
     if (!fn) continue;
     const tl = typeof performance !== 'undefined' ? performance.now() : 0;
+    if (n > 256) yield* pause();
     h.fill(0.5); a.fill(0.5); r.fill(0.5);
     const k = fn(h, a, r);
     if (tl) generate.layerMs[name] = Math.round(performance.now() - tl);
@@ -645,7 +671,7 @@ function generate() {
       }
       continue;
     }
-    const kk = k * 2;
+    const kk = k * 2 * (N / 256);     // (a texel of the 512² layer is half as wide: the same slope needs twice the gain)
     for (let y = 0; y < N; y++) {
       const ym = ((y + N - 1) & (N - 1)) * N, yp = ((y + 1) & (N - 1)) * N, yc = y * N;
       for (let x = 0; x < N; x++) {
@@ -663,8 +689,9 @@ function generate() {
       }
     }
   }
-  cpuData = data;
-  if (t0) generate.ms = Math.round(performance.now() - t0);
+  cpuCache.set(n, data);
+  if (n === 256 && t0) generate.ms = Math.round(performance.now() - t0);
+  N = 256;
   return data;
 }
 
@@ -674,7 +701,40 @@ function generate() {
  * @returns {THREE.DataArrayTexture}
  */
 export function makeDetailArray(anisotropy = 1) {
-  const tex = new THREE.DataArrayTexture(generate(), N, N, LAYERS);
+  const tex = new THREE.DataArrayTexture(generate(), 256, 256, LAYERS);
+  tex.format = THREE.RGBAFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = anisotropy;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * The cinematic 512² detail array, generated in time slices (about 1.5 s of work, spread over
+ * frames). Resolves with a fresh GPU texture array once done; every layer keeps its tile size in
+ * world units (DET_TILE), so swapping it in just sharpens the surfaces.
+ */
+export async function makeDetailArrayAsync(anisotropy = 1) {
+  if (!cpuCache.has(512)) {
+    const g = generateSteps(512);
+    await new Promise((resolve, reject) => {
+      const step = () => {
+        try {
+          const t0 = performance.now();
+          let r;
+          do r = g.next(); while (!r.done && performance.now() - t0 < 8);
+          if (r.done) resolve(); else setTimeout(step, 0);
+        } catch (err) { reject(err); }
+      };
+      step();
+    });
+  }
+  const tex = new THREE.DataArrayTexture(cpuCache.get(512), 512, 512, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;

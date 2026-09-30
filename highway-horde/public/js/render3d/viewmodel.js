@@ -30,11 +30,11 @@ import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
 import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
-import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail } from './actor-guns.js';
+import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas } from './actor-guns.js';
 import { makeCanvas, damp, angleDiff, shadeHex, mixHex, capLuma } from './actor-kit.js';
 import { GLOVES, CLASS_SKIN } from './actor-sgear.js';
 import { ShapeBuilder, SLOT, MAT, lineRings, noise3 } from './actor-shape.js';
-import { actorTextures, viewmodelEnvTexture } from './actor-tex.js';
+import { actorTextures, actorTexturesAsync, viewmodelEnvTexture } from './actor-tex.js';
 import { acquireFx, releaseFx } from './fx-core.js';
 
 const HALF_PI = Math.PI / 2;
@@ -76,7 +76,9 @@ export function createViewmodel(ctx) {
   if (!fx.localMuzzle) fx.localMuzzle = { x: 0, h: 0, y: 0, now: -1, valid: false };
   if (!fx.localEject) fx.localEject = { seq: 0, kind: 'rifle', left: false, now: -1, x: 0, h: 0, y: 0, vx: 0, vh: 0, vy: 0 };
   let high = ctx.quality !== 'low';
-  setGunDetail(high);
+  // cinematic: finer guns and hands, the 2048² gun atlas and the 1024² skin/glove textures (both built in time slices)
+  let cin = ctx.quality === 'cinematic';
+  setGunDetail(high, cin);
 
   const scene = new THREE.Scene();
   scene.name = 'viewmodel';
@@ -97,10 +99,23 @@ export function createViewmodel(ctx) {
   scene.add(flashLight);
   const envTex = viewmodelEnvTexture();
   const atlas = gunMaterials().atlas;
-  const gunMat = createGunMaterial(atlas, { envMap: envTex, envIntensity: 1.1, mark: gunMaterials().mark });
+  let gunMat = createGunMaterial(atlas, { envMap: envTex, envIntensity: 1.1, mark: gunMaterials().mark, cinematic: cin });
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) });
   const actorTex = actorTextures(high ? 8 : 4);
   const handMat = makeHandMaterial(actorTex, envTex);
+  let upgrading = false, gone = false;
+  function upgradeQuality() {
+    if (!cin || upgrading) return;
+    upgrading = true;
+    upgradeGunAtlas().catch((err) => console.warn('viewmodel: gun atlas failed', err));
+    actorTexturesAsync(16).then((t) => {
+      if (gone) { t.detail.dispose(); t.normal.dispose(); t.detail2.dispose(); return; }
+      for (const k of ['detail', 'normal', 'detail2']) { actorTex[k].dispose(); actorTex[k] = t[k]; }
+      handMat.userData.uniforms.uDetail.value = t.detail;
+      handMat.userData.uniforms.uNrm.value = t.normal;
+    }).catch((err) => console.warn('viewmodel: hand textures failed', err));
+  }
+  upgradeQuality();
 
   // hierarchy: holder (sway/bob/recoil/switch) → gunRoot (+X → -Z) → gun + arms
   const holder = new THREE.Group();
@@ -222,7 +237,7 @@ export function createViewmodel(ctx) {
     model = gunModel(weaponId);
     gun = gunObject(weaponId, { material: gunMat, glowMaterial: glowMat });
     gunRoot.add(gun);
-    const arms = buildArms(model, look);
+    const arms = buildArms(model, look, false, cin);
     armGeos.push(arms.right, arms.left);
     rightArm = new THREE.Mesh(arms.right, handMat);
     rightArm.frustumCulled = false;
@@ -240,7 +255,7 @@ export function createViewmodel(ctx) {
     if (model.dual) {
       gunL = gunObject(weaponId, { material: gunMat, glowMaterial: glowMat, mirror: true });
       leftRoot.add(gunL);
-      const la = buildArms(model, look, true);
+      const la = buildArms(model, look, true, cin);
       armGeos.push(la.right);
       leftArmL = new THREE.Mesh(la.right, handMat);
       leftArmL.scale.z = -1;
@@ -879,8 +894,23 @@ export function createViewmodel(ctx) {
     addEvents,
     /** World position of the muzzle as seen on screen (x, y = sim plane, h = height). */
     muzzle: muzzleWorld,
-    setQuality(q) { high = q !== 'low'; setGunDetail(high); },
+    setQuality(q) {
+      high = q !== 'low';
+      const nc = q === 'cinematic';
+      setGunDetail(high, nc);
+      if (nc !== cin) {
+        // a new tier of guns and hands: a fresh material (the cinematic shader has the micro-detail layer) and a rebuild
+        cin = nc;
+        const old = gunMat;
+        gunMat = createGunMaterial(gunMaterials().atlas, { envMap: envTex, envIntensity: 1.1, mark: gunMaterials().mark, cinematic: cin });
+        clearGun();
+        old.dispose();
+        curWeapon = null;
+      }
+      upgradeQuality();
+    },
     dispose() {
+      gone = true;
       clearGun();
       gunMat.dispose();
       glowMat.dispose();
@@ -959,6 +989,7 @@ vec3 hPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
   }`);
   };
   mat.customProgramCacheKey = () => 'hh-vm-hand';
+  mat.userData.uniforms = uniforms;
   return mat;
 }
 
@@ -968,7 +999,10 @@ vec3 hPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
  * arm moves about when it leaves the gun).
  * @param {boolean} mirrorOnly build only the firing arm (the left gun of a dual pair)
  */
-function buildArms(model, look, mirrorOnly = false) {
+function buildArms(model, look, mirrorOnly = false, cin = false) {
+  // cinematic: 1.7x the sides on every tube and ellipsoid, the fingers and sleeves spline-subdivided
+  const Q = (n) => (cin ? Math.round(n * 1.7) : n);
+  const SD = cin ? 2 : 1;
   const cls = look.cls || 'soldier';
   const G = GLOVES[cls] || GLOVES.soldier;
   const skin = CLASS_SKIN[cls] || CLASS_SKIN.soldier;
@@ -983,25 +1017,25 @@ function buildArms(model, look, mirrorOnly = false) {
   const finger = (sb, pts, r, o = glove, bare = false) => {
     // a finger with knuckle bulges; a fingerless glove leaves the last joint bare
     const n = pts.length;
-    sb.tube(pts.map((p, i) => ({ c: p, r: r * (1 - i / n * 0.22) * (i === 1 || i === 2 ? 1.08 : 1) })), { ...o, seg: 7, cap0: 'round', cap1: 'round', capRings: 2 });
+    sb.tube(pts.map((p, i) => ({ c: p, r: r * (1 - i / n * 0.22) * (i === 1 || i === 2 ? 1.08 : 1) })), { ...o, seg: Q(7), subdiv: SD, cap0: 'round', cap1: 'round', capRings: 2 });
     if (bare) {
       const a = pts[n - 2], b = pts[n - 1];
-      sb.tube([{ c: a, r: r * 0.7 }, { c: b, r: r * 0.66 }], { slot: SLOT.FIXED, mat: MAT.SKIN, color: skin, seg: 7, cap1: 'round', capRings: 2 });
-      sb.ellipsoid([b[0] + 0.05, b[1] + 0.05, b[2]], [r * 0.55, r * 0.35, r * 0.55], { slot: SLOT.FIXED, mat: MAT.BONE, color: shadeHex(skin, 0.35), segW: 5, segH: 3 });
+      sb.tube([{ c: a, r: r * 0.7 }, { c: b, r: r * 0.66 }], { slot: SLOT.FIXED, mat: MAT.SKIN, color: skin, seg: Q(7), cap1: 'round', capRings: 2 });
+      sb.ellipsoid([b[0] + 0.05, b[1] + 0.05, b[2]], [r * 0.55, r * 0.35, r * 0.55], { slot: SLOT.FIXED, mat: MAT.BONE, color: shadeHex(skin, 0.35), segW: Q(5), segH: Q(3) });
     }
   };
   // ---- firing hand round the pistol grip (grip axis raked back) ----
   // back of the hand on the right of the grip, knuckles ahead, fingers wrapping the front
-  R.ellipsoid([-0.35, -1.45, 0.92], [1.85, 1.55, 0.62], { ...glove, segW: 16, segH: 10, rot: [0, 0, -0.28], noise: { amp: 0.05, freq: 1.4 } });
+  R.ellipsoid([-0.35, -1.45, 0.92], [1.85, 1.55, 0.62], { ...glove, segW: Q(16), segH: Q(10), rot: [0, 0, -0.28], noise: { amp: 0.05, freq: 1.4 } });
   // hard knuckle plate (padded gloves) or three small pads, and seam lines over the back of the hand
-  if (cls === 'soldier' || cls === 'demo' || cls === 'heavy') R.ellipsoid([1.0, -1.75, 1.34], [0.4, 1.25, 0.22], { ...padO, segW: 8, segH: 5 });
-  else for (let k = 0; k < 3; k++) R.ellipsoid([0.95 + k * 0.08, -1.0 - k * 0.72, 1.18], [0.42, 0.28, 0.3], { ...padO, segW: 8, segH: 5 });
-  for (const dz of [-0.5, 0.0, 0.5]) R.tube(lineRings([-1.55, -1.25 - dz * 0.6, 1.5 - Math.abs(dz) * 0.35], [0.5, -1.05 - dz * 0.6, 1.5 - Math.abs(dz) * 0.35], 0.055, 0.055, 4), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: seam, seg: 4 });
+  if (cls === 'soldier' || cls === 'demo' || cls === 'heavy') R.ellipsoid([1.0, -1.75, 1.34], [0.4, 1.25, 0.22], { ...padO, segW: Q(8), segH: Q(5) });
+  else for (let k = 0; k < 3; k++) R.ellipsoid([0.95 + k * 0.08, -1.0 - k * 0.72, 1.18], [0.42, 0.28, 0.3], { ...padO, segW: Q(8), segH: Q(5) });
+  for (const dz of [-0.5, 0.0, 0.5]) R.tube(lineRings([-1.55, -1.25 - dz * 0.6, 1.5 - Math.abs(dz) * 0.35], [0.5, -1.05 - dz * 0.6, 1.5 - Math.abs(dz) * 0.35], 0.055, 0.055, 4), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: seam, seg: Q(4) });
   for (let k = 0; k < 3; k++) {
     const y = -1.3 - k * 0.78, x0 = 1.05 - k * 0.22;
     finger(R, [[x0, y, 1.05], [x0 + 0.95, y - 0.05, 0.75], [x0 + 1.25, y - 0.1, 0.0], [x0 + 0.85, y - 0.12, -0.72], [x0 + 0.2, y - 0.14, -0.95]], 0.38, glove, G.fingerless);
     // stitched finger seams on the back of each finger
-    R.tube(lineRings([x0 + 0.15, y + 0.28, 1.1], [x0 + 0.95, y + 0.24, 0.85], 0.04, 0.04, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: seam, seg: 4 });
+    R.tube(lineRings([x0 + 0.15, y + 0.28, 1.1], [x0 + 0.95, y + 0.24, 0.85], 0.04, 0.04, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: seam, seg: Q(4) });
   }
   // index finger along the frame, curled onto the trigger
   finger(R, [[1.0, -0.45, 1.02], [1.8, -0.5, 0.82], [2.3, -0.7, 0.45], [1.75, -0.95, 0.12]], 0.36, glove, G.fingerless);
@@ -1009,19 +1043,19 @@ function buildArms(model, look, mirrorOnly = false) {
   finger(R, [[-1.1, -0.55, 0.55], [-0.2, 0.15, 0.1], [0.7, 0.4, -0.55], [1.5, 0.35, -0.8]], 0.4, glove, G.fingerless);
   // wrist strap (velcro + buckle), glove cuff and the sleeve running back and down out of the frame
   const wrist = [-2.1, -1.9, 0.9];
-  R.tube(lineRings(wrist, [-3.1, -2.7, 1.25], 1.18, 1.3, 3), { ...glove, color: G.cuff, mat: MAT.CLOTH, seg: 14 });
-  R.ellipsoid([-2.55, -2.25, 2.05], [0.5, 0.35, 0.55], { slot: SLOT.FIXED, mat: MAT.METAL, color: '#6a6a66', segW: 7, segH: 4, rot: [0, 0, -0.6] });
-  if (G.tape) for (let t = 0; t < 4; t++) R.tube(lineRings([-2.5 - t * 0.42, -2.3 - t * 0.4, 1.1 + t * 0.17], [-2.68 - t * 0.42, -2.48 - t * 0.4, 1.17 + t * 0.17], 1.36, 1.38, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: t % 2 ? '#d8d0b8' : '#e4dcc6', seg: 14 });
-  R.tube(lineRings([-3.0, -2.6, 1.2], [-4.1, -3.5, 1.6], 1.55, 1.62, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: cuff, seg: 16 });
+  R.tube(lineRings(wrist, [-3.1, -2.7, 1.25], 1.18, 1.3, 3), { ...glove, color: G.cuff, mat: MAT.CLOTH, seg: Q(14) });
+  R.ellipsoid([-2.55, -2.25, 2.05], [0.5, 0.35, 0.55], { slot: SLOT.FIXED, mat: MAT.METAL, color: '#6a6a66', segW: Q(7), segH: Q(4), rot: [0, 0, -0.6] });
+  if (G.tape) for (let t = 0; t < 4; t++) R.tube(lineRings([-2.5 - t * 0.42, -2.3 - t * 0.4, 1.1 + t * 0.17], [-2.68 - t * 0.42, -2.48 - t * 0.4, 1.17 + t * 0.17], 1.36, 1.38, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: t % 2 ? '#d8d0b8' : '#e4dcc6', seg: Q(14) });
+  R.tube(lineRings([-3.0, -2.6, 1.2], [-4.1, -3.5, 1.6], 1.55, 1.62, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: cuff, seg: Q(16) });
   // the sleeve: fabric folds (noise), camo for the soldier, hi-vis band for the engineer, cross for the medic
   const camo = cls === 'soldier' ? (x, y, z) => { const n = noise3(x * 0.55, y * 0.55, z * 0.55); return n < -0.15 ? shadeHex(outfit, -0.45) : n < 0.25 ? outfit : mixHex(outfit, '#8a7a4a', 0.55); } : null;
-  R.tube(lineRings([-4.0, -3.4, 1.55], [-9.5, -9.2, 4.6], 1.62, 2.25, 8), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: outfit, colorFn: camo, seg: 18, noise: { amp: 0.24, freq: 0.9 },
+  R.tube(lineRings([-4.0, -3.4, 1.55], [-9.5, -9.2, 4.6], 1.62, 2.25, 8), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: outfit, colorFn: camo, seg: Q(18), subdiv: SD, noise: { amp: 0.24, freq: 0.9 },
     profile: (th, t) => 1 + 0.07 * Math.exp(-t * 2.6) * Math.sin(t * 26 + Math.sin(th * 2) * 2) + 0.03 * Math.sin(th * 5 + t * 6) });
-  R.tube(lineRings([-5.2, -4.6, 2.05], [-6.0, -5.4, 2.45], 1.82, 1.9, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: band, seg: 16 });
-  if (cls === 'engineer') R.tube(lineRings([-6.6, -6.0, 2.6], [-7.1, -6.5, 2.85], 2.0, 2.05, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e8e070', seg: 16 });
-  if (cls === 'scout') for (let t = 0; t < 2; t++) R.tube(lineRings([-6.3 - t * 0.5, -5.7 - t * 0.5, 2.4 + t * 0.15], [-6.55 - t * 0.5, -5.95 - t * 0.5, 2.5 + t * 0.15], 1.98, 2.0, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: shadeHex(outfit, -0.3), seg: 16 });
+  R.tube(lineRings([-5.2, -4.6, 2.05], [-6.0, -5.4, 2.45], 1.82, 1.9, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: band, seg: Q(16) });
+  if (cls === 'engineer') R.tube(lineRings([-6.6, -6.0, 2.6], [-7.1, -6.5, 2.85], 2.0, 2.05, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e8e070', seg: Q(16) });
+  if (cls === 'scout') for (let t = 0; t < 2; t++) R.tube(lineRings([-6.3 - t * 0.5, -5.7 - t * 0.5, 2.4 + t * 0.15], [-6.55 - t * 0.5, -5.95 - t * 0.5, 2.5 + t * 0.15], 1.98, 2.0, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: shadeHex(outfit, -0.3), seg: Q(16) });
   if (cls === 'medic') {
-    R.ellipsoid([-6.9, -6.15, 3.9], [0.28, 0.9, 0.9], { slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828', segW: 5, segH: 4, rot: [0, 0, 0.7] });
+    R.ellipsoid([-6.9, -6.15, 3.9], [0.28, 0.9, 0.9], { slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828', segW: Q(5), segH: Q(4), rot: [0, 0, 0.7] });
   }
   const right = R.build();
   if (mirrorOnly) return { right, left: null, leftHand: [0, 0, 0] };
@@ -1035,7 +1069,7 @@ function buildArms(model, look, mirrorOnly = false) {
   if (!model.twoHanded) {
     // cupping the firing hand from the left: fingers over the right fingers at the front
     hand = [0.2, -2.3, -1.15];
-    Lb.ellipsoid([-0.1, -2.4, -1.25], [1.8, 1.5, 0.6], { ...glove, segW: 14, segH: 9, rot: [0, 0, -0.3] });
+    Lb.ellipsoid([-0.1, -2.4, -1.25], [1.8, 1.5, 0.6], { ...glove, segW: Q(14), segH: Q(9), rot: [0, 0, -0.3] });
     for (let k = 0; k < 4; k++) {
       const y = -1.6 - k * 0.66;
       finger(Lb, [[1.0, y, -1.3], [1.95 - k * 0.15, y - 0.1, -0.9], [2.35 - k * 0.2, y - 0.14, -0.1], [2.1 - k * 0.2, y - 0.16, 0.55]], 0.34, glove, G.fingerless);
@@ -1048,25 +1082,25 @@ function buildArms(model, look, mirrorOnly = false) {
     const top = f[1] > 3;
     const dy = top ? -1 : 1;
     const y0 = f[1] + (top ? -0.2 : 1.9);
-    Lb.ellipsoid([f[0] - 0.5, y0 - dy * 1.3, f[2] - 0.95], [1.7, 1.45, 0.6], { ...glove, segW: 14, segH: 9, rot: [0, 0, 0.2] });
+    Lb.ellipsoid([f[0] - 0.5, y0 - dy * 1.3, f[2] - 0.95], [1.7, 1.45, 0.6], { ...glove, segW: Q(14), segH: Q(9), rot: [0, 0, 0.2] });
     for (let k = 0; k < 4; k++) {
       const y = y0 - dy * (0.55 + k * 0.72);
       finger(Lb, [[f[0] + 0.6, y, -1.1], [f[0] + 1.4, y, -0.6], [f[0] + 1.35, y, 0.35], [f[0] + 0.6, y, 0.9]], 0.36, glove, G.fingerless);
     }
     finger(Lb, [[f[0] - 1.2, y0 - dy * 0.4, -0.8], [f[0] - 0.3, y0 + dy * 0.3, 0.1], [f[0] + 0.6, y0 + dy * 0.35, 0.7]], 0.4, glove, G.fingerless);
-    Lb.ellipsoid([f[0] - 0.9, y0 - dy * 1.3, f[2] - 1.35], [0.4, 1.1, 0.2], { ...padO, segW: 7, segH: 4 });
+    Lb.ellipsoid([f[0] - 0.9, y0 - dy * 1.3, f[2] - 1.35], [0.4, 1.1, 0.2], { ...padO, segW: Q(7), segH: Q(4) });
     elbow = [f[0] - 10, f[1] - 9, -6.5];
   } else {
     // palm under the handguard, fingers curling up its right side, thumb along the left
     hand = [f[0], f[1] - 0.6, f[2] - 0.2];
     const y = f[1] - 1.0;
-    Lb.ellipsoid([f[0] - 0.4, y - 0.45, -0.7], [2.0, 0.65, 1.45], { ...glove, segW: 14, segH: 9, rot: [0.5, 0, 0] });
+    Lb.ellipsoid([f[0] - 0.4, y - 0.45, -0.7], [2.0, 0.65, 1.45], { ...glove, segW: Q(14), segH: Q(9), rot: [0.5, 0, 0] });
     for (let k = 0; k < 4; k++) {
       const x = f[0] - 1.05 + k * 0.72;
       finger(Lb, [[x, y - 0.5, 0.5], [x + 0.1, y - 0.2, 1.3], [x + 0.2, y + 0.75, 1.55], [x + 0.25, y + 1.6, 1.25]], 0.35, glove, G.fingerless);
     }
     finger(Lb, [[f[0] - 1.6, y - 0.1, -1.4], [f[0] - 0.4, y + 0.6, -1.55], [f[0] + 0.9, y + 1.0, -1.35]], 0.4, glove, G.fingerless);
-    Lb.ellipsoid([f[0] - 0.2, y - 0.95, -0.4], [1.2, 0.2, 0.9], { ...padO, segW: 8, segH: 4 });
+    Lb.ellipsoid([f[0] - 0.2, y - 0.95, -0.4], [1.2, 0.2, 0.9], { ...padO, segW: Q(8), segH: Q(4) });
     elbow = [f[0] - 11, f[1] - 10, -7];
   }
   // forearm: wrist strap, glove cuff, sleeve to the elbow (off-screen), wrist watch, tape
@@ -1074,17 +1108,17 @@ function buildArms(model, look, mirrorOnly = false) {
   const d = [elbow[0] - wr[0], elbow[1] - wr[1], elbow[2] - wr[2]];
   const L = Math.hypot(...d);
   const at = (t) => [wr[0] + d[0] * t / L, wr[1] + d[1] * t / L, wr[2] + d[2] * t / L];
-  Lb.tube(lineRings(at(-0.2), at(1.2), 1.15, 1.28, 3), { ...glove, color: G.cuff, mat: MAT.CLOTH, seg: 14 });
-  if (G.tape) for (let t = 0; t < 4; t++) Lb.tube(lineRings(at(0.3 + t * 0.55), at(0.62 + t * 0.55), 1.32 + t * 0.02, 1.34 + t * 0.02, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: t % 2 ? '#d8d0b8' : '#e4dcc6', seg: 14 });
-  Lb.tube(lineRings(at(1.1), at(2.4), 1.52, 1.6, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: cuff, seg: 16 });
-  Lb.tube(lineRings(at(2.3), at(L), 1.6, 2.3, 8), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: outfit, colorFn: camo, seg: 18, noise: { amp: 0.24, freq: 0.9 },
+  Lb.tube(lineRings(at(-0.2), at(1.2), 1.15, 1.28, 3), { ...glove, color: G.cuff, mat: MAT.CLOTH, seg: Q(14) });
+  if (G.tape) for (let t = 0; t < 4; t++) Lb.tube(lineRings(at(0.3 + t * 0.55), at(0.62 + t * 0.55), 1.32 + t * 0.02, 1.34 + t * 0.02, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: t % 2 ? '#d8d0b8' : '#e4dcc6', seg: Q(14) });
+  Lb.tube(lineRings(at(1.1), at(2.4), 1.52, 1.6, 3), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: cuff, seg: Q(16) });
+  Lb.tube(lineRings(at(2.3), at(L), 1.6, 2.3, 8), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: outfit, colorFn: camo, seg: Q(18), subdiv: SD, noise: { amp: 0.24, freq: 0.9 },
     profile: (th, t) => 1 + 0.07 * Math.exp(-t * 2.6) * Math.sin(t * 26 + Math.sin(th * 2) * 2) + 0.03 * Math.sin(th * 5 + t * 6) });
-  Lb.tube(lineRings(at(3.9), at(4.6), 1.88, 1.92, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: band, seg: 16 });
+  Lb.tube(lineRings(at(3.9), at(4.6), 1.88, 1.92, 2), { slot: SLOT.FIXED, mat: MAT.CLOTH, color: band, seg: Q(16) });
   // a wrist watch on the support arm: strap, case, glowing dial
   const w0 = at(0.9);
-  Lb.tube(lineRings(at(0.55), at(1.35), 1.4, 1.42, 2), { slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#2a1e16', seg: 14 });
-  Lb.ellipsoid([w0[0], w0[1] + 1.35, w0[2] - 0.15], [0.9, 0.22, 0.9], { slot: SLOT.FIXED, mat: MAT.METAL, color: '#b0b0aa', segW: 10, segH: 4, rot: [0, 0, 0] });
-  Lb.ellipsoid([w0[0], w0[1] + 1.52, w0[2] - 0.15], [0.62, 0.06, 0.62], { slot: SLOT.FIXED, mat: MAT.EYE, color: '#0a1218', segW: 10, segH: 3 });
+  Lb.tube(lineRings(at(0.55), at(1.35), 1.4, 1.42, 2), { slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#2a1e16', seg: Q(14) });
+  Lb.ellipsoid([w0[0], w0[1] + 1.35, w0[2] - 0.15], [0.9, 0.22, 0.9], { slot: SLOT.FIXED, mat: MAT.METAL, color: '#b0b0aa', segW: Q(10), segH: Q(4), rot: [0, 0, 0] });
+  Lb.ellipsoid([w0[0], w0[1] + 1.52, w0[2] - 0.15], [0.62, 0.06, 0.62], { slot: SLOT.FIXED, mat: MAT.EYE, color: '#0a1218', segW: Q(10), segH: Q(3) });
   return { right, left: Lb.build(), leftHand: hand };
 }
 

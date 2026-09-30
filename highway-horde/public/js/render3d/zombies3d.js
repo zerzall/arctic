@@ -23,7 +23,7 @@ import { RigPool, Pose, B, T_FX, T_FX2, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_V
 import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
 import { zombieLook, packLook } from './actor-zlook.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
-import { actorTextures } from './actor-tex.js';
+import { actorTextures, actorTexturesAsync } from './actor-tex.js';
 import { tierAtLeast, tierRow } from './tier.js';
 import { acquireFx, releaseFx, F_ADD, F_FIRE, F_BOUNCE, F_FLICKER, FR } from './fx-core.js';
 
@@ -46,8 +46,9 @@ export const LOD_DIST = { cinematic: [520, 1350], ultra: [340, 950], high: [270,
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();
 /** Quality tier of the models: ultra 0 (everything), high 1, low 2 (no accessories). */
-const tierOf = (q) => (tierAtLeast(q, 'ultra') ? 0 : q === 'low' ? 2 : 1);
+const tierOf = (q) => (q === 'cinematic' ? -1 : tierAtLeast(q, 'ultra') ? 0 : q === 'low' ? 2 : 1);
 function modelArrays(type, L, tier) {
+  if (tier < 0 && L > 0) tier = 0;           // (the cinematic tier only replaces the near model)
   const k = type + L + ':' + tier;
   let a = modelCache.get(k);
   if (!a) { a = buildZombie(type, L, tier).arrays(); modelCache.set(k, a); }
@@ -80,13 +81,25 @@ export function createZombies3D(ctx) {
 
   const tex = actorTextures(tierAtLeast(quality, 'ultra') ? 16 : 8);
   const pool = new RigPool({ capacity: CAPACITY + CORPSE_CAP, textures: tex });
+  // cinematic: the 1024² skin / cloth / grime maps are generated in time slices and swapped in
+  let hiTex = 0, gone = false;
+  function upgradeTextures() {
+    if (hiTex || quality !== 'cinematic') return;
+    hiTex = 1;
+    actorTexturesAsync(16).then((t) => {
+      if (gone) { t.detail.dispose(); t.normal.dispose(); t.detail2.dispose(); return; }
+      for (const k of ['detail', 'normal', 'detail2']) { tex[k].dispose(); tex[k] = t[k]; }
+      pool.shared.uDetail.value = t.detail; pool.shared.uNrm.value = t.normal; pool.shared.uDetail2.value = t.detail2;
+      stats.hiTex = 2;
+    }).catch((err) => { hiTex = 0; console.warn('zombies3d: hi-res textures failed', err); });
+  }
   const types = {};
   for (const t of ZOMBIE_IDS) {
     const sk = zombieSkeleton(t);
     const rim = t === 'boss' ? '#d8a0ff' : t === 'spitter' ? '#b8ff8a' : t === 'screamer' ? '#c8d8ff' : '#9fc0ff';
     const lods = [];
     for (let L = 0; L < 3; L++) {
-      const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier)), sk, {
+      const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier < 0 ? 0 : tier)), sk, {
         rim, rimStrength: 0.3, castShadow: high && L === 0, receiveShadow: high && L === 0, name: 'z-' + t + L,
       });
       root.add(m.mesh);
@@ -95,6 +108,29 @@ export function createZombies3D(ctx) {
     types[t] = { lods, P: sk.P, scale: SCALE[t] || 1, def: ZOMBIES[t] };
   }
   pool.warm();
+  pool.shared.uCin.value = quality === 'cinematic' ? 1 : 0;
+  upgradeTextures();
+  // cinematic: the hero models (LOD 0, ~40k triangles a type) are built one type at a time in the
+  // first seconds and swapped in as they finish; the ultra ones stand in meanwhile
+  let heroTimer = 0;
+  function scheduleHeroes() {
+    clearTimeout(heroTimer);
+    const todo = ZOMBIE_IDS.slice();
+    const next = () => {
+      if (gone || tier >= 0) return;
+      const t = todo.shift();
+      if (!t) return;
+      const m = types[t].lods[0];
+      const g = instancedGeometry(modelArrays(t, 0, -1));
+      m.mesh.geometry.dispose();
+      m.mesh.geometry = g;
+      m.geometry = g;
+      stats.heroes = (stats.heroes || 0) + 1;
+      heroTimer = setTimeout(next, 120);
+    };
+    heroTimer = setTimeout(next, 900);
+  }
+  if (tier < 0) scheduleHeroes();
 
   const eliteEye = [1.0, 0.03, 0.01];
   const eliteEyeCol = new THREE.Color(1.0, 0.23, 0.1);
@@ -134,7 +170,7 @@ export function createZombies3D(ctx) {
   let gn = 0;
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 
-  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0] };
+  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0], hiTex: 0, heroes: 0 };
 
   function getState(z) {
     let s = state.get(z.id);
@@ -969,23 +1005,28 @@ export function createZombies3D(ctx) {
     setQuality(q) {
       quality = q;
       high = q !== 'low';
+      pool.shared.uCin.value = q === 'cinematic' ? 1 : 0;
+      upgradeTextures();
       if (tierOf(q) !== tier) {
         // a different tier of models: swap every mesh's geometry (the old ones are freed)
         tier = tierOf(q);
         for (const t of ZOMBIE_IDS) {
           types[t].lods.forEach((m, L) => {
-            const g = instancedGeometry(modelArrays(t, L, tier));
+            const g = instancedGeometry(modelArrays(t, L, tier < 0 ? 0 : tier));
             m.mesh.geometry.dispose();
             m.mesh.geometry = g;
             m.geometry = g;
           });
         }
+        if (tier < 0) scheduleHeroes();
       }
       for (const t of ZOMBIE_IDS) {
         types[t].lods.forEach((m, L) => { m.mesh.castShadow = high && L === 0; m.mesh.receiveShadow = high && L === 0; });
       }
     },
     dispose() {
+      gone = true;
+      clearTimeout(heroTimer);
       pool.dispose();
       tex.detail.dispose();
       tex.normal.dispose();

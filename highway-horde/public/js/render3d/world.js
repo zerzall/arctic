@@ -12,10 +12,10 @@
 // ripples, neon, beacons, flags, grass, rain) animate on the GPU or from update().
 
 import * as THREE from 'three';
-import { createGeoBuilder, T, shadeHex } from './world-geo.js';
+import { createGeoBuilder, T, shadeHex, setSegBoost } from './world-geo.js';
 import { createGround, WATER } from './ground.js';
 import { atlasUV, makeAtlasTexture, makeChainLinkTexture, makeWaterNormal, makeLeafTexture } from './world-tex.js';
-import { makeDetailArray, DET } from './world-surf.js';
+import { makeDetailArray, makeDetailArrayAsync, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
@@ -31,6 +31,7 @@ import { createDress } from './world-dress.js';
 import { normTier, tierAtLeast, anisoFor } from './tier.js';
 import { createHideout } from './world-hideout.js';
 import { terrainHeight } from '../shared/terrain.js';
+import { baseTier } from './tier.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
   buildRidgeWorld, makeSkyline, ridgeHeight,
@@ -145,7 +146,10 @@ function fireBaseHeight0(map, x, y) {
  */
 export function createWorld(ctx, deps) {
   const { scene, map } = ctx;
-  let tier = normTier(ctx.quality);
+  // (cinematic = ultra's materials + the extra-detail geometry of the V2 asset pass)
+  const cin = tierAtLeast(ctx.quality, 'cinematic');
+  let full = normTier(ctx.quality);
+  let tier = baseTier(full);   // (the tier of the materials and tables that predate cinematic: cinematic reads as ultra)
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
@@ -159,7 +163,7 @@ export function createWorld(ctx, deps) {
   // and gets them the first time the player picks a higher tier
   let detailTex = tier === 'low' ? null : track(makeDetailArray(aniso));
   const tDetail = performance.now() - tA;
-  const ground = createGround({ scene, map, quality: ctx.quality, renderer: deps.renderer, detail: detailTex });
+  const ground = createGround({ scene, map, quality: full, renderer: deps.renderer, detail: detailTex });
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
   const day = amb.time === 'day';
@@ -172,8 +176,21 @@ export function createWorld(ctx, deps) {
   const atlasTex = track(makeAtlasTexture());
   atlasTex.anisotropy = aniso;
   const chainTex = track(makeChainLinkTexture());
-  const leafTex = track(makeLeafTexture(Math.min(4, maxAniso)));
+  const leafTex = track(makeLeafTexture(Math.min(cin ? 8 : 4, maxAniso), cin ? 2 : 1));
   const mats = createWorldMaterials({ detail: detailTex, atlas: atlasTex, chain: chainTex, leaves: leafTex });
+  // cinematic: the 512² surface layers are generated in time slices and swapped in when ready
+  let gone = false, detail512 = 0;
+  if (cin) {
+    makeDetailArrayAsync(Math.min(16, maxAniso)).then((t) => {
+      if (gone) { t.dispose(); return; }
+      const old = detailTex;
+      detailTex = track(t);
+      mats.shared.uDetail.value = t;
+      ground.uniforms.uDetail.value = t;
+      if (old) old.dispose();
+      detail512 = 1;
+    }).catch((err) => console.warn('world: 512 surface layers failed', err));
+  }
   if (day) {
     // by day the lit windows, street lamps, tubes and signs are just dim glass and paint
     // (the unlit emissive pieces are multiplied down; beacons and vehicle lamps stay a bit)
@@ -195,7 +212,7 @@ export function createWorld(ctx, deps) {
   const hasTerrain = !!ctx.terrain && !ctx.terrain.flat;
   // (a hideout adds its own buckets: atlas pictures and neon words, world-hideout.js)
   const bucketDefs = {
-    std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
+    std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, vglass: { uv: true, ao: false }, decal: { uv: true },
     glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
     fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
     // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
@@ -209,7 +226,8 @@ export function createWorld(ctx, deps) {
   };
   const B = newBuilder();
   // geometry detail of the buildings follows the tier the world is built for
-  setDetailLevel(tier === 'low' ? 0 : tierAtLeast(tier, 'ultra') ? 2 : 1);
+  setDetailLevel(cin ? 3 : tier === 'low' ? 0 : tierAtLeast(tier, 'ultra') ? 2 : 1);
+  setSegBoost(cin ? 1.9 : 1);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -307,7 +325,7 @@ export function createWorld(ctx, deps) {
   const cullDistFog = Math.sqrt(-Math.log(0.002)) / Math.max(1e-5, amb.fogDensity);
   let dress = null;
   try {
-    dress = createDress(ctx, { root, mats, fx, halos, tier, aniso, day, gy, hasTerrain, cullDist: cullDistFog });
+    dress = createDress(ctx, { root, mats, fx, halos, tier: full, aniso, day, gy, hasTerrain, cullDist: cullDistFog });
   } catch (err) {
     console.warn('world: set dressing failed', err);
   }
@@ -465,14 +483,14 @@ export function createWorld(ctx, deps) {
   if (flagMesh) { root.add(flagMesh.mesh); disposables.push(flagMesh.mesh.geometry, flagMesh.mesh.material); }
 
   // ---- grass field (camera-following, instanced; none on 'low') ----
-  const grass = createGrassField(scene, ground, tier);
+  const grass = createGrassField(scene, ground, full);
 
   // ---- light rain ('ultra' and up): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
   const setRain = () => {
     const on = tierAtLeast(tier, 'ultra') && !day;   // (a sunny day is dry)
     if (on && !rain) {
-      rain = makeRain(fx, tier === 'cinematic' ? 9000 : 5000);
+      rain = makeRain(fx, full === 'cinematic' ? 9000 : 5000);
       rain.setRoofs(deckRoofs(map));
       root.add(rain.mesh);
       disposables.push(rain.mesh.geometry, rain.mesh.material);
@@ -634,8 +652,10 @@ export function createWorld(ctx, deps) {
     update,
     /** Swap every static mesh to the tier's materials; the grass field follows the tier. */
     setQuality(q) {
-      const nt = normTier(q);
-      if (nt === tier) return;
+      const nf = normTier(q);
+      const nt = baseTier(nf);
+      if (nf === full) return;
+      full = nf;
       tier = nt;
       if (tier !== 'low' && !detailTex) {
         detailTex = track(makeDetailArray(anisoFor(tier === 'high' ? 'high' : 'ultra', maxAniso)));
@@ -643,10 +663,10 @@ export function createWorld(ctx, deps) {
         ground.uniforms.uDetail.value = detailTex;
       }
       for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
-      grass.setQuality(tier);
-      ground.setQuality(tier);
-      if (dress) dress.setQuality(tier);
-      if (hideout) hideout.setQuality(tier);
+      grass.setQuality(full);
+      ground.setQuality(full);
+      if (dress) dress.setQuality(full);
+      if (hideout) hideout.setQuality(full);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();
@@ -654,7 +674,7 @@ export function createWorld(ctx, deps) {
     get stats() {
       return {
         staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
-        grass: grass.instances,
+        grass: grass.instances, detail512,
         dress: dress ? dress.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
@@ -664,6 +684,8 @@ export function createWorld(ctx, deps) {
     },
     dispose() {
       if (hideout) hideout.dispose();
+      gone = true;
+      setSegBoost(1);
       if (dress) dress.dispose();
       ground.dispose();
       grass.dispose();
