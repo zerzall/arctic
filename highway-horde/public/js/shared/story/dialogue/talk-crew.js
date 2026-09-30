@@ -213,7 +213,7 @@ export const TALK_CREW = {
       greet: ["The board's in the office. I've labelled the map. Don't move the pins. THE PINS."],
       topics: [
         t('ozzy_rh1_warden', "Tell me about the Warden.", [
-          ['ozzy', "Nine nights. Same script, same cough at two-fourteen, same pause. A recording wouldn't cough. A recording wouldn't apologise. She said sorry once. To nobody!"],
+          ['ozzy', "Nine nights. Same script, same pause, same cough after 'month.' A recording wouldn't cough. A recording wouldn't apologise. She said sorry once. To nobody!"],
         ]),
         t('ozzy_rh1_snacks', "You eat a lot.", [
           ['ozzy', "I've been living on snack cakes since Day nine. I think my blood is frosting."],
@@ -256,7 +256,7 @@ export const TALK_CREW = {
           ['ozzy', "A tower, no power, and a voice that could strip paint. She said 'copy' at me and I nearly died."],
         ]),
         t('ozzy_dp1_pump', "The ferry needs a pump.", [
-          ['ozzy', "I asked the Warden where she is. She said the tower. Then the harbor office. Then 'the harbor office is upstairs.' I got the feeling she's alone."],
+          ['ozzy', "The Warden asked me for a pump. A PUMP. In the middle of the end of the world. She said thank you four times. Nobody says thank you four times unless nobody's said it to them in a while."],
         ], { when: { flags: ['marine_pump'] } }),
         t('ozzy_dp1_priya', "Priya keeps correcting your map.", [
           ['ozzy', "In pencil. She apologises in pencil too."],

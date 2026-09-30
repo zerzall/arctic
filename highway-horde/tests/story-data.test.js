@@ -537,6 +537,7 @@ describe('lore notes', () => {
     }
     const noteSteps = MISSIONS.flatMap((m) => (m.bonus || []).filter((s) => s.item === 'note'));
     assert.equal(noteSteps.length, 20, 'no stray note steps');
+    for (const m of MISSIONS) assert.deepEqual(m.notes, (m.bonus || []).filter((s) => s.item === 'note').map((s) => s.note), `${m.id}: notes[] lists its note ids`);
     for (const m of MISSIONS) assert.ok((m.bonus || []).filter((s) => s.item === 'note').length <= 2, `${m.id}: at most two notes`);
   });
 

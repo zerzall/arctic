@@ -46,8 +46,8 @@ export const TALK_MORE = {
         t('priya_fs_stay', "About staying...", [
           ['priya', "I never stayed anywhere because if I stay, I have to be there when it ends. I've been thinking about that. I'd rather be there when it ends. With you lot."],
         ]),
-        t('priya_fs_thirteen', "Thirteen places.", [
-          ['priya', "Unlucky number. I've decided not to believe in luck. Luck is a variable I can't measure."],
+        t('priya_fs_seventeen', "Seventeen places.", [
+          ['priya', "Seventeen. Prime. It doesn't divide into anything smaller. I trust it. I've decided not to trust anything else."],
         ]),
         t('priya_fs_june', "June asked to draw on the map.", [
           ['priya', "I let her draw a small boat in the corner. A very small boat. It's the best thing on the page."],

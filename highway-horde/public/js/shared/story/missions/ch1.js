@@ -66,7 +66,7 @@ export const CH1 = [
       xp: 200, scrap: 40, upgradePoints: 0, flags: { met_mara: true, bus_saved: true }, unlockNpc: 'mara',
     },
     debrief: [
-      L('mara', 'Sun is up. Everybody with a pulse, raise a hand.'),
+      L('mara', 'Everybody with a pulse, raise a hand.'),
       L('june', 'Mister, your gun is smoking.'),
       L('mara', 'That\'s a compliment, June. Sort of.'),
       L('mara', 'Fourteen children were alive at midnight and they\'re alive now. I\'m not thanking you properly, because if I start I\'ll cry, and I can\'t spare the water.'),
@@ -129,7 +129,11 @@ export const CH1 = [
       },
       {
         id: 'tow', type: 'escort', npc: 'deke', route: ['gasStation', 'crossroadsW', 'bus'], text: 'Cover Deke and the tow truck back to the bus', pressure: P(2, 0.5, ['runner']),
-        onStart: [say('deke', 'Nice and slow. She only has two speeds and one of them is off.')],
+        onStart: [
+          say('deke', 'Nice and slow. She only has two speeds and one of them is off.'),
+          radio('mara', 'Deke, one of them is running. Why is one of them RUNNING?'),
+          say('deke', 'Don\'t panic. Panic uses fuel.'),
+        ],
         onDone: [radio('mara', 'I can see the truck! I can see the truck, June, sit down!')],
       },
       {
@@ -146,7 +150,7 @@ export const CH1 = [
       xp: 240, scrap: 60, weapon: 'shotgun', upgradePoints: 0, flags: { met_deke: true, tow_truck_running: true }, unlockNpc: 'deke',
     },
     debrief: [
-      L('deke', 'Nobody has given me a job in forty days. I forgot how much I missed being yelled at.'),
+      L('deke', 'Nobody has given me a job in thirty days. I forgot how much I missed being yelled at.'),
       L('mara', 'You\'re in our debt, Mr. Harlan.'),
       L('deke', 'I\'m in the debt of a very large bank, ma\'am. It has never once come to collect.'),
       L('deke', 'Take this. Pump shotgun, from behind the register. I nailed it to the wall so nobody would steal it. Then I un-nailed it, because I\'m not an idiot.'),
@@ -223,8 +227,8 @@ export const CH1 = [
         id: 'surge', type: 'survive', seconds: 45, text: 'The beacon is calling every dead thing for miles!', pressure: P(2, 1.5, ['runner']),
         onStart: [
           radio('ozzy', 'So the beacon is very loud. That is, technically, the point.'),
-          radio('mara', 'Something is running. Why is something RUNNING?'),
-          radio('deke', 'Kid, nobody knew they did that.'),
+          radio('mara', 'Runners! A whole crowd of them!'),
+          radio('deke', 'Kid, you said ten minutes.'),
         ],
         onDone: [radio('mara', 'Nobody tell me it gets worse. I want to believe it doesn\'t.')],
       },

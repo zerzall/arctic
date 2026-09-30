@@ -14,7 +14,7 @@ export const CH5 = [
     briefing: [
       L('narrator', 'DAY 56. BLACKWATER DEPOT. DEPARTURE.'),
       L('priya', 'County line at mile eleven. Harlan County. Fifty miles of farmland, three towns, one interstate, and a map with a lot of blank spaces.'),
-      L('deke', 'Harlan County. Named for my great-granddad. He lost it in a card game. Don\'t touch anything, it\'s all mortgaged.'),
+      L('deke', 'Harlan County. Named for my great-granddad. He won it in a card game and lost it in the next one. Don\'t touch anything, it\'s all mortgaged.'),
       L('dutch', 'The rig will follow at a distance. I charge by the mile and by the fear.'),
       L('okafor', 'The interstate is the fastest route and the worst. Nothing on it is friendly and nothing moves in a straight line. Keep moving.'),
       L('ozzy', 'The Warden says the storm front hits the lake on Day fifty-eight. The ferry was going to wait until sixty. It can\'t anymore.'),
@@ -66,7 +66,7 @@ export const CH5 = [
       L('june', 'I count things. It\'s my whole personality.'),
       L('deke', 'Forty-one miles. I\'ve done worse in a bad truck.'),
       L('okafor', 'Ten miles of that is cornfield. Nobody has ever won a war in a cornfield.'),
-      L('mara', 'We aren\'t going to war, Sergeant. We\'re going to church, and the church has a boat.'),
+      L('mara', 'We aren\'t going to war, Sergeant. We\'re going to a boat.'),
     ],
     stars: { time: 720, noDowns: true, optional: 'collectAll' },
     todo: 'bonus,graph',

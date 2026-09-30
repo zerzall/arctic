@@ -13,7 +13,7 @@ export const CH3 = [
     requires: ['m2_2', 'm2_3'], hub: 'roadhouse', after: 'm3_2',
     briefing: [
       L('narrator', 'DAY 48. THE ROADHOUSE. THE LAST MORNING.'),
-      L('roz', 'Thirty-one people, three crates of peaches and a cast-iron skillet older than the state. Nobody leaves a Roadhouse hungry.'),
+      L('roz', 'Forty people, three crates of peaches and a cast-iron skillet older than the state. Nobody leaves a Roadhouse hungry.'),
       L('mara', 'Nobody leaves a Roadhouse at all, Roz. That\'s the point of today.'),
       L('roz', 'It\'s my kitchen, hon. I\'m allowed to get sentimental about it.'),
       L('deke', 'Tow truck is topped off. Fuel gets us to the river.'),
@@ -155,7 +155,7 @@ export const CH3 = [
       xp: 480, scrap: 140, weapon: 'crossbow', upgradePoints: 1, flags: { marine_pump: true }, unlockNpc: 'wendell',
     },
     debrief: [
-      L('priya', 'Consignee: Lake Harlan Harbor Authority. For the ferry Halcyon. It\'s a ferry part.'),
+      L('priya', 'There\'s a shipping tag on the pump. Consignee: Lake Harlan Harbor Authority. For the ferry Halcyon. It\'s a ferry part.'),
       L('ozzy', 'The Warden\'s ferry. The Warden\'s ferry is REAL.'),
       L('deke', 'A boat. A real boat with a real engine. Listen to that.'),
       L('mara', 'A broken one.'),

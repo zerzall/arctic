@@ -77,7 +77,7 @@ export const CH2 = [
       L('ozzy', 'Do you have a CB?'),
       L('quill', 'Sir, I have nine. In different colors.'),
       L('deke', 'What do you charge for rumors?'),
-      L('quill', 'For you? The first is free. The second costs the value of the first. Rumor one: a man at the truck lot has a whole tanker of diesel and no manners. Rumor two: he will want something.'),
+      L('quill', 'For you? The first is free: a man at the truck lot sits on a whole tanker of diesel and has no manners. The second costs the value of the first.'),
       L('quill', 'I would like to come with you. I have a wagon of junk and no more pie.'),
     ],
     stars: { time: 900, noDowns: true, optional: 'collectAll' },
@@ -112,7 +112,7 @@ export const CH2 = [
       {
         id: 'locks', type: 'activate', at: ['trailerA', 'trailerB', 'trailerC'], hold: 5, text: 'Break the trailer locks (hold E)', pressure: P(3, 0.9, ['crawler']),
         onStart: [radio('quill', 'Trailer B has three padlocks and a sign that says DO NOT. Do not what, it does not say.')],
-        onDone: [radio('mara', 'They\'re opened. Whatever was in there\'s now out here.')],
+        onDone: [radio('mara', 'They\'re open. Whatever was in there is out here now.')],
       },
       {
         id: 'horn', type: 'activate', at: ['roadNorth'], hold: 6, text: 'Sound the air horn to pull the herd north (hold E)',
@@ -170,7 +170,7 @@ export const CH2 = [
     map: 'truckstop', time: 'night', mode: 'free', level: [6, 7], party: { min: 1, max: 6 },
     requires: ['m2_1'], hub: 'roadhouse', after: 'hideout:roadhouse',
     briefing: [
-      L('quill', 'Rumor two, as promised. Dutch Kessler. He runs the Mile Marker crew out of the truck lot. Ran. They left. He did not.'),
+      L('quill', 'Rumor two, as promised, and worth every penny of the first. His name is Dutch Kessler. He ran the Mile Marker crew out of the truck lot. Ran. They left. He did not.'),
       L('quill', 'He is sitting on a tanker of diesel and the last live pump in fifty miles. He will trade fuel for protection.'),
       L('deke', 'The tanker won\'t run, the engine is cooked. He wants to hand-carry barrels to the north road.'),
       L('mara', 'How much do we need?'),

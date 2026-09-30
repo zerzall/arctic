@@ -25,8 +25,9 @@ import { CH6 } from './missions/ch6.js';
 export { NOTES, NOTE_IDS };
 export { TODO_REQUESTS, ITEM_KINDS, STEP_TYPES, ANCHORS } from './missions/lib.js';
 
-/** The fifteen missions in campaign order. */
+/** The fifteen missions in campaign order. Each also gets `notes`: the ids of the lore notes hidden in it. */
 export const MISSIONS = [...CH1, ...CH2, ...CH3, ...CH4, ...CH5, ...CH6];
+for (const m of MISSIONS) m.notes = (m.bonus || []).filter((s) => s.item === 'note').map((s) => s.note);
 
 // ---- hideouts ----------------------------------------------------------------------------------
 /** Hub maps are built by S3 as buildMap(id); `residents` are NPCs who live there from the first visit. */
@@ -93,11 +94,11 @@ const ARRIVE_FARMSTEAD = [
   L('ozzy', 'Everyone, everyone, come here. Gather round the tailgate. I did the math.'),
   L('ozzy', 'Fuel: Dutch\'s diesel, six barrels. A marine injector pump from the barge. A regulator from Delta\'s generator. A real radio. And a truckload of medical crates.'),
   L('priya', 'That\'s a ferry\'s worth of parts.'),
-  L('deke', 'We\'ve been shopping for a boat for a month and didn\'t know it.'),
+  L('deke', 'We\'ve been shopping for a boat for two weeks and didn\'t know it.'),
   L('dutch', 'I\'d like it noted that I didn\'t know it either.'),
   L('ozzy', 'The Warden never asked for any of it. She only said "bring what you can carry."'),
   L('mara', 'Maybe that\'s all Haven ever was. A list of what people bring.'),
-  L('priya', 'Then the map is finished. Twelve places. Thirteen, counting this one.'),
+  L('priya', 'Then the map is finished. Sixteen places. Seventeen, counting this one.'),
   L('june', 'You\'re keeping this one?'),
   L('priya', '...I\'m writing it down. Writing it down isn\'t keeping it.'),
   L('june', 'It\'s a little bit keeping.'),
@@ -134,14 +135,14 @@ export const EPILOGUE = [
   L('wren', 'The manifest. Everyone who reached the water. Grandpa started it. I finished it. Two hundred and twelve names went across before me.'),
   L('wren', 'I keep it in case someone asks. Nobody comes back to ask.'),
   L('june', 'Is Ms. Delaney on it?'),
-  L('wren', 'Ruth Delaney. Teacher. Day eight, second boat. Yes. She asked for a yellow bus at the pier every single day.'),
+  L('wren', 'Ruth Delaney. Teacher. Day eight, second boat, with a Mr. Abernathy who drove a bus. She asked for a yellow bus at the pier every single day.'),
   L('june', 'I told her I\'d stay put. I counted to a thousand three times.'),
   L('mara', 'You did. You stayed.'),
   L('deke', 'Would there be a Harlan on that list?'),
   L('wren', 'Harlan. Harlan... Calvin. Cal. Day fourteen, third boat. Mechanic\'s apprentice. He fixed our generator with a hairpin and told everybody his dad could do it better.'),
   L('deke', '...'),
   L('deke', 'He\'s right. I can.'),
-  L('ozzy', 'I built a player. From a walkie-talkie and a hairpin. Deke. I have had it in my bag for three days. I was waiting for the right moment.'),
+  L('ozzy', 'I\'ve got a player, Deke. It\'s been in my bag for days. I was waiting for the right moment.'),
   L('deke', 'I never played it. I was afraid it said goodbye.'),
   L('ozzy', 'This is the right moment. Right?'),
   L('cal', 'Dad, it\'s me. I know you\'re at the shop, so don\'t be. Go where the people are, okay? I\'ll find you. I love you. Bye. And don\'t play side B, it\'s just me singing.'),
@@ -154,7 +155,7 @@ export const EPILOGUE = [
   L('mara', 'Wren. How many are aboard?'),
   L('wren', 'Counting... counting all of you... ninety-one.'),
   L('mara', 'I stopped counting the ones I lost on day nine. I count the ones on the boat now. It\'s a much better hobby.'),
-  L('priya', 'Fourteen places. Counting this boat.'),
+  L('priya', 'Eighteen places. Counting this boat.'),
   L('june', 'You\'re keeping it!'),
   L('priya', 'It moves. Maps don\'t have to hold still to be kept.'),
   L('ozzy', 'Wren. What do we say now? Do we say Haven is open?'),
