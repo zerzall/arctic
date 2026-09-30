@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { shadeHex, mixHex } from './actor-kit.js';
-import { gunAtlasTexture, markRow, markTexture, markVersion } from './actor-tex.js';
+import { gunAtlasTexture, gunAtlasPixelsAsync, markRow, markTexture, markVersion } from './actor-tex.js';
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
@@ -48,7 +48,10 @@ const _c = new THREE.Color();
 // serrations or vent slots, and every part merged into one mesh (the spinning barrels
 // excepted) — one draw call per gun instead of five, ~40 % of the triangles.
 let LITE = false;
-const segs = (n) => (LITE ? Math.max(6, Math.round(n * 0.5)) : n);
+// The cinematic tier builds the full-size guns with finer curves: 1.7x the radial segments, twice
+// the bevel and curve steps (rounded boxes, extrusions), more sides on tubes and tori.
+let BUILD_CIN = false;
+const segs = (n) => (LITE ? Math.max(6, Math.round(n * 0.5)) : BUILD_CIN ? Math.min(64, Math.round(n * 1.7)) : n);
 
 /** Accumulates transformed primitives into named parts (each: solid + glow geometry). */
 class GunBuilder {
@@ -143,7 +146,7 @@ function ext(gb, pts, z0, z1, o = {}) {
   if (o.holes) for (const h of o.holes) shape.holes.push(shapeOf(h, THREE.Path));
   const bev = o.bevel ?? 0.12;
   const depth = Math.max(0.01, z1 - z0 - bev * 2);
-  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bev > 0, bevelThickness: bev, bevelSize: bev * (o.bevelSize ?? 0.8), bevelSegments: LITE ? 1 : o.bevelSeg ?? 2, curveSegments: LITE ? 4 : o.curve ?? 8 });
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bev > 0, bevelThickness: bev, bevelSize: bev * (o.bevelSize ?? 0.8), bevelSegments: LITE ? 1 : (o.bevelSeg ?? 2) * (BUILD_CIN ? 2 : 1), curveSegments: LITE ? 4 : (o.curve ?? 8) * (BUILD_CIN ? 2 : 1) });
   g.translate(0, 0, z0 + bev);
   gb.add(g, o);
 }
@@ -152,7 +155,7 @@ function rbox(gb, x0, x1, y0, y1, z0, z1, r, o = {}) {
   const rr = Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001);
   // lite: tiny detail boxes are skipped; rounded boxes lose their bevel segments
   if (LITE && (o.detail || (w < 0.6 && h < 0.6) || (w < 0.6 && d < 0.6) || (h < 0.6 && d < 0.6))) return;
-  const g = rr > 0.02 ? new RoundedBoxGeometry(w, h, d, LITE ? 1 : o.seg ?? 2, rr) : new THREE.BoxGeometry(w, h, d);
+  const g = rr > 0.02 ? new RoundedBoxGeometry(w, h, d, LITE ? 1 : (o.seg ?? 2) * (BUILD_CIN && o.seg !== 1 && rr > 0.06 ? 2 : 1), rr) : new THREE.BoxGeometry(w, h, d);
   gb.add(g, { ...o, at: [(x0 + x1) / 2 + (o.at ? o.at[0] : 0), (y0 + y1) / 2 + (o.at ? o.at[1] : 0), (z0 + z1) / 2 + (o.at ? o.at[2] : 0)] });
 }
 /** Cylinder along X from x0 to x1 at (y, z); r0 at x0, r1 at x1. */
@@ -177,7 +180,7 @@ function sphere(gb, x, y, z, r, o = {}) {
   gb.add(g, { round: true, ...o });
 }
 function torusX(gb, x, y, z, R, r, o = {}) {
-  const g = new THREE.TorusGeometry(R, r, LITE ? 5 : o.seg2 ?? 8, segs(o.seg ?? 20), o.arc ?? TAU);
+  const g = new THREE.TorusGeometry(R, r, LITE ? 5 : (o.seg2 ?? 8) * (BUILD_CIN ? 2 : 1), segs(o.seg ?? 20), o.arc ?? TAU);
   g.rotateY(HALF_PI);
   g.translate(x, y, z);
   gb.add(g, { round: true, ...o });
@@ -185,7 +188,7 @@ function torusX(gb, x, y, z, R, r, o = {}) {
 /** Tube through points [[x,y,z]...] (hoses, belts, wires). */
 function tubePath(gb, pts, r, o = {}) {
   const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
-  const g = new THREE.TubeGeometry(curve, segs(o.seg ?? pts.length * 6), r, LITE ? 5 : o.radial ?? 8, false);
+  const g = new THREE.TubeGeometry(curve, segs(o.seg ?? pts.length * 6), r, LITE ? 5 : (o.radial ?? 8) * (BUILD_CIN ? 2 : 1), false);
   gb.add(g, { round: true, ...o });
 }
 /** Picatinny rail along X on top at height y. */
@@ -329,7 +332,7 @@ function detailPass(gb, out, id, w) {
     cands.sort((a, b) => a.r - b.r);
     const chosen = [];
     for (const c of cands) {
-      if (chosen.length >= (s < 0 ? 6 : 3)) break;
+      if (chosen.length >= (s < 0 ? 6 : 3) * (BUILD_CIN ? 2 : 1)) break;
       if (chosen.every((o) => Math.hypot(o.x - c.x, o.y - c.y) > 2.2)) chosen.push(c);
     }
     for (const c of chosen) screwHead(gb, c.x, c.y, c.z, s, c.key, hash01(c.x + c.y * 3 + seed) * Math.PI);
@@ -338,6 +341,7 @@ function detailPass(gb, out, id, w) {
   const name = (w.name || id).toUpperCase();
   const serial = 'SN ' + String(10000 + Math.floor(hash01(seed) * 89999)) + ' US';
   const marks = [[-1, name, 0.62], [1, serial, 0.5], [-1, '▸ SAFE ▸ FIRE', 0.42]];
+  if (BUILD_CIN) marks.push([1, 'PROOF ✚ HH', 0.36], [-1, 'MADE IN USA', 0.34], [1, 'CAL ' + (w.caliber || '5.56') + ' NATO', 0.34], [-1, 'REV ' + (10 + Math.floor(hash01(seed + 5) * 80)) + '-' + (1000 + Math.floor(hash01(seed) * 8999)), 0.3]);
   const used = [];
   for (const [s, text, h] of marks) {
     const info = markRow(text);
@@ -393,8 +397,12 @@ function detailPass(gb, out, id, w) {
 // models
 
 let DETAIL = true;
-/** Screws, stamped labels and witness holes on the full-size guns (the 'low' quality tier leaves them out). */
-export function setGunDetail(on) { DETAIL = !!on; }
+let CIN = false;
+/**
+ * Screws, stamped labels and witness holes on the full-size guns (the 'low' quality tier leaves them
+ * out); `cin` builds the cinematic variants: finer curves and extra micro-detail.
+ */
+export function setGunDetail(on, cin = false) { DETAIL = !!on; CIN = !!on && !!cin; }
 
 const cache = new Map();
 
@@ -404,11 +412,12 @@ const cache = new Map();
  */
 export function gunModel(weaponId, lite = false) {
   const id = WEAPONS[weaponId] ? weaponId : 'pistol';
-  const key = lite ? id + ':lite' : DETAIL ? id : id + ':plain';
+  const key = lite ? id + ':lite' : CIN ? id + ':cin' : DETAIL ? id : id + ':plain';
   let m = cache.get(key);
   if (!m) {
     LITE = lite;
-    try { m = build(id); } finally { LITE = false; }
+    BUILD_CIN = !lite && CIN;
+    try { m = build(id); } finally { LITE = false; BUILD_CIN = false; }
     m.lite = lite;
     cache.set(key, m);
   }
@@ -1582,6 +1591,7 @@ uniform sampler2D uMark;
 varying vec2 vGun;
 varying vec2 vGUv;
 vec4 gT;
+vec4 gT2;
 int gM;
 float gWear;
 vec3 gPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
@@ -1606,6 +1616,7 @@ export function createGunMaterial(atlas, opts = {}) {
   const uniforms = { uGunAtlas: { value: atlas }, uMark: { value: opts.mark || atlas } };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
+    if (opts.cinematic) sh.fragmentShader = '#define GUN_CIN\n' + sh.fragmentShader;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + GUN_VERT)
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvGun = aGun; vGUv = uv;');
@@ -1621,9 +1632,17 @@ export function createGunMaterial(atlas, opts = {}) {
   }
   vec2 tile = gM == 2 ? vec2(0.5, 0.0) : gM == 3 ? vec2(0.0, 0.5) : gM == 4 ? vec2(0.5, 0.5) : vec2(0.0);
   {
+    float aN = float(textureSize(uGunAtlas, 0).x);
     vec2 f = fract(vGUv);
-    vec2 a = tile + f * (0.5 - 4.0 / 1024.0) + 2.0 / 1024.0;
+    vec2 a = tile + f * (0.5 - 4.0 / aN) + 2.0 / aN;
     gT = textureGrad(uGunAtlas, a, dFdx(vGUv) * 0.5, dFdy(vGUv) * 0.5);
+    gT2 = gT;
+    #ifdef GUN_CIN
+    // a second, finer and offset sample: micro-scratches, machining marks and oily smudges
+    vec2 f2 = fract(vGUv * 3.7 + vec2(0.37, 0.11));
+    vec2 a2 = tile + f2 * (0.5 - 4.0 / aN) + 2.0 / aN;
+    gT2 = textureGrad(uGunAtlas, a2, dFdx(vGUv) * 0.5 * 3.7, dFdy(vGUv) * 0.5 * 3.7);
+    #endif
   }
   float alb = gM == 3 ? 0.45 + gT.r * 0.75 : 0.72 + gT.r * 0.36;
   diffuseColor.rgb *= alb;
@@ -1644,7 +1663,10 @@ export function createGunMaterial(atlas, opts = {}) {
   else if (gM == 6) roughnessFactor = 0.04;
   else if (gM == 7) roughnessFactor = 0.38 + gT.a * 0.35;
   else if (gM == 8) roughnessFactor = 0.7;
-  if (gM <= 1 || gM == 7) roughnessFactor = mix(roughnessFactor, 0.24, wm);`)
+  if (gM <= 1 || gM == 7) roughnessFactor = mix(roughnessFactor, 0.24, wm);
+  #ifdef GUN_CIN
+  if (gM != 6 && gM != 8) roughnessFactor = clamp(roughnessFactor + (gT2.a - 0.5) * 0.22 + (gT.r - 0.5) * 0.08, 0.04, 1.0);
+  #endif`)
       .replace('#include <metalnessmap_fragment>', /* glsl */`
   // parkerized steel and anodised alloy are finishes over the metal: mostly matte and
   // dark; only the worn edges show bare, fully metallic steel
@@ -1652,13 +1674,17 @@ export function createGunMaterial(atlas, opts = {}) {
       .replace('#include <normal_fragment_maps>', /* glsl */`
   {
     float ns = gM == 3 ? 0.7 : gM == 4 ? 1.1 : gM == 6 || gM == 8 ? 0.0 : gM == 2 ? 0.8 : 0.55;
-    normal = gPerturb(normal, -vViewPosition, vGUv, (gT.gb * 2.0 - 1.0) * ns);
+    vec2 nxy = (gT.gb * 2.0 - 1.0) * ns;
+    #ifdef GUN_CIN
+    nxy += (gT2.gb * 2.0 - 1.0) * ns * 0.45;
+    #endif
+    normal = gPerturb(normal, -vViewPosition, vGUv, nxy);
   }`)
       .replace('#include <emissivemap_fragment>', /* glsl */`
   #include <emissivemap_fragment>
   if (gM == 6) totalEmissiveRadiance += diffuseColor.rgb * 0.35;`);
   };
-  mat.customProgramCacheKey = () => 'hh-gun-std' + (opts.envMap ? '-env' : '');
+  mat.customProgramCacheKey = () => 'hh-gun-std2' + (opts.envMap ? '-env' : '') + (opts.cinematic ? '-cin' : '');
   return mat;
 }
 
@@ -1678,6 +1704,21 @@ export function releaseSharedGuns() {
     shared.atlas.dispose();
     shared.mark.dispose();
   }
+}
+
+/**
+ * Cinematic: swap the shared atlas for the 2048² one, generated in time slices. The texture object
+ * stays the same (every gun material keeps pointing at it); its pixels and size change.
+ * @returns {Promise<boolean>} true when the atlas was replaced
+ */
+export async function upgradeGunAtlas() {
+  const d = await gunAtlasPixelsAsync();
+  const a = gunMaterials().atlas;
+  if (a.image.width === d.size) return false;
+  a.image = { data: d.data, width: d.size, height: d.size };
+  a.dispose();
+  a.needsUpdate = true;
+  return true;
 }
 
 /** Shared materials for world guns (teammates, crates) + the atlas texture. */

@@ -233,6 +233,19 @@ function wallsOf(B, o, ctx, opts) {
       B.rblock('std', sx * (L / 2 - 3.1), 0, sz * (W / 2 - 3.1), 7.4, wallH, 7.4, 0.5, shadeHex(ctx.color, 0.06), null, { surf: [DET.concrete, 0.86, 0], noJitter: true });
     }
   }
+  // cinematic: quoins (alternating long and short dressed stones) up every corner, a water table on the plinth
+  if (DETAIL.level >= 3 && (ctx.surf[0] === DET.brick || ctx.surf[0] === DET.plaster || ctx.surf[0] === DET.concrete)) {
+    const qc = shadeHex(ctx.color, 0.12), qo = { noJitter: true, surf: [DET.concrete, 0.86, 0] };
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      let k = 0;
+      for (let y = plinth + 1; y + 6 < wallH - 4; y += 6.4, k++) {
+        const long = k % 2 ? 7 : 4.2, short = k % 2 ? 4.2 : 7;
+        B.rbox('std', sx * (L / 2 - long / 2 + 0.25), y + 3, sz * (W / 2 + 0.25), long, 5.6, 1.6, 0.35, qc, null, qo);
+        B.rbox('std', sx * (L / 2 + 0.25), y + 3, sz * (W / 2 - short / 2 + 0.25), 1.6, 5.6, short, 0.35, qc, null, qo);
+      }
+    }
+    for (const F of faces) F.box('std', 0, plinth + 0.6, 0, F.len + 1.4, 1.5, 1.4, shadeHex(ctx.color, -0.18), qo);       // water table
+  }
   // cornice
   if (opts.cornice) for (const F of faces) cornice(F, wallH, shadeHex(ctx.color, 0.14), 4.2, opts.cornice);
   return { faces, floorY };
