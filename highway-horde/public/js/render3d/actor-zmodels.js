@@ -62,7 +62,7 @@ export const ZPARAMS = {
   crawler: { bulk: 0.94, depth: 0.9, gaunt: 1.3, armR: 1.38, uarm: 12.2, farm: 11.4, legs: 'stumps', claws: true, socket: 0.24, nose: 0.03, thighR: 2.1 },
   bloater: { bulk: 1.3, depth: 1.32, gaunt: 0, thighR: 3.9, calfR: 3.0, armR: 2.5, handS: 1.16, sw: 7.7, headR: [3.45, 3.9, 3.0], headC: [1.5, 52.0, 0], neck: 46.6, neckR: 1.45, socket: 0.12, shellFrom: 4 },
   spitter: { bulk: 0.95, depth: 0.95, gaunt: 1.1, thighR: 2.25, calfR: 1.7, armR: 1.45, neck: 47.6, headC: [1.8, 53.3, 0], headR: [3.35, 3.9, 2.8], jawDrop: 1.3, socket: 0.22, neckR: 1.1 },
-  screamer: { bulk: 0.86, depth: 0.85, gaunt: 1.4, armR: 1.25, uarm: 12.2, farm: 11.2, thighR: 1.95, calfR: 1.45, headR: [3.3, 4.05, 2.72], jawDrop: 1.6, socket: 0.25, neckR: 0.9 },
+  screamer: { bulk: 0.86, depth: 0.85, gaunt: 1.4, armR: 1.25, uarm: 12.2, farm: 11.2, thighR: 1.95, calfR: 1.45, headR: [3.3, 4.05, 2.72], jawDrop: 1.6, jawW: 1.12, socket: 0.25, neckR: 0.9 },
   brute: { bulk: 1.3, depth: 1.45, upper: 1.28, gaunt: 0.3, thighR: 4.8, calfR: 3.9, armR: 3.1, handS: 1.45, sw: 10.2, uarm: 12.4, farm: 11.6, headR: [3.2, 3.55, 2.85], headC: [2.8, 50.9, 0], neck: 45.8, neckR: 1.9,
     claws: true, rArmK: 1.45, socket: 0.17, nose: 0.05 },
   boss: { bulk: 1.35, depth: 1.55, upper: 1.3, gaunt: 0.5, thighR: 5.4, calfR: 4.4, armR: 3.3, handS: 1.5, sw: 11.0, uarm: 12.8, farm: 12.2, headR: [3.15, 3.45, 2.8], headC: [3.0, 50.7, 0], neck: 45.4, neckR: 2.0,
@@ -82,6 +82,16 @@ function params(type) {
   P.frontX = (y) => { const s = ringAt(sh, y); return s.x + s.rx * 0.97; };
   P.backX = (y) => { const s = ringAt(sh, y); return s.x - s.rx * 0.92; };
   P.sideZ = (y) => ringAt(sh, y).rz;
+  // the shell's surface at a height and a side offset: +1 its front, -1 its back (straps, cords)
+  P.shellX = (y, z, face = 1) => {
+    const s = ringAt(sh, y), u = Math.min(1, Math.abs(z) / s.rz);
+    return s.x + face * s.rx * (face > 0 ? 0.97 : 0.92) * Math.sqrt(Math.max(0, 1 - u * u));
+  };
+  // the height where the shell's shoulder slope passes over side offset z (the crest a strap crosses)
+  P.crestY = (z) => {
+    for (let y = P.sY - 2; y < P.neck + 1; y += 0.1) if (ringAt(sh, y).rz < Math.abs(z)) return y;
+    return P.neck + 1;
+  };
   pcache.set(type, P);
   return P;
 }
@@ -674,7 +684,7 @@ function head(sb, P, L, type) {
   }
   // the jaw: a narrow mandible hinged under the ears
   const jc = [c[0] + r[0] * 0.14, c[1] - r[1] * 0.7, 0];
-  const jr = [r[0] * 0.78, r[1] * 0.3 * Math.min(1.35, P.jawDrop), r[2] * 0.8];
+  const jr = [r[0] * 0.78 * (P.jawW || 1), r[1] * 0.3 * Math.min(1.35, P.jawDrop), r[2] * 0.8 * (P.jawW || 1)];
   const jawDef = (p) => {
     p.z *= 1 - 0.34 * Math.max(0, p.x);                   // V toward the chin
     if (p.y > 0.25) p.y = 0.25 + (p.y - 0.25) * 0.35;     // flat top (teeth sit on it)
