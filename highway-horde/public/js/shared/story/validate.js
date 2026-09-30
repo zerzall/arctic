@@ -12,10 +12,11 @@
 import { WEAPONS } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import { MAP_LIST } from '../maps.js';
+import { LEVEL_LIST, LEVEL_SPECS } from '../levels/index.js';
 import { DIFFICULTIES } from '../constants.js';
 import {
   STEP_TYPES, MISSION_MODES, CAMPAIGN_STAGES, ANCHOR_VOCAB, CAMPAIGN_ANCHORS, DEFEND_ANCHOR, INTERACT_KINDS, isItemId,
-  normLine, CAST,
+  normLine, CAST, LEVEL_ACTIONS,
 } from '../story-defs.js';
 
 const TIMES = ['night', 'day'];
@@ -30,7 +31,7 @@ const PARAMS = {
   waves: ['count', 'pace', 'scale', 'boss', 'gap', 'at', 'delay'],
   survive: ['seconds', 'at'],
   collect: ['item', 'count', 'at', 'scatter', 'note'],
-  reach: ['at', 'hold', 'radius', 'who'],
+  reach: ['at', 'section', 'hold', 'radius', 'who'],
   activate: ['at', 'hold', 'kind', 'label', 'radius', 'burst', 'specials', 'effect', 'lure', 'blast'],
   escort: ['npc', 'route', 'hp', 'fail', 'invulnerable'],
   kill: ['enemy', 'zombie', 'count', 'spawn', 'at'],
@@ -40,7 +41,7 @@ const PARAMS = {
   wait: ['seconds'],
   dialogue: ['lines', 'npc', 'talk'],
 };
-const PRESSURE_KEYS = new Set(['tier', 'waves', 'size', 'scale', 'every', 'pace', 'specials', 'at', 'cap', 'delay', 'bursts']);
+const PRESSURE_KEYS = new Set(['tier', 'waves', 'size', 'scale', 'every', 'pace', 'specials', 'at', 'section', 'cap', 'delay', 'bursts']);
 const EFFECTS = ['lure', 'explode'];
 const MISSION_KEYS = new Set([
   'id', 'chapter', 'index', 'title', 'blurb', 'map', 'time', 'mode', 'level', 'party', 'briefing', 'steps', 'rewards', 'debrief',
@@ -62,7 +63,8 @@ function anchorSet(mapId, campaign, maps) {
     map = null;
   }
   if (map && map.anchors) return { names: new Set(Object.keys(map.anchors)), map };
-  const names = new Set(ANCHOR_VOCAB[mapId] || []);
+  const spec = LEVEL_SPECS[mapId];
+  const names = new Set(spec ? Object.values(spec.anchors).flat() : ANCHOR_VOCAB[mapId] || []);
   if (campaign) for (const n of CAMPAIGN_ANCHORS) names.add(n);
   return { names, map: null };
 }
@@ -87,8 +89,11 @@ export function validateMission(m, { maps = null } = {}) {
   if (!isInt(m.index, 1, 9)) err('index must be an integer 1..9');
   if (!isStr(m.title)) err('title is required');
   if (!isStr(m.blurb)) err('blurb is required');
-  const mapMeta = MAP_LIST.find((e) => e.id === m.map);
+  const mapMeta = MAP_LIST.find((e) => e.id === m.map) || LEVEL_LIST.find((e) => e.id === m.map);
   if (!mapMeta) err(`map "${m.map}" is not a map`);
+  // a story level (JOURNEY.md): a route of sections and gates, played in mode "free"
+  const level = mapMeta && mapMeta.kind === 'level';
+  if (level && m.mode !== 'free') err(`a mission on the story level ${m.map} plays mode "free"`);
   if (m.time !== undefined && !TIMES.includes(m.time)) err('time must be "night" or "day"');
   if (!MISSION_MODES.includes(m.mode)) err(`mode must be one of ${MISSION_MODES.join(', ')}`);
   if (!Array.isArray(m.level) || m.level.length !== 2 || !isInt(m.level[0], 1, 20) || !isInt(m.level[1], 1, 20) || m.level[0] > m.level[1]) {
@@ -115,6 +120,11 @@ export function validateMission(m, { maps = null } = {}) {
       return;
     }
     list.forEach((l, i) => {
+      if (l && typeof l === 'object' && Object.hasOwn(LEVEL_ACTIONS, l.type)) {
+        if (label === 'briefing' || label === 'debrief' || /\.lines$/.test(label)) err(`${label}[${i}]: a "${l.type}" action only runs in onStart / onDone`);
+        else checkAction(l, `${label}[${i}]`);
+        return;
+      }
       const n = normLine(l);
       if (!n) err(`${label}[${i}] needs a text`);
       else if (!n.who) warn(`${label}[${i}] has no "who"`);
@@ -154,6 +164,63 @@ export function validateMission(m, { maps = null } = {}) {
     else if (!anchors.has(a)) err(`${label}: "${a}" is not an anchor of ${m.map}${campaignVariant ? ' (campaign)' : ''}`);
   };
   if (m.startAt !== undefined) anchorErr(m.startAt, 'startAt');
+
+  // ---- the level's sections and gates (the built map's, else its SPEC's)
+  const spec = level ? LEVEL_SPECS[m.map] : null;
+  const sections = new Set(map && map.sections ? map.sections.map((q) => q.id) : spec ? spec.sections.map((q) => q.id) : []);
+  const gates = new Set(map && map.gates ? map.gates.map((q) => q.id) : spec ? spec.gates.map((q) => q.id) : []);
+  const sectionErr = (id, lab) => {
+    if (!level) err(`${lab}: sections only exist on story levels`);
+    else if (!sections.has(id)) err(`${lab}: "${id}" is not a section of ${m.map}`);
+  };
+
+  // ---- scripted actions in onStart / onDone (JOURNEY.md §4.3)
+  function checkAction(a, lab) {
+    const allowed = new Set(['type', ...LEVEL_ACTIONS[a.type]]);
+    for (const k of Object.keys(a)) if (!allowed.has(k)) warn(`${lab} (${a.type}): unknown field "${k}"`);
+    if (a.delay !== undefined && !isNum(a.delay, 0, 120)) err(`${lab} (${a.type}): delay must be seconds 0..120`);
+    switch (a.type) {
+      case 'gate':
+        if (!level) err(`${lab}: gates only exist on story levels`);
+        else if (!gates.has(a.id)) err(`${lab}: "${a.id}" is not a gate of ${m.map}`);
+        if (a.open !== undefined && typeof a.open !== 'boolean') err(`${lab}: open must be a boolean`);
+        break;
+      case 'horde': {
+        if (a.at === undefined && a.section === undefined) err(`${lab}: a horde needs "at" (an anchor) or "section"`);
+        if (a.at !== undefined) anchorErr(a.at, `${lab} at`);
+        if (a.section !== undefined) sectionErr(a.section, `${lab} section`);
+        if (!isInt(a.count, 1, 80)) err(`${lab}: count must be an integer 1..80`);
+        const t = a.zombie;
+        if (t !== undefined && !(t === 'any' || (typeof t === 'string' && Object.hasOwn(ZOMBIES, t)))) err(`${lab}: zombie "${t}" is not a zombie type`);
+        break;
+      }
+      case 'explode':
+        anchorErr(a.at, `${lab} at`);
+        if (a.r !== undefined && !isNum(a.r, 30, 600)) err(`${lab}: r must be 30..600`);
+        if (a.damage !== undefined && !isNum(a.damage, 0, 5000)) err(`${lab}: damage must be 0..5000`);
+        break;
+      case 'lights':
+        sectionErr(a.section, `${lab} section`);
+        if (typeof a.on !== 'boolean') err(`${lab}: on must be a boolean`);
+        break;
+      case 'title':
+        if (!isStr(a.text)) err(`${lab}: a title needs a text`);
+        else if (a.text.length > 48) warn(`${lab}: title is long (${a.text.length} characters)`);
+        if (a.sub !== undefined && !isStr(a.sub)) err(`${lab}: sub must be a string`);
+        break;
+      case 'music':
+        if (!isStr(a.state)) err(`${lab}: music needs a state`);
+        break;
+      case 'shake':
+        if (a.k !== undefined && !isNum(a.k, 0, 1)) err(`${lab}: k must be 0..1`);
+        break;
+      case 'checkpoint':
+        sectionErr(a.section, `${lab} section`);
+        break;
+      default:
+        break;
+    }
+  }
 
   // ---- NPCs
   const npcIds = new Set(Object.keys(CAST));
@@ -229,13 +296,16 @@ export function validateMission(m, { maps = null } = {}) {
         if (p.tier !== undefined && !isInt(p.tier, 1, 30)) err(`${label}: pressure.tier must be an integer 1..30`);
         if (p.specials !== undefined && !(Array.isArray(p.specials) && p.specials.every(zombieOk))) err(`${label}: pressure.specials must be zombie types`);
         if (p.at !== undefined) anchorErr(p.at, `${label} pressure.at`);
+        if (p.section !== undefined) sectionErr(p.section, `${label} pressure.section`);
       }
     }
 
     switch (s.type) {
       case 'defend': {
         const want = DEFEND_ANCHOR[m.map];
-        if (s.target !== want) err(`${label}: target must be "${want}" (the objective of ${m.map})`);
+        // (on a story level any anchor can be held: the director puts a defend point there)
+        if (level) anchorErr(s.target, `${label} target`);
+        else if (s.target !== want) err(`${label}: target must be "${want}" (the objective of ${m.map})`);
         if (s.seconds === undefined && s.waves === undefined) warn(`${label}: neither waves nor seconds (3 waves)`);
         if (s.waves !== undefined && !isInt(s.waves, 1, 12)) err(`${label}: waves must be an integer 1..12`);
         if (s.seconds !== undefined && !isNum(s.seconds, 10, 1800)) err(`${label}: seconds must be 10..1800`);
@@ -261,7 +331,11 @@ export function validateMission(m, { maps = null } = {}) {
         if (s.note !== undefined && !isStr(s.note)) err(`${label}: note must be a note id`);
         break;
       case 'reach':
-        anchorErr(s.at, `${label} at`);
+        // `at` an anchor, or `section` a section of a story level (done when the party walks into it)
+        if (s.section !== undefined) {
+          sectionErr(s.section, `${label} section`);
+          if (s.at !== undefined) err(`${label}: reach takes "at" or "section", not both`);
+        } else anchorErr(s.at, `${label} at`);
         if (s.hold !== undefined && !isNum(s.hold, 0, 300)) err(`${label}: hold must be seconds 0..300`);
         if (s.who !== undefined && !['all', 'any'].includes(s.who)) err(`${label}: who must be "all" or "any"`);
         break;

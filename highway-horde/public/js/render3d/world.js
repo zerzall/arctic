@@ -30,6 +30,7 @@ import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
 import { normTier, tierAtLeast, anisoFor } from './tier.js';
 import { createHideout } from './world-hideout.js';
+import { createLevelArt, levelBuckets } from './levels/index.js';
 import { terrainHeight } from '../shared/terrain.js';
 import { baseTier } from './tier.js';
 import {
@@ -218,6 +219,8 @@ export function createWorld(ctx, deps) {
     // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
     room: { det: true, ao: false }, stain: { uv: true },
     ...(hub ? { hub: { uv: true }, hubneon: { uv: true, ao: false }, hubflick: { uv: true, ao: false } } : null),
+    // (a story level's art may add its own, render3d/levels/<id>.js)
+    ...levelBuckets(map),
   };
   const newBuilder = () => {
     const b = createGeoBuilder({ cell: 1600, buckets: bucketDefs });
@@ -243,6 +246,16 @@ export function createWorld(ctx, deps) {
       console.warn('world: hideout failed', err);
     }
   }
+  // the story levels (render3d/levels/<id>.js, JOURNEY.md §5): the same seams as the hideout
+  let level = null;
+  if (map.kind === 'level') {
+    try {
+      level = createLevelArt(ctx, { root, mats, fx, halos, shafts, day, aniso, gy, tier, full, newBuilder, matOf: (b, t) => matOf(b, t) });
+      ctx.level = level;
+    } catch (err) {
+      console.warn('world: level art failed', err);
+    }
+  }
 
   // ---- obstacles ----
   setBiome(map);   // tree species by map (the trunks agree with their crowns)
@@ -256,6 +269,7 @@ export function createWorld(ctx, deps) {
     B.setJitter(0.06);
     try {
       if (hideout && hideout.obstacle(B, o)) continue;
+      if (level && level.obstacle(B, o)) continue;
       buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass, halos);
     } catch (err) {
       console.warn('world: obstacle model failed', o.kind, err);
@@ -276,7 +290,7 @@ export function createWorld(ctx, deps) {
   if (ob) {
     B.obj(ob.x, ob.y, ob.a || 0, 999);
     B.setJitter(0.03);
-    if (!(hideout && hideout.objective(B, ob))) buildObjective(B, ob, halos);
+    if (!(hideout && hideout.objective(B, ob)) && !(level && level.objective(B, ob))) buildObjective(B, ob, halos);
   }
   let supplyLight = null;
   if (map.supply) {
@@ -297,6 +311,9 @@ export function createWorld(ctx, deps) {
 
   // ---- the hideout's free props (string lights, signs, the things that make it home) ----
   if (hideout) hideout.props(B);
+  if (level) {
+    try { level.props(B); } catch (err) { console.warn('world: level props failed', err); }
+  }
 
   // ---- undergrowth: ferns and logs under trees, weeds along fences and walls, ivy, verges ----
   const tFlora = performance.now();
@@ -373,7 +390,7 @@ export function createWorld(ctx, deps) {
 
   // ---- build static meshes ----
   // ('sign': vehicle liveries and lettering, painted in the set dressing's atlas, dress-atlas.js)
-  const matOf = (bucket, t) => (bucket === 'sign' ? (dress ? dress.signMaterial(t) : mats.get('decal', t)) : hideout && hideout.buckets[bucket] ? hideout.material(bucket, t) : mats.get(bucket, t));
+  const matOf = (bucket, t) => (bucket === 'sign' ? (dress ? dress.signMaterial(t) : mats.get('decal', t)) : hideout && hideout.buckets[bucket] ? hideout.material(bucket, t) : level && level.buckets[bucket] ? level.material(bucket, t) : mats.get(bucket, t));
   const staticMeshes = [];
   const moonCasters = [];
   const built = B.finish();
@@ -398,6 +415,9 @@ export function createWorld(ctx, deps) {
 
   if (hideout) {
     try { hideout.finish(); } catch (err) { console.warn('world: hideout upgrades failed', err); }
+  }
+  if (level) {
+    try { level.finish(); } catch (err) { console.warn('world: level art finish failed', err); }
   }
 
   // ---- water ----
@@ -610,6 +630,7 @@ export function createWorld(ctx, deps) {
     cullFar(cam);
     if (dress) { dress.cull(cam); dress.update(view, frame); }
     if (hideout) hideout.update(view, frame);
+    if (level) level.update(view, frame);
     sky.position.copy(cam.position);
     sky.userData.updateGlow(cam.position.x, cam.position.z);
     // points sizing: drawing-buffer pixels per world unit at distance 1
@@ -646,6 +667,7 @@ export function createWorld(ctx, deps) {
     root,
     sky,
     hideout,
+    level,
     /** Static meshes that cast the moon's shadow (lights.updateMoonShadow). */
     moonCasters,
     fx,
@@ -667,6 +689,7 @@ export function createWorld(ctx, deps) {
       ground.setQuality(full);
       if (dress) dress.setQuality(full);
       if (hideout) hideout.setQuality(full);
+      if (level) level.setQuality(full);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();
@@ -684,6 +707,7 @@ export function createWorld(ctx, deps) {
     },
     dispose() {
       if (hideout) hideout.dispose();
+      if (level) level.dispose();
       gone = true;
       setSegBoost(1);
       if (dress) dress.dispose();

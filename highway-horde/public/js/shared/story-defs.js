@@ -29,6 +29,23 @@ export const SIM_MODE_OF_STEP = Object.freeze({ evac: 'zone', campaignStage: 'ca
 /** The sim modes a mission may ask for (`mission.mode`). */
 export const MISSION_MODES = Object.freeze(['defend', 'zone', 'campaign', 'free']);
 
+/**
+ * Scripted actions a step's `onStart` / `onDone` may list beside its radio and say lines (JOURNEY.md §4.3):
+ * `{ type: <action>, ...fields }`, run in list order when the step starts / ends (`delay` = seconds later).
+ * The fields each action takes; `gate`, `lights` and `checkpoint` only mean something on a story level.
+ */
+export const LEVEL_ACTIONS = Object.freeze({
+  gate: Object.freeze(['id', 'open', 'delay']),                        // open (default) or shut a gate of the level
+  horde: Object.freeze(['at', 'section', 'count', 'zombie', 'delay']), // a burst of zombies from an anchor or a section's spawns
+  explode: Object.freeze(['at', 'r', 'damage', 'delay']),             // a blast: fire, smoke, debris; hurts zombies, knocks players
+  lights: Object.freeze(['section', 'on', 'delay']),                  // a section's lights cut (power failure) or back on
+  title: Object.freeze(['text', 'sub', 'delay']),                     // a title card for everyone (an area, a chapter)
+  music: Object.freeze(['state', 'delay']),                           // push the score to a state (audio/music.js MUSIC_STATES)
+  shake: Object.freeze(['k', 'delay']),                               // camera shake for everyone near (k 0..1)
+  checkpoint: Object.freeze(['section', 'delay']),                    // move the party's respawn point to a section
+});
+export const LEVEL_ACTION_TYPES = Object.freeze(Object.keys(LEVEL_ACTIONS));
+
 /** Campaign stage names (`campaignStage.stage`) in play order, with the campaign director's stage number. */
 export const CAMPAIGN_STAGES = Object.freeze({ hill: 1, breakout: 2, tower: 3, roof: 4, zip: 4 });
 

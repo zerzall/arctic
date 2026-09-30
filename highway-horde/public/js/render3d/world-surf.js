@@ -22,6 +22,9 @@ export const DET = Object.freeze({
   slab: 17, grass: 18, gravel: 19, rust: 20, plastic: 21, dirt: 22,
   // (macro: raw noise fields for the world-space weathering, not a surface)
   macro: 23, plaster: 24, tile: 25, metalroof: 26, paver: 27, cracked: 28, strata: 29, crackmacro: 30, sand: 31,
+  // interior surfaces of the story levels (JOURNEY.md §6): for now aliases of the nearest layer above;
+  // the texture pass gives them layers of their own (the names stay)
+  linoleum: 25, carpet: 8, drywall: 24, ceiltile: 24, wallpaper: 24, terrazzo: 25,
 });
 const LAYERS = 32;
 

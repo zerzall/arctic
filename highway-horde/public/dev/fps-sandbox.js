@@ -20,6 +20,7 @@ import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js
 import { CLASS_IDS } from '../js/shared/classes.js';
 import { MAP_LIST } from '../js/shared/maps.js';
 import { HIDEOUT_IDS, applyHideoutUpgrades, UPGRADE_KINDS } from '../js/shared/maps-hideouts.js';
+import { LEVEL_IDS } from '../js/shared/levels/index.js';
 import { DRESS_KINDS } from '../js/shared/dress.js';
 import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
@@ -29,7 +30,8 @@ import { TIERS } from '../js/render3d/tier.js';
 const params = new URLSearchParams(location.search);
 const opt = {
   // (the story hideouts are playable here too: map=roadhouse|depot|farmstead, up=<0..3 | kind:tier,...>)
-  map: MAP_LIST.some((m) => m.id === params.get('map')) || HIDEOUT_IDS.includes(params.get('map')) ? params.get('map') : 'highway',
+  // (and the story levels, JOURNEY.md: map=millroad|hollowcreek|forest|hospital|mall|metro|dam|railyard|airbase; views sec:<id>, sec:<id>:b)
+  map: MAP_LIST.some((m) => m.id === params.get('map')) || HIDEOUT_IDS.includes(params.get('map')) || LEVEL_IDS.includes(params.get('map')) ? params.get('map') : 'highway',
   // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
   mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
   seed: Number(params.get('seed') || 1234),
@@ -211,6 +213,7 @@ function hubViewpoints(map) {
 
 function viewpoints(map, zone) {
   if (map.kind === 'hideout') return hubViewpoints(map);
+  if (map.kind === 'level') return levelViewpoints(map);
   if (map.campaign) return campaignViewpoints(map);
   // (an Evac Run map has no objective: its first point of interest stands in)
   const ob = map.objective || (map.pois && map.pois[0]) || { x: map.width / 2, y: map.height / 2 }, sp = map.supply || ob;
@@ -288,7 +291,10 @@ function setup(mapId) {
   const players = [{ id: 1, name: 'You', color: 0, cls: 'soldier' }];
   for (let i = 0; i < opt.bots; i++) players.push({ id: i + 2, name: ['Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][i], color: i + 1, cls: CLASS_IDS[(i + 1) % CLASS_IDS.length], bot: true });
   const hubMap = HIDEOUT_IDS.includes(mapId);
-  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode: hubMap ? 'hideout' : opt.mode } });
+  // (a story level plays its missions; here it is walked like a hideout, or with plain waves while zombies are on)
+  const levelMap = LEVEL_IDS.includes(mapId);
+  const mode = hubMap || (levelMap && !opt.zombies) ? 'hideout' : levelMap ? 'defend' : opt.mode;
+  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode } });
   if (hubMap) applyHideoutUpgrades(game.map, parseUpgrades(params.get('up')));
   roster = players.map((p) => ({ ...p, ready: true, ping: 0, host: p.id === 1 }));
   if (opt.wave && opt.zombies) for (let t = 0; t < 60 * 30 && game.phase === 'prep'; t++) game.step();
@@ -311,6 +317,22 @@ function setup(mapId) {
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
   window.__fps.views = viewpoints(game.map, snap && snap.zone);
   if (opt.view) setView(opt.view);
+}
+
+/**
+ * A story level's views: per section `sec:<id>` from its west edge looking east down the route, and
+ * `sec:<id>:b` from its east edge looking back; plus every anchor, `a:<name>` from 260 west of it.
+ */
+function levelViewpoints(map) {
+  const v = [];
+  const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
+  for (const s of map.sections) {
+    const x0 = s.x - s.w / 2 + 120, x1 = s.x + s.w / 2 - 120;
+    v.push(at('sec:' + s.id, x0, s.y, s.x + s.w / 2, s.y));
+    v.push(at('sec:' + s.id + ':b', x1, s.y, s.x - s.w / 2, s.y));
+  }
+  for (const [name, a] of Object.entries(map.anchors)) v.push(at('a:' + name, a.x - 260, a.y + 40, a.x, a.y));
+  return v;
 }
 
 /** up=3 (every upgrade at tier 3) | up=generator:2,palisade:1 | absent = nothing built. */

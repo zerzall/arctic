@@ -16,6 +16,7 @@ import { TAU, round1 } from './math.js';
 import { buildHarlan } from './maps-harlan.js';
 import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
+import { LEVEL_LIST, LEVEL_DEFS, LEVEL_BUILDERS } from './levels/index.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -57,6 +58,7 @@ const BUILDERS = {
   harlan: buildHarlan,
   // the story campaign's hideouts (maps-hideouts.js); not in MAP_LIST, so the lobby never offers them
   ...HIDEOUT_BUILDERS,
+  ...LEVEL_BUILDERS,
 };
 
 /**
@@ -69,7 +71,7 @@ const BUILDERS = {
 export function buildMap(id, seed, opts = null) {
   const build = Object.prototype.hasOwnProperty.call(BUILDERS, id) ? BUILDERS[id] : null;
   if (!build) throw new Error(`Unknown map id: ${id}`);
-  const meta = MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id);
+  const meta = MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id) || LEVEL_LIST.find((m) => m.id === id);
   const s = Number.isFinite(seed) ? seed : 0;
   const B = createBuilder(meta, s);
   build(B);
@@ -160,6 +162,8 @@ const KIND_DEFAULTS = {
  */
 export const OVERPASS = Object.freeze({ depth: 36, cap: 26, parapet: 30, pier: 34, walk: 8, low: 44 });
 const ROOFED = new Set(['building', 'container', 'tent', 'booth']);
+/** Extra fields B.ob copies from its opts onto the obstacle (story levels, JOURNEY.md §3). */
+const OB_TAGS = ['style', 'prop', 'label', 'section'];
 const VEHICLES = new Set(['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker']);
 
 const LAMP_COLOR = '#ffcf8a';
@@ -289,6 +293,14 @@ function createBuilder(meta, seed) {
   };
   // Modes the map plays (absent = every mode, shared/zone.js mapModes).
   if (meta.modes) map.modes = meta.modes.slice();
+  // A story level (JOURNEY.md): a route of sections joined by gates.
+  if (meta.kind === 'level') {
+    map.kind = 'level';
+    map.sections = [];
+    map.gates = [];
+    map.checkpoints = [];
+    map.roofs = [];
+  }
   // Times of day the map plays (SPEC §7.5.1): a fixed `time` ('day') or a `times` list; absent = both.
   if (meta.time) map.time = meta.time;
   if (meta.times) map.times = meta.times.slice();
@@ -388,6 +400,8 @@ function createBuilder(meta, seed) {
         roof: ROOFED.has(kind) ? (opts.roof || d.roof || '#555555') : null,
       };
       if (opts.top !== undefined) o.top = round1(opts.top);
+      // Story levels (JOURNEY.md): a look the level's art draws (`style`), a prop tag and the section it stands in.
+      for (const k of OB_TAGS) if (opts[k] !== undefined) o[k] = opts[k];
       map.obstacles.push(o);
       gridAdd(o);
       return o;
@@ -581,9 +595,53 @@ function createBuilder(meta, seed) {
       map.interactables.push({ id, kind, x, y, r, label, hold });
     },
     /** Zombie spawn rect; `weight` (optional, all or none of a map's rects) biases the pick. */
-    zspawn(x, y, w, h, weight = undefined) {
-      map.zombieSpawns.push(weight === undefined ? { x, y, w, h } : { x, y, w, h, weight });
+    zspawn(x, y, w, h, weight = undefined, section = undefined) {
+      const r = weight === undefined ? { x, y, w, h } : { x, y, w, h, weight };
+      // a story level tags its spawns with the section they feed (JOURNEY.md §3)
+      if (section !== undefined) r.section = section;
+      map.zombieSpawns.push(r);
       B.keep(x, y, w + 200, h + 200);
+    },
+
+    // ---- story levels (JOURNEY.md §3): sections, gates, checkpoints and roofs ----
+    /** A section of a level: a named stretch of the route, in travel order. */
+    section(id, name, x, y, w, h) {
+      if (!map.sections) map.sections = [];
+      map.sections.push({ id, name, x: round1(x), y: round1(y), w: round1(w), h: round1(h), i: map.sections.length });
+      B.keep(x, y, 0, 0);
+    },
+    /**
+     * A gate: a solid obstacle that opens during the mission (`kind` one of GATE_KINDS: shutter, door,
+     * gate, fence, barricade, rubble, bars, vehicle). Several calls with the same id make one gate of
+     * several pieces (double doors). Returns the obstacle.
+     */
+    gate(id, kind, x, y, w, h, a = 0, opts = {}) {
+      if (!map.gates) map.gates = [];
+      const o = B.ob('wall', x, y, w, h, a, { color: opts.color || '#5d6166', solid: true, top: opts.top !== undefined ? opts.top : 140, style: opts.style, section: opts.section });
+      o.gate = id;
+      o.gateKind = kind;
+      let g = map.gates.find((e) => e.id === id);
+      if (!g) {
+        g = { id, kind, obstacles: [], label: opts.label || '' };
+        map.gates.push(g);
+      }
+      g.obstacles.push(o.id);
+      return o;
+    },
+    /** Where survivors respawn / late joiners appear once the party has reached `section`. */
+    checkpoint(section, x, y) {
+      if (!map.checkpoints) map.checkpoints = [];
+      map.checkpoints.push({ section, x: round1(x), y: round1(y) });
+      B.keep(x, y, 60, 60);
+    },
+    /**
+     * An indoor space: the renderer puts a ceiling (`height` world units up, fixtures by `kind`:
+     * 'office' | 'hospital' | 'mall' | 'metro' | 'industrial' | 'house' | 'plain') and a roof over it,
+     * keeps the sun, moon and rain out and lights it with its own lamps. The sim ignores it.
+     */
+    roof(x, y, w, h, a = 0, opts = {}) {
+      if (!map.roofs) map.roofs = [];
+      map.roofs.push({ x: round1(x), y: round1(y), w: round1(w), h: round1(h), a: normAngle(a), height: opts.height || 150, kind: opts.kind || 'plain', section: opts.section, dark: opts.dark !== undefined ? opts.dark : 0.75 });
     },
     /** Reserve a rectangle that scatter (trees, rocks, clutter decor) must leave empty. */
     keep(x, y, w, h, a = 0) {
@@ -774,7 +832,8 @@ function createBuilder(meta, seed) {
     },
 
     finish() {
-      if (!map.objective || !map.supply) throw new Error(`map ${map.id} is missing its objective or supply`);
+      // (a story level may have neither: its missions bring their own goals, JOURNEY.md §3)
+      if (map.kind !== 'level' && (!map.objective || !map.supply)) throw new Error(`map ${map.id} is missing its objective or supply`);
       resolveAnchors(map);
       return map;
     },
@@ -790,6 +849,7 @@ const MAP_DEFS = {
   checkpoint: { width: 3000, height: 3000, darkness: 0.66, tint: '#56644c', ground: '#434a33' },
   harlan: { width: 7200, height: 7200, darkness: 0.66, tint: '#3a5470', ground: '#384a2c' },
   ...HIDEOUT_DEFS,
+  ...LEVEL_DEFS,
 };
 
 // ---------------------------------------------------------------------------------
