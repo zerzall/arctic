@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 import { hash01 } from './world-geo.js';
+import { normTier, tierAtLeast } from './tier.js';
 
 const TONE = `
 #include <tonemapping_fragment>
@@ -27,7 +28,9 @@ function shader(uniforms, vertexShader, fragmentShader, extra = {}) {
   return new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, fog: false, ...extra });
 }
 
-const perTier = (t, ultra, high, low) => (t === 'ultra' ? ultra : t === 'low' ? low : high);
+// (cinematic reads as ultra, with 1.6x the small life: fireflies / butterflies, litter)
+const perTier = (t, ultra, high, low) => (tierAtLeast(t, 'ultra') ? ultra : t === 'low' ? low : high);
+const cineK = (t) => (t === 'cinematic' ? 1.6 : 1);
 
 export function createLife(ctx, deps, items, getTier) {
   const { map } = ctx;
@@ -45,7 +48,7 @@ export function createLife(ctx, deps, items, getTier) {
   let swarm = null;
   function buildSwarm() {
     if (swarm) { root.remove(swarm); swarm.geometry.dispose(); swarm = null; }
-    const n = perTier(tier, day ? 110 : 150, day ? 60 : 80, 0);
+    const n = Math.round(perTier(tier, day ? 110 : 150, day ? 60 : 80, 0) * cineK(tier));
     if (!n || !anchors.length) return;
     const per = day ? 2 : 3;
     const pos = [], seed = [];
@@ -125,7 +128,7 @@ export function createLife(ctx, deps, items, getTier) {
   const litterU = { ...uni, uCam: { value: new THREE.Vector2() }, uLight: { value: day ? 1 : 0.32 }, uWind: { value: new THREE.Vector2(0.92, 0.39) }, uGround: { value: 0 } };
   function buildLitter() {
     if (litter) { root.remove(litter); litter.geometry.dispose(); litter = null; }
-    const n = perTier(tier, 110, 60, 24);
+    const n = Math.round(perTier(tier, 110, 60, 24) * cineK(tier));
     const base = new THREE.PlaneGeometry(1, 1);
     const g = new THREE.InstancedBufferGeometry();
     g.index = base.index;
@@ -353,7 +356,7 @@ export function createLife(ctx, deps, items, getTier) {
       updateBirds(dt, cx, cy);
     },
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
+      const nt = normTier(q);
       if (nt === tier) return;
       tier = nt;
       buildAll();

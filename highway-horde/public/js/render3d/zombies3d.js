@@ -24,6 +24,7 @@ import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
 import { zombieLook, packLook } from './actor-zlook.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
 import { actorTextures, actorTexturesAsync } from './actor-tex.js';
+import { tierAtLeast, tierRow } from './tier.js';
 import { acquireFx, releaseFx, F_ADD, F_FIRE, F_BOUNCE, F_FLICKER, FR } from './fx-core.js';
 
 const TAU = Math.PI * 2;
@@ -45,7 +46,7 @@ export const LOD_DIST = { cinematic: [520, 1350], ultra: [340, 950], high: [270,
 // Model arrays are pure CPU data: build once per page, share across games.
 const modelCache = new Map();
 /** Quality tier of the models: ultra 0 (everything), high 1, low 2 (no accessories). */
-const tierOf = (q) => (q === 'cinematic' ? -1 : q === 'ultra' ? 0 : q === 'low' ? 2 : 1);
+const tierOf = (q) => (q === 'cinematic' ? -1 : tierAtLeast(q, 'ultra') ? 0 : q === 'low' ? 2 : 1);
 function modelArrays(type, L, tier) {
   if (tier < 0 && L > 0) tier = 0;           // (the cinematic tier only replaces the near model)
   const k = type + L + ':' + tier;
@@ -78,7 +79,7 @@ export function createZombies3D(ctx) {
   let high = quality !== 'low';
   let tier = tierOf(quality);
 
-  const tex = actorTextures(quality === 'ultra' || quality === 'cinematic' ? 16 : 8);
+  const tex = actorTextures(tierAtLeast(quality, 'ultra') ? 16 : 8);
   const pool = new RigPool({ capacity: CAPACITY + CORPSE_CAP, textures: tex });
   // cinematic: the 1024² skin / cloth / grime maps are generated in time slices and swapped in
   let hiTex = 0, gone = false;
@@ -490,7 +491,7 @@ export function createZombies3D(ctx) {
     const cam = ctx.camera;
     _pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     frustum.setFromProjectionMatrix(_pm);
-    const lodD = LOD_DIST[quality] || LOD_DIST.high;
+    const lodD = tierRow(LOD_DIST, quality);
     const list = (view && view.zombies) || [];
     const camX = frame.camX, camY = frame.camY;
     stats.lod[0] = stats.lod[1] = stats.lod[2] = 0;

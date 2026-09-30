@@ -28,8 +28,9 @@ import { buildOverpass, deckHeightAt, deckRoofs } from './world-overpass.js';
 import { trunk, canopy, bush, buildTreeLine, createGrassField, scatterFlora, setBiome } from './world-veg.js';
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
+import { normTier, tierAtLeast, anisoFor } from './tier.js';
 import { terrainHeight } from '../shared/terrain.js';
-import { tierAtLeast, baseTier } from './tier.js';
+import { baseTier } from './tier.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
   buildRidgeWorld, makeSkyline, ridgeHeight,
@@ -146,22 +147,22 @@ export function createWorld(ctx, deps) {
   const { scene, map } = ctx;
   // (cinematic = ultra's materials + the extra-detail geometry of the V2 asset pass)
   const cin = tierAtLeast(ctx.quality, 'cinematic');
-  let full = ctx.quality === 'low' || ctx.quality === 'ultra' || cin ? ctx.quality : 'high';
-  let tier = baseTier(full);
+  let full = normTier(ctx.quality);
+  let tier = baseTier(full);   // (the tier of the materials and tables that predate cinematic: cinematic reads as ultra)
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
   const maxAniso = deps.renderer ? deps.renderer.capabilities.getMaxAnisotropy() : 1;
-  const aniso = Math.min(tier === 'ultra' ? 16 : tier === 'high' ? 8 : 2, maxAniso);
+  const aniso = anisoFor(tier, maxAniso);
 
   const tA = performance.now();
   // the detail layers only feed the PBR tiers: 'low' (Lambert) skips the ~0.4 s generation
   // and gets them the first time the player picks a higher tier
   let detailTex = tier === 'low' ? null : track(makeDetailArray(aniso));
   const tDetail = performance.now() - tA;
-  const ground = createGround({ scene, map, quality: tier, cinematic: cin, renderer: deps.renderer, detail: detailTex });
+  const ground = createGround({ scene, map, quality: full, renderer: deps.renderer, detail: detailTex });
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
   const day = amb.time === 'day';
@@ -219,7 +220,7 @@ export function createWorld(ctx, deps) {
 
   if (hasTerrain) B.setGround(gy);
   // geometry detail of the buildings follows the tier the world is built for
-  setDetailLevel(cin ? 3 : tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
+  setDetailLevel(cin ? 3 : tier === 'low' ? 0 : tierAtLeast(tier, 'ultra') ? 2 : 1);
   setSegBoost(cin ? 1.9 : 1);
   // lists for the effect meshes
   const halos = [];
@@ -460,12 +461,12 @@ export function createWorld(ctx, deps) {
   // ---- grass field (camera-following, instanced; none on 'low') ----
   const grass = createGrassField(scene, ground, full);
 
-  // ---- light rain ('ultra' only): streaks lit by the lamps, rings in the puddles ----
+  // ---- light rain ('ultra' and up): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
   const setRain = () => {
-    const on = tier === 'ultra' && !day;   // (a sunny day is dry)
+    const on = tierAtLeast(tier, 'ultra') && !day;   // (a sunny day is dry)
     if (on && !rain) {
-      rain = makeRain(fx, 5000);
+      rain = makeRain(fx, full === 'cinematic' ? 9000 : 5000);
       rain.setRoofs(deckRoofs(map));
       root.add(rain.mesh);
       disposables.push(rain.mesh.geometry, rain.mesh.material);
@@ -625,19 +626,19 @@ export function createWorld(ctx, deps) {
     update,
     /** Swap every static mesh to the tier's materials; the grass field follows the tier. */
     setQuality(q) {
-      const nf = q === 'low' || q === 'ultra' || q === 'cinematic' ? q : 'high';
+      const nf = normTier(q);
       const nt = baseTier(nf);
       if (nf === full) return;
       full = nf;
       tier = nt;
       if (tier !== 'low' && !detailTex) {
-        detailTex = track(makeDetailArray(Math.min(tier === 'ultra' ? 16 : 8, maxAniso)));
+        detailTex = track(makeDetailArray(anisoFor(tier === 'high' ? 'high' : 'ultra', maxAniso)));
         mats.shared.uDetail.value = detailTex;
         ground.uniforms.uDetail.value = detailTex;
       }
       for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
       grass.setQuality(full);
-      ground.setQuality(tier);
+      ground.setQuality(full);
       if (dress) dress.setQuality(full);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)

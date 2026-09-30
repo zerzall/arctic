@@ -272,15 +272,17 @@
             <div class="set-row">
               <div class="set-label" id="quality-label">Preset <span id="set-custom" class="set-badge" hidden>Custom</span></div>
               <div class="seg seg-preset" role="radiogroup" aria-labelledby="quality-label" id="set-quality">
+                <button type="button" class="seg-btn" role="radio" data-value="cinematic"><span class="seg-main">Cinematic</span><span class="seg-sub">RTX-class GPUs</span></button>
                 <button type="button" class="seg-btn" role="radio" data-value="ultra"><span class="seg-main">Ultra</span><span class="seg-sub">Every effect</span></button>
                 <button type="button" class="seg-btn" role="radio" data-value="high"><span class="seg-main">High</span><span class="seg-sub">Balanced</span></button>
                 <button type="button" class="seg-btn" role="radio" data-value="low"><span class="seg-main">Low</span><span class="seg-sub">Fastest</span></button>
               </div>
+              <p class="set-gpu" id="set-gpu" hidden></p>
             </div>
             <div class="set-row">
               <div class="set-label" id="renderscale-label">Resolution</div>
               <div class="seg" role="radiogroup" aria-labelledby="renderscale-label" id="set-renderscale" data-setting="renderScale">
-                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Holds 60 fps: sharper than native when the GPU has headroom, lower only when a fight needs it">Auto</button>
+                <button type="button" class="seg-btn" role="radio" data-value="auto" title="Holds your display's refresh rate: sharper than native when the GPU has headroom, lower only when a fight needs it">Auto</button>
                 <button type="button" class="seg-btn" role="radio" data-value="2" title="Supersampling: draws at 4x the pixels and shrinks it back. The sharpest picture; needs a strong graphics card">200%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="1.5" title="Supersampling: very sharp, easy edges">150%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="1.25">125%</button>
@@ -289,7 +291,8 @@
                 <button type="button" class="seg-btn" role="radio" data-value="0.7">70%</button>
                 <button type="button" class="seg-btn" role="radio" data-value="0.5">50%</button>
               </div>
-              <p class="set-help">Auto holds 60 fps: it goes above 100% (sharper) when your graphics card has room and lowers it only when a big fight needs it. 150% and 200% render extra pixels for the sharpest picture.</p>
+              <p class="set-help">Auto holds your display's refresh rate: it goes above 100% (sharper) when your graphics card has room and lowers it only when a big fight needs it. 150% and 200% render extra pixels for the sharpest picture.</p>
+              <p class="set-hint" id="set-res-hint" hidden></p>
             </div>
             <button type="button" class="set-disclosure" id="set-adv-toggle" aria-expanded="false" aria-controls="set-adv">Advanced</button>
             <div id="set-adv" class="set-adv" hidden>
@@ -317,6 +320,28 @@
                 <label class="check-row"><input type="checkbox" data-setting="volumetrics"><span>Volumetric fog <small>mist, glowing lamps and fires</small></span></label>
                 <label class="check-row"><input type="checkbox" data-setting="reflections"><span>Reflections <small>wet roads, puddles and water</small></span></label>
                 <label class="check-row"><input type="checkbox" data-setting="lighting"><span>Night lighting &amp; flashlights</span></label>
+              </div>
+              <div class="set-cine" id="set-cine" hidden>
+                <div class="set-sub">Cinematic extras <small>each has a cost: switch off what your GPU can't hold</small></div>
+                <div class="set-row">
+                  <div class="set-label" id="msaa-label">Multisampling (MSAA)</div>
+                  <div class="seg" role="radiogroup" aria-labelledby="msaa-label" id="set-msaa" data-setting="msaa">
+                    <button type="button" class="seg-btn" role="radio" data-value="0">Off</button>
+                    <button type="button" class="seg-btn" role="radio" data-value="2">2×</button>
+                    <button type="button" class="seg-btn" role="radio" data-value="4" title="Smooth geometry edges, foliage and wires before SMAA">4×</button>
+                    <button type="button" class="seg-btn" role="radio" data-value="8" title="Only where the graphics card supports it; very heavy at high resolution">8×</button>
+                  </div>
+                </div>
+                <div class="check-grid">
+                  <label class="check-row"><input type="checkbox" data-setting="shadowsHigh"><span>Cascaded 4K shadows <small>sun / moon and flashlight</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="contactShadows"><span>Contact shadows <small>where things touch the ground</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="lightShadows"><span>Lamp shadows <small>street lamps and fires at night</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="aoFull"><span>Full-resolution occlusion <small>sharper corners</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="fxHigh"><span>Reflections &amp; light shafts+ <small>denser, sun shafts</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="motionBlur"><span>Motion blur <small>camera</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="dof"><span>Depth of field <small>when hurt or downed</small></span></label>
+                  <label class="check-row"><input type="checkbox" data-setting="lensFx"><span>Lens effects <small>colour fringe, dirt</small></span></label>
+                </div>
               </div>
               <button type="button" class="btn btn-small btn-ghost" id="set-preset-reset" hidden>Reset to preset</button>
             </div>
@@ -347,6 +372,22 @@
                 <button type="button" class="seg-btn" role="radio" data-value="16:9">16:9 centre</button>
               </div>
               <p class="set-help">Ultrawide monitors: 16:9 keeps the HUD corners in the middle of the screen, where your eyes are.</p>
+            </div>
+            <div class="set-row">
+              <div class="set-label" id="fpscap-label">Frame-rate limit <span class="set-value" id="set-refresh-now"></span></div>
+              <div class="seg" role="radiogroup" aria-labelledby="fpscap-label" id="set-fpscap" data-setting="fpsCap">
+                <button type="button" class="seg-btn" role="radio" data-value="off" title="Follow the display's refresh rate">Off</button>
+                <button type="button" class="seg-btn" role="radio" data-value="60">60</button>
+                <button type="button" class="seg-btn" role="radio" data-value="120">120</button>
+                <button type="button" class="seg-btn" role="radio" data-value="144">144</button>
+              </div>
+              <p class="set-help">The game follows your display's refresh rate (no 60 fps limit); Auto resolution aims at 97% of it. V-sync belongs to the browser and your graphics driver — turn it on there to avoid tearing, or cap the rate here to save power.</p>
+            </div>
+            <div class="set-row">
+              <div class="set-label">Display calibration <button type="button" class="btn btn-small btn-ghost" id="set-calib-reset">Reset</button></div>
+              <label class="range-row wide-label"><span>Brightness</span><input type="range" min="70" max="130" step="1" data-setting="displayBrightness"><output></output></label>
+              <label class="range-row wide-label"><span>Contrast</span><input type="range" min="70" max="130" step="1" data-setting="displayContrast"><output></output></label>
+              <label class="range-row wide-label"><span>Colour</span><input type="range" min="70" max="130" step="1" data-setting="displaySaturation"><output></output></label>
             </div>
             <div class="check-grid">
               <label class="check-row"><input type="checkbox" data-setting="showStats"><span>Show FPS, resolution &amp; ping</span></label>

@@ -25,13 +25,16 @@ import { bloodSplats, scorchSprite } from '../render/textures.js';
 import { periodicFbm, createRng } from '../render/util.js';
 import { terrainOf } from '../shared/terrain.js';
 import { planGroundExtras } from './ground-extra.js';
+import { normTier, tierAtLeast, tierRow, anisoFor } from './tier.js';
 
 const TILE = 1024;              // playable-area tile size (world units): ~10 visible draw calls
 const SKIRT = 1300;             // how far the ground continues past the map bounds
 const SKIRT_TILE = 2200;        // max skirt tile length
 const SKIRT_SCALE = 0.16;       // texels per unit beyond the bounds (fog hides it)
 /** Texel budget of the playable ground per tier (every map up to 3000 x 3000 stays under it). */
-const GROUND_TEXELS = { ultra: 10e6, high: 6e6, low: 3e6 };
+export const GROUND_TEXELS = { cinematic: 22e6, ultra: 10e6, high: 6e6, low: 3e6 };
+/** Texels per world unit at most, per tier (cinematic paints 1.25x the ultra density). */
+export const GROUND_DENSITY = { cinematic: 1.25, ultra: 1, high: 0.75, low: 0.5 };
 /** Water geometry (units): bed depth, surface height, bank width, drop under a bridge. */
 export const WATER = { depth: 70, surface: -16, bank: 46, drop: 2 };
 // Decor the 3D world models itself — not painted flat into the ground.
@@ -43,16 +46,15 @@ const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
  * @param {object} o { scene, map, quality, renderer }
  * @returns {{ meshes, decal, update, waters, heightAt, dispose, stats }}
  */
-export function createGround({ scene, map, quality, renderer, detail, cinematic = false }) {
+export function createGround({ scene, map, quality, renderer, detail }) {
   const high = quality !== 'low';
-  const ultra = quality === 'ultra';
-  let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
+  const ultra = tierAtLeast(quality, 'ultra');
+  let tier = normTier(quality);
   // texels per world unit: ultra paints the ground at full detail; a very long map is
   // painted a little coarser (a texel budget per tier: the detail layers carry the close-up
   // grain) so its canvases and textures stay near the other maps' memory
-  // (cinematic: 1.6 texels a unit, up to 24 M texels: a road stone is 2 px wide instead of 1)
-  const scale = Math.min(cinematic ? 1.6 : ultra ? 1 : high ? 0.75 : 0.5, Math.sqrt((cinematic ? 24e6 : GROUND_TEXELS[tier]) / (map.width * map.height)));
-  const maxAniso = renderer ? Math.min(ultra ? 16 : high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
+  const scale = Math.min(tierRow(GROUND_DENSITY, tier), Math.sqrt(tierRow(GROUND_TEXELS, tier) / (map.width * map.height)));
+  const maxAniso = renderer ? anisoFor(tier, renderer.capabilities.getMaxAnisotropy()) : 1;
   const W = map.width, H = map.height;
 
   // ---- painting source: the map with edge-touching roads/rivers carried into the skirt
@@ -263,7 +265,7 @@ export function createGround({ scene, map, quality, renderer, detail, cinematic 
 
   /** 'low' swaps every tile to a plain Lambert (and back); the PBR materials are kept. */
   function setQuality(q) {
-    const nt = q === 'low' || q === 'ultra' ? q : 'high';
+    const nt = normTier(q);
     if (nt === tier) return;
     tier = nt;
     for (const t of tiles) {

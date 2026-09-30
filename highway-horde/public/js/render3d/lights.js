@@ -3,9 +3,16 @@
 //   - a dim moonlight (DirectionalLight) and a HemisphereLight tuned per map.ambient; on
 //     'high'/'ultra' the moon casts soft shadows of the static world from a shadow map
 //     that follows the camera and is re-rendered only when the camera has travelled far
-//     (static casters never move, so it costs a pass every few seconds, not every frame),
-//   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'/'ultra'),
-//   - a fixed pool of PointLights (12 on 'ultra', 8 on 'high', 4 on 'low'). Each frame the pool is handed
+//     (static casters never move, so it costs a pass every few seconds, not every frame);
+//     'cinematic' swaps it for a two-cascade sun light (sunlight.js: 4096² per cascade, a
+//     9 mm-texel near cascade around the player, a far one out to the fog) with a denser
+//     shadow filter,
+//   - the local player's flashlight (SpotLight at the camera; shadow map on 'high'/'ultra',
+//     4096² on 'cinematic'),
+//   - a fixed pool of PointLights (20 on 'cinematic', 12 on 'ultra', 8 on 'high', 4 on 'low'; on
+//     'cinematic' at night the first three cast the shadow of the STATIC world: they are handed the
+//     nearest map lights (lamps, fires: fixed position and radius) and their cube maps are redrawn,
+//     one per frame, only when a slot changes hands). Each frame the pool is handed
 //     to the most relevant sources near the camera: the map's lamps and fires, steady()
 //     registrations from sub-systems (burning zombies, hazards, turrets...) and flash()
 //     transients (muzzle flashes, explosions). Pool slots fade in and out so lights never
@@ -17,6 +24,8 @@
 import * as THREE from 'three';
 import { dayAmbientFor } from './daylight.js';
 import { terrainOf } from '../shared/terrain.js';
+import { normTier, tierAtLeast, tierRow } from './tier.js';
+import { HHSunLight } from './sunlight.js';
 
 // flame light height above its base: well up in the flames, so a wreck's own flanks and a
 // tanker's end cap under the fire are lit at a grazing angle instead of blown out white
@@ -29,6 +38,47 @@ const E0 = 5.5;
 const FADE_IN = 3.5, FADE_OUT = 7;  // per second
 const MAX_FLASHES = 40;
 const FLASH_I = 900;
+
+/** Point lights in the pool per tier. */
+export const LIGHT_POOL = { cinematic: 20, ultra: 12, high: 8, low: 4 };
+/** Flashlight shadow map size (px) per tier. */
+export const FLASH_MAP = { cinematic: 4096, ultra: 2048, high: 1024, low: 1024 };
+/** Sun / moon shadow map size (px; per cascade on 'cinematic') per tier. */
+export const SUN_MAP = { cinematic: 4096, ultra: 2048, high: 1024, low: 1024 };
+/** Pool lights that cast a (static) shadow: the nearest street lamps and fires, Cinematic at night. */
+export const LAMP_SHADOWS = { cinematic: 3, ultra: 0, high: 0, low: 0 };
+/** Half-extent (units) of the single sun / moon map that follows the camera (not used by the cinematic cascades). */
+export const SUN_SPAN = { cinematic: 1300, ultra: 1300, high: 1000, low: 1000 };
+
+// Shadow filter. three's PCF takes 5 taps of a rotated Vogel disc; on a 4096-px map (the
+// cinematic flashlight, the cinematic sun atlas) a 12-tap disc with a footprint that is
+// isotropic in texels (the sun atlas is two tiles wide, which made three's disc twice as
+// wide as tall) gives a smooth, sharper penumbra. The branch is on the map size, a uniform:
+// the 2048 maps of the other tiers keep the original 5 taps.
+const PCF_TAPS = `shadow = (
+					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 0, 5, phi ) * radius, shadowCoord.z ) ) +
+					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 1, 5, phi ) * radius, shadowCoord.z ) ) +
+					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 2, 5, phi ) * radius, shadowCoord.z ) ) +
+					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 3, 5, phi ) * radius, shadowCoord.z ) ) +
+					texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 4, 5, phi ) * radius, shadowCoord.z ) )
+				) * 0.2;`;
+(function patchShadowFilter() {
+  const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
+  if (!chunk || chunk.includes('hhShadowTaps')) return;
+  // find the original 5-tap text with a whitespace-tolerant regex (the chunk is tab-indented)
+  const esc = PCF_TAPS.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  const re = new RegExp(esc);
+  if (!re.test(chunk)) return;
+  THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(re, `// hhShadowTaps
+				if ( shadowMapSize.x > 3000.0 ) {
+					vec2 hhRadius = shadowRadius * texelSize;
+					shadow = 0.0;
+					for ( int i = 0; i < 12; i ++ ) shadow += texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( i, 12, phi ) * hhRadius, shadowCoord.z ) );
+					shadow *= ( 1.0 / 12.0 );
+				} else {
+					${PCF_TAPS}
+				}`);
+}());
 
 // The flashlight's beam profile (the only SpotLight in the scene). three's spot is a flat
 // disc with a smoothstep rim in cosine space — close to a wall it read as a hard-edged
@@ -91,12 +141,32 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
 
   const hemi = new THREE.HemisphereLight(amb.sky, amb.ground, amb.hemi);
   group.add(hemi);
-  const moon = new THREE.DirectionalLight(amb.moon, amb.moonI);
+  let tier = normTier(quality);
+  let high = tier !== 'low';
+  let cine = tierAtLeast(tier, 'cinematic');
+  // The cinematic sun is a two-cascade light (sunlight.js); every other tier keeps the single
+  // DirectionalLight. A tier switched up to 'cinematic' mid-game swaps the light once (one
+  // recompile); switched back down it stays a cascaded light with 2048 px maps.
+  let cascaded = cine;
   const MOON_DIR = (amb.sunDir ? amb.sunDir.clone() : new THREE.Vector3(-0.45, 0.62, -0.64)).normalize();
-  moon.position.copy(MOON_DIR).multiplyScalar(1000);
-  moon.target.position.set(0, 0, 0);
-  group.add(moon, moon.target);
-  const moonShadow = { cx: NaN, cz: NaN, span: 1000 };
+  function makeMoon() {
+    if (cascaded) {
+      const m = new HHSunLight(amb.moon, amb.moonI);
+      m.position.copy(MOON_DIR);
+      m.updateMatrixWorld();
+      return m;
+    }
+    const m = new THREE.DirectionalLight(amb.moon, amb.moonI);
+    m.position.copy(MOON_DIR).multiplyScalar(1000);
+    m.target.position.set(0, 0, 0);
+    return m;
+  }
+  let moon = makeMoon();
+  group.add(moon);
+  if (moon.target) group.add(moon.target);
+  const moonShadow = { cx: NaN, cy: 0, cz: NaN, span: 1000, k: 0 };
+  // cinematic extras the settings can switch (renderer3d applySettings → setOptions)
+  const opts = { shadowsHigh: true, lightShadows: true };
 
   // flashlight: warm-white, a slightly soft cone, from just right of and below the eye
   // decay a little over 1: bright enough to read zombies at 400+, without the hot spot on
@@ -111,45 +181,59 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   // or two from the reflector and specks of dust; it also stays soft, never a hard disc.
   const cookie = makeFlashCookie();
   flash.map = null;
-  let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
-  let high = tier !== 'low';
-  const POOL = { ultra: 12, high: 8, low: 4 };
+  const sunMapSize = () => (cine && !opts.shadowsHigh ? SUN_MAP.ultra : tierRow(SUN_MAP, tier));
+  const flashMapSize = () => (cine && !opts.shadowsHigh ? FLASH_MAP.ultra : tierRow(FLASH_MAP, tier));
+  const dropMap = (shadow) => {
+    if (shadow.map) {
+      shadow.map.depthTexture?.dispose();
+      shadow.map.dispose();
+      shadow.map = null;
+    }
+  };
   const setShadows = () => {
     // (no flashlight by day: its shadow pass over the actors would draw nothing)
     flash.castShadow = high && !day;
     flash.map = flash.castShadow ? cookie : null;
-    const size = tier === 'ultra' ? 2048 : 1024;
-    if (flash.shadow.mapSize.x !== size && flash.shadow.map) {
-      flash.shadow.map.dispose();
-      flash.shadow.map = null;
-    }
+    const size = flashMapSize();
+    if (flash.shadow.mapSize.x !== size) dropMap(flash.shadow);
     flash.shadow.mapSize.set(size, size);
     flash.shadow.camera.near = 6;
     flash.shadow.camera.far = 900;
     flash.shadow.bias = -0.0006;
-    flash.shadow.normalBias = 0.6;
-    // soft edges (PCF over a rotated Vogel disc): wider on the larger 'ultra' map
-    flash.shadow.radius = tier === 'ultra' ? 3.5 : 2.5;
+    flash.shadow.normalBias = size > 3000 ? 0.45 : 0.6;
+    // soft edges (PCF over a rotated Vogel disc): wider on the larger maps, in texels (the
+    // 4096 map of 'cinematic' takes 12 taps: a smooth penumbra that is also narrower in world units)
+    flash.shadow.radius = size > 3000 ? 5 : tier === 'ultra' ? 3.5 : 2.5;
   };
   function setMoonShadow() {
     const on = tier !== 'low';
     moon.castShadow = on;
     moon.shadow.autoUpdate = false;
-    const size = tier === 'ultra' ? 2048 : 1024;
-    if (moon.shadow.mapSize.x !== size && moon.shadow.map) {
-      moon.shadow.map.dispose();
-      moon.shadow.map = null;
-    }
+    const size = sunMapSize();
+    if (moon.shadow.mapSize.x !== size) dropMap(moon.shadow);
     moon.shadow.mapSize.set(size, size);
-    const S = tier === 'ultra' ? 1300 : 1000;
-    moonShadow.span = S;
-    const c = moon.shadow.camera;
-    c.left = -S; c.right = S; c.top = S; c.bottom = -S;
-    c.near = 10; c.far = 5200;
-    c.updateProjectionMatrix();
-    moon.shadow.bias = -0.0005;
-    moon.shadow.normalBias = 1.6;
-    moon.shadow.radius = tier === 'ultra' ? 3 : 2;
+    if (cascaded) {
+      const sh = moon.shadow;
+      // the far cascade reaches as far as the fog lets you see (thick night fog: less)
+      const seen = Math.sqrt(-Math.log(0.03)) / Math.max(1e-5, amb.fogDensity);
+      sh.depths = [size >= 4096 ? 320 : 380, Math.max(900, Math.min(2200, seen))];
+      sh.drift = [110, 260];
+      sh.bias = -0.0003;
+      sh.normalBias = size >= 4096 ? 0.9 : 1.3;
+      // texels, isotropic: the near cascade (~9 mm texels) stays crisp, the far one softens with distance
+      sh.radius = size >= 4096 ? 3 : 2;
+      moonShadow.span = sh.fit()[0];
+    } else {
+      const S = tierRow(SUN_SPAN, tier);
+      moonShadow.span = S;
+      const c = moon.shadow.camera;
+      c.left = -S; c.right = S; c.top = S; c.bottom = -S;
+      c.near = 10; c.far = 5200;
+      c.updateProjectionMatrix();
+      moon.shadow.bias = -0.0005;
+      moon.shadow.normalBias = 1.6;
+      moon.shadow.radius = tier === 'ultra' ? 3 : 2;
+    }
     moonShadow.cx = NaN;   // re-render at the next opportunity
   }
   setShadows();
@@ -181,7 +265,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       // fires sit right against wrecks: at 1.1 a pale tanker cap 30 units away blew out white
       intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9, lamp: isLamp,
       radius: isLamp ? Math.hypot(l.r, h) * 1.05 : l.r * (fire ? 1.25 : 1.1),
-      flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0,
+      flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0, isMap: true,
     };
   });
   const mapLevel = new Float32Array(mapSources.length);
@@ -196,20 +280,45 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   const poolLights = [];
   // per pool slot: 1 = a street lamp under its shade (the atmosphere pass keeps its haze below it)
   let poolKinds = new Float32Array(0);
+  // shadow-casting slots (0..K-1): the nearest map lights, static shadows (see the header)
+  let K = 0;
+  let slotKey = [];
+  let dirty = [];
+  let casterPts = [];
+  const lampCount = () => (cine && opts.lightShadows && !day ? tierRow(LAMP_SHADOWS, tier) : 0);
   function buildPool(n) {
-    for (const s of pool) { group.remove(s.light); s.light.dispose(); }
+    for (const s of pool) { group.remove(s.light); dropMap(s.light.shadow); s.light.dispose(); }
+    for (const c of casterPts) shadowScene.remove(c);
+    casterPts = [];
     pool.length = 0;
     poolLights.length = 0;
+    K = Math.min(lampCount(), n);
+    slotKey = new Array(K).fill(null);
+    dirty = new Array(K).fill(true);
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight('#ffffff', 0, 300, 0);
-      light.castShadow = false;
+      light.castShadow = i < K;
+      if (i < K) {
+        const sh = light.shadow;
+        sh.mapSize.set(1024, 1024);
+        sh.autoUpdate = false;
+        sh.camera.near = 4;
+        sh.bias = -0.0008;
+        sh.normalBias = 1.2;
+        sh.radius = 3;
+        // the same shadow object drives the caster in the shadow-only scene (like the sun's)
+        const c = new THREE.PointLight('#ffffff', 0, 300, 0);
+        c.castShadow = true;
+        c.shadow = sh;
+        shadowScene.add(c);
+        casterPts.push(c);
+      }
       group.add(light);
       pool.push({ light, src: null, level: 0 });
       poolLights.push(light);
     }
     poolKinds = new Float32Array(n);
   }
-  buildPool(POOL[tier]);
 
   const cands = [];
   const _fwd = new THREE.Vector3();
@@ -305,17 +414,32 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       const s = cands[i];
       if (s.slot) continue;
       let free = null;
-      for (const p of pool) if (!p.src) { free = p; break; }
+      // the shadow slots (0..K-1) are for map lights (their static shadow maps fit them), the rest for everything
+      if (K > 0 && s.isMap) for (let k = 0; k < K; k++) if (!pool[k].src) { free = pool[k]; break; }
+      if (!free) for (let k = K; k < pool.length; k++) if (!pool[k].src) { free = pool[k]; break; }
       if (!free && s.flash) {
         // steal the weakest non-flash slot for a flash
         let worst = null;
-        for (const p of pool) if (!p.src.flash && (!worst || p.src.score < worst.src.score)) worst = p;
+        for (let k = K; k < pool.length; k++) { const p = pool[k]; if (!p.src.flash && (!worst || p.src.score < worst.src.score)) worst = p; }
         if (worst && worst.src.score < s.score) { worst.src.slot = null; worst.src = null; worst.level = 0; free = worst; }
       }
       if (!free) continue;
       free.src = s;
       free.level = s.flash ? 1 : 0;
       s.slot = free;
+    }
+
+    // a shadow slot that changed hands needs its cube map redrawn (updateLampShadows)
+    for (let i = 0; i < K; i++) {
+      const src = pool[i].src, key = src ? src.key : null;
+      if (key !== slotKey[i]) {
+        slotKey[i] = key;
+        if (src) {
+          dirty[i] = true;
+          pool[i].light.position.set(src.x, src.h, src.y);
+          pool[i].light.distance = src.radius;
+        }
+      }
     }
 
     mapLevel.fill(0);
@@ -346,10 +470,17 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   // into the flashlight's map too.)
   const shadowScene = new THREE.Scene();
   shadowScene.name = 'moon-shadow';
-  const casterLight = new THREE.DirectionalLight('#ffffff', 0);
-  casterLight.castShadow = true;
-  casterLight.shadow = moon.shadow;
-  shadowScene.add(casterLight, casterLight.target);
+  function makeCaster() {
+    const c = cascaded ? new HHSunLight('#ffffff', 0) : new THREE.DirectionalLight('#ffffff', 0);
+    c.castShadow = true;
+    c.shadow = moon.shadow;
+    if (cascaded) { c.position.copy(MOON_DIR); c.updateMatrixWorld(); }
+    shadowScene.add(c);
+    if (c.target) shadowScene.add(c.target);
+    return c;
+  }
+  let casterLight = makeCaster();
+  buildPool(tierRow(LIGHT_POOL, tier));
   const blindCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1);
   blindCam.position.set(0, -1e6, 0);
   blindCam.lookAt(0, -2e6, 0);
@@ -363,23 +494,16 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
    * @returns {boolean} whether the map was re-rendered this frame
    */
   function updateMoonShadow(renderer, scene, casters) {
-    if (!moon.castShadow || !casters || !casters.length) return false;
+    if (!casters || !casters.length) return false;
+    updateLampShadows(renderer, casters);
+    if (!moon.castShadow) return false;
+    if (cascaded) return updateCascades(renderer, casters);
     const S = moonShadow.span;
     camera.getWorldDirection(_mf);
     const l = Math.hypot(_mf.x, _mf.z) || 1;
     const tx = camera.position.x + (_mf.x / l) * S * 0.3, tz = camera.position.z + (_mf.z / l) * S * 0.3;
     if (Math.hypot(tx - moonShadow.cx, tz - moonShadow.cz) < S * 0.32) return false;
-    if (!proxies) {
-      proxies = casters.map((m) => {
-        const p = new THREE.Mesh(m.geometry, m.material);
-        p.castShadow = true;
-        p.receiveShadow = false;
-        p.matrixAutoUpdate = false;
-        p.matrix.copy(m.matrixWorld);
-        shadowScene.add(p);
-        return p;
-      });
-    }
+    ensureProxies(casters);
     const snap = S / 8;
     moonShadow.cx = Math.round(tx / snap) * snap;
     moonShadow.cz = Math.round(tz / snap) * snap;
@@ -389,20 +513,109 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       L.target.updateMatrixWorld();
       L.updateMatrixWorld();
     }
+    drawShadowScene(renderer);
+    return true;
+  }
+
+  /**
+   * The static world's shadow for the shadow-casting pool slots: a slot that changed hands gets its
+   * cube map redrawn (the first time, all of them, so no lit draw samples a missing map); one per frame after.
+   */
+  function updateLampShadows(renderer, casters) {
+    if (K <= 0) return;
+    ensureProxies(casters);
+    let did = 0;
+    const all = dirty.every(Boolean);
+    for (let i = 0; i < K; i++) {
+      if (!dirty[i]) continue;
+      const src = pool[i].src;
+      const L = pool[i].light, c = casterPts[i];
+      // an empty slot is drawn once too (from the map's middle): the shader needs a map to sample
+      const x = src ? src.x : map.width / 2, h = src ? src.h : 100, y = src ? src.y : map.height / 2, r = src ? src.radius : 300;
+      L.position.set(x, h, y);
+      L.distance = r;
+      c.position.set(x, h, y);
+      c.distance = r;
+      c.updateMatrixWorld();
+      L.updateMatrixWorld();
+      c.shadow.needsUpdate = true;
+      dirty[i] = false;
+      did++;
+      if (!all) break;
+    }
+    if (did) drawShadowScene(renderer, false);
+  }
+
+  function ensureProxies(casters) {
+    if (proxies) return;
+    proxies = casters.map((m) => {
+      const p = new THREE.Mesh(m.geometry, m.material);
+      p.castShadow = true;
+      p.receiveShadow = false;
+      p.matrixAutoUpdate = false;
+      p.matrix.copy(m.matrixWorld);
+      shadowScene.add(p);
+      return p;
+    });
+  }
+
+  function drawShadowScene(renderer, sun = true) {
     if (!blindRT) blindRT = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
     const prev = renderer.getRenderTarget();
-    moon.shadow.needsUpdate = true;
+    if (sun) moon.shadow.needsUpdate = true;
     try {
       renderer.setRenderTarget(blindRT);
       renderer.render(shadowScene, blindCam);
     } finally {
       renderer.setRenderTarget(prev);
     }
+  }
+
+  /**
+   * Cinematic sun: two cascades centred on the camera (sunlight.js). Rotation-invariant, so the
+   * map stays valid while the player turns; it is redrawn when the camera has walked `drift[0]`
+   * units, or the field of view changed the fit.
+   */
+  function updateCascades(renderer, casters) {
+    const sh = moon.shadow, cp = camera.position;
+    const th = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), tw = th * camera.aspect;
+    const k = Math.min(3.4, Math.sqrt(1 + th * th + tw * tw));
+    const moved = Math.hypot(cp.x - moonShadow.cx, cp.y - moonShadow.cy, cp.z - moonShadow.cz);
+    if (Number.isFinite(moonShadow.cx) && moved < sh.drift[0] * 0.85 && Math.abs(k - moonShadow.k) < 0.12 * k) return false;
+    ensureProxies(casters);
+    moonShadow.cx = cp.x; moonShadow.cy = cp.y; moonShadow.cz = cp.z; moonShadow.k = k;
+    sh.k = k;
+    sh.center.copy(cp);
+    moonShadow.span = sh.fit()[0];
+    moon.updateMatrixWorld();
+    casterLight.updateMatrixWorld();
+    drawShadowScene(renderer);
     return true;
   }
 
+  /** Swap the plain DirectionalLight for the cascaded sun light (a tier raised to 'cinematic' mid-game). */
+  function swapToCascaded() {
+    const old = moon;
+    group.remove(old);
+    if (old.target) group.remove(old.target);
+    dropMap(old.shadow);
+    old.dispose();
+    cascaded = true;
+    moon = makeMoon();
+    group.add(moon);
+    shadowScene.remove(casterLight);
+    if (casterLight.target) shadowScene.remove(casterLight.target);
+    casterLight = makeCaster();
+  }
+
   return {
-    hemi, moon, flashlight: flash, ambient: amb,
+    hemi, flashlight: flash, ambient: amb,
+    /** The sun / moon light (a DirectionalLight, or the two-cascade sun of 'cinematic'). */
+    get moon() { return moon; },
+    /** Unit vector from the scene toward the sun / moon (contact shadows, shafts). */
+    get sunDir() { return MOON_DIR; },
+    /** Sun shadow description for the atmosphere pass (light shafts): null when there is no cascaded map yet. */
+    get sun() { return cascaded && moon.castShadow ? { light: moon, shadow: moon.shadow, dir: MOON_DIR } : null; },
     updateMoonShadow,
     /** The pool's PointLights (read-only: rain streaks are lit by them). */
     poolLights,
@@ -441,22 +654,41 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
     },
     update,
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
+      const nt = normTier(q);
       if (nt === tier) return;
       tier = nt;
       high = tier !== 'low';
+      cine = tierAtLeast(tier, 'cinematic');
+      if (cine && !cascaded) swapToCascaded();
       for (const s of mapSources) s.slot = null;
       for (const s of steadyMap.values()) s.slot = null;
       for (const s of flashes) s.slot = null;
-      buildPool(POOL[tier]);
+      buildPool(tierRow(LIGHT_POOL, tier));
       setShadows();
       setMoonShadow();
     },
+    /** Cinematic extras from the graphics settings: { shadowsHigh } (4096 px cascades and flashlight map), { lightShadows } (shadow-casting lamps). */
+    setOptions(o) {
+      if (!o) return;
+      if (o.lightShadows !== undefined && !!o.lightShadows !== opts.lightShadows) {
+        opts.lightShadows = !!o.lightShadows;
+        if (cine) {
+          for (const src of mapSources) src.slot = null;
+          for (const src of steadyMap.values()) src.slot = null;
+          for (const src of flashes) src.slot = null;
+          buildPool(tierRow(LIGHT_POOL, tier));
+        }
+      }
+      if (o.shadowsHigh === undefined || !!o.shadowsHigh === opts.shadowsHigh) return;
+      opts.shadowsHigh = !!o.shadowsHigh;
+      if (cine) { setShadows(); setMoonShadow(); }
+    },
     get activeCount() { return pool.filter((p) => p.src && p.level > 0).length; },
     dispose() {
-      flash.shadow.map?.dispose();
+      for (const p of pool) dropMap(p.light.shadow);
+      dropMap(flash.shadow);
       cookie.dispose();
-      moon.shadow.map?.dispose();
+      dropMap(moon.shadow);
       blindRT?.dispose();
       shadowScene.clear();
       proxies = null;

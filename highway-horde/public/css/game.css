@@ -1065,6 +1065,12 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
   border-radius: 0.125rem;
 }
 .set-help { margin: 0; font-size: 0.8125rem; line-height: 1.35; color: var(--text-mute); }
+/* the detected graphics card, the resolution recommendation, the Cinematic extras */
+.set-gpu { margin: 0; font-size: 0.8125rem; line-height: 1.35; color: var(--text-dim); overflow-wrap: anywhere; }
+.set-hint { margin: 0; font-size: 0.8125rem; line-height: 1.35; color: var(--hazard); }
+.set-cine { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.625rem; border-top: 1px solid var(--line-2); }
+.set-sub { font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text); }
+.set-sub small { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-mute); margin-left: 0.5rem; }
 .seg-preset .seg-btn { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 0.0625rem; min-height: 3.5rem; }
 .seg-main { font-size: 1.125rem; }
 .seg-sub { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; text-transform: none; opacity: 0.72; }
@@ -1613,6 +1619,7 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 .minimap { width: 13.25rem; height: 9.375rem; padding: 0.1875rem; }
 .minimap-canvas { display: block; width: 100%; height: 100%; }
 .hud-net {
+  text-align: right;
   padding: 0.125rem 0.5rem;
   background: rgba(8, 10, 12, 0.55);
   border-radius: 0.1875rem;
@@ -1621,7 +1628,7 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   color: var(--text-dim);
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: pre;      /* the stats readout has up to three lines (statsLine) */
 }
 .killfeed { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1875rem; width: 20rem; }
 .kf-item {

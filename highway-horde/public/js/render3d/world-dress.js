@@ -24,6 +24,7 @@ import { NATURE } from './dress-nature.js';
 import { APOCALYPSE } from './dress-apoc.js';
 import { createLife } from './dress-life.js';
 import { cinDressExtras } from './dress-cin.js';
+import { normTier, tierRow } from './tier.js';
 
 const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS, ...NATURE, ...APOCALYPSE };
 
@@ -134,7 +135,7 @@ export function createDress(ctx, deps) {
     shown = 0;
     const hl = built ? [] : halos;
     const cinFinish = tierAtLeast(full, 'cinematic');
-    const budget = TRI_BUDGET[cinFinish ? 'cinematic' : tier];
+    const budget = tierRow(TRI_BUDGET, cinFinish ? 'cinematic' : tier);
     for (let i = 0; i < ranked.length; i++) {
       const it = ranked[i];
       if (it.q >= density) break;
@@ -183,7 +184,7 @@ export function createDress(ctx, deps) {
   }
   build();
 
-  const life = createLife(ctx, deps, items, () => tier);
+  const life = createLife(ctx, deps, items, () => full);
 
   const cullDist = deps.cullDist || 3000;
   return {
@@ -203,7 +204,7 @@ export function createDress(ctx, deps) {
     },
     update(view, frame) { life.update(view, frame); },
     setQuality(q) {
-      const nf = q === 'low' || q === 'ultra' || q === 'cinematic' ? q : 'high';
+      const nf = normTier(q);
       if (nf === full) return;
       const nt = baseTier(nf);
       const dOld = dressDensity(tier), dNew = dressDensity(nt);
@@ -211,7 +212,7 @@ export function createDress(ctx, deps) {
       full = nf;
       tier = nt;
       if (dOld !== dNew || geo) { clear(); build(); } else for (const m of meshes) m.material = matFor(m.userData.bucket);
-      life.setQuality(nt);
+      life.setQuality(nf);
     },
     get stats() { return { items: items.length, shown, triangles: Math.round(triangles), meshes: meshes.length, buildMs: Math.round(buildMs), unmodelled: [...missing].filter((k) => k[0] !== '!') }; },
     items,

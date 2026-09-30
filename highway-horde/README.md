@@ -180,22 +180,50 @@ sits next to it and the other actions have on-screen buttons. Gamepads and touch
 Every device starts on the **Ultra** graphics preset with **Auto** resolution: on a desktop
 screen with room to spare it renders *above* your screen's resolution (up to 150%, then
 shrinks the picture back for very smooth edges) and lowers it only when a big fight would
-drop below 60 fps. For the sharpest picture pick **150%** or **200%** in Settings, if your
-graphics card can take it. On phones and tablets Ultra makes the device run warm and drains
-the battery faster; pick High or Low if it stutters.
+drop below your display's refresh rate (Auto aims at 97% of it, so 58 fps on a 60 Hz screen
+and 140 on a 144 Hz one; the game measures the rate itself and has no 60 fps limit). For the
+sharpest picture pick **150%** or **200%** in Settings, if your graphics card can take it.
+On phones and tablets Ultra makes the device run warm and drains the battery faster; pick
+High or Low if it stutters.
+
+**For RTX-class graphics cards pick Cinematic** (Settings → Graphics) **with Auto or
+150–200% resolution.** Cinematic is the top preset for a strong desktop GPU at 1080p,
+1440p or 4K: 4× multisampling (MSAA) on top of SMAA, cascaded 4096² sun and moon shadows
+with a razor-sharp near cascade and a 4096² flashlight shadow, full-resolution ambient
+occlusion, contact shadows, volumetric light shafts through the sun's shadow map, denser
+and higher-quality reflections, a wide, smooth bloom with subtle lens dirt and colour
+fringing, camera motion blur (off by default), depth of field while you are hurt, 20 lights
+instead of 12, two to three times the particles, decals and gibs, a denser world (grass, fireflies, rain, set
+dressing up to 2.5 million triangles), 16× anisotropic filtering and a supersampled picture
+shrunk back with a Catmull-Rom filter. Every one of those has its own switch under
+*Advanced* → *Cinematic extras*. The first time you start the game it looks at your
+graphics card (NVIDIA RTX 20/30/40/50 and GTX 1080, AMD RX 6700 and up, Intel Arc A750 and
+up, Apple M2 and up, ...) and picks Cinematic for you; Settings says *Detected: … —
+Cinematic recommended*. A quality you picked yourself is never changed. Want to know
+what your card manages? Open `/dev/benchmark.html` on the same address as the game: it flies a
+20-second camera path over the highway map at your current settings (or the quality, resolution
+and MSAA you pick there) and prints the average frame rate, the 1% and 0.1% lows, the
+frame-time percentiles and the GPU time, ready to copy.
 
 **Settings** (title screen or pause menu → Settings) has four tabs:
 
-- **Graphics**: a preset (Ultra, High, Low), the resolution (Auto, 200%, 150%, 125%, 100%, 85%, 70% or 50%; above 100% draws extra pixels for a sharper picture)
+- **Graphics**: a preset (Cinematic, Ultra, High, Low; the detected graphics card is named
+  under it), the resolution (Auto, 200%, 150%, 125%, 100%, 85%, 70% or 50%; above 100% draws extra pixels for a sharper picture;
+  a *Recommended* hint follows your card, preset and screen size)
   and, under *Advanced*, anti-aliasing (SMAA, FXAA, off), bloom, ambient occlusion, film
-  grain, vignette and night lighting. Tweaking an effect marks the preset *Custom*. *Gore*
+  grain, vignette and night lighting, and on Cinematic the extras (MSAA off / 2× / 4× / 8×, 4K
+  cascaded shadows, contact shadows, full-resolution occlusion, high-quality reflections
+  and light shafts, motion blur, depth of field, lens effects). Tweaking an effect marks the preset *Custom*. *Gore*
   (On, Low, Off) is separate from the presets: Low thins out the blood and drops severed
   limbs, Off paints dark ash instead of red and nobody is blown apart.
 - **Display & HUD**: fullscreen, *Start games in fullscreen*, the UI size (Auto scales
   the menus and HUD with your screen, from 720p up to 4K; 75% to 150% on top of that), the
   HUD safe area (on ultrawide monitors *16:9* keeps the HUD near the middle of the
-  screen), the FPS / resolution / ping readout, name tags, the rotating minimap and screen
-  shake.
+  screen), the frame-rate limit (Off follows the display; 60, 120 or 144; v-sync is the
+  browser's and your graphics driver's), display calibration (brightness, contrast and colour
+  sliders), the FPS / resolution / ping readout (with the tier, the internal resolution,
+  MSAA and, where the browser has a GPU timer, the milliseconds of each render pass), name
+  tags, the rotating minimap and screen shake.
 - **Controls**: the view (**First-person** or **Classic top-down**; a change applies
   from the next game), field of view (60–120 horizontal degrees on a 4:3 screen, 80 by
   default; wider screens see more at the sides), mouse sensitivity, stick and touch look

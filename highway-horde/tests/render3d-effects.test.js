@@ -100,7 +100,7 @@ const view = (map) => {
   return { players: [{ id: 1, x: sp.x, y: sp.y, angle: 0, state: 'alive', hp: 60, maxHp: 100 }, { id: 2, x: sp.x + 30, y: sp.y, angle: 1, state: 'alive', hp: 100, maxHp: 100 }], zombies: zs, projectiles: [], pickups: [], turrets: [], barricades: [], hazards: [{ id: 1, kind: 'fire', x: sp.x + 50, y: sp.y + 50, r: 80, life: 0.9 }], events: [] };
 };
 
-for (const tier of ['ultra', 'high', 'low']) {
+for (const tier of ['cinematic', 'ultra', 'high', 'low']) {
   for (const gore of ['on', 'low', 'off']) {
     test(`every event type runs through the effects on ${tier}, gore ${gore}, without throwing`, () => {
       const map = typeof buildMap === 'function' ? buildMap('highway') : MAP_LIST.find((m) => m.id === 'highway');
@@ -125,11 +125,12 @@ for (const tier of ['ultra', 'high', 'low']) {
       }
       const st = e.stats;
       if (process.env.FX_DEBUG) console.log(tier, gore, JSON.stringify(st), JSON.stringify(ctx.counts()));
-      assert.ok(st.particles <= 4200, 'particles inside the cap');
-      assert.ok(st.decals <= 2300, 'decals inside the cap');
-      assert.ok(st.pieces <= 110 && st.casings <= 140);
+      const cap = core.QUALITY[tier];
+      assert.ok(st.particles <= cap.particles, 'particles inside the cap');
+      assert.ok(st.decals <= cap.gore + cap.marks, 'decals inside the cap');
+      assert.ok(st.pieces <= (tier === 'cinematic' ? 240 : 110) && st.casings <= (tier === 'cinematic' ? 340 : 140));
       if (gore !== 'on') assert.equal(st.pieces, 0, `no limbs with gore ${gore}`);
-      e.setQuality(tier === 'low' ? 'ultra' : 'low');
+      e.setQuality(tier === 'low' ? 'cinematic' : 'low');
       e.update(v, frame(t + 1));
       e.dispose();
       amb.dispose();
