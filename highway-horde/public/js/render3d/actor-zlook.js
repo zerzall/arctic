@@ -39,11 +39,12 @@ const mixRgb = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t,
 const luma = (c) => c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
 /** Scale a linear colour down so its luminance is at most `max` (near-white cloth blooms under the flashlight). */
 function capL(c, max) { const l = luma(c); if (l > max) { const k = max / l; return [c[0] * k, c[1] * k, c[2] * k]; } return c; }
-function weighted(r, list) {
+function weighted(r, list, mul = null) {
+  const w = (a) => a.w * (mul && mul[a.name] ? mul[a.name] : 1);
   let t = 0;
-  for (const a of list) t += a.w;
+  for (const a of list) t += w(a);
   let x = r() * t;
-  for (const a of list) { x -= a.w; if (x <= 0) return a; }
+  for (const a of list) { x -= w(a); if (x <= 0) return a; }
   return list[list.length - 1];
 }
 /** [[value, weight], ...] → value */
@@ -59,22 +60,27 @@ function pickW(r, pairs) {
 // palettes (sRGB hex)
 
 const SKIN_TONES = ['#f0d2b8', '#e3b899', '#d9a57c', '#c68e6a', '#b9835a', '#a8825e', '#8d5a3b', '#6f4a33', '#5a3b28', '#3f271c'];
-const DECAY = ['#7c9a6d', '#8a9088', '#a3a86a', '#7088a0', '#8a7088', '#6f8f5a', '#a8a08a'];
+// what death does to a skin tone: an ashen grey-green, a sallow yellow-grey, a bruised blue-grey, a waxy mauve
+const DECAY = ['#8a9a80', '#8e9088', '#a3a47a', '#80889a', '#8a7a86', '#7d8f68', '#a8a08a', '#9a9c8c'];
 const HAIR = [['#14100c', 5], ['#2a1a10', 5], ['#4a3020', 4], ['#6a3018', 1.5], ['#a08850', 2], ['#888680', 2], ['#c8c8c0', 1], ['#7a2a14', 1], ['#284a8a', 0.3], ['#a03070', 0.3]];
+// clouded, milky eyes with a trace of their tint; the glow (look.eyeGlow) is a dim sheen, not a lamp
 const EYES = {
-  walker: ['#ffc84a', '#ffd070', '#f0f0d0', '#e8b030', '#c8e070', '#ff9a3a'],
-  runner: ['#ffd070', '#ff9a3a', '#ff6a3a', '#f0f0d0'],
-  crawler: ['#ffb84a', '#f0e0a0', '#e8c060'],
-  bloater: ['#dcff5a', '#e8f080', '#c8e060'],
-  spitter: ['#a8ff3a', '#c0ff60', '#80f040'],
-  screamer: ['#cfe4ff', '#e8f0ff', '#bcd8f8'],
-  brute: ['#ff8a2a', '#ff6a2a', '#ffb040'],
-  boss: ['#ff3ad0'],
+  walker: ['#d8cfa0', '#e0d8b8', '#c8c8b0', '#e0c890', '#b8c0a0', '#d8b890'],
+  runner: ['#e0c8a0', '#d8a878', '#e8b890', '#d0d0c0'],
+  crawler: ['#d8c090', '#e0d8b0', '#c8b890'],
+  bloater: ['#c8d890', '#d0d8a8', '#b8c890'],
+  spitter: ['#a8d860', '#b8e080', '#98c860'],
+  screamer: ['#c8d8e8', '#dce4ec', '#b8c8dc'],
+  brute: ['#e09048', '#d87840', '#e8a860'],
+  boss: ['#ff5a28'],
 };
 
 const SHIRT_LIGHT = ['#e8e8e4', '#cfd8e0', '#b9cde0', '#e6d3d8', '#d9d2bf', '#c8d8c0', '#f0ead8'];
 const SHIRT_MID = ['#7a8fa8', '#8a9a7a', '#a89078', '#9a7a8a', '#6a7a9a'];
 const TEE = ['#b33a3a', '#3a5ea0', '#2f7a4a', '#d4a82a', '#7a3a8a', '#e0e0e0', '#2a2a2a', '#d8702a', '#3a8a9a', '#8a8a8a', '#c86a8a', '#5a3a2a'];
+const FLANNEL = ['#9a2a24', '#2a5a3a', '#2a3a6a', '#7a5a2a', '#5a2a3a', '#3a3a3a'];
+const SUMMER = ['#e8c878', '#e88a7a', '#7ac8d0', '#f0e8c8', '#c8e0a0', '#e8a0c0', '#f0d0a0'];
+const DENIM = ['#3a4c6a', '#4c5a78', '#2f3f5a', '#5a6a88'];
 const DARK = ['#26262c', '#33333a', '#1f2a3a', '#3a2f2a', '#2a2f2a', '#1c1c1c'];
 const JEANS = ['#3a4c6a', '#2a3850', '#4c5a78', '#232a38', '#5a6a88', '#2f3f5a'];
 const KHAKI = ['#8a7a58', '#6a6248', '#9a8a68', '#5a5a48', '#7a6a4a'];
@@ -94,7 +100,10 @@ const HIVIS = ['#d8c020', '#e07a10', '#a0d020'];
 const TOPS = {
   tee: [28.4, 39.6], polo: [28.0, 39.0], long: [27.4, 0], sweater: [26.0, 0], hoodie: [24.5, 0], jacket: [23.0, 0], coat: [12.0, 0],
   lab: [14.5, 0], gown: [16.5, 38.5], tank: [29.0, 99], crop: [33.5, 99], bare: [99, 99], rags: [33, 41], apron: [28, 39.6],
+  flannel: [26.5, 0], dress: [17.5, 99], scrubs: [27.8, 38.8],
 };
+/** Neckline of a top kind (actor-zmat.js): 0 crew, 1 v-neck / open collar, 2 scoop, 3 tank straps, 4 a gown's open back. */
+const NECK = { polo: 1, long: 1, jacket: 1, coat: 1, lab: 1, flannel: 1, scrubs: 1, rags: 2, tank: 3, crop: 3, dress: 2, gown: 4 };
 const LEGS = { jeans: -1, trousers: -1, shorts: 20.0, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
 
 // ---------------------------------------------------------------------------------------
@@ -121,7 +130,7 @@ const ARCH = {
     A('worker', 7, { top: 'long', topC: [...HIVIS, '#c0c0b8', '#9a6a30'], topPat: [[4, 5], [0, 3]], bot: 'trousers', botC: [...KHAKI, ...JEANS], shoe: 'boot', shoeC: BOOT, hat: [['hat_hard', 0.75]], gear: [['belt_tool', 0.55], ['face_glasses', 0.1]], glove: 0.4, gloveC: ['#a08040', '#c8a040', '#3a3a3a'], gearC: ['#f0c020', '#e0e0e0', '#e07a10', '#2a6ab0'] }),
     A('mechanic', 4, { top: 'long', topC: ['#2a4a7a', '#4a5a3a', '#7a2a22', '#3a3a3e'], topPat: [[7, 5], [0, 1]], bot: 'trousers', botC: ['#2a4a7a', '#4a5a3a', '#7a2a22', '#3a3a3e'], sync: true, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.4]], gear: [['face_glasses', 0.15]], glove: 0.3, gloveC: ['#3a3a3a'], gearC: CAP }),
     A('farmer', 5, { top: 'long', topC: ['#a03030', '#3a6a3a', '#c8a040', '#6a5a8a'], topPat: [[2, 5], [0, 2]], bot: 'jeans', botC: JEANS, shoe: 'boot', shoeC: BOOT, hat: [['hat_straw', 0.65], ['hat_cap', 0.2]], gear: [['suspenders', 0.6], ['face_beard', 0.3]], gearC: ['#c8a860', '#8a6a3a', '#c62828'] }),
-    A('scrubs', 4, { top: 'tee', topC: ['#4a9aa8', '#3a7a5a', '#4a6aa8', '#8a5a9a'], bot: 'trousers', botC: null, sync: true, shoe: 'sneaker', shoeC: ['#e8e8e4', '#d8d4c8', '#2a2a2a'], hat: [['hat_beanie', 0.25]], gear: [['stetho', 0.55], ['lanyard', 0.7], ['face_mask', 0.35]], gearC: ['#4a9aa8', '#e8e8e4'] }),
+    A('scrubs', 4, { top: 'scrubs', topC: ['#4a9aa8', '#3a7a5a', '#4a6aa8', '#8a5a9a'], bot: 'trousers', botC: null, sync: true, shoe: 'sneaker', shoeC: ['#e8e8e4', '#d8d4c8', '#2a2a2a'], hat: [['hat_beanie', 0.25]], gear: [['stetho', 0.55], ['lanyard', 0.7], ['face_mask', 0.35]], gearC: ['#4a9aa8', '#e8e8e4'] }),
     A('labcoat', 3, { top: 'lab', topC: ['#e8e8e6', '#d8dcdc', '#cfd6d0'], bot: 'trousers', botC: [...DARK, ...KHAKI], shoe: 'dress', shoeC: SHOE_DARK, gear: [['lanyard', 0.8], ['face_glasses', 0.5], ['stetho', 0.3], ['badge', 0.0]], gearC: PACK }),
     A('patient', 8, { top: 'gown', topC: ['#bcd4e0', '#a8c8d8', '#c8dce4', '#b0ccc8'], topPat: [[0, 3], [5, 0]], bot: 'bare', botC: ['#bcd4e0', '#a8c8d8'], shoe: 'bare', hair: 'any', gear: [['bandage_hand', 0.35], ['watch', 0.0]], tearMul: 1.4 }),
     A('police', 6, { top: 'long', topC: ['#1f2a44', '#2a3a5a', '#3a4a62'], bot: 'trousers', botC: ['#1a2236', '#232a3a'], sync: false, shoe: 'boot', shoeC: ['#141210'], hat: [['hat_peak', 0.55]], gear: [['belt_duty', 0.9], ['badge', 0.85], ['holster', 0.3], ['watch', 0.3]], gearC: ['#1a2236', '#1c1c20'], glove: 0.1, gloveC: ['#141414'] }),
@@ -134,6 +143,13 @@ const ARCH = {
     A('vagrant', 3, { top: 'coat', topC: ['#4a4038', '#3a3a34', '#5a4a3a'], bot: 'torn', botC: ['#3a3a34', '#4a4038'], shoe: 'boot', shoeC: BOOT, hat: [['hat_beanie', 0.55], ['hat_hood', 0.2]], gear: [['scarf', 0.55], ['face_beard', 0.5], ['bag_msg', 0.25]], glove: 0.4, gloveC: ['#3a3a3a'], gearC: ['#5a3a2a', '#3a4a3a', '#8a8a80'], tearMul: 1.5 }),
     A('cheer', 2, { top: 'tank', topC: ['#c62828', '#1565c0', '#f9a825'], bot: 'skirt', botC: ['#c62828', '#1565c0', '#f9a825'], shoe: 'sneaker', shoeC: ['#e8e8e4'], hair: 'long', gear: [['pompom', 0.8], ['skirt', 1]], gearC: ['#f0f0f0', '#f9a825'] }),
     A('student', 6, { top: 'hoodie', topC: [...TEE], bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_beanie', 0.12], ['hat_cap', 0.15]], gear: [['pack_small', 0.8], ['face_glasses', 0.2]], gearC: PACK }),
+    // bib overalls: the apron and straps in the trousers' denim
+    A('overalls', 5, { top: 'tee', topC: ['#c8c0b0', '#8a8a80', '#a03030', '#e0d8c8', '#6a7a5a'], bot: 'jeans', botC: DENIM, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.35], ['hat_straw', 0.1]], gear: [['apron', 1], ['suspenders', 1], ['face_beard', 0.25]], gearFromBot: true }),
+    // an open flannel shirt over a tee
+    A('flannel', 7, { top: 'flannel', topC: FLANNEL, topPat: [[2, 1]], bot: 'jeans', botC: JEANS, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.3], ['hat_beanie', 0.12]], gear: [['face_beard', 0.3], ['watch', 0.2]], gearC: CAP, open: true }),
+    A('summer', 6, { top: 'tank', topC: SUMMER, topPat: [[5, 2], [0, 3], [6, 1]], bot: 'shorts', botC: [...KHAKI, ...DENIM, '#e8e0d0'], shoe: 'sneaker', shoeC: SNEAKER, hat: [['hat_straw', 0.15], ['hat_cap', 0.2]], gear: [['face_shades', 0.3], ['fanny', 0.1], ['watch', 0.2]], gearC: SUMMER }),
+    A('sundress', 3, { top: 'dress', topC: SUMMER, topPat: [[5, 3], [0, 2]], bot: 'bare', botC: SUMMER, shoe: 'sneaker', shoeC: ['#e8e4d8', '#c8a060'], hair: 'long', female: true, gear: [['face_shades', 0.2]] }),
+    A('shopper', 5, { top: 'sweater', topC: [...SHIRT_MID, '#8a3a4a', '#3a4a6a'], bot: 'jeans', botC: JEANS, shoeC: SNEAKER, gear: [['bag_msg', 0.5], ['face_glasses', 0.25], ['scarf', 0.2]], gearC: PACK }),
   ],
   runner: [
     A('jogger', 24, { top: 'tank', topC: ['#e07a10', '#2ac0c0', '#c62828', '#5ad040', '#e8e8e4', '#f0c020', '#3a6ad0'], bot: 'shorts', botC: ['#1c1c22', '#2a2f38', '#3a3a40'], shoeC: SNEAKER, hat: [['hat_visor', 0.3], ['hat_cap', 0.15]], gear: [['watch', 0.5], ['face_shades', 0.15]], gearC: CAP, glove: 0.0 }),
@@ -184,7 +200,24 @@ const ARCH = {
     A('butcher', 12, { top: 'apron', topC: ['#e8e8e4'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: BOOT, gear: [['apron', 1], ['plate_shoulder', 0.3], ['spikes', 0.3]], glove: 0.9, gloveC: ['#c8a020', '#3a3a3a'], tearMul: 1.3, big: true, gearC: ['#e8e8e4', '#8a2a22'] }),
     A('welded', 24, { top: 'rags', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
   ],
-  boss: [A('abomination', 1, { top: 'coat', topC: ['#4a148c'], bot: 'bare', shoe: 'bare', big: true, tearMul: 1.3 })],
+  boss: [A('abomination', 1, { top: 'coat', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'bare', shoe: 'bare', big: true, tearMul: 1.3 })],
+};
+
+/**
+ * Who the dead were where the story goes (JOURNEY.md §2): archetype weight multipliers per
+ * map id (patients at the hospital, workers at the rail yard, soldiers at the airbase,
+ * shoppers at the mall ...). Every client has the same map, so the look stays the same.
+ */
+const THEMES = {
+  hospital: { patient: 7, scrubs: 5, labcoat: 4, emt: 3, gown: 5, nurse: 5, dress: 2, pajamas: 3, police: 1.5 },
+  mall: { casual: 2, shopper: 6, student: 3, hoodie: 2, cheer: 2, exec: 1.5, summer: 3, sundress: 3, teen: 3, athlete: 2, cook: 4, attendant: 4, office: 2, xl_tee: 2 },
+  railyard: { worker: 6, mechanic: 5, overalls: 6, flannel: 3, vagrant: 3, coverall: 5, janitor: 2, hiker: 1.5 },
+  airbase: { soldier: 9, police: 2, mechanic: 3, emt: 2, riot: 2, hazmat: 2 },
+  metro: { commuter: 6, exec: 4, student: 3, vagrant: 4, hoodie: 2, office: 3, courier: 3, janitor: 2 },
+  hollowcreek: { casual: 2, farmer: 2, police: 3, student: 3, flannel: 3, prisoner: 2, shopper: 2 },
+  millroad: { farmer: 4, flannel: 4, overalls: 4, casual: 2, mechanic: 2, vagrant: 2 },
+  forest: { hiker: 7, flannel: 4, farmer: 2, vagrant: 2 },
+  dam: { worker: 5, overalls: 3, mechanic: 3, hazmat: 3, janitor: 2 },
 };
 
 // ---------------------------------------------------------------------------------------
@@ -192,17 +225,17 @@ const ARCH = {
 // [x, y, z-sign-times-1, radius, kinds]; z is mirrored by a random side.
 
 const SITES = {
-  chest: { p: [4.4, 39.5, 2.6], r: [2.4, 3.4] },
-  belly: { p: [4.5, 33.0, 2.0], r: [2.2, 3.2] },
-  shoulder: { p: [0.6, 42.5, 8.4], r: [2.2, 3.0] },
-  upperArm: { p: [0.2, 37.5, 8.4], r: [2.0, 2.8] },
-  foreArm: { p: [0.3, 28.5, 8.3], r: [1.8, 2.5] },
-  neck: { p: [1.4, 46.6, 2.5], r: [1.6, 2.2] },
-  thigh: { p: [0.8, 22.0, 3.9], r: [2.4, 3.2] },
-  calf: { p: [0.4, 9.0, 3.9], r: [1.8, 2.4] },
-  back: { p: [-4.3, 39.0, 2.4], r: [2.0, 3.0] },
-  cheek: { p: [3.9, 51.0, 2.3], r: [1.3, 1.8] },
-  hip: { p: [3.0, 27.5, 5.6], r: [2.0, 2.8] },
+  chest: { p: [3.6, 39.5, 2.2], r: [2.1, 3.0] },
+  belly: { p: [3.0, 33.0, 1.7], r: [1.9, 2.8] },
+  shoulder: { p: [0.4, 43.6, 6.3], r: [1.8, 2.5] },
+  upperArm: { p: [0.2, 38.5, 7.4], r: [1.6, 2.3] },
+  foreArm: { p: [0.5, 28.5, 7.2], r: [1.5, 2.1] },
+  neck: { p: [1.6, 48.0, 1.2], r: [1.3, 1.8] },
+  thigh: { p: [2.0, 22.0, 3.2], r: [2.0, 2.8] },
+  calf: { p: [1.3, 9.0, 3.2], r: [1.5, 2.0] },
+  back: { p: [-3.2, 39.0, 2.0], r: [1.8, 2.7] },
+  cheek: { p: [3.3, 51.2, 1.7], r: [1.1, 1.5] },
+  hip: { p: [2.0, 27.5, 4.6], r: [1.8, 2.5] },
 };
 const SITE_NAMES = Object.keys(SITES);
 const BELLY_SITE = { p: [12.6, 33.5, 3.0], r: [3, 4.5] };
@@ -225,12 +258,13 @@ export const OPTION_NAMES = OPTS;
 /**
  * @param {string} type zombies.js id
  * @param {number} id sim id
+ * @param {string} [theme] the map id: biases who the dead were (THEMES); '' or unknown = the general mix
  * @returns {object} the look (see the fields below); arrays are linear RGB
  */
-export function zombieLook(type, id) {
+export function zombieLook(type, id, theme = '') {
   const T = ARCH[type] ? type : 'walker';
   const r = rngFor(id, T.length * 131 + T.charCodeAt(0));
-  const arch = weighted(r, ARCH[T]);
+  const arch = weighted(r, ARCH[T], THEMES[theme] || null);
   const def = ZOMBIES[T];
   const look = { type: T, id: id | 0, arch: arch.name };
   const big = !!arch.big;
@@ -238,23 +272,25 @@ export function zombieLook(type, id) {
   // ---- body: height, build, head, arms ----
   const tall = range(r, 0.93, 1.08), thin = range(r, 0.88, 1.16);
   look.height = big ? range(r, 0.96, 1.06) : tall;
-  look.girthW = thin * (T === 'runner' ? 0.94 : 1);
-  look.girthD = range(r, 0.92, 1.12) * (T === 'runner' ? 0.96 : 1);
-  look.headK = range(r, 0.92, 1.1);
-  look.armK = range(r, 0.92, 1.12);
-  look.female = chance(r, T === 'screamer' ? 0.9 : arch.name === 'cheer' || arch.name === 'nurse' ? 0.85 : 0.42);
+  look.girthW = thin * (T === 'runner' ? 0.97 : 1);
+  look.girthD = range(r, 0.92, 1.12) * (T === 'runner' ? 0.98 : 1);
+  look.headK = range(r, 0.94, 1.06);
+  look.armK = range(r, 0.95, 1.1);
+  look.female = arch.female || chance(r, T === 'screamer' ? 0.9 : arch.name === 'cheer' || arch.name === 'nurse' ? 0.85 : 0.42);
   if (look.female) { look.girthW *= 0.94; look.girthD *= 0.96; }
 
-  // ---- skin: a human tone, greyed/greened by the type's tint according to the decay stage ----
+  // ---- skin: the person's own tone, drained (pallor), then shifted by decay toward an ashen
+  // grey-green, sallow yellow-grey or bruised blue-grey (hue, not brightness); runners are fresh ----
   const human = lin(pick(r, SKIN_TONES));
-  const tintHex = chance(r, 0.4) ? def.look.skin : pick(r, DECAY);
-  const tint = lin(tintHex);
-  const stage = pickW(r, [[0.2, 2], [0.45, 4], [0.7, 4], [0.95, 2]]);        // fresh .. rotten
-  let skin = mixRgb(human, tint, 0.5 + stage * 0.38);
-  const g = luma(skin);
-  skin = mixRgb(skin, [g, g, g], 0.2 + stage * 0.3);                             // drained colour
-  const dark = 0.86 - stage * 0.22;
-  look.skin = capL([skin[0] * dark, skin[1] * dark, skin[2] * dark], 0.19);
+  const tint = lin(chance(r, 0.25) ? def.look.skin : pick(r, DECAY));
+  const stage = T === 'runner' ? pickW(r, [[0.08, 3], [0.2, 3], [0.35, 1]]) : pickW(r, [[0.25, 2], [0.45, 4], [0.7, 4], [0.95, 2]]);
+  const hl = luma(human);
+  let skin = mixRgb(human, [hl, hl, hl], 0.3 + stage * 0.35);
+  const tl = luma(tint) || 1;
+  skin = mixRgb(skin, [tint[0] * hl / tl, tint[1] * hl / tl, tint[2] * hl / tl], 0.2 + stage * 0.35);
+  if (hl < 0.08) skin = mixRgb(skin, [0.07, 0.068, 0.062], 0.15 + stage * 0.2);   // dark skin goes ashen
+  const dark = 0.92 - stage * 0.16;
+  look.skin = capL([skin[0] * dark, skin[1] * dark, skin[2] * dark], 0.2);
   look.rot = Math.min(1, stage + r() * 0.12);
   look.veins = stage > 0.6 ? range(r, 0.4, 1) : chance(r, 0.35) ? range(r, 0.2, 0.6) : 0;
   look.sores = chance(r, T === 'spitter' || T === 'bloater' ? 0.6 : 0.16) ? range(r, 0.3, 1) : 0;
@@ -264,7 +300,8 @@ export function zombieLook(type, id) {
   const tk = TOPS[topKind] || TOPS.tee;
   const topC = lin(pick(r, arch.topC || TEE));
   look.topKind = topKind;
-  look.openFront = T !== 'boss' && (topKind === 'jacket' || topKind === 'coat' || topKind === 'lab');
+  look.openFront = T !== 'boss' && (topKind === 'jacket' || topKind === 'coat' || topKind === 'lab' || !!arch.open);
+  look.neck = NECK[topKind] ?? (topKind === 'tee' && chance(r, 0.35) ? 2 : 0);
   look.topPat = pickW(r, arch.topPat);
   look.hemTop = tk[0] + (topKind === 'bare' ? 0 : (r() - 0.5) * 2.2);
   look.sleeveEnd = tk[1] === 99 || tk[1] === 0 ? tk[1] : tk[1] + (r() - 0.5) * 3;
@@ -278,30 +315,33 @@ export function zombieLook(type, id) {
   if (arch.sync) botC = mixRgb(topC, botC, 0.15);
   look.botPat = arch.sync ? look.topPat : pickW(r, arch.botPat);
   if (arch.sync && topKind === 'jacket') look.botPat = look.topPat;
-  // everything has been lying in the road for a while: grimed, faded, darker
+  // everything has been lying in the road for weeks: grimed, sun-faded, darker (no toy colours)
+  const fresh = T === 'runner' ? 0.6 : 1;
   const grime = (c, lo, hi, cap) => {
-    let q = mixRgb(c, [0.045, 0.038, 0.03], range(r, lo, hi));
+    let q = mixRgb(c, [0.045, 0.038, 0.03], range(r, lo, hi) * fresh);
     const gy = luma(q);
-    q = mixRgb(q, [gy, gy, gy], range(r, 0.1, 0.35));
+    q = mixRgb(q, [gy * 1.02, gy, gy * 0.94], range(r, 0.22, 0.5) * fresh);
     return capL(q, cap);
   };
-  look.top = grime(topC, 0.2, 0.5, 0.2);
-  look.bottom = grime(botC, 0.2, 0.5, 0.17);
-  const tearBase = T === 'brute' || T === 'boss' ? 0.8 : 0.22 + r() * 0.55;
+  look.top = grime(topC, 0.25, 0.55, 0.2);
+  look.bottom = grime(botC, 0.25, 0.55, 0.17);
+  const tearBase = T === 'brute' || T === 'boss' ? 0.8 : T === 'runner' ? 0.15 + r() * 0.35 : 0.25 + r() * 0.6;
   look.tear = Math.min(1, tearBase * (arch.tearMul || 1));
-  look.blood = Math.min(1, 0.2 + r() * 0.55 + (T === 'crawler' ? 0.15 : 0));
+  look.blood = Math.min(1, 0.25 + r() * 0.55 + (T === 'crawler' ? 0.15 : 0) + (T === 'runner' ? 0.15 : 0));
   look.wet = 0;
 
   // ---- gear colours and shoes ----
-  const gearC = lin(pick(r, arch.gearC || CAP));
-  look.gear = grime(gearC, 0.1, 0.35, 0.24);
+  const gearC = arch.gearFromBot ? botC : lin(pick(r, arch.gearC || CAP));
+  look.gear = grime(gearC, 0.15, 0.4, 0.22);
   const shoeList = arch.shoeC || (arch.shoe === 'boot' ? BOOT : arch.shoe === 'sneaker' ? SNEAKER : SHOE_DARK);
-  look.trim = capL(lin(pick(r, shoeList)), 0.2);
+  look.trim = grime(lin(pick(r, shoeList)), 0.15, 0.4, 0.18);
   const gloveC = arch.gloveC ? lin(pick(r, arch.gloveC)) : null;
   look.glove = !!(gloveC && chance(r, arch.glove ?? 0));
   look.gloveCol = capL(gloveC || [0.02, 0.02, 0.02], 0.22);
   look.shoe = arch.shoe === 'bare' ? null : arch.shoe;
   look.shoeKind = arch.shoe === 'sneaker' ? 1 : arch.shoe === 'boot' ? 2 : 0;
+  // one shoe lost somewhere along the way
+  look.shoeLost = !!look.shoe && chance(r, T === 'runner' ? 0.05 : 0.14);
 
   // ---- hats, hair ----
   look.hairCol = lin(pickW(r, HAIR));
@@ -342,12 +382,15 @@ export function zombieLook(type, id) {
   if (look.shoe) opts.add('shoe');
   if (legKind === 'skirt') opts.add('skirt');
   look.hat = hat;
+  // most still have their nose; on some it has rotted (or been bitten) down to the cavity
+  if (T !== 'brute' && T !== 'boss' && chance(r, T === 'runner' ? 0.95 : T === 'crawler' ? 0.45 : T === 'screamer' ? 0.6 : 0.78)) opts.add('nose');
 
   // ---- eyes ----
   look.eyeCol = lin(pick(r, EYES[T] || EYES.walker));
   const es = r();
   look.eyeStyle = es < 0.09 ? 3 : es < 0.2 ? (r() < 0.5 ? 1 : 2) : 0;
-  look.eyeGlow = T === 'boss' ? 5 : T === 'screamer' ? 2.2 : 2.6 * range(r, 0.75, 1.2);
+  // a dim wet sheen that catches the dark, not a lamp (the boss and elites still burn)
+  look.eyeGlow = T === 'boss' ? 2.4 : T === 'spitter' ? 0.8 : T === 'brute' ? 0.6 : 0.32 * range(r, 0.75, 1.3);
   if (look.eyeStyle === 3) look.eyeGlow *= 0.5;
 
   // ---- wounds and missing parts ----
@@ -384,8 +427,8 @@ export function zombieLook(type, id) {
   // gore geometry: ribs / entrails hang out of chest and belly wounds; a bone through an arm
   for (const w of wounds) {
     if (T === 'brute' || T === 'boss') continue;
-    if (w.type === WOUND.GASH && (w.site === 'chest') && T !== 'bloater' && chance(r, 0.6)) { opts.add('ribs'); w.x = 4.4; w.y = 39.2; w.z = -3.2; w.r = 3.4; }
-    else if (w.type === WOUND.GASH && w.site === 'belly' && T !== 'bloater' && chance(r, 0.55)) { opts.add('entrails'); w.x = 4.6; w.y = 32.6; w.z = 1.2; w.r = 3.0; }
+    if (w.type === WOUND.GASH && (w.site === 'chest') && T !== 'bloater' && chance(r, 0.6)) { opts.add('ribs'); w.x = 3.3; w.y = 39.2; w.z = -2.8; w.r = 3.0; }
+    else if (w.type === WOUND.GASH && w.site === 'belly' && T !== 'bloater' && chance(r, 0.55)) { opts.add('entrails'); w.x = 3.0; w.y = 32.6; w.z = 1.0; w.r = 2.7; }
     else if (w.type === WOUND.BONE && w.site === 'foreArm' && chance(r, 0.6) && !look.missing.armL && !look.missing.armR) opts.add('bone_arm');
   }
   if (T !== 'brute' && T !== 'boss' && chance(r, 0.025)) opts.add(chance(r, 0.5) ? 'rebar' : 'arrow');
@@ -406,7 +449,17 @@ export function zombieLook(type, id) {
     hunch: range(r, 0, 1),
     twitchRate: range(r, 0, 1),
     lookSide: r() < 0.5 ? -1 : 1,
+    // asymmetry: one shoulder lower, an arm hanging out of its socket, a neck too weak to hold
+    // the head, the head jutting forward, the lame foot dragging its toes
+    drop: (r() - 0.5) * 0.4,
+    disloc: chance(r, 0.14) ? (r() < 0.5 ? -1 : 1) : 0,
+    loll: range(r, 0.15, 1),
+    jut: range(r, 0.2, 1),
+    drag: 0,
   };
+  look.gait.drag = look.gait.limp && chance(r, 0.6) ? 1 : 0;
+  if (look.missing.armL && look.gait.disloc < 0) look.gait.disloc = 0;
+  if (look.missing.armR && look.gait.disloc > 0) look.gait.disloc = 0;
   return look;
 }
 
@@ -429,7 +482,7 @@ export function optionsForType(type) {
     if (a.bot === 'skirt') set.add('skirt');
   }
   if (T !== 'brute' && T !== 'boss') {
-    for (const o of ['hair_scalp', 'hair_strands']) set.add(o);
+    for (const o of ['hair_scalp', 'hair_strands', 'nose']) set.add(o);
     if (T !== 'bloater') for (const o of ['hair_pony', 'hair_bun', 'hair_afro', 'hair_mohawk']) set.add(o);
     for (const o of ['ribs', 'entrails', 'rebar', 'arrow', 'bone_arm']) set.add(o);
     if (T === 'walker' || T === 'runner' || T === 'bloater') for (const o of ['stump_l', 'stump_r', 'stump_hand_l', 'stump_hand_r']) set.add(o);
@@ -473,8 +526,8 @@ export function packLook(look, stage, base, eliteEye = null) {
   put(T_OPT, words[0], words[1], words[2], look.glove ? 1 : 0);
   put(T_VAR3, look.hairCut, look.hairSparse, look.shoeKind + (look.visor ? 10 : 0), look.lensDark);
   put(T_COL3, g[0], g[1], g[2], look.openFront ? 1 : 0);
-  put(T_COL4, tr[0], tr[1], tr[2], 0);
-  put(T_COL5, gl[0], gl[1], gl[2], 0);
+  put(T_COL4, tr[0], tr[1], tr[2], look.shoeLost ? 1 : 0);
+  put(T_COL5, gl[0], gl[1], gl[2], look.neck || 0);
 }
 const _words = [0, 0, 0];
 
