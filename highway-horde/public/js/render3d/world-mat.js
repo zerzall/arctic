@@ -319,6 +319,12 @@ const DETAIL_COLOR_GLSL = `
       float e1 = hhCell(cell), e2 = hhCell(cell + vec2(71.0, 13.0));
       hhD.a *= 1.0 + (e1 - 0.5) * hhG.w * 2.0;
       hhC.r += (e2 - 0.5) * hhG.w * 0.3;
+    } else if (hhG.w < 0.0) {
+      // an organic layer: its own albedo and roughness again, 3.4x larger and turned, over the tile
+      vec2 q = vec2(hhUv.x * 0.8 - hhUv.y * 0.6, hhUv.x * 0.6 + hhUv.y * 0.8) * 0.294 + 0.43;
+      vec4 s2 = texture(uDetail, vec3(q, hhL));
+      hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
+      hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
     }
     // fine grain close to the eye: at 4K the layer alone was magnified ~5x there
     float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y;

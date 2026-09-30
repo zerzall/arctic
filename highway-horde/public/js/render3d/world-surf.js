@@ -70,14 +70,19 @@ const LAYER_DEF = {
 // Layers made of discrete elements (bricks, slabs, shingles, tiles): cells across u and v, the shift of
 // every other row (running bond) and how much each element's tone may vary. The material hashes each
 // element's position in the world, so the same brick never comes back tile after tile.
+// Organic layers (no elements) instead blend in a second, rotated and larger copy of their own albedo
+// and roughness (a negative amount): a wall of concrete or a rock face stops repeating every tile.
 const LAYER_CELLS = {
   brick: [5, 16, 0.5, 0.2], paver: [4, 4, 0, 0.14], shingle: [8, 10, 0.5, 0.14], tile: [8, 8, 0, 0.16], slab: [1, 1, 0, 0.12],
   metalroof: [4, 1, 0, 0.07], carpet: [3, 3, 0, 0.07], ceiltile: [2, 2, 0, 0.05], terrazzo: [1, 1, 0, 0.04],
+  concrete: [0, 0, 0, -0.8], stucco: [0, 0, 0, -0.7], plaster: [0, 0, 0, -0.6], rock: [0, 0, 0, -0.9], dirt: [0, 0, 0, -0.7],
+  sand: [0, 0, 0, -0.6], char: [0, 0, 0, -0.6], rust: [0, 0, 0, -0.5], grass: [0, 0, 0, -0.6], cracked: [0, 0, 0, -0.5],
+  drywall: [0, 0, 0, -0.5], strata: [0, 0, 0, -0.4], bark: [0, 0, 0, -0.4],
 };
 
 /**
  * Per-layer element grid, 4 floats per layer: cells along u and v, the shift of odd rows, the
- * tone amplitude (0 = the layer has no elements).
+ * tone amplitude (0 = no elements; negative = an organic layer's second-scale blend amount).
  */
 export const DET_CELLS = new Float32Array(LAYERS * 4);
 for (let i = 0; i < LAYERS; i++) {
@@ -546,12 +551,11 @@ const RECIPES = {
         const warp = fsin(Math.PI * fu) * (0.55 + 0.45 * fsin(Math.PI * fv)) * tw;
         const weft = fsin(Math.PI * fv) * (0.55 + 0.45 * fsin(Math.PI * fu)) * tf;
         const t = over ? warp : weft;
-        const stain = F.f4[i] * 0.75 + F.f16[i] * 0.25;
-        const tide = smooth(0.635, 0.645, stain) - smooth(0.648, 0.67, stain);
-        const wet = smooth(0.635, 0.66, stain);
+        const stain = F.f4[i] * 0.8 + F.f8[i] * 0.2;
+        const wet = smooth(0.62, 0.7, stain);
         h[i] = 0.3 + t * 0.55 + (F.f64[i] - 0.5) * 0.1;
-        a[i] = 0.5 + (over ? 0.02 : -0.02) + (t - 0.6) * 0.12 + (F.f4[i] - 0.5) * 0.16 - tide * 0.14 - wet * 0.04 - smooth(0.6, 0.8, F.f16[i]) * 0.08;
-        co[i] = tide * 0.06 + wet * 0.02;
+        a[i] = 0.5 + (over ? 0.02 : -0.02) + (t - 0.6) * 0.12 + (F.f4[i] - 0.5) * 0.16 - wet * 0.08 - smooth(0.6, 0.8, F.f16[i]) * 0.08;
+        co[i] = wet * 0.04;
         ds[i] = smooth(0.55, 0.75, F.f4[i]) * 0.2;
         r[i] = 0.84 - (t - 0.5) * 0.06;
       }
@@ -734,28 +738,31 @@ const RECIPES = {
     yield* eachRow(N, (y) => {
       for (let i = y * N, e = i + N; i < e; i++) {
         const x = i - y * N;
-        // aggregate of two sizes proud of the binder; stones of different rock, some polished by the traffic
-        const dL = F.w32.f1[i] / 0.36, dM = F.w64.f1[i] / 0.34;
-        const big = dL < 1 ? Math.sqrt(1 - dL * dL) : 0, med = dM < 1 ? Math.sqrt(1 - dM * dM) : 0;
-        const useBig = big * 0.9 > med * 0.75;
+        // angular aggregate of two sizes set in the binder, worn flat on top by the traffic; stones of
+        // different rock (grey, pale quartzite, rusty), some polished; tar bleeding up in patches
+        const eL = F.w32.f2[i] - F.w32.f1[i], eM = F.w64.f2[i] - F.w64.f1[i];
+        const big = F.w32.id[i] < 0.62 ? smooth(0.05, 0.16, eL) : 0;
+        const med = F.w64.id[i] < 0.7 ? smooth(0.06, 0.18, eM) : 0;
+        const useBig = big > med * 0.8;
         const stone = useBig ? big : med;
-        const sid = useBig ? F.w32.id[i] : F.w64.id[i];
+        const sid = useBig ? F.w32.id[i] / 0.62 : F.w64.id[i] / 0.7;
         const sand = F.n[(i + 21 * 40503) & F.M];
         const bleed = smooth(0.66, 0.74, F.f16[i] * 0.7 + F.f4[i] * 0.3);
         const binder = 0.3 + (sand - 0.5) * 0.08 + (F.f64[i] - 0.5) * 0.06;
-        const top = 0.3 + stone * (useBig ? 0.55 : 0.42) * (0.75 + sid * 0.25);
+        const tilt = ((F.w32.f1[i] - 0.3) * (sid - 0.5)) * 0.2;
+        const top = 0.36 + stone * (useBig ? 0.3 : 0.24) + tilt * stone;
         h[i] = Math.max(binder, top) - bleed * 0.05;
-        const st = smooth(0.05, 0.3, stone);
-        const light = sid > 0.82 ? 0.22 : sid < 0.2 ? -0.06 : (sid - 0.5) * 0.18;
-        a[i] = 0.44 + (sand - 0.5) * 0.06 * (1 - st) + st * (0.06 + light) + (F.f16[i] - 0.5) * 0.08 - bleed * 0.1 * (1 - st);
+        const st = smooth(0.1, 0.5, stone);
+        const light = sid > 0.84 ? 0.2 : sid < 0.18 ? -0.07 : (sid - 0.5) * 0.16;
+        a[i] = 0.44 + (sand - 0.5) * 0.06 * (1 - st) + st * (0.05 + light) + (F.f16[i] - 0.5) * 0.08 - bleed * 0.1 * (1 - st);
         co[i] = st * (sid > 0.6 && sid < 0.72 ? 0.07 : (sid - 0.5) * 0.04);
         cg[i] = st * (sid > 0.3 && sid < 0.4 ? 0.02 : 0);
-        ds[i] = st * (sid > 0.82 ? 0.5 : 0.15);
-        r[i] = 0.72 - st * (stone * 0.3 * sid) - bleed * 0.3 * (1 - st) + (sand - 0.5) * 0.06;
+        ds[i] = st * (sid > 0.84 ? 0.5 : 0.15);
+        r[i] = 0.72 - st * 0.12 * (sid > 0.5 ? 1 : 0.4) - bleed * 0.3 * (1 - st) + (sand - 0.5) * 0.06;
       }
     });
     yield* grime(c, 0.08, 2, { gain: 3, rough: 0.3 });
-    return 2.2;
+    return 1.7;
   },
 
   *slab(c) {
