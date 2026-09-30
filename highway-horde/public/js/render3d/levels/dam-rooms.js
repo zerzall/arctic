@@ -334,7 +334,7 @@ export function partition(P, o) {
     B.box('std', 0, 26, s * (t / 2 + 0.6), L, 52, 1.2, TWO.low, null, { ...PAINTED, noJitter: true });
     B.box('std', 0, 3, s * (t / 2 + 1.1), L, 6, 1.6, TWO.skirt, null, { ...PAINTED, noJitter: true });
   }
-  for (const e of [-1, 1]) B.box('std', e * (L / 2 - 1.5), 64, 0, 3, 128, t + 4, '#6a5a44', null, WOOD);
+  for (const e of [-1, 1]) B.box('std', e * (L / 2 - 1.5), 64, 0, 3, 128, t + 4, '#4a5652', null, PAINTED);
   return true;
 }
 
@@ -699,7 +699,8 @@ export function tunnel(P, r) {
     const a0 = Math.PI * (k / N), a1 = Math.PI * ((k + 1) / N);
     const p = (a) => [Math.cos(a) * hw, 120 + Math.sin(a) * 70];
     const [z0, y0] = p(a0), [z1, y1] = p(a1);
-    quad4(B, 'std', [-L / 2, y0, z0], [L / 2, y0, z0], [L / 2, y1, z1], [-L / 2, y1, z1], '#6e6a62', CONC);
+    // (wound to face down into the bore)
+    quad4(B, 'std', [-L / 2, y0, z0], [-L / 2, y1, z1], [L / 2, y1, z1], [L / 2, y0, z0], '#6e6a62', CONC);
   }
   for (let x = -L / 2 + 40; x < L / 2; x += 120) {
     B.box('std', x, 186, 0, 30, 4, 12, '#3a3e42', null, STEEL);

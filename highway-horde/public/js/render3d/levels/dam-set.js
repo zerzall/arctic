@@ -67,7 +67,7 @@ export function damBody(P) {
     if (x > SP.x0 - 60 && x < SP.x1 + 60) continue;
     faceDecal(B, gy, 'd_moss', x, 70, 220, 80, n++);
   }
-  if (tier !== 'low') faceDecal(B, gy, 'facename', 6480, FACE_TOP - 70, 1100, 172, n++, 'c3sign');
+  if (tier !== 'low') faceDecal(B, gy, 'facename', 4260, FACE_TOP - 60, 900, 140, n++, 'c3sign');
   // gallery doors and drains on the face
   for (const x of [4200, 5880, 6660, 7160]) galleryDoor(B, gy, x, 250);
   for (let x = X0 + 150; x < X1; x += 300) {

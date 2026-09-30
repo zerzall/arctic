@@ -217,6 +217,29 @@ export function landing(plats, x0, y0, x1, y1, h, edge = 2) {
 }
 
 /**
+ * A raised floor over [x0, x1] × [y0, y1] at height h with rectangular holes left on the ground ([x0, y0,
+ * x1, y1] each: pits, or the foot of a flight of steps), as the fewest plateaus a grid sweep finds.
+ */
+export function floorWithHoles(plats, x0, y0, x1, y1, h, holes) {
+  const xs = [...new Set([x0, x1, ...holes.flatMap((q) => [q[0], q[2]])])].filter((v) => v >= x0 && v <= x1).sort((p, q) => p - q);
+  const ys = [...new Set([y0, y1, ...holes.flatMap((q) => [q[1], q[3]])])].filter((v) => v >= y0 && v <= y1).sort((p, q) => p - q);
+  const inHole = (x, y) => holes.some((q) => x > q[0] && x < q[2] && y > q[1] && y < q[3]);
+  for (let j = 0; j + 1 < ys.length; j++) {
+    const ym = (ys[j] + ys[j + 1]) / 2;
+    let start = null;
+    for (let i = 0; i + 1 < xs.length; i++) {
+      const solid = !inHole((xs[i] + xs[i + 1]) / 2, ym);
+      if (solid && start === null) start = xs[i];
+      if ((!solid || i + 2 === xs.length) && start !== null) {
+        const end = solid ? xs[i + 1] : xs[i];
+        plats.push({ x0: start, y0: ys[j], x1: end, y1: ys[j + 1], h, edge: 1.5 });
+        start = null;
+      }
+    }
+  }
+}
+
+/**
  * The level art's own record on the map (`map.levelArt`): lists of things the art draws that are not
  * obstacles (cliff lines, stair flights, water planes, spans). Plain data, part of the deterministic map.
  */

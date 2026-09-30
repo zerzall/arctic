@@ -45,7 +45,7 @@ export function createDamFx(ctx, deps) {
   let full = deps.full;
   const own = [];
   const add = (m) => { root.add(m); own.push(m); return m; };
-  const lit = day ? 1 : 0.22;
+  const lit = day ? 1 : 0.42;
 
   // ---- the reservoir's surface: dark, wind-rippled, reflecting the storm sky
   const wn = makeWaterNormal();
@@ -157,7 +157,7 @@ export function createDamFx(ctx, deps) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
     g.setAttribute('aSeed', new THREE.Float32BufferAttribute(sd, 4));
     const m = new THREE.ShaderMaterial({
-      uniforms: { ...fx, uLit: { value: day ? 0.9 : 0.16 } }, transparent: true, depthWrite: false,
+      uniforms: { ...fx, uLit: { value: day ? 0.9 : 0.3 } }, transparent: true, depthWrite: false,
       vertexShader: FOG + `
         uniform float uTime; uniform float uPx;
         attribute vec4 aSeed;
