@@ -20,7 +20,7 @@ export async function resolve(spec, ctx, next) {
   return next(spec, ctx);
 }`));
 
-let tierMod, zm, sm, shape, tex, geo, arch, veh, bld, flora, props, consts, THREE;
+let tierMod, zm, sm, shape, tex, geo, arch, veh, bld, flora, props, dressMods, dressCin, consts, THREE;
 
 before(async () => {
   THREE = await import('three');
@@ -35,6 +35,13 @@ before(async () => {
   bld = await import('../public/js/render3d/world-bld.js');
   flora = await import('../public/js/render3d/world-flora.js');
   props = await import('../public/js/render3d/world-props.js');
+  dressMods = [
+    (await import('../public/js/render3d/dress-debris.js')).FLATS, (await import('../public/js/render3d/dress-debris.js')).DEBRIS,
+    (await import('../public/js/render3d/dress-street.js')).STREET, (await import('../public/js/render3d/dress-industrial.js')).INDUSTRIAL,
+    (await import('../public/js/render3d/dress-life-props.js')).LIFE_PROPS, (await import('../public/js/render3d/dress-nature.js')).NATURE,
+    (await import('../public/js/render3d/dress-apoc.js')).APOCALYPSE,
+  ];
+  dressCin = await import('../public/js/render3d/dress-cin.js');
   consts = await import('../public/js/render3d/actor-consts.js');
 });
 
@@ -267,6 +274,46 @@ test('obstacle props: level 2 is exactly the old geometry, level 3 adds finite d
     assert.ok(b.tris > a.tris * 1.5, `${k}: ${a.tris} → ${b.tris}`);
     assert.equal(buildAt(3, fn).tris, b.tris, k + ' is deterministic');
   }
+});
+
+test('set dressing: 131 kinds keep their old geometry at level 2 and stay finite at level 3 with the finishing pass', () => {
+  const builders = Object.assign({}, ...dressMods);
+  const kinds = Object.keys(builders);
+  assert.ok(kinds.length >= 130);
+  const build = (level, extras, k) => {
+    arch.setDetailLevel(level);
+    geo.setSegBoost(level >= 3 ? 1.9 : 1);
+    try {
+      const D = geo.createGeoBuilder({ cell: 40000, buckets: { std: { det: true }, leaves: { uv: true, ao: false }, glow: { uv: true, ao: false }, blink: { ao: false }, sign: { uv: true }, lit: { uv: true, ao: false }, fence: { uv: true }, flat: { uv: true, ao: false }, wet: { uv: true, ao: false }, cloth: { uv: true } } });
+      const add0 = D.add;
+      D.add = (bucket, g, p, sc, r, color, o = null) => {
+        if (bucket === 'paint') add0('std', g, p, sc, r, color, o && o.surf ? o : { ...(o || {}), surf: [0, 0.42, 0.35] });
+        else if (bucket === 'glass') add0('std', g, p, sc, r, color, o && o.surf ? { ...o, surf: [o.surf[0], o.surf[1] < 0 ? 0.14 : o.surf[1], 0.3] } : { ...(o || {}), surf: [0, 0.14, 0.3] });
+        else add0(bucket, g, p, sc, r, color, o);
+      };
+      D.setJitter(0.06);
+      const it = { k, x: 100, y: 100, a: 0, s: 1, v: 5, q: 0, w: 60, x2: 160, y2: 100 };
+      D.obj(100, 100, 0, 5 * 31 + k.length);
+      builders[k]({ D, it, s: 1, halos: [], map: { width: 3000, height: 2000, areas: [] } });
+      if (extras) dressCin.cinDressExtras(D, it);
+      const tris = D.triangles;
+      let bad = 0;
+      for (const { geometry } of D.finish()) for (const v of geometry.attributes.position.array) if (!Number.isFinite(v)) bad++;
+      return { tris, bad };
+    } finally {
+      geo.setSegBoost(1);
+      arch.setDetailLevel(2);
+    }
+  };
+  let old = 0, fine = 0, more = 0;
+  for (const k of kinds) {
+    const a = build(2, false, k), b = build(3, false, k), c = build(3, true, k);
+    assert.equal(b.bad + c.bad, 0, k + ' finite');
+    assert.ok(c.tris >= b.tris, k + ' the finishing pass never removes anything');
+    old += a.tris; fine += b.tris; more += c.tris;
+  }
+  assert.equal(Math.round(old), 42050, 'level 2 is the old geometry (measured at de88dae)');
+  assert.ok(fine > old * 1.4 && more > fine, `level 3 ${fine} and finished ${more} vs ${old}`);
 });
 
 test('material and part ids appended for the cinematic tier do not move the old ones', () => {

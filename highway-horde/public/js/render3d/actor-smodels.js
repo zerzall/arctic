@@ -168,6 +168,7 @@ export function buildSoldier(cls, L, tier = 0) {
     sb.ellipsoid([1.6, 1.9, z], [3.8, 2.1, 2.05], { segW: seg(14, 7), segH: seg(7, 4), slot: SLOT.FIXED, mat: MAT.LEATHER, color: BOOT, bone: FT,
       deform: (p) => { if (p.y < -0.25) p.y = -0.25 - (p.y + 0.25) * 0.2; if (p.x < -0.3) p.x *= 0.85; } });
     sb.ellipsoid([1.8, 0.45, z], [4.1, 0.5, 2.15], { segW: seg(12, 6), segH: 3, slot: SLOT.FIXED, mat: MAT.RUBBER, color: SOLE, bone: FT });
+    if (cin && L === 0) bootDetail(sb, P, z, SH, FT, cr);
   }
   // hips (trouser seat)
   sb.tube([
@@ -220,6 +221,47 @@ export function buildSoldier(cls, L, tier = 0) {
 }
 
 /** Rounded box as a squashed ellipsoid-cube (superellipsoid-ish). */
+/**
+ * Cinematic boots: a rolled cuff, a tongue, five lace crossings with eyelets, a toe cap seam, a heel
+ * block and lugs along the sole. `cr` is the calf radius the shaft was built with.
+ */
+function bootDetail(sb, P, z, SH, FT, cr) {
+  const lace = '#d6cfb6', leather = shadeHex(BOOT, -0.18);
+  const fx = 0.1 + cr * 0.95;                                    // the shaft's front at z = 0
+  // rolled cuff at the top of the shaft
+  sb.tube([
+    { c: [0.1, P.ankle + 3.9, z], r: cr * 0.99, bone: SH },
+    { c: [0.1, P.ankle + 3.35, z], r: cr * 1.04, bone: SH },
+    { c: [0.1, P.ankle + 2.8, z], r: cr * 0.98, bone: SH },
+  ], { seg: 22, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.LEATHER, color: shadeHex(BOOT, 0.06), bone: SH });
+  // the tongue standing a little proud of the front
+  roundBox(sb, [fx + 0.05, P.ankle + 3.0, z], [0.5, 3.2, 1.6], leather, SH, MAT.LEATHER, SLOT.FIXED, 8);
+  // laces: V-shaped crossings up the front, each end with an eyelet
+  for (let k = 0; k < 5; k++) {
+    const y = 4.3 + k * ((P.ankle + 3.3 - 4.3) / 4);
+    const bn = k < 2 ? bw(SH, FT, 0.4) : SH;
+    for (const e of [-1, 1]) {
+      const x0 = fx - 0.32, x1 = fx + 0.34;
+      sb.tube([
+        { c: [x0, y - 0.35, z + e * 1.25], r: 0.16, bone: bn },
+        { c: [x1, y + 0.05, z + e * 0.15], r: 0.17, bone: bn },
+      ], { seg: 5, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.CLOTH, color: lace, bone: bn });
+      sb.ellipsoid([x0 - 0.05, y - 0.35, z + e * 1.3], [0.2, 0.2, 0.2], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.METAL, color: '#8a8a82', bone: bn });
+    }
+  }
+  // toe cap seam, heel block, sole lugs
+  sb.tube(lineRings([3.05, 2.5, z - 1.55], [3.05, 2.5, z + 1.55], 0.18, 0.18, 7, (r, t) => {
+    const u = (t - 0.5) * 2;
+    r.c[0] = 3.1 - u * u * 1.1;
+    r.c[1] = 2.35 + (1 - u * u) * 0.5;
+  }), { seg: 5, slot: SLOT.FIXED, mat: MAT.LEATHER, color: leather, bone: FT });
+  roundBox(sb, [-1.7, 0.95, z], [1.5, 0.9, 1.75], SOLE, FT, MAT.RUBBER, SLOT.FIXED, 8);
+  for (let k = 0; k < 6; k++) {
+    const x = -1.4 + k * 1.05;
+    for (const e of [-1, 1]) roundBox(sb, [x, 0.25, z + e * 1.7], [0.35, 0.35, 0.5], SOLE, FT, MAT.RUBBER, SLOT.FIXED, 6);
+  }
+}
+
 export function roundBox(sb, c, size, color, bone, mat = MAT.LEATHER, slot = SLOT.FIXED, seg = 8) {
   sb.ellipsoid(c, [size[0] / 2, size[1] / 2, size[2] / 2], {
     segW: seg, segH: Math.max(4, seg - 2), slot, mat, color, bone,
