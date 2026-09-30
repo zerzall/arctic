@@ -351,9 +351,11 @@ const WALL_DRAW = {
     for (let i = 0; i < n; i++) {
       const x = -half + (i + 0.5) * pw, h = 118 + r.range(-10, 22);
       const k = r.next();
-      if (k < 0.45) B.block('std', x, 0, -t * 0.25, pw - 1, h, 2.4, r.pick(['#7a7e80', '#8a6a4a', '#6a7478', '#9a8a6a']), [0, 0, r.range(-0.03, 0.03)], CORR);
-      else if (k < 0.75) B.block('std', x, 0, -t * 0.25, pw - 1, h - 10, 2.2, r.pick(['#b9955a', '#a8844e', '#c8a468']), [0, 0, r.range(-0.03, 0.03)], WOOD);
-      else B.block('std', x, 0, -t * 0.25, pw - 2, h - 20, 3, r.pick(['#3b5f8a', '#a02a2a', '#2f6a4a', '#c9a02a']), null, WOOD);
+      const z = -t * 0.25 + r.range(-3, 3);
+      if (k < 0.5) B.block('std', x, 0, z, pw + 6, h, 2.4, r.pick(['#6e7274', '#7a6048', '#5e686c', '#84786a', '#6a4a3a']), [r.range(-0.03, 0.03), r.range(-0.06, 0.06), r.range(-0.04, 0.04)], S(DET.rust, 0.6, 0.5));
+      else if (k < 0.8) B.block('std', x, 0, z, pw + 4, h - r.range(0, 24), 2.2, r.pick(['#9a7a4e', '#8a6c44', '#a88a5c', '#6e5a40']), [r.range(-0.03, 0.03), r.range(-0.06, 0.06), r.range(-0.05, 0.05)], WOOD);
+      else B.block('std', x, 0, z, pw - 2, h - r.range(10, 30), 3, r.pick(['#4a5a6a', '#6a3a30', '#3a4a3a', '#8a7a4a']), [0, r.range(-0.08, 0.08), r.range(-0.05, 0.05)], S(DET.panel, 0.7, 0.2));
+      if (P.lod >= 1 && r.chance(0.5)) decal(B, 'grime', x, h * 0.5, z - 1.4, pw + 6, h, PI);
       if (P.lod >= 1 && r.chance(0.3)) decal(B, r.pick(['graf2', 'graf3', 'graf1', 'xcode']), x, h * 0.55, -t * 0.25 - 1.6, pw * 1.3, pw * 0.5, PI);
     }
     // posts and a back brace

@@ -298,8 +298,10 @@ function farmgate(P) {
   plank(B, 'std', [w / 2 + 6, 8, 0], [w / 2 + 6 - Math.cos(1.7) * g, 50, -Math.sin(1.7) * g], 2, 1.6, '#8a8e92', METAL);
   B.cyl('std', -w / 2 - 30, 0, 20, 2, 36, '#5a4632', 6, 1, null, WOOD);
   B.rblock('std', -w / 2 - 30, 36, 20, 16, 9, 9, 3, '#8a2a2a', null, METAL);
-  sign2(B, 'mr_haskell', 0, 76, 0, 120, 30, 0);
+  sign(B, 'mr_haskell', 0, 76, 0.9, 120, 30, 0);
+  sign(B, 'mr_haskell', 0, 76, -0.9, 120, 30, PI);
   B.box('std', 0, 76, 0, 124, 34, 1.4, '#e8e0cc', null, WOOD);
+  for (const s of [-1, 1]) rod(B, 'std', [s * 58, 60, 0], [s * 58, 94, 0], 1.6, '#5a4632', WOOD, 5);
 }
 
 // ---- the Roadhouse -----------------------------------------------------------------------------------------------
@@ -327,6 +329,11 @@ function rhdiner(P) {
 function rhsign(P) {
   const { B, o } = P;
   COMMON_MODELS.signpole(hubP(P, { ...o, h: 320 }, 0, 0));
+  // by day the tubes are pale glass: the letters painted on the cabinets behind them still read
+  const H = 320;
+  for (const [cell, y, z, w, h] of [['n_roadhouse', H - 20, 0, 166, 36], ['n_motel', H - 66, 0, 86, 21], ['n_vacancy', H - 104, 8, 96, 24]]) {
+    for (const s of [-1, 1]) B.add('hub', T.plane(), [s * 4.2, y, z], [w, h, 1], [0, s * HALF, 0], P.day ? '#d8c8c0' : '#3a3036', { uv: hubUVp(cell), noAO: true, noJitter: true });
+  }
   B.rblock('std', 0, 0, 0, 30, 12, 30, 1, '#a8a498', null, CONC);
 }
 
@@ -369,7 +376,8 @@ function rhgateframe(P) {
   const [lx, ly] = toWorld(o, w / 2 + 40, 20);
   lantern(B, halos, w / 2 + 40, 123, 20, lx, ly, { h: 9, halo: 60, strength: 0.6 });
   // HAVEN OR BUST over the gate
-  pic2(B, 'p_haven', 0, 150, 0, 150, 37.5, 0);
+  pic(B, 'p_haven', 0, 150, 0.9, 150, 37.5, 0);
+  pic(B, 'p_haven', 0, 150, -0.9, 150, 37.5, PI);
   B.box('std', 0, 150, 0, 156, 42, 1.4, '#6a4a30', null, WOOD);
 }
 

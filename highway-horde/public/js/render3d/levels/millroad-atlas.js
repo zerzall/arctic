@@ -386,10 +386,14 @@ const PAINT = {
     g.clearRect(0, 0, w, h);
     for (let i = 0; i < 6; i++) {
       const x = (i % 3) * 42 + 3, y = Math.floor(i / 3) * 62 + 4;
-      g.fillStyle = ['#e8c21a', '#c8281e', '#2a5ac4', '#2f8a4a', '#e0641c', '#6a2a8a'][Math.floor(r() * 6)];
+      g.fillStyle = ['#c8a82a', '#a8382e', '#3a5a94', '#3a7a4a', '#c0642c', '#5a3a6a'][Math.floor(r() * 6)];
       g.beginPath(); g.moveTo(x, y + 6); g.lineTo(x + 38, y + 6); g.lineTo(x + 36, y + 58); g.lineTo(x + 2, y + 58); g.closePath(); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.8)';
-      g.beginPath(); g.ellipse(x + 19, y + 28, 12, 7, 0, 0, 6.3); g.fill();
+      g.fillStyle = 'rgba(240,230,200,0.6)';
+      g.beginPath(); g.ellipse(x + 19, y + 24, 9, 5, -0.2, 0, 6.3); g.fill();
+      g.fillStyle = 'rgba(210,160,60,0.9)';
+      g.beginPath(); g.ellipse(x + 19, y + 42, 8, 6, 0, 0, 6.3); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(x + 5, y + 8, 4, 48);
       g.fillStyle = 'rgba(0,0,0,0.3)';
       g.fillRect(x, y + 4, 38, 4);
     }
@@ -690,7 +694,7 @@ function products(g, w, h, r, kind) {
     const bw = kind === 'cans' ? 12 : kind === 'bottles' ? 10 : 18 + r() * 14;
     if (gap) { x += bw + 2; continue; }
     const bh = kind === 'cans' ? 22 + r() * 6 : kind === 'bottles' ? 34 + r() * 16 : 30 + r() * 24;
-    const hue = ['#c8281e', '#2a5ac4', '#e0a020', '#2f8a4a', '#e8e8e0', '#6a2a8a', '#e0641c', '#1a1a1a', '#20a0b0'][Math.floor(r() * 9)];
+    const hue = ['#a8382e', '#3a5a94', '#c09030', '#3a7a4a', '#d8d4c8', '#5a3a6a', '#c0642c', '#2a2a2a', '#3a8a94', '#8a6a3a'][Math.floor(r() * 10)];
     const fallen = kind === 'looted' && r() < 0.4;
     g.save();
     g.translate(x + bw / 2, h - 6);
@@ -700,8 +704,11 @@ function products(g, w, h, r, kind) {
       g.fillRect(-bw / 2, -bh, bw, bh * 0.75);
       g.fillRect(-bw / 5, -bh * 1.08, bw / 2.5, bh * 0.35);
     } else g.fillRect(-bw / 2, -bh, bw, bh);
-    g.fillStyle = 'rgba(255,255,255,0.55)';
-    g.fillRect(-bw / 2 + 2, -bh * 0.7, bw - 4, bh * 0.2);
+    g.fillStyle = 'rgba(240,235,220,0.5)';
+    g.fillRect(-bw / 2 + 2, -bh * 0.7, bw - 4, bh * 0.16);
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    g.fillRect(-bw / 2 + 3, -bh * 0.4, bw - 6, 1.5);
+    g.fillRect(-bw / 2 + 3, -bh * 0.3, (bw - 6) * 0.6, 1.2);
     g.fillStyle = 'rgba(0,0,0,0.18)';
     g.fillRect(bw / 2 - 3, -bh, 3, bh);
     g.restore();

@@ -47,7 +47,7 @@ function trailerModel(P, variant) {
   if (!burnt) for (const sd of [-1, 1]) B.box('std', 0, y0 + 16, sd * (W / 2 + 0.2), L - 2, 5, 0.4, trim, null, S(DET.panel, 0.5, 0.2));
   // the roof: a low curved metal roof, the rim
   if (!crushed) {
-    B.add('std', T.cyl(14, 1, false), [0, H - 3, 0], [W / 2 + 1, L + 1, 6], [0, 0, HALF], burnt ? '#1a1816' : '#a8aca8', { surf: [burnt ? DET.char : DET.metalroof, 0.55, 0.5], map: 'cyl' });
+    B.add('std', T.cyl(18, 1, false), [0, H - 2, 0], [5, L + 1, W / 2 + 1], [0, 0, HALF], burnt ? '#1a1816' : '#a8aca8', { surf: [burnt ? DET.char : DET.metalroof, 0.55, 0.5], map: 'cyl' });
   }
   B.box('std', 0, H - 0.6, 0, L + 1.6, 1.6, W + 1.6, burnt ? '#141210' : '#c8ccc8', null, METAL);
   // windows on both long sides and one end, the door on the +z side with its steps and a little porch
@@ -361,7 +361,7 @@ function radiodesk(P) {
   const { B, L, W, o, halos } = P;
   B.rblock('std', 0, 0, 0, L, 34, W, 1, '#6a5038', null, WOOD);
   B.rblock('std', 0, 34, -W * 0.2, L - 20, 36, 16, 1, '#2a2a2c', null, METAL);
-  B.add('glow', T.plane(), [0, 52, -W * 0.2 + 8.4], [L - 30, 30, 1], null, '#ffffff', { emissive: 1.2, uv: lvUV('mr_radio'), noAO: true });
+  B.add('lvglow', T.plane(), [0, 52, -W * 0.2 + 8.4], [L - 30, 30, 1], null, '#ffffff', { emissive: 1.2, uv: lvUV('mr_radio'), noAO: true });
   B.cyl('std', L * 0.1, 34, W * 0.2, 4, 1.4, '#2a2a2c', 10, 1, null, METAL);
   rod(B, 'std', [L * 0.1, 35, W * 0.2], [L * 0.1, 50, W * 0.2], 0.6, '#2a2a2c', METAL, 4);
   B.add('std', T.sphere(8, 6), [L * 0.1, 52, W * 0.22], [2.4, 3.4, 2.4], null, '#1a1a1a', PLAST);

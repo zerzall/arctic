@@ -706,7 +706,8 @@ function corn(B) {
   B.anchor('corn_scarecrow', 2300, 1780, 150);
   B.ob('truck', 3130, 1060, 104, 58, 2.45, { color: '#2f6a3a', section: sec, style: 'mr-tractor' });
   B.anchor('corn_tractor', 3030, 1190, 150);
-  prop(B, 'mr-pivot', 2250, 1720, -0.42, { len: 1650 });
+  prop(B, 'mr-pivot', 2620, 2020, -2.2, { len: 1500 });
+  B.ob('wall', 2620, 2020, 40, 40, 0, { style: 'nodraw', section: sec });
   // ---- the farmyard: the silos, grain bins, the barn, the machine shed with a combine, the house
   B.ob('silo', 1060, 2420, 100, 100, 0, { color: '#b8bcbf', section: sec });
   B.ob('silo', 900, 2330, 76, 76, 0, { color: '#a9aeb2', section: sec });
