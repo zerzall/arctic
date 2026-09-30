@@ -327,7 +327,7 @@ export function createStoryHud(parent, root, { map, showBanner, toast, nameOf, p
       }
       case 'npc': {
         const nm = npcName(view, e.npc);
-        if (e.what === 'down') toast(`${nm} is down! Hold ${'E'} next to them to revive`, 'danger', 4);
+        if (e.what === 'down') toast(`${nm} is down! Hold E next to them to revive`, 'danger', 4);
         else if (e.what === 'up') toast(`${nm} is back on their feet`, 'good', 3);
         else if (e.what === 'dead') toast(`${nm} is gone`, 'danger', 4);
         else if (e.what === 'arrive') toast(`${nm} made it`, 'good', 3);

@@ -241,7 +241,9 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 ```bash
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
-                            #   first-person solo, first-person 2-player relay, an Evac Run and the Campaign
+                            #   first-person solo, first-person 2-player relay, an Evac Run, the Campaign and a
+                            #   Road to Haven story mission
+FULL_MISSIONS=1 npm test    # also plays the fifteen story missions to the end with four bots (about a minute)
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 node scripts/balance.js --mode campaign             # ... of the whole Campaign

@@ -27,7 +27,7 @@ import { TAU } from '../math.js';
 import { WEAPONS } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import {
-  ITEM_PICKUP_RADIUS, itemInfo, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS,
+  ITEM_PICKUP_RADIUS, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS,
 } from '../story-defs.js';
 import { missionOf, simModeOf } from '../story/registry.js';
 import { walkComponents, componentAt } from './zone.js';

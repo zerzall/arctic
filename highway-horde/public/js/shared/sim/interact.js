@@ -93,11 +93,7 @@ export function updateInteractables(game) {
     if (!best) continue;
     best.holders++;
     best.user = p.id;
-    if (best.hold <= 0) {
-      if (press) fire(game, best, p);
-    } else {
-      best.pressBy = p.id;
-    }
+    if (best.hold <= 0 && press) fire(game, best, p);
   }
   for (let i = 0; i < list.length; i++) {
     const it = list[i];

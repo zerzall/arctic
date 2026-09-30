@@ -681,6 +681,83 @@ modes), whose hooks core.js calls (`begin`, `next`, `onIntermissionEnd`, `onWave
   defeat, late join, bots through a whole run and the breakout on every map, the wire, lobby
   rules, determinism, host tick), the e2e scenario `k`.
 
+### 3.9 Story missions — settings.mode 'mission' | 'hideout' (`shared/sim/story.js`, `story-steps.js`, `interact.js`, `npcs.js`, `shared/story-defs.js`, `shared/story/*`)
+
+Road to Haven (STORY.md is the design; this is what the sim does). A **mission** is a data script
+(STORY.md §5.4, written in `shared/story/missions.js`) run by `game.story`, a `StoryDirector`, inside an
+ordinary `Game`; a **hideout** is the same game with no zombies, no waves, no game over (`game.safe`:
+survivors cannot be hurt) and the map's stations as tap-to-use interactables. Existing modes are untouched
+(`game.story` is null; every hook is behind it).
+
+- **Settings.** `mode 'mission'|'hideout'`, `story { mission (the script itself: tests, tools) | nodeId (a
+  registered id: `shared/story/registry.js`, the written fifteen are always known), simMode ('defend'|'zone'|
+  'campaign'|'free', default the script's `mode`), difficulty, title, party [{pid, loadout?, perks?, armor?}],
+  npcs [{id, name?, look?, x, y, mode?}] }`. `mapBuildOptions(settings)` gives `buildMap`'s third argument
+  (host, clients and tools all call it: a campaign mission builds the campaign variant of the map).
+- **Sim modes.** `free` (the director spawns everything: streams of zombies out of rings of open ground around
+  the crew), `defend` (the map's objective is switched on by a `defend` step), `zone` (the Evac Run director
+  drives the waves; an `evac` step names the stops), `campaign` (the Campaign director; `campaignStage` steps
+  watch its stages, `waves` sets the hill waves). Missions start in phase 'wave' (no prep countdown);
+  `tierBonus`, `waveScale`, `spawnPace`, `forceTypes` on the game let a step bend the wave machine.
+- **The step chain.** Steps run one after another; `parallel: true` starts a step together with the next and
+  cancels it when that one (the lead) ends, unless `required: true`; `optional: true` never blocks or gets
+  cancelled; `mission.bonus[]` are optional steps that go live with the mission or with the start of the step
+  named by `since`; a chain of `wait` steps with `parallel: true` before a step is a timeline of radio lines.
+  The mission ends in victory when nothing but optional steps is left; a failing step (a critical NPC dies,
+  `timeout`) or `mission.timeLimit` is a defeat. A finished step patches the crew up (the fallen return, revives).
+- **Step parameters** (checked by `shared/story/validate.js` `validateMission(m, { maps })` → `{ ok, errors,
+  warnings }`): common `id type text parallel optional required onStart onDone pressure tier timeout flags
+  setFlag follow unfollow remove npcs supply`; `defend {target, waves | seconds, scale, boss, gap, heal, pace,
+  at}`; `waves {count, pace, scale, boss, gap, at}`; `survive {seconds, at}`; `collect {item, count, at:[anchors],
+  scatter, note}` (a story item is not a pickup: any survivor within 42 px takes it, `note` names the lore note);
+  `reach {at, hold (s all survivors stand inside; who:'any' = one is enough), radius, who}`; `activate {at:[anchors
+  | interactable ids], hold, kind, label, radius, burst, specials, effect:'lure' + lure:{to, seconds} |
+  'explode' + blast:{at, r, damage}}` (one hold-to-use spot per entry, all of them must be done; more holders
+  are faster: ×1, ×1.5, ×2; the prompt reads like the step's text); `escort {npc, route:[anchors], hp, fail,
+  invulnerable}`; `kill {zombie|enemy ('any' or a type), count (for a party of four: ×0.5 alone .. ×1.5 for six),
+  spawn, at}`; `boss {zombie|enemy, count, at}`; `evac {stops}`; `campaignStage {stage, waves}`; `wait
+  {seconds}`; `dialogue {lines, npc, talk}` (with `talk` the lines play when a survivor talks to the NPC).
+  `flags: {k: true}` on a step is set when it completes and travels with `storyend`.
+- **Pressure** (`pressure: { waves, pace, specials }`, `false` = none): zombies while a step has no waves of its
+  own. `waves` is the VIRTUAL WAVE NUMBER (hp, speed and the type mix of that wave: walkers only at 1, runners
+  from 2, crawlers 3, bloaters + spitters 4, brutes 5, screamers 6), `pace` the tempo as a multiple of a wave's
+  (groups of 4..6+ at a wave's interval / pace, from one spot on open ground 650..1000 px out, at most
+  min(diff.maxAlive, 18 + 8 n) alive), `specials` types forced into the mix (about a quarter). On `defend` /
+  `waves` steps `waves` is the first wave's number (+1 per wave) and `pace` `game.spawnPace`; on `evac` /
+  `campaignStage` it sets `tierBonus` / `spawnPace` for the step. Scripts never get the every-fifth-wave boss or
+  its discount: bosses come from `boss` steps. (`size` / `every` / `scale` / `bursts` = fixed bursts, for tests.)
+- **Stars.** 1 for the win, +1 for `stars.time`, +1 for the clean run (`stars.noDowns` and, with
+  `optional:'collectAll'`, every optional and bonus step done); `storyend.met` says which.
+- **Anchors** (`map.anchors`, STORY.md §5.2; `B.anchor()` in maps.js; the vocabulary is `ANCHOR_VOCAB`): named
+  places `{x, y, r}`, added by every map builder, in bounds and clear of obstacles on every seed
+  (`tests/story-sim.test.js`). `mission.startAt` puts the crew there.
+- **Interactables** (`sim/interact.js`; `map.interactables` + those steps create): `{id, kind, x, y, r, hold,
+  on, done, prog, user, label}`. Holding E within reach fills `prog` (decays twice as fast when let go; a tap
+  spot fires on the press); `interact {pid, id, kind}` on completion; a downed survivor to revive comes first,
+  then an NPC to talk to. Kinds and default prompts: `INTERACT_KINDS`. The snapshot carries at most 32.
+- **NPCs** (`sim/npcs.js`, at most 12): `{id, key, name, look, x, y, z, angle, state, hp}`; states idle / talk /
+  walk / follow / escort / down (bleed out in 24 s, revived by 3.2 s of holding E). They walk the map's own
+  navigation grid (A*, players' size), escorts wait for the crew (360 px), helpers follow at 110..210 px and
+  shoot (16 damage, 2.2/s). Zombies see them as prey a little less tasty than a survivor. `look` = `{cls, skin,
+  hair, hairStyle, outfit:[1..3 hex], accessory, scale}` (`NPC_ACCESSORIES`, `NPC_HAIR_STYLES`); the written cast
+  is `shared/story/cast.js`. Pressing E next to one emits `talk {pid, npc}` (bots never talk while a human is
+  in the game).
+- **Snapshot / events.** §4: `story`, `npcs`, `interactables`; events `objective`, `radio`, `interact`, `talk`,
+  `item`, `npc`, `storyend` (§4.1).
+- **Bots** work through the missions (`StoryDirector.botGoal`): head for the current objective (the lead first,
+  then what runs beside it, optional steps last), pick up items and note the errands 'quest' / 'use' (`b.storyUse`
+  holds E on a device), follow an escort, hunt the named zombie, else defend as usual; with a human in the game
+  they stay within ~1300 px of them.
+- **Lure / blast.** `game.lure = { x, y, until, target }`: while it lasts the flow fields lead only to the
+  point, so every zombie that is not on top of a survivor walks to the noise. A blast is three
+  `explosion` events over a second that hurt zombies only (`explode(..., { zombieDmg, playerDmg: 0 })`).
+- **Respawns.** The fallen return next to a living teammate after `mission.respawn` (40 s) seconds and at every
+  finished step; a joiner enters alive.
+- **Tests:** `tests/story-sim.test.js` (anchors, interactables, NPCs, every step type end to end with bots on every
+  map, bonus steps, pressure, lure, blast, stars, hideout, party, the wire, determinism, cost),
+  `tests/story-missions.test.js` (the written fifteen: validation against the real maps, the first 40 s with bots,
+  `FULL_MISSIONS=1` plays them to the end), `tests/story-render.test.js`, the e2e scenario `m`.
+
 ---------------------------------------------------------------------------------------
 
 ## 4. Snapshot (render state)
@@ -709,6 +786,13 @@ Snapshot = {
                             //   4 = roof), sub (SUB: 0 fight|1 rest|2 brief|3 stairs open|4 arrived|5 zip),
                             //   x, y, r (the stage's circle), t, total (s of a timed part), front (px along
                             //   the route, -1e9 = none), kills, quota, zip (0|1), sx, sy (supply point) }
+  story,                    // Road to Haven (§3.9), else null: { mode 'mission'|'hideout', time (s), downs,
+                            //   steps: [ { i, kind (STEP_KINDS), text, cur, max, t, total (s left / of a timed
+                            //   step), opt } ] (at most 4 active, optional last),
+                            //   marks: [ { kind (MARKER_KINDS), x, y, r } ] (at most 16),
+                            //   items: [ { id, item, x, y } ] (story pickups, at most 32) }
+  npcs: [ { id, key, name, look, x, y, z, angle, state (NPC_STATES), hp /*0..1, -1 = invulnerable*/ } ],
+  interactables: [ { id, kind, x, y, r, hold /*bool*/, on, done, prog /*0..1*/, user /*pid holding, 0*/ } ],
   players: [ {
     id, x, y, angle,
     state,                  // 'alive'|'downed'|'dead'
@@ -787,6 +871,13 @@ All events carry the fields listed; consumers ignore unknown types.
 | `drop` | x, y | supply crate landed (Evac Run: the zone's supply drop) |
 | `zone` | stage, poi, x, y, r, time | Evac Run: a zone was announced ('next'), locked ('lock') or started to shrink ('shrink') |
 | `campaign` | what, stage, floor, pid | Campaign: what = 'stage' (a wave of the stage started or the stairs opened), 'brief' (the hill will fall), 'breakout', 'floor' (the team moved to that floor / the roof / the tower), 'zip' (the line is live), 'ride' / 'escape' (pid) |
+| `objective` | what ('start'\|'progress'\|'done'\|'fail'), step, id, text, cur, max | Road to Haven: the tracker changed (§3.9) |
+| `radio` | who, text, ms, kind ('radio'\|'say') | a subtitle line (speaker id, how long it stays); `radio` lines get a static blip |
+| `interact` | pid, id, kind | a hold-to-use spot was finished |
+| `talk` | pid, npc | a survivor talked to an NPC (`npc` = its key) |
+| `item` | pid, item, note, x, y, n, of | a story item was taken (`note` = the lore note id or ''; n of `of` for its step) |
+| `npc` | what ('down'\|'up'\|'dead'\|'arrive'), npc, id | an NPC changed state |
+| `storyend` | result ('victory'\|'defeat'), reason, mission, stars, met {time, noDowns, optional, perfect}, time, downs, stats {pid: {name, kills, downs, revives, damage, items}}, items {id: n}, flags {k: true} | the mission is over (JSON; the host session handles rewards) |
 | `gameover` | reason | 'wiped'|'objective' |
 | `victory` | — | all waves cleared |
 
@@ -812,7 +903,11 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 8 (the Campaign: a header flag (8) and a 26-byte block after the zone
+u8. PROTOCOL_VERSION 10 (Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
+(1 story, 2 NPCs, 4 interactables) with the blocks it names — the story tracker (steps, markers, items), NPCs
+(id, key, name, look with hair style and accessory, position, state, hp) and hold-to-use spots — and the binary
+`objective`, `radio`, `interact`, `talk`, `item` and `npc` events; 9 is reserved for the engine's story-screen
+control messages; 8 was the Campaign: a header flag (8) and a 26-byte block after the zone
 one — stage, floor, sub u8, the circle as x, y positions and a radius at 0.25 px, the timer and
 its length at 0.01 s, the horde front as an f32 (−1e9 = none), kills and quota u16, the zip flag,
 the supply point — bit 64 of a player's flags byte (`esc`) and a trailing `ride` u8 per player,
@@ -994,6 +1089,13 @@ behind it), the zip cable with its pulse, the stage's supply beacon and an edge 
 circle, plus the lobby thumbnail extras; `render/obstacles-campaign.js` draws the new kinds.
 The old objective is scenery there (no glow, no marker).
 
+Road to Haven (`render/story2d.js`, `npcs2d.js`, built with the renderer): story items on the ground (pulsing
+ring + an icon per shape), hold-to-use devices (housing with a lamp, a ring that fills), NPC bodies painted from
+their look (walk cycle, a gesturing arm while they talk, slumped when down, hair / accessories) under the
+players, marker glows and dashed area rings after the lighting, and in screen space the marker icons with
+distances (off-screen ones pinned to the edge with an arrow, the nearest of each kind), NPC name tags, hp bars,
+"E · Talk" / "Hold E · Revive" prompts and the "!" over the NPC an objective waits for.
+
 ### 7.2 Input — `ui/input.js`
 ```js
 export function createInput(canvas)
@@ -1112,6 +1214,15 @@ Display & HUD (UI size, safe area, view, fov, name tags, stats, minimap), Contro
 pause menu and settings (`ui/fullscreen.js`; in Chromium the game claims Esc while
 fullscreen so Esc only releases the mouse); `fullscreenOnStart` (off by default).
 
+Road to Haven HUD (`ui/storyhud.js`, `ui/storymarks.js`; `createHud(..., { story: { title } })` in mission / hideout
+games): the objective tracker under the compass (rows per active step: a check that lingers 2.2 s when done, count
+`cur / max`, a bar for percentages, a timer with a bar for timed steps, an OPTIONAL tag, at most 4), NPC chips for
+the escorted / wounded (max 3), the radio strip above the vitals (speaker name in the cast colour, text, a queue
+with a 1.4 s minimum per line), the interaction prompt with a hold ring (`--p`) and "Press E to talk to X", banners
+and toasts for completed objectives, the story marks on the minimap / radar (◆ objective, items, NPC dots, devices)
+and on the compass (◆ with the distance of the nearest). The wave panel is hidden unless the mission runs the
+Evac Run or the Campaign; the end screen says "Mission complete" / "Mission failed".
+
 ### 7.4 Audio — `audio/audio.js`
 ```js
 export function createAudio()
@@ -1128,6 +1239,10 @@ audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'wa
 audio.setVolume({ master, sfx, music })      // 0..1
 audio.setMuted(bool)
 audio.setMap(map)                            // permanent map fires crackle when nearby (null clears)
+// Story events (§3.9): 'objective' done → 'obj_done' (two bell notes over a soft third), start → 'obj_new',
+// fail → 'deny'; 'radio' → 'radio_blip' (a squelch of band-limited static; not for `say` lines); 'item' →
+// 'pick_story'; 'interact' → 'interact_done'; update() ticks 'hold_tick' (rate climbing with the hold) while the
+// local survivor fills a hold-to-use spot.
 // update() also plays 'jump' / 'land' (synthesised grunt + scuff, boot thud + grit) when a
 // player leaves / returns to its feet (vzq), 'climb' (palms on the ledge, a strained grunt,
 // boots scrabbling) when a climb starts, 'land_roof' (a hollow sheet-metal thunk) for a
@@ -1516,6 +1631,15 @@ pan by the angle between the sound and the facing direction and muffle/soften so
 behind the listener; without `yaw` (top-down) keep screen-relative panning. The listener
 is `r.getCamera()` (the spectated teammate's chase camera while dead).
 
+Road to Haven in first person (`render3d/npcs3d.js`, `story3d.js`, created lazily by the renderer): NPCs are
+survivors of the look's class on the same GPU rig (one draw per class and LOD, idle / talk / walk / down poses, the
+head following the nearest survivor) with the hair style and accessory built from primitives that ride on the
+head / neck / chest / hips bones (`partsOf(look)`), name tags with the cast colour, hp bars, "E · Talk" prompts and
+the "!" for a waiting objective; story3d draws the items (a prop per shape bobbing over a ground ring and a faint
+light shaft), the mission devices (terminal, generator, beacon, repair kit, radio, switch, valve, winch, pump,
+cache, door, post; a lamp amber while waiting and green when used; hideout stations only get the ring), hold
+rings, objective light shafts and area rings, and the marker icons with the distance in metres on the overlay.
+
 ### 7.5.1 Time of day — `settings.time` 'night' | 'day' (`shared/timeofday.js`, `render3d/daylight*.js`)
 
 Every map has a **night** look (the original: moon, stars, darkness, flashlights, lamps and
@@ -1628,7 +1752,7 @@ flat tyre, dents, an antenna or luggage on the roof.
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through ten scenarios in fresh browser contexts (a–f force the classic
+  Chromium through twelve scenarios in fresh browser contexts (a–f force the classic
   top-down view in localStorage; g and h play first person at quality 'low', 960x540): solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
   prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
@@ -1667,6 +1791,12 @@ flat tyre, dents, an antenna or luggage on the roof.
   (quality 'low') checks the 3D zone wall on the announced circle, the compass and the panel.
   (Software WebGL draws the big map well under 1 fps here, and a host rendering that rarely
   feeds its own survivor idle input, so the walking part plays top-down.)
+  Scenario m (story, 300 s budget): a small mission started through `session.hooks.createGame` (the engine's story
+  screen does it for real) with two bots on the classic view: the tracker names the first objective, Mara is in the
+  view and marked, her prompt, E (held for a moment: a tap can fall between game frames), the radio strip shows
+  her line; three fuel cans and an optional note are taken (events with the note id), the device's hold ring fills
+  under the local survivor, "Mission complete" with a `storyend`; then a first-person game with a row of the cast
+  checks the NPC rig and the accessory / hair meshes in the 3D scene and takes close-ups.
   Scenario j (day): the lobby's Time row (Night first, Day, saved in `prefs.lobby.time`, kept across a
   map change), a first-person solo game by day (`ctx.time` 'day', sun on, flashlight off) and a
   top-down one, no console errors.
