@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import { T, mixHex, shadeHex, hash01 } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { atlasUV } from './world-tex.js';
+import { DETAIL } from './world-arch.js';
+import * as CIN from './world-veh-cin.js';
 import { ROLE_COLOR, roleFor, damageFor, vehicleExtras, fireTruck, busLettering, trailerLivery } from './world-veh-extras.js';
 
 const TIRE = '#1b1b1c';
@@ -28,6 +30,8 @@ const TAIL = '#d01418';
 const AMBER = '#ff9a1a';
 const CHAR = ['#2c2622', '#3a2f27', '#2a2521', '#453628'];
 const INTERIOR = '#0c0b0a';
+/** Window glass: see-through (the cabin shows) on the cinematic tier, dark reflective glass below it. */
+const GL = () => (DETAIL.level >= 3 ? 'vglass' : 'glass');
 
 // ---- loft --------------------------------------------------------------------------------
 
@@ -229,7 +233,7 @@ function toGeo(l) {
 function emitBody(B, body, v) {
   const lists = [
     ['paint', body.paint, v.paintBucket, v.color, v.paintSurf],
-    ['glass', body.glass, 'glass', GLASS, [v.cracked ? DET.glass : 0, v.cracked ? 0.2 : -1, -1]],
+    ['glass', body.glass, GL(), GLASS, [v.cracked ? DET.glass : 0, v.cracked ? 0.2 : -1, -1]],
     ['under', body.under, 'std', DARK, [DET.rust, 0.85, 0.2]],
     // the sill below the lower crease: dark plastic cladding (reads as a rocker panel)
     ['sill', body.sill, v.wrecked ? 'std' : 'std', v.wrecked ? '#171412' : '#1d1e20', v.wrecked ? [DET.char, 0.9, 0.2] : [DET.plastic, 0.6, 0]],
@@ -298,6 +302,7 @@ function mergeParts(parts) {
  * @param {object} o { wrecked, spokes, rim colour, width }
  */
 function wheel(B, x, r, z, width, sd, o = {}) {
+  if (DETAIL.level >= 3 && !o.wrecked) { CIN.cinWheel(B, x, r, z, width, sd, o); return; }
   const rot = [sd > 0 ? Math.PI / 2 : -Math.PI / 2, 0, 0];
   if (o.wrecked) {
     // tyre burnt away: a scorched steel rim sitting on the ground, tilted a little
@@ -320,6 +325,7 @@ function wheel(B, x, r, z, width, sd, o = {}) {
 
 /** Head + tail lamps, optional hazards (blink) and a lit state (emissive > 1 → bloom). */
 function lamps(B, v, frontX, rearX, yF, yR, spread, sizeF = [1.4, 3.6, 8], sizeR = [1.2, 3.6, 7]) {
+  if (DETAIL.level >= 3) { CIN.cinLamps(B, v, frontX, rearX, yF, yR, spread, sizeF, sizeR); return; }
   const lit = v.lightsOn;
   for (const sd of [-1, 1]) {
     const z = sd * spread;
@@ -351,6 +357,12 @@ function mirrors(B, x, y, hw, color, bucket = 'std', surf = null) {
 
 // ---- vehicle kinds ----------------------------------------------------------------------------
 
+/** The cinematic extras of a road vehicle: undercarriage always, the cabin unless it is a burnt-out wreck. */
+function cinExtras(B, o, v, L, W, R, wx, sag, rocker, cab) {
+  CIN.cinUnder(B, L, W, R, [-wx, wx], rocker + sag);
+  if (!v.wrecked) CIN.cinInterior(B, o.id, { ...cab, hw: W / 2 - 2.8 }, v.lightsOn);
+}
+
 /**
  * Build a road vehicle ('car' | 'suv' | 'pickup' | 'van' | 'truck').
  * @param {object} B builder (object frame already placed)
@@ -365,7 +377,7 @@ export function buildVehicle(B, o) {
     case 'car': {
       const R = 8.2;
       const wx = 0.31 * L;
-      const body = loftBody({
+      const spec = {
         L, W, rocker: 9.5 + sag, wheels: [{ x: -wx, r: R }, { x: wx, r: R }], tumble: 0.8, taper: 0.12,
         // a sedan: long raked windshield and backlight, short roof, trunk deck and hood
         top: P(L, [[-0.5, 22], [-0.47, 26.4], [-0.33, 28.2], [-0.27, 29], [-0.12, 40.4], [0.06, 41.8], [0.28, 30], [0.44, 27.4], [0.5, 23]], sag),
@@ -374,10 +386,12 @@ export function buildVehicle(B, o) {
         side: [[-0.235 * L, -0.03 * L], [-0.005 * L, 0.255 * L]],
         seams: o.wrecked ? [] : [0.27 * L, -0.015 * L, -0.25 * L],
         recess: o.wrecked,
-      });
+      };
+      const body = loftBody(spec);
       if (!o.wrecked) handles(B, body, [0.2 * L, -0.08 * L], 25 + sag, v.color);
-      finishBody(B, body, v, L, W, { frontY: 18 + sag, rearY: 21 + sag, spread: W * 0.34, plateY: 13 + sag, bumperY: 12 + sag, mirrorX: 0.2 * L, mirrorY: 30 + sag });
+      finishBody(B, body, v, L, W, { spec, frontY: 18 + sag, rearY: 21 + sag, spread: W * 0.34, plateY: 13 + sag, bumperY: 12 + sag, mirrorX: 0.2 * L, mirrorY: 30 + sag });
       wheels4(B, [-wx, wx], W, R, 7, v);
+      if (DETAIL.level >= 3) cinExtras(B, o, v, L, W, R, wx, sag, 9.5, { x0: -0.27 * L, x1: 0.26 * L, floor: 14 + sag, roof: 39.5 + sag, rows: [0.1 * L, -0.13 * L] });
       vehicleExtras(B, o, v);
       if (o.wrecked && r.chance(0.5)) B.rbox('std', 0.33 * L, 31 + sag, 0, 0.28 * L, 1.4, W * 0.86, 0.5, v.color, [0, 0, 0.55], { surf: [DET.char, 0.9, 0.3] });
       if (!o.wrecked && v.doorOpen) door(B, 0.02 * L, 0.21 * L, 12 + sag, 28 + sag, W, v);
@@ -386,7 +400,7 @@ export function buildVehicle(B, o) {
     case 'suv': {
       const R = 9.6;
       const wx = 0.31 * L;
-      const body = loftBody({
+      const spec = {
         L, W, rocker: 12 + sag, wheels: [{ x: -wx, r: R }, { x: wx, r: R }], tumble: 0.84, taper: 0.1,
         top: P(L, [[-0.5, 30], [-0.49, 52.5], [-0.46, 54.6], [0.12, 55.2], [0.3, 35.6], [0.46, 33], [0.5, 29]], sag),
         belt: P(L, [[-0.5, 30], [-0.47, 34.5], [0.3, 35.2], [0.46, 32.4], [0.5, 29]], sag),
@@ -394,10 +408,12 @@ export function buildVehicle(B, o) {
         side: [[-0.44 * L, -0.23 * L], [-0.2 * L, 0.0], [0.03 * L, 0.27 * L]],
         seams: o.wrecked ? [] : [0.29 * L, 0.015 * L, -0.215 * L],
         recess: o.wrecked,
-      });
+      };
+      const body = loftBody(spec);
       if (!o.wrecked) handles(B, body, [0.22 * L, -0.06 * L], 32 + sag, v.color);
-      finishBody(B, body, v, L, W, { frontY: 26 + sag, rearY: 38 + sag, spread: W * 0.35, plateY: 18 + sag, bumperY: 15 + sag, mirrorX: 0.26 * L, mirrorY: 38 + sag });
+      finishBody(B, body, v, L, W, { spec, frontY: 26 + sag, rearY: 38 + sag, spread: W * 0.35, plateY: 18 + sag, bumperY: 15 + sag, mirrorX: 0.26 * L, mirrorY: 38 + sag });
       wheels4(B, [-wx, wx], W, R, 8, v);
+      if (DETAIL.level >= 3) cinExtras(B, o, v, L, W, R, wx, sag, 12, { x0: -0.46 * L, x1: 0.28 * L, floor: 17 + sag, roof: 52.5 + sag, rows: [0.13 * L, -0.08 * L] });
       vehicleExtras(B, o, v);
       if (!o.wrecked && r.chance(0.45)) roofRack(B, -0.15 * L, 55.4 + sag, 0.5 * L, W * 0.76, r);
       // spare wheel on the tailgate
@@ -408,7 +424,7 @@ export function buildVehicle(B, o) {
     case 'pickup': {
       const R = 9.8;
       const wx = 0.3 * L;
-      const body = loftBody({
+      const spec = {
         L, W, rocker: 12 + sag, wheels: [{ x: -wx, r: R }, { x: wx, r: R }], tumble: 0.84, taper: 0.08,
         top: P(L, [[-0.5, 33], [-0.14, 33], [-0.135, 54], [-0.11, 56.4], [0.1, 57], [0.23, 37.4], [0.45, 34.6], [0.5, 30]], sag),
         belt: P(L, [[-0.5, 34], [-0.14, 34], [0.23, 36.2], [0.45, 34], [0.5, 30]], sag),
@@ -417,9 +433,10 @@ export function buildVehicle(B, o) {
         side: [[-0.11 * L, 0.21 * L]],
         seams: o.wrecked ? [] : [0.23 * L, -0.125 * L],
         recess: o.wrecked,
-      });
+      };
+      const body = loftBody(spec);
       if (!o.wrecked) handles(B, body, [0.14 * L], 32 + sag, v.color);
-      finishBody(B, body, v, L, W, { frontY: 28 + sag, rearY: 29 + sag, spread: W * 0.36, plateY: 19 + sag, bumperY: 16 + sag, mirrorX: 0.18 * L, mirrorY: 40 + sag, chromeBumper: true });
+      finishBody(B, body, v, L, W, { spec, frontY: 28 + sag, rearY: 29 + sag, spread: W * 0.36, plateY: 19 + sag, bumperY: 16 + sag, mirrorX: 0.18 * L, mirrorY: 40 + sag, chromeBumper: true });
       // tailgate closing the bed
       B.rblock(v.paintBucket, -0.5 * L + 1.2, 23 + sag, 0, 2.2, 11, W * 0.86, 0.6, v.color, null, { surf: v.paintSurf });
       if (!o.wrecked && r.chance(0.55)) {
@@ -428,6 +445,7 @@ export function buildVehicle(B, o) {
         else for (let k = 0; k < 3; k++) B.rblock('std', -0.36 * L + k * 9, 23 + sag, r.range(-8, 8), 10, 8 + k * 2, 11, 0.5, '#7a5a32', [0, r.range(-0.3, 0.3), 0], { surf: [DET.wood, 0.8, 0] });
       }
       wheels4(B, [-wx, wx], W, R, 8, v);
+      if (DETAIL.level >= 3) cinExtras(B, o, v, L, W, R, wx, sag, 12, { x0: -0.13 * L, x1: 0.21 * L, floor: 17 + sag, roof: 54.5 + sag, rows: [0.08 * L, -0.06 * L] });
       vehicleExtras(B, o, v);
       if (!o.wrecked && v.doorOpen) door(B, -0.1 * L, 0.2 * L, 15 + sag, 36 + sag, W, v);
       break;
@@ -435,23 +453,25 @@ export function buildVehicle(B, o) {
     case 'van': {
       const R = 9.2;
       const wx = 0.33 * L;
-      const body = loftBody({
+      const spec = {
         L, W, rocker: 11 + sag, wheels: [{ x: -wx, r: R }, { x: wx, r: R }], tumble: 0.93, taper: 0.07,
         top: P(L, [[-0.5, 68], [-0.485, 71.4], [0.3, 71.6], [0.36, 69.5], [0.43, 42], [0.48, 38.5], [0.5, 32]], sag),
         belt: P(L, [[-0.5, 40], [0.36, 41], [0.44, 39.5], [0.5, 32]], sag),
         wind: [[0.36 * L, 0.43 * L]],
         side: [[0.22 * L, 0.38 * L]],
         recess: o.wrecked,
-      });
-      finishBody(B, body, v, L, W, { frontY: 30 + sag, rearY: 30 + sag, spread: W * 0.38, plateY: 19 + sag, bumperY: 14 + sag, mirrorX: 0.35 * L, mirrorY: 44 + sag });
+      };
+      const body = loftBody(spec);
+      finishBody(B, body, v, L, W, { spec, frontY: 30 + sag, rearY: 30 + sag, spread: W * 0.38, plateY: 19 + sag, bumperY: 14 + sag, mirrorX: 0.35 * L, mirrorY: 44 + sag });
       // rear door windows and the split between the doors
-      for (const sd of [-1, 1]) B.box(o.wrecked ? 'std' : 'glass', -0.5 * L - 0.15, 56 + sag, sd * W * 0.2, 0.5, 13, W * 0.3, o.wrecked ? INTERIOR : GLASS, null, o.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
+      for (const sd of [-1, 1]) B.box(o.wrecked ? 'std' : GL(), -0.5 * L - 0.15, 56 + sag, sd * W * 0.2, 0.5, 13, W * 0.3, o.wrecked ? INTERIOR : GLASS, null, o.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
       B.box('std', -0.5 * L - 0.2, 42 + sag, 0, 0.5, 52, 0.8, TRIM);
       if (!o.wrecked && hash01(o.id * 5) < 0.5) {
         // a livery stripe (plumber / delivery van)
         for (const sd of [-1, 1]) B.box('paint', -0.05 * L, 47 + sag, sd * (W * 0.492), 0.8 * L, 5, 0.4, shadeHex(v.color, 0.45), null, { surf: v.paintSurf });
       }
       wheels4(B, [-wx, wx], W, R, 8, v);
+      if (DETAIL.level >= 3) cinExtras(B, o, v, L, W, R, wx, sag, 11, { x0: 0.18 * L, x1: 0.42 * L, floor: 17 + sag, roof: 68 + sag, rows: [0.3 * L], bench: false });
       vehicleExtras(B, o, v);
       if (!o.wrecked && v.doorOpen) {
         // sliding side door pulled back: a dark opening and the door outside the body line
@@ -467,6 +487,7 @@ export function buildVehicle(B, o) {
 
 /** Door handles on both flanks (tiny, darker than the paint, just proud of the body). */
 function handles(B, body, xs, y, color) {
+  if (DETAIL.level >= 3) { CIN.cinDoorFurniture(B, body, xs, y, color); return; }
   for (const x of xs) {
     const h = body.halfW(x);
     for (const sd of [-1, 1]) B.rbox('std', x, y, sd * (h + 0.1), 3.4, 0.9, 0.7, 0.3, shadeHex(color, -0.45), null, { surf: [0, 0.35, 0.6] });
@@ -510,8 +531,10 @@ function finishBody(B, body, v, L, W, o) {
   B.rbox('std', L / 2 - 0.6, o.bumperY, 0, 4.4, 5, hwF * 2 + 0.6, 1.6, v.wrecked ? '#1a1715' : bumperC, null, { surf: v.wrecked ? [DET.char, 0.9, 0.2] : bSurf });
   B.rbox('std', -L / 2 + 0.6, o.bumperY, 0, 4.4, 5, hwR * 2 + 0.6, 1.6, v.wrecked ? '#1a1715' : TRIM, null, { surf: v.wrecked ? [DET.char, 0.9, 0.2] : [DET.plastic, 0.55, 0] });
   // grille
-  B.box('std', L / 2 + 0.1, o.frontY - 1, 0, 1, 5, W * 0.36, '#0e0f10', null, { surf: [DET.corrugated, 0.5, 0.6] });
+  if (DETAIL.level >= 3 && !v.wrecked) CIN.cinGrille(B, L, W, o.frontY, hwF);
+  else B.box('std', L / 2 + 0.1, o.frontY - 1, 0, 1, 5, W * 0.36, '#0e0f10', null, { surf: [DET.corrugated, 0.5, 0.6] });
   if (v.wrecked) return;
+  if (DETAIL.level >= 3 && o.spec) CIN.cinWipers(B, o.spec, W);
   lamps(B, v, L / 2, -L / 2, o.frontY, o.rearY, o.spread);
   plate(B, L / 2 + 1.7, o.plateY, 1);
   plate(B, -L / 2 - 1.7, o.plateY, -1);
@@ -558,8 +581,8 @@ function militaryTruck(B, o, v, L, W, sag) {
   // fenders over the front wheels
   for (const sd of [-1, 1]) B.rblock(bb, 0.36 * L, 22 + sag, sd * W * 0.42, 0.24 * L, 3, W * 0.2, 1.2, olive, null, { surf: ps });
   // windshield (two panes), side windows
-  for (const sd of [-1, 1]) B.box(v.wrecked ? 'std' : 'glass', 0.285 * L + 0.2, 62 + sag, sd * W * 0.22, 0.6, 14, W * 0.38, v.wrecked ? INTERIOR : GLASS, [0, 0, -0.08], v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
-  for (const sd of [-1, 1]) B.box(v.wrecked ? 'std' : 'glass', 0.2 * L, 62 + sag, sd * (W * 0.48 + 0.3), 0.1 * L, 12, 0.6, v.wrecked ? INTERIOR : GLASS, null, v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
+  for (const sd of [-1, 1]) B.box(v.wrecked ? 'std' : GL(), 0.285 * L + 0.2, 62 + sag, sd * W * 0.22, 0.6, 14, W * 0.38, v.wrecked ? INTERIOR : GLASS, [0, 0, -0.08], v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
+  for (const sd of [-1, 1]) B.box(v.wrecked ? 'std' : GL(), 0.2 * L, 62 + sag, sd * (W * 0.48 + 0.3), 0.1 * L, 12, 0.6, v.wrecked ? INTERIOR : GLASS, null, v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
   // grille: vertical slots
   B.box('std', 0.5 * L + 0.2, 31 + sag, 0, 1, 14, W * 0.5, '#15160f', null, { surf: [DET.corrugated, 0.6, 0.5] });
   // bed with canvas tilt on bows
@@ -610,11 +633,11 @@ export function buildSemiCab(B, o) {
   if (v.wrecked) {
     B.box('std', 0.49 * L, 76 + sag, 0, 0.6, 22, W * 0.84, INTERIOR, null, { surf: [DET.char, 0.95, 0] });
   } else {
-    B.box('glass', 0.49 * L + 0.15, 76 + sag, 0, 0.6, 22, W * 0.84, GLASS, [0, 0, -0.06], { surf: [v.cracked ? DET.glass : 0, -1, -1] });
+    B.box(GL(), 0.49 * L + 0.15, 76 + sag, 0, 0.6, 22, W * 0.84, GLASS, [0, 0, -0.06], { surf: [v.cracked ? DET.glass : 0, -1, -1] });
     B.box('std', 0.49 * L + 0.5, 76 + sag, 0, 0.6, 22, 1.2, TRIM);
   }
   for (const sd of [-1, 1]) {
-    B.box(v.wrecked ? 'std' : 'glass', 0.3 * L, 76 + sag, sd * (W * 0.485 + 0.3), 0.24 * L, 18, 0.6, v.wrecked ? INTERIOR : GLASS, null, v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
+    B.box(v.wrecked ? 'std' : GL(), 0.3 * L, 76 + sag, sd * (W * 0.485 + 0.3), 0.24 * L, 18, 0.6, v.wrecked ? INTERIOR : GLASS, null, v.wrecked ? { surf: [DET.char, 0.95, 0] } : null);
     // exhaust stack, fuel tank, steps, air horn
     B.cyl('std', -0.18 * L, 30 + sag, sd * W * 0.5, 2.3, 88, v.wrecked ? '#2a2826' : CHROME, 10, 1, null, { surf: [0, v.wrecked ? 0.9 : 0.15, 1] });
     B.cylX('std', 0.05 * L, 20 + sag, sd * W * 0.44, 6.5, 0.34 * L, v.wrecked ? '#262322' : CHROME, 12, { surf: [DET.panel, v.wrecked ? 0.9 : 0.2, 1] });
@@ -747,7 +770,7 @@ export function buildBus(B, o, objective) {
       } else if (v.wrecked) {
         B.box('std', x, 67 + sag, z - sd * 0.6, step - 4, 22, 0.6, INTERIOR, null, { surf: [DET.char, 0.95, 0] });
       } else if (school || i % 2 === 0 || r.chance(0.4)) {
-        B.box('glass', x, 67 + sag, z, step - 4, 22, 0.5, GLASS, null, { surf: [v.cracked && r.chance(0.3) ? DET.glass : 0, -1, -1] });
+        B.box(GL(), x, 67 + sag, z, step - 4, 22, 0.5, GLASS, null, { surf: [v.cracked && r.chance(0.3) ? DET.glass : 0, -1, -1] });
       }
       // window frames
       B.box('std', x - step / 2, 67 + sag, z * 1.002, 2.4, 24, 0.9, school ? shadeHex(bc, -0.05) : '#202020', null, { surf: [0, 0.5, 0.3] });
@@ -756,15 +779,16 @@ export function buildBus(B, o, objective) {
     else B.box(bb, -0.02 * L, 44 + sag, sd * (W / 2 + 0.4), L * 0.94, 7, 0.5, r.pick(['#8a2f2a', '#2f4f6f', '#7a6a4f', '#3f5a3a']), null, { surf: ps });
     B.rbox('std', 0.5 * L + 5, 72 + sag, sd * (W / 2 + 4), 2, 12, 5, 0.8, '#1a1a1a', null, { surf: [0, 0.5, 0.2] });   // mirrors
   }
+  if (DETAIL.level >= 3 && !v.wrecked && !objective) CIN.cinBusInterior(B, o.id || 3, L, W, sag, x0, (school ? 0.3 : 0.36) * L, hood);
   // windshield, door, rear emergency door
   const fx = L / 2 - hood;
   if (!v.wrecked) {
-    B.box('glass', fx + 0.3, 66 + sag, 0, 0.7, 28, W * 0.88, objective ? '#2a2a24' : GLASS, null, null);
-    B.box('glass', fx - 6, 50 + sag, W / 2 + 0.3, 12, 56, 0.5, GLASS);
+    B.box(GL(), fx + 0.3, 66 + sag, 0, 0.7, 28, W * 0.88, objective ? '#2a2a24' : GLASS, null, null);
+    B.box(GL(), fx - 6, 50 + sag, W / 2 + 0.3, 12, 56, 0.5, GLASS);
   } else {
     B.box('std', fx + 0.3, 66 + sag, 0, 0.7, 28, W * 0.88, INTERIOR, null, { surf: [DET.char, 0.95, 0] });
   }
-  B.box(v.wrecked ? 'std' : 'glass', -L / 2 - 0.3, 68 + sag, 0, 0.7, 22, W * 0.34, objective ? '#3a2a18' : v.wrecked ? INTERIOR : GLASS);
+  B.box(v.wrecked ? 'std' : GL(), -L / 2 - 0.3, 68 + sag, 0, 0.7, 22, W * 0.34, objective ? '#3a2a18' : v.wrecked ? INTERIOR : GLASS);
   B.box(bb, -L / 2 - 0.5, 50 + sag, 0, 0.8, 70, W * 0.4, shadeHex(bc, -0.12), null, { surf: ps });
   B.rbox('std', L / 2 + 1, 18 + sag, 0, 3, 8, W * 0.98, 1, '#161616', null, { surf: [DET.plastic, 0.5, 0.2] });
   B.rbox('std', -L / 2 - 1, 18 + sag, 0, 3, 8, W * 0.98, 1, '#161616', null, { surf: [DET.plastic, 0.5, 0.2] });

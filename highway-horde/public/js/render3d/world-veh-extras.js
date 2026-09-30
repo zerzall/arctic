@@ -11,6 +11,7 @@ import { T, shadeHex, hash01, mixHex } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { dressUV } from './dress-atlas.js';
 import { atlasUV } from './world-tex.js';
+import { DETAIL } from './world-arch.js';
 
 const CHROME = '#c9ced3';
 const TRIM = '#222324';
@@ -261,7 +262,7 @@ export function fireTruck(B, o, v, L, W, wheelFn) {
     B.box('std', 0.5 * L, 22, sd * W * 0.36, 1, 6, 9, '#e8e8e0', null, S2);
   }
   // windshield, grille, bumper, siren and light bar
-  B.box('glass', 0.478 * L, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
+  B.box(DETAIL.level >= 3 ? 'vglass' : 'glass', 0.478 * L, 50, 0, 0.6, 15, W * 0.84, '#22303a', null, { surf: [0, 0.12, 0.3] });
   B.box('std', 0.481 * L, 50, 0, 0.8, 16.6, 1.6, red, null, S2);
   B.box('std', 0.481 * L, 58.2, 0, 0.8, 1.6, W * 0.88, red, null, S2);
   B.box('std', 0.481 * L, 42, 0, 0.8, 1.4, W * 0.88, red, null, S2);

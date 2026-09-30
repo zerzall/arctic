@@ -43,14 +43,15 @@ const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
  * @param {object} o { scene, map, quality, renderer }
  * @returns {{ meshes, decal, update, waters, heightAt, dispose, stats }}
  */
-export function createGround({ scene, map, quality, renderer, detail }) {
+export function createGround({ scene, map, quality, renderer, detail, cinematic = false }) {
   const high = quality !== 'low';
   const ultra = quality === 'ultra';
   let tier = quality === 'low' || quality === 'ultra' ? quality : 'high';
   // texels per world unit: ultra paints the ground at full detail; a very long map is
   // painted a little coarser (a texel budget per tier: the detail layers carry the close-up
   // grain) so its canvases and textures stay near the other maps' memory
-  const scale = Math.min(ultra ? 1 : high ? 0.75 : 0.5, Math.sqrt(GROUND_TEXELS[tier] / (map.width * map.height)));
+  // (cinematic: 1.6 texels a unit, up to 24 M texels: a road stone is 2 px wide instead of 1)
+  const scale = Math.min(cinematic ? 1.6 : ultra ? 1 : high ? 0.75 : 0.5, Math.sqrt((cinematic ? 24e6 : GROUND_TEXELS[tier]) / (map.width * map.height)));
   const maxAniso = renderer ? Math.min(ultra ? 16 : high ? 8 : 2, renderer.capabilities.getMaxAnisotropy()) : 1;
   const W = map.width, H = map.height;
 

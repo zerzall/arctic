@@ -187,15 +187,26 @@ export function trunk(B, size, o) {
   else if (sp === 'pine' || sp === 'spruce') col = '#3a2c20';
   const tall = sp === 'pine' || sp === 'spruce' ? 130 : 104;
   const topK = sp === 'dead' ? 0.62 : 0.55;
-  B.cyl('std', 0, 0, 0, rad, tall, col, sp === 'birch' ? 8 : 9, topK, null, { wobble: { amp: 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : DET.bark, 0.85, 0] });
-  B.cyl('std', 0, 0, 0, rad * 1.45, 9, shadeHex(col, -0.15), 9, 0.68, null, { surf: [DET.bark, 0.9, 0] });
+  const cin = DETAIL.level >= 3;
+  const tseg = cin ? 16 : sp === 'birch' ? 8 : 9;
+  B.cyl('std', 0, 0, 0, rad, tall, col, tseg, topK, null, { wobble: { amp: cin ? 0.05 : 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : DET.bark, 0.85, 0] });
+  B.cyl('std', 0, 0, 0, rad * 1.45, 9, shadeHex(col, -0.15), cin ? 16 : 9, 0.68, null, { surf: [DET.bark, 0.9, 0] });
+  if (cin && sp !== 'palm') {
+    // bark in bands: a second, slightly wider skin in short sleeves with a darker seam between them
+    for (let k = 0; k < 6; k++) B.cyl('std', 0, 18 + k * 17 + r.range(-3, 3), 0, rad * (1.02 - k * 0.055) * (topK < 0.6 ? 1 : 1), r.range(6, 11), shadeHex(col, r.range(-0.12, 0.06)), 14, 0.97, null, { wobble: { amp: 0.09, seed: o.id + k }, surf: [DET.bark, 0.9, 0], noJitter: true });
+    // knots and a scar
+    for (let k = 0; k < 3; k++) {
+      const a = r.range(0, 6.28), y = r.range(20, tall * 0.7);
+      B.add('std', T.sphere(7, 5), [Math.cos(a) * rad * (1 - y / tall * 0.4) * 0.98, y, Math.sin(a) * rad * (1 - y / tall * 0.4) * 0.98], [rad * 0.16, rad * 0.22, rad * 0.16], null, shadeHex(col, -0.3), { surf: [DET.bark, 0.9, 0], noJitter: true });
+    }
+  }
   if (sp === 'birch') {
     // dark scars ringing the white bark
     for (let k = 0; k < 8; k++) B.cyl('std', 0, 10 + k * 11 + r.range(0, 4), 0, rad * (0.99 - k * 0.04), 1.6 + r.range(0, 1.6), '#2a2622', 8, 1, null, { noJitter: true, surf: [DET.bark, 0.9, 0] });
   }
   // roots: buttresses running out over the ground
   if (DETAIL.level >= 1) {
-    const nr = sp === 'oak' || sp === 'maple' ? 5 : 3;
+    const nr = (sp === 'oak' || sp === 'maple' ? 5 : 3) + (DETAIL.level >= 3 ? 3 : 0);
     for (let k = 0; k < nr; k++) {
       const a = (k / nr) * 6.28 + r.range(-0.3, 0.3);
       const dir = new THREE.Vector3(Math.cos(a), -0.32, Math.sin(a)).normalize();
@@ -232,7 +243,47 @@ export function canopy(B, d, i) {
   }
 }
 
+/** Cinematic conifer: whorls of drooping branches, each with needle clusters along it and a thin core. */
+function pineCrownCin(B, R, r, layers, k) {
+  const top = 200 + R * 1.4;
+  const col = r.pick(PINE);
+  const cards = cardList();
+  const cards2 = cardList();
+  B.cyl('std', 0, 60, 0, R * 0.2, top - 62, shadeHex(col, -0.5), 8, 0.04, null, { surf: [DET.bark, 0.95, 0], noAO: true });
+  const nW = layers * 2 + 5;
+  for (let m = 0; m < nW; m++) {
+    const t = m / (nW - 1);
+    const y = 72 + t * (top - 100);
+    const rad = R * (k - t * 0.92);
+    const nb = Math.max(5, Math.round(10 - t * 5));
+    const a0 = r.range(0, 6.28);
+    for (let q = 0; q < nb; q++) {
+      const a = a0 + (q / nb) * Math.PI * 2 + r.range(-0.22, 0.22);
+      const len = rad * r.range(0.8, 1.05);
+      const droop = -0.16 - t * 0.05 - r.range(0, 0.08);
+      const dir = new THREE.Vector3(Math.cos(a), droop, Math.sin(a)).normalize();
+      limb(B, 0, y, 0, dir, len, 1.3 - t * 0.7, '#3a2c20', 0.2, 5);
+      for (let c = 0; c < 3; c++) {
+        const s = 0.42 + c * 0.27;
+        const droopY = -len * s * 0.06 * (0.5 + c * 0.7);
+        const p = [dir.x * len * s, y + dir.y * len * s + droopY, dir.z * len * s];
+        const f = new THREE.Vector3(dir.x * 0.4, 0.85, dir.z * 0.4).normalize();
+        const w = rad * (0.62 - c * 0.13) * r.range(0.9, 1.15);
+        card(c % 2 ? cards : cards2, p, f, a + Math.PI / 2 + r.range(-0.4, 0.4), w, w * r.range(0.85, 1.15), [0, y + 14, 0], LEAF_CELLS.pine, -0.12);
+      }
+    }
+  }
+  // the leader: a tuft of upright needles
+  for (let q = 0; q < 6; q++) {
+    const a = q * 1.05 + r.range(-0.2, 0.2);
+    card(cards, [Math.cos(a) * 3, top - 26, Math.sin(a) * 3], new THREE.Vector3(Math.cos(a) * 0.45, 0.85, Math.sin(a) * 0.45).normalize(), a, 16, 34, [0, top - 40, 0], LEAF_CELLS.pine, 0);
+  }
+  B.add('leaves', listGeo(cards), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });
+  B.add('leaves', listGeo(cards2), [0, 0, 0], [1, 1, 1], null, shadeHex(col, 0.12), { noAO: true });
+}
+
 function pineCrown(B, R, r, layers, k) {
+  if (DETAIL.level >= 3) return pineCrownCin(B, R, r, layers, k);
   const cards = cardList();
   const top = 200 + R * 1.4;
   const col = r.pick(PINE);
@@ -255,6 +306,7 @@ function pineCrown(B, R, r, layers, k) {
 }
 
 function broadCrown(B, R, r, i, o) {
+  if (DETAIL.level >= 3) return broadCrownCin(B, R, r, i, o);
   const cards = cardList();
   const top = o.top + R * 1.3 - 44 * 1.3;
   const col = r.pick(o.leaf);
@@ -296,6 +348,51 @@ function broadCrown(B, R, r, i, o) {
     }
     B.add('leaves', listGeo(c2), [0, 0, 0], [1, 1, 1], null, r.pick(AUTUMN), { noAO: true });
   }
+}
+
+/** Cinematic broadleaf: a branch skeleton (limbs, sub-branches, twigs) with many small leaf clusters in three tones. */
+function broadCrownCin(B, R, r, i, o) {
+  const top = o.top + R * 1.3 - 44 * 1.3;
+  const col = r.pick(o.leaf);
+  const cc = [0, top - R * 1.2, 0];
+  const tones = [cardList(), cardList(), cardList()];
+  const shades = [shadeHex(col, -0.1), col, shadeHex(col, 0.14)];
+  B.add('std', T.ico(1), cc, [R * 0.5, R * 0.4, R * 0.5], [0, r.range(0, 3), 0], shadeHex(col, -0.45), { wobble: { amp: 0.25, seed: i }, surf: [DET.grass, 0.95, 0], noAO: true });
+  const clumps = o.clumps + 4;
+  const base = new THREE.Vector3(0, 96, 0);
+  for (let k = 0; k < clumps; k++) {
+    const dir = k === 0 ? new THREE.Vector3(0, 1, 0) : randDir(r);
+    dir.y = dir.y * 0.55 - (k === 0 ? 0 : 0.06);
+    const cr = R * (k === 0 ? 0.55 : r.range(0.36, 0.55));
+    const ctr = [cc[0] + dir.x * R * 0.88, cc[1] + dir.y * R * 0.78, cc[2] + dir.z * R * 0.88];
+    // limb from the trunk to a fork, then a sub-branch into the clump, then twigs into its leaves
+    if (k > 0 && k < 9) {
+      const fork = [ctr[0] * 0.55, 96 + (ctr[1] - 96) * 0.5, ctr[2] * 0.55];
+      const d1 = new THREE.Vector3(fork[0], fork[1] - 96, fork[2]);
+      const l1 = d1.length(); d1.normalize();
+      limb(B, 0, 96, 0, d1, l1, 3.2 - k * 0.15, '#3f3226', 0.55, 6);
+      const d2 = new THREE.Vector3(ctr[0] - fork[0], ctr[1] - fork[1], ctr[2] - fork[2]);
+      const l2 = d2.length(); d2.normalize();
+      limb(B, fork[0], fork[1], fork[2], d2, l2 * 0.9, 1.9, '#3f3226', 0.4, 5);
+      for (let tw = 0; tw < 3; tw++) {
+        const d3 = d2.clone().add(randDir(r).multiplyScalar(0.7)).normalize();
+        limb(B, ctr[0], ctr[1], ctr[2], d3, cr * 0.7, 0.8, '#3f3226', 0.3, 4);
+      }
+    }
+    const n = 16 + Math.floor(r.next() * 8);
+    for (let m = 0; m < n; m++) {
+      const f = randDir(r);
+      if (f.y < -0.4) f.y = -f.y * 0.5;
+      const c = [ctr[0] + f.x * cr * 0.85, ctr[1] + f.y * cr * 0.72, ctr[2] + f.z * cr * 0.85];
+      const sz = cr * r.range(0.8, 1.15);
+      // outer, sun-facing cards are lighter; the ones deep in the crown are dark
+      const outer = f.y * 0.6 + (Math.hypot(f.x, f.z) > 0.6 ? 0.25 : 0) + r.range(-0.3, 0.3);
+      const tone = outer > 0.5 ? 2 : outer > 0 ? 1 : 0;
+      card(tones[tone], c, f, r.range(0, 6.28), sz, sz, cc, o.cell || (r.chance(0.5) ? LEAF_CELLS.broadA : LEAF_CELLS.broadB), sz * 0.12);
+    }
+  }
+  for (let t = 0; t < 3; t++) B.add('leaves', listGeo(tones[t]), [0, 0, 0], [1, 1, 1], null, o.leaf === AUTUMN && t !== 1 ? r.pick(AUTUMN) : shades[t], { noAO: true });
+  void base;
 }
 
 function deadCrown(B, R, r, i) {

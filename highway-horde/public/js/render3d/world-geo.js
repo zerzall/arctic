@@ -162,18 +162,26 @@ function pillow(w = 10, h = 6, p = 0.35) {
   return g;
 }
 
+// The cinematic tier tessellates round primitives finer (cylinders, spheres, tori, lathes):
+// barrels, poles, pumps, wheels and trunks stop reading as octagons. Set before building.
+let SEG_BOOST = 1;
+export function setSegBoost(k) { SEG_BOOST = k; }
+export function segBoost() { return SEG_BOOST; }
+const bs = (n) => (SEG_BOOST > 1 && n >= 7 ? Math.min(44, Math.round(n * SEG_BOOST)) : n);
+const bsp = (n) => (SEG_BOOST > 1 ? Math.min(30, Math.max(n + 3, Math.round(n * SEG_BOOST))) : n);
+
 /** Unit primitives (centred at the origin, size 1 unless noted). Cached for the page's lifetime. */
 export const T = {
   box: () => tpl('box', () => new THREE.BoxGeometry(1, 1, 1)),
   /** Rounded box of an exact size (not unit): place it with scale [1, 1, 1]. */
   rbox: (sx, sy, sz, r) => tpl(`rb${sx.toFixed(1)}:${sy.toFixed(1)}:${sz.toFixed(1)}:${r.toFixed(2)}`, () => chamferBox(sx, sy, sz, r)),
   /** Cylinder along +y, height 1, bottom radius 1, top radius `top`. */
-  cyl: (seg = 8, top = 1, open = false) => tpl(`cyl${seg}:${top.toFixed(2)}:${open}`, () => new THREE.CylinderGeometry(top, 1, 1, seg, 1, open)),
+  cyl: (seg = 8, top = 1, open = false) => { seg = bs(seg); return tpl(`cyl${seg}:${top.toFixed(2)}:${open}`, () => new THREE.CylinderGeometry(top, 1, 1, seg, 1, open)); },
   ico: (detail = 0) => tpl('ico' + detail, () => new THREE.IcosahedronGeometry(1, detail)),
   dodeca: () => tpl('dodeca', () => new THREE.DodecahedronGeometry(1, 0)),
-  sphere: (w = 8, h = 6) => tpl(`sph${w}:${h}`, () => new THREE.SphereGeometry(1, w, h)),
+  sphere: (w = 8, h = 6) => { w = bsp(w); h = bsp(h); return tpl(`sph${w}:${h}`, () => new THREE.SphereGeometry(1, w, h)); },
   /** Sack: unit-radius pillow shape (sandbags, trash bags). */
-  pillow: (w = 10, h = 6, p = 0.35) => tpl(`pil${w}:${h}:${p}`, () => pillow(w, h, p)),
+  pillow: (w = 10, h = 6, p = 0.35) => { w = bsp(w); h = bsp(h); return tpl(`pil${w}:${h}:${p}`, () => pillow(w, h, p)); },
   /** Quad in the XY plane facing +z. */
   plane: () => tpl('plane', () => new THREE.PlaneGeometry(1, 1)),
   /** A grass blade: a thin upright triangle (base width 1 on x, height 1), both sides. */
@@ -184,9 +192,9 @@ export const T = {
     g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1], 3));
     return g;
   }),
-  torus: (seg = 10, tube = 0.35, rad = 5) => tpl('torus' + seg + ':' + tube + ':' + rad, () => new THREE.TorusGeometry(1, tube, rad, seg)),
+  torus: (seg = 10, tube = 0.35, rad = 5) => { seg = bs(seg); rad = SEG_BOOST > 1 ? Math.min(12, rad + 3) : rad; return tpl('torus' + seg + ':' + tube + ':' + rad, () => new THREE.TorusGeometry(1, tube, rad, seg)); },
   /** Surface of revolution around +y from [[radius, y]...] (bottom to top). */
-  lathe: (key, pts, seg = 12) => tpl('lathe:' + key + ':' + seg, () => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg)),
+  lathe: (key, pts, seg = 12) => { seg = bs(seg); return tpl('lathe:' + key + ':' + seg, () => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg)); },
   /**
    * A side profile (array of [x, y] points, counter-clockwise) extruded along z, centred
    * on z = 0. Cached by `key`. Without a bevel the depth is 1 (scale z to size it). With

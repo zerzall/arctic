@@ -12,7 +12,8 @@
 // world's frustum and fog culling still drops what is behind you).
 
 import * as THREE from 'three';
-import { createGeoBuilder } from './world-geo.js';
+import { createGeoBuilder, setSegBoost } from './world-geo.js';
+import { tierAtLeast, baseTier } from './tier.js';
 import { buildDress, dressDensity } from '../shared/dress.js';
 import { makeDressTexture } from './dress-atlas.js';
 import { DEBRIS, FLATS } from './dress-debris.js';
@@ -29,7 +30,7 @@ const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS,
 export const DRESS_MODELLED = Object.freeze(Object.keys(BUILDERS));
 
 /** Triangles the dressing may add per tier (only the biggest maps reach it). */
-const TRI_BUDGET = { ultra: 650000, high: 400000, low: 170000 };
+const TRI_BUDGET = { cinematic: 1600000, ultra: 650000, high: 400000, low: 170000 };
 /** Tall props that make the skyline: built into the far set. */
 const FAR = new Set(['pole', 'wire', 'billboard', 'watertower', 'flagpole', 'banner', 'deadtree']);
 /** The small props are not drawn past this distance (the far set is). */
@@ -64,7 +65,9 @@ function clothPatch(mat, uniforms, key) {
 export function createDress(ctx, deps) {
   const { map } = ctx;
   const { root, mats, gy, hasTerrain } = deps;
-  let tier = deps.tier;
+  // (`full` may be 'cinematic': ultra's density, materials and rules, with finer geometry)
+  let full = deps.tier;
+  let tier = baseTier(full);
   const tex = makeDressTexture(deps.aniso || 8);
   const own = {
     hi: {
@@ -119,6 +122,7 @@ export function createDress(ctx, deps) {
 
   function build() {
     const t0 = performance.now();
+    setSegBoost(tierAtLeast(full, 'cinematic') ? 1.9 : 1);
     const density = dressDensity(tier);
     // near: the small things, cut into 1200-unit cells (culled past NEAR_MAX); far: poles, wires, billboards, the
     // water tower and the dead trees, which make the skyline and are always drawn (a few hundred triangles each)
@@ -128,7 +132,7 @@ export function createDress(ctx, deps) {
     const Dfar = makeBuilder({ std: 40000, mid: 40000, all: 40000 });
     shown = 0;
     const hl = built ? [] : halos;
-    const budget = TRI_BUDGET[tier];
+    const budget = TRI_BUDGET[tierAtLeast(full, 'cinematic') ? 'cinematic' : tier];
     for (let i = 0; i < ranked.length; i++) {
       const it = ranked[i];
       if (it.q >= density) break;
@@ -196,11 +200,14 @@ export function createDress(ctx, deps) {
     },
     update(view, frame) { life.update(view, frame); },
     setQuality(q) {
-      const nt = q === 'low' || q === 'ultra' ? q : 'high';
-      if (nt === tier) return;
+      const nf = q === 'low' || q === 'ultra' || q === 'cinematic' ? q : 'high';
+      if (nf === full) return;
+      const nt = baseTier(nf);
       const dOld = dressDensity(tier), dNew = dressDensity(nt);
+      const geo = tierAtLeast(full, 'cinematic') !== tierAtLeast(nf, 'cinematic');
+      full = nf;
       tier = nt;
-      if (dOld !== dNew) { clear(); build(); } else for (const m of meshes) m.material = matFor(m.userData.bucket);
+      if (dOld !== dNew || geo) { clear(); build(); } else for (const m of meshes) m.material = matFor(m.userData.bucket);
       life.setQuality(nt);
     },
     get stats() { return { items: items.length, shown, triangles: Math.round(triangles), meshes: meshes.length, buildMs: Math.round(buildMs), unmodelled: [...missing].filter((k) => k[0] !== '!') }; },

@@ -12,10 +12,10 @@
 // ripples, neon, beacons, flags, grass, rain) animate on the GPU or from update().
 
 import * as THREE from 'three';
-import { createGeoBuilder, T, shadeHex } from './world-geo.js';
+import { createGeoBuilder, T, shadeHex, setSegBoost } from './world-geo.js';
 import { createGround, WATER } from './ground.js';
 import { atlasUV, makeAtlasTexture, makeChainLinkTexture, makeWaterNormal, makeLeafTexture } from './world-tex.js';
-import { makeDetailArray, DET } from './world-surf.js';
+import { makeDetailArray, makeDetailArrayAsync, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
@@ -173,8 +173,21 @@ export function createWorld(ctx, deps) {
   const atlasTex = track(makeAtlasTexture());
   atlasTex.anisotropy = aniso;
   const chainTex = track(makeChainLinkTexture());
-  const leafTex = track(makeLeafTexture(Math.min(4, maxAniso)));
+  const leafTex = track(makeLeafTexture(Math.min(cin ? 8 : 4, maxAniso), cin ? 2 : 1));
   const mats = createWorldMaterials({ detail: detailTex, atlas: atlasTex, chain: chainTex, leaves: leafTex });
+  // cinematic: the 512² surface layers are generated in time slices and swapped in when ready
+  let gone = false, detail512 = 0;
+  if (cin) {
+    makeDetailArrayAsync(Math.min(16, maxAniso)).then((t) => {
+      if (gone) { t.dispose(); return; }
+      const old = detailTex;
+      detailTex = track(t);
+      mats.shared.uDetail.value = t;
+      ground.uniforms.uDetail.value = t;
+      if (old) old.dispose();
+      detail512 = 1;
+    }).catch((err) => console.warn('world: 512 surface layers failed', err));
+  }
   if (day) {
     // by day the lit windows, street lamps, tubes and signs are just dim glass and paint
     // (the unlit emissive pieces are multiplied down; beacons and vehicle lamps stay a bit)
@@ -196,7 +209,7 @@ export function createWorld(ctx, deps) {
   const B = createGeoBuilder({
     cell: 1600,
     buckets: {
-      std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
+      std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, vglass: { uv: true, ao: false }, decal: { uv: true },
       glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
       fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
       // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
@@ -207,6 +220,7 @@ export function createWorld(ctx, deps) {
   if (hasTerrain) B.setGround(gy);
   // geometry detail of the buildings follows the tier the world is built for
   setDetailLevel(cin ? 3 : tier === 'low' ? 0 : tier === 'ultra' ? 2 : 1);
+  setSegBoost(cin ? 1.9 : 1);
   // lists for the effect meshes
   const halos = [];
   const shafts = [];
@@ -632,7 +646,7 @@ export function createWorld(ctx, deps) {
     get stats() {
       return {
         staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
-        grass: grass.instances,
+        grass: grass.instances, detail512,
         dress: dress ? dress.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
@@ -641,6 +655,8 @@ export function createWorld(ctx, deps) {
       };
     },
     dispose() {
+      gone = true;
+      setSegBoost(1);
       if (dress) dress.dispose();
       ground.dispose();
       grass.dispose();

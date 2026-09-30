@@ -451,6 +451,38 @@ function flickerMaterial(uniforms, map) {
  * card broke into a few flickering specks. The alpha is scaled up with the mip level
  * (texels per pixel), which holds each card about as solid as it looks up close.
  */
+/**
+ * See-through vehicle glass (cinematic tier): a tinted pane over the cabin that keeps its
+ * full reflections. Blended as premultiplied light (the diffuse tint scales with the pane's
+ * alpha, the specular and environment reflection do not), with a Fresnel term that turns the
+ * pane more opaque at grazing angles, and fog that fades with the pane's alpha.
+ */
+function vglassMaterial() {
+  const m = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.05, metalness: 0.0, envMapIntensity: 2.4, transparent: true, opacity: 0.4, depthWrite: false,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+  });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <opaque_fragment>', `
+  float vgFr = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+  float vgA = clamp(diffuseColor.a + vgFr * 0.5, 0.0, 0.9);
+  gl_FragColor = vec4( totalDiffuse * vgA + totalSpecular + totalEmissiveRadiance, vgA );`)
+      .replace('#include <fog_fragment>', `
+  #ifdef USE_FOG
+    #ifdef FOG_EXP2
+      float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+    #else
+      float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+    #endif
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor * gl_FragColor.a, fogFactor );
+  #endif`);
+  };
+  m.customProgramCacheKey = () => 'hh-vglass-v1';
+  return m;
+}
+
 function coverageLeaves(m, key) {
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `
@@ -490,6 +522,7 @@ export function createWorldMaterials(tex) {
     // glass: mostly Fresnel + the probe; low metalness keeps the flashlight's reflection
     // off camera-facing panes from blowing out. Panes show a dim interior-mapped room.
     glass: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.16, metalness: 0.32, envMapIntensity: 2.6 }), shared, 'hh-glass-v2', { weather: false, rooms: true })),
+    vglass: track(vglassMaterial()),
     decal: track(new THREE.MeshStandardMaterial({ vertexColors: true, map: tex.atlas, roughness: 0.55, metalness: 0.05, envMapIntensity: 0.8 })),
     // graffiti and stains: the atlas blended over the wall (its alpha), just off the surface
     stain: track(new THREE.MeshStandardMaterial({
@@ -515,6 +548,7 @@ export function createWorldMaterials(tex) {
     std: track(new THREE.MeshLambertMaterial({ vertexColors: true })),
     paint: track(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: new THREE.Color(0.25, 0.25, 0.25) })),
     glass: track(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 90, specular: new THREE.Color(0.5, 0.5, 0.5) })),
+    vglass: track(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 90, specular: new THREE.Color(0.5, 0.5, 0.5), transparent: true, opacity: 0.5, depthWrite: false })),
     decal: track(new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.atlas })),
     stain: track(new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.atlas, transparent: true, depthWrite: false, alphaTest: 0.02, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
     glow: hi.glow,
