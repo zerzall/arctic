@@ -1211,7 +1211,8 @@ async function scenarioFpsSolo(sc) {
   await titleSetup(pl, { name: 'Pointman', cls: 'soldier' });
   await pl.page.click('#btn-solo');
   await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
-  await pl.page.click('#btn-start');
+  // (building the 3D world blocks the page, longer on a busy machine: don't wait on the click)
+  await pl.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
   await waitFpsGame(pl, 1);
   const me0 = (await readState(pl)).me;
   const look0 = await pl.page.evaluate(() => window.__HH.getLook());
@@ -1354,7 +1355,7 @@ async function scenarioFpsRelay(sc) {
   }
   await client.page.click('#btn-ready');
   await waitFor(host, () => window.__HH.session.roster.filter((r) => r.ready).length === 1, null, 'the client ready');
-  await host.page.click('#btn-start');
+  await host.page.evaluate(() => setTimeout(() => document.querySelector('#btn-start').click(), 0));
   for (const pl of [host, client]) await waitFpsGame(pl, 2);
   const ids = {
     host: await host.page.evaluate(() => window.__HH.session.localId),
