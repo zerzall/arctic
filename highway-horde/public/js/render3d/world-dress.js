@@ -23,6 +23,7 @@ import { LIFE_PROPS } from './dress-life-props.js';
 import { NATURE } from './dress-nature.js';
 import { APOCALYPSE } from './dress-apoc.js';
 import { createLife } from './dress-life.js';
+import { cinDressExtras } from './dress-cin.js';
 
 const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS, ...NATURE, ...APOCALYPSE };
 
@@ -30,7 +31,7 @@ const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS,
 export const DRESS_MODELLED = Object.freeze(Object.keys(BUILDERS));
 
 /** Triangles the dressing may add per tier (only the biggest maps reach it). */
-const TRI_BUDGET = { cinematic: 1600000, ultra: 650000, high: 400000, low: 170000 };
+const TRI_BUDGET = { cinematic: 2400000, ultra: 650000, high: 400000, low: 170000 };
 /** Tall props that make the skyline: built into the far set. */
 const FAR = new Set(['pole', 'wire', 'billboard', 'watertower', 'flagpole', 'banner', 'deadtree']);
 /** The small props are not drawn past this distance (the far set is). */
@@ -132,7 +133,8 @@ export function createDress(ctx, deps) {
     const Dfar = makeBuilder({ std: 40000, mid: 40000, all: 40000 });
     shown = 0;
     const hl = built ? [] : halos;
-    const budget = TRI_BUDGET[tierAtLeast(full, 'cinematic') ? 'cinematic' : tier];
+    const cinFinish = tierAtLeast(full, 'cinematic');
+    const budget = TRI_BUDGET[cinFinish ? 'cinematic' : tier];
     for (let i = 0; i < ranked.length; i++) {
       const it = ranked[i];
       if (it.q >= density) break;
@@ -147,6 +149,7 @@ export function createDress(ctx, deps) {
       D.obj(it.x, it.y, it.a, it.v * 31 + it.k.length + i);
       try {
         fn({ D, it, s: it.s, halos: hl, map });
+        if (cinFinish) cinDressExtras(D, it);
         shown++;
       } catch (err) {
         if (!missing.has('!' + it.k)) { missing.add('!' + it.k); console.warn('dress: prop model failed', it.k, err); }
