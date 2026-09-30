@@ -7,6 +7,7 @@ import {
   createRng, mix, shade, rgba, roundRectPath, fillRoundRect, fillCircle, fillEllipse, blobPath,
 } from './util.js';
 import { drawCampaignObstacle } from './obstacles-campaign.js';
+import { drawHubObstacle } from './obstacles-hideout.js';
 
 const GLASS = '#18222b';
 const TYRE = '#0e0e0f';
@@ -31,6 +32,8 @@ export function obstaclePad(o) {
  */
 export function drawObstacle(g, o, seed = 0) {
   const rng = createRng((seed * 7919 + (o.id | 0) * 104729 + 17) >>> 0);
+  // a story hideout's hero obstacles (fire ring, log seats, couch, tables) have their own art
+  if (o.prop && drawHubObstacle(g, o, rng)) return;
   const L = o.w, W = o.h;
   switch (o.kind) {
     case 'car': case 'suv': case 'pickup': case 'van': case 'truck':

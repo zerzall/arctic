@@ -71,6 +71,16 @@ else opens the invite link.
     **Rooftop**: kill the quota (it grows with the team), then ride the zip line down to the
     landing pad. The game is won when every survivor still standing has escaped. It is an
     extension of those three maps: their default game is unchanged.
+- **3 story hideouts** (for the story campaign, not in the lobby): safe, walkable camps where the
+  crew rests between missions, each with a mission board, workbench, armory, infirmary, upgrade
+  table, bed, campfire and a shooting range whose targets show your damage numbers. **The
+  Roadhouse** is a desert motel and diner at dusk (buzzing neon, string lights, a fire ring with log
+  seats, a pickup that finally runs), **Blackwater Depot** a rail yard beside a water tower (boxcar
+  bunks, a glowing forge shed, a greenhouse made of doors and windows), and **Harlan Farmstead** a
+  barn, porch, orchard and pond at golden hour (chickens, a windmill, hanging lanterns). Seven
+  upgrades (Generator, Watchtower, Infirmary, Armory, Radio Mast, Garden, Palisade, three tiers each)
+  visibly grow the camp; the hideouts have their own ambience (crickets, fire crackle, a distant
+  radio) and a warm, slow score. See SPEC §3.10; try them in `public/dev/fps-sandbox.html?map=roadhouse&up=3`.
 - **Night or day.** The lobby's **Time** row (next to Mode) sets Night (the original moonlit,
   flashlight-and-fire-light look, the default) or Day: a bright sunny variant of every map with a
   gradient sky, sun and drifting clouds, long soft shadows, haze in the distance, the lamps off and

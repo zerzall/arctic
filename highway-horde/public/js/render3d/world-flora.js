@@ -119,13 +119,15 @@ function limb(B, x, y, z, dir, len, rad, col, taper = 0.4, seg = 5) {
 
 // ---- species -------------------------------------------------------------------------------------
 
-const state = { desert: false, cell: 48, canopies: new Map(), map: null };
+const state = { desert: false, cell: 48, canopies: new Map(), map: null, force: null };
 
 const key = (x, y) => Math.floor(x / state.cell) + ',' + Math.floor(y / state.cell);
 
 /** Species of the i-th canopy decor. */
 function speciesByIndex(i) {
   const r = hash01(i * 7 + 3);
+  // (a story hideout names the species it grows: map.look.trees)
+  if (state.force) return state.force[Math.floor(r * state.force.length) % state.force.length];
   if (state.desert) return r < 0.42 ? 'dead' : r < 0.72 ? 'palm' : 'acacia';
   return r < 0.26 ? 'pine' : r < 0.52 ? 'oak' : r < 0.67 ? 'birch' : r < 0.78 ? 'maple' : r < 0.86 ? 'dead' : 'spruce';
 }
@@ -134,6 +136,7 @@ function speciesByIndex(i) {
 export function setBiome(map) {
   const gc = new THREE.Color(map.ground);
   state.desert = gc.r > gc.g * 1.05;
+  state.force = map.look && Array.isArray(map.look.trees) && map.look.trees.length ? map.look.trees : null;
   state.canopies.clear();
   state.map = map;
   map.decor.forEach((d, i) => {
@@ -158,6 +161,7 @@ function speciesNear(x, y) {
   }
   if (best) return best;
   const r = hash01(Math.round(x) * 73856093 ^ Math.round(y) * 19349663);
+  if (state.force) return state.force[Math.floor(r * state.force.length) % state.force.length];
   return state.desert ? (r < 0.6 ? 'dead' : 'palm') : r < 0.5 ? 'oak' : r < 0.8 ? 'pine' : 'birch';
 }
 

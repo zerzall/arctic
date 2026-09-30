@@ -31,6 +31,7 @@ import {
 import { createBrain, updateBots } from './bots.js';
 import { ZoneDirector } from './zone.js';
 import { CampaignDirector } from './campaign.js';
+import { createRange } from './range.js';
 import { StoryDirector } from './story.js';
 import { simModeOf } from '../story/registry.js';
 import { updateInteractables, interactablesSnapshot } from './interact.js';
@@ -232,6 +233,8 @@ export class GameCore {
     /** Set once the constructor is done: later players join at the zone (zone mode). */
     this.started = true;
     this._rebuildFlow('all');
+    /** A hideout's shooting range (sim/range.js: immobile dummies), else null. */
+    this.range = mode === 'hideout' && map.hub && map.hub.range ? createRange(this) : null;
     if (this.story) this.story.begin();
   }
 
@@ -351,6 +354,7 @@ export class GameCore {
     if (this.tick % NAV_TICKS === 0) this._rebuildFlow('small');
     else if (this.tick % NAV_TICKS === (NAV_TICKS >> 1)) this._rebuildFlow('big');
     updateZombies(this);
+    if (this.range) this.range.update();
     removeDeadZombies(this);
     if (this.phase === 'wave') updateSpawning(this);
     this._checkEnd();
@@ -414,7 +418,7 @@ export class GameCore {
   /** Zombies left this wave: alive + not yet spawned. */
   remaining() {
     let alive = 0;
-    for (const z of this.zombies) if (!z.dead) alive++;
+    for (const z of this.zombies) if (!z.dead && !z.dummy) alive++;   // (a range dummy is not a threat)
     // (the roof's and the breakout's queues are endless streams: only what is alive counts)
     if (this.campaign && this.campaign.holdsWave()) return alive;
     return alive + this.spawnQueue + this.bossQueue;

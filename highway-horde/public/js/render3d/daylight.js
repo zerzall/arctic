@@ -16,7 +16,8 @@ import { PRESETS, dayLookFor, sunDirection } from './daylight-look.js';
  * @returns {object} see the file header; colours are THREE.Color (linear)
  */
 export function dayAmbientFor(map) {
-  const p = dayLookFor(map.id);
+  // a story hideout brings its own golden hour (map.look.day over the defaults)
+  const p = { ...dayLookFor(map.id), ...(map.look && map.look.day ? map.look.day : null) };
   const tint = new THREE.Color((map.ambient && map.ambient.tint) || '#2c4a7a');
   const fog = new THREE.Color(p.haze);
   // a map with no preset takes a hint of its own colour so it doesn't look generic
@@ -38,14 +39,15 @@ export function dayAmbientFor(map) {
     ridge: new THREE.Color(p.ridge),
     cover: p.cover,
     heat: p.heat,
+    warm: p.warm || 0,   // golden hour: the sky paints its horizon gold (world-sky-day.js)
     mist: p.mist,
     wet: p.wet,
     exposure: p.exposure,
     // post grade: brighter, a touch more colour, a light vignette, no night grain, subtle bloom
-    grade: { contrast: 1.05, saturation: 1.08, lift: [0.0, 0.002, 0.006], gamma: [1, 1, 1], gain: [1.03, 1.0, 0.965], vignette: 0.2, grain: 0.02, bloom: 0.2, bloomThreshold: 1.6 },
+    grade: { contrast: 1.05, saturation: 1.08, lift: [0.0, 0.002, 0.006], gamma: [1, 1, 1], gain: [1.03, 1.0, 0.965], vignette: 0.2, grain: 0.02, bloom: 0.2, bloomThreshold: 1.6, ...(p.grade || null) },
     // street lamps are off by day (a faint bulb glow), fires and flashes still light their surroundings
-    lampK: 0.06,
-    fireK: 0.3,
+    lampK: p.lampK ?? 0.06,
+    fireK: p.fireK ?? 0.3,
     flashK: 0.8,
   };
 }

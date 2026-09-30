@@ -36,6 +36,7 @@ import * as viewmodelMod from './viewmodel.js';
 import * as overlayMod from './overlay.js';
 import * as zoneMod from './zone3d.js';
 import * as campaignMod from './campaign3d.js';
+import * as hideoutMod from './hideout3d.js';
 import * as npcsMod from './npcs3d.js';
 import * as storyMod from './story3d.js';
 import { releaseSharedGuns } from './actor-guns.js';
@@ -221,7 +222,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   const subs = [];
   const subMs = {};
   let vm = null;
-  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['ambient3d', ambientMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['npcs3d', npcsMod], ['story3d', storyMod], ['overlay', overlayMod]]) {
+  for (const [name, mod] of [['zombies3d', zombiesMod], ['players3d', playersMod], ['items3d', itemsMod], ['sunshadow', sunShadowMod], ['effects3d', effectsMod], ['ambient3d', ambientMod], ['viewmodel', viewmodelMod], ['zone3d', zoneMod], ['campaign3d', campaignMod], ['hideout3d', hideoutMod], ['npcs3d', npcsMod], ['story3d', storyMod], ['overlay', overlayMod]]) {
     const make = factoryOf(mod);
     if (!make) continue;
     try {
@@ -492,14 +493,16 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
         camX: camera.position.x, camY: camera.position.z, camH: camera.position.y, yaw: rig.yaw, pitch: rig.pitch, settings,
       };
       if (view) {
+        // (a hideout's range dummies are drawn by hideout3d, not as zombies)
+        const subView = ctx.hideout ? ctx.hideout.stripDummies(view) : view;
         for (const s of subs) {
-          try { s.update(view, frame); } catch (err) { logErr('update ' + s.__name, err); }
+          try { s.update(subView, frame); } catch (err) { logErr('update ' + s.__name, err); }
         }
       }
       world.update(view, frame);
       lights.update({
         dt, camX: frame.camX, camY: frame.camY,
-        flashlight: !!local && local.state !== 'dead',
+        flashlight: !!local && local.state !== 'dead' && map.kind !== 'hideout',   // (no torch in a safe camp: the fires and lamps light it)
         lightingBoost: settings.lighting === false ? 2.2 : 1,
       });
 
@@ -674,6 +677,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       return { x: camera.position.x, y: camera.position.z, yaw: rig.yaw };
     },
     resize,
+    /** Story hideouts: show these upgrade tiers ({ generator: 2, ... }); rebuilds only the upgrade layer. */
+    setHideoutUpgrades(u) {
+      try { return !!(world.hideout && world.hideout.setUpgrades(u)); } catch (err) { logErr('setHideoutUpgrades', err); return false; }
+    },
     setQuality(nq) {
       const n = normQuality(nq);
       if (n === q) return;

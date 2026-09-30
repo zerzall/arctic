@@ -1011,7 +1011,7 @@ function huntTarget(game, b) {
   let alive = 0;
   let best = null, bd = Infinity;
   for (const z of game.zombies) {
-    if (z.dead) continue;
+    if (z.dead || z.dummy) continue;
     alive++;
     const d = Math.hypot(z.x - b.ax, z.y - b.ay);
     if (d < bd) {

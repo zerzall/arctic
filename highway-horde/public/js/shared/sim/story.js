@@ -205,7 +205,10 @@ export class StoryDirector {
     for (const h of hub) {
       const key = String(h.id || h.role || '');
       if (!key || absent.has(key)) continue;
-      const over = fromCfg.find((c) => c && (c.id === key || c.key === key)) || {};
+      const listed = fromCfg.find((c) => c && (c.id === key || c.key === key));
+      const over = listed || {};
+      // a hub NPC that has to be recruited first (`recruit`, S3's hideouts) appears once the host lists it in story.npcs
+      if (h.recruit && Array.isArray(this.cfg.npcs) && !listed) continue;
       seen.add(key);
       createNpc(g, { ...over, key, name: over.name, look: over.look, x: h.x, y: h.y, angle: h.angle || 0, mode: over.mode || h.mode || 'idle', route: h.route, loop: h.loop });
     }

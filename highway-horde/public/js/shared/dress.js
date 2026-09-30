@@ -18,6 +18,7 @@
 // spawn or a campaign annex floor; nothing tall under a viaduct deck; inside the map.
 
 import { createRng, hashString } from './rng.js';
+import { hideoutDressItems } from './maps-hideouts.js';
 
 /** Items shown per quality tier (fraction of the ranks). */
 export const DRESS_DENSITY = Object.freeze({ cinematic: 1, ultra: 1, high: 0.6, low: 0.25 });
@@ -129,6 +130,8 @@ export function buildDress(map0) {
 }
 
 function placeDress(map0) {
+  // a story hideout is dressed by hand (maps-hideouts.js), not with road debris
+  if (map0.kind === 'hideout' && map0.hub) return hideoutDressItems(map0);
   // (a partial MapDef, like the renderer tests' fixtures, is dressed too: missing lists count as empty)
   const map = { id: 'map', seed: 0, width: 3000, height: 2000, areas: [], lines: [], obstacles: [], decor: [], lights: [], pois: [], playerSpawns: [], zombieSpawns: [], overpass: null, ...map0 };
   const W = map.width, H = map.height;

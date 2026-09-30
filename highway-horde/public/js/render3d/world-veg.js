@@ -78,7 +78,8 @@ export function buildTreeLine(B, map, waters) {
     }
     const kind = rng.next();
     const s = rng.range(0.8, 1.5);
-    if (kind < 0.3) {
+    // (a hideout picks how much of its tree line is deciduous: map.look.deciduous)
+    if (kind < (map.look && Number.isFinite(map.look.deciduous) ? map.look.deciduous : 0.3)) {
       // deciduous: a trunk under three clumps of leaf cards
       const cards = cardList();
       const R = 46 * s;

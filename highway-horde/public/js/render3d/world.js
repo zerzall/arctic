@@ -29,6 +29,7 @@ import { trunk, canopy, bush, buildTreeLine, createGrassField, scatterFlora, set
 import { silo, headstone, RURAL_HEIGHT } from './world-rural.js';
 import { createDress } from './world-dress.js';
 import { normTier, tierAtLeast, anisoFor } from './tier.js';
+import { createHideout } from './world-hideout.js';
 import { terrainHeight } from '../shared/terrain.js';
 import {
   palisade, watchtower, skyscraper, iwall, desk, cabinet, counter, ipillar, stairs, hvac, parapet, mast,
@@ -162,6 +163,7 @@ export function createWorld(ctx, deps) {
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
   const day = amb.time === 'day';
+  const hub = map.kind === 'hideout' && map.hub ? 'pending' : null;   // a story hideout (world-hideout.js)
   const fx = createFxUniforms();
   fx.uFog.value = amb.fogDensity;
   fx.uFogColor.value.copy(amb.fog);
@@ -175,8 +177,9 @@ export function createWorld(ctx, deps) {
   if (day) {
     // by day the lit windows, street lamps, tubes and signs are just dim glass and paint
     // (the unlit emissive pieces are multiplied down; beacons and vehicle lamps stay a bit)
-    mats.hi.glow.color.setRGB(0.11, 0.14, 0.19);
-    mats.hi.flicker.color.setScalar(0.16);
+    // (a hideout at golden hour keeps its lanterns and bulbs lit)
+    if (hub) mats.hi.glow.color.setRGB(0.5, 0.46, 0.4); else mats.hi.glow.color.setRGB(0.11, 0.14, 0.19);
+    mats.hi.flicker.color.setScalar(hub ? 0.5 : 0.16);
     mats.hi.blink.color.setScalar(0.55);
     ground.uniforms.wetness.value = amb.wet;
     // rooms behind the windows: dim but readable in daylight (curtains, furniture), lit ones washed out
@@ -190,18 +193,21 @@ export function createWorld(ctx, deps) {
   const fine = map.width > 6000 ? 1000 : undefined;
   const gy = ctx.groundY || (() => 0);
   const hasTerrain = !!ctx.terrain && !ctx.terrain.flat;
-  const B = createGeoBuilder({
-    cell: 1600,
-    buckets: {
-      std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
-      glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
-      fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
-      // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
-      room: { det: true, ao: false }, stain: { uv: true },
-    },
-  });
-
-  if (hasTerrain) B.setGround(gy);
+  // (a hideout adds its own buckets: atlas pictures and neon words, world-hideout.js)
+  const bucketDefs = {
+    std: { det: true, cell: fine }, paint: { det: true, cell: fine }, glass: { det: true }, decal: { uv: true },
+    glow: { uv: true, ao: false }, neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false },
+    fence: { uv: true }, leaves: { uv: true, ao: false }, sign: { uv: true },
+    // interior-mapped rooms behind lit windows, and blended decals (graffiti, stains)
+    room: { det: true, ao: false }, stain: { uv: true },
+    ...(hub ? { hub: { uv: true }, hubneon: { uv: true, ao: false }, hubflick: { uv: true, ao: false } } : null),
+  };
+  const newBuilder = () => {
+    const b = createGeoBuilder({ cell: 1600, buckets: bucketDefs });
+    if (hasTerrain) b.setGround(gy);
+    return b;
+  };
+  const B = newBuilder();
   // geometry detail of the buildings follows the tier the world is built for
   setDetailLevel(tier === 'low' ? 0 : tierAtLeast(tier, 'ultra') ? 2 : 1);
   // lists for the effect meshes
@@ -209,6 +215,16 @@ export function createWorld(ctx, deps) {
   const shafts = [];
   const flags = [];
   const lightByPos = (x, y) => map.lights.find((l) => Math.abs(l.x - x) < 4 && Math.abs(l.y - y) < 4) || null;
+  // the story hideouts (world-hideout.js): hero models for their obstacles, props and upgrade layer
+  let hideout = null;
+  if (hub) {
+    try {
+      hideout = createHideout(ctx, { root, mats, fx, halos, day, aniso, gy, tier, newBuilder, matOf: (b, t) => matOf(b, t) });
+      ctx.hideout = hideout;
+    } catch (err) {
+      console.warn('world: hideout failed', err);
+    }
+  }
 
   // ---- obstacles ----
   setBiome(map);   // tree species by map (the trunks agree with their crowns)
@@ -221,6 +237,7 @@ export function createWorld(ctx, deps) {
     B.obj(o.x, o.y, o.a || 0, o.id * 31 + (map.seed | 0));
     B.setJitter(0.06);
     try {
+      if (hideout && hideout.obstacle(B, o)) continue;
       buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass, halos);
     } catch (err) {
       console.warn('world: obstacle model failed', o.kind, err);
@@ -241,7 +258,7 @@ export function createWorld(ctx, deps) {
   if (ob) {
     B.obj(ob.x, ob.y, ob.a || 0, 999);
     B.setJitter(0.03);
-    buildObjective(B, ob, halos);
+    if (!(hideout && hideout.objective(B, ob))) buildObjective(B, ob, halos);
   }
   let supplyLight = null;
   if (map.supply) {
@@ -259,6 +276,9 @@ export function createWorld(ctx, deps) {
       console.warn('world: decor model failed', d.kind, err);
     }
   });
+
+  // ---- the hideout's free props (string lights, signs, the things that make it home) ----
+  if (hideout) hideout.props(B);
 
   // ---- undergrowth: ferns and logs under trees, weeds along fences and walls, ivy, verges ----
   const tFlora = performance.now();
@@ -317,7 +337,7 @@ export function createWorld(ctx, deps) {
   // ---- bridge fascias / piers over water edges ----
   for (const w of ground.waters) {
     for (const e of w.edges) {
-      if (!e.bridge) continue;
+      if (!e.bridge || hub) continue;   // (a hideout's dock lane is planked by the hub, not walled in concrete)
       const S = { surf: [DET.concrete, 0.88, 0] };
       if (e.axis === 'y') {
         const len = w.x1 - w.x0, cx = (w.x0 + w.x1) / 2;
@@ -335,7 +355,7 @@ export function createWorld(ctx, deps) {
 
   // ---- build static meshes ----
   // ('sign': vehicle liveries and lettering, painted in the set dressing's atlas, dress-atlas.js)
-  const matOf = (bucket, t) => (bucket === 'sign' ? (dress ? dress.signMaterial(t) : mats.get('decal', t)) : mats.get(bucket, t));
+  const matOf = (bucket, t) => (bucket === 'sign' ? (dress ? dress.signMaterial(t) : mats.get('decal', t)) : hideout && hideout.buckets[bucket] ? hideout.material(bucket, t) : mats.get(bucket, t));
   const staticMeshes = [];
   const moonCasters = [];
   const built = B.finish();
@@ -356,6 +376,10 @@ export function createWorld(ctx, deps) {
     root.add(mesh);
     staticMeshes.push(mesh);
     disposables.push(geometry);
+  }
+
+  if (hideout) {
+    try { hideout.finish(); } catch (err) { console.warn('world: hideout upgrades failed', err); }
   }
 
   // ---- water ----
@@ -426,7 +450,7 @@ export function createWorld(ctx, deps) {
     const lampish = src && src.h > 150;
     // a fire up on an overpass deck lights the deck, not the ground under it: no fake pool
     const aloft = !Number.isFinite(l.h) && deckHeightAt(map, l.x, l.y) > 0;
-    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2, base: gy(l.x, l.y) };
+    return { x: l.x, y: l.y, r: l.r * (lampish ? 0.95 : 0.8), color: l.color, flicker: fire ? l.flicker : 0, strength: (aloft ? 0 : fire ? 0.28 : lampish ? 0.34 : 0.2) * (Number.isFinite(l.k) ? l.k : 1), base: gy(l.x, l.y) };
   });
   // the canopies' fluorescent strips light the forecourt under them
   for (const c of canopies) poolList.push({ x: c.x, y: c.y, r: Math.max(c.w, c.h) * 0.62, color: '#dfe8ff', flicker: 0, strength: 0.14, base: gy(c.x, c.y) });
@@ -434,7 +458,7 @@ export function createWorld(ctx, deps) {
   if (pools) addFx(pools.mesh);
   const poolLevels = new Float32Array(poolList.length).fill(1);
   // (the campaign defends a hill, not the map's old objective: no beacon over it)
-  const marker = ob && !map.campaign ? addFx(makeMarker(ob, fx)) : null;
+  const marker = ob && !map.campaign && !hub ? addFx(makeMarker(ob, fx)) : null;
 
   // flags: one dynamic strip mesh
   const flagMesh = flags.length ? makeFlagMesh(flags) : null;
@@ -567,6 +591,7 @@ export function createWorld(ctx, deps) {
     const cam = ctx.camera;
     cullFar(cam);
     if (dress) { dress.cull(cam); dress.update(view, frame); }
+    if (hideout) hideout.update(view, frame);
     sky.position.copy(cam.position);
     sky.userData.updateGlow(cam.position.x, cam.position.z);
     // points sizing: drawing-buffer pixels per world unit at distance 1
@@ -602,6 +627,7 @@ export function createWorld(ctx, deps) {
     ground,
     root,
     sky,
+    hideout,
     /** Static meshes that cast the moon's shadow (lights.updateMoonShadow). */
     moonCasters,
     fx,
@@ -620,6 +646,7 @@ export function createWorld(ctx, deps) {
       grass.setQuality(tier);
       ground.setQuality(tier);
       if (dress) dress.setQuality(tier);
+      if (hideout) hideout.setQuality(tier);
       setRain();
       // a game started on 'low' only had the sky to reflect: capture the world now (one hitch)
       if (tier !== 'low' && !envWorld) bakeEnvironment();
@@ -636,6 +663,7 @@ export function createWorld(ctx, deps) {
       };
     },
     dispose() {
+      if (hideout) hideout.dispose();
       if (dress) dress.dispose();
       ground.dispose();
       grass.dispose();

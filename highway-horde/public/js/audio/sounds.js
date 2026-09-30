@@ -20,6 +20,7 @@
 import { createRng, hashString } from '../shared/rng.js';
 import * as S from './synth.js';
 import { MUSIC_SOUNDS } from './instruments.js';
+import { HUB_SOUNDS } from './sounds-hideout.js';
 
 // ---- building blocks -------------------------------------------------------------------
 
@@ -1244,6 +1245,9 @@ export const SOUNDS = {
 
   // The score's orchestra (music.js): choir, strings, horns, flute, harp and drums.
   ...MUSIC_SOUNDS,
+
+  // The story hideouts' ambience beds and spot loops (sounds-hideout.js).
+  ...HUB_SOUNDS,
 };
 
 function gain(buf, g) {

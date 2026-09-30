@@ -263,7 +263,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
       key: 'map' + i, x: l.x, y: l.y, h, color: color(l.color),
       // lamps reach the ground at `r` from their foot; the cut-off is the slant distance
       // fires sit right against wrecks: at 1.1 a pale tanker cap 30 units away blew out white
-      intensity: fire ? 0.8 : isLamp ? 1.6 : 0.9, lamp: isLamp,
+      intensity: (fire ? 0.8 : isLamp ? 1.6 : 0.9) * (Number.isFinite(l.k) ? l.k : 1), lamp: isLamp,
       radius: isLamp ? Math.hypot(l.r, h) * 1.05 : l.r * (fire ? 1.25 : 1.1),
       flicker: l.flicker || 0, seed: i * 1.7, index: i, flash: false, life: 0, age: 0, isMap: true,
     };
@@ -717,7 +717,7 @@ export function ambientFor(map, time) {
   // bounce from wet, lamp-lit asphalt: faces turned away from every light (a wreck
   // backlit by its own fire) keep a little value instead of crushing to flat black
   const ground = new THREE.Color('#3a3226').lerp(tint, 0.18);
-  return {
+  const out = {
     time: 'night',
     darkness: d,
     fog,
@@ -730,4 +730,11 @@ export function ambientFor(map, time) {
     moon: new THREE.Color('#9fb4d8').lerp(tint, 0.2),
     moonI: 0.25 + (1 - d) * 0.5,
   };
+  // a story hideout tunes its own night (map.look.night: colours as '#rrggbb', numbers as they are)
+  const ov = map.look && map.look.night;
+  if (ov) {
+    for (const k of ['fog', 'horizon', 'zenith', 'sky', 'ground', 'moon']) if (typeof ov[k] === 'string') out[k] = new THREE.Color(ov[k]);
+    for (const k of ['fogDensity', 'hemi', 'moonI']) if (Number.isFinite(ov[k])) out[k] = ov[k];
+  }
+  return out;
 }

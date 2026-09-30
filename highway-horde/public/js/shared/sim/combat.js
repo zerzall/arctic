@@ -67,6 +67,8 @@ export function knockZombie(z, nx, ny, impulse) {
  */
 export function damageZombie(game, z, amount, by, gib = false) {
   if (z.dead || !(amount > 0)) return false;
+  // a range dummy (sim/range.js) takes nothing: the hit is only reported
+  if (z.dummy) { game.range.hit(z, amount, by); return false; }
   // Frozen solid: brittle.
   if (z.frozenT > 0) amount *= FROST.brittle;
   // Campaign: zombies climbing the hill are exposed, shooters on the high ground hit harder.
@@ -89,7 +91,7 @@ export function damageZombie(game, z, amount, by, gib = false) {
 
 /** Set a zombie on fire (refreshes duration, keeps the stronger burn). */
 export function igniteZombie(z, dps, duration, by) {
-  if (z.dead) return;
+  if (z.dead || z.dummy) return;
   if (z.burnT <= 0 || dps >= z.burnDps) z.burnDps = dps;
   if (duration > z.burnT) z.burnT = duration;
   if (by) z.burnBy = by;
@@ -104,7 +106,7 @@ export function igniteZombie(z, dps, duration, by) {
  * @returns {boolean} true if this froze it
  */
 export function chillZombie(game, z, amount) {
-  if (z.dead || !(amount > 0)) return false;
+  if (z.dead || z.dummy || !(amount > 0)) return false;
   z.burnT = 0;
   if (z.frozenT > 0) return false;
   const gain = z.mass >= 0.9 ? amount * FROST.heavyGain : amount;

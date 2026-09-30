@@ -170,7 +170,7 @@ export function startMatch(ctx, session) {
     story: storyMode ? { title: (session.settings.story && session.settings.story.title) || (script && script.title) || '' } : null,
   });
   hud.setRoster(session.roster, session.localId);
-  audio.setMap(map);
+  audio.setMap(map, { time });
   // Story rooms (STORY.md): the overlays, stations and dialogue of ui/story.js ride on the match.
   const story = session.story && ctx.story ? ctx.story : null;
   if (made.fellBack && prefs.settings.view === 'fps') {

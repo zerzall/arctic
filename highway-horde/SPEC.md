@@ -49,6 +49,7 @@ highway-horde/
   public/js/shared/weapons.js zombies.js classes.js items.js  (lead — data, read only)
   public/js/shared/maps.js                           (maps)
   public/js/shared/maps-campaign.js terrain.js campaign.js  (campaign — §2, §3.8; sim/campaign.js is its director)
+  public/js/shared/maps-hideouts*.js sim/range.js    (hideouts — the story hubs and their shooting range, §3.9)
   public/js/shared/geom.js spatial.js flowfield.js movement.js sim.js  (sim)
   public/js/shared/sim/bots.js                       (bots — AI survivors, §3.6)
   public/js/shared/protocol.js                       (net)
@@ -757,6 +758,96 @@ survivors cannot be hurt) and the map's stations as tap-to-use interactables. Ex
   map, bonus steps, pressure, lure, blast, stars, hideout, party, the wire, determinism, cost),
   `tests/story-missions.test.js` (the written fifteen: validation against the real maps, the first 40 s with bots,
   `FULL_MISSIONS=1` plays them to the end), `tests/story-render.test.js`, the e2e scenario `m`.
+
+### 3.10 Story hideouts — `buildMap('roadhouse' | 'depot' | 'farmstead')`, played in `settings.mode 'hideout'` (§3.9) (`shared/maps-hideouts*.js`, `shared/sim/range.js`)
+
+The safe hub maps of the story campaign (STORY.md §4, §5.2): walkable, no waves, no zombies, no spawn
+zones. Ordinary MapDefs (the simulation, the flow field and both renderers already understand them)
+with `kind: 'hideout'`, `modes: ['hideout']` and the hub data below. They are registered in
+`buildMap` but **not** in `MAP_LIST`: the lobby never offers them. ≈ 2200 × 1600, hand made and
+identical for every seed (the seed only moves the small scatter); a closed, walled/fenced yard
+(`hub.bounds`); the party spawns on a ring (`hub.spawn`, 8 `playerSpawns`) round the campfire.
+
+| id | name | chapters | look | what is in it |
+|---|---|---|---|---|
+| `roadhouse` | The Roadhouse | 1–2 | dusk / night | A desert motel and diner on a highway shoulder: buzzing neon (ROADHOUSE, VACANCY with a stuttering NO), string lights on poles, a burning oil drum and a fire ring with log seats and a couch, a repaired pickup, sandbag and pallet perimeter, a rooftop lookout, motel rooms, the office as radio room, a vending machine, laundry line, garden beds, "HAVEN OR BUST" sign, kids' drawings, board game, guitar, a cat. |
+| `depot` | Blackwater Depot | 3–4 | night | A rail depot and water-tower yard: boxcar bunks, a forge shed glowing orange, the water tower with a lookout, rails and sleepers, a locomotive shell, crates, solar panels, a greenhouse of doors and windows, a mess tent. |
+| `farmstead` | Harlan Farmstead | 5–6 | golden hour / day | A barn, a farmhouse with a porch swing, a silo, orchard rows, a windmill, hay bales, chickens running loose, a pond with a dock, a bonfire, hanging lanterns, fences and tractors; its own warm sunset grade. |
+
+**Seams** (all documented in the header of `maps-hideouts.js`):
+
+- `map.hub = { id, name, chapters, defaultTime, spawn:{x,y,r}, bounds:{x0,y0,x1,y1}, stations[], npcs[], upgradeSlots{}, range, props[], dress[], look, upgrades }`.
+- **Stations** `hub.stations[] = { id, kind, x, y, r, label, h }`, one of each `STATION_KINDS`
+  (`board`, `workbench`, `armory`, `infirmary`, `upgrades`, `bed`, `range`, `campfire`), and one
+  `map.interactables` entry per station (`{ id, kind, x, y, r, label, hold: 0 }`, same id) for the
+  sim's press-E spots. Props at each station glow softly (the readable-station highlight); S1's UI
+  supplies the prompt text.
+- **NPC idle spots** `hub.npcs[] = { id, name, role, x, y, angle, pose: 'stand'|'sit'|'work'|'watch', station?, recruit?, mode?, route?, loop? }`.
+  `id` is a cast key (`shared/story/cast.js`: the look, name and voice come from there); §3.9's story director
+  stands every listed NPC on its spot (`x, y, angle`, nudged off a collider if need be) and runs `mode` / `route` /
+  `loop` (the roadhouse's road boss patrols the south fence). `pose` is only a hint for the spot's meaning (someone
+  by the fire, the mechanic at the bench, the scout on watch: the NPC layer draws every idle NPC standing).
+  `station` is the station the character tends (the cast's own). `recruit` (the mission that unlocks them) keeps a
+  spot empty when the host names the recruited cast in `settings.story.npcs` (`[{ id }]`) and this NPC is not in
+  it; NPCs without `recruit` (Roz and June at the roadhouse) are always there, and without a `story.npcs` list
+  everyone is. Every spot stands on open ground, beside a seat or behind a counter.
+- **Upgrades** `settings.story.hideoutUpgrades = { generator, watchtower, infirmary, armory, radiomast, garden, palisade }`
+  (tiers 0..3; `normalizeUpgrades` cleans it and accepts aliases). `hub.upgradeSlots[kind] = { kind, x, y, a, r, label, maxTier: 3, tiers[4] }`;
+  `buildHideoutUpgrade(kind, tier, hub)` returns what that tier **adds** (tier 0 = the unbuilt
+  "site": `{ kind, tier, slot, props[], lights[], fires[], obstacles[] }`, fresh copies),
+  `hideoutUpgradeSet(map, upgrades)` merges every built tier. **Upgrades are visual:** every slot's
+  footprint (and the perimeter, which the palisade dresses) is in the base map and collides at
+  every tier. The story session calls `applyHideoutUpgrades(map, upgrades)` (sets `map.hub.upgrades`)
+  before it creates a renderer, and `renderer.setHideoutUpgrades(upgrades)` on a purchase (both
+  renderers; the 3D one rebuilds only its upgrade layer, a handful of merged meshes).
+- **Range** `hub.range = { line, targets:[{ id, x, y, a }] }`, four stands in a paddock. In
+  `mode: 'hideout'` `sim/range.js` turns them into one immobile **dummy** each: an ordinary walker
+  entity (`z.dummy`, so every weapon, blast and flame already hits it and the existing zombie
+  snapshot carries it) that never walks, attacks, burns, freezes, is shoved or dies. Damage dealt to
+  it is reset at once and reported instead, once per dummy per tick with the tick's total (a shotgun
+  blast is one number): `{ type: 'rangehit', id, tid, x, y, dmg, dist, by, big }` (JSON-fallback
+  event, no protocol change). `isRangeTarget(map, x, y)` tells a client which snapshot zombie is a
+  dummy (it stands exactly on a target spot); the renderers draw a plywood target and floating
+  damage numbers instead of a zombie, and the minimap leaves the dummies out. Nothing is created in
+  any other mode. The game itself (no waves, no zombies, nobody can be hurt, the stations as tap
+  interactables, the cast standing on the NPC spots) is §3.9's `'hideout'` mode; `remaining()` ignores the dummies.
+- **Look overrides** (additive, ignored by every other map): `map.look.night` (ground, sky, moon, moonI,
+  hemi, fogDensity, grade), `map.look.day` (any daylight preset field: sun azimuth/elevation/colour/intensity,
+  haze, horizon, zenith, fog, warm, lampK, fireK, grade), `map.look.trees` / `map.look.deciduous`
+  (species mix), and a per-light intensity multiplier `k` on `map.lights[]`.
+- **Dressing** `hub.dress` (hand placed `[kind, x, y, angle, scale]`, most important first so a low tier
+  keeps what makes the place) plus a scatter of pebbles, flowers and tall grass on open ground
+  (`hideoutDressItems`, handed to `buildDress`); nothing lands inside an obstacle.
+
+**3D** (`render3d/world-hideout*.js`, `hideout3d.js`): `world.js` hands every obstacle with a
+`prop`, the objective and `hub.props` to `world-hideout.js`, which draws the hero models through the
+world's own geo builder (`-props` common models, `-roadhouse`, `-depot`, `-farmstead`; upgrade models
+`-up`; a painted picture atlas `-atlas`: neon words, signs, the mission map, kids' drawings,
+polaroids) with two extra buckets (`hub` lit atlas pictures, `hubneon` unlit HDR words). Lights and
+fires ride the existing pool (`map.lights` → the 12/8/4-light pool, fake ground pools, `map.fires`
+flames, embers and smoke); `hideout3d.js` is a renderer sub-system that adds the moving life:
+moths and fireflies round the lamps at night, chimney smoke, forge sparks, laundry and
+bunting in the wind, the chickens, the spinning windmill and searchlight, the range's plywood
+dummies and their damage numbers. A hub night is a star sky (bright moon, warm string lights, window
+glow, flicker); the farmstead's day is a golden sunset. The flashlight is off in a hideout. Quality
+follows the tiers (`tierAtLeast` from `render3d/tier.js`): `low` keeps every model, light and fire but
+has no moths or fireflies and thinner smoke and sparks; `high` flies 18 of them, `ultra` 38,
+`cinematic` 72 (and the finest halos).
+**2D** (`render/hideout2d.js`, `obstacles-hideout.js`, `ui/minimap.js`): fire ring, log seats,
+couch, mission table, workbench and hay bales have top-down art; stations get a pulsing ring, icon
+and label, upgrade slots a dashed footprint with tier pips, the range its targets; the minimap
+shows colour-coded station discs, the upgrade rings and the NPCs (`view.npcs`), pins the mission
+board to the radar rim, and has no objective or supply marker.
+**Audio** (`audio/sounds-hideout.js`, `audio.js`, `music.js`): `audio.setMap(map, { time })` turns a
+hideout on: a bed of crickets, wind and an owl (night) or birds, bees and breeze (day), positional
+spot loops (`hubSpots`: the radio at the board, the generator once built, the forge, the coop, the
+pond, the windmill) and the map's fires crackle; the score switches to the `hideout` state (60 bpm,
+3/4, F major over D minor: flute, harp and soft strings, five phrases, no drums to speak of).
+**Dev tools**: `public/dev/fps-sandbox.html?map=roadhouse|depot|farmstead&time=day|night&up=<0..3 | kind:tier,...>&view=<spawn | station id | overview… | npc-<id>>` and the top-down `render-sandbox.html?map=…`.
+Tests: `tests/hideouts.test.js` (determinism, schema and bounds, spawns free and reachable on the
+sim's own flow field, stations and NPC spots unique and reachable, dress, every tier of every upgrade
+valid and inside the hub, the range in the sim and its isolation from the other modes, audio hooks,
+the renderer's model registry and a triangle budget, run headless).
 
 ---------------------------------------------------------------------------------------
 

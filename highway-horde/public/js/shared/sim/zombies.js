@@ -373,7 +373,7 @@ export function updateZombies(game) {
   const zs = game.zombies;
   for (let i = 0, n = zs.length; i < n; i++) {
     const z = zs[i];
-    if (!z.dead) updateZombie(game, z);
+    if (!z.dead && !z.dummy) updateZombie(game, z);   // (a range dummy never thinks or moves)
   }
 }
 

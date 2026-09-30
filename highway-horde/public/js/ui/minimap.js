@@ -15,12 +15,19 @@
 // horde front (a red band over the route behind it), the zip cable and the stage's supply
 // point are drawn over the map (drawCampaign).
 //
+// A story hideout (map.kind === 'hideout'): no objective, supply station or spawn zones; the
+// stations are colour-coded discs (the mission board is pinned to the radar's rim like an
+// objective), the upgrade slots faint rings, and the range's dummy zombies are left out (the NPCs
+// and the story's markers are drawn by storymarks.js).
+//
 // Road to Haven (opts.story): the current objective's markers, story items, NPCs and hold-to-use
 // spots are drawn over the map (storymarks.js); on the radar the markers pin to the rim.
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { routePointExt, pathLen } from '../shared/campaign.js';
 import { currentUiScale } from './uiscale.js';
+import { isRangeTarget } from '../shared/sim/range.js';
+import { STATION_COLORS, UPGRADE_COLORS } from '../shared/maps-hideouts.js';
 import { drawStoryMap } from './storymarks.js';
 
 const MINIMAP_HZ = 20;
@@ -52,6 +59,7 @@ export function createMinimap(canvas, map, opts = {}) {
   let radar = !!opts.radar;
   const zoneMode = !!opts.zone;
   const campMode = !!opts.campaign && !!map.campaign;
+  const hubMode = map.kind === 'hideout' && !!map.hub;
   const storyMode = !!opts.story;
   const cfg = campMode ? map.campaign : null;
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
@@ -97,10 +105,11 @@ export function createMinimap(canvas, map, opts = {}) {
       }
     }
     if (cfg) paintCampaignBase(b);
+    if (hubMode) paintHubBase(b);
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
     if (!zoneMode && !campMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
-    const ob = zoneMode || campMode ? null : map.objective;
+    const ob = zoneMode || campMode || hubMode ? null : map.objective;
     if (ob) {
       b.fillStyle = 'rgba(255,196,0,0.35)';
       rotRect(b, ob.x, ob.y, ob.w, ob.h, ob.a);
@@ -117,6 +126,34 @@ export function createMinimap(canvas, map, opts = {}) {
     b.strokeStyle = 'rgba(255,255,255,0.18)';
     b.lineWidth = u;
     b.strokeRect(ox + 0.5, oy + 0.5, map.width * scale - 1, map.height * scale - 1);
+  }
+
+  /** A hideout's stations (colour-coded discs) and upgrade slots (faint rings). */
+  function paintHubBase(b) {
+    const hub = map.hub;
+    b.lineWidth = 1.5 / scale * u;
+    for (const sl of Object.values(hub.upgradeSlots || {})) {
+      if (sl.kind === 'palisade') continue;
+      b.strokeStyle = UPGRADE_COLORS[sl.kind] || '#fff';
+      b.globalAlpha = 0.5;
+      b.setLineDash([4 / scale * u, 3 / scale * u]);
+      b.beginPath();
+      b.arc(sl.x, sl.y, Math.min(sl.r * 0.5, 56), 0, Math.PI * 2);
+      b.stroke();
+    }
+    b.setLineDash([]);
+    b.globalAlpha = 1;
+    for (const st of hub.stations || []) {
+      const col = STATION_COLORS[st.kind] || '#fff';
+      b.fillStyle = 'rgba(0,0,0,0.6)';
+      b.beginPath();
+      b.arc(st.x, st.y, 6.6 / scale * u, 0, Math.PI * 2);
+      b.fill();
+      b.fillStyle = col;
+      b.beginPath();
+      b.arc(st.x, st.y, 4.6 / scale * u, 0, Math.PI * 2);
+      b.fill();
+    }
   }
 
   /** The campaign's fixed layout: the hill (lighter, with its plateau) and the route to the tower. */
@@ -210,7 +247,7 @@ export function createMinimap(canvas, map, opts = {}) {
     const Y = (y) => oy + y * k;
 
     // supply station
-    const s = campMode ? null : map.supply;
+    const s = campMode || hubMode ? null : map.supply;
     if (s) {
       g.fillStyle = '#56d67a';
       const sx = X(s.x), sy = Y(s.y);
@@ -251,6 +288,7 @@ export function createMinimap(canvas, map, opts = {}) {
     for (let i = 0; i < zs.length; i++) {
       const z = zs[i];
       if (z.type === 'boss' || z.type === 'brute') continue;
+      if (hubMode && isRangeTarget(map, z.x, z.y)) continue;
       g.fillRect(X(z.x) - zr, Y(z.y) - zr, zr * 2, zr * 2);
     }
     for (let i = 0; i < zs.length; i++) {
@@ -345,6 +383,7 @@ export function createMinimap(canvas, map, opts = {}) {
       const zr = Math.max(1.2, 1.5 * u);
       for (let i = 0; i < zs.length; i++) {
         const z = zs[i];
+        if (hubMode && isRangeTarget(map, z.x, z.y)) continue;
         const x = rx(z.x, z.y), y = ry(z.x, z.y);
         if (!inside(x, y, 0)) continue;
         const big = z.type === 'boss' || z.type === 'brute';
@@ -431,7 +470,7 @@ export function createMinimap(canvas, map, opts = {}) {
       drawStoryMap(g, view, u, pulse, at, rim, { inside: (x, y, m) => inside(x, y, m) });
     }
     // objective + supply: pinned to the rim when out of range
-    const ob = zoneMode || campMode ? null : map.objective;
+    const ob = zoneMode || campMode || hubMode ? null : map.objective;
     if (ob) {
       let x = rx(ob.x, ob.y), y = ry(ob.x, ob.y);
       if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));
@@ -448,13 +487,32 @@ export function createMinimap(canvas, map, opts = {}) {
       g.fill();
       g.stroke();
     }
-    const s = campMode ? null : map.supply;
+    const s = campMode || hubMode ? null : map.supply;
     if (s) {
       let x = rx(s.x, s.y), y = ry(s.x, s.y);
       if (!inside(x, y, 5 * u)) ({ x, y } = pin(x, y, 5 * u));
       g.fillStyle = '#56d67a';
       g.fillRect(x - 1.2 * u, y - 4.5 * u, 2.4 * u, 9 * u);
       g.fillRect(x - 4.5 * u, y - 1.2 * u, 9 * u, 2.4 * u);
+    }
+    // a hideout: the mission board is pinned to the rim like an objective
+    if (hubMode) {
+      const board = map.hub.stations.find((st) => st.kind === 'board');
+      if (board) {
+        let x = rx(board.x, board.y), y = ry(board.x, board.y);
+        if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));
+        g.fillStyle = STATION_COLORS.board;
+        g.strokeStyle = '#000';
+        g.lineWidth = 1.5 * u;
+        g.beginPath();
+        g.moveTo(x, y - 5 * u);
+        g.lineTo(x + 5 * u, y);
+        g.lineTo(x, y + 5 * u);
+        g.lineTo(x - 5 * u, y);
+        g.closePath();
+        g.fill();
+        g.stroke();
+      }
     }
     // teammates (pinned so you can always find them)
     const blink = Math.sin(pulse * 10) > 0;
