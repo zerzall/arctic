@@ -589,10 +589,10 @@ function buildER(B, K, CEIL) {
   B.ob('cabinet', 240, 1760, 36, 60, 0, { style: 'vend', section: S });
   B.ob('cabinet', 240, 1840, 36, 60, 0, { style: 'vend2', section: S });
   B.ob('counter', 1560, 2250, 300, 44, 0, { style: 'triage-desk', section: S });
-  K.put('tvwall', 880, 2320, Math.PI, { w: 90 });
-  K.put('noticeboard', 240, 2100, HALF, { w: 90, h: 60 });
-  K.put('sign', 970, 2318, 0, { cell: 'hs_treatment', w: 110, h: 22, y: 92, face: -1 });
-  K.put('sign', 1610, 1640, Math.PI, { cell: 'hs_emergency_in', w: 130, h: 24, y: 100, face: 1 });
+  K.put('tvwall', 880, 2322, Math.PI, { w: 90 });
+  K.put('noticeboard', 212, 2100, -HALF, { w: 90, h: 60 });
+  K.put('sign', 970, 2322, 0, { cell: 'hs_treatment', w: 110, h: 22, hy: 96, face: -1 });
+  K.put('sign', 1610, 1612, Math.PI, { cell: 'hs_emergency_in', w: 130, h: 24, hy: 104, face: -1 });
   K.put('kidscorner', 380, 2220, 0, {});
   // resus rooms: trolleys, overhead lamps, crash carts
   B.ob('desk', 2135, 1950, 76, 36, HALF, { style: 'gurney-bed', section: S });
@@ -619,7 +619,7 @@ function buildER(B, K, CEIL) {
   for (let i = 0; i < 5; i++) {
     const x = 760 + i * 270;
     B.ob('desk', x + 130, 3610, 76, 36, HALF, { style: 'gurney-bed', section: S });
-    K.put('bay', x + 130, 3520, HALF, { w: 330, d: 260, open: 'n', i: i + 5 });
+    K.put('bay', x + 130, 3527, -HALF, { w: 330, d: 260, open: 'n', i: i + 5 });
   }
   B.anchor('er_triage', 1300, 3230, 150);
   // pillars in the pit
@@ -694,12 +694,12 @@ function buildWards(B, K, CEIL) {
   for (let i = 0; i < 4; i++) {
     R(bx[i] + (i ? 8 : 0), 1612, bx[i + 1] - (i < 3 ? 8 : 12), 2250, 'hs-bay');
     const cx = (bx[i] + bx[i + 1]) / 2;
-    for (const [dx, dy, a] of [[-150, 1760, HALF], [150, 1760, HALF], [-150, 2060, -HALF], [150, 2060, -HALF]]) {
+    for (const [dx, dy, a] of [[-150, 1668, HALF], [150, 1668, HALF], [-150, 2190, -HALF], [150, 2190, -HALF]]) {
       if (i === 2 && dx > 0 && dy > 2000) continue;          // an empty bed space: the bed was dragged out
       B.ob('desk', cx + dx, dy, 78, 40, a, { style: 'bed', section: S });
       K.put('bedcurtain', cx + dx, dy, a, { i: i * 4 + (dx > 0 ? 1 : 0) + (dy > 2000 ? 2 : 0) });
     }
-    K.put('sign', cx, 2242, 0, { cell: 'hs_bay' + (i + 1), w: 50, h: 18, y: 96, face: 1 });
+    K.put('sign', cx, 2258, 0, { cell: 'hs_bay' + (i + 1), w: 50, h: 18, hy: 98, face: 1 });
   }
   // the ring corridor and the core (x 2950..4450, y 2450..3430)
   const cx0 = 2950, cx1 = 4450, cy0 = 2450, cy1 = 3430;
@@ -746,7 +746,7 @@ function buildWards(B, K, CEIL) {
   R(2612, 3630, 3300, 4238, 'hs-bay');
   R(3300, 3630, 4044, 4238, 'hs-bay');
   R(4044, 3630, 4788, 4238, 'hs-plant', { dark: 0.85 });
-  for (const [x, y, a] of [[2800, 3780, HALF], [3100, 3780, HALF], [2800, 4100, -HALF], [3500, 3780, HALF], [3850, 3780, HALF], [3500, 4100, -HALF], [3850, 4100, -HALF]]) {
+  for (const [x, y, a] of [[2800, 3690, HALF], [3100, 3690, HALF], [2800, 4180, -HALF], [3500, 3690, HALF], [3850, 3690, HALF], [3500, 4180, -HALF], [3850, 4180, -HALF]]) {
     B.ob('desk', x, y, 78, 40, a, { style: 'bed', section: S });
     K.put('bedcurtain', x, y, a, { i: Math.round(x + y) });
   }
@@ -763,7 +763,7 @@ function buildWards(B, K, CEIL) {
   K.put('plastic', 2780, 2350, 0, { w: 320, h: CEIL });
   B.ob('desk', 3300, 3530, 78, 40, 0.5, { style: 'bed', section: S });
   B.ob('desk', 3390, 3500, 78, 40, -0.3, { style: 'bed', section: S });
-  K.put('sign', 2612 + 10, 2600, HALF, { cell: 'hs_wardc', w: 120, h: 30, y: 92, face: 1 });
+  K.put('sign', 2592, 3000, HALF, { cell: 'hs_wardc', w: 120, h: 27, hy: 104, face: 1 });
 
   // lights: the ward at night: dim warm corridor lights, a flickering tube, the nurses' station lamp
   const L = (x, y, r, c = '#dfe6f4', f = 0, h = CEIL - 4) => B.light(x, y, r, c, f, h);
@@ -806,9 +806,9 @@ function buildSurgery(B, K, CEIL) {
   K.wall(5100, 2150, 6500, 2150, { section: S, style: 'hosp', doors: [{ at: 5425, w: 110, kind: 'double' }, { at: 6175, w: 110, kind: 'double' }] });
   R(4812, 1612, 6788, 2150, 'hs-recovery');
   for (const x of [5250, 5650, 6050, 6450]) {
-    B.ob('desk', x, 1760, 78, 40, HALF, { style: 'bed', section: S });
-    K.put('bedcurtain', x, 1760, HALF, { i: x });
-    K.put('monitor', x + 50, 1690, HALF, {});
+    B.ob('desk', x, 1668, 78, 40, HALF, { style: 'bed', section: S });
+    K.put('bedcurtain', x, 1668, HALF, { i: x });
+    K.put('monitor', x + 50, 1700, HALF, {});
   }
   B.ob('desk', 5450, 1980, 78, 40, 0.3, { style: 'bed', section: S });
   // the theatres (OR 1 x 5100..5750, OR 2 x 5850..6500; y 2150..2850)
@@ -828,8 +828,8 @@ function buildSurgery(B, K, CEIL) {
     K.put('instrument', x + 110, 2440, 0.2, {});
     K.put('instrument', x + 90, 2600, -0.3, {});
     K.put('monitor', x - 150, 2560, HALF, {});
-    K.put('sign', x, 2842, Math.PI, { cell: 'hs_or' + lbl, w: 80, h: 22, y: 92, face: -1 });
-    K.put('inuse', x + 90, 2842, Math.PI, {});
+    K.put('sign', x, 2858, Math.PI, { cell: 'hs_or' + lbl, w: 80, h: 22, hy: 96, face: -1 });
+    K.put('inuse', x + 90, 2858, Math.PI, {});
     B.light(x, 2500, 300, '#f4fbff', lbl === 2 ? 0.55 : 0, CEIL + 4);
   }
   B.anchor('surgery_theatre', 5425, 2640, 120);
@@ -861,8 +861,8 @@ function buildSurgery(B, K, CEIL) {
   K.wall(6800, 1612, 6800, 4084, { t: 24, section: S, style: 'hosp-tower' });
   K.gateIn('stair_door', 'door', 6800, 4144, 120, false, { t: 24, section: 'stairwell', label: 'Stair B door', frame: 'stair', leaves: 1 });
   K.wall(6800, 4204, 6800, 4238, { t: 24, section: S, style: 'hosp-tower' });
-  K.put('sign', 6792, 4144, -HALF, { cell: 'hs_stairb', w: 70, h: 24, y: 96, face: 1 });
-  K.put('exitsign', 6792, 4144, -HALF, { y: 88 });
+  K.put('sign', 6788, 4144, -HALF, { cell: 'hs_stairb', w: 70, h: 24, hy: 106, face: -1 });
+  K.put('exitsign', 6786, 4144, -HALF, { hy: 92 });
   B.ob('desk', 6300, 3900, 76, 36, 0.9, { style: 'gurney', section: S });
 
   const L = (x, y, r, c = '#e8f0ff', f = 0, h = CEIL - 4) => B.light(x, y, r, c, f, h);
@@ -976,7 +976,7 @@ function buildTower(B, K) {
   B.box('concrete', R0.x0, R0.y0, R0.x1, R0.y1);
   K.put('roofdeck', (R0.x0 + R0.x1) / 2, (R0.y0 + R0.y1) / 2, 0, { w: R0.x1 - R0.x0, d: R0.y1 - R0.y0, h: TOP });
   // the stair housing: the lanes' shaft rises above the roof (a penthouse), the roof door on its north face
-  K.put('stairhouse', (St.x0 + St.x1) / 2, (St.y0 + St.y1) / 2, 0, { w: St.x1 - St.x0, d: St.y1 - St.y0, h: TOP, top: TOP + 140 });
+  K.put('stairhouse', (St.x0 + St.x1) / 2, (St.y0 + St.y1) / 2, 0, { x0: St.x0 - 12, y0: ny - 8, x1: St.x1 + 8, y1: St.y1 + 12, h: TOP, top: 600 });
   // the helipad (north-east, over the car park), its lights, the windsock, the radio console
   const hx = 7780, hy = 2280, hr = 280;
   K.put('helipad', hx, hy, 0, { r: hr, h: TOP });
@@ -994,8 +994,8 @@ function buildTower(B, K) {
   }
   B.ob('container', 7060, 2720, 90, 90, 0, { style: 'watertank', section: 'roof' });
   B.ob('wall', 7500, 2700, 360, 20, 0, { style: 'duct', section: 'roof', solid: false });
-  K.put('bigsign', 7600, Tw.y0, 0, { w: 900, h: 120, y: TOP + 50 });
-  K.put('redcross', 8300, Tw.y0 + 120, 0, { y: TOP + 110 });
+  K.put('bigsign', 7600, Tw.y0, 0, { w: 900, h: 120 });
+  K.put('redcross', 8300, Tw.y0 + 120, 0, { hy: TOP + 110 });
   B.light(7600, 1700, 300, '#ff5a4a', 0, TOP + 120);
   // parapet lights and the beacon
   B.light(7000, 3300, 240, '#ffb35a', 0.2, TOP + 60);

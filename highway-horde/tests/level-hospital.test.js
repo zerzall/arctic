@@ -7,12 +7,24 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { register } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
 import { buildMap } from '../public/js/shared/maps.js';
 import { FlowField } from '../public/js/shared/flowfield.js';
 import { mapColliders } from '../public/js/shared/geom.js';
 import { createCollisionWorld } from '../public/js/shared/movement.js';
 import { LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 import { checkLevelSpec, GATE_KINDS, ROOF_KINDS } from '../public/js/shared/levels/kit.js';
+
+// three.js from the vendored copy (the renderer modules import it by its bare name)
+const VENDOR = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public/vendor/three') + path.sep).href;
+register('data:text/javascript,' + encodeURIComponent(`
+export async function resolve(spec, ctx, next) {
+  if (spec === 'three') return { url: '${VENDOR}three.module.js', shortCircuit: true };
+  if (spec.startsWith('three/addons/')) return { url: '${VENDOR}addons/' + spec.slice(13), shortCircuit: true };
+  return next(spec, ctx);
+}`));
 
 /** A flow field of the map with the gates in `open` (ids) made non-solid, seeded at (x, y). */
 export function fieldFrom(map, open, x, y) {
@@ -212,4 +224,21 @@ test('hospital: Stair B climbs to the roof (terrain), the roof is 450 up', async
   // the gate at the roof door stands on the roof's level, so its doorway has a floor
   const rd = map.gates.find((g) => g.id === 'roof_door');
   for (const i of rd.obstacles) { const o = map.obstacles[i]; assert.equal(t.height(o.x, o.y), 450); }
+});
+
+test('hospital: the level art builds on every tier, by night and by day, within budget', async (t) => {
+  const map = buildMap(ID, 7);
+  const out = {};
+  for (const tier of ['low', 'high', 'ultra', 'cinematic']) {
+    for (const day of [false, true]) {
+      const r = await buildLevelArt(map, tier, day);
+      assert.deepEqual(r.warnings, [], `${tier}${day ? ' day' : ''}: ${r.warnings.join(' | ')}`);
+      out[tier + (day ? '-day' : '')] = r;
+    }
+  }
+  for (const [k, r] of Object.entries(out)) t.diagnostic(`${k}: static ${Math.round(r.tris)} tris in ${r.meshes} meshes; finish ${Math.round(r.finishTris)} tris in ${r.finishMeshes} meshes; ${r.halos} halos`);
+  assert.ok(out.ultra.tris + out.ultra.finishTris < 1300000, `ultra: ${out.ultra.tris + out.ultra.finishTris} triangles`);
+  assert.ok(out.low.tris < out.ultra.tris, 'low is lighter than ultra');
+  assert.ok(out.ultra.meshes + out.ultra.finishMeshes < 260, `ultra: ${out.ultra.meshes + out.ultra.finishMeshes} meshes`);
+  assert.ok(out.ultra.tris > 150000, 'the hospital is drawn in detail');
 });
