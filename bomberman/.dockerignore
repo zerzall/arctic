@@ -1,0 +1,8 @@
+# The Dockerfile copies client/, server/ and shared/ by name, so this file only keeps the build context small
+# (and keeps local node_modules from ever leaking into the image, where `npm ci` installs a clean set).
+node_modules
+docs
+specs
+scripts
+.git
+*.md

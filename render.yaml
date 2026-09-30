@@ -1,0 +1,36 @@
+# Render blueprint for Blast Party (repo root, because Render only reads render.yaml from there).
+# The game lives in bomberman/ next to an unrelated Electron app, hence rootDir and buildFilter below.
+# Rooms live in one process's memory: keep this service at ONE instance (the free plan cannot scale anyway).
+services:
+  - type: web
+    name: blast-party
+    runtime: node
+    plan: free
+    rootDir: bomberman
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/index.js
+    healthCheckPath: /healthz
+    # Newer blueprints spell this `autoDeployTrigger: commit`; `autoDeploy: true` is still accepted.
+    autoDeploy: true
+    # Commits that only touch the Electron app should not redeploy the game. As documented, build filter paths are
+    # relative to the repository root, not to rootDir, hence `bomberman/**`. Doubt: if a push to bomberman/ ever fails to
+    # trigger a deploy, delete this block; rootDir already keeps Render from redeploying for changes outside bomberman/.
+    buildFilter:
+      paths:
+        - bomberman/**
+    envVars:
+      # A bare major version is a valid Render Node version (it resolves to the latest 22.x); package.json "engines"
+      # says >=22 as a second signal. If Render ever rejects it, use an exact version such as 22.12.0.
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: MAX_ROOMS
+        value: "30"    # the free instance has ~0.1 vCPU
+      - key: LOG_LEVEL
+        value: info
+      # The server refuses to start when WEB_CONCURRENCY is above 1 (it would split rooms across processes).
+      # Pinning it costs nothing and makes sure a platform default can never trip that guard.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      # Do NOT set PORT: Render provides it and the server honours process.env.PORT.
