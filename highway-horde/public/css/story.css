@@ -133,6 +133,9 @@
 .st-log-head { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--hazard); margin-bottom: 0.5rem; }
 .st-log-line { margin: 0 0 0.5rem; font-size: 0.9688rem; line-height: 1.45; color: var(--text-dim); }
 .st-log-line b { font-family: var(--font-cond); letter-spacing: 0.08em; text-transform: uppercase; }
+.st-dialogue.is-caption .st-plate { display: none; }
+.st-dialogue.is-caption .st-text { text-align: center; font-family: var(--font-cond); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hazard); min-height: 3.5em; display: flex; align-items: center; justify-content: center; }
+.st-dialogue.is-caption .st-box { border-top-color: var(--hazard); }
 .st-log-line.st-you b { color: var(--hazard); }
 .st-menu-topics { display: flex; flex-direction: column; gap: 0.375rem; margin: 0.5rem 0 0.25rem; }
 .st-dialogue.has-menu .st-text { min-height: 0; }
@@ -321,10 +324,11 @@ button.st-card-gun:hover { border-color: rgba(255, 196, 0, 0.6); }
 /* ------------------------------------------------------------------ in-game bits */
 
 .st-status { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.625rem; margin-bottom: 0.375rem; font-family: var(--font-cond); font-weight: 700; }
-.st-status-lv { color: var(--hazard); letter-spacing: 0.08em; }
+.st-status-lv { color: var(--hazard); letter-spacing: 0.08em; white-space: nowrap; }
 .st-status-bar { width: 4.5rem; height: 0.3125rem; background: #14181d; border: 1px solid var(--line-2); overflow: hidden; }
 .st-status-bar i { display: block; height: 100%; width: 0; background: var(--hazard); }
-.st-status-scrap { color: #ffb469; font-size: 0.875rem; }
+.st-status-scrap { color: #ffb469; font-size: 0.875rem; white-space: nowrap; }
+.st-status { width: max-content; max-width: 22rem; }
 .st-prompt { position: absolute; left: 50%; bottom: 26%; transform: translateX(-50%); padding: 0.375rem 1rem; background: rgba(9, 11, 14, 0.85); border: 1px solid var(--hazard); font-family: var(--font-cond); font-weight: 800; font-size: 1.25rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--hazard); white-space: nowrap; }
 .st-dock { position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 0.25rem; pointer-events: auto; }
 .st-dock .btn { justify-content: flex-start; min-width: 8.5rem; }
@@ -332,6 +336,11 @@ button.st-card-gun:hover { border-color: rgba(255, 196, 0, 0.6); }
 #screen-game[data-story='hideout'] .hud-wave,
 #screen-game[data-story='hideout'] .hud-objective,
 #screen-game[data-story='hideout'] .hud-boss,
-#screen-game[data-story='hideout'] .hud-bottom-hint { display: none; }
+#screen-game[data-story='hideout'] .hud-bottom-hint,
+#screen-game[data-story='hideout'] .hud-hint,
+#screen-game[data-story='briefing'] .hud-hint,
+#screen-game[data-story='debrief'] .hud-hint { display: none; }
+/* a scene takes the whole screen: the HUD steps back */
+#app:has(#story-root.scene) #hud { visibility: hidden; }
 #screen-game[data-story='briefing'] .hud-wave,
 #screen-game[data-story='debrief'] .hud-wave { display: none; }

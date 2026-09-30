@@ -123,7 +123,15 @@ export function createDialogue({ root, audio, voice, deps }) {
     box.style.setProperty('--cc', c.color);
     el.classList.toggle('is-radio', c.portrait === 'radio');
     el.classList.toggle('line-done', typed >= full.length);
-    showCard(c.id);
+    // a caption (the narrator) has no face: the cards step back and the text stands alone
+    const caption = c.portrait === 'narrator';
+    el.classList.toggle('is-caption', caption);
+    if (caption) {
+      cardA.el.classList.remove('active');
+      cardB.el.classList.remove('active');
+    } else {
+      showCard(c.id);
+    }
     logList.appendChild(h('div.st-log-line', null, [h('b', { text: c.name, style: { color: c.color } }), h('span', { text: ` ${full}` })]));
     logList.scrollTop = logList.scrollHeight;
     voice.speak(full, c.id);
@@ -166,10 +174,6 @@ export function createDialogue({ root, audio, voice, deps }) {
     );
     done = true;
     setHint();
-    requestAnimationFrame(() => {
-      const b = menu.querySelector('button');
-      if (b && menuOn) b.focus({ preventScroll: true });
-    });
     return true;
   }
 
@@ -200,6 +204,7 @@ export function createDialogue({ root, audio, voice, deps }) {
     if (!open) return;
     hideMenu();
     open = false;
+    root.classList.remove('scene');
     cancelAnimationFrame(raf);
     voice.cancel();
     el.hidden = true;
@@ -222,8 +227,13 @@ export function createDialogue({ root, audio, voice, deps }) {
       const b = menu.querySelectorAll('.st-topic:not(.st-leave)')[Number(k) - 1];
       if (b) b.click();
     } else if (menuOn && (k === ' ' || k === 'Enter')) {
-      // the focused topic button handles it (Enter / Space click a button)
+      // a topic is asked only by choosing it (a number, a click, or arrows + Enter): advancing keys never pick one
       e.stopImmediatePropagation();
+      if (!menu.contains(document.activeElement)) e.preventDefault();
+    } else if (menuOn && (k === 'ArrowDown' || k === 'ArrowUp')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      padNavigate(menu, k === 'ArrowDown' ? { down: true } : { up: true });
     } else if (k === ' ' || k === 'Enter' || k === 'ArrowRight') {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -276,6 +286,7 @@ export function createDialogue({ root, audio, voice, deps }) {
       title.textContent = o.title || '';
       open = true;
       el.hidden = false;
+      root.classList.add('scene');
       last = 0;
       raf = requestAnimationFrame(tick);
       showLine();
@@ -298,6 +309,7 @@ export function createDialogue({ root, audio, voice, deps }) {
       if (menuOn) {
         if (n.back) this.escape();
         else if (n.tabPrev) toggleLog();
+        else if (n.accept && !menu.contains(document.activeElement)) padNavigate(menu, { down: true });
         else padNavigate(menu, n);
       } else if (n.accept) advance();
       else if (n.back) this.escape();

@@ -598,7 +598,8 @@ export function startMatch(ctx, session) {
     const t = input.touch;
     if (t && lastView) {
       const between = lastView.phase === 'prep' || lastView.phase === 'intermission';
-      t.showButton('ready', between && !(me && me.ready));
+      t.showButton('ready', between && !(me && me.ready) && !storyHub());
+      t.showButton('shop', !storyHub());
       if (!hud.scoreboard.visible) t.setToggle('scoreboard', false);
     }
 

@@ -323,11 +323,12 @@ export class StoryHost extends StoryView {
     }));
     const create = session.hooks.createGame || ((opts) => createStoryGame(opts, stage));
     const info = this.startInfo();
+    // (before the launch: the UI starts the match inside it and reads the stage's opening scene)
+    const before = this.stageInfo;
+    this.stageInfo = { map: info.map || null, arrival: info.arrival || null, epilogue: !!info.epilogue };
     const ok = session._launchGame({ mapId, gameSettings: game, players, create, story: info });
-    if (ok) {
-      this.stageInfo = { map: info.map || null, arrival: info.arrival || null, epilogue: !!info.epilogue };
-      this._emit('state', this.stateInfo());
-    }
+    if (ok) this._emit('state', this.stateInfo());
+    else this.stageInfo = before;
     return ok;
   }
 
@@ -557,7 +558,7 @@ export class StoryHost extends StoryView {
       p.reviver = 0;
     }
     p.hp = p.maxHp;
-    p.armor = Math.max(p.armor, p.perks.startArmor);
+    p.armor = Math.max(p.armor || 0, (p.perks && p.perks.startArmor) || 0);
     return { ok: true };
   }
 

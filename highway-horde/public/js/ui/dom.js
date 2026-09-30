@@ -14,14 +14,23 @@ export function $$(sel, root = document) {
 
 /**
  * Create an element.
- * @param {string} tag tag name with optional classes: 'div.a.b'
+ * @param {string} tag tag name with optional classes and an id: 'div.a.b', 'div.a#main'
  * @param {object} [attrs] attributes; `text` sets textContent, `on<event>` adds a listener,
  *   `dataset` merges data-*, `style` merges inline styles, false/null values are skipped
  * @param {Array|Node|string} [children]
  */
 export function h(tag, attrs, children) {
+  let id = '';
+  if (tag.includes('#')) {
+    // 'div.a#main.b': the id may sit anywhere after the tag name
+    tag = tag.replace(/#([^.#]+)/, (_, v) => {
+      id = v;
+      return '';
+    });
+  }
   const parts = tag.split('.');
   const el = document.createElement(parts[0] || 'div');
+  if (id) el.id = id;
   if (parts.length > 1) el.className = parts.slice(1).join(' ');
   if (attrs) {
     for (const k of Object.keys(attrs)) {
