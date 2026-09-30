@@ -21,7 +21,7 @@ export function engineShed(P) {
   const x0 = SH.x0, x1 = SH.x1, y0 = SH.y0, y1 = SH.y1, f = SH.floor;
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, L = x1 - x0, D = y1 - y0;
   const H = f + 250;             // wall top (absolute)
-  const brick = '#8a4a34', brickD = '#6a3626', trim = '#c8bca4';
+  const brick = '#7a4232', brickD = '#5c2e22', trim = '#b8ae98';
   at(B, gy, cx, cy, 0, 0, 2001);
   // the long walls: a plinth, brick between piers, arched window bays (glass, some panes out), a cornice
   for (const s of [-1, 1]) {
@@ -66,7 +66,25 @@ export function engineShed(P) {
     B.block('std', x, 0, (prev + D / 2 + 13) / 2, 26, H, D / 2 + 13 - prev, brick, null, BRICK);
     // the gable's pediment and the shed's name over the middle door
     B.add('std', T.profile('c3shedgable' + D, [[-D / 2 - 14, 0], [D / 2 + 14, 0], [0, 110]], 0, 1), [x, H, 0], [1, 1, 26], [0, HALF, 0], brick, BRICK);
-    if (e < 0) pic(B, 'shed', x - 13.5, H - 30, 0, 26, -HALF);
+    const face = x + e * 13.5, ry = e < 0 ? -HALF : HALF;
+    pic(B, 'shed', face + e * 0.2, H - 58, 0, 26, ry);
+    // an oculus in the pediment, a stone string course, pilasters between the doors, downpipes, soot
+    B.add('glass', T.cyl(20, 1), [face + e * 0.6, H + 44, 0], [34, 1.2, 34], [0, 0, HALF], '#1a2226');
+    B.add('std', T.torus(20, 0.14, 6), [face + e * 1.4, H + 44, 0], [38, 38, 6], [0, HALF, 0], trim, CONC);
+    for (const a of [0, HALF]) B.add('std', T.box(), [face + e * 1.2, H + 44, 0], [2, 68, 2.4], [a, 0, 0], '#2a2c2e', STEEL);
+    B.box('std', face + e * 2, H - 4, 0, 5, 8, D + 30, trim, null, CONC);
+    B.box('std', face + e * 2, 182, 0, 5, 6, D + 30, trim, null, CONC);
+    const piers = [-D / 2 - 6, D / 2 + 6];
+    for (let k = 0; k < cuts.length - 1; k++) piers.push((cuts[k][1] + cuts[k + 1][0]) / 2);
+    for (const z of piers) {
+      B.block('std', face + e * 3, 0, z, 7, H - 8, 34, brickD, null, BRICK);
+      B.block('std', face + e * 3, 0, z, 9, 36, 38, '#7a6a5a', null, CONC);
+    }
+    for (const s of [-1, 1]) {
+      B.cyl('std', face + e * 9, 0, s * (D / 2 + 22), 2.6, H - 6, '#34373a', 8, 1, null, RUST);
+      B.box('std', face + e * 9, H - 8, s * (D / 2 + 16), 7, 7, 14, '#34373a', null, RUST);
+    }
+    doors.forEach((y) => pic(B, 'd_soot', face + e * 0.5, 212, y - cy, 60, ry, { w: 180 }));
     // closed doors (the others): timber doors in two leaves
     doors.forEach((y, k) => {
       const z = y - cy;
@@ -205,7 +223,7 @@ export function yardWall(P, o) {
       B.block('std', 0, f + 110, 0, L, 20, t, '#3a4a3a', null, WOOD);
       for (let x = -L / 2 + 20; x < L / 2 - 10; x += 40) {
         B.box('std', x, f + 70, 0, 4, 80, t + 2, '#e8e2d0', null, WOOD);
-        B.box('vglass', x + 20, f + 70, 0, 36, 76, t + 1, '#2a3a40');
+        B.box('vglass', x + 20, f + 70, 0, 36, 76, 1, '#1e2a2e');   // (one thin pane: a thick glass box reads white)
       }
       B.box('std', 0, f + 30, 0, L, 3, t + 4, '#e8e2d0', null, WOOD);
       return true;

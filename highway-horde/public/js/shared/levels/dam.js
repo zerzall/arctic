@@ -663,7 +663,7 @@ function buildTurbines(B, A) {
   B.ob('wall', 6000, 1720, 50, 140, 0, { style: 'breaker', ...S });
   B.ob('desk', 6330, 1700, 140, 40, 0, { style: 'ctrldesk', ...S });
   B.ob('cabinet', 7300, 1300, 120, 40, 0, { style: 'rack', ...S });
-  B.ob('container', 7000, 1800, 110, 50, 0.05, { color: '#4a5a4a', ...S });
+  B.ob('container', 6860, 1855, 110, 50, 0.05, { color: '#4a5a4a', ...S });
   B.ob('cabinet', 6700, 1850, 100, 30, 0, { style: 'lockers', ...S });
   // the tailrace yard: transformers behind a fence, service trucks, a crane truck; the old highway
   // from the fallen bridge; the River gate across it to the village

@@ -147,7 +147,7 @@ const GAUGE = 23;
 
 /** A track (a pair of rails on sleepers) for the art: from (x1, y1) to (x2, y2). */
 function track(A, x1, y1, x2, y2, o = {}) {
-  A.rails.push({ x1, y1, x2, y2, rust: o.rust ?? 0.5 });
+  A.rails.push({ x1, y1, x2, y2, rust: o.rust ?? 0.5, bed: o.bed ?? true });
 }
 
 /**
@@ -196,6 +196,7 @@ export function build(B) {
   B.box('concrete', 8000, 1500, 9900, 2450);      // the container terminal
   B.box('asphalt', 8200, 1560, 9800, 1660);       // the terminal's truck lane
   B.box('asphalt', 7900, 2880, 10300, 3040);      // the yard road on the east bank
+  B.box('concrete', 6500, YARD.deck.y0, 7700, YARD.deck.y1);  // the bridge deck (no weeds over the river)
   B.box('water', 6500, 0, 7700, YARD.deck.y0);
   B.box('water', 6500, YARD.deck.y1, 7700, H);
   B.box('grass', 60, 60, 6400, 1400);
@@ -428,7 +429,12 @@ function buildSignalBox(B, A, plats) {
 function buildBridge(B, A) {
   const S = { section: 'bridge' };
   const D = YARD.deck, R = YARD.river;
-  for (const y of YARD.main) track(A, 6400, y, 7900, y, { rust: 0.1 });
+  // (open deck over the river: sleepers on the girders, no ballast bed)
+  for (const y of YARD.main) {
+    track(A, 6400, y, R.x0, y, { rust: 0.1 });
+    track(A, R.x0, y, R.x1, y, { rust: 0.1, bed: false });
+    track(A, R.x1, y, 7900, y, { rust: 0.1 });
+  }
   // the trusses along both edges of the deck (sim walls: nobody goes over the side)
   wallLine(B, R.x0 - 60, D.y0 + 6, R.x1 + 60, D.y0 + 6, 12, [], { style: 'truss', ...S });
   wallLine(B, R.x0 - 60, D.y1 - 6, R.x1 + 60, D.y1 - 6, 12, [], { style: 'truss', ...S });

@@ -26,6 +26,9 @@ export function tracks(P, rails) {
       const L = t1 - t0;
       B.obj(r.x1 + Math.cos(a) * tm, r.y1 + Math.sin(a) * tm, a, 400 + n++);
       B.setJitter(0.04);
+      // the ballast bed: dark, oil-stained stone shouldering the sleepers (the yard's pale gravel reads as
+      // sand without it); none on the bridge deck or the shed floor (r.bed === false)
+      if (r.bed !== false) B.add('std', T.profile('c3ballast', [[-33, 0], [33, 0], [21, 3.6], [-21, 3.6]]), [0, 0, 0], [1, 1, L + 1], [0, HALF, 0], mixHex('#4e4a45', '#5e5044', hash01(n * 7)), S(DET.gravel, 0.95, 0));
       const rustC = mixHex('#8a8c90', '#7a5038', r.rust);
       for (const z of [-11.5, 11.5]) {
         if (!low) B.box('std', 0, 5.4, z, L, 1.2, 4.4, '#5a4a40', null, RAIL);
