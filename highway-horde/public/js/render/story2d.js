@@ -187,12 +187,12 @@ export function createStory2D(map) {
   }
 
   /** Marker icons (screen space), pinned to the edge with an arrow when off screen; NPC tags. */
-  function drawScreen(g, view, local, toScreen, tmp, W, H, time) {
+  function drawScreen(g, view, local, toScreen, tmp, W, H, time, ui = 1) {
     const st = view && view.story;
     const marks = (st && st.marks) || [];
-    npcs.drawTags(g, view, local, toScreen, tmp, W, H, time, marks);
+    npcs.drawTags(g, view, local, toScreen, tmp, W, H, time, marks, ui);
     if (!marks.length || !local || local.state === 'dead') return;
-    const mx = Math.min(W * 0.28, 110), my = Math.min(H * 0.28, 120);
+    const mx = Math.min(W * 0.28, 110 * ui), my = Math.min(H * 0.28, 120 * ui);
     const beat = 0.5 + 0.5 * Math.sin(time * 4);
     const nearestOff = new Map();
     const draw = [];
@@ -222,6 +222,7 @@ export function createStory2D(map) {
       const s = v.m.kind === 'item' ? 7 : 9;
       g.save();
       g.translate(v.x, v.y);
+      g.scale(ui, ui);
       g.globalAlpha = Math.max(0.4, Math.min(1, v.d / 140));
       g.lineJoin = 'round';
       g.lineWidth = 3;

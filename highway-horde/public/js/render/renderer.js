@@ -1178,7 +1178,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
     });
     if (V && V.zone) zone2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
     if (V && V.campaign) campaign2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
-    if (V && (V.story || (V.npcs && V.npcs.length))) story2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time);
+    if (V && (V.story || (V.npcs && V.npcs.length))) story2d.drawScreen(ctx, V, local, toScreen, tmpPt, cssW, cssH, time, Number.isFinite(settings.uiScale) && settings.uiScale > 0 ? Math.max(0.5, Math.min(4, settings.uiScale)) : 1);
     mark('overlay');
     if (hasPerf) timings.total += (performance.now() - tStart - timings.total) * 0.1;
   }

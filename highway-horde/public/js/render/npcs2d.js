@@ -201,7 +201,7 @@ export function createNpcs2D() {
   }
 
   /** Name tags and the talk prompt over the NPCs (screen space). */
-  function drawTags(g, view, local, toScreen, tmp, W, H, time, marks) {
+  function drawTags(g, view, local, toScreen, tmp, W, H, time, marks, ui = 1) {
     const list = view && view.npcs;
     if (!list || !list.length) return;
     g.save();
@@ -213,28 +213,32 @@ export function createNpcs2D() {
       const name = n.name || (cast && cast.name) || n.key;
       const down = n.state === 'down';
       const sc = Number.isFinite(n.look && n.look.scale) && n.look.scale > 0 ? n.look.scale : 1;
-      const y = tmp.y - 30 * sc;
+      const wx = tmp.x, wy = tmp.y;
+      g.save();
+      g.translate(wx, wy);
+      g.scale(ui, ui);
+      const y = -30 * sc;
       g.font = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
       const tw = g.measureText(name).width;
       const pw = tw + 26, ph = 17;
       g.fillStyle = 'rgba(8,10,14,0.66)';
       g.beginPath();
-      g.roundRect(tmp.x - pw / 2, y - ph, pw, ph, ph / 2);
+      g.roundRect(0 - pw / 2, y - ph, pw, ph, ph / 2);
       g.fill();
       g.fillStyle = (cast && cast.color) || '#fde68a';
-      g.beginPath(); g.arc(tmp.x - pw / 2 + 9, y - ph / 2, 4.5, 0, TAU); g.fill();
+      g.beginPath(); g.arc(0 - pw / 2 + 9, y - ph / 2, 4.5, 0, TAU); g.fill();
       g.textAlign = 'left';
       g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.7)';
-      g.strokeText(name, tmp.x - pw / 2 + 17, y - 4.5);
+      g.strokeText(name, 0 - pw / 2 + 17, y - 4.5);
       g.fillStyle = '#f7f3e6';
-      g.fillText(name, tmp.x - pw / 2 + 17, y - 4.5);
+      g.fillText(name, 0 - pw / 2 + 17, y - 4.5);
       g.textAlign = 'center';
       if (n.hp >= 0 && (n.hp < 0.995 || n.state === 'escort' || down)) {
         const f = Math.max(0, Math.min(1, n.hp));
         g.fillStyle = 'rgba(0,0,0,0.7)';
-        g.fillRect(tmp.x - 23, y + 3, 46, 6);
+        g.fillRect(0 - 23, y + 3, 46, 6);
         g.fillStyle = f > 0.5 ? '#7dff9a' : f > 0.25 ? '#ffd54f' : '#ff5252';
-        g.fillRect(tmp.x - 22, y + 4, 44 * f, 4);
+        g.fillRect(0 - 22, y + 4, 44 * f, 4);
       }
       let waits = false;
       for (const m of marks || []) if (m.kind === 'npc' && Math.hypot(m.x - n.x, m.y - n.y) < 40) waits = true;
@@ -242,19 +246,20 @@ export function createNpcs2D() {
         g.font = '800 20px system-ui, sans-serif';
         g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,0.8)';
         const by = y - ph - 4 + Math.sin(time * 5) * 2;
-        g.strokeText('!', tmp.x, by);
+        g.strokeText('!', 0, by);
         g.fillStyle = '#ffd24a';
-        g.fillText('!', tmp.x, by);
+        g.fillText('!', 0, by);
       }
       if (local && local.state === 'alive' && n.state !== 'follow' && Math.hypot(local.x - n.x, local.y - n.y) <= TALK_RANGE * 1.25) {
         const label = down ? 'Hold E · Revive' : 'E · Talk';
         g.font = '700 11px system-ui, sans-serif';
         const lw = g.measureText(label).width + 14;
         g.fillStyle = down ? 'rgba(120,20,20,0.85)' : 'rgba(255,214,90,0.92)';
-        g.beginPath(); g.roundRect(tmp.x - lw / 2, y + 12, lw, 16, 8); g.fill();
+        g.beginPath(); g.roundRect(0 - lw / 2, y + 12, lw, 16, 8); g.fill();
         g.fillStyle = down ? '#fff1f1' : '#1c1608';
-        g.fillText(label, tmp.x, y + 24);
+        g.fillText(label, 0, y + 24);
       }
+      g.restore();
     }
     g.restore();
   }
