@@ -1873,6 +1873,9 @@ async function scenarioStoryLoop(sc) {
   await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the story lobby');
   expect(await visible(pl, '#story-lobby-panel'), 'the story lobby panel is not visible');
   expect(await page.inputValue('#story-lobby-panel .st-crew-input') === 'The E2E Crew', 'the story lobby should show the crew name');
+  // an AI survivor joins the crew (it fights the mission with the survivor)
+  await page.click('#btn-add-bot');
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 2, null, 'a bot in the roster');
   await sc.screenshots('-lobby');
   await page.click('#btn-start');
   await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH && window.__HH.getView() && window.__HH_STORY, null, 'the story game screen');
@@ -1909,14 +1912,26 @@ async function scenarioStoryLoop(sc) {
   // ---- deploy, win
   await page.click('.st-brief [data-act="deploy"]');
   await waitFor(pl, () => window.__HH_STORY.stage === 'mission', null, 'the mission stage', 10e3);
-  await sleep(1500);
-  const debriefed = await page.waitForFunction(() => window.__HH_STORY.stage === 'debrief', null, { timeout: 14e3, polling: 100 }).then(() => true, () => false);
+  // the mission runs for real (the story HUD lists its step); a mission with a clock (the stub content) wins
+  // itself, any other is ended the way the director ends it when the last step is done
+  await waitFor(pl, () => !!document.querySelector('.hud-story:not([hidden]) .story-row') || window.__HH_STORY.stage === 'debrief', null, 'the objective tracker', 12e3);
+  const live = await story(() => window.__HH.getView());
+  expect(live && live.players.length === 2 && live.players.some((p) => p.id !== 1), 'the bot should be in the mission');
+  await sc.screenshots('-mission');
+  await sleep(2500);
+  const debriefed = await page.waitForFunction(() => window.__HH_STORY.stage === 'debrief', null, { timeout: 8e3, polling: 100 }).then(() => true, () => false);
   if (!debriefed) {
-    // (no clock on this mission: end it through the host's result path)
-    await story(() => {
+    const ended = await story(() => {
+      const g = window.__HH.session.game;
+      if (g && g.story && g.story.onEnd) {
+        g.story.onEnd('victory');
+        return true;
+      }
       const st = window.__HH_STORY.session.story;
       st._finish(st._synth('victory'));
+      return false;
     });
+    log(`    story: mission ended through ${ended ? 'the director (storyend)' : 'the host result path'}`);
     await waitFor(pl, () => window.__HH_STORY.stage === 'debrief', null, 'the debrief', 8000);
   }
   await waitFor(pl, () => !!document.querySelector('.st-debrief:not([hidden]) .st-result-row.me'), null, 'the result screen', 8000);
@@ -2001,6 +2016,54 @@ async function scenarioStoryLoop(sc) {
   const resumed = await story(() => ({ done: Object.keys(window.__HH_STORY.session.story.world.progress.completed), perk: window.__HH_STORY.session.story.profile.perks.steady }));
   expect(resumed.done.includes(missionId) && resumed.perk === 1, `the resumed campaign keeps its progress: ${JSON.stringify(resumed)}`);
   log(`    story: saves ok (export ${(fs.statSync(saved).size / 1024).toFixed(1)} KB), resumed with ${resumed.done.join()} done`);
+
+  // ---- the hideout: a save that has cleared the road chapter (three missions) arrives at the
+  // Roadhouse: the arrival scene, every station panel, the board listing the next missions
+  await page.evaluate(async () => {
+    const W = await import('/js/shared/story/world.js');
+    const S = await import('/js/shared/story/save.js');
+    let w = W.createWorld({ name: 'Roadhouse Crew' });
+    w = W.changeWorld(w, (d) => {
+      for (const id of ['m1_1', 'm1_2', 'm1_3']) d.progress.completed[id] = { stars: 2, time: 300 };
+      d.progress.flags.road_open = true;
+      d.day = 44;
+    });
+    S.saveWorld(w);
+  });
+  await page.reload();
+  await waitFor(pl, () => !document.querySelector('#app').classList.contains('booting') && !document.querySelector('#screen-title').hidden, null, 'the title after the second reload');
+  await page.click('#btn-story');
+  await waitFor(pl, () => [...document.querySelectorAll('#story-wrap .st-world')].some((e) => e.textContent.includes('Roadhouse Crew')), null, 'the crafted campaign card');
+  await page.click('#story-wrap .st-world:has-text("Roadhouse Crew") [data-act="continue"]');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the lobby of the crafted campaign');
+  await page.click('#btn-start');
+  await waitFor(pl, () => window.__HH_STORY && window.__HH_STORY.stage === 'hideout' && !!window.__HH.getView(), null, 'the roadhouse', 15e3);
+  await waitFor(pl, () => window.__HH_STORY.dialogueOpen, null, 'the arrival scene', 8000);
+  const arrival = await story(() => window.__HH_STORY.session.story.stageInfo.arrival);
+  expect(arrival && arrival.hideout === 'roadhouse' && arrival.flag === 'seen_arrival_roadhouse', `the arrival should be pending: ${JSON.stringify(arrival)}`);
+  await sc.screenshots('-arrival');
+  await skipScenes();
+  await waitFor(pl, () => window.__HH_STORY.session.story.world.progress.flags.seen_arrival_roadhouse === true, null, 'the arrival being recorded', 5000);
+  for (const kind of ['workbench', 'armory', 'infirmary', 'upgrades', 'perks', 'board']) {
+    await story((k) => window.__HH_STORY.open(k), kind);
+    await waitFor(pl, (k) => window.__HH_STORY.panel === k, kind, `the ${kind} panel`, 5000);
+    expect(await visible(pl, '.st-panel-layer'), `${kind} panel is not visible`);
+    if (kind === 'board') {
+      const rows = await page.$$eval('.st-panel-layer .st-mission-row', (els) => els.length);
+      expect(rows >= 8, `the board should list the campaign's missions, has ${rows}`);
+      await sc.screenshots('-roadhouse-board');
+      await page.click('.st-panel-layer [data-act="brief"]');
+      await waitFor(pl, () => window.__HH_STORY.stage === 'briefing', null, 'a hub mission being briefed', 8000);
+      await skipScenes();
+      expect(await visible(pl, '.st-brief [data-act="cancel"]'), 'a hub mission can be backed out of');
+      await page.click('.st-brief [data-act="cancel"]');
+      await waitFor(pl, () => window.__HH_STORY.stage === 'hideout', null, 'back in the hideout', 8000);
+    } else {
+      await story(() => window.__HH_STORY.close());
+      await waitFor(pl, () => window.__HH_STORY.panel === null, null, 'the panel closing', 5000);
+    }
+  }
+  log('    story: roadhouse ok (arrival scene, every panel, the board, a briefing backed out of)');
 }
 
 /**
