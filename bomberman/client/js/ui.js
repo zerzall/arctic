@@ -19,7 +19,8 @@
 // RENDER METHODS (SPEC 8.3 names first)
 //   showTitle({ name?, code?, error? })  home screen; also forgets everything about the previous room. `code` (validated, else
 //                                        ignored) pre-fills and highlights the Join box; `error` shows an alert in the card.
-//   showConnecting(text | null)          blocking "connecting" overlay with an elapsed-seconds counter; null hides it.
+//   showConnecting(text | null, onCancel?) blocking "connecting" overlay with an elapsed-seconds counter (and a Cancel button when
+//                                        `onCancel` is given); null hides it.
 //   showLobby(lobbyMsg)                  ingest a `lobby` message. Safe to call on EVERY lobby frame in any phase: the lobby
 //                                        screen is only shown when phase === 'lobby'; other phases just refresh what the menu and
 //                                        results screen know.
@@ -105,6 +106,19 @@ export function extractRoomCode(raw) {
 
 /** "K, Q, X, Z": how a screen reader should spell a room code. */
 export const spellCode = (code) => String(code).split('').join(', ');
+
+/**
+ * Whether a page address only works on the computer that shows it: localhost, 127.x.x.x, [::1], 0.0.0.0. An invite link built from
+ * such an address (SPEC 1.2 derives it from location.origin) would send friends to THEIR OWN localhost, so the lobby explains instead.
+ * @param {string} hostname `location.hostname` (IPv6 literals may arrive with their brackets)
+ */
+export function isLoopbackHost(hostname) {
+  const host = String(hostname ?? '').trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+/** The lobby's explanation when the page was opened through a loopback address, with the real port in the example. */
+export const loopbackHint = (port) => `Others can't reach "localhost". Open this page through your computer's Wi-Fi address instead (for example http://192.168.x.x${port ? `:${port}` : ''}, printed in the server console), or run "npm run share" for a public link.`;
 
 /** Seconds as m:ss ("2:05"); anything not a finite number of seconds gives the infinity sign. */
 export function formatClock(sec) {
@@ -883,11 +897,15 @@ class LobbyScreen {
     this.qrCanvas = el('canvas', { class: 'qr-canvas', role: 'img', 'aria-label': 'QR code of the invite link' });
     this.qrBox = el('div', { class: 'qr-box', hidden: true }, this.qrCanvas, el('p', { class: 'qr-caption', text: 'Scan with a phone camera' }));
     this.qrBtn = el('button', { class: 'btn btn-glass qr-toggle', type: 'button', 'aria-expanded': 'false', hidden: true, on: { click: () => this.toggleQr() } }, icon('qr'), el('span', { text: 'QR code' }));
+    // A page opened as localhost/127.0.0.1 cannot produce a link anybody else can use: the invite row gives way to an explanation.
+    this.loopbackNote = el('p', { class: 'code-warn', role: 'note', hidden: true });
+    this.inviteRow = el('div', { class: 'invite-row' }, this.inviteInput, el('div', { class: 'invite-actions' }, this.copyBtn, this.shareBtn, this.qrBtn));
     this.codeCard = el('section', { class: 'card code-card', 'aria-labelledby': 'code-h' },
       el('h2', { id: 'code-h', class: 'card-title', text: 'Room code' }),
       el('div', { class: 'code-row' }, this.roomCode, this.qrBox),
       el('p', { class: 'code-hint', text: 'Friends open the link or type the code on the home screen.' }),
-      el('div', { class: 'invite-row' }, this.inviteInput, el('div', { class: 'invite-actions' }, this.copyBtn, this.shareBtn, this.qrBtn)));
+      this.loopbackNote,
+      this.inviteRow);
     this.practiceCard = el('section', { class: 'card practice-card', hidden: true },
       el('h2', { class: 'card-title' }, icon('bot'), 'Practice mode'),
       el('p', { text: 'You are playing offline against bots. Add more bots or start when you are ready. Nobody else can join.' }));
@@ -992,9 +1010,10 @@ class LobbyScreen {
     result?.catch?.(() => {});   // AbortError when the share sheet is dismissed
   }
 
+  /** The shareable link, or '' when there is none to give (Practice, or an address only this computer can open). */
   inviteUrl() {
     const code = this.msg?.code;
-    return isRoomCode(code) && !this.msg.local ? `${location.origin}/r/${code}` : '';
+    return isRoomCode(code) && !this.msg.local && !isLoopbackHost(location.hostname) ? `${location.origin}/r/${code}` : '';
   }
 
   toggleQr() {
@@ -1103,13 +1122,18 @@ class LobbyScreen {
       this.codeText.textContent = `Room code ${spellCode(msg.code)}`;
       this.letters.forEach((node, i) => { node.textContent = msg.code[i]; });
       const url = this.inviteUrl();
+      const loopback = isLoopbackHost(location.hostname);
       this.inviteInput.value = url;
+      this.inviteRow.hidden = loopback;
+      this.loopbackNote.hidden = !loopback;
+      this.codeCard.classList.toggle('is-loopback', loopback);
+      if (loopback) this.loopbackNote.textContent = loopbackHint(location.port);
       this.drawQr(url);
     }
   }
 
   drawQr(url) {
-    const matrix = this.ui.qr?.qrMatrix(url) ?? null;
+    const matrix = url ? this.ui.qr?.qrMatrix(url) ?? null : null;
     this.codeCard.classList.toggle('has-qr', !!matrix);
     this.qrBtn.hidden = !matrix;
     if (!matrix) {
@@ -2139,8 +2163,11 @@ export class UI {
 
   // ---- Blocking overlays
 
-  /** "Connecting..." overlay with an elapsed-seconds counter after a few seconds; null hides it. */
-  showConnecting(text) {
+  /**
+   * "Connecting..." overlay with an elapsed-seconds counter after a few seconds; null hides it. It covers the whole page, and a free
+   * host can take a minute to wake up, so `onCancel` (optional) adds a Cancel button: without one the only way out would be a reload.
+   */
+  showConnecting(text, onCancel) {
     if (text == null) {
       if (!this.connecting) return;
       clearInterval(this.timers.connecting);
@@ -2152,10 +2179,12 @@ export class UI {
     if (!this.connecting) {
       const message = el('p', { class: 'conn-text' });
       const elapsed = el('p', { class: 'conn-time', hidden: true });
+      const cancel = el('button', { class: 'btn btn-glass btn-lg', type: 'button', hidden: true, text: 'Cancel', on: { click: () => this.connecting?.onCancel?.() } });
       this.connecting = el('div', { class: 'conn-overlay', role: 'status' },
-        el('div', { class: 'conn-card' }, artSvg('bomb', 'conn-bomb'), message, elapsed));
+        el('div', { class: 'conn-card' }, artSvg('bomb', 'conn-bomb'), message, elapsed, cancel));
       this.connecting.message = message;
       this.connecting.elapsed = elapsed;
+      this.connecting.cancel = cancel;
       const started = performance.now();
       this.timers.connecting = setInterval(() => {
         const s = Math.floor((performance.now() - started) / 1000);
@@ -2166,6 +2195,12 @@ export class UI {
       this.block(1);
     }
     if (this.connecting.message.textContent !== text) this.connecting.message.textContent = text;
+    const cancel = this.connecting.cancel;
+    this.connecting.onCancel = typeof onCancel === 'function' ? onCancel : null;
+    if (cancel.hidden === !!this.connecting.onCancel) {
+      cancel.hidden = !this.connecting.onCancel;
+      if (!cancel.hidden) cancel.focus({ preventScroll: true });     // a keyboard player must be able to get out
+    }
   }
 
   /** Small banner while the connection is being re-established; the argument is the seconds left before giving up (null hides). */

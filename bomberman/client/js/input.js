@@ -31,6 +31,8 @@
 // GAMEPAD is polled by getIntent() (main.js calls it every frame): first connected pad; buttons 0/1 bomb, 2/3 special, 9 menu, 12-15 D-pad;
 // left stick engages at |v| > 0.5 and releases at < 0.35. Bomb/special/menu are edge-triggered.
 //
+// On a short landscape screen (8 players' chips fill the side margins) the emote button leaves the cluster: the HUD has its own.
+//
 // This file injects its own <style id="bp-input-style"> and owns everything inside #touch (style.css never styles .bp-touch*).
 // All DOM access goes through the objects passed in (document, window, navigator), so the whole thing runs in Node against fakes.
 
@@ -110,6 +112,7 @@ const STYLE = `
 .bp-special.bp-down{transform:translateY(4px) scale(.97);box-shadow:0 2px 0 #17346f,0 4px 8px rgba(0,0,0,.45),inset 0 2px 5px rgba(255,255,255,.3)}
 .bp-emote{width:52px;height:52px;background:radial-gradient(circle at 34% 26%,#ffe98a,#ffb020 60%,#c77c00);box-shadow:0 4px 0 #7a4b00,0 8px 12px rgba(0,0,0,.4),inset 0 2px 4px rgba(255,255,255,.45)}
 .bp-emote.bp-down{transform:translateY(3px) scale(.96);box-shadow:0 1px 0 #7a4b00,0 3px 6px rgba(0,0,0,.4)}
+@media (max-height:480px){.bp-touch[data-layout="stack"] .bp-emote{display:none}}
 @media (prefers-reduced-motion:reduce){.bp-stick,.bp-hint,.bp-btn{transition:none}}
 `;
 
