@@ -1679,7 +1679,7 @@ and tap counts, to be replaced by `/dev/benchmark.html` numbers from real hardwa
 | Motion blur | `motionBlur` (default off) | camera-motion blur from the depth buffer, shutter about 1/3 of a frame | 0.4 ms |
 | Depth of field | `dof` | subtle, only while the local player is hurt (focus follows the crosshair distance, 1×1 focus targets) | 0.3 ms, only when hurt |
 | Supersampling | resolution | Auto climbs to 2.0 (36 M px budget); the last pass shrinks with a Catmull-Rom filter instead of bilinear; 16× anisotropic filtering | scales with pixels |
-| Density | (tier) | pool lights 12 → 20, particles ×1.5, decals 1600 → 4000, gibs, casings, fireflies, birds, rain streaks 9000, grass 256 × 256 tufts at a 3.9-unit cell (ultra 180 / 4.6, density 1.0 vs 0.95), dress-life ×1.6 and ambient life ×1.7 (`dress-life`, `ambient3d`), set-dressing budget 650 k → 2.5 M triangles (the `shared/dress.js` density is 1.0 already on ultra; cinematic raises the triangle cap so nothing is thinned), ground texels 10 M → 22 M | 0.5–1.5 ms |
+| Density | (tier) | pool lights 12 → 20, particle pool 4200 → 9200 (spawn counts ×1.5), beams 480 → 960, decals 1600 / 700 → 4000 / 1800, gibs, casings, fireflies, birds, rain streaks 9000, grass 256 × 256 tufts at a 3.9-unit cell (ultra 180 / 4.6, density 1.0 vs 0.95), dress-life ×1.6 and ambient life ×1.7 (`dress-life`, `ambient3d`), set-dressing budget 650 k → 2.5 M triangles (the `shared/dress.js` density is 1.0 already on ultra; cinematic raises the triangle cap so nothing is thinned), ground texels 10 M → 22 M | 0.5–1.5 ms |
 
 A rough total at 1080p with Auto climbing to 200 % (3840×2160 internal) is 8–11 ms on the
 card above, i.e. 90–120 fps; at native 4K about the same. `texScale(q)` (1 | 1 | 1 | 2) is the
