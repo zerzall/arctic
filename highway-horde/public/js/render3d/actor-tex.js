@@ -331,9 +331,16 @@ export function actorTextures(aniso = 8, scale = 1) {
  * over frames). Resolves with fresh textures (caller disposes) once the pixels exist; the
  * page keeps drawing with the 512² set meanwhile.
  */
+let actorHiJob = null;
 export async function actorTexturesAsync(aniso = 8) {
-  if (!cache.has('actor1024')) cache.set('actor1024', await driveAsync(genActorDetail(1024, true)));
-  if (!cache.has('actor2-1024')) cache.set('actor2-1024', await driveAsync(genActorDetail2(1024)));
+  // one generation however many sub-systems (zombies, survivors, the viewmodel) ask for it
+  if (!actorHiJob) {
+    actorHiJob = (async () => {
+      if (!cache.has('actor1024')) cache.set('actor1024', await driveAsync(genActorDetail(1024, true)));
+      if (!cache.has('actor2-1024')) cache.set('actor2-1024', await driveAsync(genActorDetail2(1024)));
+    })();
+  }
+  await actorHiJob;
   return actorTextures(aniso, 2);
 }
 
@@ -424,8 +431,12 @@ export function gunAtlasTexture(aniso = 8, scale = 1) {
 }
 
 /** The 2048² atlas pixels { data, size }, generated in time slices (about 3 s of work over frames). */
+let gunAtlasJob = null;
 export async function gunAtlasPixelsAsync() {
-  if (!cache.has('gun2048')) cache.set('gun2048', await driveAsync(genGunAtlas(2048)));
+  if (!cache.has('gun2048')) {
+    if (!gunAtlasJob) gunAtlasJob = driveAsync(genGunAtlas(2048)).then((d) => { cache.set('gun2048', d); });
+    await gunAtlasJob;
+  }
   return cache.get('gun2048');
 }
 

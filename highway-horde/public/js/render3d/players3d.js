@@ -21,11 +21,11 @@ import { angleDiff, damp, hash01, capLuma } from './actor-kit.js';
 import { RigPool, Pose, B, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2 } from './actor-rig.js';
 import { buildSoldier, soldierSkeleton, SP } from './actor-smodels.js';
 import { geometryFromArrays } from './actor-shape.js';
-import { actorTextures } from './actor-tex.js';
+import { actorTextures, actorTexturesAsync } from './actor-tex.js';
 import { gunObject } from './actor-guns.js';
 import { acquireFx, releaseFx } from './fx-core.js';
 
-const tierOf = (q) => (q === 'low' ? 2 : 0);
+const tierOf = (q) => (q === 'low' ? 2 : q === 'cinematic' ? -1 : 0);
 const TAU = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 const CAP = 8;
@@ -42,7 +42,8 @@ const HOLD = {
 
 const cache = new Map();
 function soldierArrays(cls, L, tier) {
-  const k = cls + L + ':' + (tier >= 2 ? 2 : 0);
+  if (tier < 0 && L > 0) tier = 0;           // (the cinematic hero is the near model only)
+  const k = cls + L + ':' + (tier >= 2 ? 2 : tier < 0 ? -1 : 0);
   let a = cache.get(k);
   if (!a) { a = buildSoldier(cls, L, tier).arrays(); cache.set(k, a); }
   return a;
@@ -122,9 +123,21 @@ export function createPlayers3D(ctx) {
   root.name = 'players3d';
   ctx.scene.add(root);
   let high = ctx.quality !== 'low';
+  let ctxQuality = ctx.quality;
   let curTier = tierOf(ctx.quality);
   const tex = actorTextures(8);
   const pool = new RigPool({ capacity: CAP + 2, textures: tex });
+  // cinematic: the 1024² skin / cloth maps swap in when their (time-sliced) generation is done
+  let hiTex = false, gone = false;
+  function upgradeTextures() {
+    if (hiTex || ctxQuality !== 'cinematic') return;
+    hiTex = true;
+    actorTexturesAsync(16).then((t) => {
+      if (gone) { t.detail.dispose(); t.normal.dispose(); t.detail2.dispose(); return; }
+      for (const k of ['detail', 'normal', 'detail2']) { tex[k].dispose(); tex[k] = t[k]; }
+      pool.shared.uDetail.value = t.detail; pool.shared.uNrm.value = t.normal; pool.shared.uDetail2.value = t.detail2;
+    }).catch((err) => { hiTex = false; console.warn('players3d: hi-res textures failed', err); });
+  }
   const sk = soldierSkeleton();
   const bodies = {};
   for (const cls of CLASS_IDS) {
@@ -135,6 +148,7 @@ export function createPlayers3D(ctx) {
     });
   }
   pool.warm();
+  upgradeTextures();
   // Shader warm-up: the renderer compiles what is visible right after creation. Teammates'
   // guns are plain (non-instanced) meshes with a solid, a glow and a shadow depth variant
   // that nothing else in the scene uses, so without this stand-in they compiled on the
@@ -732,6 +746,8 @@ export function createPlayers3D(ctx) {
     addEvents,
     setQuality(q) {
       high = q !== 'low';
+      ctxQuality = q;
+      upgradeTextures();
       if (tierOf(q) !== curTier) {
         curTier = tierOf(q);
         for (const cls of CLASS_IDS) {
@@ -747,6 +763,7 @@ export function createPlayers3D(ctx) {
       for (const g of guns.values()) for (const o of [g.obj, g.left]) if (o) o.traverse((c) => { if (c.isMesh) c.castShadow = high; });
     },
     dispose() {
+      gone = true;
       dropWarmGun();
       for (const pid of [...guns.keys()]) hideGun(pid, true);
       pool.dispose();

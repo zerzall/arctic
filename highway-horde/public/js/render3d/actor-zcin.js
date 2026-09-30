@@ -159,3 +159,64 @@ export function cinFace(sb, P, type, pt, def, jaw) {
     sb.ellipsoid([e[0] - 0.05, e[1] - 0.95, e[2] + s * 0.22], [0.3, 0.42, 0.22], { segW: 8, segH: 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e0e0e0', bone: B.HEAD, paint: 0.45 });
   }
 }
+
+// ---- survivors ----------------------------------------------------------------------------------------
+
+const IRIS = { soldier: '#4a3a28', medic: '#3a6a8a', engineer: '#3a2a1c', scout: '#4a6a3a', demo: '#5a4a30', heavy: '#2a1c14' };
+const BROW = { soldier: '#2a1c12', medic: '#5a4028', engineer: '#1c140e', scout: '#3a2a1a', demo: '#3a2a1c', heavy: '#18120e' };
+
+/**
+ * The cinematic survivor face parts (eyes with a coloured iris and lashes, lids, brows, a nose
+ * with nostrils, lips and a mouth line, ears with a rim and a lobe, an Adam's apple). The skull is
+ * built by actor-smodels with cinFaceRelief on top of its own deform; `pt` is a point on it.
+ */
+export function cinSoldierFace(sb, P, cls, pt, skin, mixHex) {
+  const iris = IRIS[cls] || IRIS.soldier, brow = BROW[cls] || BROW.soldier;
+  const lipC = mixHex(skin, '#a04848', 0.42), lipD = mixHex(skin, '#5a2a2a', 0.55);
+  for (const s of [-1, 1]) {
+    const e = pt(0.9, 0.12, s * 0.36, 0.93);
+    const dirZ = s * 0.18, dl = Math.hypot(1, dirZ);
+    const ey = [0, -s * 0.18, 0];
+    sb.ellipsoid(e, [0.5, 0.48, 0.5], { segW: 18, segH: 12, slot: SLOT.FIXED, mat: MAT.SCLERA, color: '#e6e0d6', bone: B.HEAD });
+    const ic = [e[0] + 0.42 / dl, e[1], e[2] + dirZ * 0.42 / dl];
+    sb.ellipsoid(ic, [0.07, 0.26, 0.26], { segW: 18, segH: 8, rot: ey, slot: SLOT.FIXED, mat: MAT.SCLERA, color: iris, bone: B.HEAD });
+    sb.ellipsoid([ic[0] + 0.05, ic[1], ic[2] + dirZ * 0.05], [0.05, 0.11, 0.11], { segW: 10, segH: 6, rot: ey, slot: SLOT.FIXED, mat: MAT.SCLERA, color: '#060404', bone: B.HEAD });
+    // lids and the lash line
+    sb.ellipsoid([e[0] - 0.02, e[1] + 0.02, e[2]], [0.56, 0.55, 0.56], { segW: 20, segH: 9, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f4f4f4', bone: B.HEAD,
+      deform: (p) => { const cut = 0.15 + Math.max(0, p.x) * 0.05; if (p.y < cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
+    sb.ellipsoid([e[0] - 0.02, e[1] - 0.02, e[2]], [0.55, 0.53, 0.55], { segW: 20, segH: 8, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ececec', bone: B.HEAD,
+      deform: (p) => { const cut = -0.4; if (p.y > cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
+    const l0 = pt(0.92, 0.19, s * 0.26, 1.0), l1 = pt(0.9, 0.2, s * 0.36, 1.0), l2 = pt(0.84, 0.18, s * 0.47, 1.0);
+    sb.tube([{ c: l0, r: 0.06 }, { c: l1, r: 0.07 }, { c: l2, r: 0.05 }], { seg: 5, subdiv: 3, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.HAIR, color: '#1a1210', bone: B.HEAD });
+    // brows
+    const b0 = pt(0.9, 0.31, s * 0.14, 1.004), b1 = pt(0.82, 0.34, s * 0.34, 1.004), b2 = pt(0.7, 0.3, s * 0.56, 1.004);
+    sb.tube([{ c: b0, rx: 0.14, rz: 0.2 }, { c: b1, rx: 0.16, rz: 0.2 }, { c: b2, rx: 0.06, rz: 0.1 }], { seg: 8, subdiv: 3, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.HAIR, color: brow, bone: B.HEAD, ref: [0, 1, 0] });
+    // nostril
+    const n0 = pt(0.93, -0.2, s * 0.085, 1.0);
+    sb.ellipsoid(n0, [0.17, 0.12, 0.14], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#2a1410', bone: B.HEAD });
+    // ear: rim, lobe
+    const ear = pt(-0.08, 0.04, s, 0.97);
+    const pts = [];
+    for (let i = 0; i <= 12; i++) {
+      const a = (i / 12) * Math.PI * 1.75 - 0.4;
+      pts.push({ c: [ear[0] - Math.sin(a) * 0.55, ear[1] + Math.cos(a) * 0.95, ear[2] + s * (0.1 + 0.18 * Math.sin(a * 0.9))], r: 0.15 + 0.03 * Math.sin(a * 2) });
+    }
+    sb.tube(pts, { seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ececec', bone: B.HEAD, ref: [0, 0, s] });
+    sb.ellipsoid([ear[0] - 0.05, ear[1] - 0.86, ear[2] + s * 0.2], [0.28, 0.4, 0.2], { segW: 8, segH: 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e6e6e6', bone: B.HEAD });
+  }
+  // lips and the line between them
+  const upper = [], lower = [], line = [];
+  for (let i = 0; i <= 10; i++) {
+    const u = -0.75 + i * 0.15;
+    const bow = 0.02 * Math.max(0, 1 - Math.abs(u) * 3.4);
+    upper.push({ c: pt(0.96 - 0.32 * u * u, -0.33 + bow - 0.03 * u * u, u * 0.36, 1.004), rx: 0.11 - 0.04 * Math.abs(u), rz: 0.09 - 0.03 * Math.abs(u) });
+    lower.push({ c: pt(0.95 - 0.3 * u * u, -0.395 - 0.02 * (1 - u * u) - 0.02 * u * u, u * 0.33, 1.004), rx: 0.13 - 0.05 * Math.abs(u), rz: 0.1 - 0.03 * Math.abs(u) });
+    line.push({ c: pt(0.97 - 0.32 * u * u, -0.362 - 0.014 * u * u, u * 0.37, 1.008), r: 0.045 });
+  }
+  const LP = { seg: 10, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.SKIN, bone: B.HEAD, ref: [0, 1, 0] };
+  sb.tube(upper, { ...LP, color: lipC });
+  sb.tube(lower, { ...LP, color: mixHex(lipC, '#ffffff', 0.06) });
+  sb.tube(line, { seg: 5, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.FLESH, color: lipD, bone: B.HEAD });
+  // the larynx
+  sb.ellipsoid([P.headC[0] + 0.5, P.neck - 1.2, 0], [0.7, 0.9, 0.6], { segW: 10, segH: 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0', bone: B.NECK });
+}
