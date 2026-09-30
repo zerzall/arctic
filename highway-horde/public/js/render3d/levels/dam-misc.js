@@ -144,3 +144,36 @@ export function signage(P) {
   put('hv', 6600, 2030, 22, 40, Math.PI);
   put('hv', 7250, 2020, 22, 40, Math.PI);
 }
+
+/** The reservoir's flotsam: a log boom across the dam's face with its buoys, logs, drums and a capsized boat. */
+export function reservoirDebris(P) {
+  const { B, gy } = P;
+  const RES = DAM.reservoir;
+  const r = B.rng;
+  // the boom: a line of chained logs 110 off the upstream face, orange buoys every few logs
+  for (let x = 3700, k = 0; x < 7500; x += 66, k++) {
+    const y = DAM.crest.y0 - 140 + Math.sin(k * 0.7) * 6;
+    at(B, gy, x, y, RES - 2, (k % 2 ? 0.04 : -0.04), 800 + k);
+    B.cylX('std', 0, 0, 0, 5, 62, '#4a3a28', 8, S(DET.bark, 0.9, 0));
+    if (k % 5 === 0) B.add('std', T.sphere(8, 6), [34, 4, 0], [9, 9, 9], null, '#d8581c', S(DET.plastic, 0.5, 0));
+  }
+  // loose logs, drums and a boat floating in the storm
+  for (let k = 0; k < 26; k++) {
+    const x = 3800 + ((k * 1471) % 3600), y = -600 + ((k * 787) % 1050);
+    at(B, gy, x, y, RES - 3, r.range(0, 6.28), 820 + k);
+    if (k % 3 === 0) B.cyl('std', 0, -6, 0, 10, 14, ['#2f5a78', '#7a3b2e', '#4a5a3a'][k % 3], 12, 1, [Math.PI / 2, 0, 0.3], RUST);
+    else B.cylX('std', 0, 0, 0, 4 + (k % 4), 70 + (k % 5) * 20, '#3e3024', 7, S(DET.bark, 0.9, 0));
+  }
+  at(B, gy, 5200, 300, RES - 4, 0.6, 850);
+  B.add('std', T.box(), [0, 3, 0], [90, 10, 34], [Math.PI - 0.15, 0, 0.05], '#c8c0b0', S(DET.plastic, 0.5, 0));
+}
+
+/** A stack of big concrete pipe sections and steel pipes in the spillway yard. */
+export function pipeStack(P, m) {
+  const { B, gy } = P;
+  at(B, gy, m.x, m.y, 0, m.a, 860);
+  for (let k = 0; k < 4; k++) B.cylX('std', -90 + k * 58, 24, 0, 24, 50, '#8e8a80', 16, CONC);
+  for (let k = 0; k < 3; k++) B.cylX('std', -60 + k * 58, 64, 0, 24, 50, '#8a867c', 16, CONC);
+  for (let k = 0; k < 6; k++) B.cylZ('std', -120 + k * 14, 6, 60, 6, 160, '#5a605e', 10, RUST);
+  B.rblock('std', 120, 0, 40, 30, 20, 60, 2, '#6a4a2c', null, S(DET.wood, 0.85, 0));
+}

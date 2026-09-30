@@ -196,10 +196,15 @@ export function railing(B, x0, z0, x1, z1, y0 = 0, h = 36, color = COL.yellow, o
 }
 
 /** An emissive light source (a lens/bulb box) with a halo in world space: (wx, wy) sim position, y the height. */
+let KIT_DAY = false;
+/** By day a lamp's flicker is dropped from its halo (the world shows flickering halos by day as fires). */
+export function setKitDay(day) { KIT_DAY = !!day; }
+const flick = (f) => (KIT_DAY ? 0 : f || 0);
+
 export function lampGlow(B, halos, lx, y, lz, wx, wy, color, o = {}) {
   const sz = o.size || [6, 2, 6];
   B.add('glow', o.shape === 'sphere' ? T.sphere(6, 4) : T.box(), [lx, y, lz], o.shape === 'sphere' ? [sz[0], sz[0], sz[0]] : sz, o.rot || null, color, { emissive: o.k ?? 4, uv: atlasUV('white'), noAO: true, noJitter: true });
-  if (halos && (o.halo ?? 60) > 0) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color, size: o.halo ?? 60, strength: o.strength ?? 0.5, flicker: o.flicker || 0 });
+  if (halos && (o.halo ?? 60) > 0) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color, size: o.halo ?? 60, strength: o.strength ?? 0.5, flicker: flick(o.flicker), blink: o.blink || 0 });
 }
 
 /** A caged bulkhead lamp on a wall facing local +z at (x, y, z). */
@@ -207,7 +212,7 @@ export function bulkhead(B, halos, x, y, z, wx, wy, color = '#ffc070', o = {}) {
   B.rbox('std', x, y, z + 2, 10, 6, 4, 1, '#3a3c3e', null, STEEL);
   B.add('glow', T.sphere(6, 4), [x, y, z + 4.2], [3.6, 2.4, 2], null, color, { emissive: o.k ?? 3.6, uv: atlasUV('white'), noAO: true, noJitter: true });
   for (const dx of [-3, 0, 3]) rod(B, 'std', [x + dx, y - 3, z + 5.6], [x + dx, y + 3, z + 5.6], 0.3, '#2a2a2c', STEEL, 4);
-  if (halos && wx !== undefined) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color, size: o.halo ?? 44, strength: o.strength ?? 0.45, flicker: o.flicker || 0 });
+  if (halos && wx !== undefined) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color, size: o.halo ?? 44, strength: o.strength ?? 0.45, flicker: flick(o.flicker) });
 }
 
 /** A fluorescent tube fixture hanging at y (length along local x). */
@@ -216,7 +221,7 @@ export function tubeLamp(B, halos, x, y, z, len, wx, wy, o = {}) {
   const lit = o.lit !== false;
   B.box(lit ? 'glow' : 'std', x, y + 0.6, z, len, 1.2, 6, lit ? (o.color || '#eef4ff') : '#8a8e92', null, lit ? { emissive: o.k ?? 3.2, uv: atlasUV('white'), noAO: true, noJitter: true } : PAINTED);
   if (o.hang) for (const dx of [-len * 0.4, len * 0.4]) rod(B, 'std', [x + dx, y + 3, z], [x + dx, y + 3 + o.hang, z], 0.3, '#2a2a2c', STEEL, 4);
-  if (lit && halos && wx !== undefined) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color: o.color || '#eef4ff', size: o.halo ?? 50, strength: o.strength ?? 0.35, flicker: o.flicker || 0 });
+  if (lit && halos && wx !== undefined) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color: o.color || '#eef4ff', size: o.halo ?? 50, strength: o.strength ?? 0.35, flicker: flick(o.flicker) });
 }
 
 // ---- noise ---------------------------------------------------------------------------------------------------
@@ -435,7 +440,9 @@ export function stairShaft(B, gy, halos, fl, o = {}) {
   // side walls (the flight's own lane walls are the obstacles: draw them inside and out)
   for (const s of [-1, 1]) {
     const zc = s * (hw + Wt / 2);
-    slopedWall(B, 'std', -30, L + 30, zc, Wt, y0a - (o.below || 60), y0b - (o.below || 60), H + 10, fl.h1 - fl.h0 + H + 10, o.wallCol || COL.concD, { ...CONC, noJitter: true });
+    // (down to the ground under the flight: the terrain's stepped wedge must not show beside it)
+    const ya = o.toGround === false ? y0a - 60 : -fl.h0 - 2, yb = o.toGround === false ? y0b - 60 : -fl.h0 - 2;
+    slopedWall(B, 'std', -30, L + 30, zc, Wt, ya, yb, H + 10, fl.h1 - fl.h0 + H + 10, o.wallCol || COL.concD, { ...CONC, noJitter: true });
     // a dado of paint and a handrail on the inside face
     slopedWall(B, 'std', -30, L + 30, s * (hw - 0.6), 1, 0, fl.h1 - fl.h0, 40, fl.h1 - fl.h0 + 40, o.dado || '#5a6a62', { ...PAINTED, noJitter: true });
     rod(B, 'std', [0, 36, s * (hw - 5)], [L, fl.h1 - fl.h0 + 36, s * (hw - 5)], 1.3, '#c8a030', PAINTED, 6);
@@ -454,7 +461,7 @@ export function stairShaft(B, gy, halos, fl, o = {}) {
     const wx = fx + x * c - s * (hw - 4) * sn, wy = fy + x * sn + s * (hw - 4) * c;
     B.rbox('std', x, y, s * (hw - 2), 10, 6, 4, 1, '#3a3c3e', null, STEEL);
     B.add('glow', T.sphere(6, 4), [x, y, s * (hw - 4.4)], [3.6, 2.4, 2], null, o.lamp || '#ffb050', { emissive: 3.4, uv: atlasUV('white'), noAO: true, noJitter: true });
-    if (halos) halos.push({ x: wx, y: wy, h: y + fl.h0, color: o.lamp || '#ffb050', size: 46, strength: 0.4, flicker: k % 3 === 1 ? 0.4 : 0, base: fl.h0 + (x / L) * (fl.h1 - fl.h0) });
+    if (halos) halos.push({ x: wx, y: wy, h: y + fl.h0, color: o.lamp || '#ffb050', size: 46, strength: 0.4, flicker: flick(k % 3 === 1 ? 0.4 : 0), base: fl.h0 + (x / L) * (fl.h1 - fl.h0) });
   }
   return { a, fx, fy, L, hw, H };
 }

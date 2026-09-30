@@ -185,7 +185,7 @@ function intakeTower(P, x, y) {
   const len = UP_Y - y - R + 6;
   B.box('std', 0, Z + 30, R + len / 2 - 4, 30, 6, len, COL.concD, null, CONC);
   for (const s of [-1, 1]) railing(B, s * 14, R - 4, s * 14, R + len - 6, Z + 33, 34, COL.yellow, { step: 40 });
-  lampGlow(B, halos, 0, Z + 160, 0, x, y, '#ff4a3a', { size: [4, 4, 4], k: 5, halo: 70, strength: 0.6, flicker: 0.4, y0: 0, shape: 'sphere' });
+  lampGlow(B, halos, 0, Z + 160, 0, x, y, '#ff4a3a', { size: [4, 4, 4], k: 5, halo: 70, strength: 0.6, blink: 1, y0: 0, shape: 'sphere' });
 }
 
 // ---- the spillway ------------------------------------------------------------------------------------
@@ -290,11 +290,14 @@ export function parapet(P, o) {
   B.box('std', 0, -6, s * (o.h / 2 + 5), L + 2, 12, 10, COL.concD, null, { ...CONC, noJitter: true });
   // an art-deco bronze railing on the wall: square posts, a rail of flat bars between them, a top rail
   const lowTier = P.tier === 'low';
-  const postStep = 90;
-  for (let x = -L / 2 + 6; x <= L / 2 - 4; x += postStep) B.box('std', x, H + 5 + 9, 0, 4, 18, 4, COL.bronze, null, BR);
-  B.box('std', 0, H + 5 + 18, 0, L, 2.4, 4, COL.bronze, null, BR);
-  B.box('std', 0, H + 5 + 4, 0, L, 1.4, 2, COL.bronze, null, BR);
-  if (!lowTier) for (let x = -L / 2 + 12; x < L / 2 - 4; x += 12) B.box('std', x, H + 5 + 11, 0, 0.9, 13, 0.9, '#6a5230', null, BR);
+  const postStep = 90, bronze = '#4a3a24', patina = '#3e4a3c';
+  for (let x = -L / 2 + 6; x <= L / 2 - 4; x += postStep) {
+    B.box('std', x, H + 5 + 9, 0, 3.2, 18, 3.2, bronze, null, BR);
+    B.cyl('std', x, H + 5 + 18, 0, 2.4, 3, bronze, 8, 0.4, null, BR);
+  }
+  rod(B, 'std', [-L / 2, H + 5 + 18, 0], [L / 2, H + 5 + 18, 0], 1.5, bronze, BR, 8);
+  rod(B, 'std', [-L / 2, H + 5 + 3, 0], [L / 2, H + 5 + 3, 0], 0.8, patina, BR, 5);
+  if (!lowTier) for (let x = -L / 2 + 12; x < L / 2 - 4; x += 12) B.box('std', x, H + 5 + 10.5, 0, 0.7, 14, 0.7, patina, null, BR);
   return true;
 }
 
@@ -351,7 +354,7 @@ export function stairTower(P, xc, east) {
   lampGlow(B, halos, 0, 168, 0, xc, yc, '#ffd9a0', { size: [10, 2, 10], k: 3, halo: 80, strength: 0.5, y0: Z });
   // a red beacon on the top
   B.cyl('std', 0, 406, 0, 3, 20, '#3a3c3e', 8, 1, null, STEEL);
-  lampGlow(B, halos, 0, 428, 0, xc, yc, '#ff3a2a', { size: [4, 4, 4], k: 6, halo: 120, strength: 0.8, flicker: 0.5, y0: Z, shape: 'sphere' });
+  lampGlow(B, halos, 0, 428, 0, xc, yc, '#ff3a2a', { size: [4, 4, 4], k: 6, halo: 120, strength: 0.8, blink: 1, y0: Z, shape: 'sphere' });
   void east;
 }
 
@@ -426,7 +429,7 @@ export function gantryCrane(P) {
   for (const gx of [-50, 50]) rod(B, 'std', [gx, topH + 70, -250], [gx, topH + 70, 170], 0.9, Y, PAINTED, 5);
   pic(B, 'hazard', 0, topH - 4, legZ[1] + 14, 8, 0, { w: 90 });
   // the beacon (the layout's light sits at Z + 260)
-  lampGlow(B, halos, 0, topH + 56, 0, x, (C.y0 + C.y1) / 2, '#ff5a3a', { size: [5, 5, 5], k: 6, halo: 120, strength: 0.8, flicker: 0.4, y0: Z, shape: 'sphere' });
+  lampGlow(B, halos, 0, topH + 56, 0, x, (C.y0 + C.y1) / 2, '#ff5a3a', { size: [5, 5, 5], k: 6, halo: 120, strength: 0.8, blink: 1, y0: Z, shape: 'sphere' });
   // crane rails along the crest (embedded steel strips the whole length)
   for (const rz of [C.y0 + 22, C.y1 - 22]) {
     for (let xx = C.x0; xx < C.x1; xx += 500) {

@@ -335,6 +335,13 @@ export function build(B) {
   B.box('concrete', 5000, 1480, 5260, 1900);     // the valve platform
   B.box('concrete', 4700, 1480, 5000, 1640);     // the service bridge
   B.box('concrete', C.x0 - 40, C.y0 - 20, C.x1 + 40, C.y1 + 20);   // the crest
+  // hard floors under every interior and stair (nothing grows through a floor)
+  B.box('concrete', 3500, 900, 3740, 1920);      // the west shaft and stair hall
+  B.box('concrete', 7410, 900, 7630, 1920);      // the east shaft
+  B.box('concrete', 3700, 1280, 4440, 1920);     // the control building
+  B.box('concrete', 5880, 1230, 7440, 1920);     // the turbine hall
+  B.box('concrete', 3200, 1280, 3520, 1920);     // the pocket under the abutment
+  B.box('concrete', 40, 3230, 400, 3490);        // the tunnel
   B.box('asphalt', C.x0 - 40, C.y0 + 40, C.x1 + 40, C.y1 - 40);    // the crest road
   B.box('concrete', 5880, 1900, 7430, 2640);     // the tailrace yard
   B.box('gravel', 7440, 1880, W, 2640);          // the village
@@ -598,6 +605,9 @@ function buildCrest(B, A, plats) {
     B.light(x + 210, C.y1 - 6, 320, '#ffcf8a', 0, Z + 118);
   }
   B.light(DAM.crane, 800, 260, '#ff5a3a', 0.4, Z + 260);   // the crane's warning beacon
+  // flags whipping in the wind by the stair towers
+  B.decor('flag', 3790, 884, 0, 1.2);
+  B.decor('flag', 7350, 884, 0, 1.2);
   // the shafts' lamps (absolute heights: halfway up and at the top)
   for (const s of [ws, es]) {
     B.light((s.x0 + s.x1) / 2, 1500, 200, '#ffb04a', 0.2, 170 + Z * 0.3);

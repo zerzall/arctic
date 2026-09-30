@@ -9,17 +9,33 @@
 //   dam-misc.js   the fallen bridge, the dock and boat, the depot gate, the road signs
 //   dam-fx.js     the reservoir, the chute's water, white water, spray, the day rain and lightning
 
-import { C3_BUCKETS, createC3Materials, rockFaces, stairShaft, at } from './dam-kit.js';
+import { C3_BUCKETS, createC3Materials, rockFaces, stairShaft, at, setKitDay } from './dam-kit.js';
 import { DAM, DAM_Z } from '../../shared/levels/dam.js';
 import { damBody, spillway, parapet, crestLamps, stairTower, hoistHouse, craneLeg, gantryCrane } from './dam-set.js';
 import {
   controlBuilding, controlInterior, furniture, partition, turbineHall, hallRoof, gateModel, styledWall, tunnel, flatCeiling,
 } from './dam-rooms.js';
-import { bridgeRuin, dockAndBoat, depotGate, signage } from './dam-misc.js';
+import { bridgeRuin, dockAndBoat, depotGate, signage, reservoirDebris, pipeStack } from './dam-misc.js';
 import { createDamFx } from './dam-fx.js';
 
 /** Extra geo-builder buckets of this level: the C3 atlas lit, emissive and blended. */
 export const BUCKETS = C3_BUCKETS;
+
+/** Roof styles this art draws itself (the engine's generic ceiling is skipped for them). */
+const ROOF_STYLES = new Set(['shaft', 'tunnel', 'hall', 'controlroom', 'stairhall']);
+
+/** Draw a styled ceiling (see ROOF_STYLES). */
+function drawRoof(P, r, map) {
+  switch (r.style) {
+    case 'tunnel': tunnel(P, r); break;
+    case 'hall': hallRoof(P); break;
+    case 'controlroom':
+      flatCeiling(P, r, { h: 150, tiles: true, lamps: map.lights.filter((l) => l.h === 140 && Math.abs(l.x - r.x) < r.w / 2 && Math.abs(l.y - r.y) < r.h / 2).map((l) => [l.x, l.y, true, l.flicker]) });
+      break;
+    case 'stairhall': flatCeiling(P, r, { h: 150 }); break;
+    default: break;   // ('shaft': the stair shafts draw their own sloped ceilings)
+  }
+}
 
 /** Obstacle styles drawn by a bigger model (or nothing at all: invisible colliders). */
 const DRAWN_ELSEWHERE = new Set(['nodraw', 'cext', 'cwindows', 'shaft', 'hallwall', 'craneleg']);
@@ -35,6 +51,7 @@ export function createLevelArt(ctx, deps) {
   const art = map.levelArt || { cliffs: [], flights: [], marks: [] };
   const P = { B: null, gy: deps.gy, halos: deps.halos, tier: deps.full || deps.tier, day: !!deps.day, map, ctx };
   let fx = null;
+  setKitDay(P.day);
   const use = (B) => { P.B = B; return P; };
 
   return {
@@ -61,19 +78,9 @@ export function createLevelArt(ctx, deps) {
 
     objective() { return false; },
 
-    roof(B, r) {
-      use(B);
-      switch (r.style) {
-        case 'shaft': return true;   // the stair shafts draw their own sloped ceilings (props)
-        case 'tunnel': tunnel(P, r); return true;
-        case 'hall': hallRoof(P); return true;
-        case 'controlroom':
-          flatCeiling(P, r, { h: 150, tiles: true, lamps: map.lights.filter((l) => l.h === 140 && Math.abs(l.x - r.x) < r.w / 2 && Math.abs(l.y - r.y) < r.h / 2).map((l) => [l.x, l.y, true, l.flicker]) });
-          return true;
-        case 'stairhall': flatCeiling(P, r, { h: 150 }); return true;
-        default: return false;
-      }
-    },
+    // (the styled ceilings are drawn with the props, whether or not the engine asks for roofs: claiming them
+    // here only keeps the generic ceiling of the engine away)
+    roof(B, r) { return ROOF_STYLES.has(r.style); },
 
     gateModel(B, gate, o) {
       use(B);
@@ -99,6 +106,9 @@ export function createLevelArt(ctx, deps) {
       step('dock', () => dockAndBoat(P, art.marks));
       step('depot', () => { const m = art.marks.find((q) => q.t === 'depotgate'); if (m) depotGate(P, m); });
       step('signs', () => signage(P));
+      step('flotsam', () => reservoirDebris(P));
+      step('pipes', () => { for (const m of art.marks) if (m.t === 'pipes') pipeStack(P, m); });
+      step('ceilings', () => { for (const r of map.roofs) drawRoof(P, r, map); });
       void at; void DAM_Z;
     },
 

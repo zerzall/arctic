@@ -110,7 +110,7 @@ export function controlBuilding(P) {
   B.rblock('std', -120, H + 6, -80, 60, 30, 40, 2, '#7a7e80', null, STEEL);
   B.cyl('std', 200, H + 6, 180, 3, 200, '#8a8e92', 8, 0.6, null, STEEL);
   for (let k = 0; k < 4; k++) rod(B, 'std', [200, H + 40 + k * 40, 180], [200 + 26 - k * 5, H + 40 + k * 40, 180], 0.7, '#8a8e92', STEEL, 4);
-  lampGlow(B, halos, 200, H + 208, 180, cx + 200, cy + 180, '#ff3a2a', { size: [3, 3, 3], k: 6, halo: 80, strength: 0.7, flicker: 0.5, y0: 0, shape: 'sphere' });
+  lampGlow(B, halos, 200, H + 208, 180, cx + 200, cy + 180, '#ff3a2a', { size: [3, 3, 3], k: 6, halo: 80, strength: 0.7, blink: 1, y0: 0, shape: 'sphere' });
   // the floor: terrazzo in the rooms, a darker border
   B.box('std', 0, 0.6, 0, L - 40, 1.2, D - 40, '#6e7468', null, { ...TERR, noJitter: true });
   B.box('std', 0, 0.4, 0, L - 20, 0.8, D - 20, '#4a4e48', null, { ...TERR, noJitter: true });
