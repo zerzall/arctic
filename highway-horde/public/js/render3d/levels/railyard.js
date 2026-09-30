@@ -9,6 +9,8 @@
 //   art.material(bucket, t)   the material of one of those buckets at tier t ('low' | 'high' | 'ultra')
 //   art.obstacle(B, o)        true = this module drew obstacle o (by o.style / o.prop / o.gate), false = default model
 //   art.objective(B, ob)      the same for the map's objective (a level usually has none)
+//   art.roof(B, r)            true = this module drew the ceiling of map.roofs entry r (r.style); else E's generic one
+//   art.gateModel(B, gate, o) optional: the model of a gate piece, which the engine animates (JOURNEY.md §4.1)
 //   art.props(B)              free props that are not obstacles (drawn once, in the static meshes)
 //   art.finish()              after the static meshes exist: build separate meshes (signs, animated parts)
 //   art.update(view, frame)   per frame

@@ -17,6 +17,7 @@ const MODULES = { millroad, hollowcreek, forest, hospital, mall, metro, dam, rai
 const NOOP = {
   obstacle: () => false,
   objective: () => false,
+  roof: () => false,        // true = the art drew this roof's ceiling itself (the generic one is skipped)
   props() {},
   finish() {},
   update() {},

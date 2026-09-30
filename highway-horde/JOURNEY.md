@@ -142,8 +142,8 @@ A few rules follow from how the sim works:
 `plain` (a bare ceiling and bulbs) · `office` (ceiling tiles and fluorescent panels) · `hospital` (tiles,
 long tubes, a clean cold light) · `mall` (high ceiling, skylights, spot rows) · `metro` (a vaulted concrete
 tunnel with strip lights) · `industrial` (trusses, sodium high-bays, corrugated roof) · `house` (plaster and
-a pendant lamp). A level's own art may draw its ceilings itself and set `o.style` on them. E's generic
-renderer draws the rest.
+a pendant lamp). A level's own art may draw a ceiling itself (`B.roof(..., {style})`, then `art.roof(B, r)`
+returns true). E's generic renderer draws the rest, and the indoor light mask applies either way.
 
 ## 4. The engine (agent E)
 
@@ -227,6 +227,7 @@ export function createLevelArt(ctx, deps) {   // deps: { root, mats, fx, halos, 
   return {
     obstacle(B, o) { /* draw o (by o.style / o.prop / o.gate) with B; return true, or false for the default model */ },
     objective(B, ob) { return false; },
+    roof(B, r) { /* draw the ceiling of map.roofs entry r yourself (r.style); true = E's generic ceiling is skipped */ return false; },
     props(B) { /* free props, drawn once into the static meshes */ },
     finish() {}, update(view, frame) {}, setQuality(full) {}, dispose() {},
     material(bucket, t) {},   // for your BUCKETS

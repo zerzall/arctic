@@ -641,7 +641,10 @@ function createBuilder(meta, seed) {
      */
     roof(x, y, w, h, a = 0, opts = {}) {
       if (!map.roofs) map.roofs = [];
-      map.roofs.push({ x: round1(x), y: round1(y), w: round1(w), h: round1(h), a: normAngle(a), height: opts.height || 150, kind: opts.kind || 'plain', section: opts.section, dark: opts.dark !== undefined ? opts.dark : 0.75 });
+      const r = { x: round1(x), y: round1(y), w: round1(w), h: round1(h), a: normAngle(a), height: opts.height || 150, kind: opts.kind || 'plain', section: opts.section, dark: opts.dark !== undefined ? opts.dark : 0.75 };
+      // (`style`: the level's art draws this ceiling itself, art.roof(B, r) in render3d/levels/<id>.js)
+      if (opts.style !== undefined) r.style = opts.style;
+      map.roofs.push(r);
     },
     /** Reserve a rectangle that scatter (trees, rocks, clutter decor) must leave empty. */
     keep(x, y, w, h, a = 0) {
