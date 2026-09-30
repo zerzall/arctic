@@ -105,7 +105,7 @@ export const RELOADS = {
 const LOOP_GUNS = new Set(['minigun', 'flame', 'cryo', 'chainsaw']);
 
 // Events that still matter when a tab returns from the background with a backlog.
-const STATE_EVENTS = new Set(['wave', 'waveclear', 'bossspawn', 'gameover', 'victory', 'down', 'died', 'revived', 'respawn', 'buy', 'buyfail']);
+const STATE_EVENTS = new Set(['wave', 'waveclear', 'bossspawn', 'gameover', 'victory', 'down', 'died', 'revived', 'respawn', 'buy', 'buyfail', 'objective', 'radio', 'storyend', 'npc']);
 
 const PRIO_OWN = 90;
 const PRIO_UI = 100;
@@ -724,6 +724,29 @@ class Engine {
         this.play('plane', { local: true, prio: 70, offset: 1.2, pan: clamp(this.panOf((e.x ?? this.lx) - this.lx, (e.y ?? this.ly) - this.ly) / PAN_MAX, -1, 1) * 0.5 });
         this.play('drop_thud', { ...pos, minGain: 0.15 });
         return;
+      // Road to Haven: the objective tracker, the radio, pickups and uses of the story layer
+      case 'objective':
+        if (e.what === 'done') this.play('obj_done', { local: true, prio: PRIO_UI });
+        else if (e.what === 'start') this.play('obj_new', { local: true, prio: PRIO_UI, delay: 0.05 });
+        else if (e.what === 'fail') this.play('deny', { local: true, prio: PRIO_UI });
+        return;
+      case 'radio':
+        if (e.kind !== 'say') this.play('radio_blip', { local: true, prio: PRIO_UI });
+        return;
+      case 'item':
+        if (own) this.play('pick_story', { local: true, prio: PRIO_OWN });
+        else this.play('pick_story', { ...pos, gain: 0.5 });
+        return;
+      case 'interact':
+        if (own) this.play('interact_done', { local: true, prio: PRIO_OWN });
+        return;
+      case 'talk':
+        if (own) this.play('ui_click', { local: true, prio: PRIO_UI });
+        return;
+      case 'npc':
+        if (e.what === 'down') this.play('deny', { local: true, prio: PRIO_UI, gain: 0.8 });
+        else if (e.what === 'up') this.play('respawn', { local: true, prio: PRIO_UI, gain: 0.7 });
+        return;
       case 'gameover':
         this.play('gameover', { local: true, prio: PRIO_UI });
         this.musicMode = 'gameover';
@@ -836,11 +859,30 @@ class Engine {
     const horde = this.hordeLoops(view, dt, want);
     this.hazardLoops(view, want, horde);
     this.syncLoops(want, now);
+    this.holdTicks(view, dt);
     this.heartbeat(me, dt);
     this.setMuffle(me, now);
     this.setMusic(view, me, horde.count);
     this.duckMusic(now);
     if (this.manual) this.musicTick();
+  }
+
+  /** A soft tick while the local survivor holds a hold-to-use spot: the pitch climbs as it fills. */
+  holdTicks(view, dt) {
+    const list = view.interactables;
+    let prog = -1;
+    if (list && list.length && this.localId) {
+      for (const it of list) if (it.user === this.localId && it.prog > 0 && !it.done) prog = Math.max(prog, it.prog);
+    }
+    if (prog < 0) {
+      this.holdT = 0;
+      return;
+    }
+    this.holdT = (this.holdT || 0) - dt;
+    if (this.holdT <= 0) {
+      this.holdT = 0.2 - 0.09 * prog;
+      this.play('hold_tick', { local: true, prio: PRIO_UI, rate: 0.85 + prog * 0.9 });
+    }
   }
 
   playerLoops(view, me, now, want) {
