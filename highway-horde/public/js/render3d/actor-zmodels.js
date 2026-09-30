@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { B } from './actor-rig.js';
 import { addAccessories } from './actor-zkit.js';
 import { optionsForType } from './actor-zlook.js';
+import { cinFaceRelief, cinFace } from './actor-zcin.js';
 
 const _dc = new THREE.Color();
 
@@ -98,7 +99,23 @@ export function zombieSkeleton(type) {
 // meshes, only the big accessories), 2 low (coarser still, no accessories: variety then
 // comes from the shader alone — hems, patterns, wounds, skin, colours).
 let TIER = 0;
-const dq = (n) => (TIER >= 1 ? Math.max(5, Math.round(n * 0.78)) : n);
+// -1 is the cinematic tier: LOD 0 only, everything smoother and with the hero details of actor-zcin.js
+const CIN = () => TIER < 0;
+const dq = (n) => (TIER < 0 ? Math.round(n * 1.75) : TIER >= 1 ? Math.max(5, Math.round(n * 0.78)) : n);
+/** Ring subdivision of the hero body parts (cinematic only). */
+const sd = (L) => (TIER < 0 && L === 0 ? 2 : 1);
+/**
+ * Cloth folds for a garment tube: creases that run round the limb and bunch near the joint
+ * (`joint` = ring fraction of the elbow / knee); 1 + small waves, cinematic LOD 0 only.
+ */
+function folds(L, seed, amp, joint = 0.5, freq = 34) {
+  if (!(TIER < 0 && L === 0)) return null;
+  return (th, t) => {
+    const env = 0.35 + 0.65 * Math.exp(-((t - joint) * (t - joint)) / 0.045);
+    return 1 + amp * env * (0.6 * Math.sin(t * freq + th * 2 + seed) + 0.4 * Math.sin(t * freq * 1.73 - th * 3 + seed * 2.1));
+  };
+}
+const withFolds = (base, f) => (base && f ? (th, t) => base(th, t) * f(th, t) : base || f || undefined);
 
 /**
  * Build one zombie model.
@@ -108,7 +125,7 @@ const dq = (n) => (TIER >= 1 ? Math.max(5, Math.round(n * 0.78)) : n);
  * @returns {ShapeBuilder}
  */
 export function buildZombie(type, L, tier = 0) {
-  TIER = tier;
+  TIER = tier < 0 && L > 0 ? 0 : tier;       // (the cinematic hero is LOD 0; the far levels are the ultra ones)
   try { return buildModel(type, L, tier); } finally { TIER = 0; }
 }
 
@@ -147,7 +164,7 @@ function buildModel(type, L, tier) {
     return k;
   };
   sb.tube(torsoRings, {
-    seg: seg(18, 8, 6), cap0: 'round', cap1: 'round', capRings: seg(3, 1, 1), profile: torsoProfile, dec: L === 2 ? 2 : 1,
+    seg: seg(18, 8, 6), cap0: 'round', cap1: 'round', capRings: seg(3, 1, 1), profile: torsoProfile, dec: L === 2 ? 2 : 1, subdiv: sd(L),
     slot: L < 2 ? SLOT.SKIN : SLOT.CLOTH, mat: L < 2 ? MAT.SKIN : MAT.CLOTH, color: '#ffffff',
     noise: L === 0 ? { amp: 0.28, freq: 0.45 } : null,
     paint: 0.15,
@@ -162,7 +179,7 @@ function buildModel(type, L, tier) {
     { c: [0, P.hip - 1.4, 0], rx: 4.15 * D, rz: 6.1 * K, bone: B.HIPS },
     { c: [0.2, P.hip + 1.6, 0], rx: 4.1 * D, rz: 5.95 * K, bone: bw(B.HIPS, B.SPINE, 0.4) },
     { c: [0.3, P.waist + 0.6, 0], rx: 4.2 * D, rz: 5.85 * K, bone: B.SPINE },
-  ], { seg: seg(16, 8, 6), cap0: 'round', capRings: seg(2, 1, 1), slot: SLOT.CLOTH2, mat: MAT.CLOTH, color: '#ffffff', paint: 0.35, part: PART.PELVIS });
+  ], { seg: seg(16, 8, 6), subdiv: sd(L), cap0: 'round', capRings: seg(2, 1, 1), slot: SLOT.CLOTH2, mat: MAT.CLOTH, color: '#ffffff', paint: 0.35, part: PART.PELVIS });
   if (L === 0) {
     sb.tube(lineRings([0.3, P.waist - 0.2, 0], [0.3, P.waist + 1.1, 0], 4.35 * D, 4.35 * D, 2, (r) => { r.rz = 6.0 * K; r.rx = 4.35 * D; }),
       { seg: 16, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#2a1e16', bone: B.SPINE });
@@ -178,7 +195,7 @@ function buildModel(type, L, tier) {
   const headDef = head(sb, P, L, type);
 
   // ---- accessories (hats, hair, gear, gore, armour) ------------------------------------
-  if (tier < 2) addAccessories(sb, P, tier === 0 ? L : Math.max(L, 1), headDef, has);
+  if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDef, has);
 
   // ---- per-type extras ----------------------------------------------------------------
   extras(sb, P, L, type);
@@ -203,7 +220,7 @@ function topShell(sb, P, L, torsoRings, profile, type) {
   const top = torsoRings[8];
   rings.push({ c: [top.c[0] - 0.2, top.c[1] - 0.6, 0], rx: top.rx + 0.9, rz: top.rz + 1.2, bone: top.bone });
   sb.tube(rings, {
-    seg: L === 0 ? dq(20) : 8, profile, slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', part: PART.TOP,
+    seg: L === 0 ? dq(20) : 8, profile: withFolds(profile, folds(L, 1.3, 0.022, 0.55, 26)), subdiv: sd(L), slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', part: PART.TOP,
     noise: L === 0 ? { amp: 0.35, freq: 0.3, seed: 5 } : null, paint: (x, y) => (y < P.hip + 3 ? 0.55 : 0.3),
   });
   if (type === 'boss' && L < 2) {
@@ -249,7 +266,7 @@ function legs(sb, P, L, side, type) {
   ];
   // one shell: trousers above the per-instance hem, bare skin below it (the shader decides)
   const pr = rings.map((r, i) => ({ ...r, rx: (r.rx ?? r.r) + 0.3 + (i > 5 ? 0.25 : 0), rz: (r.rz ?? r.r) + 0.3 + (i > 5 ? 0.2 : 0), r: undefined }));
-  sb.tube(pr, { seg, cap0: 'round', capRings: 1, slot: legSlot, mat: MAT.CLOTH, color: '#ffffff', paint: (x, y) => (y < kneeY - 3 ? 0.5 : 0.28), dec: L === 2 ? 2 : 1,
+  sb.tube(pr, { seg, subdiv: sd(L), profile: folds(L, side * 2.1, 0.03, 0.55, 30), cap0: 'round', capRings: 1, slot: legSlot, mat: MAT.CLOTH, color: '#ffffff', paint: (x, y) => (y < kneeY - 3 ? 0.5 : 0.28), dec: L === 2 ? 2 : 1,
     noise: L === 0 ? { amp: 0.22, freq: 0.35, seed: side * 3 } : null, part: PART.LEG });
   // the foot: bare skin (toes), shoes are option groups over it
   const fx = 1.7;
@@ -295,12 +312,12 @@ function arm(sb, P, L, side, type) {
     { c: [0.2, wrist + 3.2, z], rx: r * 0.7, rz: r * 0.62, bone: FA },
     { c: [0.2, wrist + 0.3, z], rx: r * 0.55, rz: r * 0.46, bone: [FA, HD, 0.5] },
   ];
-  sb.tube(rings, { seg, cap0: 'round', capRings: L ? 1 : 2, cap1: 'flat', slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', dec: L === 2 ? 2 : 1,
+  sb.tube(rings, { seg, subdiv: sd(L), cap0: 'round', capRings: L ? 1 : 2, cap1: 'flat', slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', dec: L === 2 ? 2 : 1,
     paint: (x, y) => (y < elbow ? 0.45 : 0.15), noise: L === 0 ? { amp: 0.16 * k, freq: 0.6, seed: side } : null });
   // sleeves: long, cut to length per instance
   if (L < 2) {
     const srings = rings.slice(0, 7).map((q) => ({ ...q, rx: (q.rx ?? q.r) + 0.4, rz: (q.rz ?? q.r) + 0.4, r: undefined }));
-    sb.tube(srings, { seg, slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', paint: 0.25, part: PART.SLEEVE, noise: L === 0 ? { amp: 0.2, freq: 0.5 } : null });
+    sb.tube(srings, { seg, subdiv: sd(L), profile: folds(L, side * 1.7, 0.035, 0.62, 32), slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', paint: 0.25, part: PART.SLEEVE, noise: L === 0 ? { amp: 0.2, freq: 0.5 } : null });
   }
   hand(sb, P, L, side, HD, [0.3, wrist, z], r, k);
 }
@@ -384,20 +401,25 @@ function headPoint(P, x, y, z, def, inset = 1) {
 
 function head(sb, P, L, type) {
   const c = P.headC, r = P.headR;
-  const def = headDeform(P, type);
+  const cin = CIN() && L === 0;
+  let def = headDeform(P, type);
+  if (cin) {
+    const base = def, relief = cinFaceRelief(P);
+    def = (p) => { base(p); relief(p); };
+  }
   // neck with tendons
   sb.tube([
     { c: [0.0, P.neck - 1.6, 0], rx: 2.3, rz: 2.6, bone: [B.CHEST, B.NECK, 0.3] },
     { c: [0.3, P.neck + 0.6, 0], rx: 1.9, rz: 2.15, bone: B.NECK },
     { c: [c[0] - 0.8, c[1] - r[1] * 0.55, 0], rx: 2.0, rz: 2.2, bone: [B.NECK, B.HEAD, 0.7] },
-  ], { seg: L === 0 ? 12 : 7, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3,
+  ], { seg: L === 0 ? dq(12) : 7, subdiv: sd(L) * 2, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3,
     profile: L === 0 ? (th) => 1 + 0.08 * Math.pow(Math.abs(Math.cos(th - 0.6)), 8) + 0.08 * Math.pow(Math.abs(Math.cos(th + 0.6)), 8) : null });
   // skull (the mouth hollow is dark wet flesh)
   const inMouth = (x, y, z) => {
     const ux = (x - c[0]) / r[0], uy = (y - c[1]) / r[1], uz = z / r[2];
     return uy < -0.3 && ux > 0.1 && ux < 0.8 && Math.abs(uz) < 0.62;
   };
-  sb.ellipsoid(c, r, { segW: L === 0 ? dq(26) : L === 1 ? 12 : 8, segH: L === 0 ? dq(20) : L === 1 ? 9 : 6, deform: def,
+  sb.ellipsoid(c, r, { segW: L === 0 ? (cin ? 72 : dq(26)) : L === 1 ? 12 : 8, segH: L === 0 ? (cin ? 52 : dq(20)) : L === 1 ? 9 : 6, deform: def,
     slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ffffff', bone: B.HEAD,
     colorFn: L < 2 ? (x, y, z) => {
       if (inMouth(x, y, z)) return '#2a0808';
@@ -416,11 +438,11 @@ function head(sb, P, L, type) {
     matFn: L < 2 ? (x, y, z) => (inMouth(x, y, z) ? MAT.FLESH : MAT.SKIN) : null,
     paint: (x, y) => (y < c[1] - r[1] * 0.3 && x > c[0] ? 0.8 : 0.2) });
   // eyes: glowing, deep in the sockets
-  for (const s of [-1, 1]) {
+  if (!cin) for (const s of [-1, 1]) {
     const e = headPoint(P, 0.9, 0.12, s * 0.37, def, 0.9);
     sb.ellipsoid(e, [0.66, 0.6, 0.7], { segW: L === 2 ? 4 : 8, segH: L === 2 ? 3 : 5, slot: SLOT.ACCENT, mat: MAT.EYE, color: '#ffffff', bone: B.HEAD, part: PART.EYE });
   }
-  if (L === 0) {
+  if (L === 0 && !cin) {
     // heavy, sparse brows over the sockets and dark nostrils
     for (const s of [-1, 1]) {
       const b0 = headPoint(P, 0.86, 0.34, s * 0.16, def, 1.005), b1 = headPoint(P, 0.72, 0.36, s * 0.55, def, 1.005);
@@ -432,15 +454,27 @@ function head(sb, P, L, type) {
   // the jaw: a solid mandible hinged under the ears
   const jc = [c[0] + r[0] * 0.14, c[1] - r[1] * 0.7, 0];
   const jr = [r[0] * 0.78, r[1] * 0.3 * Math.min(1.25, P.jawDrop), r[2] * 0.82];
-  sb.ellipsoid(jc, jr, { segW: L === 0 ? 16 : L === 1 ? 8 : 6, segH: L === 0 ? 8 : 4, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ececec', bone: B.JAW,
+  const jawDef = (p) => {
+    p.z *= 1 - 0.3 * Math.max(0, p.x);                   // V toward the chin
+    if (p.y > 0.25) p.y = 0.25 + (p.y - 0.25) * 0.35;     // flat top (teeth sit on it)
+    if (p.x < -0.4) p.y *= 1.25;                          // taller at the hinge
+    if (cin) {
+      // chin: a dimple and a firmer point; the jaw line
+      const f = Math.max(0, p.x);
+      const l = Math.hypot(p.x, p.y, p.z) || 1;
+      const k = 1 + 0.05 * gauss(p.y / l + 0.55, 0.3) * gauss(p.z / l, 0.35) * smooth01((p.x / l - 0.5) / 0.3) - 0.03 * gauss(p.z / l, 0.05) * smooth01((p.x / l - 0.7) / 0.2) * (p.y < 0 ? 1 : 0) + 0.02 * f * 0;
+      p.x *= k; p.y *= k; p.z *= k;
+    }
+  };
+  sb.ellipsoid(jc, jr, { segW: L === 0 ? (cin ? 48 : 16) : L === 1 ? 8 : 6, segH: L === 0 ? (cin ? 22 : 8) : 4, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#ececec', bone: B.JAW,
     paint: 0.75, colorFn: L < 2 ? (x, y) => (y > jc[1] + jr[1] * 0.55 && x > jc[0] - jr[0] * 0.2 ? '#3a0c0c' : '#ececec') : null,
-    deform: (p) => {
-      p.z *= 1 - 0.3 * Math.max(0, p.x);                   // V toward the chin
-      if (p.y > 0.25) p.y = 0.25 + (p.y - 0.25) * 0.35;     // flat top (teeth sit on it)
-      if (p.x < -0.4) p.y *= 1.25;                          // taller at the hinge
-    } });
+    deform: jawDef });
   if (L === 2) return def;
   if (L === 1) return def;
+  if (cin) {
+    cinFace(sb, P, type, (x, y, z, inset) => headPoint(P, x, y, z, def, inset), def, { jc, jr, def: jawDef });
+    return def;
+  }
   // ears
   for (const s of [-1, 1]) {
     const e = headPoint(P, -0.08, 0.02, s, def, 0.97);

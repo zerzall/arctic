@@ -293,9 +293,9 @@ export function makeMaterials(shared, opts = {}) {
     diffuseColor.rgb = baseCol * hhT(${T_COL5}).rgb;
     hhM = 3;
   } else if (hhPart == 7) {
-    // eyes: one missing / milky
+    // eyes: one missing / milky (the cinematic eye also has a sclera and a pupil: only the iris goes milky)
     if ((v2.w > 0.5 && v2.w < 1.5 && vMP.z < 0.0) || (v2.w > 1.5 && v2.w < 2.5 && vMP.z > 0.0)) { hhEyeK = 0.0; diffuseColor.rgb = vec3(0.02, 0.005, 0.005); }
-    else if (v2.w > 2.5) { diffuseColor.rgb = vec3(0.75, 0.78, 0.74); hhEyeK = 0.55; }
+    else if (v2.w > 2.5 && hhM == 7) { diffuseColor.rgb = vec3(0.75, 0.78, 0.74); hhEyeK = 0.55; }
   } else if (hhPart == 9) {
     // hair strands: cut to length (long, shoulder, bob, shaggy), thinned out for wispy hair
     if (vMP.y < v3.x + (hhD.r - 0.5) * 1.4) discard;
@@ -372,6 +372,16 @@ export function makeMaterials(shared, opts = {}) {
   } else if (hhM == 6) {
     diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
     hhWet = max(hhWet, 0.75);
+  } else if (hhM == 13) {
+    // wet sclera: yellowed, with a network of red veins that thickens with the rot
+    float sv = smoothstep(0.42, 0.8, hhD2.r + hhD.a * 0.18) * (0.35 + rot * 0.9);
+    diffuseColor.rgb = mix(diffuseColor.rgb * (0.85 + hhD.r * 0.2), vec3(0.42, 0.04, 0.035), sv * 0.7);
+    hhWet = 1.0;
+  } else if (hhM == 14) {
+    // enamel: stained toward the gum line and by the grime mask, blood from the painted mouth
+    float gum = smoothstep(0.0, 0.7, vI.y);
+    diffuseColor.rgb *= 0.86 + hhD.r * 0.22;
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.48, 0.3), (hhD.b * 0.55 + gum * 0.25));
   } else if (hhM == 9) {
     diffuseColor.rgb *= 0.85 + hhD.r * 0.25;
     // rust and dirt streaks on armour
@@ -413,6 +423,8 @@ export function makeMaterials(shared, opts = {}) {
   else if (hhM == 9) roughnessFactor = 0.3 + hhD.b * 0.35;
   else if (hhM == 10) roughnessFactor = 0.82;
   else if (hhM == 12) roughnessFactor = 0.05;
+  else if (hhM == 13) roughnessFactor = 0.09;
+  else if (hhM == 14) roughnessFactor = 0.26 + hhD.b * 0.3;
   roughnessFactor = mix(roughnessFactor, 0.16, hhWet);
   roughnessFactor = mix(roughnessFactor, 0.95, hhChar);`)
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
@@ -424,7 +436,8 @@ export function makeMaterials(shared, opts = {}) {
     else if (hhM == 5) nxy = (nn.rg * 2.0 - 1.0) * 0.25;
     else if (hhM == 0) nxy = (nn.rg * 2.0 - 1.0);
     else if (hhM == 6 || hhM == 3 || hhM == 10) nxy = (nn.rg * 2.0 - 1.0) * 0.6;
-    else if (hhM == 7 || hhM == 8 || hhM == 12) nxy = vec2(0.0);
+    else if (hhM == 7 || hhM == 8 || hhM == 12 || hhM == 13) nxy = vec2(0.0);
+    else if (hhM == 14) nxy = (nn.rg * 2.0 - 1.0) * 0.12;
     else nxy = (nn.rg * 2.0 - 1.0) * 0.3;
     normal = hhPerturb(normal, -vViewPosition, vDUv, nxy);
   }`)
@@ -452,7 +465,7 @@ export function makeMaterials(shared, opts = {}) {
   #endif
   gl_FragColor.rgb += hhRimCol * rigRim;`);
   };
-  mat.customProgramCacheKey = () => 'hh-rig3-std';
+  mat.customProgramCacheKey = () => 'hh-rig4-std';
 
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
@@ -462,6 +475,6 @@ export function makeMaterials(shared, opts = {}) {
       .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
   };
-  depth.customProgramCacheKey = () => 'hh-rig3-depth';
+  depth.customProgramCacheKey = () => 'hh-rig4-depth';
   return { material: mat, depth, uniforms };
 }

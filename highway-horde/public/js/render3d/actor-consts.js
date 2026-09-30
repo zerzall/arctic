@@ -36,9 +36,11 @@ export const SLOT = { FIXED: 0, SKIN: 1, CLOTH: 2, CLOTH2: 3, ACCENT: 4, HAIR: 5
 /** Surface class of a vertex (roughness, normal map channel, special shading). */
 export const MAT = {
   SKIN: 0, CLOTH: 1, TEAR: 2, LEATHER: 3, BONE: 4, HAIR: 5, FLESH: 6, EYE: 7, GLOW: 8, METAL: 9, RUBBER: 10, SKIN_TEAR: 11, GLASS: 12,
+  // cinematic tier: wet sclera / cornea, glossy tooth enamel, hair cards (alpha-cut strands)
+  SCLERA: 13, TEETH: 14, CARD: 15,
 };
 /** What a vertex is, for per-instance garment logic (vertex attribute aExt.y). */
-export const PART = { NONE: 0, TOP: 1, SLEEVE: 2, LEG: 3, PELVIS: 4, HAND: 5, SHOE: 6, EYE: 7, HAT: 8, HAIR: 9, SOLE: 10, SHAFT: 11, CROWN: 12, LENS: 13 };
+export const PART = { NONE: 0, TOP: 1, SLEEVE: 2, LEG: 3, PELVIS: 4, HAND: 5, SHOE: 6, EYE: 7, HAT: 8, HAIR: 9, SOLE: 10, SHAFT: 11, CROWN: 12, LENS: 13, CARD: 14 };
 
 export const WOUND = { GASH: 0, BONE: 1, BITE: 2, BULLET: 3, BURN: 4, ACID: 5 };
 

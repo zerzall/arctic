@@ -17,8 +17,33 @@ const cache = new Map();
 
 function cached(key, fn) {
   let v = cache.get(key);
-  if (!v) { v = fn(); cache.set(key, v); }
+  if (!v) { v = fn(); if (v && typeof v.next === 'function') v = runSync(v); cache.set(key, v); }
   return v;
+}
+
+/** Run a generator to completion. */
+function runSync(gen) {
+  let r = gen.next();
+  while (!r.done) r = gen.next();
+  return r.value;
+}
+
+/**
+ * Run a generator in time slices (`budget` ms of work per slice, then a macrotask break),
+ * so building a big texture never freezes the page; resolves with the generator's result.
+ */
+export function driveAsync(gen, budget = 8) {
+  return new Promise((resolve, reject) => {
+    const step = () => {
+      try {
+        const t0 = performance.now();
+        let r;
+        do r = gen.next(); while (!r.done && performance.now() - t0 < budget);
+        if (r.done) resolve(r.value); else setTimeout(step, 0);
+      } catch (err) { reject(err); }
+    };
+    step();
+  });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -160,11 +185,11 @@ const V_512_39 = makeVn(512, 39);
 const V_8_16_512 = makeVn(8, 16, 512);
 const V_8_3 = makeVn(8, 3);
 
-function genActorDetail() {
-  const S = 512;
+function* genActorDetail(S = 512, fine = false) {
   const px = new Uint8Array(S * S * 4);
   const hSkin = new Float32Array(S * S), hCloth = new Float32Array(S * S);
   for (let y = 0; y < S; y++) {
+    if ((y & 7) === 7) yield y / S;
     const v = y / S;
     for (let x = 0; x < S; x++) {
       const u = x / S;
@@ -196,16 +221,26 @@ function genActorDetail() {
       const o = i * 4;
       px[o] = rot * 255; px[o + 1] = weave * 255; px[o + 2] = grime * 255; px[o + 3] = splat * 255;
       // heights for the normal maps
-      const ridge = 1 - Math.abs(F_8_4_91(u, v) * 2 - 1);
-      const pores = smooth(0.05, 0.45, worley(u, v, 56, 97));
       const vein = smooth(0.9, 0.99, 1 - Math.abs(F_5_3_101(u, v) * 2 - 1));
-      hSkin[i] = ridge * ridge * 0.55 + pores * 0.22 + vein * 0.35 + m * 0.4;
+      if (fine) {
+        // cinematic skin: fine pores and micro-wrinkles with no orange-peel lumps
+        const ridge = 1 - Math.abs(F_16_3_23(u * 3, v * 3) * 2 - 1);
+        const pores = smooth(0.06, 0.4, worley(u, v, 150, 97));
+        const crease = smooth(0.75, 0.97, 1 - Math.abs(F_32_2_51(u + F_8_2_33(u, v) * 0.05, v) * 2 - 1));
+        hSkin[i] = ridge * ridge * 0.16 + pores * 0.16 + crease * 0.12 + vein * 0.24 + m * 0.1;
+      } else {
+        const ridge = 1 - Math.abs(F_8_4_91(u, v) * 2 - 1);
+        const pores = smooth(0.05, 0.45, worley(u, v, 56, 97));
+        hSkin[i] = ridge * ridge * 0.55 + pores * 0.22 + vein * 0.35 + m * 0.4;
+      }
       hCloth[i] = thread * 0.35 + fibre * 0.45 + slub * 0.6;
     }
   }
   const nrm = new Uint8Array(S * S * 4);
-  heightToNormal(hSkin, S, S, 3.2, nrm, 0, 4);
-  heightToNormal(hCloth, S, S, 3.0, nrm, 2, 4);
+  // (a texel of the 1024 map is half as wide, so the same height slope needs twice the strength)
+  const k = S / 512;
+  heightToNormal(hSkin, S, S, (fine ? 2.4 : 3.2) * k, nrm, 0, 4);
+  heightToNormal(hCloth, S, S, 3.0 * k, nrm, 2, 4);
   return { detail: px, normal: nrm, size: S };
 }
 
@@ -242,10 +277,10 @@ function worleyEdge(u, v, p, seed) {
   return Math.sqrt(b2) - Math.sqrt(b1);
 }
 
-function genActorDetail2() {
-  const S = 512;
+function* genActorDetail2(S = 512) {
   const px = new Uint8Array(S * S * 4);
   for (let y = 0; y < S; y++) {
+    if ((y & 7) === 7) yield y / S;
     const v = y / S;
     for (let x = 0; x < S; x++) {
       const u = x / S;
@@ -284,10 +319,22 @@ function dataTex(data, size, aniso = 8) {
  * Fresh textures over the cached actor pixel data (caller disposes).
  * @returns {{ detail: THREE.DataTexture, normal: THREE.DataTexture, detail2: THREE.DataTexture }}
  */
-export function actorTextures(aniso = 8) {
-  const d = cached('actor', genActorDetail);
-  const d2 = cached('actor2', genActorDetail2);
+export function actorTextures(aniso = 8, scale = 1) {
+  const hi = scale > 1;
+  const d = cached(hi ? 'actor1024' : 'actor', () => genActorDetail(hi ? 1024 : 512, hi));
+  const d2 = cached(hi ? 'actor2-1024' : 'actor2', () => genActorDetail2(hi ? 1024 : 512));
   return { detail: dataTex(d.detail, d.size, aniso), normal: dataTex(d.normal, d.size, aniso), detail2: dataTex(d2.detail, d2.size, aniso) };
+}
+
+/**
+ * The cinematic 1024² actor textures, generated in time slices (about 2.5 s of work spread
+ * over frames). Resolves with fresh textures (caller disposes) once the pixels exist; the
+ * page keeps drawing with the 512² set meanwhile.
+ */
+export async function actorTexturesAsync(aniso = 8) {
+  if (!cache.has('actor1024')) cache.set('actor1024', await driveAsync(genActorDetail(1024, true)));
+  if (!cache.has('actor2-1024')) cache.set('actor2-1024', await driveAsync(genActorDetail2(1024)));
+  return actorTextures(aniso, 2);
 }
 
 // ---------------------------------------------------------------------------------------

@@ -205,7 +205,7 @@ function createStubRenderer() {
       renderer.info.reset();
       renderer.clear();
       renderer.render(scene, camera);
-      if (viewmodel && viewmodel.scene) {
+      if (viewmodel && viewmodel.scene && !qs.get('novm')) {
         renderer.clearDepth();
         renderer.render(viewmodel.scene, viewmodel.camera);
       }
@@ -317,7 +317,7 @@ function galleryScene() {
   for (let k = 0; k < n; k++) {
     const t = list[k % list.length];
     const c = k % cols, r = Math.floor(k / cols);
-    zombies.push({ id: start + k, type: t, x: local.x + (c - (cols - 1) / 2) * spacing, y: local.y - dist - r * row, angle: Math.PI / 2 + (((k * 7) % 5) - 2) * 0.05, hp: 1, flags: flags0, _spd: 0 });
+    zombies.push({ id: start + k, type: t, x: local.x + (c - (cols - 1) / 2) * spacing, y: local.y - dist - r * row, angle: Math.PI / 2 + parseFloat(qs.get('face') || '0') + (qs.get('face') ? 0 : (((k * 7) % 5) - 2) * 0.05), hp: 1, flags: flags0, _spd: 0 });
   }
   return {
     localId: 1, roster: [{ id: 1, name: 'You', color: parseInt(qs.get('color') || '0', 10), cls: qs.get('cls') || 'soldier' }], local, yaw: -Math.PI / 2,
