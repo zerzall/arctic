@@ -1,8 +1,9 @@
 // A story level's HUD (JOURNEY.md §4.2–4.3): the location card when the party enters a new
-// section (the section's name large, the level's small, the part it is of the route) or when a
-// mission's `title` action fires; toasts for the level's scripted moments (a gate opens or shuts,
-// a checkpoint, the power going out and coming back, a horde); the defend point's name on the
-// objective bar. Created only on a level map; DOM writes only on change.
+// section (the section's name large, the level's small, the part it is of the route; it gives way
+// to a mission's own `title` card for the arrival) or when a mission's `title` action fires;
+// toasts for the level's scripted moments (a gate opens or shuts, a checkpoint, the power going
+// out and coming back, a horde); the defend point's name on the objective bar. Created only on a
+// level map; DOM writes only on change.
 
 import { levelGates } from '../shared/level.js';
 import { mapMeta } from '../shared/maps.js';
@@ -10,6 +11,12 @@ import { h, setText } from './dom.js';
 
 /** Seconds the location card stays up (the CSS animation fades it). */
 const CARD_TIME = 4.2;
+/**
+ * A mission's own `title` card wins over the automatic section card: the section card waits this
+ * long (s) for one, and is dropped when one was shown within TITLE_QUIET seconds before.
+ */
+const AREA_WAIT = 1.2;
+const TITLE_QUIET = 3;
 
 /**
  * @param {HTMLElement} root the HUD root
@@ -27,6 +34,9 @@ export function createLevelHud(root, { map, toast, objName = null }) {
   root.append(el);
   let cardT = 0;
   let lastArea = -1;
+  let clock = 0;
+  let titleAt = -1e9;
+  let pendingArea = null;   // { title, sub, kicker, at }
   let defendShown = null;
   const objDefault = objName ? objName.textContent : '';
 
@@ -53,11 +63,15 @@ export function createLevelHud(root, { map, toast, objName = null }) {
       case 'area': {
         if (e.i === lastArea) return true;
         lastArea = e.i;
+        // (the mission's own title for the arrival, shown or on its way, says it better)
+        if (clock - titleAt < TITLE_QUIET) return true;
         const n = (map.sections || []).length;
-        card(String(e.name || '').toUpperCase(), levelName, n > 1 ? `PART ${e.i + 1} OF ${n}` : '');
+        pendingArea = { title: String(e.name || '').toUpperCase(), sub: levelName, kicker: n > 1 ? `PART ${e.i + 1} OF ${n}` : '', at: clock + AREA_WAIT };
         return true;
       }
       case 'title':
+        titleAt = clock;
+        pendingArea = null;
         card(String(e.text || '').toUpperCase(), e.sub || '', levelName.toUpperCase());
         return true;
       case 'gate': {
@@ -85,6 +99,12 @@ export function createLevelHud(root, { map, toast, objName = null }) {
   }
 
   function update(view, dt) {
+    clock += dt;
+    if (pendingArea && clock >= pendingArea.at) {
+      const a = pendingArea;
+      pendingArea = null;
+      card(a.title, a.sub, a.kicker);
+    }
     if (cardT > 0) {
       cardT -= dt;
       if (cardT <= 0) {

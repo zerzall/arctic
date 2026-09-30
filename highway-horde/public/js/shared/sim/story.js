@@ -29,7 +29,7 @@ import { ZOMBIES } from '../zombies.js';
 import {
   ITEM_PICKUP_RADIUS, isItemId, missionTier, normLine, STEP_KINDS, MARKER_KINDS, LEVEL_ACTIONS,
 } from '../story-defs.js';
-import { sectionIndex } from '../level.js';
+import { sectionIndex, checkpointsOf } from '../level.js';
 import { runAction } from './level-actions.js';
 import { missionOf, simModeOf } from '../story/registry.js';
 import { walkComponents, componentAt } from './zone.js';
@@ -231,6 +231,16 @@ export class StoryDirector {
     return Number.isFinite(c.x) && Number.isFinite(c.y) || !!c.at;
   }
 
+  /** Somewhere sensible to put a thing whose anchor is missing: the level's checkpoint, else the map's middle. */
+  fallbackSpot() {
+    const g = this.game;
+    if (g.level) {
+      const cp = checkpointsOf(this.map, g.level.section)[0];
+      if (cp) return { x: cp.x, y: cp.y };
+    }
+    return { x: this.map.width / 2, y: this.map.height / 2 };
+  }
+
   /** Create an NPC from a script definition ({ id|key, at: anchor|{x,y}, mode, ... }); returns it (or the existing one). */
   spawnNpcDef(d) {
     if (!d || typeof d !== 'object') return null;
@@ -238,7 +248,9 @@ export class StoryDirector {
     if (!key) return null;
     const have = npcByKey(this.game, key);
     if (have) return have;
-    const at = d.at !== undefined ? this.anchor(d.at) : Number.isFinite(d.x) ? { x: d.x, y: d.y } : this.centre();
+    // (an anchor the map does not have: the current section's first checkpoint on a level, else
+    // the middle of the map; a mission written against another layout must not stop the game)
+    const at = (d.at !== undefined ? this.anchor(d.at) : Number.isFinite(d.x) ? { x: d.x, y: d.y } : this.centre()) || this.fallbackSpot();
     const pos = this.freeNear(at.x, at.y, 40);
     return createNpc(this.game, { ...d, key, x: pos.x, y: pos.y, angle: d.angle || 0 });
   }

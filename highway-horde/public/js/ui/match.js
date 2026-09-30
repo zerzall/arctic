@@ -16,6 +16,7 @@
 
 import { DIFFICULTIES } from '../shared/constants.js';
 import { resolveTime } from '../shared/timeofday.js';
+import { mapMeta } from '../shared/maps.js';
 import { STAGE_SHORT } from '../shared/campaign.js';
 import { missionOf, simModeOf } from '../shared/story/registry.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
@@ -392,7 +393,7 @@ export function startMatch(ctx, session) {
     $('#end-sub').textContent = sub;
     const rows = statRows(view, session.roster);
     const kills = rows.reduce((a, r) => a + r.kills, 0);
-    const mapName = (deps.MAP_LIST.find((m) => m.id === map.id) || { name: map.name || '' }).name;
+    const mapName = (mapMeta(map.id) || { name: map.name || '' }).name;
     const diff = DIFFICULTIES[session.settings.difficulty];
     const survived = victory ? view.wave : Math.max(0, view.wave - 1);
     $('#end-summary').replaceChildren(

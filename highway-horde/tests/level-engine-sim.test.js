@@ -118,6 +118,17 @@ describe('gates', () => {
 });
 
 describe('sections, spawns and checkpoints', () => {
+  test('an NPC whose anchor the level lacks stands at the checkpoint instead of stopping the game', () => {
+    const g = levelGame({ ...WAIT(), npcs: [{ id: 'mara', at: 'no_such_anchor' }] });
+    let n = null;
+    assert.doesNotThrow(() => { g.step(); n = g.npcs.find((q) => q.key === 'mara'); });
+    assert.ok(n, 'the NPC exists');
+    const cp = checkpointsOf(g.map, g.level.section)[0];
+    assert.ok(Math.hypot(n.x - cp.x, n.y - cp.y) < 220, `near the checkpoint (${n.x}, ${n.y})`);
+    // a step that brings one in later, the same
+    assert.ok(g.story.spawnNpcDef({ id: 'deke', at: 'nowhere' }));
+  });
+
   test('the first entry of each section sends an area event; reach { section } finishes', () => {
     const m = {
       id: 'lv_reach', map: 'millroad', mode: 'free',
