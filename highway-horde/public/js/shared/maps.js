@@ -15,6 +15,7 @@ import { createRng, hashString } from './rng.js';
 import { TAU, round1 } from './math.js';
 import { buildHarlan } from './maps-harlan.js';
 import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
+import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -54,6 +55,8 @@ const BUILDERS = {
   bridge: buildBridge,
   checkpoint: buildCheckpoint,
   harlan: buildHarlan,
+  // the story campaign's hideouts (maps-hideouts.js); not in MAP_LIST, so the lobby never offers them
+  ...HIDEOUT_BUILDERS,
 };
 
 /**
@@ -66,13 +69,14 @@ const BUILDERS = {
 export function buildMap(id, seed, opts = null) {
   const build = Object.prototype.hasOwnProperty.call(BUILDERS, id) ? BUILDERS[id] : null;
   if (!build) throw new Error(`Unknown map id: ${id}`);
-  const meta = MAP_LIST.find((m) => m.id === id);
+  const meta = MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id);
   const s = Number.isFinite(seed) ? seed : 0;
   const B = createBuilder(meta, s);
   build(B);
   // Campaign mode (SPEC §3.8): the map is enlarged with the hill, the tower and its floors.
   if (opts && opts.mode === 'campaign' && Object.prototype.hasOwnProperty.call(CAMPAIGN_SITES, id)) buildCampaign(B, id);
-  return B.finish();
+  const done = B.finish();
+  return done.kind === 'hideout' ? checkHub(done) : done;
 }
 
 // ---------------------------------------------------------------------------------
@@ -724,6 +728,7 @@ const MAP_DEFS = {
   bridge: { width: 4000, height: 2000, darkness: 0.72, tint: '#2f6b68', ground: '#34442f' },
   checkpoint: { width: 3000, height: 3000, darkness: 0.66, tint: '#56644c', ground: '#434a33' },
   harlan: { width: 7200, height: 7200, darkness: 0.66, tint: '#3a5470', ground: '#384a2c' },
+  ...HIDEOUT_DEFS,
 };
 
 // ---------------------------------------------------------------------------------

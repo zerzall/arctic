@@ -15,13 +15,15 @@
 import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
 import { MAP_LIST } from '../js/shared/maps.js';
+import { HIDEOUT_IDS, applyHideoutUpgrades, UPGRADE_KINDS } from '../js/shared/maps-hideouts.js';
 import { DRESS_KINDS } from '../js/shared/dress.js';
 import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
 
 const params = new URLSearchParams(location.search);
 const opt = {
-  map: MAP_LIST.some((m) => m.id === params.get('map')) ? params.get('map') : 'highway',
+  // (the story hideouts are playable here too: map=roadhouse|depot|farmstead, up=<0..3 | kind:tier,...>)
+  map: MAP_LIST.some((m) => m.id === params.get('map')) || HIDEOUT_IDS.includes(params.get('map')) ? params.get('map') : 'highway',
   // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
   mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
   seed: Number(params.get('seed') || 1234),
@@ -138,7 +140,33 @@ function jumpStage(st) {
   }
 }
 
+/** Named viewpoints of a hideout: the party's start, every station, the NPC spots, overviews. */
+function hubViewpoints(map) {
+  const hub = map.hub;
+  const at = (name, x, y, tx, ty, pitch = -0.04) => ({ name, x, y, yaw: Math.atan2(ty - y, tx - x), pitch });
+  const v = [];
+  const sp = hub.spawn;
+  v.push(at('spawn', sp.x + 200, sp.y + 60, sp.x, sp.y - 120, -0.02));
+  for (const st of hub.stations) {
+    // stand back from the station toward the fire and look at it
+    const dx = sp.x - st.x, dy = sp.y - st.y, d = Math.hypot(dx, dy) || 1;
+    const back = Math.max(120, st.r + 20);
+    v.push(at(st.id, st.x + (dx / d) * back, st.y + (dy / d) * back, st.x, st.y, -0.06));
+  }
+  const n = Math.max(1, hub.stations.length);
+  void n;
+  v.push(at('overview', sp.x, map.height - 220, sp.x, sp.y - 300, 0.02));
+  v.push(at('overview2', map.width - 260, map.height - 260, sp.x - 200, sp.y - 200, 0.0));
+  v.push(at('overview3', 260, map.height - 260, sp.x + 300, sp.y - 200, 0.0));
+  v.push(at('north', sp.x, 420, sp.x, map.height, 0.0));
+  v.push(at('west', 300, sp.y, map.width, sp.y, 0.0));
+  v.push(at('east', map.width - 300, sp.y, 0, sp.y, 0.0));
+  for (const n2 of hub.npcs) v.push(at('npc-' + n2.id, n2.x - Math.cos(n2.angle) * 130, n2.y - Math.sin(n2.angle) * 130, n2.x, n2.y, -0.05));
+  return v;
+}
+
 function viewpoints(map, zone) {
+  if (map.kind === 'hideout') return hubViewpoints(map);
   if (map.campaign) return campaignViewpoints(map);
   // (an Evac Run map has no objective: its first point of interest stands in)
   const ob = map.objective || (map.pois && map.pois[0]) || { x: map.width / 2, y: map.height / 2 }, sp = map.supply || ob;
@@ -215,7 +243,9 @@ function setup(mapId) {
   const { Game } = gameMod;
   const players = [{ id: 1, name: 'You', color: 0, cls: 'soldier' }];
   for (let i = 0; i < opt.bots; i++) players.push({ id: i + 2, name: ['Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][i], color: i + 1, cls: CLASS_IDS[(i + 1) % CLASS_IDS.length], bot: true });
-  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode: opt.mode } });
+  const hubMap = HIDEOUT_IDS.includes(mapId);
+  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode: hubMap ? 'hideout' : opt.mode } });
+  if (hubMap) applyHideoutUpgrades(game.map, parseUpgrades(params.get('up')));
   roster = players.map((p) => ({ ...p, ready: true, ping: 0, host: p.id === 1 }));
   if (opt.wave && opt.zombies) for (let t = 0; t < 60 * 30 && game.phase === 'prep'; t++) game.step();
   snap = game.snapshot();
@@ -237,6 +267,15 @@ function setup(mapId) {
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
   window.__fps.views = viewpoints(game.map, snap && snap.zone);
   if (opt.view) setView(opt.view);
+}
+
+/** up=3 (every upgrade at tier 3) | up=generator:2,palisade:1 | absent = nothing built. */
+function parseUpgrades(spec) {
+  const o = {};
+  if (spec === null || spec === undefined || spec === '') return o;
+  if (/^\d$/.test(spec)) { for (const k of UPGRADE_KINDS) o[k] = Number(spec); return o; }
+  for (const part of spec.split(',')) { const [k, t] = part.split(':'); o[k] = Number(t); }
+  return o;
 }
 
 function galleryMap(map, spec) {
@@ -371,7 +410,7 @@ function step(dt, nowS) {
       slot: edge.slot ?? -1,
     });
     edge = {};
-    if (opt.zombies || game.phase === 'prep') game.step();
+    if (game.map.kind === 'hideout') { game.step(); if (game.phase === 'prep') game.timer = 999; } else if (opt.zombies || game.phase === 'prep') game.step();
   }
   snap = game.snapshot();
   let view = snap;
@@ -380,7 +419,7 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(params.get('gallery') ? { slots: [] } : null) } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(params.get('gallery') || params.get('ghost') === '1' ? { slots: [] } : null) } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });
