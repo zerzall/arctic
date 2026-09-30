@@ -151,7 +151,7 @@ export function startMatch(ctx, session) {
     view: fps ? 'fps' : 'topdown', minimapRotate: prefs.settings.minimapRotate, mode,
   });
   hud.setRoster(session.roster, session.localId);
-  audio.setMap(map);
+  audio.setMap(map, { time });
   if (made.fellBack && prefs.settings.view === 'fps') {
     // Said once per page: the setting stays 'fps' for a browser that can do it next time.
     if (!ctx.toldNoWebgl) hud.toast('3D view unavailable here — playing in the classic top-down view', 'minor', 5);

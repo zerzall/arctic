@@ -12,6 +12,8 @@
 //   waveclear a short triumphant cue (VI–VII–I in D major), then calm
 //   victory   a longer fanfare cue, then `glory` (a calm loop in D major / Mixolydian)
 //   gameover  a sombre cue, then `lament` (slow, consonant, not creepy)
+//   hideout   the story hideouts (SPEC §3.9; 60 bpm, 3/4): a warm porch waltz of flute, harp
+//             and soft strings that never builds
 // Each looping state has several phrases (60–120 s of material) played in a seeded random
 // order; changes wait for the next beat (urgent ones) or bar and crossfade the outgoing
 // phrase's notes. Notes are scheduled a little ahead on the audio clock, so timing
@@ -498,6 +500,38 @@ const PHRASES = {
     p.mel('choir', 'F3:16 | G3:16 | A3:16 | F3:16 | G3:8 Bb3:8 | A3:16 | A3:16 | A3:16', 0.4);
     p.arp('harp', [0, null, 2, null, 4, null, 2, null], 50, 0.28);
   } },
+
+  // The hideouts (60 bpm, 3/4, F major over D minor): a warm, slow porch waltz. A flute over a
+  // fingerpicked harp, soft strings and "ooh" choir; no war drums, nothing that builds.
+  HA: { chords: ['F', 'C', 'Dm', 'Bb', 'F', 'C', 'Bb', 'F'], build(p) {
+    p.pad('str', lowPad, 0.5).pad('ooh', choirOpen, 0.36, 'base', 2);
+    p.arp('harp', [0, 1, 2, 3, 4, 3], 50, 0.36);
+    p.mel('flute', 'A4:4 C5:4 F5:4 | E5:6 D5:2 C5:4 | D5:6 C5:2 A4:4 | Bb4:4 D5:4 F5:4 | F5:6 G5:2 A5:4 | G5:6 E5:2 C5:4 | D5:4 C5:4 Bb4:4 | A4:12', 0.6);
+  } },
+  HB: { chords: ['Dm', 'Gm', 'Dm', 'C', 'Bb', 'F', 'Gm', 'Asus4'], build(p) {
+    p.pad('str', lowPad, 0.5).pad('ooh', choirOpen, 0.4).pad('vln', highPad, 0.18, 'base', 4);
+    p.arp('harp', [0, 2, 1, 2, 3, 2], 50, 0.34);
+    p.mel('horn', 'A3:12 | Bb3:12 | A3:8 F3:4 | G3:12 | F3:8 A3:4 | C4:12 | Bb3:8 A3:4 | A3:12', 0.42);
+    p.mel('flute', 'D5:6 F5:6 | A5:6 F5:2 C5:4 | Bb4:4 D5:4 G5:4 | E5:8 A4:4', 0.5, 'base', { bar: 4 });
+  } },
+  // A waltz with a walking bass ("oom-pah-pah") under the tune.
+  HC: { chords: ['F', 'Bb', 'F', 'C', 'Dm', 'Bb', 'C', 'F'], build(p) {
+    p.pad('str', lowPad, 0.4).pad('ooh', choirOpen, 0.3, 'base', 4);
+    p.ost('>0 . 7 . 7 .', 0.5, 'base', { lo: 38 });
+    p.arp('harp', [null, 2, 3, null, 3, 4], 50, 0.3);
+    p.mel('flute', 'C5:4 F5:4 A5:4 | Bb5:6 A5:2 F5:4 | A5:4 G5:4 F5:4 | E5:6 D5:2 C5:4 | D5:4 F5:4 A5:4 | G5:6 F5:2 D5:4 | E5:4 G5:4 C5:4 | F5:12', 0.58);
+    p.drums('drum', 'o . . . . .', 0.8, 'base', { every: 2 });
+  } },
+  HD: { chords: ['Bb', 'F', 'Gm', 'Dm', 'Bb', 'F', 'C', 'F'], build(p) {
+    p.pad('str', lowPad, 0.48).pad('ooh', choirOpen, 0.38).pad('vln', highPad, 0.2);
+    p.arp('harp', [0, 1, 2, 3, 2, 1], 50, 0.36);
+    p.mel('flute', 'D5:6 F5:6 | C5:6 A4:6 | Bb4:4 D5:4 G5:4 | F5:8 D5:4 | D5:6 F5:2 Bb5:4 | A5:6 F5:6 | G5:4 E5:4 C5:4 | F5:12', 0.56);
+  } },
+  // Only the room: strings, a slow harp and the choir humming.
+  HE: { chords: ['F', 'Bb', 'Dm', 'C'], build(p) {
+    p.pad('str', lowPad, 0.42).pad('ooh', choirOpen, 0.36);
+    p.arp('harp', [0, null, 2, null, 4, null], 50, 0.3);
+  } },
 };
 
 // Pitch classes each state may use (the tests hold the score to them).
@@ -520,6 +554,7 @@ export const MUSIC_STATES = {
   glory: { bpm: 72, bar: 12, beat: 4, phrases: ['VA', 'VB', 'VC'], scale: pcs(1, 6, 11) },
   gameover: { bpm: 60, bar: 16, beat: 4, phrases: ['GO'], next: 'lament', cue: true, scale: pcs(1) },
   lament: { bpm: 60, bar: 16, beat: 4, phrases: ['LA', 'LB'], scale: pcs(1) },
+  hideout: { bpm: 60, bar: 12, beat: 4, phrases: ['HE', 'HA', 'HB', 'HC', 'HD'], first: 'HE', scale: pcs() },
 };
 for (const s of Object.values(MUSIC_STATES)) s.tick = s.compound ? 60 / s.bpm / 6 : 60 / s.bpm / 4;
 // Cue states and what follows them count as one "family" for the state machine.
@@ -783,6 +818,7 @@ export function createMusic(ctx, { out, bank, seed } = {}) {
     if (mode === 'menu') return 'menu';
     if (mode === 'gameover') return 'gameover';
     if (mode === 'victory') return 'victory';
+    if (mode === 'hideout') return 'hideout';
     if (boss) return 'boss';
     const fighting = cur && (cur.name === 'battle' || cur.name === 'boss');
     if (target >= 0.33 || (fighting && target >= 0.2)) return 'battle';
@@ -831,7 +867,7 @@ export function createMusic(ctx, { out, bank, seed } = {}) {
   }
 
   return {
-    /** Target intensity 0..1, boss flag and mode ('menu'|'game'|'gameover'|'victory'). */
+    /** Target intensity 0..1, boss flag and mode ('menu'|'game'|'hideout'|'gameover'|'victory'). */
     set(nextTarget, nextBoss, nextMode) {
       target = clamp(Number.isFinite(nextTarget) ? nextTarget : 0, 0, 1);
       boss = !!nextBoss;

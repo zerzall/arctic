@@ -53,6 +53,31 @@ const LOW_HP = 0.3;
 /** A loop no longer wanted keeps playing this long, so a flickering `firing` flag doesn't restart it. */
 const LOOP_GRACE = 0.15;
 
+/**
+ * The positional ambience of a story hideout (SPEC §3.9): [{ id, x, y, when? }] for the radio at
+ * the board, the generator (once built), the forge, the chicken coop, the pond and the windmill.
+ * The bed (crickets / birds) and the fires (the map's own fire loop) are not spots.
+ * @param {object} map a MapDef with `hub`
+ */
+export function hubSpots(map) {
+  const hub = map.hub;
+  const spots = [];
+  const board = hub.stations.find((s) => s.kind === 'board');
+  if (board) spots.push({ id: 'hub_radio', x: board.x, y: board.y });
+  const gen = hub.upgradeSlots && hub.upgradeSlots.generator;
+  if (gen) spots.push({ id: 'hub_gen', x: gen.x, y: gen.y, when: () => hub.upgrades.generator >= 1 });
+  for (const p of hub.props) if (p.t === 'forge') spots.push({ id: 'hub_forge', x: p.x, y: p.y });
+  for (const o of map.obstacles) if (o.prop === 'coop') spots.push({ id: 'hub_coop', x: o.x, y: o.y });
+  const pond = map.areas.filter((a) => a.kind === 'water');
+  if (pond.length) {
+    let sx = 0, sy = 0;
+    for (const a of pond) { sx += a.x; sy += a.y; }
+    spots.push({ id: 'hub_water', x: sx / pond.length, y: sy / pond.length });
+  }
+  if (map.objective && map.objective.prop === 'windmill') spots.push({ id: 'hub_windmill', x: map.objective.x, y: map.objective.y });
+  return spots;
+}
+
 const DEFAULT_VOLUME = { master: 0.8, sfx: 1, music: 0.5 };
 /** Deepest music duck under heavy fire (fraction of the music level). */
 const MUSIC_DUCK = 0.3;
@@ -211,6 +236,8 @@ class Engine {
     this.localId = 0;
     this.players = null;
     this.mapFires = [];
+    /** A story hideout's ambience: { map, spots, time } or null (hubSpots). */
+    this.hub = null;
     this.slots = [];
     this.loops = new Map();
     this.groupLast = new Map();
@@ -835,6 +862,7 @@ class Engine {
     this.jumpSounds(view, me, dt);
     const horde = this.hordeLoops(view, dt, want);
     this.hazardLoops(view, want, horde);
+    if (this.hub) this.hubLoops(want);
     this.syncLoops(want, now);
     this.heartbeat(me, dt);
     this.setMuffle(me, now);
@@ -1052,6 +1080,21 @@ class Engine {
     }
   }
 
+  /** A hideout's ambience: the night / day bed everywhere plus the spot loops around their sources. */
+  hubLoops(want) {
+    const h = this.hub;
+    const bed = h.time === 'day' ? 'hub_day' : 'hub_night';
+    want.push({ key: 'hubBed', id: bed, g: SOUNDS[bed].g, pan: 0, lp: this.maxLp, wet: SOUNDS[bed].wet, rate: 1 });
+    const sp = this.sp || (this.sp = {});
+    for (const s of h.spots) {
+      if (s.when && !s.when()) continue;
+      const def = SOUNDS[s.id];
+      if (!def || !this.spatial(s.x, s.y, def.range || 1, sp)) continue;
+      const g = def.g * sp.att;
+      if (g > 0.003) want.push({ key: 'hub_' + s.id + '_' + (s.x | 0) + '_' + (s.y | 0), id: s.id, g, pan: sp.pan, lp: sp.lp, wet: def.wet * sp.wetMul, rate: 1 });
+    }
+  }
+
   syncLoops(want, now) {
     if (want && want.length > MAX_LOOPS) {
       want.sort((a, b) => b.g - a.g);
@@ -1186,6 +1229,13 @@ class Engine {
   }
 
   setMusic(view, me, nearby) {
+    // A hideout has its own warm score, always calm (music.js 'hideout')
+    if (this.hub) {
+      this.musicMode = 'hideout';
+      this.musicTarget = 0.1;
+      this.musicBoss = false;
+      return;
+    }
     const phase = view.phase;
     if (phase === 'gameover' || phase === 'victory') {
       this.musicMode = phase;
@@ -1229,7 +1279,16 @@ class Engine {
     this.music.tick(this.now());
   }
 
-  setMap(map) {
+  /**
+   * The map the game plays on. `opts.time` ('day' | 'night') picks a hideout's ambience bed; it
+   * falls back to the hub's `time` / `defaultTime`.
+   */
+  setMap(map, opts) {
+    this.hub = null;
+    if (map && map.kind === 'hideout' && map.hub) {
+      const time = (opts && opts.time) || map.hub.time || map.hub.defaultTime;
+      this.hub = { map, spots: hubSpots(map), time: time === 'day' ? 'day' : 'night' };
+    }
     const fires = map && Array.isArray(map.fires) ? map.fires : [];
     this.mapFires = fires.filter((f) => f && Number.isFinite(f.x) && Number.isFinite(f.y));
     // the campaign's terrain (hill, floors) and stairs: footsteps and landings are ground-relative
@@ -1300,7 +1359,7 @@ export function createAudio(options = {}) {
     setVolume: safe((v) => eng.setVolume(v)),
     setMuted: safe((m) => eng.setMuted(m)),
     /** The running game's MapDef (null between games): its permanent fires crackle nearby. */
-    setMap: safe((map) => eng.setMap(map)),
+    setMap: safe((map, opts) => eng.setMap(map, opts)),
     /** Diagnostics: context state, active voices, loops, drop/steal counters, bake progress. */
     stats: () => {
       try {

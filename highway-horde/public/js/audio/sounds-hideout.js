@@ -58,14 +58,14 @@ function lowShape(pts) {
 
 export const HUB_SOUNDS = {
   hub_night: { srate: 0.5, cat: 'ambience', loop: true, v: 1, g: 0.42, wet: 0.3, peak: 0.85, render: (sr, rng) => {
-    const len = 12;
+    const len = 8;
     const out = S.filter(S.pink(sr, len, rng), sr, 'lowpass', 520, 0.6);
-    S.shape(out, sr, lowShape([[0, 0.5], [2.5, 0.95], [6, 0.45], [9, 1], [12, 0.5]]));
+    S.shape(out, sr, lowShape([[0, 0.5], [1.7, 0.95], [4, 0.45], [6, 1], [8, 0.5]]));
     S.gain(out, 0.5);
     const voices = [[4300, 0.62, 0.05, 0.12], [4650, 0.53, 0.3, 0.1], [5000, 0.71, 0.11, 0.09], [4100, 0.83, 0.4, 0.1], [4850, 0.58, 0.22, 0.08]];
     for (const [f, per, ph, g] of voices) cricket(sr, rng, out, len, f, per, ph, g);
-    S.mixWrap(out, hoot(sr), sr, 0.16, 5.0);
-    S.mixWrap(out, hoot(sr), sr, 0.12, 5.75);
+    S.mixWrap(out, hoot(sr), sr, 0.16, 3.3);
+    S.mixWrap(out, hoot(sr), sr, 0.12, 4.05);
     // dry leaves stirred by the breeze
     const leaves = S.filter(S.noise(sr, len, rng), sr, 'highpass', 3000);
     gate(leaves, sr, rng, 0.05, 0.4, 0.3);
@@ -73,11 +73,11 @@ export const HUB_SOUNDS = {
     return S.loopify(out, sr, 0.5);
   } },
   hub_day: { srate: 0.5, cat: 'ambience', loop: true, v: 1, g: 0.4, wet: 0.25, peak: 0.85, render: (sr, rng) => {
-    const len = 12;
+    const len = 8;
     const out = S.filter(S.pink(sr, len, rng), sr, 'lowpass', 720, 0.6);
-    S.shape(out, sr, lowShape([[0, 0.4], [3, 0.85], [7, 0.4], [10, 0.9], [12, 0.4]]));
+    S.shape(out, sr, lowShape([[0, 0.4], [2, 0.85], [4.7, 0.4], [6.7, 0.9], [8, 0.4]]));
     S.gain(out, 0.4);
-    for (let i = 0; i < 9; i++) S.mixWrap(out, tweet(sr, rng, 2700 + rng.next() * 1300), sr, 0.16 + rng.next() * 0.14, rng.next() * len);
+    for (let i = 0; i < 6; i++) S.mixWrap(out, tweet(sr, rng, 2700 + rng.next() * 1300), sr, 0.16 + rng.next() * 0.14, rng.next() * len);
     // a bee or two, a distant tractor-like drone
     const bee = S.filter(S.osc(sr, len, 'saw', 190), sr, 'bandpass', 700, 1.4);
     S.shape(bee, sr, (t) => 0.5 + 0.5 * Math.sin(TAU * 0.25 * t) ** 2 * (0.6 + 0.4 * Math.sin(TAU * 6 * t)));
@@ -85,7 +85,7 @@ export const HUB_SOUNDS = {
     return S.loopify(out, sr, 0.5);
   } },
   hub_radio: { srate: 0.5, cat: 'ambience', loop: true, v: 1, g: 0.32, wet: 0.15, peak: 0.8, range: 0.3, render: (sr, rng) => {
-    const len = 9;
+    const len = 8;
     const speech = S.filter(S.noise(sr, len, rng), sr, 'bandpass', 1100, 0.9);
     S.mix(speech, S.filter(S.noise(sr, len, rng), sr, 'bandpass', 2400, 2), sr, 0.6);
     gate(speech, sr, rng, 0.07, 0.28, 0.62);
@@ -134,9 +134,9 @@ export const HUB_SOUNDS = {
     return S.loopify(out, sr, 0.3);
   } },
   hub_water: { srate: 0.5, cat: 'ambience', loop: true, v: 1, g: 0.36, wet: 0.35, peak: 0.8, range: 0.4, render: (sr, rng) => {
-    const len = 10;
+    const len = 8;
     const out = S.filter(S.pink(sr, len, rng), sr, 'bandpass', 520, 0.5);
-    S.shape(out, sr, (t) => 0.4 + 0.6 * ((1 + Math.sin(TAU * 0.3 * t)) / 2) ** 1.5);
+    S.shape(out, sr, (t) => 0.4 + 0.6 * ((1 + Math.sin(TAU * 0.25 * t)) / 2) ** 1.5);
     S.gain(out, 0.5);
     for (let i = 0; i < 5; i++) {
       const t0 = rng.next() * len, f = 240 + rng.next() * 140;
