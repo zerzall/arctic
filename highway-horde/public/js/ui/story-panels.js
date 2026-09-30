@@ -13,7 +13,9 @@ import {
 } from '../shared/story/upgrades.js';
 import { deriveWeapon } from '../shared/story/mods.js';
 import { perkEffects } from '../shared/story/perks.js';
-import { getMissions, getChapters, chapterTitle, castOf, HIDEOUT_NAMES } from '../shared/story/content.js';
+import {
+  getMissions, getChapters, chapterTitle, castOf, HIDEOUT_NAMES, stationKeeper, stationLine, expandTokens, sceneContext,
+} from '../shared/story/content.js';
 import { missionBoard, currentChapter, worldSummary } from '../shared/story/world.js';
 import { xpBar } from '../shared/story/progression.js';
 import { padNavigate } from './padnav.js';
@@ -61,8 +63,18 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
     return s && s.story ? s.story : null;
   };
 
+  /** One line of station flavour per opening (the same line while the panel re-renders). */
+  const flavour = new Map();
+  function pickFlavour(k, world) {
+    const raw = stationLine(k, Math.random());
+    const text = raw ? expandTokens(raw, sceneContext(world)) : '';
+    flavour.set(k, text);
+    return text;
+  }
+
   function close() {
     if (!kind) return;
+    flavour.delete(kind);
     kind = null;
     layer.hidden = true;
     layer.replaceChildren();
@@ -85,7 +97,10 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
   function shell(k, body, extra = []) {
     const st = story();
     const t = TITLES[k];
-    const cast = t.npc ? castOf(t.npc) : null;
+    // whoever tends the station in this world (the content's cast says who, and when they arrive)
+    const keeper = t.npc ? stationKeeper(k, st.world) : null;
+    const cast = keeper === undefined ? (t.npc ? castOf(t.npc) : null) : keeper ? castOf(keeper) : null;
+    const line = t.npc && (flavour.get(k) || pickFlavour(k, st.world));
     const canvas = cast ? h('canvas.st-npc', { width: 120, height: 120, 'aria-hidden': 'true' }) : null;
     if (canvas) drawCastPortrait(canvas, cast.id, deps);
     const head = h('header.st-modal-head', null, [
@@ -93,6 +108,7 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
       h('div.st-modal-titles', null, [
         h('h2.st-modal-title', { id: 'st-modal-title' }, [h('span.st-glyph', { text: t.glyph, 'aria-hidden': 'true' }), t.title]),
         cast ? h('div.st-modal-sub', { text: cast.name }) : h('div.st-modal-sub', { text: st.profile.name }),
+        line ? h('div.st-modal-flavor', { text: `“${line}”` }) : null,
       ]),
       h('div.st-modal-chips', null, extra),
       h('button.btn.btn-icon.st-close', { type: 'button', 'aria-label': 'Close', text: '✕', onclick: close }),

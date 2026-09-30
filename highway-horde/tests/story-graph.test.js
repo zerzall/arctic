@@ -6,7 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nextNodes, resolveNext, pendingArrival, epiloguePending } from '../public/js/shared/story/graph.js';
-import { setStoryContent, clearStoryContent, playableLines, conversationFor, castOf, contentFlags, expandTokens } from '../public/js/shared/story/content.js';
+import {
+  setStoryContent, clearStoryContent, playableLines, conversationFor, castOf, contentFlags, expandTokens,
+  stationKeeper, pepFor, retryQuip, stationLine,
+} from '../public/js/shared/story/content.js';
 import { STUB_CONTENT } from '../public/js/shared/story/stub-content.js';
 import { createWorld, changeWorld } from '../public/js/shared/story/world.js';
 
@@ -155,6 +158,55 @@ test('cast: content entries win, radio and system voices get their own cards, un
     assert.equal(g.name, 'Someone');
     assert.equal(g.portrait, 'soldier');
     assert.equal(castOf(undefined).id, 'crew');
+  } finally {
+    clearStoryContent();
+  }
+});
+
+test('station keepers, pep talks, retry quips and station lines come from the dialogue data', () => {
+  const cast = {
+    deke: { id: 'deke', name: 'Deke', station: 'workbench' },
+    okafor: { id: 'okafor', name: 'Okafor', station: 'armory' },
+    danny: { id: 'danny', name: 'Danny', station: 'armory' },
+    warden: { id: 'warden', name: 'Warden', station: 'board', radioOnly: true },
+  };
+  const here = new Set(['deke', 'danny']);
+  setStoryContent({
+    ...ROAD,
+    cast,
+    npcAvailable: (id) => here.has(id),
+    dialogue: {
+      pep: { a1: [L('mara', 'Go get them.')] },
+      retry: { general: [L('deke', 'Again.'), L('mara', 'Breathe.')], byMission: { a1: [L('june', 'Hurry!')] } },
+      stations: { workbench: { name: 'Workbench', lines: ['Scrap in.', 'Trust it first.'] } },
+    },
+  });
+  try {
+    const w = createWorld({ name: 'W' });
+    assert.equal(stationKeeper('workbench', w), 'deke');
+    assert.equal(stationKeeper('armory', w), 'danny', 'the first keeper who is with the crew');
+    assert.equal(stationKeeper('board', w), null, 'a radio voice never stands at a station');
+    assert.equal(stationKeeper('perks', w), null);
+    here.add('okafor');
+    assert.equal(stationKeeper('armory', w), 'okafor', 'cast order decides among those present');
+    assert.deepEqual(pepFor('a1'), [L('mara', 'Go get them.')]);
+    assert.equal(pepFor('a2'), null);
+    assert.equal(pepFor('__proto__'), null);
+    assert.equal(retryQuip('a1', 0).who, 'june', 'a mission\'s own quips come first');
+    assert.equal(retryQuip('zz', 0.99).who, 'mara');
+    assert.equal(retryQuip('zz', 7).who, 'mara', 'out-of-range picks are clamped');
+    assert.equal(stationLine('workbench', 0), 'Scrap in.');
+    assert.equal(stationLine('workbench', 0.9), 'Trust it first.');
+    assert.equal(stationLine('armory', 0), null);
+  } finally {
+    clearStoryContent();
+  }
+  // content that says nothing about stations leaves the choice to the caller
+  setStoryContent(STUB_CONTENT);
+  try {
+    assert.equal(stationKeeper('workbench', createWorld({ name: 'W' })), undefined);
+    assert.equal(pepFor('m1_1'), null);
+    assert.equal(retryQuip('m1_1'), null);
   } finally {
     clearStoryContent();
   }

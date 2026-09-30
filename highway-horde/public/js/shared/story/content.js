@@ -108,6 +108,7 @@ export function setStoryContent(c = {}) {
       stageFor: pick(c.stageFor, s.stageFor),
       conversation: pick(c.conversation, s.conversation),
       expandTokens: pick(c.expandTokens, s.expandTokens),
+      npcAvailable: pick(c.npcAvailable, s.npcAvailable),
     },
   };
 }
@@ -313,6 +314,22 @@ export function getScene(id) {
     }
   }
   return null;
+}
+
+/**
+ * Who keeps a hideout station in this world. The cast entries say which station a character
+ * tends (`station`); the keeper is the first of them who is with the crew (the content's
+ * `npcAvailable(id, world)`, else everybody). Radio voices and captions never stand at one.
+ * @param {string} kind station kind ('workbench', 'armory', 'board', ...)
+ * @returns {string|null|undefined} a cast id; null when nobody is there (yet); undefined when
+ *   the content says nothing about stations (the caller picks a default)
+ */
+export function stationKeeper(kind, world) {
+  const all = Object.values(content.cast).filter((c) => c && typeof c === 'object');
+  if (!all.some((c) => c.station)) return undefined;
+  const f = content.helpers && content.helpers.npcAvailable;
+  const keeper = all.find((c) => c.station === kind && !c.system && !c.radioOnly && (typeof f !== 'function' || f(c.id, world)));
+  return keeper ? keeper.id : null;
 }
 
 /** The pre-mission pep talk of a mission (lines) or null. */

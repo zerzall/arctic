@@ -7,6 +7,7 @@ import { $, h, setText } from './dom.js';
 import { DIFFICULTIES, DIFFICULTY_IDS } from '../shared/constants.js';
 import { getMissions, HIDEOUT_NAMES, chapterTitle } from '../shared/story/content.js';
 import { worldSummary } from '../shared/story/world.js';
+import { resolveNext } from '../shared/story/graph.js';
 import { hideoutEffects, HIDEOUT_IDS, upgradeTier } from '../shared/story/upgrades.js';
 import { exportSave, exportFileName } from '../shared/story/save.js';
 import { downloadText } from './story-screen.js';
@@ -40,13 +41,16 @@ export function createStoryLobby(ctx) {
     setText($('#lobby-title'), session.transport === 'local' ? 'Story · solo' : session.isHost ? 'Story · your room' : 'Story lobby');
     setText($('#settings-owner'), session.isHost ? 'You choose the difficulty' : 'The host chooses the difficulty');
     const start = $('#btn-start');
-    start.textContent = s.missionsDone ? 'Back to the hideout' : 'Enter the hideout';
+    // (a road campaign opens on a briefing, not in a hideout)
+    const road = resolveNext(world).kind === 'briefing';
+    const go = road ? 'hit the road' : 'head into the hideout';
+    start.textContent = road ? (s.missionsDone ? 'Back to the road' : 'Hit the road') : s.missionsDone ? 'Back to the hideout' : 'Enter the hideout';
     start.classList.add('btn-primary');
     if (session.transport === 'local') {
-      setText($('#lobby-status'), 'Add AI survivors if you like, then head into the hideout.');
+      setText($('#lobby-status'), `Add AI survivors if you like, then ${go}.`);
     } else if (session.isHost) {
       const others = session.roster.filter((r) => !r.host && !r.bot);
-      setText($('#lobby-status'), others.length ? `${others.length} friend${others.length === 1 ? '' : 's'} in the room. Head into the hideout when you are ready.` : 'Waiting for friends — share the invite link. Anyone who has played this campaign can rejoin.');
+      setText($('#lobby-status'), others.length ? `${others.length} friend${others.length === 1 ? '' : 's'} in the room. Ready to ${go}?` : 'Waiting for friends — share the invite link. Anyone who has played this campaign can rejoin.');
     }
 
     const stamp = `${world.rev}:${world.name}:${world.difficulty}:${session.isHost}:${st.profile ? st.profile.xp + ':' + st.profile.scrap + ':' + st.profile.perkPoints : ''}:${session.roster.length}`;
@@ -57,7 +61,7 @@ export function createStoryLobby(ctx) {
     const pct = s.missionsTotal ? Math.round((s.missionsDone / s.missionsTotal) * 100) : 0;
     const editable = session.isHost;
     nameInput = h('input.text-input.st-crew-input', {
-      type: 'text', maxlength: '24', value: world.name, spellcheck: 'false', 'aria-label': 'Crew name', disabled: !editable, dataset: { autofocus: '' },
+      type: 'text', maxlength: '24', value: world.name, spellcheck: 'false', 'aria-label': 'Crew name', id: 'st-crew-name', disabled: !editable, dataset: { autofocus: '' },
     });
     nameInput.addEventListener('change', () => {
       const v = nameInput.value.trim();

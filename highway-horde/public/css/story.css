@@ -133,6 +133,7 @@
 .st-log-head { font-family: var(--font-cond); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--hazard); margin-bottom: 0.5rem; }
 .st-log-line { margin: 0 0 0.5rem; font-size: 0.9688rem; line-height: 1.45; color: var(--text-dim); }
 .st-log-line b { font-family: var(--font-cond); letter-spacing: 0.08em; text-transform: uppercase; }
+.st-modal-flavor { margin-top: 0.25rem; font-size: 0.9375rem; font-style: italic; color: var(--text-mute); }
 .st-dialogue.is-caption .st-plate { display: none; }
 .st-dialogue.is-caption .st-text { text-align: center; font-family: var(--font-cond); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hazard); min-height: 3.5em; display: flex; align-items: center; justify-content: center; }
 .st-dialogue.is-caption .st-box { border-top-color: var(--hazard); }
