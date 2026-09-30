@@ -13,6 +13,19 @@ else opens the invite link.
 - **Co-op for 1–6 players over the internet**, with a room code or an invite link, plus
   **AI survivors** to fill empty slots (great for playing solo or with one friend).
   Friends can join a game that's already running.
+- **Story: Road to Haven**, a persistent co-op campaign (main menu → **Story**). Fifteen
+  missions in six chapters take a crew of survivors from the pileup on Highway 9 to the last
+  ferry on Lake Harlan. Between missions you walk around a **hideout** (the Roadhouse, Blackwater
+  Depot, the Harlan farmstead): the **mission board** picks the next job and the party ready
+  check, the **workbench** upgrades your guns (tiers 1–5), the **armory** sets your three-gun
+  loadout and the supplies you take along, the **infirmary** heals you, the **upgrade board**
+  builds the hideout (generator, watchtower, infirmary, armory, radio mast, garden, palisade,
+  three tiers each) and the **perk tree** spends the point you earn every level (12 perks, three
+  ranks each, level cap 20). Briefings, arrivals, hideout conversations and the ending are
+  played as dialogue scenes with portraits (click, Space or the gamepad's A to advance, Esc to
+  skip, L for the log; an optional spoken voice per character is in Settings and off by
+  default). Play solo with AI survivors, host online or join a friend, and the campaign
+  goes on where you left it. See "Story saves" below.
 - **27 guns**: M9 pistol, magnum, sawed-off, micro SMG, pump shotgun, assault rifle, flare
   gun, Tommy gun, burst rifle, twin SMGs, crossbow, battle rifle, lever-action rifle,
   sniper, chainsaw, auto shotgun, flamethrower, harpoon gun, cryo blaster, LMG, grenade
@@ -147,6 +160,43 @@ without deploying, expose it with a tunnel, for example
 
 Run `npm start` and have everyone open `http://<your computer's IP>:8080`.
 
+## Story saves
+
+There is no account and no server for the story: everything is kept in **your browser**
+(`localStorage`), in two pieces.
+
+- **Your survivor** (name, class, level, XP, perks, scrap, guns and their upgrades, loadout)
+  belongs to you. It goes with you into any friend's campaign: when you join, your browser
+  sends it to the host, who checks it (level, XP, scrap and guns have to add up) and keeps the
+  accepted version for the session. What you earn comes back to your browser.
+- **The campaign** (the crew's name, difficulty, missions cleared with their stars, the hideout
+  and its upgrades, the stash, the story flags, the day) is a shared world. Every player who
+  takes part keeps a **copy**, and the host sends everyone the new one after each change. A
+  revision number decides which copy is newest, so the campaign survives its first host.
+
+**Story → New campaign** starts one (solo with AI survivors, or hosted online); **Continue** on
+a campaign card resumes it; **Export** (per campaign, or **Export everything**) downloads a
+`.json` save; **Import save…** merges a file back in (the newer copy of each campaign wins, and
+you are asked before your survivor is replaced by a different one); **Delete** removes it from
+this browser only.
+
+### How friends continue a campaign
+
+Anyone who played a campaign has a copy, so any of them can host it later, and the others simply
+join as usual.
+
+1. The host opens **Story**, picks the campaign card and clicks **Host online** (or picks the
+   copy they imported from a friend's export file).
+2. They send the invite link or room code. Friends click **Story → Join a friend** (or open the
+   link) and land in the story lobby with their own survivor.
+3. If a friend has played the campaign since the host last did, their browser hands over the
+   newer copy automatically; no file is needed. If the original host is gone for good, one
+   of the crew exports the campaign and everybody imports the file (or that person hosts).
+4. **Enter the hideout** and the crew walks on from the saved point, hideout upgrades and all.
+
+If the host leaves in the middle of a session, everyone keeps their copy of the campaign and their
+survivor, and any of them can host it again. A mission left unfinished simply isn't banked.
+
 ## Controls
 
 **Click the game to capture the mouse**, then move the mouse to look around; your aim is
@@ -241,7 +291,8 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 ```bash
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
-                            #   first-person solo, first-person 2-player relay, an Evac Run and the Campaign
+                            #   first-person solo, first-person 2-player relay, an Evac Run, the Campaign and a Story
+                            #   campaign (new game, a mission, the debrief, export/import)
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 node scripts/balance.js --mode campaign             # ... of the whole Campaign

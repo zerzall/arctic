@@ -833,6 +833,8 @@ buffer; an event whose JSON exceeds `MAX_JSON_EVENT_BYTES` (1 KB) is dropped. A 
 of every binary message is a message-type tag so snapshots and inputs can share a channel.
 Tests (`tests/protocol.test.js`): round-trip every field, every event type, empty arrays,
 max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
+PROTOCOL_VERSION 9 changes no binary layout: it only adds the JSON control messages of the story
+rooms (§10.4), and turns older clients away from every room.
 
 ## 6. Networking — `public/js/net/*`
 
@@ -1628,7 +1630,7 @@ flat tyre, dents, an antenna or luggage on the roof.
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
-  Chromium through ten scenarios in fresh browser contexts (a–f force the classic
+  Chromium through twelve scenarios in fresh browser contexts (a–f force the classic
   top-down view in localStorage; g and h play first person at quality 'low', 960x540): solo with a scripted player,
   3-player relay game (invite link, roster, chat, settings, movement replication and
   prediction, shot/kill credit, a player leaving, back to lobby via the host's pause-menu
@@ -1670,6 +1672,12 @@ flat tyre, dents, an antenna or luggage on the roof.
   Scenario j (day): the lobby's Time row (Night first, Day, saved in `prefs.lobby.time`, kept across a
   map change), a first-person solo game by day (`ctx.time` 'day', sun on, flashlight off) and a
   top-down one, no console errors.
+  Scenario l (story, 200 s budget): Story → New campaign (solo) → the first stage (the hideout's
+  stations open and close, the board briefs a mission; or, with the real campaign, the first road
+  briefing) → Deploy → a mission won (by its clock, else through the host's result path) → the
+  debrief (stars, XP counter, level badge ends on the new level) → the perk point spent from the
+  debrief → on to the next stage; then a reload, the campaign card lists its progress, Export a
+  file, Delete, Import it back and Continue resumes at the saved progress (see §10).
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,
@@ -1680,3 +1688,95 @@ flat tyre, dents, an antenna or luggage on the roof.
   `e2e-output/` as an artifact. The repo root's own `node --test` also discovers
   `tests/*.test.js` without this folder's node_modules: those tests pass or skip (the
   relay tests skip without `ws`).
+
+## 10. Story mode — Road to Haven (persistence, sessions, UI)
+
+The design contract is `STORY.md`; this section is what the story layer, the story session and
+the story UI implement (S1). Existing modes never touch any of it: a room is a story room only
+when it was created from the Story screen, and every hook below is inert without `session.story`
+or a player's `story` spec.
+
+### 10.1 Persistence — `shared/story/{profile,world,save}.js`
+* `Profile` (per browser, `highway-horde:story:profile:v1`): id, name, cls, color, `xp`, `level`,
+  `perkPoints`, `perks`, `scrap`, `weapons {id: {tier}}`, `loadout` (3 slots), `kit` (supplies carried),
+  `perkReset`, `stats`, `updatedAt`. `World` (`highway-horde:story:worlds:v1`, at most 12): id, name,
+  `rev`, `day`, difficulty, `progress {node, completed {id: {stars, time}}, flags}`, `hideout
+  {current, upgrades, recruited, stash}`, `members`. Both have sanitisers that never throw and
+  repair or drop anything out of range (`sanitizeProfile(raw, {strict})`, `sanitizeWorld`).
+* Join caps (`acceptJoinProfile`): level ≤ 20 and consistent with XP, perk points and ranks
+  never exceeding what the level allows, scrap ≤ `scrapBudget(level)` = 300 + 450·level, tiers ≤ 5,
+  only guns that exist; the host keeps and returns the accepted profile.
+* Worlds are copies: every participant stores the one the host broadcasts; `rev` rises with every
+  change and `pickHighest(a, b)` decides which copy wins (the host of a later session
+  starts from the highest revision it holds). A joiner with a newer copy answers `swant`
+  with it (`sact sync`).
+* Save file: `{ format:'highway-horde-save', fileVersion, exportedAt, profile, worlds:{[id]: World} }`
+  (≤ 512 KB, `parseSave` validates everything; `importParsed` merges by revision and can
+  keep or replace the survivor). Version-0 shapes migrate on load and import.
+  `exportSave`, `exportFileName`, `saveProfile`, `saveWorld`, `loadWorlds`, `listWorlds`, `deleteWorld`
+  take an injectable storage for tests and never throw when storage is blocked.
+
+### 10.2 Rules — `progression.js`, `perks.js`, `upgrades.js`, `rewards.js`, `actions.js`, `graph.js`
+* XP to reach level L = `round(90·(L−1)^1.7)`, cap 20, one perk point per level. Kills pay by
+  type, objectives and revives a flat amount; difficulty, stars, replays (a share), defeats (a share)
+  and a catch-up multiplier for survivors below the recommended level scale a mission's pay.
+* 12 perks × 3 ranks (ranks unlock at levels 1/4/8): Steady Hands, Quick Hands, Thick Skin, Field
+  Medic, Scavenger, Ammo Hoarder, Sprinter, Iron Will, Demolition, Marksman, Lucky Loot, Second
+  Wind. Reset once per chapter for free, then 100 scrap.
+* Weapon tiers 0–5 (each tier: damage, fire rate, reload, spread, magazine), bought at the workbench;
+  hideout upgrades (generator, watchtower, infirmary, armory, radio, garden, palisade) × 3 tiers
+  paid from the crew's stash, tier n available from chapter 1/2/4; supplies (frag, molotov, armour
+  plates, barricades, a turret, a self-revive kit) are taken from the stash at the armory and spent on
+  a won mission.
+* `settleMission({ world, mission, result, party, now })` turns a `storyend` into the new world and
+  every human's new profile with a per-player `delta` (XP before/after, breakdown, scrap, gun,
+  perk points): first clear, stars, stash gains, unlocks (`npc`, `hideout`, `chapterDone`, `next`),
+  the day, flags. `applyAction({ profile, world, actor, chapter }, act)` is every station action.
+* `graph.js`: `nextNodes(world)` (the content's own, else derived from `requires` / `hub` / chapter
+  `arrival`), `resolveNext(world)` → `{ kind:'hideout', hideout, arrival?, epilogue? }` or
+  `{ kind:'briefing', mission }` for a road mission; `pendingArrival`, `epiloguePending`.
+
+### 10.3 Simulation hooks and prediction — `mods.js`, `sim/profile-mods.js`
+`specFromProfile(profile, hideoutUpgrades, kit)` → a `StorySpec` (`{ v, lvl, loadout, tiers, perks,
+hideout, kit }`, a few hundred bytes) travels in the `start` message for every survivor. `storyMods(spec)`
+is pure arithmetic (no randomness, no clock), so the host and every client derive identical numbers.
+`applyProfileToPlayer` runs when a player is created with `info.story`; `weaponOf(p, id)` is the
+survivor's gun table entry (tier and perks applied) that firing, reloading and ammo buying use
+instead of `WEAPONS[id]`. The client's prediction of reload time, magazine, cadence, speed and
+stamina uses the same mods (`ClientSession.mods`). Tests: `story-mods-sim` (the real `Game`) and
+`story-net-sim` (host and client against each other).
+
+### 10.4 Story sessions — `net/story-{view,host,client}.js`, `host-session.js`, `client-session.js`
+PROTOCOL_VERSION 9 adds the story control messages (`hello.story`, `welcome.story`, `start.story`,
+`world`, `sprofile`, `sstate`, `sdebrief`, `sres`, `swant`, client `sact`); the binary snapshot is
+unchanged. `session.story` is a `StoryView` (`stage`, `world`, `profile`, `mission`, `party`, `ready`,
+`debrief`, `direct` and the action methods `setLoadout`, `upgradeWeapon`, `buyWeapon`, `buyPerk`,
+`resetPerks`, `upgradeHideout`, `donate`, `takeKit`, `buyKit`, `heal`, `talked`, `setFlag`, `sleep`,
+`setDifficulty`, `renameWorld`, `pickMission`, `cancelBriefing`, `setReady`, `deploy`, `backToHideout`,
+`retry`); results come back as `session.on('story', { kind: 'state'|'profile'|'world'|'result'|'debrief' })`.
+The stage machine runs on the host: lobby → hideout | briefing (road missions) → briefing → mission
+→ debrief → hideout | next briefing, each stage its own `Game` built through `_launchGame()`
+(the roster keeps its ids; nobody visits the lobby), a finished mission is frozen behind its
+result (`_holdGame()`), a lost one can be retried, late joiners enter the running stage (a
+mission spectates), and a host who leaves does not delete anything: clients keep their World copy
+and Profile and any of them can host the campaign again.
+Fake-transport tests: `story-session`, `story-session-road`.
+
+### 10.5 UI — `ui/story*.js`, `css/story.css`
+* Main menu **Story** → Story screen (`story-screen.js`: survivor card, campaign cards with
+  Continue (solo with an AI squad) / Host online / Export / Delete, New campaign, Join a friend,
+  Import save…, Export everything) → story lobby (`story-lobby.js`, decorating the normal lobby with
+  the crew name, difficulty, the next mission, levels in the roster) → the game screen.
+* Overlays in `#story-root` over the running game: dialogue scenes (`story-dialogue.js`: portrait
+  cards, radio set for the Warden, captions for the narrator, typewriter text, click / Space / A to
+  advance, Esc / B or Skip to leave, L or Log for the log, topic menus for conversations,
+  optional speech from `story-voice.js`, off by default), station panels (`story-panels.js`: workbench,
+  armory/stash, upgrade board, infirmary, perk tree, mission board with the party), the briefing and
+  the debrief (`story-flow.js`: ready check, kit, animated XP bars with level-up flashes,
+  stars, loot, way on).
+* The HUD gets a level / XP / scrap strip, the "E — station" prompt and (with the stub hideout) a
+  station dock. All sizes are rem-based (they follow `--ui-scale`, so 1080p and 4K both work);
+  every button is reachable with the gamepad (`padNavigate`) and touch.
+* Style: the game's dark panels with hazard-yellow accents; audio cues go through `audio.ui(...)`.
+* Tests: pure units `story-{progression,profile,rewards,actions,graph}`, the registry against the
+  real data `story-real-content` (skips until `shared/story/index.js` exists), e2e scenario `l` (§9).

@@ -108,13 +108,13 @@ function join(hub, clock, c) {
   });
 }
 
-test('a story room needs the same protocol as everyone (9): older clients are turned away', async () => {
-  assert.equal(PROTOCOL_VERSION, 9);
+test('a story room needs the same protocol as everyone (9 or newer): older clients are turned away', async () => {
+  assert.ok(PROTOCOL_VERSION >= 9, 'story rooms exist from protocol 9');
   const env = await setup();
   const raw = await env.hub.connect();
   const seen = [];
   raw.onMessage((ch, msg) => seen.push(msg));
-  raw.send('ctl', { t: 'hello', version: GAME_VERSION, protocol: 8, name: 'Old', color: 1, cls: 'soldier' });
+  raw.send('ctl', { t: 'hello', version: GAME_VERSION, protocol: PROTOCOL_VERSION - 1, name: 'Old', color: 1, cls: 'soldier' });
   await flush();
   assert.equal(seen.find((m) => m.t === 'reject').reason, 'Game version mismatch');
 });
