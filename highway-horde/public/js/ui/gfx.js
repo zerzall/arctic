@@ -49,6 +49,28 @@ export function applyPreset(settings, quality, o = {}) {
   return settings;
 }
 
+/** The Cinematic-only settings among the preset keys. */
+const CINEMATIC_KEYS = ['msaa', 'shadowsHigh', 'contactShadows', 'aoFull', 'fxHigh', 'motionBlur', 'dof', 'lensFx', 'lightShadows'];
+
+/**
+ * First-run default from GPU detection (ui/gpu.js recommendedTier): moves a profile whose quality was
+ * never picked to the recommended tier. A picked quality is never touched. When the player changed some
+ * effect toggles without picking a preset, only the tier (and the Cinematic extras) move.
+ * @param {object} settings prefs.settings (mutated)
+ * @param {'cinematic'|'ultra'|null} tier
+ * @returns {boolean} whether anything changed
+ */
+export function applyDetectedTier(settings, tier) {
+  if (!QUALITIES.includes(tier) || settings.qualityPicked || settings.quality === tier) return false;
+  if (presetMatches(settings)) {
+    applyPreset(settings, tier, { picked: false });
+  } else {
+    settings.quality = tier;
+    for (const k of CINEMATIC_KEYS) settings[k] = GRAPHICS_PRESETS[tier][k];
+  }
+  return true;
+}
+
 /** Whether the effect toggles still match the preset of the current quality. */
 export function presetMatches(settings) {
   const p = GRAPHICS_PRESETS[settings.quality];
@@ -102,8 +124,10 @@ export function rendererSettings(s, out = {}) {
 }
 
 /**
- * One line for the in-game stats readout: frame rate, the renderer's current resolution
- * scale and GPU time when it reports them, then network numbers.
+ * The in-game stats readout: frame rate, the renderer's current resolution scale and GPU time
+ * when it reports them, then network numbers; a second line names the tier, the internal
+ * resolution, MSAA and the display's refresh rate; a third (GPU timer available) the milliseconds
+ * of each pass of the post chain.
  * @param {{ fps: number, renderStats?: object, ping?: number, isHost?: boolean, snapshotsPerSec?: number }} o
  */
 export function statsLine(o) {
@@ -114,7 +138,15 @@ export function statsLine(o) {
   if (o.isHost) parts.push('HOST');
   else if (Number.isFinite(o.ping)) parts.push(`PING ${Math.round(o.ping)} ms`);
   if (o.snapshotsPerSec) parts.push(`${Math.round(o.snapshotsPerSec)} snap/s`);
-  return parts.join(' · ');
+  const lines = [parts.join(' · ')];
+  if (r && r.tier && r.width) {
+    lines.push(`${String(r.tier).toUpperCase()} · ${r.width}×${r.height}${r.msaa ? ` · MSAA ${r.msaa}×` : ''}${r.refreshHz ? ` · ${r.refreshHz} Hz` : ''}`);
+  }
+  if (r && r.passMs) {
+    const list = Object.entries(r.passMs).filter(([, v]) => Number.isFinite(v) && v >= 0.05).map(([k, v]) => `${k} ${v.toFixed(1)}`);
+    if (list.length) lines.push(`${list.join(' · ')} ms`);
+  }
+  return lines.join('\n');
 }
 
 /**

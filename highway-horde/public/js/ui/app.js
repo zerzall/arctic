@@ -9,7 +9,9 @@ import {
   parseJoinInput, flashToast, bindFullscreenButtons,
 } from './menus.js';
 import { applyUiScale } from './uiscale.js';
-import { probeSoftwareGpu } from './gfx.js';
+import { applyDetectedTier } from './gfx.js';
+import { probeGpu, recommendedTier } from './gpu.js';
+import { measureRefresh } from './display.js';
 import { createLobby } from './lobby.js';
 import { createChatHistory } from './chat.js';
 import { startMatch } from './match.js';
@@ -71,6 +73,10 @@ export function startApp(deps) {
     onStartFailed: () => flashToast('Could not start the game', 'bad'),
     /** WebGL check result (match.js asks once), undefined until then. */
     webgl: undefined,
+    /** The graphics card (ui/gpu.js probeGpu()), null until the title is up. */
+    gpu: null,
+    /** The display: refresh rate in Hz (measured with requestAnimationFrame on the menus; 60 until then). */
+    display: { refreshHz: 60, measured: false },
   };
   ctx.dialogs = createStatusDialogs(ctx);
   ctx.settingsDialog = createSettingsDialog(ctx);
@@ -108,6 +114,28 @@ export function startApp(deps) {
       });
     }
   }
+
+  /**
+   * Measure the display's refresh rate (about 1-2 s of requestAnimationFrame on the menus).
+   * A steady measurement is the display's rate (a window moved to another monitor changes it); an
+   * unsteady one, from a busy machine, can only be too low and only counts when it is higher.
+   */
+  let meter = null;
+  function remeasureRefresh() {
+    if (meter || document.hidden) return;
+    meter = measureRefresh({
+      onDone(hz, steady) {
+        meter = null;
+        if (hz && (steady || hz > ctx.display.refreshHz || !ctx.display.measured)) {
+          ctx.display.refreshHz = hz;
+          ctx.display.measured = true;
+          if (match) match.setRefreshHz(hz);
+          ctx.settingsDialog.refresh();
+        }
+      },
+    });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !match) remeasureRefresh(); });
 
   function applySettings() {
     const s = prefs.settings;
@@ -397,9 +425,20 @@ export function startApp(deps) {
   $('#app').classList.remove('booting');
   showTitle();
   // Without a GPU the animated menu backdrop repaints the whole screen on the CPU every
-  // frame: detect it once the title is up and keep the menus still (game.css).
+  // frame: detect it once the title is up and keep the menus still (game.css). The same probe
+  // names the graphics card: a profile that never picked a quality starts on the tier the card is
+  // good for (Cinematic on an RTX-class GPU, SPEC §7.5.3); a chosen quality is never touched.
   setTimeout(() => {
-    document.documentElement.dataset.gpu = probeSoftwareGpu() ? 'software' : 'hardware';
+    const info = probeGpu();
+    ctx.gpu = info;
+    document.documentElement.dataset.gpu = info.software ? 'software' : 'hardware';
+    if (applyDetectedTier(prefs.settings, recommendedTier(info, { coarse }))) {
+      ctx.savePrefs();
+      applySettings();
+    }
+    ctx.settingsDialog.refresh();
+    // then the refresh rate, while nothing heavy runs
+    remeasureRefresh();
   }, 0);
   // Web fonts can shift the layout after boot: refit the portraits once they are in.
   if (document.fonts && document.fonts.ready) {

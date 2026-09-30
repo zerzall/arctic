@@ -53,10 +53,22 @@ export function estimateRefreshHz(intervalsMs) {
 }
 
 /**
+ * Whether the intervals are steady enough to trust as the display's own rate: most (85 %) of the
+ * ones that count sit within 8 % of their median. A busy machine drops frames unevenly and fails this.
+ */
+export function isSteady(intervalsMs) {
+  const xs = intervalsMs.filter((v) => Number.isFinite(v) && v > 0.5).slice(3);
+  if (xs.length < 12) return false;
+  const m = median(xs);
+  return xs.filter((v) => Math.abs(v - m) <= m * 0.08).length >= xs.length * 0.85;
+}
+
+/**
  * Measure the refresh rate with requestAnimationFrame. Call while nothing heavy is running (the
- * title screen); a measurement made under load can only come out low, so callers keep the
- * highest result seen.
- * @param {{ raf?: Function, now?: Function, frames?: number, onDone: (hz: number|null) => void }} o
+ * title screen). onDone(hz, steady): a steady measurement is the display's rate whatever it was
+ * before (another monitor); an unsteady one (a busy machine) can only be too low, so callers only
+ * take it when it is higher than what they have.
+ * @param {{ raf?: Function, frames?: number, onDone: (hz: number|null, steady: boolean) => void }} o
  * @returns {{ stop(): void }}
  */
 export function measureRefresh(o) {
@@ -68,7 +80,7 @@ export function measureRefresh(o) {
     if (stopped) return;
     if (last) iv.push(t - last);
     last = t;
-    if (iv.length >= frames) { stopped = true; o.onDone(estimateRefreshHz(iv)); return; }
+    if (iv.length >= frames) { stopped = true; o.onDone(estimateRefreshHz(iv), isSteady(iv)); return; }
     raf(step);
   };
   raf(step);
