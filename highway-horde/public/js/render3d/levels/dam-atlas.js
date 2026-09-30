@@ -41,7 +41,7 @@ export const C3_CELLS = {
   usarmy: [512, 96], tail: [384, 96], fuel: [384, 160], quarantine: [768, 160], sandbag: [128, 64], motorpool: [320, 96], briefing: [512, 384],
   // ---- shared: interior clutter and papers
   poster_a: [192, 256], poster_b: [192, 256], poster_c: [192, 256], calendar: [160, 224], clipboard: [128, 176], paper: [64, 64],
-  exitdoor: [256, 96], firstaid: [128, 128], fireext: [128, 160], hazard: [256, 64], chevron: [256, 64],
+  exitdoor: [256, 96], firstaid: [128, 128], fireext: [128, 160], hazard: [256, 64], chevron: [256, 64], ammo: [256, 96],
   // ---- emissive
   e_crt1: [256, 192], e_crt2: [256, 192], e_crt3: [256, 192], e_exit: [256, 96], e_lamps: [512, 64], e_scope: [256, 256], e_panel: [512, 128],
   // ---- blended decals
@@ -52,17 +52,18 @@ export const C3_CELLS = {
 let canvas = null;
 let cells = null;
 
-// Shelf packing, tallest cells first (a fixed order: height, then width, then name), so the three
-// levels' 100-odd cells fill the sheet instead of leaving ragged rows behind the tall ones.
+// First-fit decreasing-height shelf packing (a fixed order: height, then width, then name): each cell
+// goes on the first shelf with room left, so short cells fill the ends of the tall shelves.
 function pack() {
   const out = {};
   const list = Object.entries(C3_CELLS).sort((a, b) => b[1][1] - a[1][1] || b[1][0] - a[1][0] || (a[0] < b[0] ? -1 : 1));
-  let x = 0, y = 0, rowH = 0;
+  const shelves = [];
+  let top = 0;
   for (const [k, [w, h]] of list) {
-    if (x + w + 2 > AW) { x = 0; y += rowH + 2; rowH = 0; }
-    out[k] = [x, y, x + w, y + h];
-    x += w + 2;
-    rowH = Math.max(rowH, h);
+    let s = shelves.find((q) => q.x + w <= AW && h <= q.h);
+    if (!s) { s = { y: top, h, x: 0 }; shelves.push(s); top += h + 2; }
+    out[k] = [s.x, s.y, s.x + w, s.y + h];
+    s.x += w + 2;
   }
   return out;
 }
@@ -723,6 +724,11 @@ const PAINT = {
   fireext: (g, w, h, r) => { plate(g, w, h, '#c8161a', null); fit(g, 'FIRE', w / 2, h * 0.26, w * 0.8, h * 0.2, { color: '#fff' }); fit(g, 'EXTINGUISHER', w / 2, h * 0.5, w * 0.84, h * 0.12, { color: '#fff' }); arrow(g, w / 2, h * 0.76, w * 0.46, '#fff'); weather(g, w, h, r, 0.5); },
   hazard: (g, w, h) => stripes(g, 0, 0, w, h, '#f2c21a', '#1a1a1a', 20),
   chevron: (g, w, h) => stripes(g, 0, 0, w, h, '#f2efe6', '#c8161a', 20),
+  ammo: (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    fit(g, 'CTG 5.56MM BALL M855', w / 2, h * 0.3, w * 0.9, h * 0.3, { color: '#e8c84a', font: COND });
+    fit(g, '840 ROUNDS  ·  LOT WCC-0917', w / 2, h * 0.7, w * 0.8, h * 0.22, { color: '#e8c84a', font: COND });
+  },
   // ---- emissive (screens, lamps)
   e_crt1: crt(1), e_crt2: crt(2), e_crt3: crt(3),
   e_exit: (g, w, h) => { g.fillStyle = '#062a12'; g.fillRect(0, 0, w, h); fit(g, 'EXIT', w * 0.42, h / 2, w * 0.5, h * 0.7, { color: '#4aff7a' }); arrow(g, w * 0.82, h / 2, w * 0.22, '#4aff7a'); },

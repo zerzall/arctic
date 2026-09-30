@@ -9,7 +9,7 @@
 //   dam-misc.js   the fallen bridge, the dock and boat, the depot gate, the road signs
 //   dam-fx.js     the reservoir, the chute's water, white water, spray, the day rain and lightning
 
-import { C3_BUCKETS, createC3Materials, rockFaces, stairShaft, at, setKitDay } from './dam-kit.js';
+import { C3_BUCKETS, createC3Materials, rockFaces, stairShaft, at, setKitDay, ammoCrate } from './dam-kit.js';
 import { DAM, DAM_Z } from '../../shared/levels/dam.js';
 import { damBody, spillway, parapet, crestLamps, stairTower, hoistHouse, craneLeg, gantryCrane } from './dam-set.js';
 import {
@@ -64,6 +64,7 @@ export function createLevelArt(ctx, deps) {
       const s = o.style;
       if (!s) return false;
       if (DRAWN_ELSEWHERE.has(s)) return true;
+      if (s === 'crate') { ammoCrate(B, o); return true; }
       switch (s) {
         case 'parapetN': case 'parapetS': return parapet(P, o);
         case 'hoist': return hoistHouse(P, o);

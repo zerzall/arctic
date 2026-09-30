@@ -278,6 +278,14 @@ export function offsetPath(pts, d) {
   return out;
 }
 
+/**
+ * An extra ammo supply crate (E refills ammo at any obstacle tagged prop 'supply'; the C3 art draws style
+ * 'crate' as a stencilled ammo box). 'counter' is knee-high cover that shots pass over.
+ */
+export function supplyCrate(B, x, y, a, section) {
+  return B.ob('counter', x, y, 44, 30, a, { prop: 'supply', style: 'crate', section });
+}
+
 /** Player spawns in two rows of three around (x, y), facing along +x. */
 export function spawnRows(B, x, y, dx = 70, dy = 70) {
   for (let k = 0; k < 6; k++) B.pspawn(x + (k % 3) * dx - dx, y + (Math.floor(k / 3) - 0.5) * dy);
@@ -566,6 +574,7 @@ function buildControl(B, A) {
   B.anchor('control_door', 4500, 1710, 120);
   B.anchor('control_panel', 3950, 1400, 120);
   B.anchor('control_radio', 4300, 1410, 100);
+  supplyCrate(B, 4060, 1800, 0.1, 'control');
   B.checkpoint('control', 3900, 1760);
   B.checkpoint('control', 4040, 1560);
   B.zspawn(3790, 1400, 60, 70, 0.6, 'control');
@@ -693,6 +702,7 @@ function buildTurbines(B, A) {
   B.anchor('turbine_breaker', 6060, 1720, 110);
   B.anchor('turbine_floor', 6720, 1740, 180);
   B.anchor('turbine_exit', 6290, 2020, 140);
+  supplyCrate(B, 6560, 1800, -0.2, 'turbines');
   B.checkpoint('turbines', 7240, 1780);
   B.checkpoint('turbines', 6720, 1760);
   B.checkpoint('turbines', 6300, 2400);
@@ -762,6 +772,7 @@ function buildRiverside(B, A) {
 
   B.anchor('river_boat', 8620, 3090, 110);
   B.anchor('depot_gate', 10980, 2740, 200);
+  supplyCrate(B, 7780, 2660, 0.3, 'riverside');
   B.checkpoint('riverside', 7600, 2740);
   B.checkpoint('riverside', 7700, 2580);
   B.checkpoint('riverside', 9500, 2580);

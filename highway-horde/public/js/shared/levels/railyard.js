@@ -24,7 +24,7 @@
 // Every gate and roof stays on the ground; only the shed floor and the signal box's upper floor stand on
 // terrain (shared/terrain.js plateaus). The level art (render3d/levels/railyard.js) reads map.levelArt.
 
-import { wallBox, wallLine, stairFlight, landing, artData, cliffLine, spawnRows, floorWithHoles } from './dam.js';
+import { wallBox, wallLine, stairFlight, landing, artData, cliffLine, spawnRows, floorWithHoles, supplyCrate } from './dam.js';
 
 export const SPEC = Object.freeze({
   "id": "railyard",
@@ -356,6 +356,7 @@ function buildShed(B, A, plats) {
   B.anchor('shed_crane', 4000, 1480, 120);
   B.anchor('shed_pit', 4400, K.roads[2] - 60, 120);
   B.anchor('shed_office', 4860, 1250, 90);
+  supplyCrate(B, 4480, 1740, 0.15, 'sheds');
   B.checkpoint('sheds', 3560, 1460);
   B.checkpoint('sheds', 3560, 1780);
   B.checkpoint('sheds', 4550, 1690);
@@ -415,6 +416,7 @@ function buildSignalBox(B, A, plats) {
 
   B.anchor('signal_lever', (X.x0 + X.x1) / 2, X.y1 - 90, 90);
   B.anchor('signal_stairs', st.x0 + 45, st.y1 + 60, 120);
+  supplyCrate(B, 5330, 1960, -0.1, 'signalbox');
   B.checkpoint('signalbox', 5320, 1860);
   B.checkpoint('signalbox', 5400, 2400);
   B.checkpoint('signalbox', 6100, 2750);
@@ -509,6 +511,7 @@ function buildFreight(B, A) {
   B.anchor('freight_container', 8600, 1760, 120);
   B.anchor('freight_crane', YARD.crane, 1770, 140);
   B.anchor('freight_switch', 10060, 2610, 100);
+  supplyCrate(B, 9080, 2620, 0.2, 'freight');
   B.checkpoint('freight', 8000, 2640);
   B.checkpoint('freight', 8000, 2780);
   B.checkpoint('freight', 9000, 2700);

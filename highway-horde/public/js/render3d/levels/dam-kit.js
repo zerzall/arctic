@@ -224,6 +224,34 @@ export function tubeLamp(B, halos, x, y, z, len, wx, wy, o = {}) {
   if (lit && halos && wx !== undefined) halos.push({ x: wx, y: wy, h: y + (o.y0 || 0), abs: true, color: o.color || '#eef4ff', size: o.halo ?? 50, strength: o.strength ?? 0.35, flicker: flick(o.flicker) });
 }
 
+// ---- the supply crate ------------------------------------------------------------------------------------------
+
+/**
+ * An extra ammo supply point (obstacle style 'crate', prop 'supply'; its frame already set): an olive
+ * ammo chest with rope handles, its lid pushed back, stencils, two ammo cans and a bandolier on top.
+ */
+export function ammoCrate(B, o) {
+  const w = o.w || 44, d = o.h || 30;
+  const OD = '#4a5230', ODD = '#3a4026';
+  B.rblock('std', 0, 0, 0, w - 4, 20, d - 4, 1.2, OD, null, WOOD);
+  for (const x of [-w / 2 + 5, w / 2 - 5]) B.box('std', x, 10, 0, 3, 20.4, d - 3, ODD, null, WOOD);
+  for (const s of [-1, 1]) {
+    B.box('std', 0, 3, s * (d / 2 - 1.6), w - 3, 2.4, 1.4, ODD, null, WOOD);
+    B.add('std', T.torus(8, 0.3, 4), [s * (w / 2 - 1.2), 13, 0], [4, 3, 4], [0, HALF_PI, 0], '#8a7a5a', WOOD);
+  }
+  // the lid, hinged at the back and propped open
+  B.add('std', T.box(), [0, 24.5, -d / 2 + 4], [w - 3, 1.6, d - 4], [-1.15, 0, 0], ODD, WOOD);
+  B.box('std', 0, 18.6, 0, w - 8, 1, d - 8, '#2a2c22', null, WOOD);
+  for (const x of [-9, 8]) {
+    B.rblock('std', x, 18.6, 2, 13, 9, 8, 0.8, '#55603a', null, PAINTED);
+    B.box('std', x, 28, 2, 3, 1.4, 8.2, '#2a2c22', null, STEEL);
+  }
+  rod(B, 'std', [-w / 2 + 6, 20.5, d / 2 - 6], [w / 2 - 6, 21.5, d / 2 - 8], 1.1, '#6a5a3a', WOOD, 5);
+  pic(B, 'ammo', 0, 9, d / 2 - 1.9, 7.5, 0);
+  pic(B, 'ammo', 0, 9, -d / 2 + 1.9, 7.5, Math.PI);
+}
+const HALF_PI = Math.PI / 2;
+
 // ---- noise ---------------------------------------------------------------------------------------------------
 
 function h2(ix, iy, s) {

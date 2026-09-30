@@ -8,7 +8,7 @@
 //   railyard-freight.js        container stacks, the gantry crane, the grain elevator, the Delta sign
 //   railyard-fx.js             sunbeams in the shed by day, the live locomotive's exhaust
 
-import { C3_BUCKETS, createC3Materials, setKitDay, at, S, CONC, STEEL, WOOD, COL, pic, tubeLamp } from './dam-kit.js';
+import { C3_BUCKETS, createC3Materials, setKitDay, at, S, CONC, STEEL, WOOD, COL, pic, tubeLamp, ammoCrate } from './dam-kit.js';
 import { YARD } from '../../shared/levels/railyard.js';
 import { tracks, wagon, waterTower, mast, catenary, gantry } from './railyard-stock.js';
 import { engineShed, shedRoof, shedOffice, yardWall, signalBox, leverFrame, trussBridge, yardGate, yardProp } from './railyard-build.js';
@@ -50,6 +50,7 @@ export function createLevelArt(ctx, deps) {
       const s = o.style;
       if (!s) return false;
       if (s === 'nodraw' || s === 'rmgleg') return true;
+      if (s === 'crate') { ammoCrate(B, o); return true; }
       if (o.kind === 'bus' || o.kind === 'tanker') return wagon(P, o);
       if (s === 'stack') return containerStack(P, o);
       if (s === 'mast') return mast(P, o);
