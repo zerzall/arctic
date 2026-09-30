@@ -1130,7 +1130,7 @@ describe('balance and robustness', () => {
       players: [{ id: 1, name: 'Solo', color: 0, cls: 'soldier' }],
     });
     const bot = createBot(g, 1, { shop: false });
-    runBots(g, [bot], 60 * 60 * 10, (gg) => gg.phase === 'victory' || gg.phase === 'gameover');
+    runBots(g, [bot], 60 * 60 * 20, (gg) => gg.phase === 'victory' || gg.phase === 'gameover');
     assert.equal(g.phase, 'victory', `ended ${g.phase}/${g.over} on wave ${g.wave}`);
   });
 

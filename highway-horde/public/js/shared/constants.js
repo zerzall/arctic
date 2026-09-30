@@ -142,14 +142,14 @@ export const WAVE_CLEAR_BONUS = 300;       // cash to every living/downed player
 export const REVIVE_BONUS = 100;
 // Zombies in wave w: round((base + perWave * w) * (1 + perPlayer * (players - 1)) * difficulty.count).
 // Boss waves (every BOSS_EVERY-th) bring bossWave × that many regulars besides the bosses.
-export const WAVE_ZOMBIES = { base: 22, perWave: 5, perPlayer: 0.6, bossWave: 0.65 };
+export const WAVE_ZOMBIES = { base: 26, perWave: 6, perPlayer: 0.6, bossWave: 0.65 };
 // Spawning: a group of int(groupMin, groupMax + floor(w / groupPerWaves)) every
 // clamp(start - perWave * (w - 1), min, start) / crowd^crowdExp s (× 0.75..1.25), where
 // crowd = (1 + perPlayer * (players - 1)) * difficulty.count.
-export const SPAWN_PACING = { start: 4.4, perWave: 0.09, min: 2.2, groupMin: 4, groupMax: 6, groupPerWaves: 4, crowdExp: 0.5 };
-export const HP_GROWTH_PER_WAVE = 0.08;    // zombie hp multiplier = 1 + growth * (wave - 1)
-export const SPEED_GROWTH_PER_WAVE = 0.012;// zombie speed multiplier, capped below
-export const SPEED_GROWTH_CAP = 1.3;
+export const SPAWN_PACING = { start: 3.6, perWave: 0.09, min: 1.9, groupMin: 4, groupMax: 6, groupPerWaves: 4, crowdExp: 0.5 };
+export const HP_GROWTH_PER_WAVE = 0.10;    // zombie hp multiplier = 1 + growth * (wave - 1)
+export const SPEED_GROWTH_PER_WAVE = 0.008;// zombie speed multiplier, capped below
+export const SPEED_GROWTH_CAP = 1.2;
 
 export const DIFFICULTIES = {
   easy:      { name: 'Easy',      hp: 0.75, damage: 0.6,  count: 0.8,  maxAlive: 120, cash: 1.25 },
