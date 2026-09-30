@@ -416,7 +416,7 @@ function head(sb, P, L, type) {
     { c: [0.0, P.neck - 1.6, 0], rx: 2.3, rz: 2.6, bone: [B.CHEST, B.NECK, 0.3] },
     { c: [0.3, P.neck + 0.6, 0], rx: 1.9, rz: 2.15, bone: B.NECK },
     { c: [c[0] - 0.8, c[1] - r[1] * 0.55, 0], rx: 2.0, rz: 2.2, bone: [B.NECK, B.HEAD, 0.7] },
-  ], { seg: L === 0 ? dq(12) : 7, subdiv: sd(L) * 2, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3,
+  ], { seg: L === 0 ? dq(12) : 7, subdiv: sd(L) > 1 ? 4 : 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f2f2f2', paint: 0.3,
     profile: L === 0 ? (th) => 1 + 0.08 * Math.pow(Math.abs(Math.cos(th - 0.6)), 8) + 0.08 * Math.pow(Math.abs(Math.cos(th + 0.6)), 8) : null });
   // skull (the mouth hollow is dark wet flesh)
   const inMouth = (x, y, z) => {
