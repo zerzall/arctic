@@ -12,7 +12,9 @@
 
 import * as THREE from 'three';
 
-const AW = 2048, AH = 2048;
+// (2048 × 4096: the three levels' cells come to ~6.2 Mpx; a 2048² sheet overflowed and the late cells
+// sampled the clamped edge)
+const AW = 2048, AH = 4096;
 const FONT = '"Arial Black","Helvetica Neue",Arial,"DejaVu Sans","Liberation Sans",sans-serif';
 const COND = '"Arial Narrow","Helvetica Neue",Arial,"DejaVu Sans Condensed","Liberation Sans Narrow",sans-serif';
 const DECO = 'Futura,"Century Gothic","Trebuchet MS","DejaVu Sans","Liberation Sans",sans-serif';
@@ -50,16 +52,25 @@ export const C3_CELLS = {
 let canvas = null;
 let cells = null;
 
+// Shelf packing, tallest cells first (a fixed order: height, then width, then name), so the three
+// levels' 100-odd cells fill the sheet instead of leaving ragged rows behind the tall ones.
 function pack() {
   const out = {};
+  const list = Object.entries(C3_CELLS).sort((a, b) => b[1][1] - a[1][1] || b[1][0] - a[1][0] || (a[0] < b[0] ? -1 : 1));
   let x = 0, y = 0, rowH = 0;
-  for (const [k, [w, h]] of Object.entries(C3_CELLS)) {
+  for (const [k, [w, h]] of list) {
     if (x + w + 2 > AW) { x = 0; y += rowH + 2; rowH = 0; }
     out[k] = [x, y, x + w, y + h];
     x += w + 2;
     rowH = Math.max(rowH, h);
   }
   return out;
+}
+
+/** Cells the packer could not fit on the sheet (tests: must be none). */
+export function c3CellsOutside() {
+  if (!cells) cells = pack();
+  return Object.keys(cells).filter((k) => cells[k][2] > AW || cells[k][3] > AH);
 }
 
 /** UV rect [u0, v0, u1, v1] of a cell (unknown names give the paper cell). */

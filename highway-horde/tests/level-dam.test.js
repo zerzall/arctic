@@ -199,9 +199,12 @@ test('dam: the level art builds on every tier, day and night, within budget', (t
   }
 });
 
-test('dam: the C3 atlas paints every cell', async () => {
+test('dam: the C3 atlas paints every cell, and every cell fits on the sheet', async () => {
   const atlas = await import('../public/js/render3d/levels/dam-atlas.js');
   assert.deepEqual(atlas.c3CellsPainted(), []);
-  const uv = atlas.c3UV('damname');
-  assert.ok(uv[0] >= 0 && uv[2] <= 1 && uv[1] >= 0 && uv[3] <= 1 && uv[2] > uv[0] && uv[3] > uv[1]);
+  assert.deepEqual(atlas.c3CellsOutside(), []);
+  for (const k of Object.keys(atlas.C3_CELLS)) {
+    const uv = atlas.c3UV(k);
+    assert.ok(uv[0] >= 0 && uv[2] <= 1 && uv[1] >= 0 && uv[3] <= 1 && uv[2] > uv[0] && uv[3] > uv[1], k);
+  }
 });
