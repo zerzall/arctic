@@ -27,6 +27,8 @@ import { createLighting, nightFor } from './lighting.js';
 import { resolveTime } from '../shared/timeofday.js';
 import { createZone2D, drawPoiRings } from './zone2d.js';
 import { createCampaign2D, drawCampaignPreview } from './campaign2d.js';
+import { createHideout2D } from './hideout2d.js';
+import { applyHideoutUpgrades } from '../shared/maps-hideouts.js';
 import { createOverlay } from './overlay.js';
 import { renderClassPortrait as portrait } from './portrait.js';
 
@@ -142,6 +144,8 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   const zone2d = createZone2D(map);
   // The Campaign: terrain shading, the stage circle, the horde front, the zip cable (campaign2d.js)
   const campaign2d = createCampaign2D(map);
+  // A story hideout: station rings and icons, upgrade slots, the range's targets (hideout2d.js)
+  const hideout2d = map.kind === 'hideout' && map.hub ? createHideout2D(map) : null;
 
   // obstacle sprites (lazy)
   const obSprites = new Array(map.obstacles.length).fill(null);
@@ -999,7 +1003,7 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   function render(view, opts = {}) {
     if (destroyed) return;
     try {
-      renderFrame(normalizeView(view), opts || {});
+      renderFrame(hideout2d ? hideout2d.strip(normalizeView(view)) : normalizeView(view), opts || {});
     } catch (err) {
       // log a few, then stay quiet: a malformed snapshot must not stop the game loop
       if (renderErrors++ < 5 && typeof console !== 'undefined') console.error('render failed', err);
@@ -1147,6 +1151,10 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       setWorld();
       campaign2d.drawWorld(ctx, V, viewRect, time, K.k);
     }
+    if (hideout2d) {
+      setWorld();
+      hideout2d.drawWorld(ctx, V, viewRect, time, K.k);
+    }
     mark('emissive');
 
     // ---- screen overlays ----
@@ -1189,6 +1197,13 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
       env.localId = opts.localId != null ? opts.localId : lastLocalId;
       env.time = time;
       effects.addEvents(events, env);
+      if (hideout2d) hideout2d.addEvents(events, time);
+    },
+    /** Story hideouts: show these upgrade tiers ({ generator: 2, ... }) on the slots (same call as the 3D renderer's). */
+    setHideoutUpgrades(u) {
+      if (!hideout2d) return false;
+      applyHideoutUpgrades(map, u);
+      return true;
     },
     screenToWorld(sx, sy) {
       return { x: (sx * dpr - K0.tx) / K0.k, y: (sy * dpr - K0.ty) / K0.k };

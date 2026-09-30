@@ -30,7 +30,7 @@
 
 import { TAU } from './math.js';
 import { createRng, hashString } from './rng.js';
-import { UPGRADE_KINDS, UPGRADE_MAX_TIER, HUB_PROP_KINDS } from './maps-hideouts-kit.js';
+import { UPGRADE_KINDS, UPGRADE_MAX_TIER, HUB_PROP_KINDS, STATION_COLORS, UPGRADE_COLORS } from './maps-hideouts-kit.js';
 import { buildRoadhouse } from './maps-hideouts-roadhouse.js';
 import { buildDepot } from './maps-hideouts-depot.js';
 import { buildFarmstead } from './maps-hideouts-farmstead.js';
@@ -41,7 +41,7 @@ export const HIDEOUT_IDS = Object.freeze(['roadhouse', 'depot', 'farmstead']);
 export const STATION_KINDS = Object.freeze(['board', 'workbench', 'armory', 'infirmary', 'upgrades', 'bed', 'range', 'campfire']);
 
 /** Hideout upgrades (STORY.md §4): each has tiers 1..3, all visible in the hub. */
-export { UPGRADE_KINDS, UPGRADE_MAX_TIER, HUB_PROP_KINDS };
+export { UPGRADE_KINDS, UPGRADE_MAX_TIER, HUB_PROP_KINDS, STATION_COLORS, UPGRADE_COLORS };
 const UPGRADE_ALIASES = Object.freeze({
   radio: 'radiomast', radio_mast: 'radiomast', 'radio-mast': 'radiomast', mast: 'radiomast', radiomast: 'radiomast',
   power: 'generator', lookout: 'watchtower', tower: 'watchtower', medbay: 'infirmary', clinic: 'infirmary',

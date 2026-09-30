@@ -14,6 +14,15 @@ export const r3 = (v) => Math.round(v * 1000) / 1000;
 export const UPGRADE_KINDS = Object.freeze(['generator', 'watchtower', 'infirmary', 'armory', 'radiomast', 'garden', 'palisade']);
 export const UPGRADE_MAX_TIER = 3;
 
+/** Colours the 2D views (top-down overlay, minimap) give the stations and the upgrade slots. */
+export const STATION_COLORS = Object.freeze({
+  board: '#ffc94d', workbench: '#ff9a3c', armory: '#ee6a55', infirmary: '#ff7b96',
+  upgrades: '#7fd6ff', bed: '#b8a4e8', range: '#ece5d2', campfire: '#ff8a3d',
+});
+export const UPGRADE_COLORS = Object.freeze({
+  generator: '#ffd45a', watchtower: '#c9b28a', infirmary: '#ff7b96', armory: '#ee6a55', radiomast: '#9be0ff', garden: '#7fd36a', palisade: '#c4a06a',
+});
+
 /**
  * Prop kinds the 3D renderer models (render3d/world-hideout*.js). `hub.props[].t`, the
  * upgrade tiers' props and the obstacles' `prop` field draw from this list; tests check
