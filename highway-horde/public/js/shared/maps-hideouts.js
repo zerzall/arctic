@@ -17,8 +17,10 @@
 // SEAMS (documented in SPEC §3.10):
 //   * Stations  hub.stations[] = { id, kind, x, y, r, label, h } — `kind` is one of
 //     STATION_KINDS. The matching interactable has the same id/kind/x/y/r, `hold: 0`.
-//   * NPCs      hub.npcs[] = { id, name, role, x, y, angle, pose, z?, recruit? } — idle spots for
-//     the NPC layer (S2). `recruit` = story flag id the NPC needs before it appears.
+//   * NPCs      hub.npcs[] = { id, name, role, x, y, angle, pose, station?, recruit?, mode?, route?, loop? } —
+//     idle spots: `id` is a cast key (shared/story/cast.js), sim/story.js stands the NPC on the spot.
+//     `recruit` (the mission that unlocks the NPC) keeps the spot empty when the host lists the
+//     recruited cast in settings.story.npcs and this NPC is not in it.
 //   * Upgrades  settings.story.hideoutUpgrades = { generator, watchtower, infirmary, armory,
 //     radiomast, garden, palisade } (tiers 0..3). `normalizeUpgrades(raw)` cleans it,
 //     `buildHideoutUpgrade(kind, tier, hub)` returns what tier `tier` ADDS (tier 0 = the

@@ -782,10 +782,15 @@ identical for every seed (the seed only moves the small scatter); a closed, wall
   `map.interactables` entry per station (`{ id, kind, x, y, r, label, hold: 0 }`, same id) for the
   sim's press-E spots. Props at each station glow softly (the readable-station highlight); S1's UI
   supplies the prompt text.
-- **NPC idle spots** `hub.npcs[] = { id, name, role, x, y, angle, pose: 'stand'|'sit'|'work'|'watch', z?, station?, recruit? }`
-  (the NPC layer walks them in and out of their `recruit` flag): someone sits at the fire, the
-  mechanic works the bench, the scout keeps watch on the lookout (`z` > 0: up on a roof or tower).
-  Every spot stands on open ground, a seat or behind a counter.
+- **NPC idle spots** `hub.npcs[] = { id, name, role, x, y, angle, pose: 'stand'|'sit'|'work'|'watch', station?, recruit?, mode?, route?, loop? }`.
+  `id` is a cast key (`shared/story/cast.js`: the look, name and voice come from there); §3.9's story director
+  stands every listed NPC on its spot (`x, y, angle`, nudged off a collider if need be) and runs `mode` / `route` /
+  `loop` (the roadhouse's road boss patrols the south fence). `pose` is only a hint for the spot's meaning (someone
+  by the fire, the mechanic at the bench, the scout on watch: the NPC layer draws every idle NPC standing).
+  `station` is the station the character tends (the cast's own). `recruit` (the mission that unlocks them) keeps a
+  spot empty when the host names the recruited cast in `settings.story.npcs` (`[{ id }]`) and this NPC is not in
+  it; NPCs without `recruit` (Roz and June at the roadhouse) are always there, and without a `story.npcs` list
+  everyone is. Every spot stands on open ground, beside a seat or behind a counter.
 - **Upgrades** `settings.story.hideoutUpgrades = { generator, watchtower, infirmary, armory, radiomast, garden, palisade }`
   (tiers 0..3; `normalizeUpgrades` cleans it and accepts aliases). `hub.upgradeSlots[kind] = { kind, x, y, a, r, label, maxTier: 3, tiers[4] }`;
   `buildHideoutUpgrade(kind, tier, hub)` returns what that tier **adds** (tier 0 = the unbuilt
