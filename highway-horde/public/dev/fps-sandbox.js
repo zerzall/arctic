@@ -147,8 +147,9 @@ function hubViewpoints(map) {
   const wet = (x, y) => map.areas.some((ar) => ar.kind === 'water' && Math.abs(x - ar.x) < ar.w / 2 + 50 && Math.abs(y - ar.y) < ar.h / 2 + 50);
   const clear = (x, y) => !wet(x, y) && map.obstacles.every((o) => {
     const c = Math.cos(o.a || 0), s2 = Math.sin(o.a || 0), dx = x - o.x, dy = y - o.y;
-    return Math.abs(dx * c + dy * s2) > o.w / 2 + 70 || Math.abs(-dx * s2 + dy * c) > o.h / 2 + 70;
-  });
+    return Math.abs(dx * c + dy * s2) > o.w / 2 + 90 || Math.abs(-dx * s2 + dy * c) > o.h / 2 + 90;
+  }) && hub.props.every((p) => !Number.isFinite(p.x) || p.t === 'lantern' || p.t === 'cat' || Math.hypot(p.x - x, p.y - y) > 70)
+    && x > hub.bounds.x0 + 120 && x < hub.bounds.x1 - 120 && y > hub.bounds.y0 + 120 && y < hub.bounds.y1 - 120;
   const spot = (x, y) => {
     for (const r of [0, 60, 120, 180, 260, 340]) {
       for (let k = 0; k < 12; k++) {
