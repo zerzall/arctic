@@ -8,7 +8,11 @@
 // (the Warden is fifteen), dp1 Blackwater Depot after the dam, dp2 after the rail yard and Fort Harlan,
 // fs the Haskell farm before the lake.
 
-const t = (id, prompt, lines, opts = {}) => ({ id, prompt, lines: lines.map(([who, text]) => ({ who, text })), ...opts });
+// (`setFlags` is written as a list here and stored as { flag: true }, the shape the UI and content.js read)
+const t = (id, prompt, lines, opts = {}) => ({
+  id, prompt, lines: lines.map(([who, text]) => ({ who, text })), ...opts,
+  ...(opts.setFlags ? { setFlags: Object.fromEntries(opts.setFlags.map((f) => [f, true])) } : {}),
+});
 
 export const TALK_CREW = {
   // =============================================================================== MARA (infirmary)

@@ -310,7 +310,7 @@ function producedFlags() {
     [...m.steps, ...(m.bonus || [])].forEach((s) => Object.keys(s.flags || {}).forEach((k) => f.add(k)));
   }
   for (const c of CHAPTERS) if (c.arrival) f.add(c.arrival.flag);
-  for (const npc of Object.values(DIALOGUE.talk)) for (const stage of Object.values(npc)) for (const tp of stage.topics) (tp.setFlags || []).forEach((k) => f.add(k));
+  for (const npc of Object.values(DIALOGUE.talk)) for (const stage of Object.values(npc)) for (const tp of stage.topics) Object.keys(tp.setFlags || {}).forEach((k) => f.add(k));
   return f;
 }
 function checkWhen(when, where, flags) {

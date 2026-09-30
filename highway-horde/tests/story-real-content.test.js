@@ -84,6 +84,8 @@ test('hideout conversations: each visit stage has a greeting for its people, top
     assert.ok(c.greet.length > 0);
     const flags = contentFlags();
     assert.ok(flags.size > 0, 'topics set flags');
+    for (const f of ['june_lucky_cap', 'heard_mara_count', 'deke_tape_told']) assert.ok(flags.has(f), `a talk can set ${f} (the epilogue and the hideout read it)`);
+    assert.ok([...flags].every((f) => /^[a-z][a-z0-9_]*$/.test(f)), 'flag names, not list indexes');
     const s = { profile: createProfile({ name: 'A', cls: 'soldier' }), world: w, actor: { isHost: false }, chapter: 1, now: 5 };
     for (const f of flags) assert.equal(applyAction(s, { a: 'flag', flag: f }).ok, true, `${f} may be set from a conversation`);
     // a once-topic disappears after it was heard

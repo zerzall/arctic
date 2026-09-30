@@ -2,7 +2,11 @@
 // Priya joins at Westgate, Okafor and Danny at Fort Harlan; Quill, Dutch and Wendell only through
 // their side jobs (Diner Siege, Night Hauler, Sunken Cargo), so they can be met at any hideout after.
 
-const t = (id, prompt, lines, opts = {}) => ({ id, prompt, lines: lines.map(([who, text]) => ({ who, text })), ...opts });
+// (`setFlags` is written as a list here and stored as { flag: true }, the shape the UI and content.js read)
+const t = (id, prompt, lines, opts = {}) => ({
+  id, prompt, lines: lines.map(([who, text]) => ({ who, text })), ...opts,
+  ...(opts.setFlags ? { setFlags: Object.fromEntries(opts.setFlags.map((f) => [f, true])) } : {}),
+});
 
 export const TALK_MORE = {
   // =============================================================================== PRIYA (upgrade board)

@@ -27,7 +27,7 @@ export const STAGES = {
 };
 export const STAGE_IDS = Object.keys(STAGES);
 
-/** talk[npcId][stageId] = { greet:[string...], topics:[{ id, prompt, lines:[{who,text}], when?, once?, setFlags? }] } */
+/** talk[npcId][stageId] = { greet:[string...], topics:[{ id, prompt, lines:[{who,text}], when?, once?, setFlags?:{[flag]:true} }] } */
 export const TALK = { ...TALK_CREW, ...TALK_MORE };
 
 /** Generic lines for an NPC with nothing new to say (or no tree for this stage). */
