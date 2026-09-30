@@ -12,7 +12,7 @@ export const CH2 = [
     map: 'truckstop', time: 'night', mode: 'defend', level: [4, 5], party: { min: 1, max: 6 },
     requires: ['m1_3'], hub: 'roadhouse', after: 'hideout:roadhouse',
     briefing: [
-      L('narrator', 'DAY 44. THE ROADHOUSE. MORNING.'),
+      L('narrator', 'DAY 45. THE ROADHOUSE. MORNING.'),
       L('ozzy', 'New signal! New signal! Forty-one megahertz, weak, from the Last Chance Truck Stop. Listen.'),
       L('quill', 'This is the Last Chance Diner. We are eleven persons, one hundred pounds of pie and a mounting sense of regret. Please attend.'),
       L('roz', 'Pie. He said pie.'),

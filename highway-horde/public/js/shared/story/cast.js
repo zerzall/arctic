@@ -135,6 +135,16 @@ export const CAST = {
     portrait: { mood: 'eager', expression: 'nervous-smile', pose: 'salute', bg: '#2b3320', accent: '#c5e1a5' },
   },
 
+  // A voice on a micro-cassette. Heard once, in the epilogue.
+  cal: {
+    id: 'cal', name: 'Cal Harlan', role: 'Voice on a Tape', station: null, age: 22, radioOnly: true, spoiler: true,
+    joins: null,
+    bio: 'Deke\'s son, a mechanic\'s apprentice with a terrible singing voice. He left one message on the shop answering machine on Day 2.',
+    voice: { pitch: 1.0, rate: 1.05 },
+    look: null,
+    portrait: { mood: 'warm', expression: 'grin', pose: 'wave', bg: '#3b3a2c', accent: '#f4a300' },
+  },
+
   // Revealed in the finale. Same person as the Warden; the crew only learns her name on the roof.
   wren: {
     id: 'wren', name: 'Wren Alcott', role: 'Harbor Warden (acting)', station: null, age: 15, spoiler: true,
