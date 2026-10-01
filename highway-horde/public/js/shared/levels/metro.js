@@ -249,7 +249,7 @@ function buildStreet(B, K) {
   K.wall(ES.x0, ST.y0 + 12, ES.x0, ES.y0 - 16, { style: 'mt-tile', section: S });
   K.wall(ES.x0, ES.y1 + 16, ES.x0, ST.y1 - 12, { style: 'mt-tile', section: S });
   K.roof(ES.x0, ES.y0, ES.x1, ES.y1, { kind: 'plain', height: 470, section: S, style: 'mt-stair', dark: 0.5 });
-  K.put('stairflight', (ES.x0 + ES.x1) / 2, (ES.y0 + ES.y1) / 2, 0, { x0: ES.x0, x1: ES.x1, y0: ES.y0, y1: ES.y1, h0: METRO.concourse, h1: H, dir: -1 });
+  K.put('stairflight', (ES.x0 + ES.x1) / 2, (ES.y0 + ES.y1) / 2, 0, { x0: ES.x0, x1: ES.x1, y0: ES.y0, y1: ES.y1, h0: METRO.concourse, h1: H, dir: -1, lantern: 1 });
   // the lobby: a map board, benches, a fallen departures sign
   B.ob('desk', 2150, 1650, 160, 30, 0, { style: 'mt-bench', section: S });
   B.ob('desk', 2150, 2750, 160, 30, 0, { style: 'mt-bench', section: S });
@@ -432,10 +432,22 @@ function buildPlatform(B, K) {
     K.plateau(x0, CY.y0, x1, CY.y1, HP);
     const doorsS = [x0 + 120, x0 + 300, x0 + 480].map((at) => ({ at, w: 80, kind: 'train', style: 'train' }));
     const doorsN = (k === 1 ? [x0 + 150, x0 + 450] : [x0 + 300]).map((at) => ({ at, w: 80, kind: 'train', style: 'train' }));
-    K.wall(x0, CY.y1 - T / 2, x1, CY.y1 - T / 2, { t: T, style: 'train', section: S, doors: doorsS });
-    K.wall(x0, CY.y0 + T / 2, x1, CY.y0 + T / 2, { t: T, style: 'train', section: S, doors: doorsN });
+    // windows in the gaps between the doors
+    const winsBetween = (ds) => {
+      const out = [];
+      let a = x0 + T;
+      for (const d of [...ds, { at: x1 - T + 40, w: 80 }]) {
+        const b = d.at - d.w / 2;
+        const n = Math.floor((b - a + 8) / 100);
+        for (let i = 0; i < n; i++) out.push({ at: a + ((i + 0.5) * (b - a)) / n, w: Math.min(80, (b - a) / n - 20), h: 34, sill: 34, style: 'train' });
+        a = d.at + d.w / 2;
+      }
+      return out;
+    };
+    K.wall(x0, CY.y1 - T / 2, x1, CY.y1 - T / 2, { t: T, style: 'train', section: S, doors: doorsS, win: winsBetween(doorsS) });
+    K.wall(x0, CY.y0 + T / 2, x1, CY.y0 + T / 2, { t: T, style: 'train', section: S, doors: doorsN, win: winsBetween(doorsN) });
     K.wall(x0 + T / 2, CY.y0 + T, x0 + T / 2, CY.y1 - T, { t: T, style: 'train', section: S, doors: [{ at: 745, w: 76, kind: 'train', style: 'train' }] });
-    K.wall(x1 - T / 2, CY.y0 + T, x1 - T / 2, CY.y1 - T, { t: T, style: 'train', section: S, doors: k === 2 ? [] : [{ at: 745, w: 76, kind: 'train', style: 'train' }] });
+    K.wall(x1 - T / 2, CY.y0 + T, x1 - T / 2, CY.y1 - T, { t: T, style: 'train', section: S, doors: k === 2 ? [] : [{ at: 745, w: 76, kind: 'train', style: 'train' }], win: k === 2 ? [{ at: 712, w: 50, h: 40, sill: 30, style: 'train' }, { at: 778, w: 50, h: 40, sill: 30, style: 'train' }] : [] });
     K.roof(x0 + T, CY.y0 + T, x1 - T, CY.y1 - T, { kind: 'plain', height: 92, section: S, style: 'mt-car', dark: 0.7 });
     if (k < 2) K.plateau(x1, 705, METRO.cars[k + 1][0], 785, HP);
     // seats along both sides between the doors (none in front of a door)
@@ -659,7 +671,7 @@ function buildSquare(B, K) {
   K.wall(EX.x0, EX.y1 + 8, EX.x1, EX.y1 + 8, { style: 'mt-tile', section: S });
   K.roof(5000, EX.y0, EX.x1, EX.y1, { kind: 'plain', height: 460, section: S, style: 'mt-stair', dark: 0.5 });
   K.put('stairflight', (EX.x0 + EX.x1) / 2, (EX.y0 + EX.y1) / 2, 0, { x0: EX.x0, x1: EX.x1, y0: EX.y0, y1: EX.y1, h0: 0, h1: H, dir: -1 });
-  K.put('entrance', EX.x0 - 60, (EX.y0 + EX.y1) / 2, 0, { w: 120, d: EX.y1 - EX.y0 + 60, h: H });
+  K.put('entrance', EX.x0 + 40, (EX.y0 + EX.y1) / 2, 0, { w: 120, d: EX.y1 - EX.y0 + 20, h: H });
   B.anchor('exit_stairs', 4780, (EX.y0 + EX.y1) / 2, 130);
   // the plaza: paving, the statue, trees, benches, the army's last post
   B.box('concrete', SQ.x0, SQ.y0, SQ.x1, SQ.y1);

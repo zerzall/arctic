@@ -32,7 +32,7 @@ export const SKYLIGHTS = Object.freeze([5350, 6100, 6850].flatMap((x) => [1850, 
 // small helpers
 
 /** Re-place the frame so local x runs along the obstacle's long side; returns [long, short]. */
-function long(P, base = null) {
+export function long(P, base = null) {
   const { B, o } = P;
   const a = (o.a || 0) + (o.w >= o.h ? 0 : HALF);
   if (base === null) B.obj(o.x, o.y, a, o.id * 31);
@@ -42,14 +42,14 @@ function long(P, base = null) {
 }
 
 /** +1 when the frame's local +z (after `long`) points toward world (tx, ty), else -1. */
-function faceTo(P, tx, ty) {
+export function faceTo(P, tx, ty) {
   const a = P.fa ?? (P.o.a || 0);
   const zx = -Math.sin(a), zy = Math.cos(a);
   return (tx - P.o.x) * zx + (ty - P.o.y) * zy >= 0 ? 1 : -1;
 }
 
 /** A sloped band along local x from t0 to t1: bottom (h0 - down → h1 - down), top (h0 + up → h1 + up), `th` thick. */
-function slopedWall(B, t0, t1, h0, h1, up, down, th, color, surf) {
+export function slopedWall(B, t0, t1, h0, h1, up, down, th, color, surf) {
   const len = t1 - t0, dh = h1 - h0, mid = (t0 + t1) / 2, hm = (h0 + h1) / 2;
   const H = up + down, yc = hm + (up - down) / 2;
   B.quad('std', [mid, yc, th / 2], [len, dh, 0], [0, H, 0], color, surf);

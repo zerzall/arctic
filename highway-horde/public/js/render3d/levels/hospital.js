@@ -445,11 +445,11 @@ const HOSP_SKY = [
 export function skyline(api, root, day, rows = HOSP_SKY) {
   const list = [];
   let k = 0;
-  const add = (x, y, w, d, h) => list.push({ x, y, w, d, h, s: k++ });
+  const add = (x, y, w, d, h, b) => list.push({ x, y, w, d, h, b, s: k++ });
   for (const r of rows) {
     for (let t = r.from; t < r.to; t += 260 + hash01(k * 3) * 300) {
       const off = r.at + hash01(k * 7) * r.depth, w = 180 + hash01(k) * 200, d = 180 + hash01(k * 5) * 160, h = r.h[0] + hash01(k * 11) * r.h[1];
-      if (r.axis === 'x') add(t, off, w, d, h); else add(off, t, w, d, h);
+      if (r.axis === 'x') add(t, off, w, d, h, r.base || 0); else add(off, t, w, d, h, r.base || 0);
     }
   }
   const pos = [], nor = [], uv = [], col = [], idx = [];
@@ -462,13 +462,13 @@ export function skyline(api, root, day, rows = HOSP_SKY) {
     vi += 4;
   };
   for (const s of list) {
-    const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, z0 = s.y - s.d / 2, z1 = s.y + s.d / 2, h = s.h;
+    const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, z0 = s.y - s.d / 2, z1 = s.y + s.d / 2, h = s.h + s.b, b = s.b;
     const t = 0.7 + hash01(s.s) * 0.5;
     const uw = s.w / 90, ud = s.d / 90, vh = h / 60;
-    quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1], uw, vh, t);
-    quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1], uw, vh, t * 0.9);
-    quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1], [1, 0, 0], ud, vh, t * 0.8);
-    quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0], [-1, 0, 0], ud, vh, t * 0.85);
+    quad([x0, b, z1], [x1, b, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1], uw, vh, t);
+    quad([x1, b, z0], [x0, b, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1], uw, vh, t * 0.9);
+    quad([x1, b, z1], [x1, b, z0], [x1, h, z0], [x1, h, z1], [1, 0, 0], ud, vh, t * 0.8);
+    quad([x0, b, z0], [x0, b, z1], [x0, h, z1], [x0, h, z0], [-1, 0, 0], ud, vh, t * 0.85);
     quad([x0, h, z1], [x1, h, z1], [x1, h, z0], [x0, h, z0], [0, 1, 0], 0.01, 0.01, t * 0.5);
   }
   const g = new THREE.BufferGeometry();
@@ -501,7 +501,7 @@ export function skyline(api, root, day, rows = HOSP_SKY) {
   root.add(mesh);
   // aviation lights on the tall ones
   const halos = api.halos;
-  for (const s of list) if (s.h > 700) halos.push({ x: s.x, y: s.y, h: s.h + 6, color: '#ff2a1a', size: 40, blink: 1, strength: 0.6 });
+  for (const s of list) if (s.h > 700) halos.push({ x: s.x, y: s.y, h: s.h + s.b + 6, color: '#ff2a1a', size: 40, blink: 1, strength: 0.6 });
   return { mesh, dispose() { root.remove(mesh); g.dispose(); mat.dispose(); tex.dispose(); emi.dispose(); } };
 }
 

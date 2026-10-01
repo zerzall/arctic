@@ -524,7 +524,7 @@ function lampsOf(L, map) {
 }
 
 // ---- the water: the flood over the car park, the fountain (a mirror of the sky, dark and still) ---------
-function buildWater(P, waters, day) {
+export function buildWater(P, waters, day) {
   if (!waters.length) return null;
   const pos = [], col = [], uvs = [], idx = [];
   let vi = 0;
@@ -535,7 +535,12 @@ function buildWater(P, waters, day) {
     const inner = [], outer = [];
     for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
-      if (w.kind === 'fountain') {
+      if (w.kind === 'rect') {
+        // a basin between walls: the corners (a fan from the centre)
+        if (k % 9) continue;
+        const q = k / 9;
+        inner.push(vert(w.x + (q === 1 || q === 2 ? 1 : -1) * w.w / 2, w.h, w.y + (q >= 2 ? 1 : -1) * w.d / 2, 1));
+      } else if (w.kind === 'fountain') {
         inner.push(vert(w.x + Math.cos(a) * w.r, w.h, w.y + Math.sin(a) * w.r, 1));
       } else {
         // an irregular pool: lobes from a few sines, feathered out at the rim
@@ -546,8 +551,9 @@ function buildWater(P, waters, day) {
         outer.push(vert(w.x + Math.cos(a) * rx * 1.22, w.h, w.y + Math.sin(a) * rz * 1.22, 0));
       }
     }
-    for (let k = 0; k < n; k++) {
-      const k2 = (k + 1) % n;
+    const m = inner.length;
+    for (let k = 0; k < m; k++) {
+      const k2 = (k + 1) % m;
       idx.push(c, inner[k2], inner[k]);
       if (outer.length) idx.push(inner[k], inner[k2], outer[k2], inner[k], outer[k2], outer[k]);
     }
@@ -573,7 +579,7 @@ function buildWater(P, waters, day) {
 }
 
 /** The vault's and the lanterns' glass (see-through, no shadow: the sun comes in). */
-function buildGlass(P, state) {
+export function buildGlass(P, state) {
   if (!state.glass.length && !state.tris.length && !state.gtris.length) return;
   const b = P.newBuilder();
   P.at(b, 0, 0, 0, 1, 0);
