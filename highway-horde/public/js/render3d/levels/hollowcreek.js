@@ -1,31 +1,43 @@
 // The 3D art of the story level "hollowcreek" (JOURNEY.md §5). Owner: agent C1.
 //
-// world.js hands this module the level's obstacles, its free props and a finish/update/quality/dispose
-// cycle, exactly like the hideouts (world-hideout.js). Return null (the default below) and the level is
-// drawn with the generic models of world-bld.js / world-props.js from the obstacle kinds alone.
+// The layout (shared/levels/hollowcreek.js) tags its obstacles with a style and records floors, door
+// frames and free props in map.art; the kit (millroad-kit.js, shared with Mill Road) draws the walls, doors
+// and floors and runs the model tables of the six sections:
+//   hollowcreek-atlas.js   the town's pictures (signs, stained glass, the school's boards, liveries, notices)
+//   hollowcreek-looks.js   its wall looks, fences, door kinds and floors (added to the kit's tables)
+//   hollowcreek-town.js    the town line and Main Street
+//   hollowcreek-church.js  the Rexall and St. Anne's
+//   hollowcreek-school.js  Hollow Creek Elementary and the police station
 //
-// The interface (every member optional; render3d/levels/index.js fills in no-ops):
-//   BUCKETS                   (export) extra geo-builder buckets, merged into world.js's own
-//   art.material(bucket, t)   the material of one of those buckets at tier t ('low' | 'high' | 'ultra')
-//   art.obstacle(B, o)        true = this module drew obstacle o (by o.style / o.prop / o.gate), false = default model
-//   art.objective(B, ob)      the same for the map's objective (a level usually has none)
-//   art.roof(B, r)            true = this module drew the ceiling of map.roofs entry r (r.style); else E's generic one
-//   art.gateModel(B, gate, o) optional: the model of a gate piece, which the engine animates (JOURNEY.md §4.1)
-//   art.props(B)              free props that are not obstacles (drawn once, in the static meshes)
-//   art.finish()              after the static meshes exist: build separate meshes (signs, animated parts)
-//   art.update(view, frame)   per frame
-//   art.setQuality(full)      the tier changed ('low' | 'high' | 'ultra' | 'cinematic')
-//   art.dispose()
+// The interface is the one of render3d/levels/index.js (obstacle, gateModel, roof, props, finish, update,
+// setQuality, dispose, material, buckets).
 
-/** Extra geo-builder buckets of this level (none yet). */
-export const BUCKETS = {};
+import './hollowcreek-atlas.js';
+import './hollowcreek-looks.js';
+import { createKitArt, KIT_BUCKETS } from './millroad-kit.js';
+import { TOWN_MODELS, TOWN_GATES } from './hollowcreek-town.js';
+import { CHURCH_MODELS, CHURCH_GATES, CHURCH_ROOFS } from './hollowcreek-church.js';
+import { SCHOOL_MODELS, SCHOOL_GATES } from './hollowcreek-school.js';
+import { PARK_MODELS } from './millroad-park.js';
+import { JAM_MODELS } from './millroad-jam.js';
+import { FARM_MODELS_LV } from './millroad-farm.js';
+
+/** Extra geo-builder buckets of this level (the kit's). */
+export const BUCKETS = KIT_BUCKETS;
+
+const MODELS = {
+  'mr-playground': PARK_MODELS['mr-playground'], 'mr-bale': JAM_MODELS['mr-bale'], 'mr-farmfence': JAM_MODELS['mr-farmfence'],
+  'mr-tractor': FARM_MODELS_LV['mr-tractor'], 'mr-scarecrow': FARM_MODELS_LV['mr-scarecrow'],
+  ...TOWN_MODELS, ...CHURCH_MODELS, ...SCHOOL_MODELS,
+};
+const GATES = { ...TOWN_GATES, ...CHURCH_GATES, ...SCHOOL_GATES };
+const ROOFS = { ...CHURCH_ROOFS };
 
 /**
  * @param {object} ctx renderer ctx (ctx.map is the built level)
  * @param {object} deps { root, mats, fx, halos, shafts, day, aniso, gy, tier, full, newBuilder(), matOf(bucket, tier) }
- * @returns {object|null}
+ * @returns {object}
  */
 export function createLevelArt(ctx, deps) {
-  void ctx; void deps;
-  return null;
+  return createKitArt(ctx, deps, { models: MODELS, gates: GATES, roofs: ROOFS });
 }
