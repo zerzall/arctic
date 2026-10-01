@@ -260,6 +260,10 @@ export function tower(P, r) {
   // the base: the sign over the door, the stencilled number, a floodlight on the apron side
   at(B, gy, Tw.x0, (Tw.door[0] + Tw.door[1]) / 2, 0, HALF, 8106);   // (local +z faces west, onto the apron)
   pic(B, 'atc', 0, 140, 11, 22, 0);
+  // a canopy over the door and concrete fins down the blank west face
+  B.block('std', 0, 120, 34, 150, 7, 50, '#8a867a', null, CONC);
+  for (const e of [-1, 1]) rod(B, 'std', [e * 66, 120, 56], [e * 66, 158, 12], 1, '#5a5e62', STEEL, 4);
+  for (const x of [Tw.y0 - 1610 + 6, -70, 70, Tw.y1 - 1610 - 6]) B.block('std', x, 0, 13, 14, 248, 6, '#a8a396', null, CONC);
   pic(B, 'd_graf1', 120, 40, 10.8, 26, 0);
   lampGlow(B, halos, 0, 126, 16, Tw.x0 - 16, (Tw.door[0] + Tw.door[1]) / 2, '#ffe0b0', { size: [10, 2, 6], k: day ? 0.4 : 3, halo: day ? 0 : 80, strength: 0.5, flicker: 0.2, y0: 0 });
   void tier; void sx; void PLASTER;
