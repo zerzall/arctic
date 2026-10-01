@@ -332,10 +332,15 @@ const DETAIL_COLOR_GLSL = `
       hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
       hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
     }
-    // the layer's markings (peeled paint, stains, burnt bricks) fade in and out over the surface on a
-    // period of ~4.8 tiles, so a long wall of the same layer never shows the same blotch tile after tile
+    // the layer's markings (peeled paint, stains, burnt bricks) fade in and out over the world on a
+    // period of ~300 units, so a long wall never shows the same blotch tile after tile. World space,
+    // not the layer's: a facade of repeated modules restarts the layer on each one, and a fade that
+    // followed the layer would repeat with them. (One oblique planar projection is seamless round
+    // corners and needs no normal.)
     {
-      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(hhUv * 0.21 + 0.17, 23.0)).r));
+      vec3 wp = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
+      vec2 q = (wp.xz + wp.y * vec2(0.61, -0.47)) / 300.0 + 0.17;
+      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(q, 23.0)).r));
       hhD.a = 0.5 + (hhD.a - 0.5) * k;
       hhC.rgb = vec3(0.5, 0.5, 0.0) + (hhC.rgb - vec3(0.5, 0.5, 0.0)) * k;
     }
