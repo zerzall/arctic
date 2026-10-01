@@ -474,10 +474,11 @@ export function createLevelArt(ctx, deps) {
   const { OBSTACLES, ITEMS } = metroProps(state);
   let sky = null, water = null;
   const ES = METRO.entryStair, EX = METRO.exitStair;
+  // (over a flight the floor patch would hang flat in mid air: the stairs get the shafts only)
   const skylights = [
-    { x0: ES.x0 + 4, x1: ES.x0 + 216, y0: ES.y0 + 4, y1: ES.y1 - 4, h: METRO.street + 170, floor: 250, clip: ES, patch: 0.1 },
+    { x0: ES.x0 + 4, x1: ES.x0 + 216, y0: ES.y0 + 4, y1: ES.y1 - 4, h: METRO.street + 170, floor: 250, clip: ES, patch: 0 },
     ...PAVEMENT.map((p) => ({ ...p, h: METRO.concourse + 190, floor: METRO.concourse, k: 0.6, patch: 0.07, clip: METRO.concourseRect })),
-    { x0: EX.x0, x1: EX.x0 + 100, y0: EX.y0 + 4, y1: EX.y1 - 4, h: METRO.street + 140, floor: 260, clip: EX, patch: 0.12 },
+    { x0: EX.x0, x1: EX.x0 + 100, y0: EX.y0 + 4, y1: EX.y1 - 4, h: METRO.street + 140, floor: 260, clip: EX, patch: 0 },
   ];
   const level = {
     id: 'metro',

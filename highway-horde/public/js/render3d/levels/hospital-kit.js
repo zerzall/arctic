@@ -1058,7 +1058,7 @@ export function createInteriorArt(ctx, deps, level) {
       // the patch on the floor, clipped to the room below (a vault's patch must not spill outside)
       const cl = sk.clip || { x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 };
       const px0 = Math.max(cl.x0, sk.x0 + dx), px1 = Math.min(cl.x1, sk.x1 + dx), pz0 = Math.max(cl.y0, sk.y0 + dz), pz1 = Math.min(cl.y1, sk.y1 + dz);
-      if (px1 > px0 && pz1 > pz0) {
+      if (px1 > px0 && pz1 > pz0 && (sk.patch ?? 0.12) > 0) {
         const pk = (sk.patch ?? 0.12) * kk;
         quad([px0, fb + 0.4, pz0], [px1, fb + 0.4, pz0], [px1, fb + 0.4, pz1], [px0, fb + 0.4, pz1], pk, pk);
       }
