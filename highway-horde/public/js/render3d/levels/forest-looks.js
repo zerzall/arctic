@@ -32,6 +32,24 @@ Object.assign(WALL_DRAW, {
     B.box('std', 0, H0 * 0.42, 0, L + 10, H0 * 0.84, t * 0.7, shadeHex(base, -0.25), null, { noJitter: true, surf: [look.canyon ? DET.strata : DET.rock, 0.95, 0] });
     const lod = P.lod;
     const step = lod === 0 ? 110 : lod === 1 ? 70 : 52;
+    if (look.canyon) {
+      // the canyon: layered rock, ledges of strata stepping back up the wall, the faces streaked and wet below
+      for (const f of [-1, 1]) {
+        for (let y = 0; y < H0 * 1.05; y += r.range(16, 30)) {
+          let x = -L / 2 - 10;
+          const back = (y / H0) * t * 0.12;
+          while (x < L / 2 + 10) {
+            const sw = r.range(50, 130), sh = r.range(16, 30);
+            if (y + sh * 0.5 > hAt(x + sw / 2) + 20) { x += sw; continue; }
+            const c = mixHex(base, r.chance(0.35) ? '#8a7e6a' : '#5a5448', r.next() * 0.7);
+            B.box('std', x + sw / 2, y + sh / 2, f * (t * 0.36 - back + r.range(-4, 5)), sw, sh, t * 0.3, c, [0, r.range(-0.05, 0.05), r.range(-0.03, 0.03)], { noJitter: true, surf: [r.chance(0.6) ? DET.strata : DET.rock, 0.92, 0] });
+            x += sw - r.range(0, 8);
+          }
+        }
+        if (lod >= 1) for (let k = 0; k < Math.round(L / 120); k++) decal(B, r.chance(0.5) ? 'grime' : 'bp_moss', r.range(-L / 2 + 40, L / 2 - 40), r.range(20, 120), f * (t * 0.52 + 2), r.range(60, 120), r.range(60, 160), f > 0 ? 0 : PI);
+      }
+      return;
+    }
     for (const f of [-1, 1]) {
       for (let x = -L / 2; x < L / 2 + 10; x += step * r.range(0.8, 1.2)) {
         const top = hAt(x);
