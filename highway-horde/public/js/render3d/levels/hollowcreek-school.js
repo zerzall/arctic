@@ -74,7 +74,7 @@ function flag(P) {
   B.rblock('std', 0, 0, 0, 22, 4, 22, 1, '#a8a498', null, CONC);
   B.cyl('std', 0, 4, 0, 2.2, 220, '#c8ccce', 12, 0.5, null, CHROME);
   B.add('std', T.sphere(8, 6), [0, 226, 0], [3, 3, 3], null, '#d8b040', S(0, 0.3, 0.8));
-  for (const z of [-1, 1]) B.add('std', T.plane(), [24, 150, z * 0.4], [46, 30, 1], [0, z > 0 ? 0 : PI, -0.08], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+  for (const z of [-1, 1]) B.add('lvsign', T.plane(), [24, 150, z * 0.4], [46, 30, 1], [0, z > 0 ? 0 : PI, -0.08], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
   rod(B, 'std', [2, 10, 0], [2, 224, 0], 0.15, '#e8e8e0', FABRIC, 3);
 }
 
@@ -159,7 +159,7 @@ function classroom(P) {
   sign(B, 'hc_kids', w / 2 - 80, 64, h / 2 - 7.6, 60, 30, PI, { uv: [lvUV('hc_kids')[2], lvUV('hc_kids')[1], lvUV('hc_kids')[0], lvUV('hc_kids')[3]] });
   // the clock and the flag over the board
   B.cyl('std', xb + 1, 112, -50, 7, 1.4, '#f0f0ea', 16, 1, [0, 0, HALF], PLAST);
-  B.add('std', T.plane(), [xb + 3, 108, 50], [22, 14, 1], [0, HALF, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+  B.add('lvsign', T.plane(), [xb + 3, 108, 50], [22, 14, 1], [0, HALF, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
   // the teacher's desk
   B.rblock('std', xb + 34, 0, 30, 30, 28, 50, 1, '#8a6a48', null, WOOD);
   B.add('std', T.sphere(8, 6), [xb + 34, 31, 20], [3.6, 3.6, 3.6], null, '#c8281e', PLAST);
@@ -441,8 +441,8 @@ function station(P) {
   for (let x = -w / 2 + 90; x < w / 2; x += 170) for (const z of [-200, 40, 200]) tubeFixture(B, P.halos, x, 118, z, 0, hash01(x * 5 + z) < 0.25 ? 'dead' : hash01(x + z * 3) < 0.25 ? 'flicker' : 'lit');
   // the lobby: the flag on a stand, the seal on the wall, a bench, the water cooler
   B.cyl('std', 470, 0, h / 2 - 40, 1.4, 90, '#c8a040', 8, 1, null, S(0, 0.3, 0.8));
-  B.add('std', T.plane(), [482, 76, h / 2 - 40], [24, 16, 1], [0, 0.2, 0.1], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
-  B.add('std', T.plane(), [482, 76, h / 2 - 40], [24, 16, 1], [0, 0.2 + PI, -0.1], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+  B.add('lvsign', T.plane(), [482, 76, h / 2 - 40], [24, 16, 1], [0, 0.2, 0.1], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+  B.add('lvsign', T.plane(), [482, 76, h / 2 - 40], [24, 16, 1], [0, 0.2 + PI, -0.1], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
   sign(B, 'hc_badge', w / 2 - 7.6, 80, 200, 36, 36, -HALF);
   plank(B, 'std', [200, 16, h / 2 - 20], [300, 16, h / 2 - 20], 12, 2.4, '#6a4a30', WOOD);
   B.rblock('std', w / 2 - 20, 0, 230, 14, 30, 14, 1, '#e8e4dc', null, PLAST);

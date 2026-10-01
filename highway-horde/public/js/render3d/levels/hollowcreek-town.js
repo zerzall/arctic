@@ -608,8 +608,8 @@ function memorial(P) {
   for (const s of [1, -1]) sign(B, 'hc_plaque', 0, 14, s * 16.2, 26, 13, s > 0 ? 0 : PI);
   for (const x of [-18, -6, 6, 18]) {
     rod(B, 'std', [x, 0, 26], [x + 1, 22, 27], 0.3, '#2a2a2a', METAL, 3);
-    B.add('std', T.plane(), [x + 5, 19, 27], [9, 6, 1], [0, 0.3, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
-    B.add('std', T.plane(), [x + 5, 19, 27], [9, 6, 1], [0, 0.3 + PI, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+    B.add('lvsign', T.plane(), [x + 5, 19, 27], [9, 6, 1], [0, 0.3, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
+    B.add('lvsign', T.plane(), [x + 5, 19, 27], [9, 6, 1], [0, 0.3 + PI, 0], '#ffffff', { uv: lvUV('hc_flag'), noAO: true, noJitter: true });
   }
   B.add('std', T.torus(16, 0.28, 6), [0, 18, 17.5], [8, 8, 8], null, '#2a4a2a', FABRIC);
   for (const x of [-10, 10]) {
