@@ -39,7 +39,8 @@ function grille(P) {
 /** The Rexall's fascia on the front, the Rx blade sign out over the sidewalk (lit at night). */
 function pharmsign(P) {
   const { B, o, halos } = P;
-  sign(B, 'hc_rexall', 1.4, 127, 0, 230, 23, HALF);
+  sign(B, 'hc_rexall', 3.6, 127, 0, 230, 23, HALF);
+  B.box('std', 2.2, 127, 0, 2, 25, 234, '#1a4a8a', null, { noJitter: true, ...S(DET.panel, 0.5, 0.3) });
   const z = -160;
   B.box('std', 30, 108, z, 50, 3, 3, '#3a3c3e', null, METAL);
   B.box('std', 32, 96, z, 44, 24, 5, '#1a4a8a', null, METAL);
