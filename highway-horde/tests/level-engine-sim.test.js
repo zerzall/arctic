@@ -155,10 +155,13 @@ describe('sections, spawns and checkpoints', () => {
     assert.equal(g.level.section, 1);
     assert.equal(g.level.checkpoint, 1);
     // walking back does not lower it, and a section is announced once
-    g.players[0].x = 400;
+    const back = checkpointsOf(g.map, 0)[0];
+    g.players[0].x = back.x;
+    g.players[0].y = back.y;
     ev = play(g, 1, () => false);
     assert.equal(g.level.section, 1);
     g.players[0].x = cp.x + 40;
+    g.players[0].y = cp.y;
     ev = play(g, 1, () => false);
     assert.equal(ofType(ev, 'area').length, 0);
   });
@@ -238,8 +241,9 @@ describe('sections, spawns and checkpoints', () => {
   test('zombies left more than a section behind, far from everyone, are culled quietly', () => {
     const g = levelGame(WAIT());
     for (let i = 0; i < 4; i++) g.level.setGate(i, true);
-    const back = addZombie(g, 'walker', 500, 500);
-    const near = addZombie(g, 'walker', 3700, 600);
+    const at = (i) => checkpointsOf(g.map, i)[0];
+    const back = addZombie(g, 'walker', at(0).x, at(0).y);
+    const near = addZombie(g, 'walker', at(2).x, at(2).y);
     g.level.setCheckpoint('corn');
     const cp = checkpointsOf(g.map, 3)[0];
     g.players[0].x = cp.x;
@@ -340,6 +344,7 @@ describe('scripted actions', () => {
     const ev = [];
     const at = [];
     for (let t = 0; t < 60 * 5; t++) {
+      if (t === 60 * 3 - 6) addZombie(g, 'walker', semi.x - 90, semi.y);
       g.step();
       if (t === 60 * 3 + 2) {
         // just after the blast: the survivor was shoved, not hurt

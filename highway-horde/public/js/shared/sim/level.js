@@ -33,8 +33,6 @@ import { OBJECTIVE_BIAS } from './core.js';
 export const DEFEND_HP = 5000;
 /** Size of the (collider-less) box zombies attack at a defend point. */
 const DEFEND_BOX = 64;
-/** Ticks between two checks of the sections the survivors stand in. */
-const SECTION_EVERY = 6;
 /** Ticks between two passes over the zombies (cull, count the ones waiting behind a gate). */
 const CULL_EVERY = 60;
 /** A zombie more than a section behind the party is culled when nobody is this close. */
@@ -91,7 +89,8 @@ export class LevelDirector {
       this.checkpoint = this.section;
       this._enter(this.section);
     }
-    if (g.tick % SECTION_EVERY === 0) this._trackSections();
+    // (every tick: a mission step that waits on a section must not finish before the section is entered)
+    this._trackSections();
     if (g.tick % CULL_EVERY === 0) this._cull();
   }
 

@@ -343,8 +343,9 @@ export class GameCore {
     this._updatePhase();
     if (this.zone) this.zone.update();
     if (this.campaign) this.campaign.update();
-    if (this.story) this.story.update();
+    // (the level before the mission: the steps see the section the party is in this tick)
     if (this.level) this.level.update();
+    if (this.story) this.story.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
     // AI survivors decide now and queue their cmds like everyone else's input.
