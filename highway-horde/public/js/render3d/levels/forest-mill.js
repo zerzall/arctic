@@ -177,6 +177,9 @@ function conveyor(P) {
   const n = 8;
   for (const s of [-1, 1]) rod(B, 'std', [s * 10, y0, z0], [s * 10, y1, z1], 1.6, '#6a6e72', METAL, 6);
   plank(B, 'std', [0, y0 + 3, z0], [0, y1 + 3, z1], 18, 1.4, '#2a2a2a', RUSTY, HALF);
+  // the gallery over the belt: a corrugated tube with a peaked lid
+  plank(B, 'std', [0, y0 + 14, z0], [0, y1 + 14, z1], 22, 26, '#7a6656', { noJitter: true, surf: [DET.corrugated, 0.6, 0.45] });
+  plank(B, 'std', [0, y0 + 26, z0], [0, y1 + 26, z1], 3, 30, '#5a5048', METAL);
   for (let k = 0; k <= n; k++) {
     const t = k / n, z = z0 + (z1 - z0) * t, y = y0 + (y1 - y0) * t;
     B.box('std', 0, y - 1, z, 24, 2, 3, '#6a6e72', null, METAL);
