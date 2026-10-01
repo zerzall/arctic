@@ -373,9 +373,9 @@ function millgate(P) {
     plank(B, 'std', [x0, 4, 0.6], [x1, H - 4, 0.6], 1.6, 1.6, pipe, CHROME);
   }
   for (let x = -L / 2 + 8; x < L / 2; x += 14) B.add('std', T.torus(8, 0.05, 3), [x, H + 8, 0], [7, 7, 7], [0, HALF + 0.2, 0], '#8a8e92', CHROME);
-  for (let k = 0; k < 8; k++) B.add('std', T.torus(6, 0.2, 3), [-8 + k * 2.2, 52, -2], [1.6, 1.6, 1.6], [k % 2 ? HALF : 0, 0, 0], '#6a6e72', RUSTY);
-  B.box('std', -L * 0.25, 70, -1.4, 50, 25, 0.8, '#f0ece0', null, METAL);
-  sign(B, 'bp_trespass', -L * 0.25, 70, -2, 48, 24, PI);
+  for (let k = 0; k < 8; k++) B.add('std', T.torus(6, 0.2, 3), [-8 + k * 2.2, 52, 2], [1.6, 1.6, 1.6], [k % 2 ? HALF : 0, 0, 0], '#6a6e72', RUSTY);
+  B.box('std', -L * 0.25, 70, 1.4, 50, 25, 0.8, '#f0ece0', null, METAL);
+  sign(B, 'bp_trespass', -L * 0.25, 70, 2, 48, 24, 0);
 }
 
 /** The gate's posts and the HARLAN LUMBER CO. board over it on a pipe frame, a floodlight. */

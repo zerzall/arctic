@@ -247,7 +247,7 @@ function farmpanel(P) {
   for (const y of [14, 30, 46, 62]) B.box('std', 0, y, -4, L, 9, 1.6, '#d0ccc0', null, { noJitter: true, ...WOOD });
   B.box('std', 0, 44, 2, 90, 54, 1.6, '#e8e0cc', null, WOOD);
   sign(B, 'bp_farm', 0, 44, 3, 88, 55, 0);
-  decal(B, 'bp_graf', -L * 0.2, 30, -5.2, 80, 30, PI);
+  decal(B, 'bp_graf', -L * 0.32, 22, 3.2, 60, 22, 0);
 }
 
 /** The farm's signal: a tall pole with a rotating amber beacon and a siren horn, the painted board, a flare drum. */

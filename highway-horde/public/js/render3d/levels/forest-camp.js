@@ -103,10 +103,11 @@ function campgate(P) {
   for (const y of [10, 48, 88]) log(B, -L / 2 + 2, L / 2 - 2, y, 0, 5);
   for (let x = -L / 2 + 6; x < L / 2; x += 14) B.box('std', x, H / 2, 3, 10, H - 4, 3, mixHex('#8a6a48', '#6a5038', hash01(x)), null, WOOD);
   plank(B, 'std', [-L / 2 + 6, 10, -4], [L / 2 - 6, 86, -4], 8, 4, '#5a4632', WOOD);
-  for (let k = 0; k < 8; k++) B.add('std', T.torus(6, 0.2, 3), [-6 + k * 2.2, 50, -6], [1.6, 1.6, 1.6], [k % 2 ? HALF : 0, 0, 0], '#6a6e72', RUSTY);
-  B.rblock('std', 4, 44, -7, 6, 8, 3, 0.8, '#c8a040', null, S(0, 0.3, 0.9));
-  B.box('std', -L * 0.25, 66, -6.4, 60, 30, 1.6, '#c8b088', null, WOOD);
-  sign(B, 'hc_closed', -L * 0.25, 66, -7.4, 58, 29, PI);
+  // (the trailhead side is local +z: the chain, the padlock and the board face the way the crew comes)
+  for (let k = 0; k < 8; k++) B.add('std', T.torus(6, 0.2, 3), [-6 + k * 2.2, 50, 6], [1.6, 1.6, 1.6], [k % 2 ? HALF : 0, 0, 0], '#6a6e72', RUSTY);
+  B.rblock('std', 4, 44, 7, 6, 8, 3, 0.8, '#c8a040', null, S(0, 0.3, 0.9));
+  B.box('std', -L * 0.25, 66, 6.4, 60, 30, 1.6, '#c8b088', null, WOOD);
+  sign(B, 'hc_closed', -L * 0.25, 66, 7.4, 58, 29, 0);
 }
 
 /** The log arch over the campground's entrance: two posts, the beam, the routed name hanging under it. */
