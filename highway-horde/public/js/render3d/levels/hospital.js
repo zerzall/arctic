@@ -49,7 +49,7 @@ const ROOMS = {
   'hs-station': { wallProps: ['poster', 'clock', 'notice', 'phone'], floor: '#8e999c', floorDet: DET.linoleum, upper: '#e2dfd2', lower: '#8fb0aa', lowerH: 32, rail: '#5d8a94', skirt: '#2f4448', ceil: '#dadad2', ceilKind: 'grid', fixture: TROFFER, grime: 0.4 },
   'hs-meds': { floor: '#8d8c85', floorDet: DET.linoleum, upper: '#d2d1c8', skirt: '#3a3d3e', ceil: '#d8d8d0', ceilKind: 'grid', fixture: TROFFER },
   'hs-sluice': { floorDecals: ['mold', 'grime2', 'blood_pool'], floor: '#707a78', floorDet: DET.tile, floorRough: 0.35, lower: '#cfd8d5', lowerH: 84, lowerDet: DET.tile, upper: '#d6dbd6', skirt: '#4a5250', ceil: '#d4d6d2', ceilKind: 'plain', fixture: TUBE, grime: 0.8, grimeCells: ['mold', 'grime2', 'blood_drip'] },
-  'hs-plant': { wallProps: ['panel', 'ext', 'panel'], floorDecals: ['grime2', 'grime'], floor: '#6a6a63', floorDet: DET.concrete, floorRough: 0.75, lower: '#56624f', lowerH: 28, lowerDet: DET.brick, upper: '#9ea196', upperDet: DET.brick, skirt: '#2a2c28', ceil: '#8f8f88', ceilKind: 'slab', fixture: TUBE, grime: 0.8, grimeCells: ['grime', 'mold', 'grime2'] },
+  'hs-plant': { wallProps: ['panel', 'ext', 'panel'], floorDecals: ['grime2', 'grime'], floor: '#6a6a63', floorDet: DET.slab, floorRough: 0.92, lower: '#56624f', lowerH: 28, lowerDet: DET.brick, upper: '#9ea196', upperDet: DET.brick, skirt: '#2a2c28', ceil: '#8f8f88', ceilKind: 'slab', fixture: TUBE, grime: 0.8, grimeCells: ['grime', 'mold', 'grime2'] },
   'hs-or': { wallProps: ['panel', 'gel', 'glove', 'sharps'], floorDecals: ['blood_pool', 'blood_splat', 'blood_trail'], decalArea: 70000, floor: '#6e8d84', floorDet: DET.linoleum, floorRough: 0.3, upper: '#a1bdb3', upperDet: DET.tile, upperRough: 0.4, skirt: '#44625a', skirtH: 8, ceil: '#e2e6e4', ceilKind: 'or', fixture: { kind: 'orpanel', step: 200, rowStep: 260, color: '#f0f8ff', stray: 0 }, grime: 0.5, grimeCells: ['blood_splat', 'blood_hand', 'blood_drip'] },
   'hs-corr-or': { wallProps: CORR_PROPS, floorDecals: BLOODY, decalArea: 70000, floor: '#86a098', floorDet: DET.linoleum, lower: '#a9c2b9', lowerH: 32, upper: '#dbe4de', rail: '#6d958b', railH: 5, skirt: '#35524a', ceil: '#dde0dc', ceilKind: 'grid', fixture: { ...TROFFER, step: 150 }, grime: 0.6, grimeCells: ['blood_trail', 'grime', 'blood_hand'], stripe: ['#d8231b'] },
   'hs-scrub': { wallProps: ['gel', 'glove', 'poster'], floor: '#7d918c', floorDet: DET.tile, floorRough: 0.3, lower: '#d6e0dc', lowerH: 90, lowerDet: DET.tile, upper: '#dfe5e1', skirt: '#4d5e59', ceil: '#dcdfdc', ceilKind: 'plain', fixture: TROFFER },
@@ -291,7 +291,7 @@ const CEILINGS = {
   /** Exposed slab: concrete soffit, beams, a duct and a cable tray, pipes. */
   slab(C) {
     const { B, r, H, fin } = C;
-    B.quad('std', [0, H + 14, 0], [r.w, 0, 0], [0, 0, r.h], fin.ceil, { noAO: true, surf: [DET.concrete, 0.9, 0] });
+    B.quad('std', [0, H + 14, 0], [r.w, 0, 0], [0, 0, r.h], fin.ceil, { noAO: true, surf: [DET.slab, 0.9, 0] });
     const along = r.w >= r.h;
     const len = along ? r.w : r.h, wid = along ? r.h : r.w;
     const nb = Math.max(1, Math.floor(len / 200));

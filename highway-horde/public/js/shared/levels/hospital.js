@@ -647,6 +647,12 @@ function buildER(B, K, CEIL) {
   K.put('plastic', 2420, 3420, 0, { w: 220, h: CEIL });
   B.ob('desk', 2440, 2800, 76, 36, 0.4, { style: 'gurney', section: S });
   B.ob('desk', 2470, 3200, 76, 36, -0.5, { style: 'gurney', section: S });
+  // the floor of the pit: trolleys abandoned where the triage broke down, a crash cart, a monitor
+  B.ob('desk', 960, 2560, 76, 36, 0.8, { style: 'gurney', section: S });
+  B.ob('desk', 1820, 2520, 76, 36, -0.35, { style: 'gurney-bed', section: S });
+  B.ob('desk', 1760, 3260, 76, 36, 1.9, { style: 'gurney', section: S });
+  K.put('crashcart', 1080, 2650, 1.1, {});
+  K.put('monitor', 1880, 2610, 2.4, {});
 
   // ---- pharmacy cage (x 212..900, y 3700..4238): shelves, the insulin fridge
   B.ob('cabinet', 440, 4210, 360, 36, 0, { style: 'shelf-meds', section: S });

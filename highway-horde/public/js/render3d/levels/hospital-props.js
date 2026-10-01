@@ -390,7 +390,7 @@ function sinkBench(P, scrub = false) {
 /** The ward's generator: a diesel set on a skid, radiator, alternator, control panel, the exhaust up the wall. */
 function generator(P) {
   const { B, L, W } = P;
-  const Y = '#c9a227', G = '#3f5f4a';
+  const Y = '#9a8448', G = '#3a4a40';     // (faded, oil-stained paint)
   B.rblock('std', 0, 0, 0, L, 8, W, 1, '#2f3336', null, STEEL);
   for (const e of [-1, 1]) B.box('std', 0, 4, e * (W / 2 - 2), L + 4, 8, 4, '#1f2224', null, STEEL);
   // engine block and rocker covers
@@ -439,8 +439,8 @@ function daytank(P) {
   const len = Math.max(L, W), r = Math.min(L, W) / 2 - 2;
   const pos = (t) => (along ? [0, t] : [t, 0]);
   for (const t of [-len * 0.3, len * 0.3]) { const [x, z] = pos(t); B.rblock('std', x, 0, z, along ? L - 4 : 10, 20, along ? 10 : W - 4, 1, '#3a3e42', null, STEEL); }
-  if (along) B.cylZ('std', 0, 20 + r, 0, r, len - 6, '#c9a227', 18, PAINT);
-  else B.cylX('std', 0, 20 + r, 0, r, len - 6, '#c9a227', 18, PAINT);
+  if (along) B.cylZ('std', 0, 20 + r, 0, r, len - 6, '#9a8448', 18, PAINT);
+  else B.cylX('std', 0, 20 + r, 0, r, len - 6, '#9a8448', 18, PAINT);
   const [gx, gz] = pos(len * 0.1);
   B.cyl('std', gx, 20 + 2 * r, gz, 3, 6, '#2a2c2e', 8, 1, null, STEEL);
   P.pic(B, 'hs_caution', along ? -r - 0.5 : 0, 20 + r, along ? 0 : -r - 0.5, 30, 5, along ? -HALF : Math.PI);
