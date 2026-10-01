@@ -16,7 +16,9 @@ import { TAU } from './math.js';
  *   prep       buy time before the first surge (the ready vote skips it)
  *   startCash  every survivor's cash at the start (instead of START_CASH): one real gun in
  *              the buy time, like a pistol round's savings
- *   total      horde size: round(base × (1 + perPlayer × (n − 1)) × difficulty.count)
+ *   total      horde size: round(base × (1 + perPlayer × (n − 1)) × difficulty.count) (perPlayer
+ *              as the defend waves' WAVE_ZOMBIES.perPlayer: at 0.5 teams of 4 bots won every
+ *              Hard round without a down, docs/BALANCE.md)
  *   surges     the horde arrives in this many surges; surge k's share of it ∝ 1 + grow × (k − 1)
  *   cap        alive at once during surge k: (base + perSurge × (k − 1)) × (1 + perPlayer × (n − 1))
  *              × difficulty.count, never above difficulty.maxAlive (bosses don't count)
@@ -37,10 +39,10 @@ import { TAU } from './math.js';
 export const HORDE = Object.freeze({
   prep: 25,
   startCash: 1000,
-  total: Object.freeze({ base: 150, perPlayer: 0.5 }),
+  total: Object.freeze({ base: 150, perPlayer: 0.6 }),
   surges: 8,
   grow: 0.25,
-  cap: Object.freeze({ base: 22, perSurge: 4, perPlayer: 0.45 }),
+  cap: Object.freeze({ base: 22, perSurge: 4, perPlayer: 0.55 }),
   tier: Object.freeze({ easy: 7, normal: 9, hard: 10, nightmare: 12 }),
   lanes: Object.freeze([1, 1, 2, 2, 2, 3, 3, 0]),
   lateFrom: 4,

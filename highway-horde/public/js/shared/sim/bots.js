@@ -22,6 +22,21 @@ import { activeWeapon, priceFor, shopWave, findPlacement } from './players.js';
 import { MODE_CHARGE } from './zombies.js';
 import { walkComponents, componentAt } from './zone.js';
 import { nearestSupply } from '../level.js';
+import { HS_BREATHER, HS_HOLD } from '../horde.js';
+
+/** Horde Elimination: a hold with at most this many zombies alive is calm enough for a trip to the shop. */
+const HORDE_SHOP_ALIVE = 6;
+/** ... and the station no farther than this (px). */
+const HORDE_SHOP_RANGE = 1400;
+
+/**
+ * Horde Elimination has no break between surges: the breather before one (and a lull at the end
+ * of one) is when the shop at the supply station is worth the walk.
+ */
+function hordeShopWindow(game) {
+  const h = game.horde;
+  return !!h && game.phase === 'wave' && (h.stage === HS_BREATHER || (h.stage === HS_HOLD && h.alive <= HORDE_SHOP_ALIVE));
+}
 
 // Zombie target kinds (z.tgtKind, see zombies.js).
 const TK_PLAYER = 1, TK_OBJECTIVE = 3;
@@ -378,8 +393,20 @@ function think(game, b, index) {
       b.buys = 0;
       b.buyT = game.time + game.rng.range(0.4, 1.2);
     }
+    b.shopSurge = game.horde ? game.horde.surge : 0;
     b.lastPhase = game.phase;
     b.replan = true;
+  }
+  // Horde Elimination: one shopping trip per surge, in its breather or the lull after it
+  b.hordeShop = false;
+  if (game.horde && hordeShopWindow(game)) {
+    if (b.shopSurge !== game.horde.surge) {
+      b.shopSurge = game.horde.surge;
+      b.shopDone = false;
+      b.buys = 0;
+      b.buyT = game.time + game.rng.range(0.2, 0.6);
+    }
+    b.hordeShop = !b.shopDone;
   }
   b.throwKind = null;
   b.deploy = null;
@@ -697,6 +724,11 @@ function strategyGoal(game, b, index) {
   // the break is for getting to the next zone.
   const shopAt = game.campaign ? game.campaign.supply : game.map.supply;
   if (brk && !b.shopDone && shopAt && !game.zone) {
+    setGoal(b, 'shop', shopAt.x, shopAt.y, SUPPLY_RADIUS * 0.55);
+    return;
+  }
+  // (Horde Elimination: the trip to the station between surges, when nothing is close)
+  if (b.hordeShop && shopAt && b.nearestAdj > 200 && Math.hypot(shopAt.x - p.x, shopAt.y - p.y) < HORDE_SHOP_RANGE) {
     setGoal(b, 'shop', shopAt.x, shopAt.y, SUPPLY_RADIUS * 0.55);
     return;
   }
@@ -1725,10 +1757,11 @@ function shopAndReady(game, b, cmd) {
     }
     return;
   }
-  if (!brk) return;
+  if (!brk && !b.hordeShop) return;
   const humans = humansOf(game);
   if (!b.shopDone) {
-    const rush = humans.allReady || game.timer < 4 || !supply;
+    // (mid-round the shop is only open at the station: no rushed buys elsewhere)
+    const rush = brk && (humans.allReady || game.timer < 4 || !supply);
     if ((atStation || rush) && game.time >= b.buyT) {
       const plan = b.buys < b.prof.maxBuys ? nextPurchase(game, p, b.prof) : null;
       if (!plan) {
@@ -1749,6 +1782,7 @@ function shopAndReady(game, b, cmd) {
     }
     return;
   }
+  if (!brk) return;
   if (!p.ready && game.time >= b.readyT && (humans.allReady || humans.alive === 0)) {
     game.command(p.id, { type: 'ready' });
   }

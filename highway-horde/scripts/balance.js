@@ -34,6 +34,12 @@
 // far the lost ones got, the per-wave table names each stage, and damage taken by source
 // includes 'horde front'.
 //   node scripts/balance.js --mode campaign --diffs normal --sizes 1,4 --seeds 8
+//
+// --mode horde (maps that play Horde Elimination; Sandstone runs only in this mode): one round
+// against the whole horde; a "wave" row is a surge (from the moment it is let loose to the
+// next one), and a Horde summary gives the horde's size, the share of rounds won, the round's
+// length, the zombies left on a loss and the downs / deaths per player.
+//   node scripts/balance.js --mode horde --maps sandstone --diffs normal --sizes 1,2,4 --seeds 4
 
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
@@ -161,13 +167,20 @@ export function runMatch(job) {
       }
     }
     for (const e of evs) {
-      switch (e.type) {
+      // Horde Elimination: a surge let loose is a wave (the one before it is over)
+      if (e.type === 'surge' && e.what === 'go') {
+        closeWave(true);
+        const m = teamMoney();
+        lastEarned = m.earned;
+        lastCash = m.cash;
+      }
+      switch (e.type === 'surge' && e.what === 'go' ? 'wave' : e.type) {
         case 'wave': {
           const m = teamMoney();
           // Spending in the break before this wave belongs to it.
           const spentBreak = (m.earned - lastEarned - (m.cash - lastCash)) / n;
           cur = {
-            wave: e.wave, boss: e.boss, start: g.tick, e0: m.earned, c0: m.cash, bank: m.cash / n,
+            wave: e.type === 'surge' ? e.n : e.wave, boss: e.boss, start: g.tick, e0: m.earned, c0: m.cash, bank: m.cash / n,
             spentBreak, downs: 0, deaths: 0, revives: 0, selfRevives: 0, dmgTaken: 0, peakAlive: 0,
             objStart: g.objective ? g.objective.hp / g.objective.maxHp : 1,
             bossSpawn: -1, bossDead: -1, bossesLeft: 0, kills: 0,
@@ -297,6 +310,10 @@ export function runMatch(job) {
         harassed: w.harassed, fog: round2(w.fog || 0),
       } : {}),
     })),
+    horde: g.horde ? {
+      total: g.horde.total, time: round2(g.horde.time), left: g.horde.left(), surge: g.horde.surge,
+      peak: g.horde.stats.peakAlive, bonus: g.horde.stats.bonus,
+    } : null,
     camp: camp ? {
       stage: camp.stage, floor: camp.floor, escaped: g.players.filter((p) => p.escaped).length, rides: camp.stats.rides,
       blight: Math.round(camp.stats.blight), kills: camp.kills, quota: camp.quota, zip: camp.zip,
@@ -550,6 +567,30 @@ function groupBy(results, keyFn) {
 
 const DIFF_ORDER = Object.fromEntries(DIFFICULTY_IDS.map((d, i) => [d, i]));
 
+/** Horde Elimination: per team, the horde's size, the share won, the round's length, what was left on a loss. */
+function hordeTable(results) {
+  const g = groupBy(results.filter((r) => r.horde), (r) => `${r.job.profile}|${r.job.diff}|${r.job.size}`);
+  const keys = [...g.keys()].sort((a, b) => {
+    const [pa, da, sa] = a.split('|'), [pb, db, sb] = b.split('|');
+    return pa.localeCompare(pb) || DIFF_ORDER[da] - DIFF_ORDER[db] || sa - sb;
+  });
+  const rows = keys.map((k) => {
+    const rs = g.get(k);
+    const [profile, diff, size] = k.split('|');
+    const won = rs.filter((r) => r.over === 'victory');
+    const lost = rs.filter((r) => r.over !== 'victory');
+    const n = Number(size);
+    return [profile, diff, size, rs.length, f0(mean(rs.map((r) => r.horde.total))), pct(won.length / rs.length),
+      won.length ? `${f0(mean(won.map((r) => r.horde.time)))} (${f0(Math.min(...won.map((r) => r.horde.time)))}–${f0(Math.max(...won.map((r) => r.horde.time)))})` : '',
+      lost.length ? `${f0(mean(lost.map((r) => r.horde.left)))} @ surge ${f1(mean(lost.map((r) => r.horde.surge)))}` : '',
+      f2(mean(rs.map((r) => r.players.reduce((a, p) => a + p.downs, 0) / n))),
+      f2(mean(rs.map((r) => r.waves.reduce((a, w) => a + w.deaths, 0) / n))),
+      f0(mean(rs.map((r) => r.horde.peak))),
+      f0(mean(rs.map((r) => r.players.reduce((a, p) => a + p.kills, 0) / n)))];
+  });
+  return table(['profile', 'diff', 'team', 'runs', 'horde', 'won', 'round s (won: mean, range)', 'left on a loss', 'downs/pl', 'deaths/pl', 'peak alive', 'kills/pl'], rows);
+}
+
 function summaryTable(results) {
   const g = groupBy(results.filter((r) => !r.job.mono), (r) => `${r.job.profile}|${r.job.diff}|${r.job.size}`);
   const keys = [...g.keys()].sort((a, b) => {
@@ -599,7 +640,8 @@ function waveTable(rs) {
     const boss = ws.filter((x) => x.bossDur != null);
     const bossDone = boss.filter((x) => x.bossDur >= 0);
     rows.push([
-      w + (w % BOSS_EVERY === 0 ? 'B' : '') + stageLabel(ws), pct(ws.length / n), pct(cl.length / n),
+      // (a horde surge is a boss surge when it brings the bosses)
+      w + ((rs[0].horde ? ws.some((x) => x.boss) : w % BOSS_EVERY === 0) ? 'B' : '') + stageLabel(ws), pct(ws.length / n), pct(cl.length / n),
       f0(mean(cl.map((x) => x.dur))), f1(mean(ws.map((x) => x.dmgTaken))),
       f2(mean(ws.map((x) => x.downs / size))), f2(mean(ws.map((x) => x.deaths / size))),
       f2(mean(ws.map((x) => x.revives / size))),
@@ -758,6 +800,7 @@ function report(results, opt) {
   const cpu = ok.reduce((s, r) => s + r.ms, 0) / 1000;
   parts.push(`# Balance run (${ok.length} runs, ${f0(secs / 3600)} h of game time simulated in ${f0(cpu)} CPU s)`);
   if (typeof opt.set === 'string') parts.push(`Overrides: \`${opt.set}\``);
+  if (ok.some((r) => r.horde)) parts.push('## Horde Elimination\n\nround s = from the end of the buy time to the last kill; a per-wave row below is a surge.\n\n' + hordeTable(ok));
   parts.push('## Summary\n\nclear N = share of runs that cleared wave N; wiped/obj lost = how the lost runs ended.\n\n' + summaryTable(ok));
   const detail = opt.detail || 'normal';
   if (detail !== 'none') {

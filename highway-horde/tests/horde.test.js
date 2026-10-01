@@ -310,6 +310,25 @@ describe('a horde round', () => {
   });
 });
 
+describe('bots in a horde round', () => {
+  test('they shop at the station between surges (the shop is closed elsewhere mid-round)', () => {
+    const g = hordeGame({ mapId: 'sandstone', n: 1, bot: true, seed: 4 });
+    skipBuy(g);
+    const bot = g.players[0];
+    bot.cash = 6000;
+    const buys = [];
+    g.events.length = 0;
+    for (let t = 0; t < 60 * 150 && !buys.length; t++) {
+      guard(g);
+      g.step();
+      for (const e of g.events) if (e.type === 'buy' && g.phase === 'wave') buys.push({ item: e.item, stage: g.horde.stage, d: Math.hypot(bot.x - g.map.supply.x, bot.y - g.map.supply.y) });
+      g.events.length = 0;
+    }
+    assert.ok(buys.length > 0, 'a bot with cash shops mid-round');
+    assert.ok(buys.every((b) => b.d < 160), `at the station: ${JSON.stringify(buys)}`);
+  });
+});
+
 describe('on the wire (protocol 12)', () => {
   test('the horde block and the surge events survive a round trip; other modes carry none', () => {
     assert.ok(PROTOCOL_VERSION >= 12, 'the horde block belongs to protocol 12 and later');
