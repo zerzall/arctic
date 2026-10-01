@@ -370,7 +370,7 @@ function windowUnit(P, h, t, look, side) {
       const py = h.y0 + (k + 0.5) * (hh / n);
       B.add('std', T.box(), [cx, py, -t / 2 - 1.2], [w + 8, hh / n - 1.2, 1], [0, 0, (hash01(seed + k) - 0.5) * 0.12], woods[(k + seed) % 4], { noJitter: true, ...WOOD });
     }
-    B.box('std', cx, cy, 0, w - 2, hh - 2, 1, '#1a1814', null, NJ);
+    B.box('std', cx, cy, 0, w - 2, hh - 2, 1, '#4a3c2c', null, { noJitter: true, ...WOOD });
   }
   // daylight in through it
   if (state !== 'boarded' && (side === 'in')) lightBeam(P, h, st ? '#b8a080' : '#c8b090');
