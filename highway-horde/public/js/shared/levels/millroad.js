@@ -522,9 +522,11 @@ function gas(B) {
   ob(B, 'counter', 'mr-checkout', 6130, 2690, 150, 40, HALF, { sec });
   ob(B, 'desk', 'mr-officedesk', 6190, 2520, 90, 44, PI, { sec });
   prop(B, 'mr-storestuff', (X0 + XM) / 2, (Y0 + Y1) / 2, 0, { w: XM - X0, h: Y1 - Y0 });
-  B.light(5850, 2520, 220, '#e8f0ff', 0.25, 125);
-  B.light(6000, 2700, 240, '#e8f0ff', 0, 125);
-  B.light(6160, 2500, 150, '#ffd9a0', 0, 110);
+  // (dim, cold tubes: the store is white walls, white shelving and a white tile floor, and at full
+  // strength its lights blew the room out at night once the ceiling closed it in)
+  B.light(5850, 2520, 200, '#8e9aac', 0.25, 125);
+  B.light(6000, 2700, 210, '#97a2b4', 0, 125);
+  B.light(6160, 2500, 140, '#b89670', 0, 110);
   // garage: the lift with a sedan up on it, workbench, tool chests, tyre rack
   for (const x of [6305, 6475]) ob(B, 'wall', 'mr-liftpost', x, 2600, 16, 16, 0, { sec });
   prop(B, 'mr-liftcar', 6390, 2600, 0);
