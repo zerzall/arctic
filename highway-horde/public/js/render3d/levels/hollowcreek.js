@@ -19,11 +19,17 @@ import { TOWN_MODELS, TOWN_GATES } from './hollowcreek-town.js';
 import { CHURCH_MODELS, CHURCH_GATES, CHURCH_ROOFS } from './hollowcreek-church.js';
 import { SCHOOL_MODELS, SCHOOL_GATES } from './hollowcreek-school.js';
 import { PARK_MODELS } from './millroad-park.js';
+import { JAM_MODELS } from './millroad-jam.js';
+import { FARM_MODELS_LV } from './millroad-farm.js';
 
 /** Extra geo-builder buckets of this level (the kit's). */
 export const BUCKETS = KIT_BUCKETS;
 
-const MODELS = { 'mr-playground': PARK_MODELS['mr-playground'], ...TOWN_MODELS, ...CHURCH_MODELS, ...SCHOOL_MODELS };
+const MODELS = {
+  'mr-playground': PARK_MODELS['mr-playground'], 'mr-bale': JAM_MODELS['mr-bale'], 'mr-farmfence': JAM_MODELS['mr-farmfence'],
+  'mr-tractor': FARM_MODELS_LV['mr-tractor'], 'mr-scarecrow': FARM_MODELS_LV['mr-scarecrow'],
+  ...TOWN_MODELS, ...CHURCH_MODELS, ...SCHOOL_MODELS,
+};
 const GATES = { ...TOWN_GATES, ...CHURCH_GATES, ...SCHOOL_GATES };
 const ROOFS = { ...CHURCH_ROOFS };
 

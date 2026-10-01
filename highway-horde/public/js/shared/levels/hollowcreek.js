@@ -208,6 +208,11 @@ function outskirts(B) {
   facade(B, 10750, 1500, 200, 150, 0, 'barn', { sec, color: '#7d3a2c', roof: '#5a2b22' });
   B.ob('silo', 10900, 900, 80, 80, 0, { color: '#b8bcbf', section: sec });
   ob(B, 'counter', 'hc-farmstand', 10150, 2700, 140, 50, 0, { sec });
+  // the field: a tractor left mid-row, bales, a scarecrow, the fence along the road
+  B.ob('truck', 10250, 1150, 104, 58, 0.5, { color: '#2f6a3a', section: sec, style: 'mr-tractor' });
+  for (const [x, y, a] of [[10050, 880, 0.3], [10110, 930, 1.2], [10600, 1350, 2.1], [10660, 1290, 0.6]]) B.ob('rock', x, y, 34, 34, a, { color: '#c9a850', section: sec, style: 'mr-bale' });
+  prop(B, 'mr-scarecrow', 10450, 700, 0.8);
+  prop(B, 'mr-farmfence', 10380, 1960, 0, { len: 1040, gaps: [[10300, 10460]] });
   // traffic heading into town, a sheriff's car into the sign
   for (const [k, x, y, a, wr] of [['car', 10700, MY - 60, PI, false], ['suv', 10480, MY + 55, PI + 0.3, true], ['pickup', 9300, MY - 50, PI - 0.1, false], ['car', 8950, MY + 70, PI + 0.5, true], ['van', 8750, MY - 55, PI, false]]) {
     B.vehicle(k, x, y, a, { wrecked: wr, jitter: 0.3 }).section = sec;

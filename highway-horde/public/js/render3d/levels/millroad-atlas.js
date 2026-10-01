@@ -38,7 +38,7 @@ export const LV_CELLS = {
 // generic dressing uses a few mr_ cells too, which stay common.
 const OWNER = {};
 for (const k of Object.keys(LV_CELLS)) {
-  if (/^corn/.test(k) || (/^mr_/.test(k) && !['mr_hours', 'mr_lotto', 'mr_beer', 'mr_flammable', 'mr_closed', 'mr_evac', 'mr_tagx'].includes(k))) OWNER[k] = 'millroad';
+  if (/^corn/.test(k) || (/^mr_/.test(k) && !['mr_hours', 'mr_lotto', 'mr_beer', 'mr_flammable', 'mr_closed', 'mr_evac', 'mr_tagx', 'mr_harvest'].includes(k))) OWNER[k] = 'millroad';
 }
 let active = 'millroad';
 
