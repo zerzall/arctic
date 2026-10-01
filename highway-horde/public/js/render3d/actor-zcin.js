@@ -1,13 +1,15 @@
 // Cinematic-tier hero details for the zombie models (actor-zmodels.js builds them only when
-// the tier is 'cinematic' and only for LOD 0): a sculpted face (nose bridge and wings,
-// nostril pits, philtrum, lips, nasolabial folds, eyelids over real eyeballs with an iris and
-// a pupil, a full arch of individually shaped teeth on gums, a tongue with a groove, ears with
-// a helix), hands with three-segment fingers, knuckles and nails, laced shoes with a lugged
-// sole, and fold profiles for the garments.
+// the tier is 'cinematic' and only for LOD 0): a sculpted dead face (the relief of the nose's
+// stump, philtrum and nasolabial folds; small eyeballs sunk under heavy drooping lids, a
+// clouded iris and pupil; thin dry lips shrunk back off a human arch of stained, gapped teeth
+// on dark gums; a tongue with a groove; thin ears with a helix — the nose itself is the
+// zombies' 'nose' option, actor-zkit.js), hands with three-segment fingers, knuckles and nails,
+// and fold profiles for the garments. The survivors' cinematic face (cinSoldierFace) and the
+// shared relief (cinFaceRelief) live here too.
 //
 // Everything here is plain geometry for the same rig and material as the rest of the model
 // (one draw call per type and LOD); the wet look of eyes and teeth comes from the material
-// classes SCLERA / TEETH (actor-rigmat.js).
+// classes SCLERA / TEETH (actor-rigmat.js, actor-zmat.js).
 
 import { SLOT, MAT, PART, lineRings } from './actor-shape.js';
 import { B } from './actor-consts.js';

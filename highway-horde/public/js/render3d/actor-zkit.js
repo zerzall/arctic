@@ -3,7 +3,11 @@
 // Every piece is tagged with its option name (`opt`), so it lives in the model's single
 // vertex buffer and the rig shader collapses it unless the instance's look (actor-zlook.js)
 // switched it on. Coordinates are model space (+X forward, +Y up, +Z right, feet at y = 0)
-// derived from the type's proportions P; L is the level of detail (0 near .. 2 far).
+// derived from the type's proportions P; L is the level of detail (0 near .. 2 far). Gear
+// worn on the top sits on its shell (P.frontX / backX / sideZ / shellX / crestY): straps,
+// cords and sashes run up the front, over the crest of the shoulder and down the back a hair
+// off the cloth, so nothing cuts through a shirt. The nose is an option too: most zombies
+// still wear theirs over the skull's rotted cavity.
 //
 // Several looks share one group and differ by a per-instance parameter the shader reads:
 // the cap is a visor when its crown is cut away, hair strands are long, shoulder-length,

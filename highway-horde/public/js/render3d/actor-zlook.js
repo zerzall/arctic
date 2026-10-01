@@ -6,8 +6,12 @@
 // rig shader (actor-rigmat.js) and the accessory groups of the models (actor-zmodels.js)
 // do the rest, so a whole horde is still a handful of draw calls.
 //
-// zombieLook(type, id) never uses Math.random and reads no clock: same input, same output
-// (tests/zlook.test.js).
+// zombieLook(type, id, theme) never uses Math.random and reads no clock: same input, same
+// output (tests/zlook.test.js). The theme is the map id: who the dead were depends on where the
+// story goes (patients and staff at the hospital, workers at the rail yard, soldiers at the
+// airbase, shoppers at the mall; THEMES). Corpse colours: the person's own skin tone drained
+// and shifted toward ashen grey-green, sallow or bruised blue-grey (never toy colours), clothes
+// grimed and sun-faded, eyes clouded and only dimly lit.
 
 import { OPTS, optBit, TEX_W, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3, WOUND } from './actor-consts.js';
 import { ZOMBIES } from '../shared/zombies.js';
