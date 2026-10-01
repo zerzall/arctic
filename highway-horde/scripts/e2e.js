@@ -801,7 +801,15 @@ async function scenarioRelay(sc) {
   let credit = null;
   const t0 = Date.now();
   while (Date.now() - t0 < 45e3) {
-    await runBots([c1, c2], 1500, null);
+    // Both bots aim at the nearest zombie, so the one standing nearer the spawns can take every kill
+    // (CI once saw 0 against 19). The point is that each client's kills reach the host, so after 15 s
+    // a client still without a kill gets the zombies to itself.
+    let fighters = [c1, c2];
+    if (credit && Date.now() - t0 > 15e3) {
+      if (credit.kills1 > 0 && credit.kills2 === 0) fighters = [c2];
+      else if (credit.kills2 > 0 && credit.kills1 === 0) fighters = [c1];
+    }
+    await runBots(fighters, 1500, null);
     credit = await creditOk();
     if (credit.shots1 > 0 && credit.shots2 > 0 && credit.kills1 > 0 && credit.kills2 > 0) break;
   }
