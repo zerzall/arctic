@@ -16,7 +16,7 @@
 //         | trail-  | campground   | ranger       | gorge  ~~   | lumber mill  | farm  |
 //         | head    |              |              |       river |              |       |
 
-import { artOf, prop, wall, wallGaps, room, fence, spawn, ob, dress, facade, HALF, PI } from './millroad.js';
+import { artOf, prop, wall, wallGaps, room, fence, spawn, ob, facade, HALF, PI } from './millroad.js';
 
 export const SPEC = Object.freeze({
   "id": "forest",
@@ -562,4 +562,3 @@ function farm(B) {
   spawn(B, sec, 11400, 3750, 600, 150, 1);
 }
 
-void [dress];
