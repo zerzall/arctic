@@ -41,7 +41,7 @@ export const MAP_LIST = [
     id: 'checkpoint',
     name: 'Checkpoint Delta',
     description: 'A fortified crossroads checkpoint. Keep the radio tower alive while the horde comes down all four roads and through the breaches. Campaign: hold the hill east of the checkpoint, then fight west along the road to the tower.',
-    modes: ['defend', 'zone', 'campaign'],
+    modes: ['defend', 'zone', 'campaign', 'horde'],
   },
   {
     id: 'harlan',

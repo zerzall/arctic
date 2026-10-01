@@ -31,6 +31,7 @@ import {
 import { createBrain, updateBots } from './bots.js';
 import { ZoneDirector } from './zone.js';
 import { CampaignDirector } from './campaign.js';
+import { HordeDirector } from './horde.js';
 import { createRange } from './range.js';
 import { StoryDirector } from './story.js';
 import { simModeOf } from '../story/registry.js';
@@ -122,7 +123,8 @@ export class GameCore {
     this.settings.mode = mode;
     // Time of day (SPEC §7.5.1): cosmetic only (lighting); a day-only map plays day whatever was asked.
     this.settings.time = resolveTime(map, this.settings.time);
-    if (mode === 'zone' || mode === 'campaign' || storyMode) this.settings.objective = false;
+    // (Horde Elimination, §3.12: one round against the whole horde, nothing to defend but each other)
+    if (mode === 'zone' || mode === 'campaign' || mode === 'horde' || storyMode) this.settings.objective = false;
     /** Road to Haven: nothing can hurt a survivor in a hideout. */
     this.safe = mode === 'hideout';
     /** Wave-equivalent added to the wave number for zombie scaling (missions on the zone / campaign directors). */
@@ -165,6 +167,8 @@ export class GameCore {
     if (this.zone && this.story) this.story.configureZone(this.zone);
     /** The four-stage campaign director (sim/campaign.js), else null. */
     this.campaign = simMode === 'campaign' ? new CampaignDirector(this) : null;
+    /** Horde Elimination's surge director (sim/horde.js), else null. */
+    this.horde = simMode === 'horde' ? new HordeDirector(this) : null;
 
     this.tick = 0;
     this.time = 0;
@@ -231,6 +235,8 @@ export class GameCore {
     // Evac Run: the first zone is announced at once; getting there is the prep phase.
     if (this.zone) this.timer = this.zone.begin();
     if (this.campaign) this.timer = this.campaign.begin();
+    // Horde Elimination: the prep phase is the buy time.
+    if (this.horde) this.timer = this.horde.begin();
     // A mission / hideout has no prep phase of its own: the script starts at once (a mission on
     // the zone or campaign director keeps that director's first prep phase).
     if (this.story && !this.zone && !this.campaign) {
@@ -343,6 +349,7 @@ export class GameCore {
     this._updatePhase();
     if (this.zone) this.zone.update();
     if (this.campaign) this.campaign.update();
+    if (this.horde) this.horde.update();
     // (the level before the mission: the steps see the section the party is in this tick)
     if (this.level) this.level.update();
     if (this.story) this.story.update();
@@ -393,7 +400,7 @@ export class GameCore {
       tick: this.tick,
       phase: this.phase,
       wave: this.wave,
-      totalWaves: this.campaign ? this.campaign.total : this.settings.waves,
+      totalWaves: this.campaign ? this.campaign.total : this.horde ? this.horde.surges : this.settings.waves,
       timer: this.phase === 'prep' || this.phase === 'intermission' ? Math.max(0, this.timer) : 0,
       remaining: this.remaining(),
       bossHp: bossMax > 0 ? clamp01(bossHp / bossMax) : -1,
@@ -401,6 +408,7 @@ export class GameCore {
       readyCount,
       zone: this.zone ? this.zone.snapshot() : null,
       campaign: this.campaign ? this.campaign.snapshot() : null,
+      horde: this.horde ? this.horde.snapshot() : null,
       story: this.story ? this.story.snapshot() : null,
       level: this.level ? this.level.snapshot() : null,
       npcs: this.npcs.length ? npcsSnapshot(this) : [],
@@ -425,8 +433,9 @@ export class GameCore {
     };
   }
 
-  /** Zombies left this wave: alive + not yet spawned. */
+  /** Zombies left this wave: alive + not yet spawned (Horde Elimination: of the whole horde). */
   remaining() {
+    if (this.horde) return this.horde.left();
     let alive = 0;
     for (const z of this.zombies) if (!z.dead && !z.dummy) alive++;   // (a range dummy is not a threat)
     // (the roof's and the breakout's queues are endless streams: only what is alive counts)
@@ -501,7 +510,8 @@ export class GameCore {
     resetVertical(p, this.world.terrainQ(p.x, p.y));
     if (state === 'dead') {
       p.state = 'dead';
-      p.respawn = true;
+      // (a horde round has no wave clear to come back at: a late joiner watches it out)
+      p.respawn = !this.horde;
       p.hp = 0;
     }
     return p;
@@ -553,11 +563,16 @@ export class GameCore {
   }
 
   _startWave(w) {
-    this.wave = w;
     this.phase = 'wave';
     this.timer = 0;
     this.waveIdle = false;
     for (const p of this.players) p.ready = false;
+    // Horde Elimination: one 'wave' phase for the whole round; the director runs the surges.
+    if (this.horde) {
+      this.horde.startRound();
+      return;
+    }
+    this.wave = w;
     const players = Math.max(1, this.players.length);
     this.wavePlayers = players;
     this.waveTotal = Math.max(1, Math.round(waveZombieCount(w + this.tierBonus, players, this.diff) * this.waveScale));
@@ -643,8 +658,14 @@ export class GameCore {
         return;
       }
     }
+    // Horde Elimination: the whole horde dead wins (also against a wipe in the same tick);
+    // the round never clears a wave on the way, so the dead stay dead.
+    if (this.horde && this.horde.cleared()) {
+      this._victory();
+      return;
+    }
     if (this.phase === 'wave' && this.spawnQueue === 0 && this.bossQueue === 0 && !(this.campaign && this.campaign.holdsWave())
-      && !(this.story && !this.story.ownsWaves()) && !this.waveIdle) {
+      && !(this.story && !this.story.ownsWaves()) && !this.waveIdle && !this.horde) {
       let any = false;
       for (const z of this.zombies) if (!z.dead) { any = true; break; }
       if (!any) {

@@ -99,14 +99,16 @@ export function updateSpawning(game) {
   if (game.spawnTimer > 0) return;
   let alive = 0;
   for (const z of game.zombies) if (!z.dead) alive++;
-  const room = (game.campaign ? game.campaign.aliveCap(game.diff.maxAlive) : game.diff.maxAlive) - alive;
+  // (Horde Elimination: the surge's own cap, group sizes and tempo, sim/horde.js)
+  const horde = game.horde;
+  const room = (horde ? horde.aliveCap() : game.campaign ? game.campaign.aliveCap(game.diff.maxAlive) : game.diff.maxAlive) - alive;
   if (room <= 0) {
     game.spawnTimer = 0.5;
     return;
   }
   const w = game.wave + game.tierBonus;
   const sp = SPAWN_PACING;
-  const group = Math.min(game.spawnQueue, room, rng.int(sp.groupMin, sp.groupMax + Math.floor(w / sp.groupPerWaves)));
+  const group = Math.min(game.spawnQueue, room, horde ? horde.groupSize(rng) : rng.int(sp.groupMin, sp.groupMax + Math.floor(w / sp.groupPerWaves)));
   const rect = pickSpawnRect(game);
   for (let i = 0; i < group; i++) {
     const type = pickType(game, w);
@@ -117,6 +119,10 @@ export function updateSpawning(game) {
     spawnZombie(game, type, p.x, p.y, elite);
   }
   game.spawnQueue -= group;
+  if (horde) {
+    game.spawnTimer = horde.spawnDelay(rng);
+    return;
+  }
   const crowd = (1 + WAVE_ZOMBIES.perPlayer * (game.wavePlayers - 1)) * game.diff.count;
   const base = Math.max(sp.min, Math.min(sp.start, sp.start - sp.perWave * (w - 1)));
   game.spawnTimer = (base / Math.pow(Math.max(1, crowd), sp.crowdExp)) * rng.range(0.75, 1.25) * (game.campaign ? game.campaign.pace() : 1) * game.spawnPace;
@@ -146,8 +152,8 @@ export function pickSpawnRect(game) {
   let rects = game.map.zombieSpawns, farD = 700;
   // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges; a story
   // level: the spawns of the sections just ahead of the party (sim/level.js).
-  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : game.story ? game.story.spawnRects()
-    : game.level ? game.level.spawnRects() : null;
+  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : game.horde ? game.horde.spawnRects()
+    : game.story ? game.story.spawnRects() : game.level ? game.level.spawnRects() : null;
   if (zr) {
     rects = zr.rects;
     farD = zr.far;
@@ -230,6 +236,8 @@ export function spawnZombie(game, type, x, y, elite = false) {
     z: game.world.terrainH(x, y), vz: 0, climbWait: 0, climbT: 0, climbDur: 0, climbO: null, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0,
   };
   game.zombies.push(z);
+  // (Horde Elimination counts the horde as it comes in: what is left = not spawned + alive)
+  if (game.horde) game.horde.onSpawn(z);
   return z;
 }
 

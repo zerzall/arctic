@@ -833,6 +833,11 @@ function zoneAnchor(game, b, index) {
  */
 function holdPoint(game) {
   if (game.campaign) return campaignPoint(game);
+  // Horde Elimination: the map's defensive spot (shared/horde.js hordeHold), not its old objective
+  if (game.horde) {
+    const h = game.horde.hold;
+    return { x: h.x, y: h.y, w: 120, h: 120 };
+  }
   if (game.level) {
     const box = game.level.anchorBox();
     if (box) return box;
@@ -1076,8 +1081,9 @@ function huntTarget(game, b) {
     }
   }
   if (!best) return null;
-  // Stay with the team while plenty are still coming; chase down stragglers.
-  if (bd > 950 && alive + game.spawnQueue > 8) return null;
+  // Stay with the team while plenty are still coming; chase down stragglers (a horde round:
+  // the whole horde still to come counts, not just this surge's queue).
+  if (bd > 950 && (game.horde ? game.horde.left() : alive + game.spawnQueue) > 8) return null;
   // Evac Run: never chase one out into the blight.
   const z = game.zone;
   if (z && Math.hypot(best.x - z.circle.x, best.y - z.circle.y) > z.circle.r + 150) return null;
