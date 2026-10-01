@@ -123,7 +123,7 @@ export const BASE = Object.freeze({
   guard: { x0: 2230, x1: 2370, y0: 1740, y1: 1860, door: [2270, 2350] },
   barracks: { x0: 2700, x1: 3500, y0: 1150, y1: 1600, hall: [1340, 1420], door: [3060, 3140], north: [2900, 3100, 3300], south: [3000, 3200] },
   armory: { x0: 3700, x1: 4100, y0: 1300, y1: 1650, door: [3860, 3940], cage: 1470, hatch: [3960, 4040] },
-  mess: { x0: 4250, x1: 4850, y0: 1150, y1: 1650, door: [4500, 4600], line: 1330, side: [1500, 1580] },
+  mess: { x0: 4250, x1: 4850, y0: 1150, y1: 1650, door: [4500, 4600], line: 1330 },
   yard: { x0: 2700, x1: 4300, y0: 2250, y1: 3000 },
   motor: { x0: 4350, x1: 4900, y0: 2300, y1: 2800 },
   hangars: [
@@ -245,8 +245,8 @@ function buildPerimeter(B, A) {
   B.vehicle('pickup', 520, 1830, 0.6, { wrecked: true });
   B.fire(1180, 1840, 18);
   // signs along the road
-  B.ob('wall', 1000, 1830, 10, 10, 0, { style: 'signrestricted', ...S });
-  B.ob('wall', 2150, 1830, 10, 10, 0, { style: 'signbase', ...S });
+  B.ob('wall', 1000, 1840, 70, 10, 0, { style: 'signrestricted', ...S });
+  B.ob('wall', 2080, 1800, 240, 24, 0, { style: 'signbase', ...S });
 
   // the perimeter fence and the main gate; searchlight towers either side of the gate
   fenceLine(B, BASE.fence, [[R.y0, R.y1]], 'perimeter');
@@ -336,7 +336,7 @@ function buildBarracks(B, A) {
   wallLine(B, D.x0, D.y0, D.x1, D.y0, 16, [], { style: 'messwall', ...S });
   wallLine(B, D.x0, D.y1, D.x1, D.y1, 16, [D.door], { style: 'messwall', ...S });
   wallLine(B, D.x0, D.y0, D.x0, D.y1, 16, [], { style: 'messwall', ...S });
-  wallLine(B, D.x1, D.y0, D.x1, D.y1, 16, [D.side], { style: 'messwall', ...S });
+  wallLine(B, D.x1, D.y0, D.x1, D.y1, 16, [], { style: 'messwall', ...S });
   B.ob('counter', (D.x0 + D.x1) / 2, D.line, D.x1 - D.x0 - 120, 30, 0, { style: 'servingline', ...S });
   for (const x of [4370, 4730]) for (const y of [1420, 1500, 1580]) B.ob('desk', x, y, 170, 34, 0, { style: 'messtable', ...S });
   B.ob('counter', 4550, D.y0 + 30, 400, 34, 0, { style: 'stoves', ...S });
@@ -352,7 +352,7 @@ function buildBarracks(B, A) {
   B.ob('tent', 2880, 2760, 220, 130, 0, { style: 'medtent', color: '#5a6340', roof: '#6b7449', ...S });
   B.ob('tent', 3210, 2800, 200, 120, 0.05, { style: 'medtent', color: '#5a6340', roof: '#6b7449', label: 'red', ...S });
   for (let y = 2340; y < 2920; y += 60) B.ob('hesco', 2730, y + 30, 60, 60, 0, S);
-  B.ob('wall', 3100, 2330, 20, 20, 0, { style: 'signquarantine', ...S });
+  B.ob('wall', 2880, 2310, 160, 12, 0, { style: 'signquarantine', ...S });
   B.ob('booth', 3350, 2480, 60, 60, 0.02, { style: 'screenbooth', ...S });
   B.vehicle('truck', 3900, 2470, 0.3, { color: '#4b5320' });
   B.vehicle('truck', 4000, 2800, -0.12, { color: '#556b2f', wrecked: true });
