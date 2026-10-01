@@ -27,6 +27,7 @@ export const BUCKETS = KIT_BUCKETS;
 
 const MODELS = {
   'mr-trailer': PARK_MODELS['mr-trailer'], 'mr-logtrailer': JAM_MODELS['mr-logtrailer'], 'bp-flag': SCHOOL_MODELS['hc-flag'],
+  'mr-farmfence': JAM_MODELS['mr-farmfence'], 'mr-windmill': JAM_MODELS['mr-windmill'], 'mr-bale': JAM_MODELS['mr-bale'],
   ...CAMP_MODELS, ...RANGER_MODELS, ...MILL_MODELS,
 };
 const GATES = { 'hc-schoolpanel': SCHOOL_GATES['hc-schoolpanel'], ...CAMP_GATES, ...RANGER_GATES, ...MILL_GATES };

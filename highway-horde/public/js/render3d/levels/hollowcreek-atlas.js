@@ -14,7 +14,7 @@ const SIZES = {
   hc_glass2: [128, 256], hc_glass3: [128, 256], hc_rose: [256, 256], hc_school: [512, 192], hc_hornet: [256, 256], hc_chalk: [512, 256],
   hc_kids: [256, 128], hc_abc: [512, 64], hc_police: [512, 96], hc_cruiser: [256, 64], hc_badge: [128, 128], hc_wanted: [256, 192],
   hc_sally: [256, 96], hc_banner: [512, 64], hc_plaque: [256, 128], hc_closed: [256, 128], hc_church_graf: [256, 96], hc_school_graf: [256, 96],
-  hc_menu: [256, 192], hc_flag: [192, 128], hc_speed: [128, 160], hc_hymns: [128, 192], hc_notice2: [128, 160], hc_sale: [256, 64],
+  hc_menu: [256, 192], hc_flag: [192, 128], hc_speed: [128, 160], hc_hymns: [128, 192], hc_notice2: [128, 160], hc_sale: [256, 64], hc_stand: [256, 64],
 };
 
 /** Letters with a drop shadow (a painted sign's raised letters). */
@@ -458,6 +458,12 @@ const PAINT = {
     weather(g, w, h, r, 0.4);
   },
   hc_notice2(g, w, h, r) { poster(g, w, h, r, 'SHELTER', '#2f6a3a', "ST. ANNE'S HALL", 'COTS - WATER - FOOD'); },
+  hc_stand(g, w, h, r) {
+    board(g, w, h, '#e8e0cc', r, 2);
+    paint(g, 'FRESH PIES - SWEET CORN', w / 2, h * 0.4, w * 0.9, h * 0.42, '#7a2418', r, { drips: 0 });
+    paint(g, 'honor box - thank you', w / 2, h * 0.8, w * 0.6, h * 0.2, '#2a2a2a', r, { drips: 0 });
+    weather(g, w, h, r, 0.7);
+  },
   hc_sale(g, w, h, r) {
     g.fillStyle = '#f0d020'; g.fillRect(0, 0, w, h);
     fit(g, 'SALE  -  ALL PAINT 20% OFF', w / 2, h / 2, w * 0.9, h * 0.5, { color: '#c62828' });
@@ -465,5 +471,8 @@ const PAINT = {
   },
 };
 
-addCells(SIZES, PAINT, 'hollowcreek');
+// the flag and the hand-painted CLOSED board are the other levels' too (Blackpine's flagpole, its gates)
+const COMMON = ['hc_flag', 'hc_closed'];
+addCells(Object.fromEntries(Object.entries(SIZES).filter(([k]) => !COMMON.includes(k))), PAINT, 'hollowcreek');
+addCells(Object.fromEntries(COMMON.map((k) => [k, SIZES[k]])), {}, null);
 void [HAND, FONT];

@@ -207,6 +207,7 @@ function outskirts(B) {
   facade(B, 10500, 1100, 240, 170, HALF, 'house', { sec, color: '#e0d8c8', roof: '#3a3a40', lit: 0.1 });
   facade(B, 10750, 1500, 200, 150, 0, 'barn', { sec, color: '#7d3a2c', roof: '#5a2b22' });
   B.ob('silo', 10900, 900, 80, 80, 0, { color: '#b8bcbf', section: sec });
+  ob(B, 'counter', 'hc-farmstand', 10150, 2700, 140, 50, 0, { sec });
   // traffic heading into town, a sheriff's car into the sign
   for (const [k, x, y, a, wr] of [['car', 10700, MY - 60, PI, false], ['suv', 10480, MY + 55, PI + 0.3, true], ['pickup', 9300, MY - 50, PI - 0.1, false], ['car', 8950, MY + 70, PI + 0.5, true], ['van', 8750, MY - 55, PI, false]]) {
     B.vehicle(k, x, y, a, { wrecked: wr, jitter: 0.3 }).section = sec;

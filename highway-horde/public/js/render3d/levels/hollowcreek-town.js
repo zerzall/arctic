@@ -704,7 +704,29 @@ function laststand(P) {
   decal(B, 'graf1', 0, 60, 40, 120, 40, 0);
 }
 
+/** A roadside farm stand: a plank counter under a tin roof on posts, crates of pumpkins and apples, the sign. */
+function farmstand(P) {
+  const { B, o } = P;
+  const L = o.w, D = o.h, r = B.rng;
+  B.rblock('std', 0, 0, 0, L, 36, D, 1, '#8a6a48', null, WOOD);
+  B.box('std', 0, 37, 2, L + 6, 2, D + 8, '#a8845a', null, WOOD);
+  for (const [x, z] of [[-L / 2, -D / 2], [L / 2, -D / 2], [-L / 2, D / 2 + 10], [L / 2, D / 2 + 10]]) B.box('std', x, 55, z, 4, 110, 4, '#6a4a30', null, WOOD);
+  B.add('std', T.box(), [0, 112, 4], [L + 20, 2, D + 34], [-0.15, 0, 0], '#8a8e92', { noJitter: true, surf: [DET.corrugated, 0.5, 0.5] });
+  B.box('std', 0, 96, D / 2 + 11, 120, 26, 2, '#e8e0cc', null, WOOD);
+  sign(B, 'hc_stand', 0, 96, D / 2 + 12.2, 118, 29.5, 0);
+  // crates on the counter: pumpkins, apples, a few jars
+  for (let k = 0; k < 4; k++) {
+    const x = -L / 2 + 20 + k * 33;
+    B.box('std', x, 42, 4, 28, 8, 24, '#a8845a', null, WOOD);
+    const fruit = k % 2 ? ['#c8281e', 2.6] : ['#d8781a', 5];
+    for (let j = 0; j < (k % 2 ? 9 : 3); j++) B.add('std', T.sphere(8, 6), [x + r.range(-9, 9), 47 + fruit[1] * 0.6, 4 + r.range(-7, 7)], [fruit[1], fruit[1] * 0.85, fruit[1]], null, fruit[0], { ...S(0, 0.5, 0), wobble: { amp: 0.06, seed: j } });
+  }
+  for (let k = 0; k < 6; k++) B.add('std', T.sphere(10, 8), [r.range(-L / 2, L / 2), 7, D / 2 + r.range(14, 40)], [r.range(6, 9), r.range(5, 7), r.range(6, 9)], null, r.pick(['#d8781a', '#c8641c', '#e0901a']), { ...S(0, 0.5, 0), wobble: { amp: 0.08, seed: k } });
+  B.rblock('std', L / 2 - 10, 38, -D / 2 + 8, 10, 12, 8, 1, '#3a5a3a', null, METAL);
+}
+
 export const TOWN_MODELS = {
+  'hc-farmstand': farmstand,
   'hc-rails': rails, 'hc-crossing': crossing, 'hc-boxcar': boxcar, 'hc-tankcar': tankcar, 'hc-watertower': watertower, 'hc-welcome': welcome,
   'hc-feedstore': feedstore, 'hc-cruiser': cruiser, 'hc-barricadeback': barricadeback, 'hc-theater': theater, 'hc-postoffice': postoffice,
   'hc-hwshelf': hwshelf, 'hc-hwcounter': hwcounter, 'hc-hwstuff': hwstuff, 'hc-dinercounter': dinercounter, 'hc-booth': booth, 'hc-dinerstuff': dinerstuff,

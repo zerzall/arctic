@@ -197,6 +197,9 @@ function forest(B, x0, y0, x1, y1, step = 150, p = 0.55) {
       if (m.checkpoints.some((c) => Math.hypot(tx - c.x, ty - c.y) < 70)) continue;
       if (Object.values(m.anchors).some((c) => Math.hypot(tx - c.x, ty - c.y) < 70)) continue;
       if (m.playerSpawns.some((c) => Math.hypot(tx - c.x, ty - c.y) < 60)) continue;
+      // (nor indoors, nor in front of a doorway)
+      if ((m.roofs || []).some((q) => Math.abs(tx - q.x) < q.w / 2 + 40 && Math.abs(ty - q.y) < q.h / 2 + 40)) continue;
+      if (artOf(B).doors.some((d) => Math.hypot(tx - d.x, ty - d.y) < d.w / 2 + 110)) continue;
       if (m.zombieSpawns.some((z) => Math.abs(tx - z.x) < z.w / 2 + 30 && Math.abs(ty - z.y) < z.h / 2 + 30)) continue;
       if (B.inWater(tx, ty, 30) || B.blockedAt(tx, ty, 34)) continue;
       B.tree(tx, ty, r.range(0.9, 1.6));
@@ -544,6 +547,10 @@ function farm(B) {
   B.ob('silo', 11900, 1400, 90, 90, 0, { color: '#b8bcbf', section: sec });
   B.vehicle('pickup', 11250, 2560, 0.3, { color: '#8a2a22', jitter: 0 }).section = sec;
   prop(B, 'bp-cattleguard', X5 + 60, 2800, HALF);
+  prop(B, 'mr-farmfence', 11460, 2240, 0, { len: 1060, gaps: [] });
+  prop(B, 'mr-farmfence', 11460, 3060, 0, { len: 1060, gaps: [[11560, 11760]] });
+  prop(B, 'mr-windmill', 11780, 2900, 0.5);
+  for (const [x, y, a] of [[11250, 2380, 0.3], [11310, 2340, 1.4], [11220, 3150, 0.8], [11900, 2450, 2.1]]) B.ob('rock', x, y, 34, 34, a, { color: '#c9a850', section: sec, style: 'mr-bale' });
   B.lamp(11300, 2650, { a: HALF, r: 300, dead: false });
   B.checkpoint(sec, 11100, 2800);
   B.checkpoint(sec, 11600, 2650);
