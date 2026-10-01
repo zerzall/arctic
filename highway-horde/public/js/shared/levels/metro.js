@@ -684,11 +684,20 @@ function buildSquare(B, K) {
   B.anchor('square_statue', ST.x, ST.y - 190, 140);
   for (const [x, y] of [[2300, 4300], [4100, 4300], [2300, 5000], [4100, 5000], [1700, 4650]]) { B.box('grass', x - 70, y - 70, x + 70, y + 70); B.tree(x, y, 1.1); }
   for (const [x, y, a] of [[2800, 4450, 0], [3600, 4450, 0], [2800, 4950, Math.PI], [3600, 4950, Math.PI]]) B.ob('desk', x, y, 140, 30, a, { style: 'mt-bench', section: S });
+  // the army's last post in the square: tents, sandbag walls, a truck, the landing pad marked out
   B.ob('sandbags', 4300, 4700, 200, 40, 1.2, {});
   B.ob('sandbags', 4150, 4900, 200, 40, 0.3, {});
-  B.vehicle('truck', 2400, 5300, 0.1, { wrecked: false });
+  B.ob('sandbags', 2000, 4900, 240, 40, 1.57, {});
+  B.ob('tent', 1800, 4450, 180, 130, 0, { color: '#4b5320' });
+  B.ob('tent', 1800, 5150, 180, 130, Math.PI, { color: '#4b5320' });
+  B.ob('container', 2300, 5420, 240, 60, 0, { color: '#4b5320' });
+  B.vehicle('truck', 2700, 5300, 0.1, { wrecked: false });
   B.vehicle('car', 3600, 5300, 3.0, { wrecked: true });
   B.vehicle('car', 1900, 5250, 0.4, { wrecked: true });
+  B.vehicle('van', 4400, 5250, 2.6, { wrecked: true });
+  B.vehicle('bus', 3000, 4050, 0.03, { wrecked: true, color: '#c9a227' });
+  for (const [x, y] of [[2600, 4700], [3800, 4700]]) B.ob('counter', x, y, 90, 90, 0, { style: 'planter', section: S });
+  K.put('helipad', 3300, 5100, 0, { r: 150, h: H });
   // the buildings round the square (north: the backs of Station Street's blocks; east: over the stairs)
   const blocks = (y, a, xs, depth, seed) => xs.forEach(([x0, x1], i) => B.ob('building', (x0 + x1) / 2, y, x1 - x0, depth, a, { color: ['#8c7a6a', '#9a8a72', '#7a6a5a', '#a09080', '#8a6a5a'][(i + seed) % 5], roof: '#4e4a45', top: 170 + ((i * 29 + seed * 11) % 60), section: S }));
   blocks(3750, 0, [[1000, 1700], [1700, 2400], [2400, 3100], [3100, 3800], [3800, 4400], [4400, 4900]], 300, 3);
@@ -710,5 +719,9 @@ function buildSquare(B, K) {
   K.scatter('leaves', 24, SQ.x0 + 40, SQ.y0 + 40, SQ.x1 - 40, SQ.y1 - 40, [0.8, 1.5], 6);
   K.scatter('blood', 10, SQ.x0 + 40, SQ.y0 + 40, SQ.x1 - 40, SQ.y1 - 40, [0.8, 1.5], 6);
   K.scatter('shoe', 6, SQ.x0 + 40, SQ.y0 + 40, SQ.x1 - 40, SQ.y1 - 40, [0.9, 1.1], 8);
-  for (const [x, y, a] of [[4450, 4200, 0.3], [4450, 4420, 1.2]]) K.dress('barricade', x, y, a, 1, 0.3);
+  for (const [x, y, a] of [[4450, 4200, 0.3], [4450, 4420, 1.2], [2100, 4700, 1.5], [2100, 4300, 0.2]]) K.dress('barricade', x, y, a, 1, 0.3);
+  for (const [x, y] of [[2200, 4150], [4300, 4150], [2900, 5450]]) K.dress('bin', x, y, 0, 1, 0.4);
+  K.dress('busstop', 3600, 3950, 0, 1, 0.2);
+  K.scatter('suitcase', 6, SQ.x0 + 40, SQ.y0 + 40, SQ.x1 - 40, SQ.y1 - 40, [0.9, 1.1], 10);
+  K.scatter('bag', 10, SQ.x0 + 40, SQ.y0 + 40, SQ.x1 - 40, SQ.y1 - 40, [0.8, 1.2], 8);
 }

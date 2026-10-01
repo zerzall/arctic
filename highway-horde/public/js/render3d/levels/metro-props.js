@@ -363,12 +363,26 @@ export function metroProps(state) {
       if (P.lod() >= 1) P.decal(B, 'wstain', 0, 50, L * 0.35 + 0.5, 50, 60, 0, { color: '#e8e8e0' });
     },
     filing: HOSP.filing,
+    planter: HOSP.planter,
   };
 
   // ---------------------------------------------------------------------------------------------
   // the free items
 
   const ITEMS = {
+    /** A landing pad painted on the square for the evacuation: the circle, the H, a ring of cones. */
+    helipad(P) {
+      const { B, it } = P;
+      P.at(B, it.x, it.y, 0, 67, it.h);
+      const r = it.r;
+      const n = 40;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        B.add('lvfloor', T.plane(), [Math.cos(a) * r, 0.3, Math.sin(a) * r], [(2 * Math.PI * r) / n + 1, 10, 1], [-HALF, -a + HALF, 0], '#e8e4d8', { noAO: true, surf: [0, 0.6, 0] });
+      }
+      for (const [x, z, w, d] of [[-34, 0, 12, 110], [34, 0, 12, 110], [0, 0, 56, 12]]) B.quad('lvfloor', [x, 0.32, z], [w, 0, 0], [0, 0, -d], '#e8e4d8', { noAO: true, surf: [0, 0.6, 0] });
+      for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; B.cyl('std', Math.cos(a) * (r + 24), 0, Math.sin(a) * (r + 24), 5, 14, '#e8701a', 8, 0.2, null, PLAST); }
+    },
     /** HARLAN METRO over the station's doors, roundels on posts either side (faces west, onto the street). */
     bigsign(P) {
       const { B, it } = P;
