@@ -302,7 +302,7 @@ function campground(B) {
   ob(B, 'container', 'mr-trailer', 2150, 2020, 260, 70, HALF, { sec, color: '#e8e0cc' });
   prop(B, 'bp-hostsign', 2230, 2200, HALF);
   // the campfire circle in the middle of the loop: the fire ring, log benches round it, the screen
-  clearing(B, 3250, 2250, 330);
+  clearing(B, 3250, 2250, 470);
   B.fire(3250, 2250, 26);
   ob(B, 'rock', 'bp-firering', 3250, 2250, 70, 70, 0, { sec, color: '#6a6660' });
   for (let k = 0; k < 7; k++) {
