@@ -87,7 +87,7 @@ export function createStoryScreen(ctx, hooks) {
   const dlg = h('div.modal#dlg-campaign', { hidden: true, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'nc-title' }, [
     h('form.panel.modal-card.st-newcamp', { novalidate: true, onsubmit: (e) => e.preventDefault() }, [
       h('h2.modal-title#nc-title', { text: 'New campaign' }),
-      h('p.modal-text', { text: 'Fifteen missions from the pileup on Highway 9 to the ferry at Lake Harlan. Your crew, your hideouts, your saves.' }),
+      h('p.modal-text', { text: 'Twelve missions from the pileup on Highway 9 to the ferry at Lake Harlan, and side jobs along the way. Your crew, your hideouts, your saves.' }),
       h('label.field', { for: 'nc-name' }, [h('span.field-label', { text: 'Crew name' }), nameInput]),
       h('div.field-label', { text: 'Difficulty' }),
       diffSeg,
@@ -249,6 +249,7 @@ export function createStoryScreen(ctx, hooks) {
       h('div.st-chips', null, [
         chip('MISSIONS', `${s.missionsDone}/${s.missionsTotal}`),
         chip('STARS', `${s.stars}/${s.starsTotal}`),
+        s.sideTotal ? chip('SIDE JOBS', `${s.sideDone}/${s.sideTotal}`) : null,
         chip('HIDEOUT', HIDEOUT_NAMES[s.hideout] || s.hideout),
       ]),
       h('div.st-sub', { text: `${s.members.length ? `Crew: ${s.members.join(', ')}` : 'No crew yet'} · played ${when(world.updatedAt)}` }),
@@ -286,7 +287,7 @@ export function createStoryScreen(ctx, hooks) {
         h('div.st-story-side', null, [
           survivorCard(),
           h('div.panel.st-story-actions', null, [
-            h('button.btn.btn-primary.btn-big', { type: 'button', dataset: { act: 'new' }, onclick: openNew }, [h('span.btn-title', { text: 'New campaign' }), h('span.btn-sub', { text: 'Fifteen missions, six chapters' })]),
+            h('button.btn.btn-primary.btn-big', { type: 'button', dataset: { act: 'new' }, onclick: openNew }, [h('span.btn-title', { text: 'New campaign' }), h('span.btn-sub', { text: 'Twelve missions, six chapters' })]),
             h('button.btn.btn-big', { type: 'button', dataset: { act: 'join' }, onclick: () => hooks.onJoin() }, [h('span.btn-title', { text: 'Join a friend' }), h('span.btn-sub', { text: 'Enter their room code' })]),
             h('div.st-io', null, [
               h('button.btn', { type: 'button', dataset: { act: 'import' }, onclick: () => fileInput.click() }, 'Import save…'),

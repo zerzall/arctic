@@ -244,7 +244,7 @@ export function createStoryApp(ctx, hooks) {
       openingScene(st);
     } else if (st.stage === 'mission') {
       const m = getMission(st.missionId);
-      if (m) mh.toast(`${m.chapter}.${m.index} · ${m.title}`, 'danger', 3.5);
+      if (m) mh.toast(`${m.side ? `Side job ${m.index}` : `${m.chapter}.${m.index}`} · ${m.title}`, 'danger', 3.5);
       audio.ui('stage');
     }
   }

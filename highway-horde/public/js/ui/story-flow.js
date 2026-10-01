@@ -88,7 +88,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const rw = m.rewards || {};
     const lv = Array.isArray(m.level) ? m.level : [1, 1];
     const card = h('section.st-brief-card', null, [
-      h('div.st-brief-kicker', { text: `Chapter ${m.chapter} · Mission ${m.chapter}.${m.index}` }),
+      h('div.st-brief-kicker', { text: m.side ? `Side job ${m.index}` : `Chapter ${m.chapter} · Mission ${m.chapter}.${m.index}` }),
       h('h2', { text: m.title }),
       preview,
       h('div.st-mission-map', null, [h('span.st-tag', { text: map ? map.name : m.map }), h('span.st-tag', { text: m.time === 'day' ? 'Day' : 'Night' })]),
@@ -173,7 +173,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
       // the briefing itself, then the send-off the mission's pep talk gives
       const lines = [...(Array.isArray(st.mission.briefing) ? st.mission.briefing : []), ...(pepFor(st.mission.id) || [])];
       const playable = playableLines(lines, st.world);
-      if (playable.length) dialogue.play(playable, { title: `${st.mission.chapter}.${st.mission.index} · ${st.mission.title}` });
+      if (playable.length) dialogue.play(playable, { title: `${st.mission.side ? `Side job ${st.mission.index}` : `${st.mission.chapter}.${st.mission.index}`} · ${st.mission.title}` });
     }
     requestAnimationFrame(() => {
       const b = briefEl.querySelector('[data-autofocus]') || briefEl.querySelector('button');
@@ -213,7 +213,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const quip = victory ? null : retryQuip(d.mission, Math.random());
     const starEls = [0, 1, 2].map((i) => h('span.st-star' + (i < d.stars ? '.on' : ''), { text: '★', style: { '--i': String(i) } }));
     const head = h('header.st-debrief-head', null, [
-      h('div.st-debrief-kicker', { text: mission ? `Chapter ${mission.chapter} · ${mission.title}` : d.title }),
+      h('div.st-debrief-kicker', { text: mission ? `${mission.side ? 'Side job' : `Chapter ${mission.chapter}`} · ${mission.title}` : d.title }),
       h('h2.st-debrief-title', { text: victory ? (d.replay ? 'Mission complete' : 'Mission complete') : 'Mission failed' }),
       victory ? h('div.st-stars-row', { 'aria-label': `${d.stars} stars` }, starEls) : h('p.st-sub', { text: LOSS_TEXT[d.reason] || 'The crew fell back. Nothing from the mission is kept.' }),
       victory ? h('ul.st-goals', null, starGoals(mission, d).map((g) => h('li' + (g.on ? '.on' : ''), { text: `${g.on ? '★' : '☆'} ${g.text}` }))) : null,

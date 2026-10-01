@@ -13,9 +13,13 @@ else opens the invite link.
 - **Co-op for 1–6 players over the internet**, with a room code or an invite link, plus
   **AI survivors** to fill empty slots (great for playing solo or with one friend).
   Friends can join a game that's already running.
-- **Story: Road to Haven**, a persistent co-op campaign (main menu → **Story**). Fifteen
+- **Story: Road to Haven**, a persistent co-op campaign (main menu → **Story**). Twelve
   missions in six chapters take a crew of survivors from the pileup on Highway 9 to the last
-  ferry on Lake Harlan. Between missions you walk around a **hideout** (the Roadhouse, Blackwater
+  ferry on Lake Harlan, through nine hand-built story levels played like a campaign level of a
+  modern shooter: a town, a hospital, a mall, a dam, a rail yard, an airbase, the metro, a forest
+  and the road between them, each a route of areas joined by gates, with set pieces, interiors
+  and checkpoints (most of them by day; a "Daylight only" option plays them all by day). Twelve
+  side jobs wait on the hideout board. Between missions you walk around a **hideout** (the Roadhouse, Blackwater
   Depot, the Harlan farmstead): the **mission board** picks the next job and the party ready
   check, the **workbench** upgrades your guns (tiers 1–5), the **armory** sets your three-gun
   loadout and the supplies you take along, the **infirmary** heals you, the **upgrade board**
@@ -332,7 +336,7 @@ npm run e2e                 # browser tests: solo, 3-player relay, late join, p2
                             #   first-person solo, first-person 2-player relay, an Evac Run, the Campaign, a
                             #   Road to Haven story mission, and a Story campaign (new game, a mission, the
                             #   debrief, export/import)
-FULL_MISSIONS=1 npm test    # also plays the fifteen story missions to the end with four bots (about a minute)
+FULL_MISSIONS=1 npm test    # also plays the story missions to the end with four bots
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 node scripts/balance.js --mode campaign             # ... of the whole Campaign

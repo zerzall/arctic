@@ -269,15 +269,19 @@ export function availableMissions(world, missions) {
   return missionBoard(world, missions).filter((e) => e.status !== 'locked').map((e) => e.mission);
 }
 
-/** The first mission not finished yet, or null when the campaign is complete. */
+/** The story missions of a mission list (the side jobs, `side: true`, are optional and never count). */
+const storyOnly = (missions) => missions.filter((m) => !m.side);
+
+/** The first story mission not finished yet, or null when the campaign is complete. */
 export function nextMission(world, missions) {
-  return missions.find((m) => !isCompleted(world, m.id)) || null;
+  return storyOnly(missions).find((m) => !isCompleted(world, m.id)) || null;
 }
 
-/** The chapter the crew is in: that of the next unfinished mission (the last one when done). */
+/** The chapter the crew is in: that of the next unfinished story mission (the last one when done). */
 export function currentChapter(world, missions) {
   const next = nextMission(world, missions);
   if (next) return next.chapter;
+  // (the road is done: the last entry, the side jobs' chapter once there are any, so everything is open)
   return missions.length ? missions[missions.length - 1].chapter : 1;
 }
 
@@ -287,9 +291,10 @@ export function chapterDone(world, missions, chapter) {
   return list.length > 0 && list.every((m) => isCompleted(world, m.id));
 }
 
-/** True when every mission is finished. */
+/** True when every story mission is finished (side jobs are optional). */
 export function campaignDone(world, missions) {
-  return missions.length > 0 && missions.every((m) => isCompleted(world, m.id));
+  const story = storyOnly(missions);
+  return story.length > 0 && story.every((m) => isCompleted(world, m.id));
 }
 
 /**
@@ -298,7 +303,10 @@ export function campaignDone(world, missions) {
  * @param {object[]} missions
  */
 export function worldSummary(world, missions) {
-  const done = missions.filter((m) => isCompleted(world, m.id));
+  // (the story missions make the progress; the side jobs are counted on their own)
+  const story = storyOnly(missions);
+  const side = missions.filter((m) => m.side);
+  const done = story.filter((m) => isCompleted(world, m.id));
   const stars = done.reduce((a, m) => a + world.progress.completed[m.id].stars, 0);
   const next = nextMission(world, missions);
   const chapter = currentChapter(world, missions);
@@ -310,9 +318,11 @@ export function worldSummary(world, missions) {
     chapter,
     chapterTitle: chapterTitle(chapter),
     missionsDone: done.length,
-    missionsTotal: missions.length,
+    missionsTotal: story.length,
+    sideDone: side.filter((m) => isCompleted(world, m.id)).length,
+    sideTotal: side.length,
     stars,
-    starsTotal: missions.length * 3,
+    starsTotal: story.length * 3,
     hideout: world.hideout.current,
     next,
     complete: campaignDone(world, missions),
