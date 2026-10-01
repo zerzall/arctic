@@ -283,14 +283,14 @@ function footbridge(P) {
       rod(B, 'std', [x - s * 30, 0, z], [x, 110, z], 3, '#5a4632', BARK, 6);
     }
     B.box('std', x, 122, 0, 12, 10, w + 26, '#5a4632', null, WOOD);
-    B.rblock('std', s * (len / 2 - 20), 0, 0, 40, 18, w + 30, 2, '#8a8478', null, CONC);
+    B.rblock('std', s * (len / 2 - 20), 0, 0, 40, 3, w + 30, 1, '#8a8478', null, CONC);
   }
   // the main cables (catenaries over the towers to the anchors), hangers, hand lines
   for (const z of [-half - 6, half + 6]) {
     const pts = [];
-    pts.push([-len / 2 + 20, 16]);
+    pts.push([-len / 2 + 20, 4]);
     for (let k = 0; k <= 12; k++) { const x = -span + (k / 12) * span * 2; pts.push([x, 126 - 70 * (1 - (x / span) ** 2)]); }
-    pts.push([len / 2 - 20, 16]);
+    pts.push([len / 2 - 20, 4]);
     for (let k = 0; k < pts.length - 1; k++) rod(B, 'std', [pts[k][0], pts[k][1], z], [pts[k + 1][0], pts[k + 1][1], z], 0.9, '#3a3c3e', RUSTY, 4);
     for (let k = 1; k < 12; k++) { const x = -span + (k / 12) * span * 2; rod(B, 'std', [x, 126 - 70 * (1 - (x / span) ** 2), z], [x, deckY(x) + 1, z * 0.96], 0.3, '#3a3c3e', RUSTY, 3); }
     for (let k = 0; k < 12; k++) {
