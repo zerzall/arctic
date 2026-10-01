@@ -654,7 +654,7 @@ function buildWorks(B, K) {
   B.checkpoint(S, 6000, 4310);
   K.scatter('litter', 16, W.x0 + 60, W.y0 + 60, W.x1 - 60, W.y1 - 60, [0.8, 1.2], 8);
   K.scatter('box', 10, W.x0 + 60, W.y0 + 60, W.x1 - 60, W.y1 - 60, [0.9, 1.2], 10);
-  K.scatter('oil', 8, W.x0 + 60, W.y0 + 60, W.x1 - 60, W.y1 - 60, [0.9, 1.5], 10);
+  K.scatter('stain', 8, W.x0 + 60, W.y0 + 60, W.x1 - 60, W.y1 - 60, [0.9, 1.5], 10);
   K.scatter('blood', 8, W.x0 + 60, W.y0 + 60, W.x1 - 60, W.y1 - 60, [0.8, 1.5], 6);
   K.dress('drums', 9200, 3700, 0.3, 1, 0.3);
   K.dress('pallets', 6800, 4550, 0.1, 1, 0.3);

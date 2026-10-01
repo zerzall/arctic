@@ -17,6 +17,7 @@ import { mapColliders } from '../public/js/shared/geom.js';
 import { createCollisionWorld } from '../public/js/shared/movement.js';
 import { LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 import { checkLevelSpec, GATE_KINDS, ROOF_KINDS } from '../public/js/shared/levels/kit.js';
+import { DRESS_KINDS } from '../public/js/shared/dress.js';
 
 // three.js from the vendored copy (the renderer modules import it by its bare name)
 const VENDOR = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public/vendor/three') + path.sep).href;
@@ -50,6 +51,8 @@ export function checkLevel(id) {
   const map = buildMap(id, 7);
   const spec = LEVEL_SPECS[id];
   assert.deepEqual(checkLevelSpec(map, spec), [], 'spec');
+  // the hand placed dressing uses kinds the renderer knows (an unknown kind draws a placeholder)
+  for (const d of map.dressItems || []) assert.ok(DRESS_KINDS[d.k], 'dress kind ' + d.k);
   assert.ok(map.width <= 12400 && map.height <= 5600, 'world size');
   for (const r of map.roofs) assert.ok(ROOF_KINDS.includes(r.kind), 'roof kind ' + r.kind);
   for (const g of map.gates) assert.ok(GATE_KINDS.includes(g.kind));
