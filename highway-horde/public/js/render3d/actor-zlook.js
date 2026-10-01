@@ -316,7 +316,9 @@ export function zombieLook(type, id, theme = '') {
   look.topPat = pickW(r, arch.topPat);
   look.hemTop = tk[0] + (topKind === 'bare' ? 0 : (r() - 0.5) * 2.2);
   look.sleeveEnd = tk[1] === 99 || tk[1] === 0 ? tk[1] : tk[1] + (r() - 0.5) * 3;
-  if (T === 'bloater' && look.hemTop < 36 && topKind !== 'bare' && topKind !== 'gown') look.hemTop = 36.5 + r() * 2;   // rides up over the belly
+  // (a bloater's top rides up its belly: the lower belly hangs out under the hem; a gown, dress
+  // or long coat still covers it)
+  if (T === 'bloater' && look.hemTop < 31 && !['bare', 'gown', 'dress', 'coat', 'lab'].includes(topKind)) look.hemTop = 31.5 + r() * 3.5;
   const legKind = arch.bot;
   look.legKind = legKind;
   look.legHem = LEGS[legKind] ?? -1;

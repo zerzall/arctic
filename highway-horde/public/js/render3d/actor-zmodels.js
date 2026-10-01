@@ -752,8 +752,10 @@ function extras(sb, P, L, type) {
   if (type === 'bloater') {
     // the belly: a huge distended, sagging bag on X1 (pulses), stretched marbled skin, weeping blisters
     // (not a ball: it grows out of the ribcage, bulges forward and sags in a fold over the belt)
-    const bc = [3.6, 32.0, 0], br = [8.0, 10.2, 8.6];
+    // (front on, no wider than the swollen flanks it grows out of, or it reads as a ball)
+    const bc = [3.6, 32.0, 0], br = [8.4, 10.2, 7.1];
     const bellyDef = (p) => {
+      p.z *= 1 - 0.1 * (1 - Math.abs(p.x)) * (1 - Math.abs(p.y));   // the flanks pulled in
       if (p.y > 0.2) { const t = (p.y - 0.2) / 0.8; p.x *= 1 - 0.38 * t * t; p.z *= 1 - 0.3 * t * t; }   // into the ribcage
       if (p.y < -0.15) { const t = (-0.15 - p.y) / 0.85; p.x *= 1 + 0.18 * t; p.y -= 0.12 * t * Math.max(0, p.x); p.z *= 1 - 0.1 * t; }   // the sagging fold
       if (p.x < 0) p.x *= 0.7;                                 // (the back is the torso's)
@@ -766,11 +768,18 @@ function extras(sb, P, L, type) {
       paint: (x, y) => (y < 25 ? 0.28 : 0.06), deform: bellyDef,
     });
     if (L < 2) {
+      // the top stretched over it (the top's own cuts apply: it rides up, and the lower belly
+      // hangs out under the hem; a gown, dress or coat covers it), so the belly is part of a
+      // clothed body rather than a ball in front of one
+      sb.ellipsoid(bc, [br[0] * 1.03 + 0.12, br[1] * 1.02, br[2] * 1.03 + 0.12], {
+        segW: L === 0 ? dq(26) : 14, segH: L === 0 ? dq(18) : 10, slot: SLOT.CLOTH, mat: MAT.TEAR, color: '#ffffff', bone: B.X1, part: PART.TOP,
+        paint: 0.2, deform: bellyDef,
+      });
       for (let k = 0; k < (L === 0 ? 14 : 7); k++) {
-        // weeping blisters scattered over the front and sides (golden-angle spiral), sizes
+        // weeping blisters scattered over the lower front and sides (golden-angle spiral), sizes
         // varying; a few glow faintly with the sickness inside, the rest are pus and wet skin
         const u = (k + 0.5) / 14, th = k * 2.39996;
-        const ph = -0.7 + u * 1.4;
+        const ph = -0.9 + u * 1.15;
         const lon = Math.sin(th) * 1.3;
         const cy = Math.sin(ph), cr = Math.cos(ph);
         const s = 0.25 + ((k * 0.77) % 1) * 0.4;
