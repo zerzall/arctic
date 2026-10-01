@@ -148,6 +148,32 @@ test('the corpse material is the zombies\' alone: survivors keep their shader an
   }
 });
 
+test('the corpse material leaves three\'s light loop to it (an indoor light mask can wrap it)', () => {
+  const zomb = compile({ zombie: { body: [32.4, 38.4, 45, 1], body2: [1.25, 52.5, 2.9, 1], day: { value: 1 } } });
+  // the light loop, its end and the fog stay includes, resolved when the program is built, so
+  // patches to those chunks (the roofs' sun and sky mask) reach the zombies too
+  for (const inc of ['#include <common>', '#include <lights_fragment_begin>', '#include <lights_fragment_end>', '#include <fog_fragment>', '#include <lights_physical_fragment>']) {
+    assert.ok(zomb.fragmentShader.includes(inc), inc);
+  }
+  // the extra light terms (wrapped "subsurface", the cloth's fuzz) scale with the light's colour
+  assert.ok(/directLight\.color \* saturate\( dotNL/.test(zomb.fragmentShader) && /directLight\.color \* \( wrapNL/.test(zomb.fragmentShader));
+  // the physical pars chunk is read when compiling (not copied at load): a patch made later shows
+  const shared = { uRigTex: { value: null }, uDetail: { value: null }, uDetail2: { value: null }, uNrm: { value: null }, uTime: { value: 0 }, uCin: { value: 0 } };
+  const r = rigmat.makeMaterials(shared, { zombie: { body: [32.4, 38.4, 45, 1], body2: [1.25, 52.5, 2.9, 1] } });
+  const old = THREE.ShaderChunk.lights_physical_pars_fragment;
+  // (a wrapper that chains the material's own onBeforeCompile, the way indoor.js does)
+  const prev = r.material.onBeforeCompile;
+  r.material.onBeforeCompile = function (sh, gl) { prev.call(this, sh, gl); sh.fragmentShader = '#define WRAPPED\n' + sh.fragmentShader; };
+  try {
+    THREE.ShaderChunk.lights_physical_pars_fragment = old + '\n// patched later\n';
+    const sh = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+    r.material.onBeforeCompile(sh);
+    assert.ok(sh.fragmentShader.startsWith('#define WRAPPED') && sh.fragmentShader.includes('// patched later') && sh.fragmentShader.includes('zRelief'));
+  } finally {
+    THREE.ShaderChunk.lights_physical_pars_fragment = old;
+  }
+});
+
 test('looks: dim milky eyes, necklines, a lost shoe now and then, noses on most', () => {
   let lost = 0, noses = 0, necks = new Set();
   for (let id = 1; id <= 400; id++) {
