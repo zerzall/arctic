@@ -167,7 +167,8 @@ function buildArt(m, tier, day) {
     assert.ok(art, 'the level has art');
     for (const b of Object.keys(art.buckets)) assert.ok(art.material(b, tier === 'low' ? 'low' : 'high'), `material for ${b}`);
     const B = newBuilder();
-    for (const o of m.obstacles) { B.obj(o.x, o.y, o.a || 0, o.id * 31); art.obstacle(B, o); }
+    const undrawn = new Set();
+    for (const o of m.obstacles) { B.obj(o.x, o.y, o.a || 0, o.id * 31); if (!art.obstacle(B, o) && o.style) undrawn.add(o.style); }
     for (const r of m.roofs) art.roof(B, r);
     art.props(B);
     for (const g of m.gates) { const o = m.obstacles[g.obstacles[0]]; B.obj(o.x, o.y, o.a || 0, 1); assert.ok(art.gateModel(B, g, o), `gate model ${g.id}`); }
@@ -183,7 +184,7 @@ function buildArt(m, tier, day) {
     }
     const extra = root.children.length;
     art.dispose();
-    return { tris, meshes: parts.length, extra, warnings };
+    return { tris, meshes: parts.length, extra, warnings, undrawn: [...undrawn] };
   } finally {
     console.warn = warn;
   }
@@ -194,6 +195,7 @@ test('railyard: the level art builds on every tier, day and night, within budget
     const r = buildArt(map, tier, day);
     t.diagnostic(`${tier}${day ? ' day' : ' night'}: ${Math.round(r.tris)} triangles in ${r.meshes} meshes (+${r.extra} fx meshes)`);
     assert.deepEqual(r.warnings, [], `${tier}: ${r.warnings.join(' | ')}`);
+    assert.deepEqual(r.undrawn, [], `${tier}: styles the art does not draw`);
     assert.ok(r.tris > 50000, `${tier}: ${r.tris} triangles is too little art`);
     assert.ok(r.tris < (tier === 'low' ? 450000 : 1300000), `${tier}: ${r.tris} triangles`);
     assert.ok(r.meshes < 260, `${tier}: ${r.meshes} meshes`);

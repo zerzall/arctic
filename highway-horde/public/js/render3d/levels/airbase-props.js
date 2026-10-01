@@ -448,7 +448,31 @@ export function prop(P, o) {
     case 'messtable': messTable(B, o); return true;
     case 'stoves': stoves(B, o); return true;
     case 'consoles': consoles(P, o); return true;
-    case 'lockers': case 'radiodesk': return furniture(P, o);
+    case 'cage': {
+      // the armory's issue cage: welded mesh floor to ceiling on steel posts, the door by the hatch open
+      const along = o.w >= o.h, L = along ? o.w : o.h;
+      if (!along) B.obj(o.x, o.y, (o.a || 0) + HALF, o.id * 31);
+      const H = 130;
+      for (let x = -L / 2; x <= L / 2 + 0.1; x += L / Math.max(1, Math.round(L / 60))) B.box('std', x, H / 2, 0, 4, H, 4, '#3a3e3a', null, STEEL);
+      for (const y of [2, 60, H - 2]) B.box('std', 0, y, 0, L, 3, 3, '#3a3e3a', null, STEEL);
+      B.add('fence', T.plane(), [0, H / 2, 0], [L, H - 4, 1], null, '#7a7e82', { uvScale: [L / 12, H / 12] });
+      B.add('fence', T.plane(), [0, H / 2, 0], [L, H - 4, 1], [0, Math.PI, 0], '#7a7e82', { uvScale: [L / 12, H / 12] });
+      if (o.x > 3900) B.add('std', T.box(), [-L / 2 - 30, H / 2 - 4, 26], [58, H - 10, 3], [0, -1.1, 0], '#3a3e3a', STEEL);
+      pic(B, 'restricted', 0, 100, 2, 18, 0, { w: 36 });
+      return true;
+    }
+    case 'lockers': {
+      if (o.w < o.h) {
+        B.obj(o.x, o.y, (o.a || 0) + HALF, o.id * 31);
+        return furniture(P, { ...o, w: o.h, h: o.w });
+      }
+      return furniture(P, o);
+    }
+    case 'radiodesk': {
+      // (the operator sits on the room's side: the desk faces north)
+      B.obj(o.x, o.y, (o.a || 0) + Math.PI, o.id * 31);
+      return furniture(P, o);
+    }
     case 'drums': return yardProp(P, o);
     case 'couch': {
       B.rblock('std', 0, 0, 0, o.w, 22, o.h, 4, '#5a4a3a', null, FABRIC);
