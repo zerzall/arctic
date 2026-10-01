@@ -39,6 +39,7 @@ export const C3_CELLS = {
   basename: [1024, 160], restricted: [512, 256], hangar1: [256, 256], hangar2: [256, 256], hangar3: [256, 256], rwy27: [256, 256],
   taxi: [384, 96], hold: [256, 96], armory: [320, 96], mess: [320, 96], tower: [320, 96], barracks: [320, 96], insignia: [256, 256],
   usarmy: [512, 96], tail: [384, 96], fuel: [384, 160], quarantine: [768, 160], sandbag: [128, 64], motorpool: [320, 96], briefing: [512, 384],
+  crashfire: [512, 96], rwy09: [256, 256], atc: [512, 96],
   // ---- shared: interior clutter and papers
   poster_a: [192, 256], poster_b: [192, 256], poster_c: [192, 256], calendar: [160, 224], clipboard: [128, 176], paper: [64, 64],
   exitdoor: [256, 96], firstaid: [128, 128], fireext: [128, 160], hazard: [256, 64], chevron: [256, 64], ammo: [256, 96],
@@ -679,6 +680,9 @@ const PAINT = {
   tower: sign('#3a4028', '#e8e2c8', [['AIR TRAFFIC CONTROL', '#e8e2c8'], ['AUTHORIZED ENTRY ONLY', '#d8c880', 0.6]]),
   barracks: sign('#3a4028', '#e8e2c8', [['BARRACKS  B', '#e8e2c8'], ['4-4 AVN REGT', '#d8c880', 0.6]]),
   motorpool: sign('#3a4028', '#e8e2c8', ['MOTOR POOL']),
+  crashfire: sign('#b8161a', '#f2efe6', [['CRASH  FIRE  RESCUE', '#f2efe6'], ['STATION 2', '#f2d84a', 0.6]]),
+  atc: sign('#2a3438', '#e8e2c8', [['FORT HARLAN TOWER', '#e8e2c8'], ['AIR TRAFFIC CONTROL', '#d8c880', 0.6]]),
+  rwy09: (g, w, h, r) => { g.clearRect(0, 0, w, h); fit(g, '9', w / 2, h / 2, w * 0.9, h * 0.9, { color: 'rgba(240,240,236,0.95)', font: COND }); g.save(); g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(0,0,0,${0.3 + r() * 0.7})`; g.fillRect(r() * w, r() * h, 1 + r() * 5, 1 + r() * 3); } g.restore(); },
   insignia: (g, w, h, r) => {
     g.clearRect(0, 0, w, h);
     g.fillStyle = '#1a2a4a'; g.beginPath(); g.moveTo(w / 2, 8); g.lineTo(w - 12, h * 0.3); g.lineTo(w - 30, h * 0.8); g.lineTo(w / 2, h - 8); g.lineTo(30, h * 0.8); g.lineTo(12, h * 0.3); g.closePath(); g.fill();

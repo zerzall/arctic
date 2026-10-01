@@ -108,7 +108,8 @@ export function pic(B, cell, x, y, z, h, ry = 0, o = {}) {
 /** A picture lying on the ground (or any horizontal surface) at height y, rotated `rot` about y. */
 export function flatPic(B, cell, x, y, z, w, d, rot = 0, o = {}) {
   const bucket = o.bucket || (cell.startsWith('d_') ? 'c3stain' : 'c3sign');
-  B.add(bucket, T.plane(), [x, y, z], [w, d, 1], [-Math.PI / 2, rot, 0], o.color || '#ffffff', { uv: c3UV(cell), noAO: true, noJitter: true });
+  // (Euler XYZ: the spin about the picture's own normal goes in z; a y spin after the x tilt would stand it up)
+  B.add(bucket, T.plane(), [x, y, z], [w, d, 1], [-Math.PI / 2, 0, rot], o.color || '#ffffff', { uv: c3UV(cell), noAO: true, noJitter: true });
 }
 
 /** A sign plate on a backing board with a frame (facing local +z after ry). */

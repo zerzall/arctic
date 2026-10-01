@@ -263,7 +263,7 @@ function buildPerimeter(B, A) {
   B.light((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 170, '#ffd9a0', 0.25, 110);
   // the wreck of a Black Hawk in the trees outside the wire, still burning
   B.ob('wall', 1960, 1250, 190, 70, 0.5, { style: 'helowreck', ...S });
-  B.ob('wall', 2110, 1170, 120, 14, 0.9, { style: 'nodraw', ...S });
+  B.ob('wall', 2123, 1316, 130, 14, 0.15, { style: 'nodraw', ...S });   // (its broken tail boom)
   B.fire(1990, 1270, 26);
   B.fire(1900, 1210, 14);
 
@@ -433,7 +433,7 @@ function buildHangars(B, A) {
   // the apron: floodlight towers, the crashed Black Hawk burning, a refueler, tugs, pallets, HESCO
   for (const x of [5500, 6600, 7700]) lightTower(B, x, 2300, 'hangars', { r: 760, h: 420 });
   B.ob('wall', 7550, 2050, 200, 70, 2.5, { style: 'helowreck', ...S });
-  B.ob('wall', 7400, 2160, 130, 14, 2.1, { style: 'nodraw', ...S });
+  B.ob('wall', 7422, 2171, 130, 14, 2.15, { style: 'nodraw', ...S });
   B.fire(7560, 2040, 28);
   B.fire(7480, 2110, 16);
   B.ob('truck', 5700, 2500, 170, 60, 0.05, { color: '#c8c2a8', style: 'refueler', ...S });
