@@ -59,8 +59,9 @@ export function useAtlas(level) {
 function pack() {
   const out = {};
   let x = 0, y = 0, rowH = 0;
-  for (const [k, [w, h]] of Object.entries(LV_CELLS)) {
-    if (OWNER[k] && OWNER[k] !== active) continue;
+  // tallest first (a stable sort: the layout depends only on the set of cells), so the shelves waste little
+  const list = Object.entries(LV_CELLS).filter(([k]) => !OWNER[k] || OWNER[k] === active).sort((p, q) => q[1][1] - p[1][1]);
+  for (const [k, [w, h]] of list) {
     if (x + w + 2 > AW) { x = 0; y += rowH + 2; rowH = 0; }
     out[k] = [x, y, x + w, y + h];
     x += w + 2;

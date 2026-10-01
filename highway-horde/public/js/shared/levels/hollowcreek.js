@@ -493,7 +493,7 @@ function school(B) {
     doors: { s: [[-620, 90, 'steel'], [-160, 110, 'glass2']], e: [[50, 90, 'steel']], n: [[-600, 84, 'steel']] }, roof: false, t: 14,
   });
   // the gym: its wall to the hall with double doors
-  wallGaps(B, 900, SY0, 900, SY1, [[260, 370, 'wood2']], 'schoolint', { t: 12, side: 'both', sec });
+  wallGaps(B, 900, SY0, 900, SY1, [[260, 370, 'wood2']], 'gymwall', { t: 12, side: 'both', sec });
   // the hall's two walls with the classroom and office doors
   wallGaps(B, 900, HY0, SX1, HY0, [[150, 234, 'wood'], [550, 634, 'wood'], [950, 1034, 'wood']], 'schoolint', { t: 12, side: 'both', sec });
   wallGaps(B, 900, HY1, SX1, HY1, [[80, 164, 'wood'], [270, 450, null], [700, 784, 'wood'], [1050, 1134, 'wood']], 'schoolint', { t: 12, side: 'both', sec });
@@ -502,7 +502,7 @@ function school(B) {
   artOf(B).floors.push({ x: 650, y: 400, w: 490, h: 490, a: 0, look: 'gym', sec });
   artOf(B).floors.push({ x: 1550, y: 450, w: 1290, h: 490, a: 0, look: 'lino', sec });
   B.area('concrete', 1300, 400, 1790, 490, 0);
-  B.roof(650, 400, 514, 514, 0, { kind: 'industrial', height: 190, section: sec, dark: 0.6 });
+  B.roof(650, 400, 514, 514, 0, { kind: 'industrial', height: 150, section: sec, dark: 0.6 });
   B.roof(1550, 400, 1314, 514, 0, { kind: 'office', height: 120, section: sec, dark: 0.65 });
   // hall lockers, classroom desks, the office counter and desks, the gym's bleachers
   for (const x of [1050, 1500, 1950]) ob(B, 'cabinet', 'hc-lockers', x, HY0 + 16, 140, 20, 0, { sec });

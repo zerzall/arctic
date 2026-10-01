@@ -639,6 +639,7 @@ export function createKitArt(ctx, deps, spec) {
   try { map.dressItems = levelDress(map, spec.extraSkip); } catch (err) { console.warn('level art: dressing failed', err); }
 
   let seq = 0;
+  let roofCalled = false;
   const self = {
     buckets: KIT_BUCKETS,
     dyn,
@@ -658,11 +659,14 @@ export function createKitArt(ctx, deps, spec) {
     },
     objective() { return false; },
     roof(B, r) {
+      roofCalled = true;
       if (!r.style || !spec.roofs || !spec.roofs[r.style]) return false;
       B.obj(r.x, r.y, r.a || 0, 7000 + (seq++));
       return run(spec.roofs, r.style, B, r);
     },
     props(B) {
+      // a world without the roof seam (roofs3d.js calls roof() before props()): draw the level's own roofs here
+      if (!roofCalled) for (const r of map.roofs || []) if (r.style && spec.roofs && spec.roofs[r.style]) self.roof(B, r);
       for (const f of art.floors || []) {
         B.obj(f.x, f.y, f.a || 0, 3000 + (seq++));
         B.setJitter(0);

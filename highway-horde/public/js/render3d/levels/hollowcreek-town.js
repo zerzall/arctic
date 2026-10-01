@@ -176,16 +176,16 @@ function watertower(P) {
   }
   B.cyl('std', 0, 0, 0, 6, top, steel, 12, 1, null, mo);
   // the tank: a bowl, the drum, the balcony, the cone, the finial
-  const R = 66, y0 = top + 4, H = 58;
-  B.add('std', T.sphere(24, 10), [0, y0, 0], [R, 26, R], null, '#c8d0d2', S(DET.panel, 0.5, 0.45));
-  B.cyl('std', 0, y0, 0, R, H, '#d0d6d8', 28, 1, null, S(DET.panel, 0.5, 0.45));
-  B.add('std', T.cyl(28, 0.08), [0, y0 + H + 14, 0], [R + 2, 28, R + 2], null, '#b8c0c4', { ...S(DET.metalroof, 0.5, 0.5), map: 'cyl' });
-  B.cyl('std', 0, y0 + H + 27, 0, 3, 10, '#8a8e92', 8, 1, null, CHROME);
-  B.cyl('std', 0, y0 - 2, 0, R + 10, 2, '#8a9296', 28, 1, null, METAL);
+  const R = 58, y0 = top + 4, H = 84;
+  B.add('std', T.sphere(24, 12), [0, y0 + 2, 0], [R, 44, R], null, '#c8d0d2', S(DET.panel, 0.5, 0.45));
+  B.cyl('std', 0, y0 + 2, 0, R, H, '#d0d6d8', 28, 1, null, S(DET.panel, 0.5, 0.45));
+  B.add('std', T.cyl(28, 0.06), [0, y0 + H + 22, 0], [R + 3, 40, R + 3], null, '#b8c0c4', { ...S(DET.metalroof, 0.5, 0.5), map: 'cyl' });
+  B.cyl('std', 0, y0 + H + 41, 0, 2.4, 12, '#8a8e92', 8, 1, null, CHROME);
+  B.cyl('std', 0, y0 + 10, 0, R + 7, 1.4, '#8a9296', 28, 1, null, METAL);
   if (P.lod >= 1) {
     const n = 32;
-    for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; B.cyl('std', Math.cos(a) * (R + 9), y0, Math.sin(a) * (R + 9), 0.7, 20, steel, 4, 1, null, mo); }
-    B.add('std', T.torus(36, 0.012, 3), [0, y0 + 20, 0], [R + 9, R + 9, R + 9], [HALF, 0, 0], steel, mo);
+    for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; B.cyl('std', Math.cos(a) * (R + 6), y0 + 11, Math.sin(a) * (R + 6), 0.6, 18, steel, 4, 1, null, mo); }
+    B.add('std', T.torus(36, 0.01, 3), [0, y0 + 29, 0], [R + 6, R + 6, R + 6], [HALF, 0, 0], steel, mo);
   }
   // the ladder up a leg and the tank
   const [lx, lz] = [44, 44];
@@ -196,7 +196,7 @@ function watertower(P) {
     for (let k = 0; k < n; k++) {
       const th = th0 + ((k + 0.5) / n) * span;
       const wdt = 2 * (R + 0.6) * Math.tan(span / n / 2) + 0.4;
-      B.add('lvsign', T.plane(), [Math.sin(th) * (R + 0.6), y0 + H * 0.5, Math.cos(th) * (R + 0.6)], [wdt, 30, 1], [0, th, 0], '#ffffff', { uv: lvSub('hc_town', k / n, 0, (k + 1) / n, 1), noAO: true, noJitter: true });
+      B.add('lvsign', T.plane(), [Math.sin(th) * (R + 0.6), y0 + H * 0.62, Math.cos(th) * (R + 0.6)], [wdt, 24, 1], [0, th, 0], '#ffffff', { uv: lvSub('hc_town', k / n, 0, (k + 1) / n, 1), noAO: true, noJitter: true });
     }
   }
   if (P.lod >= 1) for (let k = 0; k < 6; k++) { const th = (k / 6) * PI * 2 + 0.3; decal(B, 'grime', Math.sin(th) * (R + 0.8), y0 + H * 0.4, Math.cos(th) * (R + 0.8), 40, H * 1.1, th); }
@@ -644,9 +644,15 @@ function streetlamp(P) {
 function laststand(P) {
   const { B } = P;
   const r = B.rng;
+  // diner tables on their sides: the top stood up as a shield, the legs sticking out behind
   for (const [x, z, a] of [[20, -40, 0.3], [70, 40, -0.4], [-20, 80, 1.2]]) {
-    B.add('std', T.box(), [x, 16, z], [60, 2, 30], [HALF - 0.1, a, 0], '#e8dcc8', S(0, 0.4, 0));
-    for (const s of [-1, 1]) rod(B, 'std', [x + Math.cos(a) * s * 20, 30, z - Math.sin(a) * s * 20], [x + Math.cos(a) * s * 20 + 18, 30, z - Math.sin(a) * s * 20], 1.2, '#c8ccce', CHROME, 5);
+    const c = Math.cos(a), sn = Math.sin(a);
+    B.add('std', T.box(), [x, 15, z], [56, 30, 2], [0, a, 0], '#e8dcc8', S(0, 0.4, 0));
+    B.add('std', T.box(), [x, 15, z], [57, 31, 1.4], [0, a, 0], '#b8bcc0', CHROME);
+    for (const s of [-1, 1]) for (const y of [6, 24]) {
+      const px = x + c * s * 20, pz = z - sn * s * 20;
+      rod(B, 'std', [px, y, pz], [px + sn * 26, y, pz + c * 26], 1, '#8a8e92', CHROME, 5);
+    }
   }
   for (let i = 0; i < 4; i++) B.rblock('std', 40 + i * 12, 0, -80 + r.range(-4, 4), 10, 7, 6, 0.5, '#3a4a2a', [0, r.range(-0.3, 0.3), 0], METAL);
   for (let i = 0; i < 60; i++) B.add('std', T.cyl(6), [r.range(-20, 120), 0.6, r.range(-120, 40)], [0.8, 2.6, 0.8], [HALF, r.range(0, 6), 0], r.pick(['#c8a040', '#c83a2a']), { ...S(0, 0.3, 0.9), map: 'cyl' });
@@ -654,7 +660,8 @@ function laststand(P) {
   rod(B, 'std', [100, 0, -60], [100, 150, -60], 1.2, '#8a8e92', CHROME, 6);
   sign2(B, 'hc_flag', 124, 134, -60, 46, 30, 0, { rz: -0.1 });
   for (const [x, z, a] of [[-60, 20, 0.4], [-90, -30, 1.4], [140, 90, 2.2]]) {
-    B.add('std', T.pillow(10, 6, 0.3), [x, 5, z], [30, 5, 12], [0, a, 0], '#2a3a5a', FABRIC);
+    B.add('std', T.pillow(10, 6, 0.3), [x, 3, z], [28, 3.4, 10], [0, a, 0], '#2a3440', S(DET.plastic, 0.45, 0));
+    B.add('std', T.sphere(8, 6), [x + Math.cos(a) * 18, 4, z - Math.sin(a) * 18], [6, 4, 7], [0, a, 0], '#2a3440', S(DET.plastic, 0.45, 0));
     floorDecal(B, 'blood3', x + 10, z + 6, 50, 36, a, 0.5);
   }
   floorDecal(B, 'blood1', 20, 0, 80, 80, 0.5, 0.5);

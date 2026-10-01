@@ -73,7 +73,8 @@ Object.assign(LOOKS, {
   nave: { h: 170, ext: STONE, int: F('#efe6d4', DET.plaster, 0.85), plinth: '#7a7468', cap: '#8a8478', skirt: '#4a3424', rail: 46, crown: 160, win: { w: 34, h: 96, sill: 52, pitch: 150, margin: 100, draw: lancetWindow } },
   tower: { h: 170, ext: STONE, int: F('#c8c0b0', DET.rock, 0.9), plinth: '#7a7468', cap: '#8a8478', win: { w: 26, h: 64, sill: 76, pitch: 300, margin: 70, draw: lancetWindow } },
   // the school
-  school: { h: 120, ext: F('#a85a3a', DET.brick, 0.9), int: F('#e8e4d4', DET.brick, 0.8), plinth: '#6a6056', cap: '#e8e4dc', skirt: '#3a3c3e', crown: 112, win: { w: 84, h: 44, sill: 36, pitch: 130, margin: 70, state: 'mix' } },
+  school: { h: 150, ext: F('#a85a3a', DET.brick, 0.9), int: F('#e8e4d4', DET.brick, 0.8), plinth: '#6a6056', cap: '#e8e4dc', skirt: '#3a3c3e', crown: 112, win: { w: 84, h: 44, sill: 36, pitch: 130, margin: 70, state: 'mix' } },
+  gymwall: { h: 150, ext: F('#e0dccc', DET.brick, 0.8), int: F('#e0dccc', DET.brick, 0.8), skirt: '#2a4a6a', crown: 112 },
   schoolint: { h: 120, ext: F('#e0dccc', DET.brick, 0.8), int: F('#e0dccc', DET.brick, 0.8), skirt: '#2a4a6a', rail: 40, crown: 112 },
   // the police station
   police: { h: 125, ext: F('#9a7a60', DET.brick, 0.9), int: F('#e4e2d8', DET.brick, 0.8), plinth: '#5a524a', cap: '#4a4e52', band: { c: '#1a3a6a', y0: 102, y1: 110 }, skirt: '#2a2c2e', crown: 118, win: { w: 50, h: 24, sill: 70, pitch: 160, margin: 70, state: 'glass' } },
