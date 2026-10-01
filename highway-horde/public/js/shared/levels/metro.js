@@ -187,6 +187,8 @@ export function build(B) {
   B.section('maintenance', 'Maintenance Works', 7650, 3900, 4300, 1800);
   B.section('exit', 'Harlan Square', 3250, 4600, 4500, 2000);
 
+  // hard ground under everything below the city (the renderer grows grass on bare ground)
+  B.box('concrete', 2000, 0, 11800, 5600);
   buildStreet(B, K);
   buildConcourse(B, K);
   buildPlatform(B, K);
@@ -210,8 +212,10 @@ function buildStreet(B, K) {
   const { rng, drng } = B;
   // the city's ground, raised (it runs on past the map's west edge so the backdrop stands on it)
   K.plateau(-3000, -3000, ST.x0, 3600, H);
-  K.plateau(ST.x0, -3000, ST.x1, ES.y0, H);
-  K.plateau(ST.x0, ES.y1, ST.x1, 3600, H);
+  // (the raised ground beside the stairwell stops behind its walls: an edge shared with the flight
+  // would make the ground mesh slope over the steps)
+  K.plateau(ST.x0, -3000, ST.x1, ES.y0 - 16, H);
+  K.plateau(ST.x0, ES.y1 + 16, ST.x1, 3600, H);
   K.plateau(ST.x0, ES.y0, ES.x0, ES.y1, H);                     // the lobby's floor over the stair's head
   K.flightX(ES.x0, ES.x1, ES.y0, ES.y1, METRO.concourse, H, -1, ES.x0, 48);
   K.plateau(ES.x1 - 40, ES.y0, ES.x1, ES.y1, METRO.concourse);   // (a flight leaves its lowest run to the floor below)
@@ -662,8 +666,8 @@ function buildWorks(B, K) {
 function buildSquare(B, K) {
   const S = 'exit', H = METRO.street, EX = METRO.exitStair, SQ = METRO.square, ST = METRO.statue;
   K.plateau(-3000, 3600, EX.x0, 8000, H);
-  K.plateau(EX.x0, 3600, 5400, EX.y0, H);
-  K.plateau(EX.x0, EX.y1, 5400, 8000, H);
+  K.plateau(EX.x0, 3600, 5400, EX.y0 - 16, H);
+  K.plateau(EX.x0, EX.y1 + 16, 5400, 8000, H);
   K.flightX(EX.x0, EX.x1, EX.y0, EX.y1, 0, H, -1, EX.x0, 80);
   K.guard(EX.x0, EX.y0, EX.x1, EX.y1);
   // the stair's walls, its roof under the east buildings, the canopy at its head

@@ -277,6 +277,7 @@ function buildShell(B, K) {
   // hard floors under the whole building, the service roads north and south (seen through the glass)
   B.box('concrete', S.x0, S.y0, S.x1, S.y1);
   B.box('asphalt', S.x0 + 16, 60, 7200, S.y0 - 12);
+  B.box('concrete', 7200, 0, 11600, 1812);                 // the garage's decks
   B.box('asphalt', S.x0 + 16, S.y1 + 12, 9800, 4400);
   // the rooftops (the art: gravel, plant, the glass vault)
   K.put('mallroof', 3800, 2350, 0, { x0: S.x0, y0: S.y0, x1: 7200, y1: S.y1, h: 330, skirt: 'e' });

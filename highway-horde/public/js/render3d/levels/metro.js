@@ -52,7 +52,7 @@ const ROOMS = {
   'mt-florist': { floor: '#c8c4b8', floorDet: DET.tile, floorRough: 0.3, upper: '#f0ece4', skirt: '#8a8478', ceil: '#f0ece4', ceilKind: 'plain', fixture: DOWN, grime: 0.3, floorDecals: ['mud', 'grime'] },
   'mt-void': { noFloor: true, ceilKind: 'none', upper: '#3a3a38', skirtH: 0 },
   'mt-service': { floor: '#6a6862', floorDet: DET.concrete, floorRough: 0.8, lower: '#4a6a5a', lowerH: 36, lowerDet: DET.brick, upper: '#a8a8a0', upperDet: DET.brick, skirt: '#2a2c28', ceil: '#8f8f88', ceilKind: 'slab', fixture: TUBE, grime: 0.8, grimeCells: ['grime', 'mold', 'wstain', 'g_square'], wallProps: BACK_PROPS, floorDecals: ['grime2', 'blood_trail', 'mud'], decalArea: 60000 },
-  'mt-platform': { base: METRO.platform, floor: '#8a8a84', floorDet: DET.slab, floorRough: 0.6, ...TILED, ceilKind: 'none', fixture: { ...STRIP, step: 260, rowStep: 240 }, grime: 0.6, grimeCells: ['grime', 'g_tag1', 'g_tag2', 'blood_hand', 'wstain'], wallProps: ['poster', 'bin', 'exit', 'blood', 'notice'], wallStep: 200, floorDecals: BLOODY, decalArea: 120000 },
+  'mt-platform': { base: METRO.platform, floor: '#8a8a84', floorDet: DET.slab, floorRough: 0.6, ...TILED, ceilKind: 'open', fixture: { ...STRIP, step: 260, rowStep: 240 }, grime: 0.6, grimeCells: ['grime', 'g_tag1', 'g_tag2', 'blood_hand', 'wstain'], wallProps: ['poster', 'bin', 'exit', 'blood', 'notice'], wallStep: 200, floorDecals: BLOODY, decalArea: 120000 },
   'mt-track': { base: 0, floor: '#4a4640', floorDet: DET.gravel, floorRough: 0.95, upper: '#7a7870', upperDet: DET.concrete, lower: '#5a5852', lowerH: 40, lowerDet: DET.concrete, skirtH: 0, ceilKind: 'hall', grime: 0.8, grimeCells: ['soot', 'wstain', 'grime2', 'g_tag1'], floorDecals: ['soot', 'grime2'] },
   'mt-car': { base: METRO.platform, floor: '#3a3d40', floorDet: DET.rubber, floorRough: 0.8, upper: '#dcdcd4', upperDet: DET.panel, upperRough: 0.5, lower: '#5a6a8a', lowerH: 28, lowerDet: DET.panel, skirt: '#2a2c2e', skirtH: 3, ceil: '#e8e8e4', ceilKind: 'plain', fixture: { kind: 'tube', step: 150, rowStep: 140, color: '#eef4ff', stray: 0.1 }, grime: 0.5, grimeCells: ['g_tag1', 'g_tag2', 'blood_hand', 'grime'], floorDecals: ['blood_trail', 'blood_pool', 'grime'], decalArea: 30000 },
   'mt-tunnel': { floor: '#4a4640', floorDet: DET.gravel, floorRough: 0.95, upper: '#6a6862', upperDet: DET.concrete, lower: '#4a4842', lowerH: 30, lowerDet: DET.concrete, skirtH: 0, ceil: '#5a5852', ceilKind: 'tunnel', fixture: BULK, grime: 0.9, grimeCells: ['soot', 'wstain', 'g_tag2', 'g_quarantine', 'mold'], wallProps: ['refuge', 'hv', 'graffiti', 'blood'], wallStep: 300, floorDecals: ['soot', 'blood_trail', 'grime2'], decalArea: 120000 },
@@ -156,6 +156,21 @@ function barrel(C, spring, rise, color, surf, o = {}) {
     if (along) B.quad('std', [0, (ya + yb) / 2, (a + b) / 2], [len, 0, 0], [0, yb - ya, b - a], color, surf);
     else B.quad('std', [(a + b) / 2, (ya + yb) / 2, 0], [0, 0, -len], [b - a, yb - ya, 0], color, surf);
   }
+  // the ends: walls from the spring up under the arch, both faces (an arch open at its ends shows the sky)
+  for (const e of [-1, 1]) {
+    for (let k = 0; k < segs; k++) {
+      const [a, ya] = prof(k), [b, yb] = prof(k + 1);
+      const lo = Math.min(ya, yb), hi = Math.max(ya, yb);
+      const t = (e * len) / 2;
+      if (along) {
+        for (const f of [1, -1]) B.quad('std', [t, (spring + lo) / 2, (a + b) / 2], [0, 0, f * (b - a)], [0, lo - spring, 0], color, surf);
+        if (hi > lo) B.add('std', RTRI(), yb > ya ? [t, ya, a] : [t, yb, b], [b - a, hi - lo, 1], [0, yb > ya ? -HALF : HALF, 0], color, surf);
+      } else {
+        for (const f of [1, -1]) B.quad('std', [(a + b) / 2, (spring + lo) / 2, t], [f * (b - a), 0, 0], [0, lo - spring, 0], color, surf);
+        if (hi > lo) B.add('std', RTRI(), yb > ya ? [a, ya, t] : [b, yb, t], [b - a, hi - lo, 1], yb > ya ? null : [0, Math.PI, 0], color, surf);
+      }
+    }
+  }
   // ribs (rings) every `ribStep`
   if (o.ribStep && C.lod() >= 1) {
     for (let t = -len / 2 + o.ribStep / 2; t < len / 2; t += o.ribStep) {
@@ -171,6 +186,8 @@ function barrel(C, spring, rise, color, surf, o = {}) {
 }
 
 const CEILINGS = {
+  /** Under the hall's vault (drawn with the track's room): nothing of its own, its strip lamps hang below. */
+  open() {},
   /** The platform hall: a tiled barrel vault over the platform and the track, its end walls, a cable trough. */
   hall(C) {
     const { B, r } = C;
@@ -262,8 +279,10 @@ function fixture(C) {
       break;
     }
     case 'bulk': case 'cage': {
-      // a bulkhead / a caged bulb on a bracket under the crown
-      const y = (fx.kind === 'bulk' ? H + 100 : H + 50) - 8;
+      // a bulkhead / a caged bulb under the crown of the arch (or the flat ceiling)
+      const span = Math.min(C.r.w, C.r.h);
+      const crown = C.fin.ceilKind === 'tunnel' ? 120 + Math.min(150, span * 0.3) : C.fin.ceilKind === 'brickvault' ? 220 : H;
+      const y = crown - 10;
       B.rblock('std', 0, y, 0, 14, 6, 10, 1, '#2a2c2e', null, STEEL);
       if (lit) C.glow(B, 0, y - 2, 0, 10, 3, 7, glowC, 2.8); else B.box('std', 0, y - 2, 0, 10, 3, 7, '#6a5a3a', null, PLAST);
       break;
@@ -355,7 +374,7 @@ function gate(P) {
         for (let x = -L / 2 + 10; x < L / 2 - 6; x += 10) B.cyl('std', x, 0, 0, 1.2, H, '#5a6066', 6, 1, null, STEEL);
       }
       B.cyl('std', 0, H / 2 - 6, 3.4, 2.4, 10, '#b8bcc0', 8, 1, [HALF, 0, 0], CHROME);
-      for (const f of [1, -1]) P.pic(B, o.gate === 'tunnel_gate' ? 'mt_track' : o.gate === 'turnstiles' ? 'mt_staff' : 'mt_noentry', L * 0.25, H * 0.7, f * 3.2, 44, 16, f > 0 ? 0 : Math.PI);
+      for (const f of [1, -1]) P.pic(B, o.gate === 'tunnel_gate' ? 'mt_track' : 'mt_noentry', L * 0.25, H * 0.7, f * 3.2, 44, 16, f > 0 ? 0 : Math.PI);
       return;
     }
     default: {
