@@ -342,8 +342,8 @@ function buildAtrium(B, K) {
   K.windowRow(3900, SY, 4500, SY, 170, { w: 150, h: 96, sill: 12, section: S, style: 'mall-shop', skip: [[4090, 4310]] });
   K.put('mezzanine', 3800, 3200, 0, { x0: 2616, x1: 4984, y0: 3100, y1: SY, h: 150 });
   R(2616, 3100, 4984, SY, 'wg-arcade', { h: 150, dark: 0.55 });
-  // the void under the vault
-  R(2616, U.y1, 4984, 3100, 'wg-atrium', { h: 430, dark: 0.3 });
+  // the void under the vault: open to the sky for the engine (the glass lets the sun in), a room for the art
+  K.glassRoom(2616, U.y1, 4984, 3100, { height: 430, section: S, style: 'wg-atrium' });
   // the phone shop and the clothes shop
   for (const [x, y] of [[2800, 3500], [3100, 3500], [3300, 3700]]) B.ob('counter', x, y, 120, 50, 0, { style: 'phonetable', section: S });
   B.ob('cabinet', 2640, 3640, 30, 500, 0, { style: 'phonewall', section: S });
@@ -416,7 +416,8 @@ function buildFoodCourt(B, K) {
   });
   R(5012, 716, 7188, CY, 'wg-service', { h: 120, dark: 0.85 });
   // the hall: tables and chairs, planters, the stage in the south-east
-  R(5012, NY, 7188, 3400, 'wg-food', { h: 300, dark: 0.35 });
+  // (the six lantern skylights are gaps in the engine's roof: the sun falls through them)
+  K.glassRoom(5012, NY, 7188, 3400, { height: 300, section: S, style: 'wg-food', dark: 0.35, open: [5350, 6100, 6850].flatMap((x) => [1850, 2800].map((y) => ({ x0: x - 150, y0: y - 120, x1: x + 150, y1: y + 120 }))) });
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 5; col++) {
       const x = 5300 + col * 360 + (row % 2) * 120, y = 1650 + row * 380;

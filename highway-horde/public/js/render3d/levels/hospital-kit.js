@@ -398,7 +398,11 @@ export function createInteriorArt(ctx, deps, level) {
   const rng = seededRng((map.seed | 0) * 7919 + 13);
 
   // ---- rooms: a grid index of the roofs ----------------------------------------------------------
-  const roofs = map.roofs || [];
+  // The rooms: the styled roofs, and the art's own rooms (levelArt 'room' items) where the layout leaves
+  // the sky open on purpose (a glass vault, a lantern: the engine's indoor mask follows B.roof, so the sun
+  // comes in through gaps). Roofs styled 'mask' only darken for the engine; the art draws nothing there.
+  const artRooms = items.filter((it) => it.t === 'room').map((it) => ({ x: it.x, y: it.y, w: it.w, h: it.d, height: it.height, style: it.style, section: it.sec, kind: 'art', art: true }));
+  const roofs = (map.roofs || []).filter((r) => r.style !== 'mask').concat(artRooms);
   const CELL = 400;
   const grid = new Map();
   roofs.forEach((r, i) => {
@@ -1124,6 +1128,7 @@ export function createInteriorArt(ctx, deps, level) {
     },
     objective() { return false; },
     roof(B, r) {
+      if (r.style === 'mask') return true;
       if (!r.style || !(level.rooms && level.rooms[r.style])) return false;
       roofCalls++;
       try { drawRoom(B, r); } catch (err) { warnOnce('room ' + r.style, err); }
@@ -1131,7 +1136,12 @@ export function createInteriorArt(ctx, deps, level) {
       return true;
     },
     props(B) {
+      for (const r of artRooms) {
+        try { drawRoom(B, r); } catch (err) { warnOnce('room ' + r.style, err); }
+        roomsDrawn.add(r);
+      }
       for (const it of items) {
+        if (it.t === 'room') continue;
         try {
           if (it.t === 'door') drawDoor(B, it);
           else if (it.t === 'window') drawWindow(B, it);

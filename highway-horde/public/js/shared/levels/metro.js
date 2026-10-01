@@ -147,6 +147,9 @@ export const DEF = { width: 11800, height: 5600, darkness: 0.62, tint: '#3a4a60'
 
 const HALF = Math.PI / 2;
 
+/** The concourse's pavement lights (glass blocks in the street over it: the art's panels, the engine's gaps). */
+export const PAVEMENT = Object.freeze([3950, 4450, 4950].flatMap((x) => [1850, 2350].map((y) => ({ x0: x - 120, y0: y - 90, x1: x + 120, y1: y + 90 }))));
+
 /** Key heights and places of the layout (the art reads them). */
 export const METRO = Object.freeze({
   street: 320, concourse: 140, platform: 40,
@@ -252,7 +255,7 @@ function buildStreet(B, K) {
   K.wall(ES.x0, ES.y1 + 8, ES.x1 + 16, ES.y1 + 8, { style: 'mt-tile', section: S });
   K.wall(ES.x0, ST.y0 + 12, ES.x0, ES.y0 - 16, { style: 'mt-tile', section: S });
   K.wall(ES.x0, ES.y1 + 16, ES.x0, ST.y1 - 12, { style: 'mt-tile', section: S });
-  K.roof(ES.x0, ES.y0, ES.x1, ES.y1, { kind: 'plain', height: 470, section: S, style: 'mt-stair', dark: 0.5 });
+  K.glassRoom(ES.x0, ES.y0, ES.x1, ES.y1, { height: 470, section: S, style: 'mt-stair', dark: 0.5, open: [{ x0: ES.x0, y0: ES.y0, x1: ES.x0 + 220, y1: ES.y1 }] });
   K.put('stairflight', (ES.x0 + ES.x1) / 2, (ES.y0 + ES.y1) / 2, 0, { x0: ES.x0, x1: ES.x1, y0: ES.y0, y1: ES.y1, h0: METRO.concourse, h1: H, dir: -1, lantern: 1 });
   // the lobby: a map board, benches, a fallen departures sign
   B.ob('desk', 2150, 1650, 160, 30, 0, { style: 'mt-bench', section: S });
@@ -364,7 +367,7 @@ function buildConcourse(B, K) {
   K.wall(5200, SY, 5200, C.y1, { style: 'mt-tile', section: S });
   K.wall(5200, SY, C.x1, SY, { style: 'mt-tile', section: S });
   // the hall
-  R(C.x0, C.y0, C.x1, SY, 'mt-concourse', 190);
+  K.glassRoom(C.x0, C.y0, C.x1, SY, { height: 190, section: S, style: 'mt-concourse', dark: 0.8, open: PAVEMENT });
   for (let x = 3850; x < 5500; x += 350) for (const y of [1950, 2350]) B.ob('ipillar', x, y, 40, 40, 0, { style: 'mt-col', section: S, top: HC + 190 });
   // the café: tables, the counter, the coffee machine
   B.ob('counter', 3700, 2940, 300, 40, 0, { style: 'cafecounter', section: S });

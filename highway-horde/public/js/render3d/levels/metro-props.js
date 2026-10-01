@@ -13,7 +13,7 @@ import { T, DET, S, STEEL, CHROME, PAINT, PLAST, FABRIC, WOODS, CONC, shadeHex, 
 import { OBSTACLES as HOSP } from './hospital-props.js';
 import { long, faceTo, slopedWall } from './mall-props.js';
 import { rod } from '../dress-kit.js';
-import { METRO } from '../../shared/levels/metro.js';
+import { METRO, PAVEMENT } from '../../shared/levels/metro.js';
 
 const HALF = Math.PI / 2;
 const RUBBER = S(DET.rubber, 0.9, 0);
@@ -633,6 +633,6 @@ export function metroProps(state) {
 }
 
 /** The concourse's pavement-light panels (glass blocks in the ceiling; the day shines through them). */
-export const PAVEMENT = Object.freeze([3950, 4450, 4950].flatMap((x) => [1850, 2350].map((y) => ({ x0: x - 120, y0: y - 90, x1: x + 120, y1: y + 90 }))));
+export { PAVEMENT };
 
 void METRO; void slopedWall;

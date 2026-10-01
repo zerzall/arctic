@@ -248,6 +248,18 @@ export function levelKit(B, o = {}) {
     roof(x0, y0, x1, y1, r = {}) {
       B.roof((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0), 0, { kind: r.kind || 'plain', height: r.height, section: r.section, dark: r.dark, style: r.style });
     },
+    /**
+     * A room under glass: the art draws it (a 'room' item) while the engine's indoor mask gets plain
+     * roofs only round the openings `r.open` [{ x0, y0, x1, y1 }], so the sun comes in through them.
+     * Without openings the whole room is open to the sky (a glass vault).
+     */
+    glassRoom(x0, y0, x1, y1, r = {}) {
+      K.put('room', (x0 + x1) / 2, (y0 + y1) / 2, 0, { w: Math.abs(x1 - x0), d: Math.abs(y1 - y0), height: r.height, style: r.style, sec: r.section });
+      if (!r.open) return;
+      for (const q of rectMinus({ x0, y0, x1, y1 }, r.open)) {
+        B.roof((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2, q.x1 - q.x0, q.y1 - q.y0, 0, { kind: r.kind || 'plain', height: r.height, section: r.section, dark: r.dark, style: 'mask' });
+      }
+    },
 
     // ---- terrain: plateaus and stair flights (shared/terrain.js) ------------------------------------
     /** A flat raised floor at height h over the rectangle (sharp edges: walls hide the cliffs). */
@@ -310,6 +322,28 @@ export function levelKit(B, o = {}) {
     },
   };
   return K;
+}
+
+/** A rectangle minus axis-aligned holes, as rectangles (cut at the holes' edges, merged along x). */
+export function rectMinus(r, holes) {
+  const xs = [r.x0, r.x1], ys = [r.y0, r.y1];
+  for (const h of holes) {
+    if (h.x1 <= r.x0 || h.x0 >= r.x1 || h.y1 <= r.y0 || h.y0 >= r.y1) continue;
+    xs.push(Math.max(r.x0, h.x0), Math.min(r.x1, h.x1));
+    ys.push(Math.max(r.y0, h.y0), Math.min(r.y1, h.y1));
+  }
+  const X = [...new Set(xs)].sort((a, b) => a - b), Y = [...new Set(ys)].sort((a, b) => a - b);
+  const out = [];
+  for (let j = 0; j < Y.length - 1; j++) {
+    let run = null;
+    for (let i = 0; i < X.length - 1; i++) {
+      const cx = (X[i] + X[i + 1]) / 2, cy = (Y[j] + Y[j + 1]) / 2;
+      if (holes.some((h) => cx > h.x0 && cx < h.x1 && cy > h.y0 && cy < h.y1)) { if (run) { out.push(run); run = null; } continue; }
+      if (run) run.x1 = X[i + 1]; else run = { x0: X[i], x1: X[i + 1], y0: Y[j], y1: Y[j + 1] };
+    }
+    if (run) out.push(run);
+  }
+  return out;
 }
 
 /** Spans of [a0, a1] left between the sorted gaps. */
