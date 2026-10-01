@@ -546,9 +546,10 @@ function fountain(P) {
   const { B, o } = P;
   const R = o.w / 2 - 2, r = B.rng;
   const stone = { noJitter: true, surf: [DET.rock, 0.9, 0] };
-  B.cyl('std', 0, 0, 0, R, 24, '#a8a498', 28, 1, null, stone);
+  // the basin: a ring wall round a sunken floor (a lathe, so the water inside shows)
+  B.add('std', T.lathe('hcbasin' + Math.round(R), [[R, 0], [R, 24], [R - 7, 24], [R - 7, 15], [0, 15]], 28), [0, 0, 0], [1, 1, 1], null, '#a8a498', stone);
   B.add('std', T.torus(28, 0.14, 6), [0, 24, 0], [R - 3, R - 3, 22], [HALF, 0, 0], '#b8b4a8', stone);
-  B.cyl('std', 0, 18, 0, R - 8, 0.8, '#2a3a2c', 28, 1, null, { noJitter: true, surf: [0, 0.06, 0.1] });
+  B.cyl('std', 0, 15.4, 0, R - 7.5, 3, '#2a3a2c', 28, 1, null, { noJitter: true, surf: [0, 0.06, 0.1] });
   B.cyl('std', 0, 18, 0, 14, 44, '#a8a498', 14, 0.8, null, stone);
   B.add('std', T.lathe('hcbowl', [[10, 0], [30, 6], [38, 12], [36, 14], [12, 8]], 20), [0, 60, 0], [1, 1, 1], null, '#b0aca0', stone);
   B.cyl('std', 0, 74, 0, 6, 22, '#a8a498', 12, 0.8, null, stone);
