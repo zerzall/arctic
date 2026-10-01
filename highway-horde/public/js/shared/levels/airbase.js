@@ -450,7 +450,7 @@ function buildHangars(B, A) {
   B.line('yellow', BASE.apron.x0 + 60, 2150, BASE.towerX - 40, 2150, 6);
   B.line('white', BASE.apron.x0 + 60, 2560, BASE.towerX - 40, 2560, 4);
   // the apron: floodlight towers, the crashed Black Hawk burning, a refueler, tugs, pallets, HESCO
-  for (const x of [5500, 6600, 7700]) lightTower(B, x, 2300, 'hangars', { r: 760, h: 420 });
+  for (const x of [5500, 6600, 7700]) lightTower(B, x, 2300, 'hangars', { r: 940, h: 380 });
   B.ob('wall', 7550, 2050, 200, 70, 2.5, { style: 'helowreck', ...S });
   B.ob('wall', 7422, 2171, 130, 14, 2.15, { style: 'nodraw', ...S });
   B.fire(7560, 2040, 28);
@@ -520,7 +520,7 @@ function buildTower(B, A, plats) {
   B.ob('desk', 8720, T.y1 - 40, 120, 36, 0, { style: 'radiodesk', ...S });
   B.ob('desk', 8690, 1560, 60, 80, 0, { style: 'maptable', ...S });
   B.ob('cabinet', 8600, 1690, 24, 70, 0, { style: 'lockers', ...S });
-  B.light(8730, 1580, 220, '#bfffd8', 0.1, f + 110);
+  B.light(8730, 1580, 220, '#e0f0e4', 0.1, f + 110);
   B.light(8500, 1640, 160, '#ffd9a0', 0.3, 100);
   A.marks.push({ t: 'tower', x: (st.x1 + T.x1) / 2, y: (T.y0 + T.y1) / 2 });
   // the compound: the crash-rescue station, its tender, the windsock, the taxiway to the runway gate

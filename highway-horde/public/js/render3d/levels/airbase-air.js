@@ -33,8 +33,12 @@ export function cargoPlane(P, o) {
   const R = 46, cy = 72;
   const body = [[0, 0], [14, 6], [26, 18], [36, 40], [42, 70], [46, 110], [46, 560], [45, 600]];
   B.add('std', T.lathe('c3c27body', body.map(([r, y]) => [r, y]), seg), [nose, cy, 0], [1, 1, 1], [0, 0, -HALF], grey, AIR);
-  B.add('std', T.lathe('c3c27hold', body.slice(4).reverse().map(([r, y]) => [r * 0.94, y]), seg), [nose, cy, 0], [1, 1, 1], [0, 0, -HALF], '#1a1c1e', S(0, 0.9, 0));
+  B.add('std', T.lathe('c3c27hold', body.slice(4).reverse().map(([r, y]) => [r * 0.94, y]), seg), [nose, cy, 0], [1, 1, 1], [0, 0, -HALF], '#34373a', S(DET.panel, 0.8, 0.2));
   const tx = nose + 600;
+  // the hold's opening: a frame round the cut, ribs inside, a work lamp left on in the bay
+  B.add('std', T.torus(seg, 0.08, 4), [tx - 2, cy, 0], [R - 1, R - 1, R - 1], [0, HALF, 0], '#9aa0a6', AIR);
+  for (let x = tx - 40; x > tx - 300; x -= 50) B.add('std', T.torus(seg, 0.05, 3), [x, cy, 0], [R * 0.92, R * 0.92, R * 0.92], [0, HALF, 0], '#4a4e52', STEEL);
+  lampGlow(B, P.halos, tx - 120, cy + 34, 0, ...toWorld(o, tx - 120, 0), '#ffe0b0', { size: [10, 2, 6], k: P.day ? 1 : 3, halo: 70, strength: 0.5, y0: 0 });
   const tail = [[45, 0], [40, 60], [30, 130], [18, 190], [8, 215]];
   B.add('std', T.lathe('c3c27tail', tail, seg), [tx, cy + 8, 0], [1, 1, 1], [0, 0, -HALF + 0.22], grey, AIR);
   // (the tail cone's open belly: the ramp hinges at the hold's floor and lies down to the hangar floor)

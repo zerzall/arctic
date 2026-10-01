@@ -243,7 +243,7 @@ export function tower(P, r) {
   for (let k = 0; k < nseg; k++) {
     const a = (k / nseg) * Math.PI * 2 + Math.PI / 8 + Math.PI / nseg;
     B.add('std', T.box(), [Math.cos(a) * (Rf - 18), 14, Math.sin(a) * (Rf - 18)], [70, 28, 20], [0, -a + HALF, 0], '#4a5252', PAINTED);
-    if (k % 2 === 0) pic(B, ['e_scope', 'e_crt1', 'e_crt2', 'e_crt3'][k / 2], Math.cos(a) * (Rf - 29), 34, Math.sin(a) * (Rf - 29), 16, Math.atan2(-Math.cos(a), -Math.sin(a)), { w: 22 });
+    if (k % 2 === 0) pic(B, ['e_scope', 'e_atc', 'e_strips', 'e_scope'][k / 2], Math.cos(a) * (Rf - 29), 34, Math.sin(a) * (Rf - 29), 16, Math.atan2(-Math.cos(a), -Math.sin(a)), { w: 22 });
   }
   lampGlow(B, halos, 0, 70, 0, 8730, 1580, '#7affb0', { size: [1, 1, 1], k: 0.1, halo: day ? 0 : 260, strength: 0.35, y0: top });
   // antennas and the beacon on a short mast; obstruction lights at the roof's corners

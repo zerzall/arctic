@@ -45,6 +45,7 @@ export const C3_CELLS = {
   exitdoor: [256, 96], firstaid: [128, 128], fireext: [128, 160], hazard: [256, 64], chevron: [256, 64], ammo: [256, 96],
   // ---- emissive
   e_crt1: [256, 192], e_crt2: [256, 192], e_crt3: [256, 192], e_exit: [256, 96], e_lamps: [512, 64], e_scope: [256, 256], e_panel: [512, 128],
+  e_atc: [256, 192], e_strips: [256, 192],
   // ---- blended decals
   d_blood1: [256, 256], d_blood2: [256, 256], d_hand: [128, 128], d_drag: [512, 128], d_streak: [128, 512], d_moss: [256, 256],
   d_graf1: [512, 160], d_graf2: [512, 160], d_graf3: [512, 160], d_graf4: [384, 160], d_soot: [256, 256], d_rust: [128, 512],
@@ -737,6 +738,25 @@ const PAINT = {
   e_crt1: crt(1), e_crt2: crt(2), e_crt3: crt(3),
   e_exit: (g, w, h) => { g.fillStyle = '#062a12'; g.fillRect(0, 0, w, h); fit(g, 'EXIT', w * 0.42, h / 2, w * 0.5, h * 0.7, { color: '#4aff7a' }); arrow(g, w * 0.82, h / 2, w * 0.22, '#4aff7a'); },
   e_lamps: (g, w, h, r) => { g.fillStyle = '#080808'; g.fillRect(0, 0, w, h); for (let k = 0; k < 16; k++) { const c = r() < 0.45 ? '#ff4030' : r() < 0.7 ? '#40ff60' : '#ffc030'; g.fillStyle = c; g.beginPath(); g.arc(16 + k * 30.8, h / 2, 10, 0, 6.3); g.fill(); } },
+  e_atc: (g, w, h) => {
+    // the tower's status screen: frequency, the inbound drop, the wind, a blinking cursor
+    g.fillStyle = '#020604'; g.fillRect(0, 0, w, h);
+    g.font = `bold 13px ${MONO}`; g.textAlign = 'left'; g.textBaseline = 'top';
+    const lines = [['FT HARLAN TWR  118.30', '#6cff9a'], ['RWY 27   LIGHTS: MANUAL', '#6cff9a'], ['WIND 240/12G20  RAIN', '#6cff9a'], ['ALTM 29.71', '#6cff9a'], ['', ''], ['DUSTOFF 6  C130', '#ffd84a'], ['INBOUND  ETA 0200', '#ffd84a'], ['FLARE PATH REQ  !!', '#ff6a4a'], ['> NO ACK FROM GROUND_', '#6cff9a']];
+    lines.forEach(([l, c], i) => { if (l) { g.fillStyle = c; g.fillText(l, 10, 8 + i * 19); } });
+  },
+  e_strips: (g, w, h) => {
+    // flight progress strips in a bay: callsigns, times, one struck through in red
+    g.fillStyle = '#0a0c0a'; g.fillRect(0, 0, w, h);
+    g.font = `bold 12px ${MONO}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+    const rows = ['DUSTOFF 6   C130  0200', 'REACH 412   C17   ----', 'HAWK 21     UH60  2240', 'HAWK 22     UH60  2245', 'MEDEVAC 3   UH60  2310', 'DUSTOFF 4   C27J  ----'];
+    rows.forEach((t, i) => {
+      const y = 12 + i * 30;
+      g.fillStyle = i % 2 ? '#c8d8f0' : '#f0e8c0'; g.fillRect(8, y, w - 16, 24);
+      g.fillStyle = '#1a1a1a'; g.fillText(t, 14, y + 12);
+      if (i === 2 || i === 3) { g.fillStyle = '#c8161a'; g.fillRect(10, y + 11, w - 20, 2); }
+    });
+  },
   e_scope: (g, w, h) => { g.fillStyle = '#021208'; g.fillRect(0, 0, w, h); g.strokeStyle = 'rgba(80,255,120,0.4)'; for (let k = 1; k < 5; k++) { g.beginPath(); g.arc(w / 2, h / 2, k * w * 0.11, 0, 6.3); g.stroke(); } g.strokeStyle = 'rgba(80,255,120,0.9)'; g.lineWidth = 3; g.beginPath(); g.moveTo(w / 2, h / 2); g.lineTo(w * 0.9, h * 0.28); g.stroke(); for (let k = 0; k < 7; k++) { g.fillStyle = '#6aff8a'; g.beginPath(); g.arc(w * (0.2 + ((k * 37) % 60) / 100), h * (0.2 + ((k * 53) % 60) / 100), 3, 0, 6.3); g.fill(); } },
   e_panel: (g, w, h, r) => { g.fillStyle = '#0a0c0e'; g.fillRect(0, 0, w, h); for (let k = 0; k < 24; k++) { g.fillStyle = ['#ff4030', '#40ff60', '#ffc030', '#40a0ff'][Math.floor(r() * 4)]; g.fillRect(12 + (k % 12) * 41, 20 + Math.floor(k / 12) * 56, 28, 18); } },
   // ---- blended decals

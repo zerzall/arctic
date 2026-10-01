@@ -6,7 +6,7 @@
 
 import { BASE } from '../../shared/levels/airbase.js';
 import {
-  T, DET, S, CONC, STEEL, PAINTED, PLASTER, WOOD, at, pic, flatPic, rod, lampGlow, tubeLamp, shadeHex, hash01,
+  T, DET, S, CONC, STEEL, PAINTED, PLASTER, WOOD, at, pic, flatPic, rod, lampGlow, tubeLamp, shadeHex, hash01, atlasUV,
 } from './dam-kit.js';
 
 const HALF = Math.PI / 2;
@@ -142,7 +142,12 @@ export function buildingWall(P, o) {
     xs = windowsOf(f, look.win.w, look.win.step, 20);
     for (const x of xs) {
       const id = Math.floor(hash01(Math.round(f.c + x) * 3 + f.sz) * 255);
-      B.add('glass', T.plane(), [x, 222, f.sz * (f.t / 2 + 0.4)], [look.win.w, 64, 1], [0, f.sz > 0 ? 0 : Math.PI, 0], '#2a3238', { pane: { id: 3 * 256 + id, w: look.win.w, h: 64 } });
+      const ry = f.sz > 0 ? 0 : Math.PI;
+      if (!P.day && hash01(id * 7 + 11) < 0.22) {
+        // someone left a lamp on upstairs: a warm pane with the blind half down
+        B.add('glow', T.plane(), [x, 222, f.sz * (f.t / 2 + 0.3)], [look.win.w, 64, 1], [0, ry, 0], hash01(id) < 0.5 ? '#ffc880' : '#ffb060', { emissive: 0.9, uv: atlasUV('white'), noAO: true, noJitter: true });
+        B.box('std', x, 240, f.sz * (f.t / 2 + 0.6), look.win.w - 2, 26, 0.6, '#5a4630', null, S(DET.fabric, 0.9, 0));
+      } else B.add('glass', T.plane(), [x, 222, f.sz * (f.t / 2 + 0.4)], [look.win.w, 64, 1], [0, ry, 0], '#2a3238', { pane: { id: 3 * 256 + id, w: look.win.w, h: 64 } });
       B.box('std', x, 188, f.sz * (f.t / 2 + 2), look.win.w + 8, 4, 6, look.band, null, CONC);
       B.box('std', x, 222, f.sz * (f.t / 2 + 0.9), 2, 64, 1.4, '#3a3c3a', null, STEEL);
     }

@@ -423,7 +423,7 @@ function consoles(P, o) {
   B.rblock('std', 0, 0, 0, L, 30, o.w, 2, '#5a6262', null, PAINTED);
   B.add('std', T.box(), [0, 36, -2], [L - 4, 3, o.w - 6], [0.35, 0, 0], '#3e4646', PAINTED);
   for (let x = -L / 2 + 30; x < L / 2 - 10; x += 52) {
-    const cell = ['e_scope', 'e_crt1', 'e_crt2', 'e_crt3'][Math.floor(hash01(o.id + x) * 4)];
+    const cell = ['e_scope', 'e_atc', 'e_strips', 'e_scope'][Math.floor(hash01(o.id + x) * 4)];
     B.rblock('std', x, 30, -8, 40, 30, 16, 2, '#2a2e2e', [-0.1, 0, 0], STEEL);
     pic(B, cell, x, 46, 0.4, 20, 0, { w: cell === 'e_scope' ? 20 : 26 });
     pic(B, 'e_lamps', x, 34.5, 6, 3, 0, { w: 34, rx: -1.2 });
