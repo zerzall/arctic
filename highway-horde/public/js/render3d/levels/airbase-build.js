@@ -16,7 +16,7 @@ const LINO = S(DET.linoleum, 0.55, 0);
 const TILE = S(DET.tile, 0.5, 0);
 
 /** Looks of the buildings: height, outside and inside colours, the window grid. */
-const LOOK = {
+export const LOOK = {
   guard: { H: 124, out: '#a89c84', band: '#6a5a44', inLo: '#4a5a4a', inHi: '#d8d2c0', win: { step: 70, w: 50, y0: 50, y1: 104, glass: 'vglass' }, surf: STUCCO },
   barracks: { H: 150, out: '#8a6450', band: '#b8ac94', inLo: '#5a6a5a', inHi: '#dcd6c4', win: { step: 100, w: 56, y0: 52, y1: 118, glass: 'vglass' }, surf: BRICK, upper: 140 },
   armory: { H: 150, out: '#9a968a', band: '#6a6e62', inLo: '#4a5048', inHi: '#c8c4b4', win: { step: 130, w: 40, y0: 96, y1: 124, glass: 'bars' }, surf: CONC },
@@ -111,7 +111,7 @@ function pierced(B, f, H, xs, win, look, o = {}) {
 }
 
 /** A door head over a doorway (world rect of the gap on a wall line): the wall above it and a casing. */
-function doorHead(P, axis, at0, a0, a1, t, H, look, dh = 104, o = {}) {
+export function doorHead(P, axis, at0, a0, a1, t, H, look, dh = 104, o = {}) {
   const { B, gy } = P;
   const mid = (a0 + a1) / 2, w = a1 - a0;
   if (axis === 'x') at(B, gy, mid, at0, 0, 0, 7001 + Math.round(mid));

@@ -5,6 +5,7 @@
 // the glide slope shelter, the windsock and the flare path.
 
 import { BASE } from '../../shared/levels/airbase.js';
+import { LOOK, doorHead } from './airbase-build.js';
 import {
   T, DET, S, CONC, RUST, STEEL, PAINTED, PLASTER, COL, at, pic, flatPic, rod, lampGlow, shadeHex, hash01,
 } from './dam-kit.js';
@@ -253,6 +254,9 @@ export function tower(P, r) {
   B.cyl('std', 0, ch + 64, 0, 12, 18, '#2a2a2a', 12, 1, null, STEEL);
   lampGlow(B, halos, 0, ch + 74, 0, 8730, 1580, '#bfffd0', { size: [10, 10, 10], k: day ? 1 : 5, halo: 220, strength: 0.8, blink: 1, y0: top, shape: 'sphere' });
   lampGlow(B, halos, -40, ch + 142, -30, 8690, 1550, '#ff3a2a', { size: [3, 3, 3], k: 6, halo: 90, strength: 0.6, blink: 1, y0: top, shape: 'sphere' });
+  // the heads over the door from the apron and the lobby's exit into the compound
+  doorHead(P, 'y', Tw.x0, Tw.door[0], Tw.door[1], 20, H, LOOK.tower, 116);
+  doorHead(P, 'x', Tw.y1, Tw.exit[0], Tw.exit[1], 20, H, LOOK.tower, 112);
   // the base: the sign over the door, the stencilled number, a floodlight on the apron side
   at(B, gy, Tw.x0, (Tw.door[0] + Tw.door[1]) / 2, 0, -HALF, 8106);
   pic(B, 'atc', 0, 140, 11, 22, 0);
