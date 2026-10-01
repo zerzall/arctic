@@ -446,8 +446,8 @@ const RECIPES = {
         const dust = smooth(0.6, 0.8, F.f4[i] * 0.7 + F.f16[i] * 0.3);
         const dent = F.w8.id[i] < 0.25 ? smooth(0.45, 0.05, F.w8.f1[i]) : 0;
         h[i] = 0.5 + (F.f64[i] - 0.5) * 0.05 + (F.n[(i + 7 * 40503) & F.M] - 0.5) * 0.02 - scratch * 0.05 - chip * 0.08 - dent * 0.06;
-        a[i] = 0.5 + (F.f8[i] - 0.5) * 0.04 + scratch * 0.06 + chip * 0.05 + dust * 0.06;
-        ds[i] = scratch * 0.8 + chip * 0.9 + dust * 0.3;
+        a[i] = 0.5 + (F.f8[i] - 0.5) * 0.04 + scratch * 0.03 + chip * 0.05 + dust * 0.06;
+        ds[i] = scratch * 0.35 + chip * 0.9 + dust * 0.3;
         co[i] = chip * 0.03 + dust * 0.02;
         r[i] = 0.46 + (F.f16[i] - 0.5) * 0.2 + scratch * 0.06 + chip * 0.25 + dust * 0.2;
       }
