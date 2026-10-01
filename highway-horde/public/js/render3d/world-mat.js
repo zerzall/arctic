@@ -436,10 +436,17 @@ const WEATHER_GLSL = `
 }
 `;
 
-// three's light loop with the relief's self-shadow applied to the sun / directional lights
-const ShaderLib_lightsBegin = THREE.ShaderChunk.lights_fragment_begin
-  .replace('getSunLightInfo( sunLight, directLight );', 'getSunLightInfo( sunLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );')
-  .replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );');
+/**
+ * three's light loop with the relief's self-shadow applied to the sun / directional lights. Read
+ * from ShaderChunk when the program compiles, not when this module loads, and patched by string
+ * replacement only: other modules patch the same chunk (indoor.js darkens the sun inside rooms),
+ * and an early copy would drop their changes.
+ */
+function lightsBegin() {
+  return THREE.ShaderChunk.lights_fragment_begin
+    .replace('getSunLightInfo( sunLight, directLight );', 'getSunLightInfo( sunLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );')
+    .replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= hhSelfShadow( directLight.direction );');
+}
 
 /** Parallax quality of the lit world materials: x on/off, y min steps, z max steps, w range (units). */
 const DETAIL_Q = {
@@ -470,7 +477,11 @@ const DETAIL_CELLS = { value: DET_CELLS };
  */
 export function patchDetail(mat, shared, key, opts = {}) {
   const { weather = true, paint = false, rooms = false } = opts;
-  mat.onBeforeCompile = (sh) => {
+  // (a patch already on the material, another module's, runs first and keeps its program key)
+  const prev = Object.prototype.hasOwnProperty.call(mat, 'onBeforeCompile') ? mat.onBeforeCompile : null;
+  const prevKey = prev ? mat.customProgramCacheKey() + '|' : '';
+  mat.onBeforeCompile = function (sh, renderer) {
+    if (prev) prev.call(this, sh, renderer);
     sh.uniforms.uDetail = shared.uDetail;
     sh.uniforms.uDetN = shared.uDetN;
     sh.uniforms.uDetP = DETAIL_PARAMS;
@@ -535,12 +546,12 @@ export function patchDetail(mat, shared, key, opts = {}) {
           float hhE = clamp(length(fwidth(nonPerturbedNormal)) * 5.0, 0.0, 1.0) * (1.0 - smoothstep(30.0, 190.0, length(vViewPosition)));
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.3 + 0.025, hhE * 0.4);
         }`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>', ShaderLib_lightsBegin);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>', lightsBegin());
     if (rooms) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += hhRoomCol;');
     }
   };
-  mat.customProgramCacheKey = () => key;
+  mat.customProgramCacheKey = () => prevKey + key;
   return mat;
 }
 

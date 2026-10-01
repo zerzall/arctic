@@ -69,6 +69,28 @@ test('world materials: both slices, the tables, parallax and the relief shadow a
   mats.dispose();
 });
 
+test('other modules\' patches survive: the light chunk is read at compile time, an earlier onBeforeCompile is chained', () => {
+  // (indoor.js patches lights_fragment_begin in place and wraps the materials' onBeforeCompile)
+  const C = THREE.ShaderChunk, orig = C.lights_fragment_begin;
+  C.lights_fragment_begin = '// patched-later\n' + orig.replace('getSunLightInfo( sunLight, directLight );', 'getSunLightInfo( sunLight, directLight );\n\t\t// sun-later');
+  try {
+    const m = new THREE.MeshStandardMaterial();
+    let ran = 0;
+    m.onBeforeCompile = (sh) => { ran++; sh.fragmentShader = '// before\n' + sh.fragmentShader; };
+    m.customProgramCacheKey = () => 'theirs';
+    mat.patchDetail(m, { uDetail: { value: null }, uDetN: { value: 1 } }, 'mine');
+    const f = compile(m).fragmentShader;
+    assert.equal(ran, 1, 'the earlier patch ran');
+    assert.ok(f.startsWith('// before\n'), 'and its change was kept');
+    assert.ok(f.includes('// patched-later') && f.includes('// sun-later'), 'the chunk as patched after world-mat.js loaded');
+    assert.equal((f.match(/hhSelfShadow\( directLight\.direction \)/g) || []).length, 2, 'relief shadow still applied');
+    assert.equal(m.customProgramCacheKey(), 'theirs|mine');
+    m.dispose();
+  } finally {
+    C.lights_fragment_begin = orig;
+  }
+});
+
 test('parallax quality follows the tier: none on low and high, ultra short, cinematic long with shadows', () => {
   const q = (t) => { mat.setDetailTier(t); return mat.DETAIL_TIER.value.toArray(); };
   assert.equal(q('low')[0], 0);
