@@ -1407,11 +1407,21 @@ async function scenarioFpsRelay(sc) {
     return Math.abs(Math.atan2(Math.sin(yaw - p.angle), Math.cos(yaw - p.angle))) < 0.05;
   }, { id: ids.client, yaw: free.yaw }, 'the host to see the client\'s new facing', 15e3);
   const w = await walkForward(client, host, ids.client, 110);
-  const pred = await client.page.evaluate(() => window.__HH.session.getPredictedLocal());
-  log(`    fps relay walk: client yaw ${w.yaw.toFixed(2)}, host saw it move ${w.d.toFixed(1)} px, along its view ${(w.along * 100).toFixed(1)} %, prediction off by ${Math.hypot(pred.x - w.b.x, pred.y - w.b.y).toFixed(1)} px`);
+  // Prediction and host must agree once both have every input. "Settled" on the host is two equal
+  // readings 200 ms apart, which a gap in its snapshots can fake while the client's last moves are
+  // still on the way, so compare until they agree (or give up after a few seconds).
+  let pred = null, hostPos = w.b, off = Infinity;
+  for (let t0 = Date.now(); Date.now() - t0 < 6e3;) {
+    pred = await client.page.evaluate(() => window.__HH.session.getPredictedLocal());
+    hostPos = (await readState(host)).players.find((q) => q.id === ids.client);
+    off = Math.hypot(pred.x - hostPos.x, pred.y - hostPos.y);
+    if (off < 4) break;
+    await sleep(200);
+  }
+  log(`    fps relay walk: client yaw ${w.yaw.toFixed(2)}, host saw it move ${w.d.toFixed(1)} px, along its view ${(w.along * 100).toFixed(1)} %, prediction off by ${off.toFixed(1)} px`);
   expect(w.d > 90, `the host saw the client move only ${w.d.toFixed(1)} px`);
   expect(w.along > 0.95, `the client's W moved it off its own view direction on the host (cos ${w.along.toFixed(3)})`);
-  expect(Math.hypot(pred.x - w.b.x, pred.y - w.b.y) < 4, 'client prediction disagrees with the host after the walk');
+  expect(off < 4, `client prediction disagrees with the host after the walk (${off.toFixed(1)} px)`);
   await sc.screenshots('-walked', FPS_SHOT_MS);
 
   // The client jumps: its own view shows it at once, the host's view of it follows.
