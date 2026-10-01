@@ -232,18 +232,34 @@ export function crashTender(P, o) {
   const L = o.w, W = o.h;
   const col = o.color || '#b8c21a';
   const low = tier === 'low';
-  B.rblock('std', 0, 18, 0, L - 4, 66, W - 4, 6, col, null, S(DET.panel, 0.55, 0.25));
-  B.rblock('std', L / 2 - 30, 18, 0, 50, 76, W - 6, 8, col, null, S(DET.panel, 0.55, 0.25));
-  B.add('glass', T.box(), [L / 2 - 5, 74, 0], [1, 22, W - 14], [0, 0, 0.25], '#141c22');
+  const PAINT = S(DET.panel, 0.5, 0.25);
+  // the chassis, the body with its roll-up lockers, the cab out front with a raked windscreen
+  B.block('std', 0, 14, 0, L - 10, 10, W - 16, '#1e1e1e', null, STEEL);
+  B.rblock('std', -18, 24, 0, L - 70, 58, W - 4, 5, col, null, PAINT);
+  B.rblock('std', L / 2 - 40, 24, 0, 66, 40, W - 4, 5, col, null, PAINT);
+  B.add('std', T.box(), [L / 2 - 30, 70, 0], [40, 24, W - 6], [0, 0, 0.32], col, PAINT);
+  B.add('glass', T.box(), [L / 2 - 13, 70, 0], [1, 22, W - 14], [0, 0, 0.62], '#141c22');
   for (const s of [-1, 1]) {
-    for (let x = -L / 2 + 30; x < L / 2 - 70; x += 36) B.box('std', x, 50, s * (W / 2 - 1.6), 30, 44, 1, shadeHex(col, -0.12), null, PAINTED);
-    pic(B, 'hazard', -10, 22, s * (W / 2 - 1.4), 6, s > 0 ? 0 : Math.PI, { w: L - 20 });
+    B.box('glass', L / 2 - 36, 70, s * (W / 2 - 1.4), 30, 20, 0.6, '#141c22');
+    for (let x = -L / 2 + 30; x < L / 2 - 90; x += 34) {
+      B.box('std', x, 52, s * (W / 2 - 1.6), 30, 40, 1, '#b8bcbe', null, S(DET.corrugated, 0.4, 0.7));
+      B.box('std', x, 33, s * (W / 2 - 1.2), 26, 2, 1, '#2a2a2a', null, STEEL);
+    }
+    B.box('std', -18, 78, s * (W / 2 - 1.4), L - 74, 3, 1, '#e8e8e0', null, PAINTED);
+    pic(B, 'hazard', -18, 27, s * (W / 2 - 1.4), 5, s > 0 ? 0 : Math.PI, { w: L - 76 });
+    pic(B, 'crashfire', -10, 66, s * (W / 2 - 1.3), 9, s > 0 ? 0 : Math.PI, { w: 60 });
   }
-  B.cyl('std', 10, 84, 0, 8, 8, '#d8d8d4', 10, 1, null, STEEL);
-  rod(B, 'std', [10, 92, 0], [50, 96, 0], 3, '#d8d8d4', STEEL, 8);
-  B.box('std', L / 2 - 30, 96, 0, 12, 4, 40, '#2a2a2a', null, STEEL);
-  for (const s of [-1, 1]) lampGlow(B, halos, L / 2 - 30, 99, s * 12, ...toWorld(o, L / 2 - 30, s * 12), s > 0 ? '#ff3a2a' : '#3a6aff', { size: [10, 3, 6], k: 5, halo: 70, strength: 0.6, blink: 1, y0: 0 });
-  for (const x of [-L / 2 + 30, -L / 2 + 70, L / 2 - 40]) for (const s of [-1, 1]) wheel(B, x, s * (W / 2 - 6), 16, 12, low);
+  // the roof turret and the bumper turret, the light bar, rails on the roof
+  B.cyl('std', 0, 82, 0, 9, 8, '#d8d8d4', 10, 1, null, STEEL);
+  rod(B, 'std', [0, 90, 0], [44, 94, 0], 3, '#d8d8d4', STEEL, 8);
+  B.add('std', T.cyl(8, 0.5), [48, 94, 0], [4, 10, 4], [0, 0, -1.4], '#8a8e92', STEEL);
+  B.box('std', L / 2 + 2, 26, 0, 6, 12, W - 10, '#1e1e1e', null, STEEL);
+  rod(B, 'std', [L / 2 + 4, 32, -10], [L / 2 + 24, 30, -10], 2, '#d8d8d4', STEEL, 6);
+  for (const s of [-1, 1]) rod(B, 'std', [-L / 2 + 20, 86, s * (W / 2 - 8)], [L / 2 - 80, 86, s * (W / 2 - 8)], 0.8, '#8a8e92', STEEL, 4);
+  B.box('std', L / 2 - 30, 84, 0, 12, 4, 44, '#2a2a2a', null, STEEL);
+  for (const s of [-1, 1]) lampGlow(B, halos, L / 2 - 30, 87, s * 14, ...toWorld(o, L / 2 - 30, s * 14), s > 0 ? '#ff3a2a' : '#3a6aff', { size: [12, 3, 8], k: 5, halo: 70, strength: 0.6, blink: 1, y0: 0 });
+  for (const s of [-1, 1]) lampGlow(B, null, L / 2 + 0.5, 34, s * (W / 2 - 10), 0, 0, '#fff4e0', { size: [0.8, 5, 8], k: P.day ? 0.3 : 2, halo: 0 });
+  for (const x of [-L / 2 + 30, -L / 2 + 70, L / 2 - 46]) for (const s of [-1, 1]) wheel(B, x, s * (W / 2 - 7), 16, 13, low);
   return true;
 }
 
