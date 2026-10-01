@@ -366,7 +366,24 @@ function firewood(P) {
   B.rblock('std', L / 2 + 8, 30, 0, 8, 12, 8, 1, '#3a5a3a', null, METAL);
 }
 
+/** A lantern post by the loop road: a peeled pole, an iron hook, a hurricane lantern (lit at night). */
+function lanternpost(P) {
+  const { B, o, halos } = P;
+  B.add('std', T.cyl(8), [0, 45, 0], [4, 90, 4], null, LOG, { ...BARK, map: 'cyl' });
+  plank(B, 'std', [0, 86, 0], [16, 86, 0], 1.4, 1.4, '#2a2a2a', METAL);
+  B.cyl('std', 16, 66, 0, 4, 2, '#2a2a2a', 8, 1, null, METAL);
+  B.cyl('std', 16, 78, 0, 3.4, 2.4, '#2a2a2a', 8, 0.6, null, METAL);
+  rod(B, 'std', [16, 80, 0], [16, 86, 0], 0.3, '#2a2a2a', METAL, 3);
+  if (P.day) B.cyl('std', 16, 68, 0, 3, 10, '#c8c8b8', 8, 1, null, GLASS);
+  else {
+    B.add('glow', T.cyl(8), [16, 73, 0], [3, 10, 3], null, '#ffc070', { emissive: 2.6, uv: atlasUV('white'), noAO: true, noJitter: true });
+    const [wx, wy] = toWorld(o, 16, 0);
+    halos.push({ x: wx, y: wy, h: 72, color: '#ffc070', size: 50, strength: 0.6, flicker: 0.3 });
+  }
+}
+
 export const CAMP_MODELS = {
+  'bp-lanternpost': lanternpost,
   'bp-wheelstop': wheelstop, 'bp-opencar': opencar, 'bp-kiosk': kiosk, 'bp-outhouse': outhouse, 'bp-bearbin': bearbin, 'bp-trailsign': trailsign,
   'bp-forestsign': forestsign, 'bp-camparch': camparch, 'bp-checkin': checkin, 'bp-hostsign': hostsign, 'bp-firering': firering, 'bp-logbench': logbench,
   'bp-campscreen': campscreen, 'bp-picnic': picnic, 'bp-ringsmall': ringsmall, 'bp-tent': tent, 'bp-tent2': tent2, 'bp-sitepost': sitepost, 'bp-rv': rv,

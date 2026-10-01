@@ -336,9 +336,11 @@ function campground(B) {
   for (const [x, y] of [[2480, 2100], [4020, 2100], [3250, 1400]]) prop(B, 'bp-spigot', x, y, 0);
   prop(B, 'bp-campboard', 2300, 2380, HALF);
   ob(B, 'cabinet', 'bp-firewood', 2050, 2780, 80, 40, 0, { sec });
-  B.lamp(2420, 2480, { a: 0, r: 260, dead: false });
-  B.lamp(3250, 1620, { a: HALF, r: 260 });
-  B.lamp(4120, 2880, { a: PI, r: 240, dead: false });
+  // lantern posts along the loop (the campground has no street lights)
+  for (const [x, y] of [[2500, 2480], [3250, 1610], [4010, 2880], [2500, 1620], [3700, 2890]]) {
+    prop(B, 'bp-lanternpost', x, y, 0);
+    B.light(x, y, 220, '#ffc070', 0.25, 70);
+  }
   // the barrier with the ranger compound: the ridge north and south, the compound's chain-link with the panel
   cliff(B, X2, 0, X2, 900, [], { sec });
   fence(B, X2, 900, X2, 2000, 'chain', [[300, 500, null]], { sec, t: 14 });
