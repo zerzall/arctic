@@ -33,7 +33,7 @@ const opt = {
   // (and the story levels, JOURNEY.md: map=millroad|hollowcreek|forest|hospital|mall|metro|dam|railyard|airbase; views sec:<id>, sec:<id>:b)
   map: MAP_LIST.some((m) => m.id === params.get('map')) || HIDEOUT_IDS.includes(params.get('map')) || LEVEL_IDS.includes(params.get('map')) ? params.get('map') : 'highway',
   // mode=campaign: the campaign variant of the map (hill, tower, floors, roof, zip line; SPEC §3.8)
-  mode: params.get('mode') === 'campaign' ? 'campaign' : params.get('mode') === 'zone' ? 'zone' : 'defend',
+  mode: ['campaign', 'zone', 'horde'].includes(params.get('mode')) ? params.get('mode') : 'defend',
   seed: Number(params.get('seed') || 1234),
   quality: TIERS.includes(params.get('quality') || params.get('q')) ? (params.get('quality') || params.get('q')) : 'high',
   bots: Math.max(0, Math.min(5, Number(params.get('bots') ?? 3))),
@@ -46,7 +46,7 @@ const opt = {
   zombies: params.get('zombies') !== '0',
   // paused=1: no animation loop, frames only via __fps.step() (screenshots on software GL)
   paused: params.get('paused') === '1',
-  time: params.get('time') === 'day' ? 'day' : 'night',
+  time: ['day', 'dusk'].includes(params.get('time')) ? params.get('time') : 'night',
 };
 if (params.get('clean') === '1') document.body.classList.add('clean');
 // graphics settings passed to render() every frame (the object is reused, like ui/match.js)

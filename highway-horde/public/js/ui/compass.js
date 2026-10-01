@@ -5,11 +5,14 @@
 // an arrow, so "which way is the bus?" always has an answer. In an Evac Run the safe zone
 // takes the objective's place: a big teal ring marker with the distance to its edge, and
 // the supply drop gets its own green +. In a story mission (opts.story) the current objective's
-// markers (view.story.marks) are coloured diamonds with the distance to the nearest one.
+// markers (view.story.marks) are coloured diamonds with the distance to the nearest one. In Horde
+// Elimination (opts.horde) there is no objective; the entrances of the surge on its way are red
+// triangles.
 //
 // Drawn into a small canvas; skipped when nothing it shows changed (heading, markers).
 
 import { PLAYER_COLORS } from '../shared/constants.js';
+import { HS_BREATHER, HS_SURGE, hordeLanes } from '../shared/horde.js';
 import { angleDelta, headingDeg } from './look.js';
 import { currentUiScale } from './uiscale.js';
 import { markColor } from './storymarks.js';
@@ -28,6 +31,7 @@ export function createCompass(canvas, map, opts = {}) {
   const zoneMode = !!opts.zone;
   const campMode = !!opts.campaign;     // the Campaign: its stage circle and supply point (view.campaign)
   const storyMode = !!opts.story;       // Road to Haven: the objective markers (view.story.marks)
+  const hordeMode = !!opts.horde;       // Horde Elimination: the surge's entrances (view.horde.lanes), no objective
   const g = canvas.getContext('2d');
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // labels grow with the rem-sized strip on big screens.
@@ -103,7 +107,12 @@ export function createCompass(canvas, map, opts = {}) {
         add(p.x, p.y, 'mate', p.state === 'downed' ? '#ff5252' : PLAYER_COLORS[r ? r.color : 0] || '#fff');
       }
     }
-    if (map.objective && !zoneMode && !campMode && !storyMode) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
+    if (map.objective && !zoneMode && !campMode && !storyMode && !hordeMode) add(map.objective.x, map.objective.y, 'objective', '#ffc400');
+    // Horde Elimination: the entrances of the surge on its way or on the streets (red triangles)
+    const hz = hordeMode && view ? view.horde : null;
+    if (hz && hz.lanes && (hz.stage === HS_BREATHER || hz.stage === HS_SURGE)) {
+      for (const l of hordeLanes(map)) if (hz.lanes & (1 << l.i)) add(l.x, l.y, 'lane', '#ff5a36');
+    }
     if (storyMode && view && view.story) {
       for (const m of view.story.marks || []) {
         if (!pos) break;
@@ -188,6 +197,15 @@ export function createCompass(canvas, map, opts = {}) {
           g.stroke();
           g.beginPath();
           g.arc(0, 0, 2.2 * u, 0, Math.PI * 2);
+          g.fill();
+        } else if (m.kind === 'lane') {
+          // a horde entrance: a red triangle pointing down
+          g.beginPath();
+          g.moveTo(-5.5 * u, -4.5 * u);
+          g.lineTo(5.5 * u, -4.5 * u);
+          g.lineTo(0, 5.5 * u);
+          g.closePath();
+          g.stroke();
           g.fill();
         } else if (m.kind === 'supply') {
           g.strokeRect(-1.5 * u, -5 * u, 3 * u, 10 * u);

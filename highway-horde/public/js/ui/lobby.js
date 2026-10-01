@@ -7,12 +7,20 @@ import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
 import { MODE_LIST, STANDARD_MODES, mapModes } from '../shared/zone.js';
-import { TIME_LIST, mapTimes, resolveTime } from '../shared/timeofday.js';
+import { TIME_LIST, BASE_TIMES, mapTimes, resolveTime } from '../shared/timeofday.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
 
 const previewCache = new Map();
+
+/** The map card's note on its times of day ("Day only", "Day · Dusk · Night"), or null for night and day. */
+function timesNote(m) {
+  const times = mapTimes(m);
+  if (times.length === BASE_TIMES.length && BASE_TIMES.every((t) => times.includes(t))) return null;
+  const names = times.map((id) => TIME_LIST.find((e) => e.id === id).name).join(' · ');
+  return h('span.map-modes.map-times', { text: BASE_TIMES.every((t) => times.includes(t)) ? names : names + ' only' });
+}
 
 const DIFF_HINT = {
   easy: 'Fewer, weaker zombies',
@@ -110,10 +118,8 @@ export function createLobby(ctx) {
         !STANDARD_MODES.every((id) => mapModes(m).includes(id))
           ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
           : null,
-        // maps that only play some times of day say so (picking one switches the time)
-        mapTimes(m).length < TIME_LIST.length
-          ? h('span.map-modes.map-times', { text: mapTimes(m).map((id) => TIME_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
-          : null,
+        // maps that play other times of day than night and day say so (picking one switches the time)
+        timesNote(m),
       ].filter(Boolean)),
     ]);
     btn.addEventListener('click', () => {
@@ -149,7 +155,8 @@ export function createLobby(ctx) {
           src.width = v.canvas.width;
           src.height = v.canvas.height;
           const pm = camp ? deps.buildMap(id, 1, { mode: 'campaign' }) : deps.buildMap(id, 1);
-          if (t === 'day') pm.time = 'day';
+          // (dusk previews in the day's tint)
+          if (t === 'day' || t === 'dusk') pm.time = 'day';
           deps.renderMapPreview(src, pm);
           previewCache.set(key, src);
         }
@@ -416,10 +423,14 @@ export function createLobby(ctx) {
       v.btn.classList.toggle('mode-other', !mapModes(id).includes(s.mode || 'defend') || !mapTimes(id).includes(s.time || 'night'));
     }
     setSeg(segDiff, s.difficulty, editable);
-    setSeg(segWaves, s.waves, editable);
-    // Evac Run has no objective to defend
-    setSeg(segObj, zone || campaign ? false : s.objective, editable && !zone && !campaign);
-    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : campaign ? 'No objective in the Campaign: the goal changes every stage' : '';
+    // Horde Elimination is one round in surges: the wave count does not apply
+    const horde = s.mode === 'horde';
+    setSeg(segWaves, s.waves, editable && !horde);
+    segWaves.title = horde ? 'Horde Elimination is one round: the whole horde in surges, no respawns' : '';
+    // Evac Run has no objective to defend (nor have the Campaign and Horde Elimination)
+    setSeg(segObj, zone || campaign || horde ? false : s.objective, editable && !zone && !campaign && !horde);
+    segObj.title = zone ? 'No objective in Evac Run: the safe zone moves every wave' : campaign ? 'No objective in the Campaign: the goal changes every stage'
+      : horde ? 'No objective in Horde Elimination: kill them all' : '';
     setSeg(segFF, s.friendlyFire, editable);
     setText($('#settings-owner'), editable ? 'You pick the mission' : 'The host picks the mission');
     screen.classList.toggle('readonly', !editable);

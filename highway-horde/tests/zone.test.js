@@ -67,17 +67,18 @@ function startWave(g) {
 
 // ---------------------------------------------------------------------------------------
 describe('modes and maps', () => {
-  test('three modes, defend first (the default); Harlan County is an Evac Run / campaign map', () => {
-    assert.deepEqual(MODE_IDS, ['defend', 'zone', 'campaign']);
+  test('four modes, defend first (the default); Harlan County is an Evac Run / campaign map', () => {
+    assert.deepEqual(MODE_IDS, ['defend', 'zone', 'campaign', 'horde']);
     assert.equal(DEFAULT_SETTINGS.mode, 'defend');
     for (const m of MODE_LIST) assert.ok(m.name && m.description.length > 20);
     const harlan = MAP_LIST.find((m) => m.id === 'harlan');
     assert.ok(harlan, 'the new map is listed');
     assert.deepEqual(mapModes(harlan), ['zone', 'campaign']);
+    // (Horde Elimination, SPEC §3.12: a standard mode; Sandstone is built for it)
+    const ALL = { highway: ['defend', 'zone', 'campaign', 'horde'], checkpoint: ['defend', 'zone', 'campaign', 'horde'], sandstone: ['horde', 'defend'] };
     for (const m of MAP_LIST) {
       if (m.id === 'harlan') continue;
-      const ext = ['highway', 'checkpoint'].includes(m.id);
-      assert.deepEqual(mapModes(m), ext ? MODE_IDS : STANDARD_MODES, `${m.id} plays ${ext ? 'all three' : 'both standard modes'}`);
+      assert.deepEqual(mapModes(m), ALL[m.id] || STANDARD_MODES, `${m.id}'s modes`);
     }
     assert.deepEqual(getMap('harlan').modes, ['zone', 'campaign']);
   });

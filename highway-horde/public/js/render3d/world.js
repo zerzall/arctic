@@ -200,7 +200,8 @@ export function createWorld(ctx, deps) {
     // by day the lit windows, street lamps, tubes and signs are just dim glass and paint
     // (the unlit emissive pieces are multiplied down; beacons and vehicle lamps stay a bit)
     // (a hideout at golden hour keeps its lanterns and bulbs lit)
-    if (hub) mats.hi.glow.color.setRGB(0.5, 0.46, 0.4); else mats.hi.glow.color.setRGB(0.11, 0.14, 0.19);
+    // (at dusk the lamps and lanterns are coming on: half lit)
+    if (hub || amb.dusk) mats.hi.glow.color.setRGB(0.5, 0.46, 0.4); else mats.hi.glow.color.setRGB(0.11, 0.14, 0.19);
     mats.hi.flicker.color.setScalar(hub ? 0.5 : 0.16);
     mats.hi.blink.color.setScalar(0.55);
     ground.uniforms.wetness.value = amb.wet;
@@ -209,6 +210,8 @@ export function createWorld(ctx, deps) {
     mats.uniforms.uRoomK.value = 0.32;
   } else {
     mats.shared.uRoomAmb.value = 0.03;
+    // (a desert night is dry: the map's look may turn the dew on the ground down)
+    if (map.look && typeof map.look.nightWet === 'number') ground.uniforms.wetness.value = map.look.nightWet;
   }
   // a long map (the highway) cuts its heavy buckets finer: looking down the road, the
   // frustum and the fog then drop most of the pileup behind and beside the camera
@@ -250,9 +253,10 @@ export function createWorld(ctx, deps) {
       console.warn('world: hideout failed', err);
     }
   }
-  // the story levels (render3d/levels/<id>.js, JOURNEY.md §5): the same seams as the hideout
+  // the story levels (render3d/levels/<id>.js, JOURNEY.md §5): the same seams as the hideout; a match
+  // map with an art module of its own (map.art, render3d/maps/<name>.js) uses them too
   let level = null;
-  if (map.kind === 'level') {
+  if (map.kind === 'level' || typeof map.art === 'string') {
     try {
       level = createLevelArt(ctx, { root, mats, fx, halos, shafts, day, aniso, gy, tier, full, newBuilder, matOf: (b, t) => matOf(b, t) });
       ctx.level = level;
@@ -263,7 +267,8 @@ export function createWorld(ctx, deps) {
   // a level's indoor spaces (roofs3d.js: ceilings, roofs, fixtures) and its gates (gates3d.js,
   // built once the static meshes exist: they move, so they stay out of the merged ones)
   let roofs = null;
-  if (map.kind === 'level' && map.roofs && map.roofs.length) {
+  // (any map with indoor spaces: a level's rooms, Sandstone's tunnels)
+  if (map.roofs && map.roofs.length) {
     try {
       roofs = createRoofs(ctx, { level, newBuilder, matOf: (b, t) => matOf(b, t), root, tier, day, halos });
     } catch (err) {
@@ -445,19 +450,21 @@ export function createWorld(ctx, deps) {
   if (level) {
     try { level.finish(); } catch (err) { console.warn('world: level art finish failed', err); }
   }
-  // ---- a story level: fixtures, the gates, the indoor light mask ----
+  // ---- a story level: fixtures, the gates, the indoor light mask (the roofs of any map) ----
   let gates = null, indoor = null;
-  if (map.kind === 'level') {
+  if (map.kind === 'level' || roofs) {
     if (roofs) {
       try { roofs.finish(); } catch (err) { console.warn('world: roof fixtures failed', err); }
     }
-    try {
-      gates = createGates(ctx, {
-        root, newBuilder, matOf: (b, t) => matOf(b, t), tier, gy, roofs,
-        onChange: (g, open) => { if (indoor) indoor.setGateOpen(g.obs, open); },
-      });
-    } catch (err) {
-      console.warn('world: gates failed', err);
+    if (map.kind === 'level') {
+      try {
+        gates = createGates(ctx, {
+          root, newBuilder, matOf: (b, t) => matOf(b, t), tier, gy, roofs,
+          onChange: (g, open) => { if (indoor) indoor.setGateOpen(g.obs, open); },
+        });
+      } catch (err) {
+        console.warn('world: gates failed', err);
+      }
     }
     if (roofs) {
       try {
@@ -538,7 +545,7 @@ export function createWorld(ctx, deps) {
     addFx(makeSmoke(fires, fx));
   }
   // (by day: no lamp halos or light shafts; fires and mast beacons keep a faint glow)
-  const dayHalos = day ? halos.filter((h) => h.flicker > 0 || h.blink > 0).map((h) => ({ ...h, strength: (h.strength ?? 1) * 0.25 })) : halos;
+  const dayHalos = day ? halos.filter((h) => h.flicker > 0 || h.blink > 0 || amb.dusk).map((h) => ({ ...h, strength: (h.strength ?? 1) * (amb.dusk ? 0.55 : 0.25) })) : halos;
   if (dayHalos.length) addFx(makeHalos(dayHalos, fx));
   if (shafts.length && !day) addFx(makeShafts(shafts, fx));
   const poolList = map.lights.map((l, i) => {
@@ -562,7 +569,9 @@ export function createWorld(ctx, deps) {
   if (flagMesh) { root.add(flagMesh.mesh); disposables.push(flagMesh.mesh.geometry, flagMesh.mesh.material); }
 
   // ---- grass field (camera-following, instanced; none on 'low') ----
-  const grass = createGrassField(scene, ground, full);
+  // (map.look.grass false: a desert town grows no grass field: the field's 'low' tier is none)
+  const noGrass = !!(map.look && map.look.grass === false);
+  const grass = createGrassField(scene, ground, noGrass ? 'low' : full);
 
   // ---- light rain ('ultra' and up): streaks lit by the lamps, rings in the puddles ----
   let rain = null;
@@ -706,7 +715,7 @@ export function createWorld(ctx, deps) {
       pools.setLevels(poolLevels);
     }
     // a story level: the gates move, the fixtures light, a power cut darkens its section
-    if (map.kind === 'level') levelUpdate(view, frame);
+    if (map.kind === 'level' || roofs) levelUpdate(view, frame);
     if (flagMesh) flagMesh.update(time);
     if (supplyLight && ctx.lights) {
       ctx.lights.steady('world:supply', supplyLight.x, supplyLight.y, supplyLight.h, '#ffe2b0', 0.9, 300);
@@ -791,7 +800,7 @@ export function createWorld(ctx, deps) {
         ground.uniforms.uDetail.value = detailTex;
       }
       for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
-      grass.setQuality(full);
+      grass.setQuality(noGrass ? 'low' : full);
       ground.setQuality(full);
       if (dress) dress.setQuality(full);
       if (hideout) hideout.setQuality(full);

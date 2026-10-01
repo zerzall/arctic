@@ -9,6 +9,7 @@ import {
   SUPPLY_RADIUS, FRAG_MAX, MOLOTOV_MAX, TURRET, BARRICADE, ARMOR_MAX,
 } from '../shared/constants.js';
 import { nearSupply } from '../shared/zone.js';
+import { shopWaveOf } from '../shared/horde.js';
 import { h, setText, setClass, setAttr, formatCash } from './dom.js';
 
 const GUN_IDS = WEAPON_IDS.filter((id) => WEAPONS[id].price > 0);
@@ -60,10 +61,10 @@ function gunTrait(w) {
   return `${w.mag}-round mag`;
 }
 
-/** Wave whose stock is on sale (mirrors the sim: next wave between waves). */
+/** Wave whose stock is on sale (mirrors the sim: next wave between waves; a horde round: the surge's tier). */
 export function shopWave(view) {
   if (!view) return 1;
-  return view.phase === 'wave' ? Math.max(1, view.wave) : view.wave + 1;
+  return shopWaveOf(view.phase, view.wave, view.horde || null);
 }
 
 /**
@@ -95,12 +96,13 @@ export function shopState(view, me, map) {
   if (!view || !me) return { open: false, text: 'Shop unavailable', mid: false };
   if (view.phase === 'gameover' || view.phase === 'victory') return { open: false, text: 'The match is over', mid: false };
   if (me.state === 'downed') return { open: false, text: 'You can\'t shop while you\'re down', mid: false };
-  if (me.state === 'dead') return { open: false, text: 'You can shop again after you respawn', mid: false };
-  if (view.phase === 'prep') return { open: true, text: 'Stock up before the first wave', mid: false };
+  if (me.state === 'dead') return { open: false, text: view.horde ? 'You fell — no respawns in a horde round' : 'You can shop again after you respawn', mid: false };
+  if (view.phase === 'prep') return { open: true, text: view.horde ? 'Buy time — gear up before the horde comes' : 'Stock up before the first wave', mid: false };
   if (view.phase === 'intermission') return { open: true, text: 'Between waves — everything is on sale', mid: false };
   const drop = view.zone || view.campaign;        // Evac Run's drop / the campaign's supply point
   const near = nearSupply(map, drop, me.x, me.y, SUPPLY_RADIUS);
   const where = view.zone ? 'the supply drop in the zone' : view.campaign ? 'the supply point (green + on the minimap)' : 'the supply station';
+  if (view.horde && !near) return { open: false, text: 'The horde is coming — the supply station at your spawn sells mid-round (green + on the minimap)', mid: true };
   return near
     ? { open: true, text: `${drop ? 'Supply drop' : 'Supply station'} — shopping mid-wave. Watch your back!`, mid: true }
     : { open: false, text: `Wave in progress — go to ${where} (green + on the minimap) to shop`, mid: true };

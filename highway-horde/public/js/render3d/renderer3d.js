@@ -178,7 +178,8 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // campaign maps have terrain (shared/terrain.js): the same height field the simulation walks on
   const terrain = terrainOf(map);
   const ctx = {
-    THREE, scene, camera, map, quality: q, mode, time: tod, amb,
+    // (dusk renders through the day's machinery: ctx.time is 'day', ctx.dusk says it is the evening)
+    THREE, scene, camera, map, quality: q, mode, time: amb.time, dusk: !!amb.dusk, amb,
     terrain,
     /** Ground height (world units) under a sim point: 0 on a map without terrain. */
     groundY: terrain.flat ? () => 0 : (x, y) => terrain.height(x, y),

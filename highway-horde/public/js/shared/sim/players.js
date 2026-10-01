@@ -17,6 +17,7 @@ import { stepPlayerMovement, settleVertical } from '../movement.js';
 import { resetVertical } from '../jump.js';
 import { RIDE_TICKS } from '../campaign.js';
 import { levelSupplies } from '../level.js';
+import { HORDE, shopWaveOf } from '../horde.js';
 import { clearEdges, mergeEdges } from './core.js';
 import { weaponOf, applyProfileToPlayer, giveStoryKit } from './profile-mods.js';
 import {
@@ -69,7 +70,8 @@ export function createPlayer(game, info) {
     reloadT: 0, reloadTotal: 0, reloadSlot: -1,
     cooldown: 0, spin: 0, lastFireTick: -1000, meleeT: 0, meleeCd: 0, throwCd: 0, burstLeft: 0, prevFire: false,
     emptyLatch: false, freeMag: WEAPONS.pistol.mag, prevSlot: 1,
-    cash: START_CASH, kills: 0, damage: 0, revives: 0, downs: 0, earned: 0,
+    // (Horde Elimination: a real buy time at the start, sim/horde.js)
+    cash: game.horde ? HORDE.startCash : START_CASH, kills: 0, damage: 0, revives: 0, downs: 0, earned: 0,
     frags: perks.startFrags, molotovs: perks.startMolotovs,
     turrets: perks.startTurrets, barricades: 0, selfRevive: false,
     bleedout: 0, hitBleed: 0, downT: 0, revive: 0, reviver: 0, respawn: false, ready: false, lastSeq: 0,
@@ -570,7 +572,8 @@ function killPlayer(game, p) {
   p.bleedout = 0;
   p.revive = 0;
   p.reviver = 0;
-  p.respawn = true;
+  // (Horde Elimination: nobody comes back; the fallen spectate until the round is over)
+  p.respawn = !game.horde;
   p.sprinting = false;
   // A corpse stays on the roof it died on; one killed mid-jump comes down.
   settleVertical(p, game.world);
@@ -897,9 +900,12 @@ function shopOpen(game, p) {
   return !!z && Math.hypot(p.x - z.x, p.y - z.y) <= SUPPLY_RADIUS;
 }
 
-/** Wave whose shop stock is on sale: the current wave, or the next one between waves. */
+/**
+ * Wave whose shop stock is on sale: the current wave, or the next one between waves (a horde
+ * round: the tier of the current or announced surge, shared/horde.js shopWaveOf).
+ */
 export function shopWave(game) {
-  return game.phase === 'wave' ? Math.max(1, game.wave) : game.wave + 1;
+  return shopWaveOf(game.phase, game.wave, game.horde);
 }
 
 /** Price the player would pay for `item` right now (guns: refill price when owned). */

@@ -14,6 +14,7 @@
 import { createRng, hashString } from './rng.js';
 import { TAU, round1 } from './math.js';
 import { buildHarlan } from './maps-harlan.js';
+import { buildSandstone, SANDSTONE_DEF } from './maps-sandstone.js';
 import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
 import { LEVEL_LIST, LEVEL_DEFS, LEVEL_BUILDERS } from './levels/index.js';
@@ -25,7 +26,7 @@ export const MAP_LIST = [
     id: 'highway',
     name: 'Highway 9 Pileup',
     description: 'A school bus full of kids is stuck in a pileup that stretches for miles, between two crossroads and under the I-44 overpass. The horde pours in from both ends of the highway, down the crossroads and the ramps, and across the fields. Campaign: hold the hill east of the pileup, then fight west along the highway to the tower.',
-    modes: ['defend', 'zone', 'campaign'],
+    modes: ['defend', 'zone', 'campaign', 'horde'],
   },
   {
     id: 'truckstop',
@@ -41,13 +42,22 @@ export const MAP_LIST = [
     id: 'checkpoint',
     name: 'Checkpoint Delta',
     description: 'A fortified crossroads checkpoint. Keep the radio tower alive while the horde comes down all four roads and through the breaches. Campaign: hold the hill east of the checkpoint, then fight west along the road to the tower.',
-    modes: ['defend', 'zone', 'campaign'],
+    modes: ['defend', 'zone', 'campaign', 'horde'],
   },
   {
     id: 'harlan',
     name: 'Harlan County',
     description: 'Miles of farm country for the Evac Run: Main Street, the Gas-N-Go, Haskell Farm, St. Jude\'s graveyard, the field hospital, the I-70 interchange, the quarry, Radio Hill, Shady Pines and the lake. The safe zone moves every wave. Campaign: hold Radio Hill, then break out across the county to the tower on Main Street.',
     modes: ['zone', 'campaign'],
+  },
+  {
+    id: 'sandstone',
+    name: 'Sandstone',
+    description: 'A sun-baked walled town for Horde Elimination. Hold Fountain Square, the raised Terrace over the Long Hall and the walled Cistern Court while the whole horde pours in through six gates: down Mid Street past the Great Doors, along the Long Hall, out of the dark tunnels under Well Square. Kill every last one.',
+    modes: ['horde', 'defend'],
+    // (day by default — the lobby switches to it when the map is picked — also at dusk or by night)
+    times: ['day', 'dusk', 'night'],
+    defaultTime: 'day',
   },
 ];
 
@@ -57,6 +67,7 @@ const BUILDERS = {
   bridge: buildBridge,
   checkpoint: buildCheckpoint,
   harlan: buildHarlan,
+  sandstone: buildSandstone,
   // the story campaign's hideouts (maps-hideouts.js); not in MAP_LIST, so the lobby never offers them
   ...HIDEOUT_BUILDERS,
   ...LEVEL_BUILDERS,
@@ -626,6 +637,7 @@ function createBuilder(meta, seed, defOverride = null) {
       if (section !== undefined) r.section = section;
       map.zombieSpawns.push(r);
       B.keep(x, y, w + 200, h + 200);
+      return r;
     },
 
     // ---- story levels (JOURNEY.md §3): sections, gates, checkpoints and roofs ----
@@ -876,6 +888,7 @@ const MAP_DEFS = {
   bridge: { width: 4000, height: 2000, darkness: 0.72, tint: '#2f6b68', ground: '#34442f' },
   checkpoint: { width: 3000, height: 3000, darkness: 0.66, tint: '#56644c', ground: '#434a33' },
   harlan: { width: 7200, height: 7200, darkness: 0.66, tint: '#3a5470', ground: '#384a2c' },
+  sandstone: SANDSTONE_DEF,
   ...HIDEOUT_DEFS,
   ...LEVEL_DEFS,
 };

@@ -100,7 +100,7 @@ test('three hideouts are registered for the story, not for the lobby', () => {
     assert.ok(!MAP_LIST.some((m) => m.id === id), `${id} must not be in the lobby's MAP_LIST`);
     assert.ok(isHideoutId(id) && isHideout(id) && isHideout(getMap(id)));
   }
-  assert.equal(MAP_LIST.length, 5, 'the lobby still offers the five maps');
+  assert.equal(MAP_LIST.length, 6, 'the lobby still offers the six maps');
   assert.ok(!isHideoutId('highway') && !isHideout(getMap('highway')) && !isHideout(null));
   assert.equal(getMap('highway').hub, undefined, 'a battlefield has no hub');
   assert.deepEqual(mapModes(getMap('roadhouse')), ['hideout']);

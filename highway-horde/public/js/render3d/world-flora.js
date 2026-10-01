@@ -676,6 +676,8 @@ export function scatterFlora(B, map, waters = []) {
     return false;
   };
   const place = (x, y, seed) => { B.obj(x, y, rng.range(0, 6.28), seed); B.setJitter(0.12); items++; };
+  // (map.look.weeds: how much grows along the walls, 1 = the default; a desert town has few)
+  const weedK = map.look && Number.isFinite(map.look.weeds) ? map.look.weeds : 1;
   const greens = state.desert ? ['#7a7a3e', '#8a8442', '#948a48'] : ['#3d5a28', '#4a6a2c', '#5a7a30', '#6a7a34', '#7a7c3c'];
   // under the broadleaf trees: ferns, fallen logs, leaf-litter mounds
   map.decor.forEach((d, i) => {
@@ -718,7 +720,7 @@ export function scatterFlora(B, map, waters = []) {
       const len = fx ? o.h : o.w, half = fx ? o.w / 2 : o.h / 2;
       const n = Math.max(1, Math.floor(len / 46));
       for (let k = 0; k < n; k++) {
-        if (rng.next() > 0.55 * dens) continue;
+        if (rng.next() > 0.55 * dens * weedK) continue;
         const t = -len / 2 + (k + rng.next()) * (len / n);
         const [x, y] = at(fx ? fx * (half + 7) : t, fz ? fz * (half + 7) : t);
         if (onRoad(x, y) || blocked(x, y, 2) || wet(x, y)) continue;

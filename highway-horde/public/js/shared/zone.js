@@ -25,10 +25,18 @@ export const MODE_LIST = [
     short: 'Hilltop stand, breakout, tower, zip line',
     description: 'A four-stage campaign on a daylit map: hold the hilltop against the horde, break out across the wrecked street to the tall tower, fight up floor by floor to the roof, kill the quota and escape down the zip line.',
   },
+  {
+    id: 'horde',
+    name: 'Horde',
+    short: 'Horde Elimination: kill them all',
+    description: 'Horde Elimination: one round, no respawns. Buy your gear, take your positions, then the whole horde comes in surges from every entrance. Kill every last one of them before they kill all of you. Downed survivors can still be revived.',
+    // (picking the mode on a map that doesn't play it goes to this map first, shared/zone.js fixModeCombo)
+    map: 'sandstone',
+  },
 ];
 export const MODE_IDS = MODE_LIST.map((m) => m.id);
 /** The modes every map plays unless its `modes` list says otherwise (the campaign is opt-in per map). */
-export const STANDARD_MODES = Object.freeze(['defend', 'zone']);
+export const STANDARD_MODES = Object.freeze(['defend', 'zone', 'horde']);
 
 /**
  * Tuning of the moving safe zone. Distances in world px, times in seconds.
@@ -95,7 +103,9 @@ export function fixModeCombo(mapId, mode, changed = 'map') {
   if (!MAP_LIST.some((m) => m.id === mapId)) mapId = MAP_LIST[0].id;
   if (mapSupportsMode(mapId, mode)) return { mapId, mode };
   if (changed === 'mode') {
-    const m = MAP_LIST.find((e) => mapModes(e).includes(mode));
+    // a mode made for one map goes there first (Horde Elimination: Sandstone)
+    const home = MODE_LIST.find((e) => e.id === mode).map;
+    const m = (home && MAP_LIST.find((e) => e.id === home && mapModes(e).includes(mode))) || MAP_LIST.find((e) => mapModes(e).includes(mode));
     if (m) return { mapId: m.id, mode };
   }
   return { mapId, mode: mapModes(mapId)[0] };

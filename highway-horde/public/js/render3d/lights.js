@@ -275,7 +275,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   // Story levels (JOURNEY.md §4.3): every map light knows its section, so a power cut (`lights`
   // action) switches that section's lights off; a light under a roof is an interior fixture and
   // stays on by day (street lamps go out in the daylight, a hospital corridor's tubes do not).
-  if (map.kind === 'level') {
+  if (map.kind === 'level' || (map.roofs && map.roofs.length)) {
     for (const s of mapSources) {
       s.section = nearestSection(map, s.x, s.y);
       s.interior = (map.roofs || []).some((r) => {
@@ -737,7 +737,7 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
  * ({ darkness 0..1, tint }). Darker maps get less ambient and denser fog.
  */
 export function ambientFor(map, time) {
-  if (time === 'day') return dayAmbientFor(map);
+  if (time === 'day' || time === 'dusk') return dayAmbientFor(map, { dusk: time === 'dusk' });
   const a = map.ambient || { darkness: 0.65, tint: '#2c4a7a' };
   const d = Math.max(0, Math.min(1, a.darkness));
   const tint = new THREE.Color(a.tint);

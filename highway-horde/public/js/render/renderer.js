@@ -138,7 +138,8 @@ export function createRenderer(canvas, { map, quality = 'high', time: timeOfDay 
   const lighting = createLighting();
   const amb0 = map.ambient || { darkness: 0.6, tint: '#223344' };
   // daytime (SPEC §7.5.1): no darkness to cut lights out of, just a warm sunlit haze + vignette
-  const day = resolveTime(map, timeOfDay || map.time) === 'day';
+  // (dusk is drawn like the day from above)
+  const day = resolveTime(map, timeOfDay || map.time) !== 'night';
   const night = nightFor(amb0.tint || '#223344', amb0.darkness ?? 0.6);
   let lowTint = null, lowTintKey = 0;
   const overlay = createOverlay();

@@ -18,6 +18,8 @@ import { DIFFICULTIES } from '../shared/constants.js';
 import { resolveTime } from '../shared/timeofday.js';
 import { mapMeta } from '../shared/maps.js';
 import { STAGE_SHORT } from '../shared/campaign.js';
+import { mapSupportsMode } from '../shared/zone.js';
+import { formatClock } from '../shared/horde.js';
 import { missionOf, simModeOf } from '../shared/story/registry.js';
 import { $, copyText, createScope, formatShort, h, setShown } from './dom.js';
 import { createInput } from './input.js';
@@ -152,11 +154,13 @@ export function startMatch(ctx, session) {
   // The Campaign (SPEC §3.8): a map built with the campaign extension (map.campaign) plays it
   // Road to Haven (STORY.md): a mission or a hideout adds the story HUD on top of the wave machine
   // the mission runs on ('zone' | 'campaign' | none)
+  // Horde Elimination (SPEC §3.12): one round against a finite horde, the HUD's surge panel
   const storyMode = !!session.settings && (session.settings.mode === 'mission' || session.settings.mode === 'hideout');
   const script = storyMode ? missionOf(session.settings) : null;
   const mode = map.campaign ? 'campaign'
     : storyMode ? (simModeOf(session.settings) === 'zone' ? 'zone' : 'defend')
-      : (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
+      : session.settings && session.settings.mode === 'horde' && mapSupportsMode(map.id, 'horde') ? 'horde'
+        : (session.settings && session.settings.mode === 'zone') || (map.modes && !map.modes.includes('defend')) ? 'zone' : 'defend';
   const time = resolveTime(map, session.settings && session.settings.time);
   const made = createViewRenderer(ctx, map, mode, time);
   const { renderer, canvas, fps } = made;
@@ -382,10 +386,14 @@ export function startMatch(ctx, session) {
     endEl.classList.toggle('victory', victory);
     endEl.classList.toggle('defeat', !victory);
     const camp = map.campaign && view.campaign ? view.campaign : null;   // the Campaign's own end texts
-    $('#end-title').textContent = storyMode ? (victory ? 'Mission complete' : 'Mission failed') : camp && victory ? 'Escaped' : victory ? 'Victory' : 'Overrun';
+    const horde = mode === 'horde' && view.horde ? view.horde : null;    // Horde Elimination's
+    $('#end-title').textContent = storyMode ? (victory ? 'Mission complete' : 'Mission failed') : camp && victory ? 'Escaped'
+      : horde && victory ? 'Horde eliminated' : victory ? 'Victory' : 'Overrun';
     const objName = (map.objective && map.objective.name) || 'objective';
     let sub;
-    if (camp && victory) sub = 'Every survivor rode the zip line out. The horde stays behind.';
+    if (horde && victory) sub = `All ${horde.total} of them are dead, in ${formatClock(horde.time)}.`;
+    else if (horde) sub = `Nobody was left standing on surge ${Math.max(1, horde.surge)} of ${horde.surges} — ${horde.left} of ${horde.total} zombies remained.`;
+    else if (camp && victory) sub = 'Every survivor rode the zip line out. The horde stays behind.';
     else if (camp) sub = `The team fell ${['', 'on the hilltop', 'on the breakout', `on floor ${camp.floor}`, 'on the rooftop'][camp.stage] || ''}.`;
     else if (victory) sub = `All ${view.totalWaves} waves survived. The road is yours.`;
     else if (gameoverReason === 'objective' || (!gameoverReason && view.objective && view.objective.hp <= 0)) sub = `The ${objName} was destroyed on wave ${view.wave}.`;
@@ -396,13 +404,15 @@ export function startMatch(ctx, session) {
     const mapName = (mapMeta(map.id) || { name: map.name || '' }).name;
     const diff = DIFFICULTIES[session.settings.difficulty];
     const survived = victory ? view.wave : Math.max(0, view.wave - 1);
-    $('#end-summary').replaceChildren(
-      camp ? chip('Stage reached', victory ? 'Escaped' : STAGE_SHORT[camp.stage] || String(camp.stage))
-        : chip('Waves survived', view.totalWaves ? `${survived} / ${view.totalWaves}` : String(survived)),
+    $('#end-summary').replaceChildren(...[
+      horde ? chip(victory ? 'Time' : 'Zombies remaining', victory ? formatClock(horde.time) : `${horde.left} / ${horde.total}`)
+        : camp ? chip('Stage reached', victory ? 'Escaped' : STAGE_SHORT[camp.stage] || String(camp.stage))
+          : chip('Waves survived', view.totalWaves ? `${survived} / ${view.totalWaves}` : String(survived)),
+      horde && !victory ? chip('Time', formatClock(horde.time)) : null,
       chip('Zombies killed', formatShort(kills)),
       chip('Map', mapName),
       chip('Difficulty', diff ? diff.name : session.settings.difficulty),
-    );
+    ].filter(Boolean));
     fillStatsTable($('#end-table'), rows, session.localId, { final: true });
     const host = session.isHost;
     $('#end-lobby').hidden = !host;

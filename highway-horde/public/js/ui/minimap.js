@@ -66,6 +66,8 @@ export function createMinimap(canvas, map, opts = {}) {
   const campMode = !!opts.campaign && !!map.campaign;
   const hubMode = map.kind === 'hideout' && !!map.hub;
   const storyMode = !!opts.story;
+  // Horde Elimination (opts.horde): nothing to defend, so no objective marker (the entrances stay drawn)
+  const hordeMode = !!opts.horde;
   const cfg = campMode ? map.campaign : null;
   const levelMode = map.kind === 'level';
   const gatesOf = levelMode ? levelGates(map) : [];
@@ -117,7 +119,7 @@ export function createMinimap(canvas, map, opts = {}) {
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
     if (!zoneMode && !campMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
-    const ob = zoneMode || campMode || hubMode ? null : map.objective;
+    const ob = zoneMode || campMode || hubMode || hordeMode ? null : map.objective;
     if (ob) {
       b.fillStyle = 'rgba(255,196,0,0.35)';
       rotRect(b, ob.x, ob.y, ob.w, ob.h, ob.a);
@@ -545,7 +547,7 @@ export function createMinimap(canvas, map, opts = {}) {
       drawStoryMap(g, view, u, pulse, at, rim, { inside: (x, y, m) => inside(x, y, m) });
     }
     // objective + supply: pinned to the rim when out of range
-    const ob = zoneMode || campMode || hubMode ? null : map.objective;
+    const ob = zoneMode || campMode || hubMode || hordeMode ? null : map.objective;
     if (ob) {
       let x = rx(ob.x, ob.y), y = ry(ob.x, ob.y);
       if (!inside(x, y, 6 * u)) ({ x, y } = pin(x, y, 6 * u));

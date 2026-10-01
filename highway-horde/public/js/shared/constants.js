@@ -3,7 +3,7 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second

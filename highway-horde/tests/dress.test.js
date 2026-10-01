@@ -13,7 +13,7 @@ import { buildDress, dressForTier, dressDensity, DRESS_DENSITY, DRESS_KINDS } fr
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VARIANTS = [
-  ['highway'], ['truckstop'], ['bridge'], ['checkpoint'], ['harlan'],
+  ['highway'], ['truckstop'], ['bridge'], ['checkpoint'], ['harlan'], ['sandstone'],
   ['highway', 'campaign'], ['checkpoint', 'campaign'], ['harlan', 'campaign'],
 ];
 const VEHICLES = new Set(['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanger', 'tanker']);
@@ -42,7 +42,7 @@ test('dress: deterministic for (map, seed), different for another seed', () => {
 });
 
 test('dress: every map is richly dressed and every item is well formed', () => {
-  const minimum = { highway: 2500, truckstop: 1200, bridge: 900, checkpoint: 1300, harlan: 6000 };
+  const minimum = { highway: 2500, truckstop: 1200, bridge: 900, checkpoint: 1300, harlan: 6000, sandstone: 450 };
   for (const [id, mode] of VARIANTS) {
     const { map, items } = dressed(id, mode);
     assert.ok(items.length >= minimum[id], `${id}${mode ? ':' + mode : ''} has ${items.length} props`);

@@ -26,6 +26,7 @@ import { createCollisionWorld, ledgeAhead } from '../shared/movement.js';
 import { nearSupply } from '../shared/zone.js';
 import { createZoneHud } from './zonehud.js';
 import { createCampaignHud } from './campaignhud.js';
+import { createHordeHud } from './hordehud.js';
 import { createStoryHud } from './storyhud.js';
 import { createLevelHud } from './levelhud.js';
 
@@ -68,7 +69,8 @@ function pct(v) {
  *   invite-link copy in the scoreboard header
  * @param {'fps'|'topdown'} [opts.view] first person adds the compass and the radar minimap
  * @param {boolean} [opts.minimapRotate] first person: rotating radar (default true)
- * @param {'defend'|'zone'|'campaign'} [opts.mode] the wave machine behind the game (zone / campaign panels)
+ * @param {'defend'|'zone'|'campaign'|'horde'} [opts.mode] the wave machine behind the game (zone / campaign /
+ *   horde panels)
  * @param {{ title?: string }|null} [opts.story] Road to Haven (STORY.md): a mission or hideout — adds the
  *   objective tracker, radio strip and story prompts (ui/storyhud.js)
  */
@@ -195,15 +197,19 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const scoreboard = createScoreboard(root.parentElement || root, { invite });
   const zoneMode = mode === 'zone';
   const campMode = mode === 'campaign' && !!map.campaign;
+  const hordeMode = mode === 'horde';
   const storyMode = !!story;
-  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode, campaign: campMode, story: storyMode });
-  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode, campaign: campMode, story: storyMode }) : null;
+  const minimap = createMinimap(miniCanvas, map, { radar: fps && minimapRotate, zone: zoneMode, campaign: campMode, story: storyMode, horde: hordeMode });
+  const compass = fps ? createCompass(compassCanvas, map, { zone: zoneMode, campaign: campMode, story: storyMode, horde: hordeMode }) : null;
   // Evac Run: the zone panel under the compass, the outside warning (SPEC §3.7)
   const zoneHud = zoneMode ? createZoneHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a) }) : null;
   // The Campaign: the stage panel, the horde warning, the title card (SPEC §3.8)
   const campaignHud = campMode
     ? createCampaignHud(topCentre, root, { map, audio, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id) })
     : null;
+
+  // Horde Elimination: the surge panel, the horde's count on the wave panel (SPEC §3.12)
+  const hordeHud = hordeMode ? createHordeHud(topCentre, { map, showBanner: (...a) => showBanner(...a), toast: (...a) => toast(...a), nameOf: (id) => nameOf(id) }) : null;
 
   // Road to Haven: the objective tracker, the radio strip, the story prompts
   const storyHud = storyMode
@@ -352,6 +358,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     for (const e of events) {
       if (zoneHud) zoneHud.addEvent(e);
       if (campaignHud && campaignHud.addEvent(e, lastView, localId)) continue;
+      if (hordeHud && hordeHud.addEvent(e, lastView, localId)) continue;
       if (levelHud && levelHud.addEvent(e, lastView)) continue;
       if (storyHud && storyHud.addEvent(e, lastView, localId)) continue;
       switch (e.type) {
@@ -544,6 +551,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const me = localPlayer(v);
     if (zoneHud) zoneHud.update(v, me, info.localPos, dt);
     if (campaignHud) campaignHud.update(v, me, info.localPos, dt);
+    if (hordeHud) hordeHud.update(v);
     if (storyHud) storyHud.update(v, me, info.localPos, dt);
     if (levelHud) levelHud.update(v, dt);
     root.dataset.phase = v.phase;
@@ -560,12 +568,13 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       setText(waveLeft, v.phase === 'victory' ? 'All waves survived' : 'Overrun');
     }
     // the campaign's stages (hill waves, the breakout, floors, the roof quota) name their own counters
-    const cw = campaignHud ? campaignHud.wavePanel(v) : null;
+    // (a horde round counts the horde: zombies left of it, survivors standing)
+    const cw = campaignHud ? campaignHud.wavePanel(v) : hordeHud ? hordeHud.wavePanel(v) : null;
     setText(waveLabel, cw ? cw.label : 'WAVE');
     if (cw) {
       setText(waveNum, cw.num);
       setText(waveTotal, cw.total);
-      if (cw.left && v.phase === 'wave') setText(waveLeft, cw.left);
+      if (cw.left && (v.phase === 'wave' || (hordeHud && v.phase === 'prep'))) setText(waveLeft, cw.left);
     }
     setShown(waveLeft, true);
     // (a mission counts its own waves in the tracker; the zone / campaign panels keep theirs)
@@ -574,7 +583,8 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       const secs = Math.max(0, Math.ceil(v.timer));
       const total = v.players.length;
       const readyN = v.readyCount | 0;
-      const what = zoneMode ? 'Zone locks' : campaignHud ? campaignHud.phaseWhat(v) : v.phase === 'prep' ? 'First wave' : 'Next wave';
+      const what = zoneMode ? 'Zone locks' : campaignHud ? campaignHud.phaseWhat(v) : hordeHud ? hordeHud.phaseWhat(v)
+        : v.phase === 'prep' ? 'First wave' : 'Next wave';
       let text;
       if (me && me.ready) text = `${what} in ${secs}s — you're ready (${readyN}/${total})`;
       // Touch has a big READY button on screen, and no room for a long line.
@@ -626,7 +636,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       setClass(row.el, 'dead', p.state === 'dead');
       setClass(row.el, 'low', p.state === 'alive' && f < LOW_HP);
       if (p.state === 'downed') setText(row.state, p.reviver ? 'REVIVING' : `DOWN ${Math.ceil(p.bleedout)}s`);
-      else if (p.state === 'dead') setText(row.state, 'DEAD · next wave');
+      else if (p.state === 'dead') setText(row.state, hordeMode ? 'DEAD' : 'DEAD · next wave');
       else setText(row.state, v.phase !== 'wave' && p.ready ? 'READY' : '');
     }
 
@@ -652,6 +662,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const waveShown = v.phase === 'prep' ? 1 : v.wave;
     const boardLabel = storyMode && !zoneMode && !campMode
       ? (story.title ? `Road to Haven · ${story.title}` : 'Road to Haven')
+      : hordeMode && v.horde ? `Horde Elimination · ${v.horde.left} of ${v.horde.total} left`
       : v.totalWaves ? `Wave ${waveShown} of ${v.totalWaves}` : `Wave ${waveShown} · Endless`;
     scoreboard.update(v, roster, localId, dt, boardLabel);
 
@@ -691,7 +702,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       setStyle(hpBar.fill, 'width', '0%');
       setStyle(hpBar.ghost, 'width', '0%');
       setText(hpNum, '0');
-      setText(statusTag, 'DEAD — RESPAWN NEXT WAVE');
+      setText(statusTag, hordeMode ? 'DEAD — SPECTATING' : 'DEAD — RESPAWN NEXT WAVE');
     } else {
       setStyle(hpBar.fill, 'width', pct(hpF));
       setStyle(hpBar.ghost, 'width', pct(hpF));

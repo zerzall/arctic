@@ -50,6 +50,8 @@ highway-horde/
   public/js/shared/maps.js                           (maps)
   public/js/shared/maps-campaign.js terrain.js campaign.js  (campaign — §2, §3.8; sim/campaign.js is its director)
   public/js/shared/maps-hideouts*.js sim/range.js    (hideouts — the story hubs and their shooting range, §3.9)
+  public/js/shared/maps-sandstone.js horde.js sim/horde.js  (horde — Sandstone and Horde Elimination, §2, §3.12;
+                                                     render3d/maps/sandstone*.js its 3D art, ui/hordehud.js its HUD)
   public/js/shared/geom.js spatial.js flowfield.js movement.js sim.js  (sim)
   public/js/shared/sim/bots.js                       (bots — AI survivors, §3.6)
   public/js/shared/protocol.js                       (net)
@@ -74,17 +76,21 @@ Data tables already written (read them — they are the source of truth):
 ## 2. Maps — `shared/maps.js`
 
 ```js
-export const MAP_LIST;              // [{ id, name, description, modes?, time?, times? }] in lobby order;
-                                    // modes: the game modes it plays (absent = every mode);
-                                    // time: 'day' = a fixed time of day, times: [...] = a list of
-                                    // them (absent = night and day, §7.5.1)
+export const MAP_LIST;              // [{ id, name, description, modes?, time?, times?, defaultTime? }] in
+                                    // lobby order; modes: the game modes it plays (absent = the
+                                    // standard ones: defend, zone, horde); time: 'day' = a fixed time
+                                    // of day, times: [...] = a list of them (absent = night and day,
+                                    // §7.5.1); defaultTime: the time the lobby switches to when the map
+                                    // is picked (Sandstone: 'day')
 export function buildMap(id, seed, opts?); // → MapDef, deterministic for (id, seed[, opts]); unknown id → throws
                                     // opts.mode 'campaign' builds the campaign variant of a map that has one
 ```
 
-Five maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Truck Stop),
-`bridge` (Blackwater Bridge), `checkpoint` (Checkpoint Delta) and `harlan` (Harlan County,
-`modes: ['zone', 'campaign']`: the Evac Run map, §3.7, built in `shared/maps-harlan.js`).
+Six maps (ids fixed): `highway` (Highway 9 Pileup), `truckstop` (Last Chance Truck Stop),
+`bridge` (Blackwater Bridge), `checkpoint` (Checkpoint Delta), `harlan` (Harlan County,
+`modes: ['zone', 'campaign']`: the Evac Run map, §3.7, built in `shared/maps-harlan.js`) and
+`sandstone` (Sandstone, `modes: ['horde', 'defend']`, `times: ['day', 'dusk', 'night']`,
+`defaultTime: 'day'`: the Horde Elimination map, §3.12, built in `shared/maps-sandstone.js`).
 `highway`, `checkpoint` and `harlan` have a **campaign extension** (§3.8, `modes` lists
 `'campaign'`); `buildMap(id, seed, { mode: 'campaign' })` lays the map out as usual and then
 adds the hill, the tower and its annex (`shared/maps-campaign.js`) on top: the default build
@@ -205,6 +211,32 @@ defend-layout rules (central objective, supply 250–450 px from it); Harlan Cou
 is its objective collider and landmark, the team starts on Main Street next to the supply
 station, and every POI is reachable from every other.
 Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
+
+**Sandstone** (`shared/maps-sandstone.js`, 4000 x 4000, ~200 obstacles, budget 260): a walled
+desert town of sandstone and adobe, built for Horde Elimination. The defenders start on
+**Fountain Square** (the north-centre square: the radio mast is the objective collider and a
+landmark, the supply station, 8 spawns). Two "sites": the square itself, enclosed, entered by the
+Great Doors from Mid Street, two arches from Cistern Court and the stairs from the Terrace; and
+**the Terrace**, a plateau 76 units up (`terrain.plateaus`) reached by a ramp from the Long Hall, a
+flight of stairs from the square, back stairs and the rampart (a walkway on top of the Long Hall's
+west wall, a hesco retaining wall with a parapet). Between them and the edges: the Long Hall (a
+long walled corridor with the Long Doors and an alcove), Mid Street (the long sightline from the
+plaza to the square through the Great Doors), the walled Cistern Court with several entrances, an
+upper and a lower tunnel (roofs with `style: 'tunnel'`, dark inside) into Well Square, the souk lane,
+the plaza and the caravan yard. Six entrances (`map.horde.lanes`, each spawn rect tagged with its
+`lane`): South Gate, Caravan Gate, Well Gate, West Breach, East Stairs and the North Arch (late:
+from surge `lateFrom` on, behind the defenders). MapDef extras: `horde { lanes: [{ name, x, y,
+late? }], hold { x, y, r } }` (where bots hold by default), `anchors`, `look` (`trees ['palm']`,
+`grass: false`, `weeds` 0.15, `areas` colours for the 2D map layer, `nightWet`, `night` sky colours),
+`art: 'sandstone'` (the 3D art module, §7.5) and `sandArt` (the free art pieces: stairs, the ramp,
+gates, arches, tarps, signs, lanterns, doorways). Obstacles carry a `style` for the art ('house',
+'courtwall', 'gatehouse', 'bigdoor', 'doorleaf', 'crate', 'lowcrate', 'barrels', 'cart', 'planter',
+'fountain', 'well', 'stall', 'sill', 'retain', 'parapet'); kinds are the usual ones ('counter' and
+'parapet' from the campaign set, §2 CampaignExt). The layout rules for the defend maps (central
+objective, supply distance) are skipped for it (`tests/maps.test.js` HORDE_FIRST); its own tests
+(`tests/map-sandstone.test.js`) check the flow fields from every entrance reach both sites and the
+supply for walkers and heavies, the terrace and its approaches step by step, anchors and spawns on
+open ground, determinism, a bot round and the art on every tier.
 
 ---------------------------------------------------------------------------------------
 
@@ -881,6 +913,61 @@ rect under an earlier section's roof.
   held music state.
 - **Tests**: `tests/level-engine*.test.js`, the level agents' `tests/level-<id>.test.js`, e2e scenario `n`.
 
+### 3.12 Horde Elimination — settings.mode 'horde' (`shared/horde.js`, `shared/sim/horde.js`)
+
+One round against a finite horde: a buy time, then the whole horde in surges; **nobody respawns**.
+Every zombie of the horde dead is a victory, every survivor dead a defeat (the objective is off:
+`settings.objective` false, no 'objective' loss). A standard mode (`STANDARD_MODES`): every
+map but Harlan County plays it; switching to it in the lobby goes to its own map (`MODE_LIST`
+entry `map: 'sandstone'`; `mergeSettings` when the mode changes without a map pick, `fixModeCombo`
+on a map that doesn't play it), and `mergeSettings` then switches the time to the map's
+`defaultTime`; another map that plays it can be picked after. `game.horde` is a `HordeDirector` (null in the other modes); the
+lobby's waves row does not apply (the round is `HORDE.surges` surges; `totalWaves` = the surge count).
+
+- **Size.** `hordeTotal(n, diff)` = round(150 × (1 + 0.6 (n − 1)) × difficulty.count), bots count
+  (Normal: 150 solo, 240 for 2, 330 for 3, 420 for 4, 600 for 6; Easy 0.8x, Hard 1.25x, Nightmare
+  1.5x). Fixed when the buy time ends (joiners during it resize it). Balance: docs/BALANCE.md.
+- **Buy time** = the ordinary prep phase: `HORDE.prep` (25) s, the ready vote skips it; everyone
+  starts with `HORDE.startCash` (1000) instead of START_CASH; the shop is open everywhere and sells at
+  least wave `shopMin` (2)'s guns (`shopWaveOf(phase, wave, horde)` = max(shopMin, surge tier)).
+- **Surges** (`surgePlan`): 8; surge k's share ∝ 1 + 0.25 (k − 1) (largest remainder, they add
+  up); the last one brings ceil(n / 3) bosses `bossDelay` (8) s in. Surge k plays the wave tier
+  1 + round((k − 1) (top − 1) / 7) (top = 7 / 9 / 10 / 12 for easy … nightmare: `game.wave` = the
+  surge, `game.tierBonus` = tier − surge, so zombies.js picks types, hp and speed as on that
+  wave: walkers → runners → specials → brutes). Alive cap during surge k: (22 + 4 (k − 1)) ×
+  (1 + 0.55 (n − 1)) × difficulty.count, ≤ difficulty.maxAlive. Groups of 4–7 (+1 every 3
+  surges) every 1.3–2.4 s / crowd^0.5.
+- **Entrances.** `hordeLanes(map)`: the map's named lanes (`map.horde.lanes` + spawn rects tagged
+  `lane`) or the spawn rects grouped by compass sector from the hold point ("North", "South-East",
+  …); at most 16 (a u16 mask). Surge k comes out of `HORDE.lanes[k]` entrances (1, 1, 2, 2, 2, 3, 3,
+  all) picked from the director's own seeded stream, never the same set twice in a row when there
+  is a choice; a `late` lane opens from surge `lateFrom` (4); the first surge picks among the
+  count + 1 entrances nearest the hold point. Spawns use those rects only, preferring ones ≥ 600 px
+  from every survivor. On the way in a zombie farther than `travel.far` (1100) px from its
+  survivor moves up to `travel.mult` (1.8) × faster (full 500 px further out), so the first
+  zombies reach the crew ~20-25 s after the buy time even from a gate across the town.
+- **Pacing** (stages `HORDE_STAGES`: prep, breather, surge, hold, over). Each surge is announced
+  (`surge` event 'next' with its lanes and the breather's length: 4 s before the first, then 12 s
+  down to 5 s), let loose ('go'; from the second on every living survivor gets `surgeBonus` $100),
+  spawns until its queue is empty (surge → hold), and the next is announced once the alive count
+  is down to the lull (20 % → 55 % of the surge's size over the round) or 24 s after its last group.
+  `remaining` / `horde.left` = still to spawn + alive.
+- **No respawns.** Dead survivors stay dead (`respawn` false; they spectate); the downed bleed out
+  and can be revived as usual; late joiners spectate. `_checkEnd`: everyone dead → 'gameover'
+  ('wiped'); the whole horde spawned and dead → 'victory'. The core never clears a wave in this mode.
+- **Bots** hold near the crew (the human they follow, else `map.horde.hold`), hunt stragglers
+  when the horde is nearly done, and go shopping at the supply station in a surge's breather or a
+  calm hold (≤ 6 alive, the station within 1400 px), once per surge.
+- **Snapshot** `horde: { stage, total, left, alive, surge, surges, tier, next (s of breather left),
+  lanes (mask), time (s since the buy time) } | null` (§4); event `surge` (§4.1); wire flag
+  `H_HORDE`, protocol 12 (§5).
+- **Clients**: the HUD's surge panel and the wave panel counting the horde (§7.3), compass markers
+  on the surge's entrances, no objective marker, the end screen's result, time and zombies left;
+  the siren and horn on a surge, a radio blip on an announcement.
+- **Tests**: `tests/horde.test.js` (mode, totals, plan, lanes, shop stock, buy time, surges under the
+  cap from their lanes with the type ramp, victory, defeat, no respawns, determinism, stages, the
+  wire), `tests/map-sandstone.test.js`, e2e scenario `o`; `scripts/balance.js --mode horde`.
+
 ---------------------------------------------------------------------------------------
 
 ## 4. Snapshot (render state)
@@ -909,6 +996,10 @@ Snapshot = {
                             //   4 = roof), sub (SUB: 0 fight|1 rest|2 brief|3 stairs open|4 arrived|5 zip),
                             //   x, y, r (the stage's circle), t, total (s of a timed part), front (px along
                             //   the route, -1e9 = none), kills, quota, zip (0|1), sx, sy (supply point) }
+  horde,                    // Horde Elimination (§3.12), else null: { stage (HORDE_STAGES index), total,
+                            //   left (to spawn + alive), alive, surge (current, 0 before the first),
+                            //   surges, tier, next (s of breather left), lanes (entrance mask of the
+                            //   announced / current surge), time (s since the buy time ended) }
   story,                    // Road to Haven (§3.9), else null: { mode 'mission'|'hideout', time (s), downs,
                             //   steps: [ { i, kind (STEP_KINDS), text, cur, max, t, total (s left / of a timed
                             //   step), opt } ] (at most 4 active, optional last),
@@ -993,6 +1084,7 @@ All events carry the fields listed; consumers ignore unknown types.
 | `waveclear` | wave, bonus | wave cleared |
 | `drop` | x, y | supply crate landed (Evac Run: the zone's supply drop) |
 | `zone` | stage, poi, x, y, r, time | Evac Run: a zone was announced ('next'), locked ('lock') or started to shrink ('shrink') |
+| `surge` | what ('next'\|'go'), n, lanes, boss, time | Horde Elimination: surge n was announced (lanes = entrance mask, boss = it brings the bosses, time = s of breather) or let loose |
 | `campaign` | what, stage, floor, pid | Campaign: what = 'stage' (a wave of the stage started or the stairs opened), 'brief' (the hill will fall), 'breakout', 'floor' (the team moved to that floor / the roof / the tower), 'zip' (the line is live), 'ride' / 'escape' (pid) |
 | `objective` | what ('start'\|'progress'\|'done'\|'fail'), step, id, text, cur, max | Road to Haven: the tracker changed (§3.9) |
 | `radio` | who, text, ms, kind ('radio'\|'say') | a subtitle line (speaker id, how long it stays); `radio` lines get a static blip |
@@ -1002,7 +1094,7 @@ All events carry the fields listed; consumers ignore unknown types.
 | `npc` | what ('down'\|'up'\|'dead'\|'arrive'), npc, id | an NPC changed state |
 | `storyend` | result ('victory'\|'defeat'), reason, mission, stars, met {time, noDowns, optional, perfect}, time, downs, stats {pid: {name, kills, downs, revives, damage, items}}, items {id: n}, flags {k: true} | the mission is over (JSON; the host session handles rewards) |
 | `gameover` | reason | 'wiped'|'objective' |
-| `victory` | — | all waves cleared |
+| `victory` | — | all waves cleared (Horde Elimination: the whole horde is dead) |
 
 **Client-side shot prediction.** On a client, the session emits the local player's own
 shots immediately as `shot` events with `predicted: true` (rays traced locally against
@@ -1026,7 +1118,10 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 10 (Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
+u8. PROTOCOL_VERSION 12 (Horde Elimination: header flag `H_HORDE` 64 and, after the level block, a
+20-byte horde block — total, left, alive u16, surge, surges, tier, stage u8, the breather timer at 0.01 s
+u16, the lane mask u16, the round's clock f32 — and the binary `surge` event; 11 was the story levels'
+`H_LEVEL` block, §3.11; 10 was Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
 (1 story, 2 NPCs, 4 interactables) with the blocks it names — the story tracker (steps, markers, items), NPCs
 (id, key, name, look with hair style and accessory, position, state, hp) and hold-to-use spots — and the binary
 `objective`, `radio`, `interact`, `talk`, `item` and `npc` events; 9 is reserved for the engine's story-screen
@@ -1052,7 +1147,7 @@ of every binary message is a message-type tag so snapshots and inputs can share 
 Tests (`tests/protocol.test.js`): round-trip every field, every event type, empty arrays,
 max sizes, and a snapshot produced by the real `Game` after a few hundred ticks.
 The story rooms' JSON control messages (§10.4) arrived with protocol 9 and change no binary layout; the
-version is 10 with the story block above.
+story block above came with 10, the level block with 11, the horde block with 12.
 
 ## 6. Networking — `public/js/net/*`
 
@@ -1305,6 +1400,16 @@ warning with the distance, a violet screen edge and a warning tone every 1.6 s. 
 shows the zone as a teal ring with the distance to its edge (no objective ◆) and the drop as a
 green +; the minimap/radar draws the live circle (dashed while announced), the shrink
 target, the tinted blight and the drop, pinning the zone and the drop to the radar's rim.
+Horde Elimination HUD (`ui/hordehud.js`, `createHud(…, { mode: 'horde' })`, the mode chosen by
+`settings.mode` when the map plays it): a panel under the compass ("THE HORDE · 150 — 8 surges, no
+respawns" in the buy time, "SURGE 3 / 8 IN 9s — From South Gate · Well Gate", "SURGE 3 / 8 — 41 on
+the streets", "LAST SURGE"; a bar of the horde killed so far), the wave panel counts the horde
+("HORDE 87 / 150 — 3 of 4 standing · 4:12"), a banner when the horde is announced and for each
+surge let loose, a toast for each later announcement (with "BOSS" when the bosses come), deaths
+are final ("out for the round", "DEAD — SPECTATING", the team row says DEAD), the end screen is
+"Horde eliminated" with the round's time or "Overrun" with the zombies that remained. The compass
+marks the entrances of the surge on its way (red triangles) and neither it nor the minimap shows
+an objective; the lobby greys out the waves and objective rows.
 HUD: health/armour/stamina, weapon slots with ammo, cash, wave + remaining + phase timer,
 objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed, chat,
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
@@ -1788,7 +1893,21 @@ light shaft), the mission devices (terminal, generator, beacon, repair kit, radi
 cache, door, post; a lamp amber while waiting and green when used; hideout stations only get the ring), hold
 rings, objective light shafts and area rings, and the marker icons with the distance in metres on the overlay.
 
-### 7.5.1 Time of day — `settings.time` 'night' | 'day' (`shared/timeofday.js`, `render3d/daylight*.js`)
+**Map art modules** (`render3d/maps/*`): a match map may name its own 3D art (`map.art`, e.g.
+Sandstone's `'sandstone'`); `render3d/levels/index.js` `artModuleOf(map)` finds a story level's art by
+its id and a match map's by that name, and `world.js` builds it through the same seam as a level's
+(`createLevelArt(ctx, deps)` → `{ obstacle(B, o), roof(B, r), props(B), finish, update, setQuality,
+dispose, material(bucket, tier), buckets }`): the module draws the obstacles it knows by `style`
+(the rest fall back to the generic models), the roofs (Sandstone's tunnel vaults; a map with roofs
+gets the indoor light mask and the roof fixtures like a level) and its free pieces. Sandstone:
+`sandstone.js` (dispatch, materials, the building grid), `sandstone-kit.js` (houses with
+interior-mapped windows, shutters, doors and shop fronts, the court wall, gatehouses, the great
+doors), `sandstone-props.js` (crates, carts, the fountain, the well, stalls, stairs, the ramp, gates,
+arches, tarps, signs, lanterns, the vaults), `sandstone-atlas.js` (one canvas atlas: awnings, rugs,
+zellige, signs, posters, grime); ~70 k triangles on 'low', ~240 k on 'ultra' (`tests/map-sandstone.test.js`
+builds it on every tier by day and night).
+
+### 7.5.1 Time of day — `settings.time` 'night' | 'day' | 'dusk' (`shared/timeofday.js`, `render3d/daylight*.js`)
 
 Every map has a **night** look (the original: moon, stars, darkness, flashlights, lamps and
 fires) and a **day** look, a lobby setting next to the mode. Day is cosmetic: the simulation,
@@ -1838,7 +1957,14 @@ a map without an entry gets the default look tinted by its `ambient.tint`):
 one warm haze + vignette gradient; the map preview of a day-only map is drawn without the night tint.
 
 Sandbox: `public/dev/fps-sandbox.html?time=day` (`__fps` views incl. `zone-out` / `zone-in` on an
-Evac Run map). Possible follow-up: a `dusk` time (the sun parameters and `lampK` already allow it).
+Evac Run map).
+
+**Dusk** (`time: 'dusk'`, third in `TIME_LIST`) is opt-in: a map plays `BASE_TIMES` (night, day)
+unless its `times` list names it (Sandstone does), since its look is tuned per map. It is the day's
+machinery (`dayAmbientFor(map, { dusk: true })`: `DUSK` over the map's day look, then
+`DUSK_PRESETS[map.id]` and `map.look.dusk`): the sun 7–8° up in the west, gold light and long
+shadows, a pink-violet sky, lamps and lanterns half lit (glow 0.5, halos at 0.55), fires a bit
+brighter. The top-down view draws it like day. Sandbox: `?time=dusk`.
 
 ### 7.5.2 Set dressing — `shared/dress.js`, `render3d/world-dress.js` (+ `dress-*.js`), `render/dress2d.js`
 
@@ -2070,6 +2196,10 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
   lists its progress, Export a file, Delete, Import it back and Continue resumes at the saved progress; then a
   crafted save that has cleared the road chapter arrives at the Roadhouse: the arrival scene, every station
   panel, the board listing the missions, a hub mission briefed and backed out of (see §10).
+  Scenario o (horde, 300 s budget, §3.12): the Mode row's Horde brings Sandstone by day with the waves
+  and objective rows disabled, three bots; the buy time (the horde block, the surge panel, the wave panel
+  counting the horde), the first surge on the streets, the bots bring the count down for an idle human
+  (kept alive), then the whole team falls: "Overrun" with the zombies that remained, nobody respawns.
 - Graphics-tier tests (all `node --test`, no GPU): `render3d-tiers.test.js` (every per-tier
   table has a `cinematic` key; no tier ternary folds cinematic into high), `gpu.test.js` (GPU
   name cleaning, the classification table, the first-run rule), `display.test.js` (refresh
@@ -2081,7 +2211,8 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
 - `node scripts/balance.js [--quick]` (not a test, not in CI): headless balance harness —
   whole games of bot teams (skilled and average profiles, §3.6) over maps × difficulties ×
   team sizes × seeds on worker threads, reporting per-wave survival, time, damage, downs,
-  economy, guns, classes and objective numbers. `--quick` ≈ 2 min on 4 cores. See
+  economy, guns, classes and objective numbers. `--quick` ≈ 2 min on 4 cores; `--mode zone |
+  campaign | horde` for the other modes (horde: a row per surge and a Horde Elimination table). See
   docs/BALANCE.md for the options, the tuning targets and the current tables.
 - CI: `.github/workflows/highway-horde.yml` at the repo root (paths `highway-horde/**`)
   runs `npm ci`, `npm test`, installs Chromium and runs `npm run e2e`, uploading

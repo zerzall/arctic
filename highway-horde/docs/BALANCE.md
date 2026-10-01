@@ -414,6 +414,53 @@ Read with the usual care (12 runs, +-14 points; the pair's 83% against three's 6
   Checkpoint 1.50, Highway campaign 1.48, Harlan campaign 1.73 (flow-field rebuild ticks 3.0 /
   3.0 / 4.2 ms against 3.4 on the highway; `maxDist` 2800 on all three).
 
+## Horde Elimination (one round, SPEC §3.12)
+
+```
+node scripts/balance.js --mode horde --maps sandstone --diffs easy,normal,hard --sizes 1,2,4 --profiles average,skilled --seeds 3 --no-mono --detail none
+node scripts/balance.js --mode horde --maps highway,truckstop,bridge,checkpoint --diffs normal --sizes 1,4 --profiles average --seeds 2 --no-mono
+```
+
+`--mode horde` runs the maps that play the mode (Sandstone only runs in it). A "wave" row is a
+surge (from the moment it is let loose to the next one); the **Horde Elimination** table gives the
+horde's size, the share of rounds won, the round's length (from the end of the buy time), the
+zombies left on a loss and downs / deaths per player. `HORDE` (shared/horde.js) is frozen: edit it
+to try numbers.
+
+Horde sizes (`hordeTotal`, bots count as players): Normal 150 solo, 240 for 2, 420 for 4, 600
+for 6; Easy 0.8x (120 / 192 / 336), Hard 1.25x (188 / 300 / 525), Nightmare 1.5x.
+
+| Sandstone (4 runs each; easy and nightmare 3) | average bots | skilled bots |
+|---|---|---|
+| easy 1 / 2 / 4 | 100% / 100% / 100% | |
+| normal 1 player | 25% (lost with ~32 left, last surge) | 100% |
+| normal 2 / 4 | 100% / 100% | 75% / 100% |
+| hard 1 player | 25% (~45 left) | 75% |
+| hard 2 / 4 | 50% / 100% | 75% / 100% |
+| nightmare 1 / 2 | 0% / 0% (lost at surge 7) | |
+| other maps, normal 1 / 4 (8 runs) | 75% / 100% | |
+
+Round length with bots: 5.5-6.5 min on Sandstone (Normal: 330-390 s after a 25 s buy time; bigger
+teams the same, the pacing is the surges' breathers and lulls), about 5 min on the other maps.
+The first zombies reach the crew 20-26 s after the buy time. Losses come in the last surge (the
+bosses plus the biggest, toughest surge). A solo average bot is the hardest case (one gun, no
+reviver); a human playing alone usually brings bots.
+
+* **The walk in.** Sandstone's gates are 2000-3800 px from Fountain Square and a walker does
+  34-48 px/s, so the first zombies arrived ~50-85 s into the round. Now the first surge uses one of
+  the nearer entrances and a zombie far from its survivor strides out (`HORDE.travel`: up to 1.8x
+  beyond 1100-1600 px): first contact at 20-26 s. It made solo rounds harder (the surges arrive
+  bunched): solo average Normal 67% -> 25%, teams unchanged.
+* **Team scaling** follows the defend waves: `total.perPlayer` 0.6 (was 0.5) and the alive cap's
+  `cap.perPlayer` 0.55 (was 0.45). With 0.5 / 0.45 average 4p teams won 100% even on Hard with
+  no downs; they are still easier than solo (as in every mode, see below), the gap is structural.
+* **Bots shop between surges.** Without an intermission bots never spent mid-round (a solo
+  average bot died on surge 7 with $1660 banked). They now walk to the supply station in a
+  surge's breather or a calm hold (≤ 6 alive, the station within 1400 px), once per surge;
+  solo average Normal went from losing at surge 7 to 67% won.
+* **Levers**: `HORDE.total` (size), `cap` (pressure at once), `tier` (how tough the last surges
+  play), `gap` (breathers and lulls: the round's length), `surgeBonus` and `startCash` (economy).
+
 ## Open issues
 * **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
   15, against 33% in defend) and the harassers never really hurt a bot team. Human players,

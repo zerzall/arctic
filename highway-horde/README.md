@@ -55,7 +55,7 @@ else opens the invite link.
   | Boom | Demolitions | Bigger explosions and extra grenades |
   | Tank | Heavy | 150 health and a vest |
 
-- **3 game modes**:
+- **4 game modes**:
   - **Defend** (the classic): hold one spot against every wave, guarding the objective
     (or just surviving with it switched off).
   - **Evac Run**: every wave the safe zone moves to a new place on the map, a bit like a
@@ -75,6 +75,13 @@ else opens the invite link.
     **Rooftop**: kill the quota (it grows with the team), then ride the zip line down to the
     landing pad. The game is won when every survivor still standing has escaped. It is an
     extension of those three maps: their default game is unchanged.
+  - **Horde Elimination**: one round against a whole horde. A short buy time, then it comes in
+    eight surges, each announced with the gates it comes through (the compass marks them),
+    from shamblers to runners, specials, brutes and finally the bosses. Nobody respawns:
+    downed survivors can still be revived, the dead watch. Kill every last one (the HUD counts
+    them down) or be overrun. The horde grows with the team and the difficulty (150 zombies
+    solo on Normal, 420 for four); the supply station stays open between surges. Played on
+    Sandstone, and on every map except Harlan County.
 - **3 story hideouts** (for the story campaign, not in the lobby): safe, walkable camps where the
   crew rests between missions, each with a mission board, workbench, armory, infirmary, upgrade
   table, bed, campfire and a shooting range whose targets show your damage numbers. **The
@@ -92,8 +99,9 @@ else opens the invite link.
   desert at the truck stop, a glittering river at the bridge, a cloudier checkpoint, and green farm
   country with a deep blue sky at Harlan County. The choice is saved with your other lobby settings
   and changes nothing about the fight; a map made for the daytime only (like a hilltop or rooftop
-  map) plays Day whatever you pick, the way Harlan County only plays the Evac Run.
-- **5 maps**: four built around something to defend — a school bus in a pileup that
+  map) plays Day whatever you pick, the way Harlan County only plays the Evac Run. Sandstone also
+  plays at **Dusk**: a low gold sun, very long shadows and the lanterns coming on.
+- **6 maps**: four built around something to defend — a school bus in a pileup that
   stretches for miles down Highway 9 (two crossroads with dead traffic lights, a gas
   station and a motel, and the I-44 overpass crossing overhead on its piers, with the horde
   coming down the ramps), a diner full of survivors, an APC broken down in the middle of a
@@ -103,7 +111,11 @@ else opens the invite link.
   silos, St. Jude's church and graveyard, a field hospital behind HESCO walls, the I-70
   interchange with its ramps, Miller Quarry & Lumber, the radio mast on Radio Hill, the
   Shady Pines trailer park and the marina on Lake Harlan, joined by county roads through
-  fields and woods.
+  fields and woods — and **Sandstone**, a sun-baked walled desert town made for Horde
+  Elimination: Fountain Square and the raised Terrace to hold, the long walled Long Hall
+  under the rampart, Mid Street through the great wooden doors, the Cistern Court, dark
+  tunnels into Well Square, a souk under striped awnings and six gates for the horde.
+  Played by day (the default), at dusk with lanterns coming on, or by night.
 - **First person, in 3D.** You see the road over your own gun: your flashlight
   cutting through the dark, the horde coming out of the fog, teammates fighting beside
   you with their name tags overhead. A compass strip points to the objective and the supply station, a
@@ -334,12 +346,13 @@ reasoning in [docs/BALANCE.md](docs/BALANCE.md).
 npm test                    # unit tests (node:test)
 npm run e2e                 # browser tests: solo, 3-player relay, late join, p2p, phone, bots,
                             #   first-person solo, first-person 2-player relay, an Evac Run, the Campaign, a
-                            #   Road to Haven story mission, and a Story campaign (new game, a mission, the
-                            #   debrief, export/import)
+                            #   Road to Haven story mission, a Story campaign (new game, a mission, the
+                            #   debrief, export/import), a story level and a Horde Elimination round
 FULL_MISSIONS=1 npm test    # also plays the story missions to the end with four bots
 node scripts/balance.js     # headless bot playtests across maps, difficulties and team sizes
 node scripts/balance.js --mode zone --maps harlan   # ... of the Evac Run
 node scripts/balance.js --mode campaign             # ... of the whole Campaign
+node scripts/balance.js --mode horde --maps sandstone  # ... of Horde Elimination
 ```
 
 The simulation is 2D and deterministic (a flat ground plane, like classic Doom-style

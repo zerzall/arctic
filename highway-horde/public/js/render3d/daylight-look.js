@@ -31,7 +31,33 @@ export const PRESETS = {
   checkpoint: { az: 240, el: 36, haze: '#c1cbd0', horizon: '#d3dce2', zenith: '#4a7eb8', fog: 0.00034, cover: 0.68, heat: 0.15, ridge: '#68757b', wet: 0.14, sunColor: '#fff1dc', sunI: 3.3, mist: 0.6 },
   // farm country: deep blue sky, cumulus, green haze at the horizon
   harlan: { az: 225, el: 36, haze: '#c5d6d3', horizon: '#d4e4e6', zenith: '#3479cf', fog: 0.00022, cover: 0.5, heat: 0.2, ridge: '#5f7d6e', wet: 0.2, sunColor: '#fff0d2', hemiGround: '#6f7c48', mist: 0.55 },
+  // the desert town: a strong low sun raking the streets (long shadows), warm bounce off the sand and
+  // plaster, a pale dusty haze over a deep sky, almost no cloud, heat shimmer
+  sandstone: { az: 205, el: 22, haze: '#e2cfa6', horizon: '#ecdcb6', zenith: '#2f74c2', fog: 0.00021, cover: 0.08, heat: 0.85, ridge: '#b48c5c', wet: 0.02,
+    sunColor: '#ffe6b8', sunI: 5.0, hemiSky: '#c4d2e6', hemiGround: '#c49a62', hemi: 0.95, exposure: 1.0, mist: 0.35,
+    grade: { contrast: 1.07, saturation: 1.1, gain: [1.05, 1.0, 0.95] } },
 };
+
+/**
+ * Dusk (SPEC §7.5.1): the day machinery with the sun low in the west and gold: over any map's day
+ * look (the map keeps its sun's bearing unless it names its own dusk), lamps and lanterns half lit.
+ */
+export const DUSK = {
+  el: 8, haze: '#d6a172', horizon: '#f0ae6c', zenith: '#2e4686', fog: 0.0003, cover: 0.3, heat: 0.35,
+  sunColor: '#ffa45c', sunI: 3.3, hemiSky: '#8f93bc', hemiGround: '#a06c44', hemi: 0.6, exposure: 1.12,
+  mist: 0.75, warm: 1, ridge: '#6c5a68', lampK: 0.45, fireK: 0.75,
+  grade: { contrast: 1.06, saturation: 1.12, lift: [0.004, 0.0, 0.01], gain: [1.07, 0.98, 0.9], vignette: 0.26 },
+};
+
+/** Per-map dusk over DUSK (a map whose day look is unusual names its own). */
+export const DUSK_PRESETS = {
+  sandstone: { az: 248, el: 7, haze: '#e09a62', horizon: '#f6b46a', zenith: '#29407e', sunColor: '#ff9a4c', sunI: 3.6, hemiGround: '#b0703e', fog: 0.00028, heat: 0.55 },
+};
+
+/** The merged dusk look of a map id (its day look, DUSK, its own dusk preset). */
+export function duskLookFor(mapId) {
+  return { ...dayLookFor(mapId), ...DUSK, ...(DUSK_PRESETS[mapId] || {}) };
+}
 
 /** The merged look of a map id (preset over DEFAULT). */
 export function dayLookFor(mapId) {

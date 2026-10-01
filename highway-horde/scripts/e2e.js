@@ -47,6 +47,11 @@
 //                   the radio strip, fuel cans and an optional note picked up, a hold-to-use
 //                   device with its ring, "Mission complete"; then first person: the NPC's
 //                   model with accessory and hair, the items and markers in the 3D scene
+//   n  level        a story level: location cards, gates, the defend point, checkpoints, the
+//                   power cut; first person: the gate models
+//   o  horde        Horde Elimination solo with three bots: the Mode row brings Sandstone by
+//                   day, the buy time and the horde panel, a surge let loose, the bots bring
+//                   the horde's count down, then the team falls: "Overrun", nobody respawns
 //
 // Scenarios a–f play the classic top-down view (the view pref is forced to 'topdown' in
 // localStorage before every page load); g and h play first person at quality 'low', i both.
@@ -1621,7 +1626,7 @@ async function scenarioDay(sc) {
   const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
   expect((await settings()).time === 'night', 'the lobby should start at Night');
   const labels = await pl.page.$$eval('#opt-time .seg-btn', (bs) => bs.map((b) => b.textContent.trim()));
-  expect(labels.join() === 'Night,Day', `the Time row should offer Night and Day: ${labels}`);
+  expect(labels.join() === 'Night,Day,Dusk', `the Time row should offer Night, Day and Dusk: ${labels}`);
   expect((await pl.page.$eval('#opt-time .seg-btn[data-value="night"]', (b) => b.getAttribute('aria-checked'))) === 'true', 'Night should be selected first');
   await pl.page.click('#opt-time .seg-btn[data-value="day"]');
   await waitFor(pl, () => window.__HH.session.settings.time === 'day', null, 'Day picked');
@@ -1684,9 +1689,9 @@ async function scenarioCampaign(sc) {
   await pl.page.click('#btn-solo');
   await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
   const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
-  // The Mode row: three modes; Campaign plays on the highway, Checkpoint Delta and Harlan County.
+  // The Mode row: four modes; Campaign plays on the highway, Checkpoint Delta and Harlan County.
   const modes = await pl.page.$$eval('#opt-mode .seg-btn', (bs) => bs.map((b) => b.dataset.value));
-  expect(modes.join() === 'defend,zone,campaign', `the mode row should list defend, zone, campaign (got ${modes.join()})`);
+  expect(modes.join() === 'defend,zone,campaign,horde', `the mode row should list defend, zone, campaign, horde (got ${modes.join()})`);
   await pl.page.click('#opt-mode .seg-btn[data-value="campaign"]');
   await waitFor(pl, () => window.__HH.session.settings.mode === 'campaign', null, 'Campaign picked');
   expect((await settings()).mapId === 'highway', 'Campaign should keep the highway');
@@ -2431,6 +2436,95 @@ async function scenarioLevel(sc) {
   log(`    level fps: ${g3.pieces} gate models; the first gate opened in view`);
 }
 
+/**
+ * o. Horde Elimination (SPEC §3.12) solo with bots: the Mode row's Horde picks Sandstone by day (the
+ * waves and objective rows disabled), three bots; the buy time (the horde panel, the HUD's horde
+ * count), the first surge announced and let loose, the bots bring the horde's count down for an
+ * idle (unkillable) human; then the whole team falls: "Overrun" with the zombies that remained.
+ */
+async function scenarioHorde(sc) {
+  const pl = await sc.player('horde');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Holdout', cls: 'soldier' });
+  await pl.page.click('#btn-solo');
+  await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
+  await pl.page.click('#opt-mode .seg-btn[data-value="horde"]');
+  await waitFor(pl, () => window.__HH.session.settings.mode === 'horde', null, 'Horde Elimination picked');
+  const s = await pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
+  expect(s.mapId === 'sandstone' && s.time === 'day', `Horde should bring Sandstone by day: ${JSON.stringify(s)}`);
+  const rows = await pl.page.evaluate(() => ['#opt-waves', '#opt-objective'].map((id) => [...document.querySelectorAll(`${id} .seg-btn`)].every((b) => b.getAttribute('aria-disabled') === 'true')));
+  expect(rows[0] && rows[1], `the waves and objective rows should be disabled in Horde Elimination: ${rows}`);
+  const tag = await pl.page.textContent('.map-card[data-map="sandstone"] .map-modes');
+  expect(/horde/i.test(tag), `the Sandstone card should name its modes ("${tag}")`);
+  for (let i = 0; i < 3; i++) await pl.page.click('#btn-add-bot');
+  await waitFor(pl, () => document.querySelectorAll('#roster .roster-row').length === 4, null, 'four roster rows');
+  await sc.screenshots('-lobby');
+  await pl.page.click('#btn-start');
+  await waitFor(pl, () => !document.querySelector('#screen-game').hidden && window.__HH.getView() && window.__HH.getView().players.length === 4, null, 'the horde game', 60e3);
+
+  // The buy time: the horde block, the panel, the wave panel counting the horde.
+  const prep = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const panel = document.querySelector('#hud .hud-horde');
+    return v.horde && panel && !panel.hidden && panel.textContent ? {
+      phase: v.phase, horde: v.horde, objective: v.objective, panel: panel.textContent,
+      label: document.querySelector('#hud .wave-label').textContent, num: document.querySelector('#hud .wave-num').textContent,
+    } : false;
+  }, null, 'the horde panel', 20e3);
+  log(`    horde: ${prep.horde.total} zombies in ${prep.horde.surges} surges, panel "${prep.panel.replace(/\s+/g, ' ').trim()}"`);
+  expect(prep.phase === 'prep' && prep.objective === null, `buy time without an objective: ${JSON.stringify(prep)}`);
+  expect(prep.horde.total >= 150 && prep.horde.left === prep.horde.total, `the whole horde is to come: ${JSON.stringify(prep.horde)}`);
+  expect(/HORDE/.test(prep.label) && Number(prep.num) === prep.horde.total, `the wave panel counts the horde: ${prep.label} ${prep.num}`);
+  // The human stands idle and can't die (the host runs the sim in this page); the bots fight.
+  await pl.page.evaluate(() => {
+    const H = window.__HH;
+    const g = H.session.game;
+    window.__e2eGod = setInterval(() => { const me = g.getPlayer(H.session.localId); if (me && me.state === 'alive') me.hp = me.maxHp; }, 200);
+  });
+  await pl.page.keyboard.press('KeyN');
+  await waitFor(pl, () => window.__HH.getView().phase === 'wave', null, 'the round (bots ready after the human)', 10e3);
+  const surge = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const panel = document.querySelector('#hud .hud-horde');
+    return v.horde.surge >= 1 && v.zombies.length > 0 ? { horde: v.horde, panel: panel.textContent } : false;
+  }, null, 'the first surge on the streets', 40e3);
+  log(`    horde: surge ${surge.horde.surge} from lanes ${surge.horde.lanes.toString(2)}, panel "${surge.panel.replace(/\s+/g, ' ').trim()}"`);
+  expect(/SURGE/.test(surge.panel), `the panel should name the surge: "${surge.panel}"`);
+  const fell = await waitFor(pl, () => {
+    const v = window.__HH.getView();
+    const kills = v.players.reduce((a, p) => a + p.kills, 0);
+    return v.horde.total - v.horde.left >= 10 && kills >= 10 ? { left: v.horde.left, total: v.horde.total, kills, up: v.players.filter((p) => p.state !== 'dead').length } : false;
+  }, null, 'the bots to bring the horde down', 120e3);
+  log(`    horde: ${fell.left} of ${fell.total} left after ${fell.kills} kills, ${fell.up} standing`);
+  const hudNum = Number((await pl.page.textContent('#hud .wave-num')).trim());
+  expect(hudNum <= fell.total - 10, `the HUD's count should fall with the horde (${hudNum})`);
+  await sc.screenshots('-round');
+
+  // Everyone falls: no respawns, the round is lost, the end screen says what was left.
+  await pl.page.evaluate(async () => {
+    clearInterval(window.__e2eGod);
+    const { damagePlayer } = await import('/js/shared/sim/players.js');
+    const g = window.__HH.session.game;
+    for (const p of g.players) {
+      if (p.state === 'alive') damagePlayer(g, p, 1e6, p.x, p.y);
+      p.selfRevive = false;
+      if (p.state === 'downed') p.bleedout = 0.05;
+    }
+  });
+  const end = await waitFor(pl, () => {
+    const el = document.querySelector('#screen-game .end-screen, #end');
+    const title = document.querySelector('#end-title');
+    return title && title.textContent && !document.querySelector('#end-title').closest('[hidden]')
+      ? { title: title.textContent, sub: document.querySelector('#end-sub').textContent, summary: document.querySelector('#end-summary').textContent, el: !!el }
+      : false;
+  }, null, 'the end screen', 30e3);
+  log(`    horde end: "${end.title}" — ${end.sub}`);
+  expect(/overrun/i.test(end.title) && /remained/.test(end.sub) && /Zombies remaining/i.test(end.summary), `the defeat screen: ${JSON.stringify(end)}`);
+  const dead = await pl.page.evaluate(() => window.__HH.getView().players.map((p) => [p.state, p.respawn]));
+  expect(dead.every(([st, re]) => st === 'dead' && !re), `nobody respawns: ${JSON.stringify(dead)}`);
+  await sc.screenshots('-end');
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -2446,6 +2540,7 @@ const SCENARIOS = [
   ['l', 'story-loop', scenarioStoryLoop, 200e3],
   ['m', 'story', scenarioStory, 300e3],
   ['n', 'level', scenarioLevel, 600e3],
+  ['o', 'horde', scenarioHorde, 300e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

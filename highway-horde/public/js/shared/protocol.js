@@ -296,6 +296,7 @@ const ENUMS = {
   objective: ['start', 'progress', 'done', 'fail'],
   radioKind: ['radio', 'say'],
   npcWhat: ['down', 'up', 'dead', 'arrive'],
+  surge: ['next', 'go'],
 };
 
 const EVENT_SCHEMAS = [
@@ -354,6 +355,8 @@ const EVENT_SCHEMAS = [
   ['lights', [['section', 'str'], ['on', 'bool']]],
   ['checkpoint', [['section', 'str']]],
   ['horde', [['x', 'pos'], ['y', 'pos'], ['n', 'u16']]],
+  // Horde Elimination (SPEC §3.12): the next surge announced (its lanes, a boss in it, whole s to go) / let loose
+  ['surge', [['what', ENUMS.surge], ['n', 'u16'], ['lanes', 'u16'], ['boss', 'bool'], ['time', 'u16']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */
@@ -543,7 +546,7 @@ function readEvents(r) {
 // ---- snapshot
 
 const P_SPRINTING = 1, P_FIRING = 2, P_SELF_REVIVE = 4, P_RESPAWN = 8, P_READY = 16, P_SPRINT_LOCK = 32, P_ESCAPED = 64;
-const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8, H_STORY = 16, H_LEVEL = 32;
+const H_OBJECTIVE = 1, H_ECHO = 2, H_ZONE = 4, H_CAMPAIGN = 8, H_STORY = 16, H_LEVEL = 32, H_HORDE = 64;
 /** Most gates a level block carries. */
 const LEVEL_GATES = 32;
 /** Story block parts (its own flags byte). */
@@ -745,6 +748,32 @@ function readCampaign(r) {
     front: r.f32(),
     kills: r.u16(), quota: r.u16(), zip: r.u8(),
     sx: dqPos(r.u16()), sy: dqPos(r.u16()),
+  };
+}
+
+/**
+ * Horde Elimination state (SPEC §4 `horde`, 20 bytes): the horde's size, how many are left (still to
+ * come + alive) and alive, the surge and the surge count, the type tier, the stage, the stage timer
+ * (0.01 s), the lanes of the current / next surge (bit mask) and the round's clock (f32 s).
+ */
+function writeHorde(w, h) {
+  w.u16(qInt(h.total, 65535));
+  w.u16(qInt(h.left, 65535));
+  w.u16(qInt(h.alive, 65535));
+  w.u8(qInt(h.surge, 255));
+  w.u8(qInt(h.surges, 255));
+  w.u8(qInt(h.tier, 255));
+  w.u8(qInt(h.stage, 255));
+  w.u16(qFixed(h.next, 100, 65535));
+  w.u16(qInt(h.lanes, 65535));
+  w.f32(num(h.time));
+}
+
+function readHorde(r) {
+  return {
+    total: r.u16(), left: r.u16(), alive: r.u16(),
+    surge: r.u8(), surges: r.u8(), tier: r.u8(), stage: r.u8(),
+    next: r.u16() / 100, lanes: r.u16(), time: r.f32(),
   };
 }
 
@@ -976,8 +1005,9 @@ export function encodeSnapshot(snap) {
   const npcs = arr(snap.npcs), ints = arr(snap.interactables);
   const storyBits = (story ? SB_STORY : 0) | (npcs.length ? SB_NPCS : 0) | (ints.length ? SB_INTS : 0);
   const level = snap.level && typeof snap.level === 'object' ? snap.level : null;
+  const horde = snap.horde && typeof snap.horde === 'object' ? snap.horde : null;
   w.u8((obj ? H_OBJECTIVE : 0) | (echo.length ? H_ECHO : 0) | (zone ? H_ZONE : 0) | (campaign ? H_CAMPAIGN : 0) | (storyBits ? H_STORY : 0)
-    | (level ? H_LEVEL : 0));
+    | (level ? H_LEVEL : 0) | (horde ? H_HORDE : 0));
   w.u8(qInt(snap.match, 255));
   w.u32(qInt(snap.tick, 0xffffffff));
   w.u8(kindIndex(PHASE_INDEX, snap.phase));
@@ -1000,6 +1030,7 @@ export function encodeSnapshot(snap) {
     if (ints.length) writeInteractables(w, ints);
   }
   if (level) writeLevel(w, level, snap.tick);
+  if (horde) writeHorde(w, horde);
 
   const players = arr(snap.players);
   const np = Math.min(players.length, 255);
@@ -1126,6 +1157,7 @@ export function decodeSnapshot(buf) {
     campaign: null,
     story: null,
     level: null,
+    horde: null,
     npcs: [],
     interactables: [],
     players: null,
@@ -1150,6 +1182,7 @@ export function decodeSnapshot(buf) {
     if (bits & SB_INTS) snap.interactables = readInteractables(r);
   }
   snap.level = flags & H_LEVEL ? readLevel(r, snap.tick) : null;
+  snap.horde = flags & H_HORDE ? readHorde(r) : null;
 
   const np = r.u8();
   const players = new Array(np);

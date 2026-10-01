@@ -7,8 +7,8 @@ import {
 } from '../shared/constants.js';
 import { CLASS_IDS } from '../shared/classes.js';
 import { MAP_LIST } from '../shared/maps.js';
-import { MODE_IDS, fixModeCombo } from '../shared/zone.js';
-import { TIME_IDS, fixTimeCombo } from '../shared/timeofday.js';
+import { MODE_IDS, MODE_LIST, fixModeCombo, mapSupportsMode } from '../shared/zone.js';
+import { TIME_IDS, fixTimeCombo, defaultTimeOf } from '../shared/timeofday.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { ITEMS } from '../shared/items.js';
 
@@ -157,7 +157,13 @@ export function mergeSettings(current, patch) {
   const mapPicked = MAP_LIST.some((m) => m.id === patch.mapId);
   const modePicked = MODE_IDS.includes(patch.mode);
   if (mapPicked) out.mapId = patch.mapId;
-  if (modePicked) out.mode = patch.mode;
+  if (modePicked) {
+    // switching to a mode made for one map goes there (Horde Elimination: Sandstone); the other
+    // maps that play it stay a click away on the map cards
+    const home = patch.mode !== out.mode && !mapPicked ? (MODE_LIST.find((m) => m.id === patch.mode) || {}).map : null;
+    if (home && mapSupportsMode(home, patch.mode)) out.mapId = home;
+    out.mode = patch.mode;
+  }
   // A map that doesn't play the mode (Harlan County is Evac Run only): the pick wins, the
   // other setting follows it.
   const fixed = fixModeCombo(out.mapId, out.mode, modePicked && !mapPicked ? 'mode' : 'map');
@@ -166,6 +172,9 @@ export function mergeSettings(current, patch) {
   // Same for the time of day (a day-only map): the pick wins, the other setting follows.
   const timePicked = TIME_IDS.includes(patch.time);
   if (timePicked) out.time = patch.time;
+  // a map with a time of its own (Sandstone: day) switches to it when it is picked, or when
+  // picking a mode brought it (Horde Elimination → Sandstone)
+  else if ((mapPicked || out.mapId !== (current && current.mapId)) && defaultTimeOf(out.mapId)) out.time = defaultTimeOf(out.mapId);
   const tfix = fixTimeCombo(out.mapId, out.time, timePicked && !mapPicked ? 'time' : 'map');
   out.mapId = tfix.mapId;
   out.time = tfix.time;
