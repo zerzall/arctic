@@ -520,7 +520,7 @@ function school(B) {
   // ---- outside: the bus in the loop, the flag, the sign, the portables (their roof), the court, the playground
   ob(B, 'bus', 'hc-schoolbus', 1500, 900, 250, 62, 0.04, { sec, color: '#e3a41a' });
   B.anchor('school_bus', 1500, 1030, 150);
-  prop(B, 'hc-schoolsign', 2350, 1060, 0);
+  prop(B, 'hc-schoolsign', 2470, 1140, -HALF);
   prop(B, 'hc-flag', 1280, 720, 0);
   for (const x of [700, 980]) ob(B, 'container', 'hc-portable', x, 1780, 240, 110, 0, { sec, color: '#d8d0bc' });
   ob(B, 'container', 'hc-dumpster', 1180, 1760, 64, 36, HALF, { sec, color: '#2e5d3a' });
