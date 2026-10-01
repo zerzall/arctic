@@ -763,7 +763,7 @@ function extras(sb, P, L, type) {
     const onBelly = (x, y, z) => { const l = Math.hypot(x, y, z); const p = { x: x / l, y: y / l, z: z / l }; bellyDef(p); return [bc[0] + p.x * br[0], bc[1] + p.y * br[1], bc[2] + p.z * br[2]]; };
     sb.ellipsoid(bc, br, {
       segW: L === 0 ? dq(26) : L === 1 ? 14 : 8, segH: L === 0 ? dq(18) : L === 1 ? 10 : 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0ece0', bone: B.X1, part: L < 2 ? PART.TORSO : PART.NONE,
-      paint: (x, y) => (y < 26 ? 0.55 : 0.2), deform: bellyDef,
+      paint: (x, y) => (y < 25 ? 0.28 : 0.06), deform: bellyDef,
     });
     if (L < 2) {
       for (let k = 0; k < (L === 0 ? 14 : 7); k++) {

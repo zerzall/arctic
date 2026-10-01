@@ -60,6 +60,47 @@ vec2 zRelief(vec3 p, int part) {
   float g = uBody.w;
   return vec2((rib * w * 0.24 - 0.1 * stern) * g, ((1.0 - rib) * w + stern * 0.6) * min(1.0, g));
 }
+// a wound on a corpse (in place of the survivors' painted disc): a ragged outline, bruised
+// skin round it, a dark coagulated crust at the edge, raw flesh gone dark and dull inside,
+// wet only toward the middle and less so the longer it has been dead (age = rot)
+void zWoundPaint(vec4 W, float d, float age, inout vec3 col, inout float wet, inout vec3 glow) {
+  if (W.w <= 0.0) return;
+  float type = floor(W.w / 8.0);
+  if (type > 4.5) { hhWoundPaint(W, d, col, wet, glow); return; }
+  float r = W.w - type * 8.0;
+  d += (hhD.a - 0.5) * 0.42 + (hhD.g - 0.5) * 0.2;
+  if (d > 1.75) return;
+  float halo = smoothstep(1.75, 1.0, d);
+  col = mix(col, col * vec3(0.56, 0.43, 0.48), halo * 0.5);
+  float crust = smoothstep(1.22, 0.98, d);
+  col = mix(col, vec3(0.05, 0.022, 0.015) * (0.75 + hhD.r * 0.5), crust * 0.88);
+  zDry = max(zDry, crust * smoothstep(0.62, 0.9, d));
+  float rim = smoothstep(0.98, 0.8, d);
+  vec3 fl = type > 3.5 ? vec3(0.03, 0.025, 0.02) : mix(vec3(0.16, 0.03, 0.028), vec3(0.09, 0.03, 0.022), age) * (0.6 + hhD.b * 0.7);
+  col = mix(col, fl, rim * 0.92);
+  float core = smoothstep(0.64, 0.3, d);
+  if (type < 0.5) col = mix(col, vec3(0.07, 0.006, 0.008), core);
+  else if (type < 1.5) {
+    col = mix(col, vec3(0.05, 0.006, 0.008), smoothstep(0.78, 0.56, d));
+    col = mix(col, vec3(0.7, 0.64, 0.5) * (0.7 + hhD.r * 0.5), smoothstep(0.44, 0.3, d));
+  } else if (type < 2.5) {
+    vec3 dv2 = vMP - W.xyz;
+    float ang = atan(dv2.y, dv2.z + dv2.x * 0.8);
+    float ring = smoothstep(0.2, 0.0, abs(d - 0.62));
+    float teeth = smoothstep(0.55, 0.95, cos(ang * 7.0));
+    col = mix(col, vec3(0.035, 0.0, 0.004), ring * teeth * 0.95);
+    col = mix(col, vec3(0.08, 0.008, 0.01), core * 0.6);
+  } else if (type < 3.5) {
+    col = mix(col, vec3(0.03, 0.0, 0.004), smoothstep(0.55, 0.3, d));
+    vec3 dv = vMP - W.xyz;
+    float st = smoothstep(r * 0.5, 0.0, abs(dv.z) + abs(dv.x) * 0.6) * step(dv.y, 0.0) * smoothstep(-r * 5.0, -r * 0.5, dv.y);
+    col = mix(col, vec3(0.1, 0.008, 0.01), st * 0.85);
+    wet = max(wet, st * 0.6 * (1.0 - age * 0.6));
+  } else {
+    col = mix(col, vec3(0.012, 0.01, 0.009), smoothstep(0.9, 0.5, d));
+  }
+  wet = max(wet, smoothstep(0.9, 0.45, d) * (type > 3.5 ? 0.15 : 0.6 * (1.0 - age * 0.55)));
+}
 `;
 
 /**
@@ -83,7 +124,11 @@ export const Z_CUTS = /* glsl */`
       float top = cut - 0.15;
       float bot = top - len + (hhD.r - 0.5) * 1.4;
       if (vMP.y > top || vMP.y < bot) discard;
-      // ragged sides and a frayed end
+      // torn into tongues (narrowing toward the end, a slit between neighbours: no square
+      // flaps), ragged sides and a frayed end
+      float fs = abs(fract((ang + 3.1416) / 0.3) - 0.5);
+      float along = clamp((top - vMP.y) / max(top - bot, 0.1), 0.0, 1.0);
+      if (fs > 0.47 - along * (0.2 + hs * 0.16) + (hhD.g - 0.5) * 0.08) discard;
       if (hhD.a * 0.65 + hhD.g * 0.35 > 0.74 - 0.12 * smoothstep(bot + 1.0, bot, vMP.y)) discard;
       garment = true;
       hemEdge = min(vMP.y - bot, 1.2);
@@ -147,8 +192,8 @@ export const Z_SHADE = /* glsl */`
     float dirt = smoothstep(24.0, 2.0, vMP.y) * (0.3 + hhD.b * 0.8) + (hhPart == 5 ? hhD.b * 0.7 : 0.0) + hhD.b * 0.12;
     c = mix(c, c * vec3(0.5, 0.42, 0.32), clamp(dirt, 0.0, 1.0) * 0.72);
     diffuseColor.rgb = c;
-    hhWoundPaint(wA, dA, diffuseColor.rgb, hhWet, hhGlow);
-    hhWoundPaint(wB, dB, diffuseColor.rgb, hhWet, hhGlow);
+    zWoundPaint(wA, dA, rot, diffuseColor.rgb, hhWet, hhGlow);
+    zWoundPaint(wB, dB, rot, diffuseColor.rgb, hhWet, hhGlow);
     // dead skin: barely any light gets under it
     hhSSS = 0.22; hhSSSCol = vec3(0.3, 0.26, 0.24);
     zSpec = 0.5;
@@ -201,7 +246,7 @@ export const Z_SHADE = /* glsl */`
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.5, 0.42), hhD.b * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.45, 0.4, 0.32), smoothstep(12.0, 1.0, vMP.y) * 0.5);
     if (hhM == 3 && hhPart == 5) {
-      hhWoundPaint(wA, dA, diffuseColor.rgb, hhWet, hhGlow);
+      zWoundPaint(wA, dA, rot, diffuseColor.rgb, hhWet, hhGlow);
     }
     zSpec = hhM == 3 ? 0.6 : 0.4;
   } else if (hhM == 4) {
@@ -262,10 +307,10 @@ export const Z_BLOOD = /* glsl */`
   if (hhM != 7 && hhM != 8 && hhM != 13) {
     // fresh (red, wet) on the newly dead and where it still runs; old blood dries to a brown-black crust
     float fresh = clamp((1.0 - rot) * 0.8 + smoothstep(0.75, 1.0, vI.y) * 0.3 - bib * 0.3, 0.0, 1.0);
-    vec3 bc = mix(vec3(0.05, 0.018, 0.011), vec3(0.11, 0.01, 0.008), fresh);
+    vec3 bc = mix(vec3(0.05, 0.018, 0.011), vec3(0.085, 0.009, 0.007), fresh);
     bc = mix(bc, bc * 0.55, hhD.b * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, bc, bm * 0.94);
-    hhWet = max(hhWet, bm * fresh * 0.8);
+    hhWet = max(hhWet, bm * fresh * smoothstep(0.5, 0.75, bl) * 0.7);
     zDry = max(zDry, bm * (1.0 - fresh));
   }
 `;
