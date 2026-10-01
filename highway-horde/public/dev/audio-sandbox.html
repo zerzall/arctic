@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Sandbox</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; --bg: #111418; --panel: #1b2027; --text: #d8dee6; --muted: #8a96a3; --accent: #ffb74d; --ok: #81c784; --bad: #e57373; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  h2 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .panel { background: var(--panel); border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  input, select, button { font: inherit; background: #0d1014; color: var(--text); border: 1px solid #333b45; border-radius: 4px; padding: 3px 8px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: #3a2e14; border-color: var(--accent); color: var(--accent); }
+  button.big { padding: 6px 12px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  canvas { background: #0a0c0f; border-radius: 4px; display: block; max-width: 100%; }
+  .muted { color: var(--muted); }
+  .stat { font: 12px/1.5 ui-monospace, monospace; }
+  .stat b { color: var(--accent); font-weight: 600; }
+  #voicebar { height: 8px; background: #0a0c0f; border-radius: 4px; overflow: hidden; width: 220px; }
+  #voicebar div { height: 100%; width: 0; background: var(--ok); transition: width 80ms; }
+  label.slider { display: inline-flex; gap: 6px; align-items: center; }
+  label.slider input { width: 110px; padding: 0; }
+  .cat { margin-bottom: 6px; }
+  .cat span { display: inline-block; width: 70px; color: var(--muted); font-size: 11px; }
+  .cat button { font-size: 12px; padding: 2px 6px; margin: 1px; }
+  pre { margin: 0; white-space: pre-wrap; font: 12px/1.35 ui-monospace, monospace; max-height: 220px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>Highway Horde · audio sandbox <span id="state" class="muted">locked</span></h1>
+
+<div class="panel">
+  <div class="row">
+    <button id="unlock" class="big">Unlock audio</button>
+    <label class="slider">Master <input id="volMaster" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    <label class="slider">SFX <input id="volSfx" type="range" min="0" max="1" step="0.01" value="1"></label>
+    <label class="slider">Music <input id="volMusic" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+    <label><input id="mute" type="checkbox"> Mute</label>
+  </div>
+  <div class="row stat">
+    <span>voices <b id="voices">0</b>/<span id="maxVoices">24</span> (max seen <b id="maxSeen">0</b>)</span>
+    <div id="voicebar"><div></div></div>
+    <span>loops <b id="loops">0</b></span>
+    <span>played <b id="played">0</b></span>
+    <span>stolen <b id="stolen">0</b></span>
+    <span>dropped <b id="dropped">0</b></span>
+    <span>limited <b id="limited">0</b></span>
+    <span>baked <b id="baked">0</b></span>
+    <span>music <b id="music">-</b></span>
+    <span>errors <b id="errors">0</b></span>
+  </div>
+  <canvas id="spark" width="600" height="40" style="width:600px;height:40px"></canvas>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="panel">
+      <h2>Scenarios</h2>
+      <div class="row">
+        <button id="stress" class="big">Minigun into horde (8 s)</button>
+        <button id="battle" class="big">Battle loop</button>
+        <button id="playAll">Play every sound</button>
+        <button id="stopAll">Stop scenarios</button>
+      </div>
+      <div class="row">
+        <label>Phase <select id="phase"><option>prep</option><option selected>wave</option><option>intermission</option><option>gameover</option><option>victory</option></select></label>
+        <label>Horde <input id="horde" type="range" min="0" max="250" step="1" value="0" style="width:120px"> <span id="hordeN">0</span></label>
+      </div>
+      <div class="row">
+        <button data-toggle="minigun">Minigun (you)</button>
+        <button data-toggle="flame">Flamethrower (you)</button>
+        <button data-toggle="flameRemote">Flamethrower (emitter)</button>
+        <button data-toggle="fire">Fire hazard (emitter)</button>
+        <button data-toggle="acid">Acid pool (emitter)</button>
+        <button data-toggle="lowhp">Low HP</button>
+        <button data-toggle="downed">Downed</button>
+        <button data-toggle="boss">Boss alive</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Emitter position <span class="muted">(click; circle = 1600 px audible range; you are the centre)</span></h2>
+      <canvas id="pad" width="440" height="270"></canvas>
+      <div class="row muted" id="emitterInfo"></div>
+    </div>
+    <div class="panel">
+      <h2>Offline levels</h2>
+      <div class="row"><button id="measure">Measure (OfflineAudioContext)</button></div>
+      <pre id="levels" class="muted">-</pre>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <h2>Guns <span class="muted">(click = you fire; shift-click = teammate at emitter)</span></h2>
+      <div id="guns" class="row"></div>
+    </div>
+    <div class="panel">
+      <h2>Game events <span class="muted">(fixtures at the emitter)</span></h2>
+      <div id="events" class="row"></div>
+    </div>
+    <div class="panel">
+      <h2>UI</h2>
+      <div id="ui" class="row"></div>
+    </div>
+    <div class="panel">
+      <h2>Raw sounds <span class="muted">(click = at emitter; shift-click = centred)</span></h2>
+      <div id="sounds"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="audio-sandbox.js"></script>
+</body>
+</html>
