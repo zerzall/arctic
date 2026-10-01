@@ -30,7 +30,7 @@ export const LV_CELLS = {
   mr_office: [256, 64], mr_slow: [128, 160], mr_poolrules: [128, 192], mr_ozzy: [256, 128], mr_haskell: [512, 128], mr_closed: [256, 192],
   mr_millrd: [256, 64], mr_gas2: [256, 128], mr_shadysign: [256, 128], mr_rhsign: [256, 128], mr_deke: [256, 128], mr_ambulance: [256, 64],
   mr_flammable: [128, 128], mr_wash: [256, 64], mr_reefer: [512, 128], mr_agair: [256, 64], mr_harvest: [128, 32], mr_lotto: [128, 64],
-  mr_radio: [256, 128], mr_parkmap: [256, 192], mr_hours: [128, 128], mr_beer: [128, 64], mr_evac: [256, 128], mr_tagx: [128, 64],
+  mr_radio: [256, 128], mr_parkmap: [256, 192], mr_hours: [128, 128], mr_beer: [128, 64], mr_evac: [256, 128], mr_tagx: [128, 64], mr_rhboard: [512, 128],
 };
 
 // Which level a cell belongs to: the atlas holds the common cells plus the active level's own (one
@@ -685,6 +685,13 @@ const PAINT = {
     fit(g, 'DO NOT STOP  -  DO NOT', w / 2, 88, w * 0.9, 14, { color: '#c62828', font: COND });
     fit(g, 'APPROACH THE INFECTED', w / 2, 106, w * 0.9, 14, { color: '#c62828', font: COND });
     weather(g, w, h, r, 0.7);
+  },
+  mr_rhboard(g, w, h, r) {
+    // the board over the Roadhouse's gate: plywood, hand-painted
+    board(g, w, h, '#b9955a', r, 3);
+    paint(g, 'ROADHOUSE', w / 2, h * 0.36, w * 0.8, h * 0.42, '#7a1a2a', r);
+    paint(g, 'SURVIVORS WELCOME - NO BITES - NO GUNS DRAWN', w / 2, h * 0.76, w * 0.9, h * 0.16, '#1a1a1a', r, { drips: 0.05 });
+    weather(g, w, h, r, 0.8);
   },
   mr_tagx(g, w, h, r) { g.clearRect(0, 0, w, h); spray(g, 'EMPTY', w / 2, h / 2, w * 0.9, h * 0.7, '#e04a1a', r); },
 };

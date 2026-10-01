@@ -376,8 +376,8 @@ function rhgateframe(P) {
   const [lx, ly] = toWorld(o, w / 2 + 40, 20);
   lantern(B, halos, w / 2 + 40, 123, 20, lx, ly, { h: 9, halo: 60, strength: 0.6 });
   // HAVEN OR BUST over the gate
-  pic(B, 'p_haven', 0, 150, 0.9, 150, 37.5, 0);
-  pic(B, 'p_haven', 0, 150, -0.9, 150, 37.5, PI);
+  sign(B, 'mr_rhboard', 0, 150, 0.9, 150, 37.5, 0);
+  sign(B, 'mr_rhboard', 0, 150, -0.9, 150, 37.5, PI);
   B.box('std', 0, 150, 0, 156, 42, 1.4, '#6a4a30', null, WOOD);
 }
 
