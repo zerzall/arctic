@@ -506,6 +506,9 @@ function lumbermill(B) {
   for (const x of [9650, 9950, 10250]) B.light(x, HY, 240, '#ffd49a', 0.3, 170);
   // the wigwam burner and the conveyor up to it
   ob(B, 'silo', 'bp-burner', 10550, 1000, 240, 240, 0, { sec, color: '#5a4a40' });
+  // the burner still smoulders: a glow in its cone (the fire inside lights the yard by night)
+  B.fire(10550, 1000, 22);
+  B.light(10550, 1000, 420, '#ff8a3a', 0.45, 260);
   prop(B, 'bp-conveyor', 10450, 1500, 0);
   // the office
   room(B, {
@@ -521,6 +524,10 @@ function lumbermill(B) {
   B.box('water', 10000, 3150, 10700, 3550);
   prop(B, 'bp-pondlogs', 10350, 3350, 0, { w: 700, h: 400 });
   B.lamp(9300, 1650, { a: 0, r: 300, dead: false });
+  // floodlights over the yard and the decks
+  B.lamp(9800, 1340, { a: -HALF, r: 340, dead: false });
+  B.lamp(10300, 1700, { a: PI, r: 320, dead: false });
+  B.lamp(9350, 2850, { a: 0, r: 300 });
   B.lamp(10600, 2650, { a: PI, r: 280 });
   // the barrier with the farm: the board fence of the Harlan place, the panel the crew pushes in
   fence(B, X5, 0, X5, H, 'farmfence', [[2700, 2900, null]], { sec, t: 16 });

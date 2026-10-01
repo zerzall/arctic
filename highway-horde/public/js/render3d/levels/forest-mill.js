@@ -164,6 +164,13 @@ function burner(P) {
   B.add('std', T.cyl(28, 0.3, true), [0, 8 + H / 2, 0], [R, H, R], null, '#7a4a30', { surf: [DET.rust, 0.7, 0.5], map: 'cyl' });
   for (let k = 1; k < 6; k++) { const y = 8 + (k / 6) * H, rr = R * (1 - 0.7 * (k / 6)); B.add('std', T.torus(28, 0.02, 3), [0, y, 0], [rr + 0.6, rr + 0.6, rr + 0.6], [HALF, 0, 0], '#5a3424', RUSTY); }
   B.add('fence', T.sphere(18, 8), [0, 8 + H, 0], [R * 0.3, R * 0.2, R * 0.3], null, '#5a5a58', { uvScale: [6, 3] });
+  // the embers under the screen and through the door (by night a glow; by day a haze of smoke does it)
+  if (!P.day) {
+    B.add('glow', T.sphere(14, 8), [0, 8 + H - 4, 0], [R * 0.26, R * 0.12, R * 0.26], null, '#ff7a2a', { emissive: 1.8, uv: atlasUV('white'), noAO: true, noJitter: true });
+    B.box('glow', 0, 26, R + 1.4, 12, 38, 0.6, '#ff6a1a', null, { emissive: 1.4, uv: atlasUV('white'), noAO: true, noJitter: true });
+    const [wx, wy] = toWorld(o, 0, 0);
+    P.halos.push({ x: wx, y: wy, h: 8 + H, color: '#ff7a2a', size: 160, strength: 0.5, flicker: 0.4 });
+  }
   B.box('std', 0, 26, R - 2, 40, 44, 6, '#3a2a20', null, RUSTY);
   B.box('std', 0, 260, -R * 0.5, 30, 24, 30, '#5a4434', [0.4, 0, 0], RUSTY);
   for (let k = 0; k < 8; k++) { const th = (k / 8) * PI * 2; decal(B, 'grime', Math.sin(th) * R * 0.86, H * 0.4, Math.cos(th) * R * 0.86, 90, H * 0.6, th, { rx: -0.25 }); }
