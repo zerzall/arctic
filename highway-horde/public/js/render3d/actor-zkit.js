@@ -3,7 +3,11 @@
 // Every piece is tagged with its option name (`opt`), so it lives in the model's single
 // vertex buffer and the rig shader collapses it unless the instance's look (actor-zlook.js)
 // switched it on. Coordinates are model space (+X forward, +Y up, +Z right, feet at y = 0)
-// derived from the type's proportions P; L is the level of detail (0 near .. 2 far).
+// derived from the type's proportions P; L is the level of detail (0 near .. 2 far). Gear
+// worn on the top sits on its shell (P.frontX / backX / sideZ / shellX / crestY): straps,
+// cords and sashes run up the front, over the crest of the shoulder and down the back a hair
+// off the cloth, so nothing cuts through a shirt. The nose is an option too: most zombies
+// still wear theirs over the skull's rotted cavity.
 //
 // Several looks share one group and differ by a per-instance parameter the shader reads:
 // the cap is a visor when its crown is cut away, hair strands are long, shoulder-length,
@@ -53,9 +57,11 @@ function domeDeform(cutY, front) {
 function hats(sb, P, L, has) {
   const c = P.headC, r = P.headR;
   const W = L === 0 ? 10 : 8, H = L === 0 ? 6 : 5;
-  const dome = (g, y0, k, o, cut = -0.05, front = 0.2) => g.ell([c[0] - 0.2, c[1] + y0, 0], [r[0] * k, r[1] * k * 0.95, r[2] * k * 1.02], { segW: W, segH: H, bone: B.HEAD, deform: domeDeform(cut, front), ...o });
-  const brim = (g, x, y, w, d, o = {}) => g.ell([c[0] + x, c[1] + y, 0], [d, 0.28, w], { segW: 8, segH: 3, bone: B.HEAD, deform: (p) => { if (p.x < 0) p.x *= 0.25; }, ...o });
-  const band = (g, y0, y1, kx, kz, o = {}) => g.tube([{ c: [c[0] - 0.2, c[1] + y0, 0], rx: r[0] * kx, rz: r[2] * kz }, { c: [c[0] - 0.2, c[1] + y1, 0], rx: r[0] * kx, rz: r[2] * kz }], { seg: W, bone: B.HEAD, ...o });
+  // (laid out on a 4.5-high skull: offsets and brims scale with the type's head)
+  const hk = r[1] / 4.5;
+  const dome = (g, y0, k, o, cut = -0.05, front = 0.2) => g.ell([c[0] - 0.2, c[1] + y0 * hk, 0], [r[0] * k, r[1] * k * 0.95, r[2] * k * 1.02], { segW: W, segH: H, bone: B.HEAD, deform: domeDeform(cut, front), ...o });
+  const brim = (g, x, y, w, d, o = {}) => g.ell([c[0] + x, c[1] + y * hk, 0], [d * hk, 0.28, w * hk], { segW: 8, segH: 3, bone: B.HEAD, deform: (p) => { if (p.x < 0) p.x *= 0.25; }, ...o });
+  const band = (g, y0, y1, kx, kz, o = {}) => g.tube([{ c: [c[0] - 0.2, c[1] + y0 * hk, 0], rx: r[0] * kx, rz: r[2] * kz }, { c: [c[0] - 0.2, c[1] + y1 * hk, 0], rx: r[0] * kx, rz: r[2] * kz }], { seg: W, bone: B.HEAD, ...o });
   if (has('hat_cap')) {
     // baseball cap; as a visor the crown (PART.CROWN) is cut away per instance
     const g = grp(sb, 'hat_cap', { slot: SLOT.GEAR, mat: MAT.CLOTH, part: PART.HAT });
@@ -137,22 +143,25 @@ function hair(sb, P, L, has, headDef, cin = false) {
     });
   }
   if (has('hair_strands')) {
-    // long strands from the crown and the back; the instance cuts them to length
-    const n = L ? 6 : cin ? 72 : 18;
+    // long strands from the crown and the back, lank and thin (the shader splits each into
+    // clumps and the instance cuts them to length)
+    const n = L ? 6 : cin ? 96 : 30;
+    const hk = r[1] / 4.5;
     for (let i = 0; i < n; i++) {
       const h1 = ((i * 0.618034) % 1), h2 = ((i * 0.414214 + 0.3) % 1);
       const lon = Math.PI * (cin ? 0.28 : 0.32) + (i / (n - 1)) * Math.PI * (cin ? 1.44 : 1.36);
-      const lat = cin ? 0.18 + h2 * 0.55 : 0.28 + h2 * 0.4;
+      const lat = cin ? 0.18 + h2 * 0.55 : 0.24 + h2 * 0.45;
       const ux = Math.cos(lon) * Math.cos(lat), uz = Math.sin(lon) * Math.cos(lat), uy = Math.sin(lat);
-      const root = on(ux, uy, uz, 0.97);
+      const root = on(ux, uy, uz, 0.96);
       const len = 17 * (0.8 + h1 * 0.3);
       const pts = [];
-      const nr = L ? 3 : cin ? 6 : 4;
-      const wob = cin ? Math.sin(i * 2.3) * 0.5 : 0;
+      const nr = L ? 3 : cin ? 6 : 5;
+      const wob = cin ? Math.sin(i * 2.3) * 0.5 : Math.sin(i * 2.3) * 0.25;
+      const w = L ? 1 : cin ? 0.55 : 0.62;
       for (let j = 0; j <= nr; j++) {
         const t = j / nr, sag = t * t;
-        pts.push({ c: [root[0] + ux * 0.35 * t - sag * 1.3, root[1] - len * sag - t * 0.8, root[2] + uz * 0.3 * t + sag * uz * 0.7 + wob * Math.sin(t * 3.1 + i)],
-          rx: cin ? 0.2 - t * 0.12 : 0.42 - t * 0.16, rz: cin ? (0.78 - t * 0.5) * (0.85 + h1 * 0.4) : (1.15 - t * 0.55) * 1.05, bone: t < 0.3 ? B.HEAD : t < 0.7 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+        pts.push({ c: [root[0] + ux * 0.22 * t * hk - sag * 1.2, root[1] - len * sag - t * 0.6, root[2] + uz * 0.2 * t * hk + sag * uz * 0.6 + wob * Math.sin(t * 3.1 + i)],
+          rx: (cin ? 0.12 - t * 0.06 : L ? 0.42 - t * 0.16 : 0.16 - t * 0.07) * hk, rz: (1.15 - t * 0.55) * w * (0.8 + h1 * 0.4) * hk, bone: t < 0.3 ? B.HEAD : t < 0.7 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
       }
       sb.tube(pts, { ...S, opt: 'hair_strands', part: PART.HAIR, seg: 4, subdiv: cin ? 2 : 1, cap1: 'round', capRings: 1, ref: [ux, uy, uz] });
     }
@@ -175,7 +184,7 @@ function hair(sb, P, L, has, headDef, cin = false) {
 // ---------------------------------------------------------------------------------------
 // face
 
-function face(sb, P, L, has, headDef) {
+function face(sb, P, L, has, headDef, cin = false) {
   if (L > 0) return;
   const c = P.headC, r = P.headR;
   const at = (x, y, z, inset = 1) => {
@@ -184,29 +193,50 @@ function face(sb, P, L, has, headDef) {
     headDef(p);
     return [c[0] + p.x * r[0] * inset, c[1] + p.y * r[1] * inset, c[2] + p.z * r[2] * inset];
   };
+  // (laid out on a 3.45-wide skull: sizes scale with the type's head)
+  const fk = r[2] / 3.45;
+  if (has('nose')) {
+    // a nose over the skull's rotted cavity: a narrow bridge between the sockets, a tip and wings
+    const g = grp(sb, 'nose', { bone: B.HEAD, slot: SLOT.SKIN, mat: MAT.SKIN, part: PART.HEAD, paint: 0.3 });
+    const tip = at(0.97, -0.13, 0, 1.0), top = at(0.98, 0.08, 0, 1.0);
+    const hs = r[1] / 3.85;
+    g.ell([(tip[0] + top[0]) / 2 - 0.12 * hs, (tip[1] + top[1]) / 2 - 0.05 * hs, 0], [0.5 * hs, 0.72 * hs, 0.34 * hs], { segW: cin ? 14 : 10, segH: cin ? 10 : 7, color: '#dcd4d0', rot: [0, 0, -0.32],
+      deform: (p) => {
+        const t = (p.y + 1) / 2;                                   // 0 at the tip, 1 at the bridge
+        const w = 0.45 + 0.55 * (1 - t) * (1 - t) + 0.15 * Math.exp(-((t - 0.15) ** 2) / 0.02);
+        p.z *= w;
+        if (p.x < 0) p.x *= 0.4;                                  // (the back is inside the face)
+        p.x *= 0.75 + 0.35 * (1 - t);
+      } });
+    for (const s of [-1, 1]) g.ell([tip[0] - 0.22 * hs, tip[1] - 0.05 * hs, s * 0.26 * hs], [0.26 * hs, 0.2 * hs, 0.18 * hs], { segW: 7, segH: 5, color: '#d0c4c4' });
+    for (const s of [-1, 1]) g.ell([tip[0] - 0.12 * hs, tip[1] - 0.22 * hs, s * 0.12 * hs], [0.12 * hs, 0.06 * hs, 0.09 * hs], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#140404' });
+  }
   if (has('face_glasses')) {
-    // glasses or sunglasses (the lens darkness is per instance)
+    // glasses or sunglasses (the lens darkness is per instance), resting on the brow and
+    // cheekbones in front of the sunken sockets
     const g = grp(sb, 'face_glasses', { bone: B.HEAD });
     for (const s of [-1, 1]) {
-      const e = at(0.95, 0.13, s * 0.37, 1.05);
-      g.ell([e[0] - 0.05, e[1], e[2]], [0.12, 1.28, 1.42], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
-      g.ell([e[0] + 0.08, e[1], e[2]], [0.1, 1.06, 1.2], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.GLASS, color: '#ffffff', part: PART.LENS });
-      g.line([e[0] - 0.2, e[1] + 0.1, e[2] + s * 1.2], [e[0] - 3.4, e[1] + 0.2, s * r[2] * 0.99], 0.13, 0.13, 2, { seg: 3, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
+      const e = at(0.95, 0.13, s * 0.37, 1.0);
+      e[0] = Math.max(e[0], c[0] + r[0] * 0.97);
+      g.ell([e[0] - 0.05, e[1], e[2]], [0.1, 1.2 * fk, 1.36 * fk], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
+      g.ell([e[0] + 0.06, e[1], e[2]], [0.08, 1.0 * fk, 1.15 * fk], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.GLASS, color: '#ffffff', part: PART.LENS });
+      g.line([e[0] - 0.2, e[1] + 0.1, e[2] + s * 1.15 * fk], [c[0] - r[0] * 0.8, e[1] + 0.2, s * r[2] * 0.99], 0.11, 0.11, 2, { seg: 3, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
     }
-    const bridge = at(0.98, 0.15, 0, 1.05);
-    g.line([bridge[0], bridge[1], -0.9], [bridge[0], bridge[1], 0.9], 0.13, 0.13, 2, { seg: 3, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
+    const bridge = at(0.98, 0.15, 0, 1.0);
+    bridge[0] = Math.max(bridge[0], c[0] + r[0] * 0.98);
+    g.line([bridge[0], bridge[1], -0.8 * fk], [bridge[0], bridge[1], 0.8 * fk], 0.11, 0.11, 2, { seg: 3, slot: SLOT.FIXED, mat: MAT.METAL, color: '#101010' });
   }
   if (has('face_mask')) {
     const g = grp(sb, 'face_mask', { bone: B.HEAD, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#a8d0e0' });
     const m = at(0.85, -0.3, 0, 1.06);
-    g.ell([m[0] - 0.2, m[1], 0], [1.5, 2.1, r[2] * 0.86], { segW: 8, segH: 6, deform: (p) => { p.x = Math.abs(p.x) * 0.5 + (p.x > 0 ? 0.3 : 0); } });
-    for (const s of [-1, 1]) g.line([m[0] - 0.6, m[1] + 0.5, s * r[2] * 0.85], [c[0] - 0.5, c[1] + 0.3, s * r[2] * 1.02], 0.14, 0.14, 2, { seg: 3, color: '#e0e8ec' });
+    g.ell([m[0] - 0.2, m[1], 0], [1.4 * fk, 1.9 * fk, r[2] * 0.86], { segW: 8, segH: 6, deform: (p) => { p.x = Math.abs(p.x) * 0.5 + (p.x > 0 ? 0.3 : 0); } });
+    for (const s of [-1, 1]) g.line([m[0] - 0.6, m[1] + 0.5, s * r[2] * 0.85], [c[0] - 0.5, c[1] + 0.3, s * r[2] * 1.02], 0.12, 0.12, 2, { seg: 3, color: '#e0e8ec' });
   }
   if (has('face_gasmask')) {
     const g = grp(sb, 'face_gasmask', { bone: B.HEAD, slot: SLOT.FIXED, mat: MAT.RUBBER, color: '#26282a' });
-    g.ell([c[0] + r[0] * 0.35, c[1] - 0.6, 0], [r[0] * 0.78, r[1] * 0.8, r[2] * 1.07], { segW: 10, segH: 7, deform: (p) => { if (p.x < -0.1) p.x = -0.1 + (p.x + 0.1) * 0.3; } });
-    for (const s of [-1, 1]) g.ell([c[0] + r[0] * 1.02, c[1] + 0.7, s * 1.5], [0.3, 1.0, 1.05], { segW: 7, segH: 4, mat: MAT.GLASS, color: '#0a1418' });
-    g.line([c[0] + r[0] * 1.0, c[1] - 2.2, 0.9], [c[0] + r[0] * 1.45, c[1] - 2.5, 1.4], 1.05, 1.05, 2, { seg: 7, mat: MAT.METAL, color: '#6a6a60' });
+    g.ell([c[0] + r[0] * 0.35, c[1] - 0.6 * fk, 0], [r[0] * 0.78, r[1] * 0.8, r[2] * 1.07], { segW: 10, segH: 7, deform: (p) => { if (p.x < -0.1) p.x = -0.1 + (p.x + 0.1) * 0.3; } });
+    for (const s of [-1, 1]) g.ell([c[0] + r[0] * 1.02, c[1] + 0.7 * fk, s * 1.5 * fk], [0.3, 1.0 * fk, 1.05 * fk], { segW: 7, segH: 4, mat: MAT.GLASS, color: '#0a1418' });
+    g.line([c[0] + r[0] * 1.0, c[1] - 2.2 * fk, 0.9 * fk], [c[0] + r[0] * 1.45, c[1] - 2.5 * fk, 1.4 * fk], 1.0 * fk, 1.0 * fk, 2, { seg: 7, mat: MAT.METAL, color: '#6a6a60' });
   }
   if (has('face_beard')) {
     grp(sb, 'face_beard', { bone: B.JAW }).ell([c[0] + r[0] * 0.42, c[1] - r[1] * 0.76, 0], [r[0] * 0.62, r[1] * 0.42, r[2] * 0.9], {
@@ -214,8 +244,9 @@ function face(sb, P, L, has, headDef) {
   }
   if (has('face_eyepatch')) {
     const g = grp(sb, 'face_eyepatch', { bone: B.HEAD, slot: SLOT.FIXED, mat: MAT.LEATHER, color: BLACK });
-    const e = at(0.95, 0.13, -0.37, 1.04);
-    g.ell([e[0], e[1], e[2]], [0.22, 1.0, 1.05], { segW: 7, segH: 4 });
+    const e = at(0.95, 0.13, -0.37, 1.0);
+    e[0] = Math.max(e[0], c[0] + r[0] * 0.97);
+    g.ell([e[0], e[1], e[2]], [0.2, 0.95 * fk, 1.0 * fk], { segW: 7, segH: 4 });
     g.line([e[0] - 0.3, e[1] + 0.9, e[2] + 0.3], [c[0] - 0.5, c[1] + 1.6, 1.8], 0.12, 0.12, 3, { seg: 3 });
   }
 }
@@ -223,87 +254,135 @@ function face(sb, P, L, has, headDef) {
 // ---------------------------------------------------------------------------------------
 // neck, chest, torso, back
 
+/** A point a hair off the top's shell (face +1 its front, -1 its back). */
+function onTop(P, y, z, off, face = 1) {
+  return [P.shellX ? P.shellX(y, z, face) + face * off : face * (5.3 * (P.fitD ?? P.depth) + off), y, z];
+}
+
+/**
+ * A strap or cord lying on the top at side offset z: up the front from yFront, over the
+ * shoulder's crest, down the back to yBack (null: it ends at the crest) — a hair off the
+ * cloth all the way, so none of it cuts through the shirt.
+ */
+function strapOn(P, z, yFront, yBack, off, n = 6) {
+  const yc = P.crestY ? P.crestY(z) : P.sY + 1;
+  const pts = [];
+  for (let k = 0; k < n; k++) { const t = 1 - (1 - k / n) ** 2; pts.push(onTop(P, yFront + (yc - yFront) * t, z, off)); }
+  const f = onTop(P, yc, z, 0, 1), b = onTop(P, yc, z, 0, -1);
+  pts.push([(f[0] + b[0]) / 2, yc + off + 0.1, z]);
+  if (yBack !== null) for (let k = n - 1; k >= 0; k--) { const t = 1 - (1 - k / n) ** 2; pts.push(onTop(P, yBack + (yc - yBack) * t, z, off, -1)); }
+  return pts;
+}
+
+/**
+ * A bag's strap worn across the body: from the hip on the far side (z1) up the back, over the
+ * shoulder on side s, and down across the chest back to the hip (y1), on the cloth throughout.
+ */
+function sash(P, s, z1, y1, off = 0.15, n = 7) {
+  const z0 = s * 3.3, yc = P.crestY ? P.crestY(z0) : P.sY + 1;
+  const run = (face) => {
+    const pts = [];
+    for (let k = 1; k <= n; k++) { const t = k / n; const y = yc + (y1 - yc) * t, z = z0 + (z1 - z0) * t; pts.push(onTop(P, y, z, off + 0.1 * t, face)); }
+    return pts;
+  };
+  const f = onTop(P, yc, z0, 0, 1), b = onTop(P, yc, z0, 0, -1);
+  return [...run(-1).reverse(), [(f[0] + b[0]) / 2, yc + off + 0.1, z0], ...run(1)];
+}
+
 function torsoGear(sb, P, L, has) {
-  const D = P.depth, K = P.bulk;
-  const fx = 5.3 * D;           // the top's surface (torso + loose shell)
+  const D = P.fitD ?? P.depth, K = P.fitK ?? P.bulk;
+  // the top's surface: in front (x) and at the side (z) at a height (model: actor-zmodels shellFront / shellSide)
+  const fx = 5.3 * D;
+  const F = P.frontX || (() => fx);
+  const Z = P.sideZ || (() => 7.4 * K);
   const S = { bone: B.CHEST };
   if (L > 0) return;
+  const strap = (z, yFront, yBack, off, n) => strapOn(P, z, yFront, yBack, off, n);
   if (has('tie')) {
     const g = grp(sb, 'tie', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH });
-    g.tube([{ c: [fx * 0.9 + 0.5, P.sY + 0.4, 0], rx: 0.5, rz: 0.75 }, { c: [fx + 0.45, P.chest + 5, 0], rx: 0.32, rz: 0.55 }, { c: [fx + 0.62, P.chest + 2.2, 0], rx: 0.32, rz: 1.05 }, { c: [fx + 0.55, P.chest - 1.6, 0], rx: 0.3, rz: 1.25 }, { c: [fx + 0.3, P.chest - 3.4, 0], rx: 0.25, rz: 0.4 }],
+    const y = [P.sY + 0.3, P.chest + 5, P.chest + 2.2, P.chest - 1.6, P.chest - 3.4];
+    g.tube([{ c: [F(y[0]) + 0.3, y[0], 0], rx: 0.45, rz: 0.62 }, { c: [F(y[1]) + 0.28, y[1], 0], rx: 0.28, rz: 0.5 }, { c: [F(y[2]) + 0.32, y[2], 0], rx: 0.28, rz: 0.9 }, { c: [F(y[3]) + 0.3, y[3], 0], rx: 0.26, rz: 1.05 }, { c: [F(y[4]) + 0.22, y[4], 0], rx: 0.22, rz: 0.35 }],
       { seg: 4, color: '#ffffff', ref: [1, 0, 0] });
-    g.ell([fx * 0.95 + 0.4, P.sY - 0.2, 0], [0.7, 0.8, 1.0], { segW: 5, segH: 4, color: '#e8e8e8' });
+    g.ell([F(P.sY - 0.1) + 0.35, P.sY - 0.1, 0], [0.55, 0.65, 0.8], { segW: 5, segH: 4, color: '#e8e8e8' });
   }
   if (has('lanyard')) {
     const g = grp(sb, 'lanyard', { ...S });
-    for (const s of [-1, 1]) g.tube([{ c: [-0.6, P.neck + 0.2, s * 2.6], r: 0.2 }, { c: [1.2, P.neck - 0.3, s * 3.2], r: 0.2 }, { c: [fx * 0.92, P.sY - 1.2, s * 2.2], r: 0.2 }, { c: [fx + 0.4, P.chest + 4.4, s * 0.2], r: 0.2 }], { seg: 3, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' });
-    g.box([fx + 0.55, P.chest + 2.6, 0.4], [0.28, 3.3, 2.3], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e8e8e4' });
-    g.box([fx + 0.72, P.chest + 3.2, 0.4], [0.1, 1.2, 1.2], { seg: 4, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#8a7a68' });
+    for (const s of [-1, 1]) g.tube([[F(P.chest + 4.4) + 0.15, P.chest + 4.4, s * 0.2], ...strap(s * 2.0, P.sY - 1.5, P.sY + 0.5, 0.12)].map((c) => ({ c, r: 0.14 })), { seg: 3, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' });
+    g.box([F(P.chest + 2.6) + 0.25, P.chest + 2.6, 0.4], [0.24, 2.9, 2.0], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e8e8e4' });
+    g.box([F(P.chest + 3.1) + 0.4, P.chest + 3.1, 0.4], [0.1, 1.05, 1.05], { seg: 4, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#8a7a68' });
   }
   if (has('stetho')) {
     const g = grp(sb, 'stetho', { ...S, slot: SLOT.FIXED, mat: MAT.RUBBER, color: '#1c1c1c' });
-    const pts = [];
-    for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI; pts.push({ c: [Math.sin(a) * 3.4 * D + 0.9, P.neck - 0.5 - Math.sin(a * 0.5) * 3.8, Math.cos(a) * 3.6 * K], r: 0.28 }); }
+    // draped round the neck: one end on the chest, the other hanging lower on the far side
+    const right = strap(2.3, P.chest + 3.6, null, 0.14), left = strap(-2.3, P.chest + 0.5, null, 0.14);
+    const nape = [P.shellX ? P.shellX(P.neck, 0, -1) - 0.2 : -2, P.neck + 0.3, 0];
+    const pts = [...right, nape, ...left.reverse()].map((c) => ({ c, r: 0.2 }));
     g.tube(pts, { seg: 4 });
-    g.ell([fx * 0.96 + 0.4, P.chest + 3.2, 2.6], [0.3, 0.9, 0.9], { segW: 6, segH: 4, mat: MAT.METAL, color: '#b0b0b0' });
-    g.line(pts[8].c, [fx * 0.96 + 0.3, P.chest + 3.6, 2.6], 0.24, 0.24, 2, { seg: 3 });
+    g.ell([F(P.chest + 3.2) + 0.3, P.chest + 3.2, 2.2], [0.28, 0.8, 0.8], { segW: 6, segH: 4, mat: MAT.METAL, color: '#b0b0b0' });
   }
   if (has('scarf')) {
     const g = grp(sb, 'scarf', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH });
-    g.tube([{ c: [0.3, P.neck - 0.4, 0], rx: 3.3, rz: 3.6, bone: bw(B.CHEST, B.NECK, 0.5) }, { c: [0.3, P.neck + 1.6, 0], rx: 3.0, rz: 3.3, bone: bw(B.CHEST, B.NECK, 0.5) }], { seg: 10, color: '#ffffff' });
-    g.tube([{ c: [fx * 0.75, P.neck - 0.4, 1.2], rx: 0.6, rz: 1.4 }, { c: [fx * 0.92, P.chest + 6, 1.4], rx: 0.5, rz: 1.5 }, { c: [fx * 0.98, P.chest + 1, 1.6], rx: 0.4, rz: 1.5 }], { seg: 5, color: '#e8e8e8' });
+    g.tube([{ c: [0.3, P.neck - 0.4, 0], rx: 2.7, rz: 3.0, bone: bw(B.CHEST, B.NECK, 0.5) }, { c: [0.3, P.neck + 1.6, 0], rx: 2.3, rz: 2.6, bone: bw(B.CHEST, B.NECK, 0.5) }], { seg: 10, color: '#ffffff' });
+    g.tube([{ c: [F(P.neck - 0.4) + 0.4, P.neck - 0.4, 1.0], rx: 0.5, rz: 1.2 }, { c: [F(P.chest + 6) + 0.3, P.chest + 6, 1.2], rx: 0.45, rz: 1.3 }, { c: [F(P.chest + 1) + 0.3, P.chest + 1, 1.4], rx: 0.4, rz: 1.3 }], { seg: 5, color: '#e8e8e8' });
   }
   if (has('camera')) {
     const g = grp(sb, 'camera', { ...S, slot: SLOT.FIXED });
-    for (const s of [-1, 1]) g.line([0.3, P.neck, s * 2.6], [fx * 0.95, P.chest + 1.6, s * 1.6], 0.2, 0.2, 3, { seg: 3, mat: MAT.LEATHER, color: BLACK });
-    g.box([fx + 1.0, P.chest + 0.4, 0], [1.9, 2.4, 3.6], { seg: 6, round: 0.3, mat: MAT.METAL, color: '#2a2a2c' });
-    g.line([fx + 1.9, P.chest + 0.3, 0], [fx + 3.2, P.chest + 0.3, 0], 0.85, 0.75, 2, { seg: 7, mat: MAT.METAL, color: '#181818' });
+    const yc = P.chest + 0.4;
+    for (const s of [-1, 1]) g.tube([[F(yc) + 0.4, yc + 1.0, s * 1.4], ...strap(s * 2.0, P.chest + 2.2, P.sY + 0.5, 0.12)].map((c) => ({ c, r: 0.15 })), { seg: 3, mat: MAT.LEATHER, color: BLACK });
+    g.box([F(yc) + 1.0, yc, 0], [1.8, 2.2, 3.3], { seg: 6, round: 0.3, mat: MAT.METAL, color: '#2a2a2c' });
+    g.line([F(yc) + 1.85, yc - 0.1, 0], [F(yc) + 3.1, yc - 0.1, 0], 0.8, 0.7, 2, { seg: 7, mat: MAT.METAL, color: '#181818' });
   }
   if (has('dogtags')) {
     const g = grp(sb, 'dogtags', { ...S, slot: SLOT.FIXED, mat: MAT.METAL, color: '#9a9a96' });
-    g.tube([{ c: [0.5, P.neck, -2.5], r: 0.13 }, { c: [fx * 0.95, P.sY - 1.5, -1.0], r: 0.13 }, { c: [fx + 0.3, P.chest + 4.0, 0], r: 0.13 }, { c: [fx * 0.95, P.sY - 1.5, 1.0], r: 0.13 }, { c: [0.5, P.neck, 2.5], r: 0.13 }], { seg: 3 });
-    g.box([fx + 0.4, P.chest + 3.2, 0.3], [0.12, 1.5, 1.0], { seg: 4, round: 0.3 });
+    for (const s of [-1, 1]) g.tube([[F(P.chest + 4) + 0.15, P.chest + 4.0, s * 0.15], ...strap(s * 1.8, P.sY - 1.5, P.sY + 0.5, 0.1)].map((c) => ({ c, r: 0.1 })), { seg: 3 });
+    g.box([F(P.chest + 3.2) + 0.2, P.chest + 3.2, 0.3], [0.12, 1.4, 0.9], { seg: 4, round: 0.3 });
   }
   if (has('badge')) {
-    grp(sb, 'badge', { ...S, slot: SLOT.FIXED, mat: MAT.METAL, color: '#c8b050' }).ell([fx + 0.15, P.chest + 3.6, 2.8], [0.22, 1.2, 1.1], { segW: 8, segH: 5, deform: (p) => { const a = Math.atan2(p.z, p.y); const k = 0.75 + 0.25 * Math.abs(Math.cos(a * 2.5)); p.y *= k; p.z *= k; } });
+    grp(sb, 'badge', { ...S, slot: SLOT.FIXED, mat: MAT.METAL, color: '#c8b050' }).ell([F(P.chest + 3.6) - 0.15, P.chest + 3.6, 2.4], [0.2, 1.05, 0.95], { segW: 8, segH: 5, deform: (p) => { const a = Math.atan2(p.z, p.y); const k = 0.75 + 0.25 * Math.abs(Math.cos(a * 2.5)); p.y *= k; p.z *= k; } });
   }
   if (has('vest_plate')) {
     const g = grp(sb, 'vest_plate', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH });
-    g.tube([{ c: [0.0, P.waist + 1.8, 0], rx: 4.9 * D + 0.6, rz: 6.2 * K + 0.5 }, { c: [0.1, P.chest + 1.2, 0], rx: 5.3 * D + 0.6, rz: 7.4 * K + 0.5 }, { c: [0.0, P.sY - 1.4, 0], rx: 4.8 * D + 0.6, rz: 7.9 * K + 0.4 }], { seg: 12, cap0: 'flat', cap1: 'flat', color: '#ffffff' });
-    for (let k = -1; k <= 1; k++) g.box([fx + 1.15, P.waist + 4.2, k * 2.6], [1.5, 3.4, 2.1], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#3a3f32' });
-    g.box([fx + 0.9, P.chest + 3.0, 0], [1.2, 6.5, 6.8], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#4a4f3c' });
+    const ring = (y, x) => ({ c: [x, y, 0], rx: F(y) - x + 0.45, rz: Z(y) + 0.4 });
+    g.tube([ring(P.waist + 1.8, 0.0), ring(P.chest + 1.2, 0.1), ring(P.sY - 1.4, 0.0)], { seg: 12, cap0: 'flat', cap1: 'flat', color: '#ffffff' });
+    for (let k = -1; k <= 1; k++) g.box([F(P.waist + 4.2) + 1.1, P.waist + 4.2, k * 2.3], [1.4, 3.2, 1.9], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#3a3f32' });
+    g.box([F(P.chest + 3.0) + 0.85, P.chest + 3.0, 0], [1.1, 6.0, 6.0], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#4a4f3c' });
   }
+  const back = P.backX || ((y) => -F(y) * 0.95);
   if (has('suspenders')) {
-    const g = grp(sb, 'suspenders', { ...S, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#3a2a22' });
-    for (const s of [-1, 1]) g.tube([{ c: [fx * 0.98, P.waist + 0.6, s * 3.0], rx: 0.35, rz: 0.75 }, { c: [fx * 0.9, P.chest + 3, s * 3.3], rx: 0.35, rz: 0.75 }, { c: [1.0, P.sY + 0.9, s * 3.6], rx: 0.4, rz: 0.75 }, { c: [-fx * 0.9, P.chest + 3, s * 3.6], rx: 0.35, rz: 0.75 }, { c: [-fx, P.waist + 0.6, s * 3.2], rx: 0.35, rz: 0.75 }], { seg: 4, ref: [1, 0, 0] });
+    // (in the gear colour: a farmer's red or tan braces, the denim straps of bib overalls)
+    const g = grp(sb, 'suspenders', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#e0e0e0' });
+    for (const s of [-1, 1]) g.tube(strap(s * 3.4, P.waist + 0.6, P.waist + 0.6, 0.18).map((c) => ({ c, rx: 0.16, rz: 0.6 })), { seg: 4, ref: [1, 0, 0] });
   }
   if (has('apron')) {
     const g = grp(sb, 'apron', { ...S, slot: SLOT.GEAR, mat: MAT.CLOTH });
-    g.tube([{ c: [fx * 0.95 + 0.5, P.sY - 1.2, 0], rx: 0.35, rz: 3.3 }, { c: [fx * 0.98 + 0.55, P.chest, 0], rx: 0.35, rz: 5.6 * K }, { c: [fx * 0.9 + 0.7, P.waist - 4.5, 0], rx: 0.4, rz: 6.6 * K, bone: bw(B.SPINE, B.HIPS, 0.6) }, { c: [fx * 0.85 + 0.8, P.knee + 4, 0], rx: 0.4, rz: 6.8 * K, bone: B.HIPS }], { seg: 8, color: '#ffffff', ref: [1, 0, 0], cap0: 'flat', cap1: 'flat' });
-    for (const s of [-1, 1]) g.tube([{ c: [-0.5, P.neck + 0.2, s * 2.6], r: 0.25 }, { c: [fx * 0.9 + 0.5, P.sY - 0.8, s * 2.6], r: 0.25 }], { seg: 3, color: '#f0f0f0' });
+    const fh = P.frontX ? F(P.hip - 1) : fx;
+    g.tube([{ c: [F(P.sY - 1.2) + 0.35, P.sY - 1.2, 0], rx: 0.3, rz: 2.8 }, { c: [F(P.chest) + 0.4, P.chest, 0], rx: 0.3, rz: Z(P.chest) * 0.85 }, { c: [Math.max(F(P.waist - 4.5), fh) + 0.55, P.waist - 4.5, 0], rx: 0.35, rz: Z(P.waist - 4.5) * 0.95, bone: bw(B.SPINE, B.HIPS, 0.6) }, { c: [fh + 1.2, P.knee + 4, 0], rx: 0.35, rz: Z(P.hip - 2) * 1.05, bone: B.HIPS }], { seg: 8, color: '#ffffff', ref: [1, 0, 0], cap0: 'flat', cap1: 'flat' });
+    for (const s of [-1, 1]) g.tube(strap(s * 2.4, P.sY - 1.2, P.sY + 0.4, 0.12).map((c) => ({ c, r: 0.18 })), { seg: 3, color: '#f0f0f0' });
   }
+  // belts sit on the trousers' waistband (actor-zmodels: rx 3.4 · depth, rz 5.1 · bulk)
+  const bx = P.fitD ? 3.52 * P.depth : 4.6 * D + 0.5, bz = P.fitD ? 5.22 * P.bulk : 6.2 * K + 0.5;
   const belt = (opt, color) => grp(sb, opt, { bone: B.SPINE, slot: SLOT.FIXED, mat: MAT.LEATHER, color });
-  const beltTube = (g, color) => g.tube([{ c: [0.3, P.waist - 1.8, 0], rx: 4.6 * D + 0.5, rz: 6.2 * K + 0.5 }, { c: [0.3, P.waist + 0.4, 0], rx: 4.6 * D + 0.5, rz: 6.2 * K + 0.5 }], { seg: 12, color });
+  const beltTube = (g, color) => g.tube([{ c: [0.3, P.waist - 1.8, 0], rx: bx, rz: bz }, { c: [0.3, P.waist + 0.4, 0], rx: bx, rz: bz }], { seg: 12, color });
   if (has('belt_duty')) {
     const g = belt('belt_duty', '#181818');
     beltTube(g, '#181818');
-    g.box([1.0, P.waist - 3.4, 6.4 * K], [2.4, 4.2, 1.6], { seg: 5, round: 0.3 });
-    g.box([2.6, P.waist - 1.1, -3.2], [1.4, 2.4, 1.6], { seg: 5, round: 0.3 });
-    g.box([-2.4, P.waist - 1.0, -5.6 * K], [1.4, 3.4, 1.5], { seg: 5, round: 0.3, color: '#26282a' });
-    g.box([4.1 * D, P.waist - 1.1, 0], [0.5, 1.5, 1.5], { seg: 4, round: 0.4, mat: MAT.METAL, color: '#8a8a86' });
+    g.box([1.0, P.waist - 3.4, bz + 0.6], [2.2, 4.0, 1.5], { seg: 5, round: 0.3 });
+    g.box([bx * 0.6, P.waist - 1.1, -bz * 0.72], [1.3, 2.2, 1.5], { seg: 5, round: 0.3 });
+    g.box([-bx * 0.6, P.waist - 1.0, -bz * 0.95], [1.3, 3.2, 1.4], { seg: 5, round: 0.3, color: '#26282a' });
+    g.box([bx + 0.3, P.waist - 0.7, 0], [0.5, 1.4, 1.4], { seg: 4, round: 0.4, mat: MAT.METAL, color: '#8a8a86' });
   }
   if (has('belt_tool')) {
     const g = belt('belt_tool', '#4a3a26');
     beltTube(g, '#4a3a26');
-    g.box([3.6, P.waist - 3.6, 5.0 * K], [2.6, 4.0, 2.2], { seg: 5, round: 0.3 });
-    g.box([3.2, P.waist - 3.2, -4.8 * K], [2.4, 3.2, 2.0], { seg: 5, round: 0.3, color: '#3a2a1a' });
-    g.line([2.4, P.waist - 3, 6.8 * K], [2.4, P.waist - 10.5, 7.0 * K], 0.32, 0.32, 2, { seg: 4, mat: MAT.METAL, color: '#7a7a78' });
-    g.box([2.4, P.waist - 11.2, 7.0 * K], [1.0, 1.5, 3.0], { seg: 5, round: 0.3, mat: MAT.METAL, color: '#5a5a58' });
+    g.box([bx * 0.72, P.waist - 3.4, bz * 0.72], [2.4, 3.8, 2.0], { seg: 5, round: 0.3 });
+    g.box([bx * 0.66, P.waist - 3.0, -bz * 0.72], [2.2, 3.0, 1.9], { seg: 5, round: 0.3, color: '#3a2a1a' });
+    g.line([bx * 0.4, P.waist - 3, bz + 0.5], [bx * 0.4, P.waist - 10.5, bz + 0.7], 0.3, 0.3, 2, { seg: 4, mat: MAT.METAL, color: '#7a7a78' });
+    g.box([bx * 0.4, P.waist - 11.2, bz + 0.7], [1.0, 1.4, 2.8], { seg: 5, round: 0.3, mat: MAT.METAL, color: '#5a5a58' });
   }
   if (has('fanny')) {
     const g = belt('fanny', '#2a2a2c');
     beltTube(g, '#1c1c1c');
-    g.box([4.6 * D + 0.9, P.waist - 1.6, 1.0], [2.2, 3.4, 5.6], { seg: 6, round: 0.3, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' });
+    g.box([bx + 0.9, P.waist - 1.6, 1.0], [2.0, 3.2, 5.2], { seg: 6, round: 0.3, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' });
   }
 }
 
@@ -312,47 +391,50 @@ function backGear(sb, P, L, has) {
     // mid range: the big shapes only
     if (!(has('pack_small') || has('pack_big'))) return;
   }
-  const D = P.depth, K = P.bulk;
-  const xb = -4.6 * D;
+  const D = P.fitD ?? P.depth, K = P.fitK ?? P.bulk;
+  const back = P.backX || ((y) => -4.6 * D);
+  const F = P.frontX || ((y) => 4.7 * D);
+  const xb = back(P.chest + 1.5);
+  const hz = P.fitD ? 5.55 * P.bulk : 6.9 * K;      // the trousers' side at the hip
   const S = { bone: B.CHEST, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' };
   const straps = (g, yTop) => {
     if (L > 0) return;
-    for (const s of [-1, 1]) g.tube([{ c: [xb - 0.6, yTop, s * 3.2 * K], rx: 0.4, rz: 0.9 }, { c: [0.0, P.sY + 1.2, s * 3.5 * K], rx: 0.5, rz: 1.0 }, { c: [4.5 * D, P.chest + 4, s * 3.8 * K], rx: 0.5, rz: 1.0 }, { c: [4.9 * D, P.chest - 2, s * 4.6 * K], rx: 0.4, rz: 0.9 }], { seg: 4, slot: SLOT.FIXED, color: STRAP, mat: MAT.CLOTH, bone: B.CHEST, ref: [1, 0, 0] });
+    for (const s of [-1, 1]) g.tube([[xb - 0.4, yTop, s * 3.0], ...strapOn(P, s * 3.3, P.chest - 2, null, 0.2).reverse()].map((c) => ({ c, rx: 0.2, rz: 0.8 })), { seg: 4, slot: SLOT.FIXED, color: STRAP, mat: MAT.CLOTH, bone: B.CHEST, ref: [1, 0, 0] });
   };
   if (has('pack_small')) {
     const g = grp(sb, 'pack_small', S);
-    g.box([xb - 2.4, P.chest + 1.4, 0], [4.6, 10, 8.4 * K], { seg: 7, round: 0.4 });
-    if (L === 0) g.box([xb - 4.5, P.chest - 0.5, 0], [1.4, 4.6, 6.2 * K], { seg: 5, round: 0.3, color: '#d8d8d8' });
+    g.box([xb - 2.2, P.chest + 1.4, 0], [4.4, 9.5, 8.0 * K], { seg: 7, round: 0.4 });
+    if (L === 0) g.box([xb - 4.2, P.chest - 0.5, 0], [1.3, 4.4, 6.0 * K], { seg: 5, round: 0.3, color: '#d8d8d8' });
     straps(g, P.sY - 1);
   }
   if (has('pack_big')) {
     const g = grp(sb, 'pack_big', S);
-    g.box([xb - 3.2, P.chest + 1.4, 0], [6.2, 13, 9.6 * K], { seg: 7, round: 0.4 });
-    g.box([xb - 3.0, P.chest + 8.8, 0], [6.8, 3.2, 9.8 * K], { seg: 6, round: 0.4, color: '#d0d0d0' });
+    g.box([xb - 3.0, P.chest + 1.4, 0], [6.0, 12.5, 9.2 * K], { seg: 7, round: 0.4 });
+    g.box([xb - 2.8, P.chest + 8.5, 0], [6.6, 3.1, 9.4 * K], { seg: 6, round: 0.4, color: '#d0d0d0' });
     if (L === 0) {
-      for (const s of [-1, 1]) g.box([xb - 3.1, P.chest - 1.2, s * 5.6 * K], [3.6, 6, 2.6], { seg: 5, round: 0.4, color: '#d8d8d8' });
-      g.line([xb - 5.6, P.chest - 5.8, -5.4 * K], [xb - 5.6, P.chest - 5.8, 5.4 * K], 1.8, 1.8, 2, { seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#6a6a4a' });
+      for (const s of [-1, 1]) g.box([xb - 2.9, P.chest - 1.2, s * 5.3 * K], [3.4, 5.8, 2.5], { seg: 5, round: 0.4, color: '#d8d8d8' });
+      g.line([xb - 5.3, P.chest - 5.6, -5.2 * K], [xb - 5.3, P.chest - 5.6, 5.2 * K], 1.7, 1.7, 2, { seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#6a6a4a' });
     }
     straps(g, P.sY - 1);
   }
   if (L > 0) return;
   if (has('bag_msg')) {
     const g = grp(sb, 'bag_msg', { ...S, bone: B.HIPS });
-    g.box([-3.8 * D, P.hip - 1.6, 6.9 * K], [6.2, 5.4, 2.6], { seg: 6, round: 0.3 });
-    g.tube([{ c: [-1.6 * D, P.sY + 1.2, -3.4 * K], rx: 0.3, rz: 0.9 }, { c: [3.6 * D, P.chest + 4.4, -0.6], rx: 0.4, rz: 1.0 }, { c: [3.8 * D, P.chest - 2, 4.6 * K], rx: 0.4, rz: 1.0 }, { c: [-1.6 * D, P.waist - 0.5, 6.7 * K], rx: 0.4, rz: 0.9, bone: B.SPINE }], { seg: 4, bone: B.CHEST, slot: SLOT.FIXED, color: STRAP, ref: [1, 0, 0] });
+    g.box([-2.6 * D, P.hip - 1.6, hz + 1.3], [5.8, 5.0, 2.4], { seg: 6, round: 0.3 });
+    g.tube(sash(P, -1, hz, P.waist - 0.5).map((c) => ({ c, rx: 0.16, rz: 0.8 })), { seg: 4, bone: B.CHEST, slot: SLOT.FIXED, color: STRAP, ref: [1, 0, 0] });
   }
   if (has('tank_o2')) {
     const g = grp(sb, 'tank_o2', { ...S, mat: MAT.METAL });
-    for (const s of [-1, 1]) g.line([xb - 2.2, P.chest - 3.5, s * 2.2 * K], [xb - 2.2, P.chest + 8.5, s * 2.2 * K], 1.55, 1.55, 2, { seg: 8, cap0: 'round', cap1: 'round', capRings: 1, color: '#ffffff' });
-    g.box([xb - 0.9, P.chest + 2, 0], [1.2, 12, 8], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#26262a' });
+    for (const s of [-1, 1]) g.line([xb - 2.1, P.chest - 3.5, s * 2.1 * K], [xb - 2.1, P.chest + 8.5, s * 2.1 * K], 1.5, 1.5, 2, { seg: 8, cap0: 'round', cap1: 'round', capRings: 1, color: '#ffffff' });
+    g.box([xb - 0.8, P.chest + 2, 0], [1.1, 11.5, 7.5], { seg: 5, round: 0.3, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#26262a' });
     straps(g, P.sY - 1);
   }
   if (has('bag_medic')) {
     const g = grp(sb, 'bag_medic', { ...S, bone: B.HIPS });
-    g.box([1.0, P.hip - 5.0, 8.4 * K], [7.4, 5.4, 3.0], { seg: 6, round: 0.3 });
-    g.box([1.0, P.hip - 5.0, 9.95 * K], [1.9, 0.6, 0.2], { seg: 4, round: 0.2, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828' });
-    g.box([1.0, P.hip - 5.0, 9.95 * K], [0.6, 1.9, 0.2], { seg: 4, round: 0.2, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828' });
-    g.tube([{ c: [-1.6 * D, P.sY + 1.2, 3.4 * K], rx: 0.3, rz: 0.9 }, { c: [3.6 * D, P.chest + 4.4, 0.6], rx: 0.4, rz: 1.0 }, { c: [3.8 * D, P.chest - 2, -4.6 * K], rx: 0.4, rz: 1.0 }, { c: [-1.6 * D, P.waist - 0.5, -6.7 * K], rx: 0.4, rz: 0.9, bone: B.SPINE }], { seg: 4, bone: B.CHEST, slot: SLOT.FIXED, color: STRAP, ref: [1, 0, 0] });
+    g.box([1.0, P.hip - 5.0, hz + 1.4], [7.0, 5.2, 2.8], { seg: 6, round: 0.3 });
+    g.box([1.0, P.hip - 5.0, hz + 2.85], [1.8, 0.55, 0.2], { seg: 4, round: 0.2, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828' });
+    g.box([1.0, P.hip - 5.0, hz + 2.85], [0.55, 1.8, 0.2], { seg: 4, round: 0.2, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#c62828' });
+    g.tube(sash(P, 1, -hz, P.waist - 0.5).map((c) => ({ c, rx: 0.16, rz: 0.8 })), { seg: 4, bone: B.CHEST, slot: SLOT.FIXED, color: STRAP, ref: [1, 0, 0] });
   }
 }
 
@@ -368,7 +450,7 @@ function limbGear(sb, P, L, has) {
     const z = s * P.sw;
     if (has('cuffs')) {
       const g = grp(sb, 'cuffs', { bone: FA, slot: SLOT.FIXED, mat: MAT.METAL, color: '#8a8a88' });
-      g.tube([{ c: [0.2, wr + 1.6, z], rx: 1.85, rz: 1.7 }, { c: [0.2, wr + 0.6, z], rx: 1.9, rz: 1.75 }], { seg: 8, cap0: 'flat', cap1: 'flat' });
+      g.tube([{ c: [0.2, wr + 1.6, z], rx: P.armR * 0.6 + 0.55, rz: P.armR * 0.66 + 0.5 }, { c: [0.2, wr + 0.6, z], rx: P.armR * 0.58 + 0.6, rz: P.armR * 0.66 + 0.55 }], { seg: 8, cap0: 'flat', cap1: 'flat' });
       g.line([0.9, wr + 0.9, z], [2.4, wr - 3.5, z * 0.7], 0.14, 0.14, 3, { seg: 3, bone: HD });
     }
     if (has('watch') && !R) {
@@ -393,7 +475,7 @@ function limbGear(sb, P, L, has) {
     }
     if (has('holster') && R) {
       const g = grp(sb, 'holster', { bone: B.THIGH_R, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#1c1c1c' });
-      g.box([0.2, P.hip - 7, P.legGap + 3.6], [2.0, 7.0, 1.8], { seg: 5, round: 0.3 });
+      g.box([0.2, P.hip - 7, P.legGap + P.thighR + 1.1], [2.0, 7.0, 1.8], { seg: 5, round: 0.3 });
     }
     if (has('stump_hand_l') && !R) stump(sb, 'stump_hand_l', [0.2, wr + 0.8, z], FA, 1.5, 0.35);
     if (has('stump_hand_r') && R) stump(sb, 'stump_hand_r', [0.2, wr + 0.8, z], FA, 1.5, 0.35);
@@ -402,7 +484,7 @@ function limbGear(sb, P, L, has) {
   }
   if (has('skirt')) {
     const g = grp(sb, 'skirt', { bone: B.HIPS, slot: SLOT.CLOTH2, mat: MAT.CLOTH, part: PART.PELVIS });
-    g.tube([{ c: [0.3, P.waist + 0.4, 0], rx: 4.3 * P.depth, rz: 5.9 * P.bulk }, { c: [0.2, P.hip - 1.5, 0], rx: 5.4 * P.depth, rz: 7.0 * P.bulk }, { c: [0.1, P.hip - 6, 0], rx: 6.4 * P.depth, rz: 8.2 * P.bulk }], { seg: 12, color: '#ffffff' });
+    g.tube([{ c: [0.3, P.waist + 0.4, 0], rx: 3.6 * P.depth, rz: 5.3 * P.bulk }, { c: [0.2, P.hip - 1.5, 0], rx: 4.2 * P.depth, rz: 6.0 * P.bulk }, { c: [0.1, P.hip - 6, 0], rx: 5.2 * P.depth, rz: 7.1 * P.bulk }], { seg: 12, color: '#ffffff' });
   }
 }
 
@@ -416,7 +498,7 @@ function stump(sb, opt, at, bone, r, boneR) {
 // gore and armour
 
 function gore(sb, P, L, has) {
-  const D = P.depth, K = P.bulk;
+  const D = P.fitD ?? P.depth, K = P.fitK ?? P.bulk;
   if (has('ribs') && L < 2) {
     const g = grp(sb, 'ribs', { bone: B.CHEST });
     g.ell([2.8 * D, P.chest + 1.4, -4.6 * K], [1.7, 4.0, 2.5 * K], { segW: 7, segH: 5, rot: [0, -0.9, 0], slot: SLOT.FIXED, mat: MAT.FLESH, color: '#3a0808', paint: 0.6 });
@@ -471,7 +553,7 @@ function gore(sb, P, L, has) {
 
 function armour(sb, P, L, has) {
   if (L > 1) return;
-  const D = P.depth, K = P.bulk;
+  const D = P.fitD ?? P.depth, K = P.fitK ?? P.bulk;
   const M = { slot: SLOT.GEAR, mat: MAT.METAL, color: '#ffffff' };
   if (has('plate_chest')) {
     const g = grp(sb, 'plate_chest', { ...M, bone: B.CHEST });
@@ -534,7 +616,7 @@ export function addAccessories(sb, P, L, headDef, has = () => true, cin = false)
   if (L === 2) return;
   hats(sb, P, L, has);
   hair(sb, P, L, has, headDef, cin);
-  face(sb, P, L, has, headDef);
+  face(sb, P, L, has, headDef, cin);
   torsoGear(sb, P, L, has);
   backGear(sb, P, L, has);
   limbGear(sb, P, L, has);

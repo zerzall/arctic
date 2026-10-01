@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import {
   T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3,
 } from './actor-consts.js';
+import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC, Z_SHEEN } from './actor-zmat.js';
 
 const RIG_VERT_HEAD = /* glsl */`
 uniform highp sampler2D uRigTex;
@@ -198,7 +199,7 @@ vec3 hhPattern(int pat, vec3 c, vec2 uv, float y) {
 
 // Patch three's physical direct light: wrapped diffuse for skin ("subsurface": the terminator
 // is soft and reddish instead of a hard line).
-function withSSS(chunk) {
+function withSSS(chunk, zombie = false) {
   const needle = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );';
   if (!chunk.includes(needle)) return chunk;
   return chunk.replace(needle, needle + `
@@ -206,47 +207,13 @@ function withSSS(chunk) {
 		float rawNL = dot( geometryNormal, directLight.direction );
 		float wrapNL = saturate( ( rawNL + hhSSS ) / ( 1.0 + hhSSS ) );
 		reflectedLight.directDiffuse += directLight.color * ( wrapNL - dotNL ) * hhSSSCol * BRDF_Lambert( material.diffuseContribution );
-	}`);
+	}` + (zombie ? Z_SHEEN : ''));
 }
 
-/**
- * Standard material bent by the rig, plus the matching shadow depth material. One pair
- * per mesh (they share programs; only uRowOffset differs).
- * @param {object} shared { uRigTex, uDetail, uDetail2, uNrm, uTime } uniform objects shared by the pool
- * @param {object} opts { rim, rimStrength }
- */
-export function makeMaterials(shared, opts = {}) {
-  const uniforms = {
-    uRigTex: shared.uRigTex, uDetail: shared.uDetail, uDetail2: shared.uDetail2, uNrm: shared.uNrm, uTime: shared.uTime,
-    uRowOffset: { value: 0 },
-    uCin: shared.uCin,
-    uRimColor: { value: new THREE.Color(opts.rim || '#8fb4ff') },
-    uRimStrength: { value: opts.rimStrength ?? 0.35 },
-  };
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + RIG_VERT_HEAD + VARYINGS)
-      .replace('#include <beginnormal_vertex>', /* glsl */`
-  rigSkin();
-  vRow = rigRow;
-  vec3 objectNormal = rigN;
-  #ifdef USE_TANGENT
-    vec3 objectTangent = vec3(tangent.xyz);
-  #endif
-  {
-    vec4 hair = rigT(${T_HAIR});
-    vI = vec4(aInfo.z, aInfo.w, aExt.y, aInfo.y);
-    vMP = position;
-    vDUv = uv + vec2(fract(hair.w * 0.3719), fract(hair.w * 0.6133));
-  }`)
-      .replace('#include <begin_vertex>', 'vec3 transformed = rigP;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FRAG_HEAD)
-      .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment))
-      .replace('#include <color_fragment>', /* glsl */`
+// ---- the colour stage, in pieces: the zombies swap some for actor-zmat.js's (the survivors'
+// program is exactly these strings in this order) ----
+
+const COLOR_CUTS = /* glsl */`
   #include <color_fragment>
   hhD = texture2D(uDetail, vDUv);
   hhD2 = texture2D(uDetail2, vDUv * 0.5 + vec2(0.13, 0.31));
@@ -327,7 +294,9 @@ export function makeMaterials(shared, opts = {}) {
   } else if (hhPart == 13) {
     diffuseColor.rgb = baseCol * mix(vec3(0.16, 0.24, 0.28), vec3(0.008), v3.w);
     hhM = 12;
-  }
+  }`;
+
+const COLOR_CLOTH = /* glsl */`
   // wounds tear the cloth open
   float dA = hhWDist(wA), dB = hhWDist(wB);
   if (garment && (hhM == 1 || hhM == 2) && (dA < 1.3 || dB < 1.3)) discard;
@@ -349,7 +318,9 @@ export function makeMaterials(shared, opts = {}) {
     if (tm > 0.5) discard;
     diffuseColor.rgb *= mix(1.0, 0.3, smoothstep(0.4, 0.5, tm));
     hhM = 0;
-  }
+  }`;
+
+const SHADE_BASE = /* glsl */`
   if (hhM == 0) {
     vec3 rotTint = mix(vec3(1.0), vec3(0.8, 0.76, 0.6), rot);
     diffuseColor.rgb *= mix(vec3(0.9), (0.52 + hhD.r * 0.6) * rotTint, 0.3 + rot * 0.6);
@@ -403,7 +374,9 @@ export function makeMaterials(shared, opts = {}) {
     diffuseColor.rgb *= 0.85 + hhD.r * 0.25;
     // rust and dirt streaks on armour
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.09, 0.03), smoothstep(0.55, 0.85, hhD.b + hhD2.b * 0.3) * 0.7);
-  }
+  }`;
+
+const BLOOD_BASE = /* glsl */`
   // blood: soaks the painted areas (mouth, hands, wounds, hems) with a ragged splatter
   // edge; old blood dries dark brown where the grime mask is high
   float bl = vI.y * blood;
@@ -412,7 +385,9 @@ export function makeMaterials(shared, opts = {}) {
     vec3 bc = mix(vec3(0.13, 0.009, 0.007), vec3(0.06, 0.018, 0.012), smoothstep(0.25, 0.7, hhD.b));
     diffuseColor.rgb = mix(diffuseColor.rgb, bc, bm * 0.94);
     hhWet = max(hhWet, bm * 0.7 * (1.0 - hhD.b));
-  }
+  }`;
+
+const COLOR_FX = /* glsl */`
   // charring while/after burning: black, cracked
   float ch = tFx.y;
   hhChar = smoothstep(1.0 - ch, 1.0 - ch + 0.22, hhD.r * 0.55 + hhD.b * 0.45 + ch * 0.25);
@@ -422,13 +397,22 @@ export function makeMaterials(shared, opts = {}) {
     float frost = smoothstep(0.2, 0.7, tFx2.w + (hhD.r - 0.5) * 0.6 + (hhD.b - 0.5) * 0.3);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.78, 0.92), frost * 0.88);
     hhWet = max(hhWet, frost * 0.7);
-  }
+  }`;
+
+const RIM_BASE = /* glsl */`
   // glow and rim colours (used after the fog too)
   hhRimCol = (uRimColor * uRimStrength + vec3(1.0, 0.06, 0.02) * tFx.x * 0.9 + vec3(1.0, 0.45, 0.1) * tFx2.x * 0.5) * tFx.w;
   if (hhM == 0) hhRimCol += vec3(0.5, 0.14, 0.09) * 0.16 * tFx.w;
   if (hhSlot == 6) hhGlow += baseCol * tFx2.y;
-  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK;`)
-      .replace('#include <roughnessmap_fragment>', /* glsl */`
+  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK;`;
+
+// zombies: no warm "living" rim on the skin, and no cold outline by day
+const RIM_ZOMBIE = /* glsl */`
+  hhRimCol = (uRimColor * uRimStrength * (1.0 - uDay) + vec3(1.0, 0.06, 0.02) * tFx.x * 0.9 + vec3(1.0, 0.45, 0.1) * tFx2.x * 0.5) * tFx.w;
+  if (hhSlot == 6) hhGlow += baseCol * tFx2.y;
+  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK;`;
+
+const ROUGH_BASE = /* glsl */`
   float roughnessFactor = 0.8;
   if (hhM == 0) roughnessFactor = 0.56 + hhD.r * 0.22;
   else if (hhM == 1 || hhM == 2) roughnessFactor = 0.93;
@@ -443,9 +427,9 @@ export function makeMaterials(shared, opts = {}) {
   else if (hhM == 13) roughnessFactor = 0.09;
   else if (hhM == 14) roughnessFactor = 0.26 + hhD.b * 0.3;
   roughnessFactor = mix(roughnessFactor, 0.16, hhWet);
-  roughnessFactor = mix(roughnessFactor, 0.95, hhChar);`)
-      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
-      .replace('#include <normal_fragment_maps>', /* glsl */`
+  roughnessFactor = mix(roughnessFactor, 0.95, hhChar);`;
+
+const NORMAL_BASE = /* glsl */`
   {
     vec4 nn = texture2D(uNrm, vDUv);
     vec2 nxy;
@@ -457,7 +441,61 @@ export function makeMaterials(shared, opts = {}) {
     else if (hhM == 14) nxy = (nn.rg * 2.0 - 1.0) * 0.12;
     else nxy = (nn.rg * 2.0 - 1.0) * 0.3;
     normal = hhPerturb(normal, -vViewPosition, vDUv, nxy);
+  }`;
+
+/**
+ * Standard material bent by the rig, plus the matching shadow depth material. One pair
+ * per mesh (they share programs; only uRowOffset differs).
+ * @param {object} shared { uRigTex, uDetail, uDetail2, uNrm, uTime } uniform objects shared by the pool
+ * @param {object} opts { rim, rimStrength, zombie: { body: [waist, chest, sY, gaunt], body2: [head x, head y, leg gap, width], day: {value} } }
+ *   (`zombie` compiles in the corpse shading of actor-zmat.js)
+ */
+export function makeMaterials(shared, opts = {}) {
+  const Z = opts.zombie || null;
+  const uniforms = {
+    uRigTex: shared.uRigTex, uDetail: shared.uDetail, uDetail2: shared.uDetail2, uNrm: shared.uNrm, uTime: shared.uTime,
+    uRowOffset: { value: 0 },
+    uCin: shared.uCin,
+    uRimColor: { value: new THREE.Color(opts.rim || '#8fb4ff') },
+    uRimStrength: { value: opts.rimStrength ?? 0.35 },
+  };
+  if (Z) {
+    uniforms.uBody = { value: new THREE.Vector4(...Z.body) };
+    uniforms.uBody2 = { value: new THREE.Vector4(...Z.body2) };
+    uniforms.uDay = Z.day || { value: 0 };
+    uniforms.uZLite = Z.lite || { value: 0 };
+  }
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
+  const skinned = 'rigP = vec3(dot(r0, p), dot(r1, p), dot(r2, p));';
+  const vhead = Z ? RIG_VERT_HEAD.replace(skinned, skinned + Z_SWAY) : RIG_VERT_HEAD;
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + vhead + VARYINGS)
+      .replace('#include <beginnormal_vertex>', /* glsl */`
+  rigSkin();
+  vRow = rigRow;
+  vec3 objectNormal = rigN;
+  #ifdef USE_TANGENT
+    vec3 objectTangent = vec3(tangent.xyz);
+  #endif
+  {
+    vec4 hair = rigT(${T_HAIR});
+    vI = vec4(aInfo.z, aInfo.w, aExt.y, aInfo.y);
+    vMP = position;
+    vDUv = uv + vec2(fract(hair.w * 0.3719), fract(hair.w * 0.6133));
   }`)
+      .replace('#include <begin_vertex>', 'vec3 transformed = rigP;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
+    let frag = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + FRAG_HEAD + (Z ? Z_HEAD : ''))
+      .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment, !!Z))
+      .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + COLOR_CLOTH + (Z ? Z_SHADE : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
+      .replace('#include <roughnessmap_fragment>', Z ? Z_ROUGH : ROUGH_BASE)
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
+      .replace('#include <normal_fragment_maps>', Z ? Z_NORMAL_DETAIL + Z_NORMAL : NORMAL_BASE);
+    if (Z) frag = frag.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n' + Z_SPEC);
+    sh.fragmentShader = frag
       .replace('#include <emissivemap_fragment>', /* glsl */`
   #include <emissivemap_fragment>
   // hit flash: lit surfaces here are ~0.02-0.1 linear (night), and ACES runs at exposure
@@ -482,16 +520,53 @@ export function makeMaterials(shared, opts = {}) {
   #endif
   gl_FragColor.rgb += hhRimCol * rigRim;`);
   };
-  mat.customProgramCacheKey = () => 'hh-rig5-std';
+  mat.customProgramCacheKey = () => (Z ? 'hh-rig5-zombie1' : 'hh-rig5-std');
 
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
+    // zombies: the shadow follows the garment cuts (a tee does not cast a coat's skirt, the
+    // torn strips only their fringe, bare arms no sleeves)
+    const head = Z ? RIG_VERT_HEAD.replace('vec4 p = vec4(position, 1.0);', 'vec4 p = vec4(rigShadowPos(), 1.0);').replace('void rigSkin() {', Z_SHADOW_POS + 'void rigSkin() {') : RIG_VERT_HEAD;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + RIG_VERT_HEAD)
-      .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;')
+      .replace('#include <common>', '#include <common>\n' + head)
+      .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;' + (Z ? ' if (rigCutAway) rigHide = true;' : ''))
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
   };
-  depth.customProgramCacheKey = () => 'hh-rig5-depth';
+  depth.customProgramCacheKey = () => (Z ? 'hh-rig5-zdepth1' : 'hh-rig5-depth');
   return { material: mat, depth, uniforms };
 }
+
+// a zombie's torn strips swing a little under their hem (every tier: a texel fetch for the
+// strips' vertices only)
+const Z_SWAY = /* glsl */`
+  {
+    int zp = int(aExt.y + 0.5);
+    if (zp == 18 || zp == 19) {
+      vec4 zv = rigT(${T_VAR1});
+      float hem = zp == 18 ? zv.x : zv.z;
+      float w = clamp((hem - position.y) / 3.0, 0.0, 1.0);
+      float ph = float(gl_InstanceID) * 2.39 + position.x * 0.7 + position.z * 0.9;
+      rigP += vec3(sin(uTime * 2.3 + ph), -0.15 * w, cos(uTime * 1.9 + ph * 1.3)) * 0.3 * w;
+    }
+  }`;
+
+// the shadow pass of a zombie: garment vertices below their per-instance cut are pulled up to
+// it (whole parts that are cut away entirely are hidden: no triangle is ever half hidden)
+const Z_SHADOW_POS = /* glsl */`
+bool rigCutAway = false;
+vec3 rigShadowPos() {
+  vec3 q = position;
+  int prt = int(aExt.y + 0.5);
+  if (prt == 1 || prt == 2 || prt == 18 || prt == 19 || prt == 21) {
+    vec4 v1 = rigT(${T_VAR1});
+    float cut = (prt == 1 || prt == 18) ? v1.x : prt == 2 ? v1.y : v1.z;
+    if (cut > 90.0 || ((prt == 18 || prt == 19) && cut < 0.0)) rigCutAway = true;
+    else if (cut > 0.0) {
+      q.y = max(q.y, prt >= 18 && prt <= 19 ? cut - 2.0 : cut);
+      if (prt == 18 || prt == 19) q.y = min(q.y, cut);
+    }
+  }
+  return q;
+}
+`;

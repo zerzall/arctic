@@ -40,7 +40,13 @@ export const MAT = {
   SCLERA: 13, TEETH: 14, CARD: 15,
 };
 /** What a vertex is, for per-instance garment logic (vertex attribute aExt.y). */
-export const PART = { NONE: 0, TOP: 1, SLEEVE: 2, LEG: 3, PELVIS: 4, HAND: 5, SHOE: 6, EYE: 7, HAT: 8, HAIR: 9, SOLE: 10, SHAFT: 11, CROWN: 12, LENS: 13, CARD: 14 };
+export const PART = {
+  NONE: 0, TOP: 1, SLEEVE: 2, LEG: 3, PELVIS: 4, HAND: 5, SHOE: 6, EYE: 7, HAT: 8, HAIR: 9, SOLE: 10, SHAFT: 11, CROWN: 12, LENS: 13, CARD: 14,
+  // zombie skin regions (the corpse shading and the anatomy relief of actor-zmat.js), the
+  // torn strips that hang below a garment's per-instance hem, and the trouser shell of the
+  // near models (over a modelled leg: cut away below the hem instead of turning into skin)
+  TORSO: 15, LIMB: 16, HEAD: 17, TATTER: 18, LTATTER: 19, FOOT: 20, TROUSER: 21,
+};
 
 export const WOUND = { GASH: 0, BONE: 1, BITE: 2, BULLET: 3, BURN: 4, ACID: 5 };
 
@@ -71,6 +77,8 @@ export const OPTS = [
   'ribs', 'entrails', 'spine', 'stump_l', 'stump_r', 'stump_hand_l', 'stump_hand_r', 'bone_arm', 'rebar', 'arrow',
   // brute armour
   'plate_chest', 'plate_shoulder', 'plate_arm', 'shield', 'spikes', 'chains',
+  // the nose (zombies: the skull carries only the rotted cavity; most still have their nose)
+  'nose',
 ];
 const OPT_INDEX = new Map(OPTS.map((n, i) => [n, i]));
 /** Bit index of an option name (-1 when unknown). */

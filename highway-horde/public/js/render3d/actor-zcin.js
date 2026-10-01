@@ -1,13 +1,15 @@
 // Cinematic-tier hero details for the zombie models (actor-zmodels.js builds them only when
-// the tier is 'cinematic' and only for LOD 0): a sculpted face (nose bridge and wings,
-// nostril pits, philtrum, lips, nasolabial folds, eyelids over real eyeballs with an iris and
-// a pupil, a full arch of individually shaped teeth on gums, a tongue with a groove, ears with
-// a helix), hands with three-segment fingers, knuckles and nails, laced shoes with a lugged
-// sole, and fold profiles for the garments.
+// the tier is 'cinematic' and only for LOD 0): a sculpted dead face (the relief of the nose's
+// stump, philtrum and nasolabial folds; small eyeballs sunk under heavy drooping lids, a
+// clouded iris and pupil; thin dry lips shrunk back off a human arch of stained, gapped teeth
+// on dark gums; a tongue with a groove; thin ears with a helix — the nose itself is the
+// zombies' 'nose' option, actor-zkit.js), hands with three-segment fingers, knuckles and nails,
+// and fold profiles for the garments. The survivors' cinematic face (cinSoldierFace) and the
+// shared relief (cinFaceRelief) live here too.
 //
 // Everything here is plain geometry for the same rig and material as the rest of the model
 // (one draw call per type and LOD); the wet look of eyes and teeth comes from the material
-// classes SCLERA / TEETH (actor-rigmat.js).
+// classes SCLERA / TEETH (actor-rigmat.js, actor-zmat.js).
 
 import { SLOT, MAT, PART, lineRings } from './actor-shape.js';
 import { B } from './actor-consts.js';
@@ -15,8 +17,9 @@ import { B } from './actor-consts.js';
 const gauss = (x, s) => Math.exp(-(x * x) / (s * s));
 export const smooth01 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
-const TEETH_COLS = ['#cdc2a0', '#bfb28c', '#ab9c74', '#918258', '#c8bea2', '#b5a57c'];
-const GUM = '#5a1a20', LIP = '#8a4a4c', LIP_DARK = '#4a1a20', SCLERA = '#d8cdb2';
+const TEETH_COLS = ['#9a8c68', '#8a7a56', '#7c6c4a', '#6a5a3a', '#948660', '#827250'];
+// dried, receded lips (grey-mauve, darker when rotten), dark gums, a dirty yellowed sclera
+const GUM = '#4a1a1e', LIP = '#5e3c3e', LIP_DARK = '#3a2224', SCLERA = '#b8ae90';
 const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
 /**
@@ -65,98 +68,103 @@ function tooth(sb, c, kind, size, color, bone, upper, tilt, paint) {
     segW: 8, segH: 6, bone, slot: SLOT.FIXED, mat: MAT.TEETH, color, paint, rot: [tilt, 0, 0],
     deform: (p) => {
       const t = smooth01(upper ? -p.y : p.y);           // toward the biting edge
-      if (kind === 'canine') { p.z *= 1 - 0.85 * t * t; p.x *= 1 - 0.5 * t; } else if (kind === 'incisor') { p.x *= 1 - 0.55 * t; p.z *= 1 - 0.1 * t; } else { p.x *= 1 - 0.15 * t; p.z *= 1 - 0.2 * t; if (t > 0.6) p.y *= 0.92 + 0.12 * Math.sin(p.z * 6); }
+      if (kind === 'canine') { p.z *= 1 - 0.4 * t * t; p.x *= 1 - 0.45 * t; } else if (kind === 'incisor') { p.x *= 1 - 0.55 * t; p.z *= 1 - 0.1 * t; } else { p.x *= 1 - 0.15 * t; p.z *= 1 - 0.2 * t; if (t > 0.6) p.y *= 0.92 + 0.12 * Math.sin(p.z * 6); }
     },
   });
 }
 
 /**
- * The cinematic face parts. `pt(x, y, z, inset)` is a point on the finished skull from a
- * unit direction (actor-zmodels headPoint); `jaw` = { jc, jr, def } describes the mandible.
+ * The cinematic face parts of a zombie. `pt(x, y, z, inset)` is a point on the finished skull
+ * from a unit direction (actor-zmodels headPoint); `jaw` = { jc, jr, def } describes the
+ * mandible. A dead face, not a monster's: small eyeballs sunk under drooping lids with a
+ * clouded iris, thin dry lips shrunk back off a human row of stained teeth on dark gums.
  */
 export function cinFace(sb, P, type, pt, def, jaw) {
   const c = P.headC, r = P.headR;
   const { jc, jr, def: jawDef } = jaw;
-  const rot = P.nose < 0.08;
-  // ---- eyes: sclera, iris (the glowing part), pupil, lids ----------------------------------
+  const rot = P.gaunt > 1.1;
+  const hs = r[2] / 3.45;          // parts were sized on a 3.45-wide skull
+  // ---- eyes: sclera, a clouded iris (the faintly glowing part), a milky pupil, heavy lids ----
   for (const s of [-1, 1]) {
-    const e = pt(0.9, 0.12, s * 0.37, 0.9);
+    const e = pt(0.9, 0.1, s * 0.36, 0.87);
+    const R = 0.5 * hs;
     const dirZ = s * 0.2, dl = Math.hypot(1, dirZ);
     const ey = [0, -s * 0.2, 0];      // rotation about Y turns the disc's x axis toward +z * s
-    sb.ellipsoid(e, [0.62, 0.6, 0.62], { segW: 20, segH: 14, slot: SLOT.FIXED, mat: MAT.SCLERA, color: SCLERA, bone: B.HEAD, part: PART.EYE, paint: 0.2 });
-    const ic = [e[0] + 0.5 / dl, e[1], e[2] + dirZ * 0.5 / dl];
-    sb.ellipsoid(ic, [0.09, 0.36, 0.36], { segW: 20, segH: 8, rot: ey, slot: SLOT.ACCENT, mat: MAT.EYE, color: '#ffffff', bone: B.HEAD, part: PART.EYE });
-    sb.ellipsoid([ic[0] + 0.07, ic[1], ic[2] + dirZ * 0.07], [0.06, 0.14, 0.14], { segW: 12, segH: 6, rot: ey, slot: SLOT.FIXED, mat: MAT.SCLERA, color: '#050101', bone: B.HEAD });
-    // lids: skin shells a little larger than the eyeball, collapsed to a rim below / above
-    sb.ellipsoid([e[0] - 0.02, e[1] + 0.02, e[2]], [0.69, 0.68, 0.69], { segW: 22, segH: 10, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0f0f0', bone: B.HEAD, paint: 0.35,
-      deform: (p) => { const cut = 0.18 + Math.max(0, p.x) * 0.05; if (p.y < cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
-    sb.ellipsoid([e[0] - 0.02, e[1] - 0.02, e[2]], [0.68, 0.66, 0.68], { segW: 22, segH: 8, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e0e0e0', bone: B.HEAD, paint: 0.5,
-      deform: (p) => { const cut = -0.44; if (p.y > cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
-    // brows: a ridge of coarse hairs
-    const b0 = pt(0.86, 0.34, s * 0.14, 1.004), b1 = pt(0.78, 0.37, s * 0.36, 1.004), b2 = pt(0.66, 0.33, s * 0.6, 1.004);
-    sb.tube([{ c: b0, rx: 0.13, rz: 0.2 }, { c: b1, rx: 0.15, rz: 0.2 }, { c: b2, rx: 0.06, rz: 0.1 }], { seg: 8, subdiv: 3, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.HAIR, mat: MAT.HAIR, color: '#6a665e', bone: B.HEAD, part: PART.NONE, ref: [0, 1, 0] });
+    sb.ellipsoid(e, [R, R * 0.97, R], { segW: 20, segH: 14, slot: SLOT.FIXED, mat: MAT.SCLERA, color: SCLERA, bone: B.HEAD, part: PART.EYE, paint: 0.2 });
+    const ic = [e[0] + R * 0.8 / dl, e[1] - R * 0.05, e[2] + dirZ * R * 0.8 / dl];
+    sb.ellipsoid(ic, [0.07 * hs, R * 0.56, R * 0.56], { segW: 20, segH: 8, rot: ey, slot: SLOT.ACCENT, mat: MAT.EYE, color: '#ffffff', bone: B.HEAD, part: PART.EYE });
+    sb.ellipsoid([ic[0] + 0.05, ic[1], ic[2] + dirZ * 0.05], [0.05, R * 0.2, R * 0.2], { segW: 12, segH: 6, rot: ey, slot: SLOT.FIXED, mat: MAT.SCLERA, color: '#4a4640', bone: B.HEAD });
+    // lids: skin shells a little larger than the eyeball; the upper one droops over the iris
+    sb.ellipsoid([e[0] - 0.02, e[1] + 0.02, e[2]], [R * 1.12, R * 1.1, R * 1.12], { segW: 22, segH: 10, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#c8bcc0', bone: B.HEAD, paint: 0.3, part: PART.HEAD,
+      deform: (p) => { const cut = 0.14 + Math.max(0, p.x) * 0.05 + Math.abs(p.z) * 0.12; if (p.y < cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
+    sb.ellipsoid([e[0] - 0.02, e[1] - 0.03, e[2]], [R * 1.1, R * 1.08, R * 1.1], { segW: 22, segH: 8, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#b09aa4', bone: B.HEAD, paint: 0.45, part: PART.HEAD,
+      deform: (p) => { const cut = -0.5; if (p.y > cut) p.y = cut + (p.y - cut) * 0.04; if (p.x < 0.15) p.x = 0.15 + (p.x - 0.15) * 0.3; } });
+    // brows: a thin ridge of sparse hairs
+    const b0 = pt(0.86, 0.32, s * 0.14, 1.004), b1 = pt(0.78, 0.35, s * 0.36, 1.004), b2 = pt(0.66, 0.31, s * 0.58, 1.004);
+    sb.tube([{ c: b0, rx: 0.07, rz: 0.12 }, { c: b1, rx: 0.08, rz: 0.12 }, { c: b2, rx: 0.04, rz: 0.06 }], { seg: 8, subdiv: 3, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.HAIR, mat: MAT.HAIR, color: '#8a8680', bone: B.HEAD, part: PART.NONE, ref: [0, 1, 0] });
     // nostril: the dark pit is in the relief; the wings get a rim
-    const n0 = pt(0.93, -0.2, s * 0.085, 1.0);
-    sb.ellipsoid(n0, [0.2, 0.15, 0.17], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#1a0606', bone: B.HEAD });
+    const n0 = pt(0.93, -0.2, s * 0.08, 1.0);
+    sb.ellipsoid(n0, [0.16 * hs, 0.12 * hs, 0.13 * hs], { segW: 8, segH: 5, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#1a0606', bone: B.HEAD });
   }
-  // ---- lips ---------------------------------------------------------------------------------
+  // ---- lips: thin and dry, shrunk back off the teeth --------------------------------------------
   const upper = [], lowerJ = [];
   for (let i = 0; i <= 12; i++) {
     const u = -0.8 + i / 7.5;
-    const bow = 0.022 * Math.max(0, 1 - Math.abs(u) * 3.2);
-    upper.push({ c: pt(0.95 - 0.34 * u * u, -0.335 + bow - 0.05 * u * u, u * 0.4, 1.004), rx: 0.12 - 0.04 * Math.abs(u), rz: 0.1 - 0.03 * Math.abs(u), bone: B.HEAD });
+    const bow = 0.016 * Math.max(0, 1 - Math.abs(u) * 3.2);
+    upper.push({ c: pt(0.95 - 0.34 * u * u, -0.3 + bow - 0.05 * u * u, u * 0.36, 1.003), rx: (0.075 - 0.025 * Math.abs(u)) * hs, rz: (0.07 - 0.02 * Math.abs(u)) * hs, bone: B.HEAD });
   }
-  sb.tube(upper, { seg: 10, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.FLESH, color: rot ? LIP_DARK : LIP, bone: B.HEAD, ref: [0, 1, 0], paint: 0.2 });
+  sb.tube(upper, { seg: 10, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.FLESH, color: rot ? LIP_DARK : LIP, bone: B.HEAD, ref: [0, 1, 0], paint: 0.35 });
   // lower lip on the jaw's front rim
   for (let i = 0; i <= 12; i++) {
-    const a = -0.75 + (i / 12) * 1.5;
+    const a = -0.7 + (i / 12) * 1.4;
     const q = { x: Math.cos(a) * 0.93, y: 0.16, z: Math.sin(a) * 0.93 };
     jawDef(q);
-    lowerJ.push({ c: [jc[0] + q.x * jr[0], jc[1] + q.y * jr[1] + 0.05, q.z * jr[2]], rx: 0.14 - 0.04 * Math.abs(a) / 0.75, rz: 0.11, bone: B.JAW });
+    lowerJ.push({ c: [jc[0] + q.x * jr[0], jc[1] + q.y * jr[1] + 0.05, q.z * jr[2]], rx: (0.09 - 0.03 * Math.abs(a) / 0.7) * hs, rz: 0.075 * hs, bone: B.JAW });
   }
-  sb.tube(lowerJ, { seg: 10, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.FLESH, color: rot ? LIP_DARK : LIP, bone: B.JAW, ref: [0, 1, 0], paint: 0.2 });
+  sb.tube(lowerJ, { seg: 10, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 2, slot: SLOT.FIXED, mat: MAT.FLESH, color: rot ? LIP_DARK : LIP, bone: B.JAW, ref: [0, 1, 0], paint: 0.5 });
 
-  // ---- teeth on gums ------------------------------------------------------------------------
+  // ---- teeth on gums: a human arch (the canines no longer than the rest), stained and gapped ----
   const kinds = ['molar', 'premolar', 'premolar', 'canine', 'incisor', 'incisor'];
   const NU = 11;
   const gumU = [];
+  const tk = hs * 0.82;
   for (let t = 0; t < NU; t++) {
-    const a = -0.5 + (t / (NU - 1)) * 1.0;
-    const kind = kinds[Math.min(5, Math.round(Math.abs(a) / 0.5 * 5))];
-    const kx = 0.86 - Math.abs(a) * 0.32;
-    const up = pt(kx, -0.36, a * 1.0, 0.985);
-    gumU.push({ c: [up[0] - 0.02, up[1] + 0.1, up[2]], r: 0.16, bone: B.HEAD });
-    if (hash(t * 3.1 + type.length) < 0.14 && kind !== 'canine') continue;       // a missing tooth
-    const size = kind === 'incisor' ? [0.2, 0.42, 0.15] : kind === 'canine' ? [0.17, 0.5 + (t % 2) * 0.1, 0.16] : [0.19, 0.3, 0.16];
-    tooth(sb, [up[0], up[1] - size[1] * 0.85, up[2]], kind, size, TEETH_COLS[(t * 5 + type.length) % TEETH_COLS.length], B.HEAD, true, 0.06 * (t % 3 - 1), kind === 'incisor' ? 0.25 : 0.15);
+    const a = -0.46 + (t / (NU - 1)) * 0.92;
+    const kind = kinds[Math.min(5, Math.round(Math.abs(a) / 0.46 * 5))];
+    const kx = 0.86 - Math.abs(a) * 0.34;
+    const up = pt(kx, -0.35, a * 1.0, 0.985);
+    gumU.push({ c: [up[0] - 0.02, up[1] + 0.12 * tk, up[2]], r: 0.15 * tk, bone: B.HEAD });
+    if (hash(t * 3.1 + type.length) < 0.16 && kind !== 'canine') continue;       // a missing tooth
+    const size = kind === 'incisor' ? [0.19, 0.36, 0.14] : kind === 'canine' ? [0.16, 0.38, 0.15] : [0.18, 0.28, 0.16];
+    tooth(sb, [up[0], up[1] - size[1] * 0.8 * tk, up[2]], kind, size.map((v) => v * tk), TEETH_COLS[(t * 5 + type.length) % TEETH_COLS.length], B.HEAD, true, 0.07 * (t % 3 - 1), kind === 'incisor' ? 0.25 : 0.15);
   }
   sb.tube(gumU, { seg: 6, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.FLESH, color: GUM, bone: B.HEAD, ref: [0, 1, 0], paint: 0.6 });
   const NL = 11, gumL = [];
   for (let t = 0; t < NL; t++) {
-    const a = -0.85 + (t / (NL - 1)) * 1.7;
-    const kind = kinds[Math.min(5, Math.round(Math.abs(a) / 0.85 * 5))];
+    const a = -0.8 + (t / (NL - 1)) * 1.6;
+    const kind = kinds[Math.min(5, Math.round(Math.abs(a) / 0.8 * 5))];
     const q = { x: Math.cos(a) * 0.74, y: 0.3, z: Math.sin(a) * 0.74 };
     jawDef(q);
     const lo = [jc[0] + q.x * jr[0], jc[1] + q.y * jr[1], q.z * jr[2]];
-    gumL.push({ c: [lo[0], lo[1] - 0.06, lo[2]], r: 0.15, bone: B.JAW });
-    if (hash(t * 5.3 + 2 + type.length) < 0.18 && kind !== 'canine') continue;
-    const size = kind === 'incisor' ? [0.17, 0.34, 0.13] : kind === 'canine' ? [0.16, 0.42, 0.15] : [0.19, 0.26, 0.16];
-    tooth(sb, [lo[0], lo[1] + size[1] * 0.7, lo[2]], kind, size, TEETH_COLS[(t * 3 + 1 + type.length) % TEETH_COLS.length], B.JAW, false, 0.05 * (t % 3 - 1), 0.15);
+    gumL.push({ c: [lo[0], lo[1] - 0.06, lo[2]], r: 0.14 * tk, bone: B.JAW });
+    if (hash(t * 5.3 + 2 + type.length) < 0.2 && kind !== 'canine') continue;
+    const size = kind === 'incisor' ? [0.16, 0.3, 0.12] : kind === 'canine' ? [0.15, 0.32, 0.14] : [0.18, 0.24, 0.16];
+    tooth(sb, [lo[0], lo[1] + size[1] * 0.66 * tk, lo[2]], kind, size.map((v) => v * tk), TEETH_COLS[(t * 3 + 1 + type.length) % TEETH_COLS.length], B.JAW, false, 0.06 * (t % 3 - 1), 0.15);
   }
   sb.tube(gumL, { seg: 6, subdiv: 2, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.FLESH, color: GUM, bone: B.JAW, ref: [0, 1, 0], paint: 0.6 });
-  // ---- tongue with a groove --------------------------------------------------------------
-  sb.ellipsoid([jc[0] + jr[0] * 0.1, jc[1] + jr[1] * 0.28, 0], [jr[0] * 0.6, 0.55, jr[2] * 0.42], { segW: 16, segH: 9, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#6a2024', bone: B.JAW, paint: 0.5,
+  // ---- tongue with a groove, dark and dry --------------------------------------------------------
+  sb.ellipsoid([jc[0] + jr[0] * 0.1, jc[1] + jr[1] * 0.26, 0], [jr[0] * 0.58, 0.45 * hs, jr[2] * 0.42], { segW: 16, segH: 9, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#4a1a1e', bone: B.JAW, paint: 0.5,
     deform: (p) => { p.y -= 0.35 * gauss(p.z, 0.18) * Math.max(0, p.y); if (p.x > 0.5) p.y += (p.x - 0.5) * 0.4; } });
-  // ---- ears with a rim ----------------------------------------------------------------------
+  // ---- ears with a rim (thin, a little torn) --------------------------------------------------
   for (const s of [-1, 1]) {
     const e = pt(-0.08, 0.02, s, 0.97);
     const pts = [];
     for (let i = 0; i <= 12; i++) {
       const a = (i / 12) * Math.PI * 1.75 - 0.4;
-      pts.push({ c: [e[0] - Math.sin(a) * 0.62, e[1] + Math.cos(a) * 1.05, e[2] + s * (0.1 + 0.2 * Math.sin(a * 0.9))], r: 0.16 + 0.03 * Math.sin(a * 2), bone: B.HEAD });
+      pts.push({ c: [e[0] - Math.sin(a) * 0.55 * hs, e[1] + Math.cos(a) * 0.95 * hs, e[2] + s * (0.08 + 0.18 * Math.sin(a * 0.9)) * hs], r: (0.13 + 0.03 * Math.sin(a * 2)) * hs, bone: B.HEAD });
     }
-    sb.tube(pts, { seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e6e6e6', bone: B.HEAD, paint: 0.4, ref: [0, 0, s] });
-    sb.ellipsoid([e[0] - 0.05, e[1] - 0.95, e[2] + s * 0.22], [0.3, 0.42, 0.22], { segW: 8, segH: 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#e0e0e0', bone: B.HEAD, paint: 0.45 });
+    sb.tube(pts, { seg: 6, cap0: 'round', cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#d8d0d0', bone: B.HEAD, paint: 0.4, ref: [0, 0, s], part: PART.HEAD });
+    sb.ellipsoid([e[0] - 0.05, e[1] - 0.85 * hs, e[2] + s * 0.2 * hs], [0.26 * hs, 0.36 * hs, 0.18 * hs], { segW: 8, segH: 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#d0c8c8', bone: B.HEAD, paint: 0.45, part: PART.HEAD });
   }
 }
 

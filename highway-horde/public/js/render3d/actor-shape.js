@@ -214,7 +214,8 @@ export class ShapeBuilder {
    *   c = centre; rx = radius along the frame normal (the part's "front"), rz = along the
    *   binormal (its "side"); a ring with radius 0 becomes a pole vertex (closed end).
    * @param {object} o { seg, cap0, cap1 ('round'|'flat'|'none'), ref:[x,y,z] frame hint, bone,
-   *   slot, mat, color, paint, noise:{amp, freq}, profile(theta)→k, uvTile, ao, shade }
+   *   slot, mat, color, paint, noise:{amp, freq}, profile(theta)→k, uvTile, ao, shade,
+   *   disp(x, y, z, ux, uy, uz)→radial offset (model space; u = outward unit direction) }
    */
   tube(rings, o = {}) {
     const seg = Math.max(3, o.seg || 8);
@@ -302,6 +303,13 @@ export class ShapeBuilder {
         if (noise) {
           const l = Math.hypot(dx, dy, dz) || 1;
           const d = fbm3(px * noise.freq + (noise.seed || 0), py * noise.freq, pz * noise.freq) * noise.amp;
+          px += dx / l * d; py += dy / l * d; pz += dz / l * d;
+        }
+        if (o.disp) {
+          // model-space relief (the zombies' collarbones, ribs, knees): a radial offset from
+          // the point and its outward direction
+          const l = Math.hypot(dx, dy, dz) || 1;
+          const d = o.disp(px, py, pz, dx / l, dy / l, dz / l);
           px += dx / l * d; py += dy / l * d; pz += dz / l * d;
         }
         pos.push(px, py, pz);

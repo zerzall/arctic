@@ -124,8 +124,10 @@ test('survivor heroes: finite, valid, deterministic, denser than ultra', () => {
 });
 
 test('the ultra and lower actor models are unchanged by the cinematic code (regression sizes)', () => {
-  // triangle counts measured before the V2 pass (de88dae): the tiers below cinematic must not move
-  const expect = { walker: [12004, 3328, 612], runner: [9030, 2566, 612], brute: [8004, 2378, 832], boss: [8999, 2982, 776] };
+  // triangle counts measured before the V2 pass (de88dae): the tiers below cinematic must not move;
+  // the zombies' were re-measured after the corpse pass (human proportions, relief, torn strips,
+  // faces: tests/zombie-models.test.js keeps their budgets per tier)
+  const expect = { walker: [18778, 3136, 612], runner: [14958, 2374, 612], brute: [13478, 2756, 832], boss: [13837, 3000, 776] };
   for (const [type, e] of Object.entries(expect)) {
     for (let L = 0; L < 3; L++) assert.equal(zm.buildZombie(type, L, 0).I.length / 3, e[L], `${type} L${L}`);
   }
