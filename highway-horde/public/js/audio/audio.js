@@ -753,6 +753,13 @@ class Engine {
         if (e.boss) this.play('horn', { local: true, prio: PRIO_UI, delay: 0.4 });
         this.musicTarget = Math.max(this.musicTarget, 0.45);
         return;
+      // Horde Elimination: a surge let loose sounds like a wave; its announcement is a radio blip
+      case 'surge':
+        if (e.what === 'next') return void this.play('radio_blip', { local: true, prio: PRIO_UI });
+        this.play('siren', { local: true, prio: PRIO_UI });
+        if (e.boss) this.play('horn', { local: true, prio: PRIO_UI, delay: 0.4 });
+        this.musicTarget = Math.max(this.musicTarget, 0.45 + Math.min(0.4, (e.n | 0) * 0.05));
+        return;
       case 'bossspawn': return void this.play('boss_spawn', { ...pos, minGain: 0.55, prio: PRIO_UI });
       case 'waveclear':
         this.play('waveclear', { local: true, prio: PRIO_UI });

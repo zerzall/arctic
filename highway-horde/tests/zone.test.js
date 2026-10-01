@@ -75,7 +75,7 @@ describe('modes and maps', () => {
     assert.ok(harlan, 'the new map is listed');
     assert.deepEqual(mapModes(harlan), ['zone', 'campaign']);
     // (Horde Elimination, SPEC §3.12: a standard mode; Sandstone is built for it)
-    const ALL = { highway: ['defend', 'zone', 'campaign'], checkpoint: ['defend', 'zone', 'campaign', 'horde'], sandstone: ['horde', 'defend'] };
+    const ALL = { highway: ['defend', 'zone', 'campaign', 'horde'], checkpoint: ['defend', 'zone', 'campaign', 'horde'], sandstone: ['horde', 'defend'] };
     for (const m of MAP_LIST) {
       if (m.id === 'harlan') continue;
       assert.deepEqual(mapModes(m), ALL[m.id] || STANDARD_MODES, `${m.id}'s modes`);

@@ -166,8 +166,9 @@ export function mergeSettings(current, patch) {
   // Same for the time of day (a day-only map): the pick wins, the other setting follows.
   const timePicked = TIME_IDS.includes(patch.time);
   if (timePicked) out.time = patch.time;
-  // a map with a time of its own (Sandstone: day) switches to it when it is picked
-  else if (mapPicked && defaultTimeOf(out.mapId)) out.time = defaultTimeOf(out.mapId);
+  // a map with a time of its own (Sandstone: day) switches to it when it is picked, or when
+  // picking a mode brought it (Horde Elimination → Sandstone)
+  else if ((mapPicked || out.mapId !== (current && current.mapId)) && defaultTimeOf(out.mapId)) out.time = defaultTimeOf(out.mapId);
   const tfix = fixTimeCombo(out.mapId, out.time, timePicked && !mapPicked ? 'time' : 'map');
   out.mapId = tfix.mapId;
   out.time = tfix.time;

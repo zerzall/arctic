@@ -26,7 +26,7 @@ export const MAP_LIST = [
     id: 'highway',
     name: 'Highway 9 Pileup',
     description: 'A school bus full of kids is stuck in a pileup that stretches for miles, between two crossroads and under the I-44 overpass. The horde pours in from both ends of the highway, down the crossroads and the ramps, and across the fields. Campaign: hold the hill east of the pileup, then fight west along the highway to the tower.',
-    modes: ['defend', 'zone', 'campaign'],
+    modes: ['defend', 'zone', 'campaign', 'horde'],
   },
   {
     id: 'truckstop',

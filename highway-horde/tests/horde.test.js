@@ -12,7 +12,8 @@ import {
   HS_PREP, HS_BREATHER, HS_SURGE, HS_HOLD,
 } from '../public/js/shared/horde.js';
 import { mapModes, MODE_IDS } from '../public/js/shared/zone.js';
-import { DIFFICULTIES, START_CASH } from '../public/js/shared/constants.js';
+import { DIFFICULTIES, START_CASH, PROTOCOL_VERSION } from '../public/js/shared/constants.js';
+import { encodeSnapshot, decodeSnapshot } from '../public/js/shared/protocol.js';
 import { killZombie } from '../public/js/shared/sim/combat.js';
 import { damagePlayer } from '../public/js/shared/sim/players.js';
 import { shopWave } from '../public/js/shared/sim/players.js';
@@ -50,7 +51,7 @@ function skipBuy(g) {
 describe('the horde: size, surges, entrances', () => {
   test('the mode is listed and the standard maps play it', () => {
     assert.ok(MODE_IDS.includes('horde'));
-    for (const id of ['truckstop', 'bridge', 'checkpoint']) assert.ok(mapModes(id).includes('horde'), id);
+    for (const id of ['highway', 'truckstop', 'bridge', 'checkpoint', 'sandstone']) assert.ok(mapModes(id).includes('horde'), id);
     assert.ok(!mapModes('harlan').includes('horde'), 'Harlan County is too big for one round');
   });
 
@@ -306,5 +307,38 @@ describe('a horde round', () => {
     const cash = g.players[0].cash;
     while (g.horde.stage === HS_BREATHER) { guard(g); g.step(); }
     assert.equal(g.players[0].cash, cash + HORDE.surgeBonus);
+  });
+});
+
+describe('on the wire (protocol 12)', () => {
+  test('the horde block and the surge events survive a round trip; other modes carry none', () => {
+    assert.ok(PROTOCOL_VERSION >= 12, 'the horde block belongs to protocol 12 and later');
+    const g = hordeGame({ n: 2, seed: 3 });
+    const events = [];
+    g.step();
+    let d = decodeSnapshot(encodeSnapshot(g.snapshot()));
+    assert.deepEqual({ ...d.horde, time: 0 }, { ...g.snapshot().horde, time: 0 }, 'the buy time');
+    skipBuy(g);
+    for (let t = 0; t < 60 * 20; t++) {
+      guard(g);
+      g.step();
+      const s = g.snapshot();
+      events.push(...decodeSnapshot(encodeSnapshot(s)).events.filter((e) => e.type === 'surge'));
+    }
+    const s = g.snapshot();
+    d = decodeSnapshot(encodeSnapshot(s));
+    for (const k of ['total', 'left', 'alive', 'surge', 'surges', 'tier', 'stage', 'lanes']) assert.equal(d.horde[k], s.horde[k], k);
+    assert.ok(Math.abs(d.horde.next - s.horde.next) < 0.01);
+    assert.ok(Math.abs(d.horde.time - s.horde.time) < 1e-3);
+    assert.ok(d.horde.total >= 150 && d.horde.left <= d.horde.total && d.horde.surge >= 1);
+    // the first surge was announced and let loose, with its entrances
+    const next = events.find((e) => e.what === 'next'), go = events.find((e) => e.what === 'go');
+    assert.ok(next && go, 'surge events on the wire');
+    assert.equal(next.n, 1);
+    assert.equal(go.lanes, next.lanes);
+    assert.ok(laneNames(g.map, go.lanes).length >= 1);
+    const plain = new Game({ mapId: MAP, seed: 3, settings: { mode: 'defend' }, players: team(1) });
+    plain.step();
+    assert.equal(decodeSnapshot(encodeSnapshot(plain.snapshot())).horde, null);
   });
 });

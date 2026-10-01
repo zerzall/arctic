@@ -91,6 +91,8 @@ export function interpolateSnapshots(a, b, u) {
     readyCount: b.readyCount,
     zone: blendZone(useA, b, u),
     campaign: blendCampaign(useA, b, u),
+    // Horde Elimination: the counts and the clocks of the newer snapshot (they move in whole steps)
+    horde: b.horde ? { ...b.horde } : null,
     // Road to Haven: the objective tracker and the spots are taken from the newer snapshot, NPCs glide
     story: b.story || null,
     // a story level's gates, sections and lights (the renderers animate the gates themselves)

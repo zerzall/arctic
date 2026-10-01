@@ -1519,6 +1519,37 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   .hud-zone { min-width: 0; padding: 0.25rem 0.625rem 0.3125rem; }
 }
 
+/* ---- Horde Elimination: the surge panel (ui/hordehud.js) ---- */
+.hud-horde {
+  min-width: min(22rem, 100%);
+  padding: 0.3125rem 1rem 0.4375rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(30, 12, 6, 0.84), rgba(22, 10, 4, 0.64));
+  border: 1px solid rgba(255, 138, 61, 0.5);
+  border-radius: 0.1875rem;
+  box-shadow: 0 0 1.25rem rgba(255, 120, 40, 0.12);
+}
+.horde-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: #ffc28a;
+  text-shadow: 0 0 0.875rem rgba(255, 120, 40, 0.45), 0 0.125rem 0 #000;
+  white-space: nowrap;
+}
+.horde-sub { margin-top: 0.125rem; font-family: var(--font-cond); font-weight: 700; font-size: 1rem; letter-spacing: 0.05em; color: #fff0e2; }
+.horde-bar { height: 0.25rem; margin-top: 0.3125rem; background: rgba(255, 255, 255, 0.08); border-radius: 0.125rem; overflow: hidden; }
+.horde-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #b8401c, #ff8a3d); transition: width 0.25s linear; }
+.hud-horde.urgent { border-color: rgba(255, 70, 50, 0.85); animation: breathe 0.8s ease-in-out infinite; }
+.hud-horde.boss .horde-title { color: #ff8f80; }
+.hud-horde.last .horde-bar > i { background: linear-gradient(90deg, #d98a00, var(--hazard)); }
+@media (max-width: 760px), (max-height: 520px) {
+  .horde-title { font-size: 1.0625rem; }
+  .horde-sub { font-size: 0.8125rem; }
+  .hud-horde { min-width: 0; padding: 0.25rem 0.625rem 0.3125rem; }
+}
+
 /* ---- Campaign: the stage panel, the horde warning, the title card (ui/campaignhud.js) ---- */
 .hud-camp {
   min-width: min(24rem, 100%);

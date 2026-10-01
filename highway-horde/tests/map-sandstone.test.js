@@ -14,6 +14,8 @@ import { terrainOf } from '../public/js/shared/terrain.js';
 import { hordeLanes, hordeHold, HORDE } from '../public/js/shared/horde.js';
 import { mapModes, fixModeCombo } from '../public/js/shared/zone.js';
 import { mapTimes, resolveTime } from '../public/js/shared/timeofday.js';
+import { mergeSettings } from '../public/js/net/lobby-rules.js';
+import { DEFAULT_SETTINGS } from '../public/js/shared/constants.js';
 import { resetVertical } from '../public/js/shared/jump.js';
 import { buildDress } from '../public/js/shared/dress.js';
 import { Game } from '../public/js/shared/sim.js';
@@ -66,8 +68,12 @@ describe('Sandstone: the map', () => {
     assert.equal(entry.defaultTime, 'day');
     assert.equal(resolveTime(ID, undefined), 'day');
     assert.equal(mapMeta(ID).name, 'Sandstone');
-    // picking the mode on a map that doesn't play it lands here
+    // picking the mode on a map that doesn't play it lands here, by day
     assert.deepEqual(fixModeCombo('harlan', 'horde', 'mode'), { mapId: ID, mode: 'horde' });
+    const s = mergeSettings({ ...DEFAULT_SETTINGS, mapId: 'harlan', mode: 'zone' }, { mode: 'horde' });
+    assert.deepEqual([s.mapId, s.mode, s.time], [ID, 'horde', 'day']);
+    assert.equal(mergeSettings(s, { time: 'dusk' }).time, 'dusk', 'and at dusk when asked');
+    assert.equal(mergeSettings({ ...DEFAULT_SETTINGS }, { mode: 'zone' }).time, 'night', 'other maps keep the time');
     const m = getMap();
     assert.ok(m.width >= 3500 && m.width <= 4500 && m.height >= 3500 && m.height <= 4500, `${m.width} x ${m.height}`);
     assert.ok(m.obstacles.length >= 120 && m.obstacles.length <= 260, `${m.obstacles.length} obstacles`);
