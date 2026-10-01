@@ -61,6 +61,29 @@ const LAYER_CELLS = {
   drywall: [0, 0, 0, -0.5], strata: [0, 0, 0, -0.4], bark: [0, 0, 0, -0.4],
 };
 
+// A shift (in tiles) that maps each layer's structure onto itself: whole bricks, boards, planks, ribs,
+// panels and threads across; an even number of courses up where every other course is offset (and
+// threads that keep the weave's parity); anything on organic layers; none where one element fills
+// the tile (slabs, terrazzo panels, the vinyl's seams) or a single feature would show twice (the
+// star in cracked glass, the centre of a tyre's tread). The material blends in a copy of the layer
+// moved by it over patches of the world, so the same peel, stain or knot does not come back tile
+// after tile while the joints still line up.
+const ANY = [0.43, 0.29];
+const LAYER_SHIFT = {
+  brick: [2 / 5, 2 / 16], concrete: ANY, siding: [0.37, 5 / 12], corrugated: [5 / 14, 1 / 2], panel: ANY, char: ANY,
+  wood: [0.41, 2 / 6], fabric: [10 / 48, 14 / 48], bark: ANY, rubber: [7 / 24, 0], shingle: [3 / 8, 2 / 10],
+  hesco: [3 / 10, 4 / 10], stucco: ANY, rock: ANY, asphalt: ANY, grass: ANY, gravel: ANY, rust: ANY, plastic: ANY,
+  dirt: ANY, plaster: ANY, tile: [3 / 8, 3 / 8], metalroof: [2 / 4, 2 / 6], paver: [1 / 4, 2 / 4], cracked: ANY,
+  strata: ANY, sand: ANY, carpet: [1 / 3, 1 / 3], drywall: [2 / 4, 2 / 6], ceiltile: [1 / 2, 1 / 2], wallpaper: [1 / 3, 1 / 6],
+};
+
+/** Per-layer self-mapping shift, 2 floats per layer (u, v in tiles; 0, 0 = the layer is never shifted). */
+export const DET_SHIFT = new Float32Array(LAYERS * 2);
+for (let i = 0; i < LAYERS; i++) {
+  const d = LAYER_SHIFT[NAMES[i]];
+  if (d) DET_SHIFT.set(d, i * 2);
+}
+
 /**
  * Per-layer element grid, 4 floats per layer: cells along u and v, the shift of odd rows, the
  * tone amplitude (0 = no elements; negative = an organic layer's second-scale blend amount).

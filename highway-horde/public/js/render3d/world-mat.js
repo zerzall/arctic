@@ -4,7 +4,8 @@
 //          (world-surf.js: normal, roughness and albedo, then hue, desaturation and height),
 //          with per-vertex roughness / metalness; bricks, slabs and shingles each get a tone
 //          of their own hashed from their place in the world, organic layers a second, larger
-//          copy of themselves, so nothing repeats tile after tile; parallax occlusion on ultra
+//          copy of themselves, and over patches of the world every layer is shown moved by whole
+//          elements, so nothing repeats tile after tile; parallax occlusion on ultra
 //          and cinematic, where the relief also shadows the sun; the normal detail the mips
 //          lose turns into roughness. Then a world-space weathering pass (rain streaks and
 //          drips, stains, splash dirt at the foot of walls, grime in the low spots, dust on
@@ -26,7 +27,7 @@
 // program and a mesh created later hits the program cache.
 
 import * as THREE from 'three';
-import { DET_LAYERS, DET_PARAMS, DET_CELLS } from './world-surf.js';
+import { DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT } from './world-surf.js';
 
 const DETAIL_VERT_PARS = `
 attribute vec3 aDet;
@@ -211,7 +212,13 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
 }
 `;
 
+/** A float array as GLSL literals. */
+const glslList = (a) => Array.from(a, (v) => (Math.round(v * 1e5) / 1e5).toFixed(5)).join(', ');
+
 const DETAIL_FRAG_PARS = `
+// per layer: tile size (world units) and the shift that maps its structure onto itself (tiles)
+const float hhTile[${DET_LAYERS}] = float[${DET_LAYERS}](${glslList(DET_TILE)});
+const vec2 hhShift[${DET_LAYERS}] = vec2[${DET_LAYERS}](${Array.from({ length: DET_LAYERS }, (_, i) => `vec2(${glslList(DET_SHIFT.subarray(i * 2, i * 2 + 2))})`).join(', ')});
 uniform highp sampler2DArray uDetail;
 uniform float uDetN;
 uniform vec4 uDetP[${DET_LAYERS}];
@@ -291,6 +298,27 @@ const DETAIL_COLOR_GLSL = `
     float hhDist = length(vViewPosition);
     hhLod = log2(max(max(length(hhDx), length(hhDy)) * float(textureSize(uDetail, 0).x), 1e-4));
     float hhCl = hhL + ${DET_LAYERS}.0;
+    // a planar world position (one oblique projection: seamless round corners, needs no normal).
+    // World space, not the layer's: a facade of repeated modules restarts the layer on each one
+    vec3 hhW = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
+    vec2 hhQw = hhW.xz + hhW.y * vec2(0.61, -0.47);
+    // tile breaking: over patches of the world under a tile across, the layer is shown moved by
+    // none, one or two of its self-mapping shifts (whole bricks, boards, ribs: hhShift), so a peel,
+    // stain or knot does not come back tile after tile and the joints still line up. The copy that
+    // dominates goes through the parallax; its neighbour is blended in across the patch edges. hhOff
+    // undoes the move for everything tied to the elements themselves (their tones, the second-scale
+    // copy, the grain)
+    vec2 hhSh = hhShift[int(hhL)], hhOff = vec2(0.0);
+    float hhSw = 0.0;
+    if (hhSh.x + hhSh.y > 0.0) {
+      float n = texture(uDetail, vec3(hhQw / (hhTile[int(hhL)] * 6.0) + 0.29, 23.0)).g;
+      float f = smoothstep(0.42, 0.47, n) + smoothstep(0.53, 0.58, n);
+      float i = floor(f + 0.5), fr = f - i;
+      hhOff = hhSh * i;
+      hhSw = abs(fr);
+      hhSh *= fr < 0.0 ? -1.0 : 1.0;
+      hhUv += hhOff;
+    }
     // parallax occlusion: step down the height field along the view ray (ultra / cinematic)
     float hhPd = hhP.x * step(0.5, uDetQ.x) * (1.0 - smoothstep(uDetQ.w * 0.55, uDetQ.w, hhDist)) * (1.0 - smoothstep(1.5, 3.5, hhLod));
     if (hhPd > 1e-5) {
@@ -315,11 +343,16 @@ const DETAIL_COLOR_GLSL = `
     }
     hhD = textureGrad(uDetail, vec3(hhUv, hhL), hhDx, hhDy);
     hhC = textureGrad(uDetail, vec3(hhUv, hhCl), hhDx, hhDy);
+    if (hhSw > 0.0) {
+      hhD = mix(hhD, textureGrad(uDetail, vec3(hhUv + hhSh, hhL), hhDx, hhDy), hhSw);
+      hhC = mix(hhC, textureGrad(uDetail, vec3(hhUv + hhSh, hhCl), hhDx, hhDy), hhSw);
+    }
     hhUvG = hhUv; hhDxG = hhDx; hhDyG = hhDy; hhTbnG = hhTbn; hhClG = hhCl; hhPdG = hhPd; hhH0 = hhC.a;
+    vec2 hhUe = hhUv - hhOff;
     // elements (bricks, slabs, shingles): a tone and a hue of their own from their place in the world
     vec4 hhG = uDetG[int(hhL)];
     if (hhG.w > 0.0) {
-      vec2 cu = hhUv * hhG.xy;
+      vec2 cu = hhUe * hhG.xy;
       float row = floor(cu.y);
       vec2 cell = vec2(floor(cu.x + hhG.z * mod(row, 2.0)), row);
       float e1 = hhCell(cell), e2 = hhCell(cell + vec2(71.0, 13.0));
@@ -327,27 +360,22 @@ const DETAIL_COLOR_GLSL = `
       hhC.r += (e2 - 0.5) * hhG.w * 0.3;
     } else if (hhG.w < 0.0) {
       // an organic layer: its own albedo and roughness again, 3.4x larger and turned, over the tile
-      vec2 q = vec2(hhUv.x * 0.8 - hhUv.y * 0.6, hhUv.x * 0.6 + hhUv.y * 0.8) * 0.294 + 0.43;
+      vec2 q = vec2(hhUe.x * 0.8 - hhUe.y * 0.6, hhUe.x * 0.6 + hhUe.y * 0.8) * 0.294 + 0.43;
       vec4 s2 = texture(uDetail, vec3(q, hhL));
       hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
       hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
     }
     // the layer's markings (peeled paint, stains, burnt bricks) fade in and out over the world on a
-    // period of ~300 units, so a long wall never shows the same blotch tile after tile. World space,
-    // not the layer's: a facade of repeated modules restarts the layer on each one, and a fade that
-    // followed the layer would repeat with them. (One oblique planar projection is seamless round
-    // corners and needs no normal.)
+    // period of ~300 units, so a long wall never shows the same blotch at the same strength
     {
-      vec3 wp = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
-      vec2 q = (wp.xz + wp.y * vec2(0.61, -0.47)) / 300.0 + 0.17;
-      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(q, 23.0)).r));
+      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(hhQw / 300.0 + 0.17, 23.0)).r));
       hhD.a = 0.5 + (hhD.a - 0.5) * k;
       hhC.rgb = vec3(0.5, 0.5, 0.0) + (hhC.rgb - vec3(0.5, 0.5, 0.0)) * k;
     }
     // fine grain close to the eye: at 4K the layer alone was magnified ~5x there
     float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y;
     if (hhNear > 0.0) {
-      vec4 m = texture(uDetail, vec3(hhUv * 6.7 + 0.31, 23.0 + ${DET_LAYERS}.0));
+      vec4 m = texture(uDetail, vec3(hhUe * 6.7 + 0.31, 23.0 + ${DET_LAYERS}.0));
       hhD.xy += (m.xy - 0.5) * 0.5 * hhNear;
       hhD.a *= 1.0 + (m.b - 0.5) * 0.3 * hhNear;
     }

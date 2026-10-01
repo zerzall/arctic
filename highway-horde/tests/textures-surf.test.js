@@ -136,6 +136,26 @@ test('shading tables: parallax depth, grain, the mip variance and the weathering
   for (let i = 0; i < L; i++) if (G[i * 4 + 3] > 0) assert.ok(G[i * 4] >= 1 && G[i * 4 + 1] >= 1, `layer ${i} cells`);
 });
 
+test('tile breaking: each layer\'s shift maps its elements onto themselves', () => {
+  const S = surf.DET_SHIFT, G = surf.DET_CELLS;
+  assert.equal(S.length, L * 2);
+  const whole = (v) => Math.abs(v - Math.round(v)) < 1e-4;
+  for (const [k, id] of Object.entries(surf.DET)) {
+    const su = S[id * 2], sv = S[id * 2 + 1];
+    assert.ok(su >= 0 && su < 1 && sv >= 0 && sv < 1, `${k}: shift within a tile`);
+    const [cu, cv, stagger, tone] = G.subarray(id * 4, id * 4 + 4);
+    if (tone > 0) {
+      // whole elements across and up (a layer of full-height elements, the standing-seam roof's panels,
+      // has no course to keep); an even number of courses where odd courses are offset
+      assert.ok(whole(su * cu) && (cv === 1 && k !== 'slab' && k !== 'terrazzo' || whole(sv * cv)), `${k}: shift (${su}, ${sv}) in whole ${cu} x ${cv} cells`);
+      if (stagger) assert.ok(Math.round(sv * cv) % 2 === 0, `${k}: an even number of courses`);
+    }
+  }
+  // most layers are broken up; one-element tiles, seams and the raw fields never are
+  for (const k of ['brick', 'siding', 'plaster', 'concrete', 'wood', 'drywall', 'wallpaper']) assert.ok(S[surf.DET[k] * 2] + S[surf.DET[k] * 2 + 1] > 0, k);
+  for (const k of ['none', 'slab', 'terrazzo', 'linoleum', 'macro', 'crackmacro', 'glass']) assert.equal(S[surf.DET[k] * 2] + S[surf.DET[k] * 2 + 1], 0, k);
+});
+
 test('the macro layer holds raw fields in both slices', () => {
   const m = surf.DET.macro;
   for (const c of [0, 1, 2, 3]) assert.ok(stats(m, c).sd > 5, `macro channel ${c}`);

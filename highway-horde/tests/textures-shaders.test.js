@@ -57,6 +57,7 @@ test('world materials: both slices, the tables, parallax and the relief shadow a
     assert.ok(f.includes(`uniform vec4 uDetG[${surf.DET_LAYERS}]`), key + ' element grids');
     assert.ok(f.includes(`hhL + ${surf.DET_LAYERS}.0`), key + ' reads the colour / height slice');
     assert.ok(f.includes('textureGrad(uDetail'), key + ' parallax samples');
+    assert.ok(f.includes(`const vec2 hhShift[${surf.DET_LAYERS}]`) && f.includes('hhUv + hhSh'), key + ' tile breaking');
     assert.equal((f.match(/hhSelfShadow\( directLight\.direction \)/g) || []).length, 2, key + ' relief shadow on the sun and directional lights');
     assert.ok(!/#include <lights_fragment_begin>/.test(f), key + ' light loop replaced');
     assert.equal(sh.uniforms.uDetP.value, surf.DET_PARAMS);
