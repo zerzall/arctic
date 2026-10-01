@@ -266,6 +266,8 @@ function trailhead(B) {
   // the map board, the vault toilet, the bear-proof bins, the trail sign
   ob(B, 'wall', 'bp-kiosk', 1300, 2780, 90, 20, 0, { sec });
   B.anchor('trail_map', 1300, 2700, 110);
+  B.lamp(1000, 2370, { a: HALF, r: 300, dead: false });
+  B.light(1300, 2740, 150, '#ffd9a0', 0.2, 100);
   facade(B, 470, 2200, 110, 90, 0, 'shack', { sec, color: '#6a5038', roof: '#3a3a34', style: 'bp-outhouse', top: 110 });
   for (const x of [700, 760]) ob(B, 'cabinet', 'bp-bearbin', x, 2270, 44, 30, 0, { sec });
   prop(B, 'bp-trailsign', 1560, 2740, 0, { text: 'camp' });
@@ -451,6 +453,7 @@ function gorge(B) {
   // the footbridge (walked on: the gap in the water), its towers and cables; the winch on the near rim
   prop(B, 'bp-footbridge', (RIVER[0] + RIVER[1]) / 2, 2000, 0, { len: CW[1] - CW[0] + 40, w: BRIDGE[1] - BRIDGE[0] });
   B.anchor('gorge_bridge', (RIVER[0] + RIVER[1]) / 2, 2000, 60);
+  for (const x of [RIVER[0] - 40, RIVER[1] + 40]) B.light(x, 2000, 200, '#ffc070', 0.35, 110);
   ob(B, 'cabinet', 'bp-winch', 7330, 1870, 60, 40, -0.3, { sec });
   B.anchor('gorge_winch', 7250, 1960, 80);
   B.anchor('gorge_far', 8150, 1960, 120);

@@ -299,6 +299,16 @@ function footbridge(P) {
     }
   }
   sign2(B, 'bp_gorge', -span - 40, 60, half + 30, 50, 25, 0);
+  // a storm lantern hung on each tower (lit at night)
+  for (const s of [-1, 1]) {
+    const x = s * span, z = half + 6;
+    B.box('std', x, 104, z + 6, 6, 10, 6, '#2a2a2a', null, METAL);
+    if (!P.day) {
+      B.add('glow', T.box(), [x, 104, z + 6], [4, 7, 4], null, '#ffc070', { emissive: 2.6, uv: atlasUV('white'), noAO: true, noJitter: true });
+      const [wx, wy] = toWorld(o, x, z + 6);
+      P.halos.push({ x: wx, y: wy, h: 104, color: '#ffc070', size: 50, strength: 0.6, flicker: 0.3 });
+    }
+  }
 }
 
 /** The winch on the near rim: a steel frame bolted to a block, the drum and its cable, the crank. */
