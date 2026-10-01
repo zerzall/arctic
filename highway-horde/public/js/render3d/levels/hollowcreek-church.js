@@ -146,20 +146,21 @@ function rack(P) {
   for (const y of [4, 44, 84]) {
     for (const z of [-D / 2 + 2, D / 2 - 2]) B.box('std', 0, y + 3, z, L, 5, 2.4, '#e0701a', null, METAL);
     B.box('std', 0, y + 5.4, 0, L - 4, 0.8, D - 4, '#8a8e92', null, METAL);
-    for (let x = -L / 2 + 14; x < L / 2 - 10; x += r.range(20, 30)) if (r.chance(0.7)) carton(B, x, y + 6, r.range(-4, 4), r.range(16, 24), r.range(14, 28), r.range(18, 26), r.range(-0.1, 0.1), r.chance(0.3));
+    for (let x = -L / 2 + 14; x < L / 2 - 10; x += r.range(20, 30)) if (r.chance(0.92)) carton(B, x, y + 6, r.range(-4, 4), r.range(16, 24), r.range(14, 28), r.range(18, 26), r.range(-0.1, 0.1), false);
   }
 }
 
-/** The controlled-substance safe: a heavy steel cabinet, its door hanging open, the shelves bare. */
+/** The controlled-substance safe: a heavy steel cabinet, shut and locked (the looters never got back here),
+ *  the dial, the handle, a sticker; boxes of stock on top. */
 function drugsafe(P) {
   const { B, o } = P;
   const L = o.w, D = o.h;
   B.rblock('std', 0, 0, 0, L, 80, D, 1.5, '#4a5058', null, S(DET.panel, 0.4, 0.8));
-  B.box('std', 0, 40, -D / 2 + 0.2, L - 8, 72, 1, '#0c0c0e', null, NJ);
-  for (const y of [22, 44, 62]) B.box('std', 0, y, -D / 2 + 10, L - 10, 1.2, 18, '#6a6e72', null, METAL);
-  B.add('std', T.box(), [-L / 2 + 2 - 18, 40, -D / 2 - 18], [L - 6, 74, 5], [0, -1.1, 0], '#4a5058', S(DET.panel, 0.4, 0.8));
-  B.cyl('std', -L / 2 - 24, 44, -D / 2 - 30, 5, 2, '#c8ccce', 12, 1, [0.46, -1.1, HALF], CHROME);
-  decal(B, 'xcode', 0, 60, D / 2 + 0.4, 30, 30, 0);
+  B.box('std', 0, 40, -D / 2 - 0.2, L - 8, 72, 0.6, '#3a4048', null, S(DET.panel, 0.4, 0.8));
+  B.cyl('std', -L * 0.15, 48, -D / 2 - 1, 5, 2, '#c8ccce', 16, 1, [HALF, 0, 0], CHROME);
+  B.box('std', L * 0.22, 40, -D / 2 - 1.6, 4, 16, 3, '#c8ccce', null, CHROME);
+  sign(B, 'hc_rx', 0, 66, -D / 2 - 0.8, 30, 7.5, PI);
+  for (let k = 0; k < 3; k++) carton(B, -L * 0.2 + k * 12, 80, 0, 10, 8, 14, 0.1 * k, false);
 }
 
 /** A pallet of cartons, shrink-wrapped, the wrap slit open. */
