@@ -258,7 +258,7 @@ export function tower(P, r) {
   doorHead(P, 'y', Tw.x0, Tw.door[0], Tw.door[1], 20, H, LOOK.tower, 116);
   doorHead(P, 'x', Tw.y1, Tw.exit[0], Tw.exit[1], 20, H, LOOK.tower, 112);
   // the base: the sign over the door, the stencilled number, a floodlight on the apron side
-  at(B, gy, Tw.x0, (Tw.door[0] + Tw.door[1]) / 2, 0, -HALF, 8106);
+  at(B, gy, Tw.x0, (Tw.door[0] + Tw.door[1]) / 2, 0, HALF, 8106);   // (local +z faces west, onto the apron)
   pic(B, 'atc', 0, 140, 11, 22, 0);
   pic(B, 'd_graf1', 120, 40, 10.8, 26, 0);
   lampGlow(B, halos, 0, 126, 16, Tw.x0 - 16, (Tw.door[0] + Tw.door[1]) / 2, '#ffe0b0', { size: [10, 2, 6], k: day ? 0.4 : 3, halo: day ? 0 : 80, strength: 0.5, flicker: 0.2, y0: 0 });
