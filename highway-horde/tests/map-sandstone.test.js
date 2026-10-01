@@ -17,6 +17,18 @@ import { mapTimes, resolveTime } from '../public/js/shared/timeofday.js';
 import { resetVertical } from '../public/js/shared/jump.js';
 import { buildDress } from '../public/js/shared/dress.js';
 import { Game } from '../public/js/shared/sim.js';
+import { register } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
+
+// three.js from the vendored copy (the renderer modules import it by its bare name)
+const VENDOR = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public/vendor/three') + path.sep).href;
+register('data:text/javascript,' + encodeURIComponent(`
+export async function resolve(spec, ctx, next) {
+  if (spec === 'three') return { url: '${VENDOR}three.module.js', shortCircuit: true };
+  if (spec.startsWith('three/addons/')) return { url: '${VENDOR}addons/' + spec.slice(13), shortCircuit: true };
+  return next(spec, ctx);
+}`));
 
 const ID = 'sandstone';
 const cache = new Map();
@@ -242,5 +254,120 @@ describe('Sandstone: a horde round', () => {
     // the bots stay with the crew around the square / sites, not out at the gates
     for (const p of a.players) if (p.state === 'alive') assert.ok(p.y < 2600, `${p.name} at ${p.x.toFixed(0)},${p.y.toFixed(0)}`);
     assert.ok(HORDE.surges >= 6);
+  });
+});
+
+// ---- the art, headless ----------------------------------------------------------------------------
+
+let THREE = null, geoMod = null;
+
+/** three.js and the geo builder with a fake canvas (the atlas painter draws into nothing). */
+async function loadRenderer() {
+  if (THREE) return { THREE, geoMod };
+  globalThis.document = globalThis.document || {
+    createElement: () => {
+      const c = { width: 1, height: 1, style: {} };
+      const grad = { addColorStop() {} };
+      const methods = {
+        createLinearGradient: () => grad, createRadialGradient: () => grad, createPattern: () => ({}),
+        createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+        getImageData: (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+        measureText: () => ({ width: 10 }),
+      };
+      c.getContext = () => new Proxy({ canvas: c }, { get: (t, p) => (p in methods ? methods[p] : p in t ? t[p] : () => {}), set: (t, p, v) => { t[p] = v; return true; } });
+      return c;
+    },
+  };
+  THREE = await import('three');
+  geoMod = await import('../public/js/render3d/world-geo.js');
+  return { THREE, geoMod };
+}
+
+/** Build the map's art the way world.js does (obstacles, roofs, props, finish) on a tier, headless. */
+async function buildArt(map, tier, day) {
+  const { THREE: T3, geoMod: G } = await loadRenderer();
+  const levels = await import('../public/js/render3d/levels/index.js');
+  const { createWorldMaterials } = await import('../public/js/render3d/world-mat.js');
+  const { setDetailLevel } = await import('../public/js/render3d/world-arch.js');
+  const terr = terrainOf(map);
+  const gy = terr.flat ? () => 0 : (x, y) => terr.height(x, y);
+  const buckets = {
+    std: { det: true }, paint: { det: true }, glass: { det: true }, vglass: { uv: true, ao: false }, decal: { uv: true }, glow: { uv: true, ao: false },
+    neon: { uv: true, ao: false }, blink: { ao: false }, flicker: { uv: true, ao: false }, fence: { uv: true }, leaves: { uv: true, ao: false },
+    sign: { uv: true }, room: { det: true, ao: false }, stain: { uv: true }, ...levels.levelBuckets(map),
+  };
+  const newBuilder = () => { const b = G.createGeoBuilder({ cell: 1600, buckets }); if (!terr.flat) b.setGround(gy); return b; };
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...a) => warnings.push(a.map(String).join(' '));
+  setDetailLevel(tier === 'low' ? 0 : tier === 'high' ? 1 : tier === 'ultra' ? 2 : 3);
+  try {
+    const tex = new T3.DataTexture(new Uint8Array(4), 1, 1);
+    const mats = createWorldMaterials({ detail: tex, atlas: tex, chain: tex, leaves: tex });
+    const root = new T3.Group();
+    const halos = [], shafts = [];
+    const ctx = { map, quality: tier, groundY: gy, terrain: terr };
+    const art = levels.createLevelArt(ctx, { root, mats, fx: null, halos, shafts, day, aniso: 1, gy, tier: tier === 'cinematic' ? 'ultra' : tier, full: tier, newBuilder, matOf: (b, t) => (art && art.buckets[b] ? art.material(b, t) : mats.get(b, t)) });
+    assert.ok(art, 'the map has art');
+    const B = newBuilder();
+    let drawn = 0;
+    for (const o of map.obstacles) {
+      B.obj(o.x, o.y, o.a || 0, o.id * 31);
+      if (art.obstacle(B, o)) drawn++;
+    }
+    let roofs = 0;
+    for (const r of map.roofs) if (art.roof(B, r)) roofs++;
+    art.props(B);
+    const parts = B.finish();
+    let tris = 0;
+    for (const { bucket, geometry } of parts) {
+      tris += geometry.attributes.position.count / 3;
+      assert.ok(art.buckets[bucket] || mats.get(bucket, 'high'), `material for ${bucket}`);
+      const p = geometry.attributes.position.array;
+      for (let i = 0; i < p.length; i++) if (!Number.isFinite(p[i])) throw new Error(`NaN vertex in ${bucket}`);
+    }
+    art.finish();
+    art.update({ players: [], zombies: [] }, { dt: 0.016, camX: 2000, camY: 500 });
+    art.setQuality(tier === 'low' ? 'high' : 'low');
+    art.dispose();
+    mats.dispose();
+    return { tris, meshes: parts.length, warnings, drawn, roofs, halos: halos.length };
+  } finally {
+    console.warn = warn;
+  }
+}
+
+describe('Sandstone: the art', () => {
+  test('the art seam finds the map\'s module by its art name (and only for it)', async () => {
+    await loadRenderer();
+    const levels = await import('../public/js/render3d/levels/index.js');
+    const m = getMap();
+    assert.equal(m.art, 'sandstone');
+    assert.ok(levels.artModuleOf(m), 'Sandstone has an art module');
+    assert.ok(Object.keys(levels.levelBuckets(m)).includes('sssign'));
+    assert.equal(levels.artModuleOf(buildMap('truckstop', 1)), null, 'the other match maps have none');
+    assert.equal(levels.artModuleOf({ ...m, art: 'nowhere' }), null);
+    assert.equal(levels.artModuleOf({ ...m, art: { corn: [] } }), null, 'a non-level map with art data is not an art name');
+    assert.ok(levels.artModuleOf(buildMap('millroad', 1)), 'a level is found by its id, as before');
+  });
+
+  test('the art builds on every tier, by day and by night, within budget', async (t) => {
+    const m = getMap(7);
+    const out = {};
+    for (const tier of ['low', 'high', 'ultra', 'cinematic']) {
+      for (const day of [true, false]) {
+        const r = await buildArt(m, tier, day);
+        assert.deepEqual(r.warnings, [], `${tier}${day ? ' day' : ''}: ${r.warnings.join(' | ')}`);
+        assert.equal(r.roofs, 2, 'the art draws both tunnel vaults');
+        out[tier + (day ? '-day' : '')] = r;
+      }
+    }
+    for (const [k, r] of Object.entries(out)) t.diagnostic(`${k}: ${Math.round(r.tris)} tris in ${r.meshes} meshes, ${r.drawn} obstacles drawn, ${r.halos} halos`);
+    const styled = m.obstacles.filter((o) => o.style).length;
+    assert.equal(out['ultra-day'].drawn, styled, 'every styled obstacle has a model');
+    assert.ok(out['ultra-day'].tris < 1500000, `ultra: ${out['ultra-day'].tris} triangles`);
+    assert.ok(out['low-day'].tris < out['high-day'].tris && out['high-day'].tris <= out['ultra-day'].tris, 'detail grows with the tier');
+    assert.ok(out['cinematic-day'].meshes < 200, `cinematic: ${out['cinematic-day'].meshes} meshes`);
+    assert.ok(out.ultra.halos > out['ultra-day'].halos, 'the lanterns glow at night');
   });
 });

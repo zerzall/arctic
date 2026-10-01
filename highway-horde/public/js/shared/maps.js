@@ -56,7 +56,7 @@ export const MAP_LIST = [
     description: 'A sun-baked walled town for Horde Elimination. Hold Fountain Square, the raised Terrace over the Long Hall and the walled Cistern Court while the whole horde pours in through six gates: down Mid Street past the Great Doors, along the Long Hall, out of the dark tunnels under Well Square. Kill every last one.',
     modes: ['horde', 'defend'],
     // (day by default — the lobby switches to it when the map is picked — also at dusk or by night)
-    times: ['day', 'night'],
+    times: ['day', 'dusk', 'night'],
     defaultTime: 'day',
   },
 ];

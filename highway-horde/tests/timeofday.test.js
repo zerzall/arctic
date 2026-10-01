@@ -1,4 +1,4 @@
-// Time of day (settings.time 'night' | 'day', SPEC §7.5.1): the shared helpers, the lobby
+// Time of day (settings.time 'night' | 'day' | 'dusk', SPEC §7.5.1): the shared helpers, the lobby
 // rules (validation, per-map fixed time), the saved preferences, the host -> client sync, the
 // simulation's own resolution and the first-person atmosphere numbers behind each map's day.
 
@@ -7,13 +7,13 @@ import assert from 'node:assert/strict';
 import { MAP_LIST, buildMap } from '../public/js/shared/maps.js';
 import { DEFAULT_SETTINGS } from '../public/js/shared/constants.js';
 import { Game } from '../public/js/shared/sim.js';
-import { TIME_LIST, TIME_IDS, mapTimes, mapSupportsTime, fixTimeCombo, resolveTime } from '../public/js/shared/timeofday.js';
+import { TIME_LIST, TIME_IDS, BASE_TIMES, mapTimes, mapSupportsTime, fixTimeCombo, resolveTime } from '../public/js/shared/timeofday.js';
 import { mergeSettings } from '../public/js/net/lobby-rules.js';
 import { loadPrefs, savePrefs } from '../public/js/ui/storage.js';
 import { hostGame, joinGame } from '../public/js/net/session.js';
 import { createLocalHub } from '../public/js/net/transport-local.js';
 import { FakeGame } from './fixtures/net-fake-game.js';
-import { PRESETS, dayLookFor, sunDirection } from '../public/js/render3d/daylight-look.js';
+import { PRESETS, dayLookFor, duskLookFor, sunDirection } from '../public/js/render3d/daylight-look.js';
 
 /** A day-only map (like the daytime campaign map) for the duration of `fn`. */
 function withDayOnlyMap(fn) {
@@ -27,20 +27,32 @@ function withDayOnlyMap(fn) {
 }
 
 describe('time of day helpers', () => {
-  test('two times, night first (the default); every existing map plays both', () => {
-    assert.deepEqual(TIME_IDS, ['night', 'day']);
+  test('three times, night first (the default); a map that names none plays night and day', () => {
+    assert.deepEqual(TIME_IDS, ['night', 'day', 'dusk']);
+    assert.deepEqual(BASE_TIMES, ['night', 'day']);
     for (const t of TIME_LIST) assert.ok(t.name && t.short);
     assert.equal(DEFAULT_SETTINGS.time, 'night');
-    for (const m of MAP_LIST.filter((e) => !e.time && !e.times)) assert.deepEqual(mapTimes(m), TIME_IDS, `${m.id} plays both`);
+    for (const m of MAP_LIST.filter((e) => !e.time && !e.times)) assert.deepEqual(mapTimes(m), BASE_TIMES, `${m.id} plays both`);
+  });
+
+  test('dusk is opt-in: Sandstone plays it, picking Dusk elsewhere switches to it', () => {
+    assert.ok(mapSupportsTime('sandstone', 'dusk'));
+    assert.equal(resolveTime('sandstone', 'dusk'), 'dusk');
+    const s = mergeSettings({ ...DEFAULT_SETTINGS, mapId: 'highway' }, { time: 'dusk' });
+    assert.deepEqual([s.mapId, s.time], ['sandstone', 'dusk']);
+    const d = duskLookFor('sandstone');
+    const [, y] = sunDirection(d.az, d.el);
+    assert.ok(y > 0.05 && d.el < dayLookFor('sandstone').el, 'the sun is low');
   });
 
   test('a map declares a fixed `time` or a `times` list; unknown values are ignored', () => {
     assert.deepEqual(mapTimes({ id: 'x', time: 'day' }), ['day']);
     assert.deepEqual(mapTimes({ id: 'x', times: ['night'] }), ['night']);
     assert.deepEqual(mapTimes({ id: 'x', times: ['day', 'night'] }), ['day', 'night']);
-    assert.deepEqual(mapTimes({ id: 'x', time: 'midnight' }), TIME_IDS);
-    assert.deepEqual(mapTimes({ id: 'x', times: [] }), TIME_IDS);
-    assert.deepEqual(mapTimes('nowhere'), TIME_IDS);
+    assert.deepEqual(mapTimes({ id: 'x', times: ['dusk', 'day'] }), ['dusk', 'day']);
+    assert.deepEqual(mapTimes({ id: 'x', time: 'midnight' }), BASE_TIMES);
+    assert.deepEqual(mapTimes({ id: 'x', times: [] }), BASE_TIMES);
+    assert.deepEqual(mapTimes('nowhere'), BASE_TIMES);
   });
 
   test('the builder copies the declaration onto the map data', () => {

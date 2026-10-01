@@ -113,7 +113,7 @@ export function createDress(ctx, deps) {
   let items = map.dressItems || buildDress(map);
   // (a story level: no plants indoors, whatever the ground under a roof was painted as, and no generated
   // street or farm furniture either)
-  if (map.kind === 'level' && map.roofs && map.roofs.length) {
+  if (map.roofs && map.roofs.length) {
     const generated = !map.dressItems;
     items = items.filter((it) => !(PLANTS.has(it.k) || (generated && OUTDOOR.has(it.k))) || !underRoof(map.roofs, it.x, it.y));
   }

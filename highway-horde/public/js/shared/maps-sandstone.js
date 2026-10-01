@@ -145,8 +145,15 @@ export function buildSandstone(B) {
   B.supply(2300, 560);
   for (const [x, y] of [[1840, 360], [1940, 400], [2040, 420], [2140, 420], [2240, 400], [2340, 360], [1890, 470], [2190, 480]]) B.pspawn(x, y);
   map.horde = { lanes: SANDSTONE_LANES.map((l) => ({ ...l })), hold: { x: 2000, y: 470, r: 380 } };
-  // (the classic desert of the 3D view: palms and nothing else)
-  map.look = { trees: ['palm'] };
+  // (the classic desert of the 3D view: palms and nothing else; the art module that draws the town)
+  // (no grass field and few weeds; the streets in sand, the squares in warm stone paving; a dry night)
+  map.look = {
+    trees: ['palm'], grass: false, weeds: 0.15, nightWet: 0.25,
+    // (a clear desert night: a blue-black sky over the warm lanterns rather than the dust-brown of the tint)
+    night: { fog: '#151a24', horizon: '#1e2636', zenith: '#02040a', sky: '#8193b4', moon: '#a8bbe0', moonI: 0.62 },
+    areas: { concrete: '#ad9573', sand: '#bd9f72', gravel: '#9c8566', dirt: '#a08462' },
+  };
+  map.art = 'sandstone';
 
   // ---- the horde's entrances (spawn rects at the edges, each tagged with its lane)
   const zs = (lane, x, y, w, h) => {
@@ -159,7 +166,13 @@ export function buildSandstone(B) {
   zs(3, 60, 950, 70, 170);       // West Breach
   zs(4, 3935, 510, 80, 130);     // East Stairs
   zs(5, 1350, 60, 160, 70);      // North Arch (late in a round)
-  for (const l of SANDSTONE_LANES) put('gatearch', l.x, l.y, 0, { name: l.name });
+  // the town's gates at the entrances (the art: towers, an arch, the West Breach a broken wall)
+  put('gatearch', 2000, 3895, 0, { w: 280, name: 'South Gate' });
+  put('gatearch', 3530, 3900, 0, { w: 220, name: 'Caravan Gate' });
+  put('gatearch', 40, 2535, HALF, { w: 230, name: 'Well Gate' });
+  put('gatearch', 40, 950, HALF, { w: 200, name: 'West Breach', broken: 1 });
+  put('gatearch', 3975, 510, HALF, { w: 160, name: 'East Stairs' });
+  put('gatearch', 1350, 40, 0, { w: 200, name: 'North Arch' });
 
   // ---- ground: sand streets, paved squares and terrace, a gravel yard
   B.box('sand', 0, 0, 4000, 4000);
@@ -170,7 +183,6 @@ export function buildSandstone(B) {
   B.box('concrete', S.well.x0 + 120, S.well.y0 + 120, S.well.x1 - 120, S.well.y1 - 120);
   B.box('gravel', S.yard.x0, S.yard.y0, S.yard.x1, S.yard.y1);
   B.box('dirt', S.plaza.x0 + 200, S.plaza.y0 + 120, S.plaza.x1 - 300, S.plaza.y1 - 140);
-  B.box('dirt', 1820, 1200, 2180, 2900);
 
   // ---- the town: blocks of houses between the lanes (solid, flat roofs of different heights)
   /**
@@ -381,11 +393,10 @@ export function buildSandstone(B) {
   put('arch', 1050, 2650, 0, { w: 200, h: 140 });                // the souk lane's gate
   for (let y = 2700; y < 3120; y += 140) put('tarp', 1050, y + 60, 0, { w: 200, d: 110, h: 130 });
   for (const [x, y, w] of [[1340, 3200, 420], [2390, 3200, 360], [1700, 3810, 300]]) put('tarp', x, y + (y > 3500 ? -60 : 60), 0, { w, d: 120, h: 125 });
-  put('tarp', 3180, 900, 0, { w: 260, d: 140, h: 76 + 120 });   // shade over the terrace
-  put('sign', 2000, 860, 0, { text: 'BAB EL-KEBIR', w: 120 });
-  put('sign', 1240, 720, HALF, { text: 'CISTERN', w: 90 });
-  put('sign', 3500, 3270, 0, { text: 'CARAVANSERAI', w: 120 });
-  put('sign', 650, 1950, 0, { text: 'SOUK', w: 70 });
+  put('tarp', 3180, 880, 0, { w: 240, d: 130, h: 118, posts: 1 });   // shade over the terrace, on posts
+  put('sign', 1251, 720, 0, { text: 'CISTERN', w: 90, h: 150 });
+  put('sign', 3500, 3271, HALF, { text: 'CARAVANSERAI', w: 120, h: 172 });
+  put('sign', 650, 1951, HALF, { text: 'SOUK', w: 70, h: 150 });
 
   // ---- lights: lanterns by the doors, braziers, the tunnels' bulbs (night and dusk)
   const LANTERN = '#ffb562';
@@ -431,10 +442,12 @@ export function buildSandstone(B) {
   B.anchor('caravanYard', 3500, 3480, 220);
 
   // ---- decor (the set dressing is sandstoneDressItems below: client-side, never in the MapDef)
-  B.sprinkle('crack', 60, 0, 0, 4000, 4000, { on: ['concrete'], s: [0.6, 1.4] });
+  B.sprinkle('crack', 24, 0, 0, 4000, 4000, { on: ['concrete'], s: [0.5, 1.0] });
   B.sprinkle('debris', 90, 0, 0, 4000, 4000, { s: [0.6, 1.1] });
   B.sprinkle('rubble', 26, 0, 0, 4000, 4000, { s: [0.5, 1] });
-  B.sprinkle('paper', 50, 0, 0, 4000, 4000, { s: [0.6, 1] });
+  B.sprinkle('paper', 60, 0, 0, 4000, 4000, { s: [0.6, 1] });
+  B.sprinkle('oil', 12, 0, 0, 4000, 4000, { on: ['concrete', 'gravel'], s: [0.5, 0.9] });
+  B.sprinkle('manhole', 6, 0, 0, 4000, 4000, { on: ['concrete'], s: [1, 1] });
   B.sprinkle('blood_old', 30, 0, 0, 4000, 4000, { s: [0.6, 1.4] });
   B.sprinkle('rock', 40, 0, 0, 4000, 4000, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
   B.sprinkle('bush', 14, 0, 0, 4000, 4000, { on: ['sand', 'dirt'], s: [0.5, 0.9], keep: true });
@@ -544,7 +557,7 @@ export function sandstoneDressItems(map) {
   scatter('planter', 4, S.court);
   scatter('bicycle', 2, S.well);
   scatter('woodpile', 2, S.well, [0.9, 1.1], 60);
-  scatter('barrel_t', 4, S.mid);
+  scatter('drum', 4, S.mid);
   scatter('shoes', 4, S.mid);
   scatter('bin_fall', 3, S.mid);
   scatter('car_door', 1, S.mid);

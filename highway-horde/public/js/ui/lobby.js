@@ -7,12 +7,20 @@ import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
 import { MODE_LIST, STANDARD_MODES, mapModes } from '../shared/zone.js';
-import { TIME_LIST, mapTimes, resolveTime } from '../shared/timeofday.js';
+import { TIME_LIST, BASE_TIMES, mapTimes, resolveTime } from '../shared/timeofday.js';
 import { $, h, copyText, setText, fitCanvas } from './dom.js';
 import { chatLine, sendFromInput } from './chat.js';
 import { flashToast } from './menus.js';
 
 const previewCache = new Map();
+
+/** The map card's note on its times of day ("Day only", "Day · Dusk · Night"), or null for night and day. */
+function timesNote(m) {
+  const times = mapTimes(m);
+  if (times.length === BASE_TIMES.length && BASE_TIMES.every((t) => times.includes(t))) return null;
+  const names = times.map((id) => TIME_LIST.find((e) => e.id === id).name).join(' · ');
+  return h('span.map-modes.map-times', { text: BASE_TIMES.every((t) => times.includes(t)) ? names : names + ' only' });
+}
 
 const DIFF_HINT = {
   easy: 'Fewer, weaker zombies',
@@ -110,10 +118,8 @@ export function createLobby(ctx) {
         !STANDARD_MODES.every((id) => mapModes(m).includes(id))
           ? h('span.map-modes', { text: mapModes(m).map((id) => MODE_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
           : null,
-        // maps that only play some times of day say so (picking one switches the time)
-        mapTimes(m).length < TIME_LIST.length
-          ? h('span.map-modes.map-times', { text: mapTimes(m).map((id) => TIME_LIST.find((e) => e.id === id).name).join(' · ') + ' only' })
-          : null,
+        // maps that play other times of day than night and day say so (picking one switches the time)
+        timesNote(m),
       ].filter(Boolean)),
     ]);
     btn.addEventListener('click', () => {

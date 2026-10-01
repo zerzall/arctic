@@ -39,6 +39,8 @@ export function prepareMap(map) {
   colors.grass = mix(AREA_COLORS.grass, map.ground, 0.35);
   colors.dirt = mix(AREA_COLORS.dirt, map.ground, 0.2);
   colors.sand = mix(AREA_COLORS.sand, map.ground, 0.15);
+  // (a map may paint its surfaces in its own colours: Sandstone's warm stone paving, map.look.areas)
+  if (map.look && map.look.areas) for (const [k, v] of Object.entries(map.look.areas)) if (typeof v === 'string') colors[k] = v;
   return { map, seed, areas, colors };
 }
 

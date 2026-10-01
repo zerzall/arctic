@@ -9,15 +9,19 @@
 // just declares `time: 'day'`) gets the default look tinted a little by its `ambient.tint`.
 
 import * as THREE from 'three';
-import { PRESETS, dayLookFor, sunDirection } from './daylight-look.js';
+import { PRESETS, dayLookFor, duskLookFor, sunDirection } from './daylight-look.js';
 
 /**
  * Day atmosphere for `map` (MapDef).
  * @returns {object} see the file header; colours are THREE.Color (linear)
  */
-export function dayAmbientFor(map) {
-  // a story hideout brings its own golden hour (map.look.day over the defaults)
-  const p = { ...dayLookFor(map.id), ...(map.look && map.look.day ? map.look.day : null) };
+export function dayAmbientFor(map, opts = null) {
+  // a story hideout brings its own golden hour (map.look.day over the defaults); dusk is the day's
+  // machinery under a low gold sun (daylight-look.js DUSK, a map's own dusk over it)
+  const dusk = !!(opts && opts.dusk);
+  const p = dusk
+    ? { ...duskLookFor(map.id), ...(map.look && map.look.dusk ? map.look.dusk : null) }
+    : { ...dayLookFor(map.id), ...(map.look && map.look.day ? map.look.day : null) };
   const tint = new THREE.Color((map.ambient && map.ambient.tint) || '#2c4a7a');
   const fog = new THREE.Color(p.haze);
   // a map with no preset takes a hint of its own colour so it doesn't look generic
@@ -25,7 +29,8 @@ export function dayAmbientFor(map) {
   const sunDir = new THREE.Vector3(...sunDirection(p.az, p.el)).normalize();
   return {
     time: 'day',
-    darkness: 0.08,
+    dusk,
+    darkness: dusk ? 0.2 : 0.08,
     fog,
     fogDensity: p.fog,
     horizon: new THREE.Color(p.horizon),
