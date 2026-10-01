@@ -38,7 +38,7 @@ const ROOFS = { ...MILL_ROOFS };
 const KEEP = new Set([
   'puddle', 'mud', 'leaves', 'blood', 'tread', 'stain', 'suitcase', 'duffel', 'backpack', 'shoe', 'shoes', 'bag', 'litter', 'clothes',
   'teddy', 'toy', 'sleeping_bag', 'cooler', 'tent_camp', 'chair', 'campfire', 'grill', 'flare', 'fuel_can', 'box', 'box_open',
-  'bicycle', 'woodpile', 'bodybag', 'helmet', 'tarp', 'cross', 'shrine', 'sawhorse', 'plywood', 'graf', 'poster', 'wposter', 'paperf',
+  'bicycle', 'woodpile', 'bodybag', 'helmet', 'cross', 'shrine', 'sawhorse', 'plywood', 'graf', 'poster', 'wposter', 'paperf',
 ]);
 const MILL = new Set(['pallet', 'pallets', 'crate', 'crates', 'drum', 'drums', 'pipes', 'generator', 'reel', 'ibc', 'gascyl', 'wheelbarrow', 'spill', 'soot']);
 function forestSkip(it) {

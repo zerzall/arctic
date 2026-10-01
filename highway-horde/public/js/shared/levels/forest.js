@@ -134,9 +134,10 @@ const LOOK = {
   trees: ['pine', 'spruce', 'pine', 'spruce', 'pine', 'dead', 'spruce', 'birch'],
   deciduous: 0.12,
   day: {
-    // a cold, still morning: the sun low in the east through fog lying in the trees
-    az: 18, el: 11, warm: 0.85, haze: '#c6ccc8', horizon: '#d4d8d2', zenith: '#6a8aa8', fog: 0.00052, cover: 0.55, heat: 0,
-    ridge: '#4a5a52', wet: 0.35, sunColor: '#ffe2b8', sunI: 3.2, hemiSky: '#b8c4cc', hemiGround: '#4a5038', hemi: 1.0, exposure: 1.02, mist: 1.0,
+    // a cold, still morning: the sun low in the east through fog lying in the trees (thin enough that the
+    // pines a few hundred metres off stay green against the glare, not cardboard cut-outs)
+    az: 18, el: 11, warm: 0.85, haze: '#c6ccc8', horizon: '#d4d8d2', zenith: '#6a8aa8', fog: 0.00044, cover: 0.55, heat: 0,
+    ridge: '#4a5a52', wet: 0.35, sunColor: '#ffe2b8', sunI: 3.2, hemiSky: '#b8c4cc', hemiGround: '#4a5038', hemi: 1.0, exposure: 1.02, mist: 0.9,
   },
   night: {
     fog: '#070a0e', horizon: '#0e141c', zenith: '#020306', sky: '#5a6a88', ground: '#20241c', moon: '#a8b8d8', moonI: 0.45, hemi: 0.8, fogDensity: 0.0016,
