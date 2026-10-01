@@ -332,6 +332,13 @@ const DETAIL_COLOR_GLSL = `
       hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
       hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
     }
+    // the layer's markings (peeled paint, stains, burnt bricks) fade in and out over the surface on a
+    // period of ~4.8 tiles, so a long wall of the same layer never shows the same blotch tile after tile
+    {
+      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(hhUv * 0.21 + 0.17, 23.0)).r));
+      hhD.a = 0.5 + (hhD.a - 0.5) * k;
+      hhC.rgb = vec3(0.5, 0.5, 0.0) + (hhC.rgb - vec3(0.5, 0.5, 0.0)) * k;
+    }
     // fine grain close to the eye: at 4K the layer alone was magnified ~5x there
     float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y;
     if (hhNear > 0.0) {
