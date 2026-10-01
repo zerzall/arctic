@@ -1681,9 +1681,9 @@ async function scenarioCampaign(sc) {
   await pl.page.click('#btn-solo');
   await waitFor(pl, () => !document.querySelector('#screen-lobby').hidden, null, 'the solo lobby');
   const settings = () => pl.page.evaluate(() => ({ ...window.__HH.session.settings }));
-  // The Mode row: three modes; Campaign plays on the highway, Checkpoint Delta and Harlan County.
+  // The Mode row: four modes; Campaign plays on the highway, Checkpoint Delta and Harlan County.
   const modes = await pl.page.$$eval('#opt-mode .seg-btn', (bs) => bs.map((b) => b.dataset.value));
-  expect(modes.join() === 'defend,zone,campaign', `the mode row should list defend, zone, campaign (got ${modes.join()})`);
+  expect(modes.join() === 'defend,zone,campaign,horde', `the mode row should list defend, zone, campaign, horde (got ${modes.join()})`);
   await pl.page.click('#opt-mode .seg-btn[data-value="campaign"]');
   await waitFor(pl, () => window.__HH.session.settings.mode === 'campaign', null, 'Campaign picked');
   expect((await settings()).mapId === 'highway', 'Campaign should keep the highway');

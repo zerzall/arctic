@@ -918,9 +918,10 @@ rect under an earlier section's roof.
 One round against a finite horde: a buy time, then the whole horde in surges; **nobody respawns**.
 Every zombie of the horde dead is a victory, every survivor dead a defeat (the objective is off:
 `settings.objective` false, no 'objective' loss). A standard mode (`STANDARD_MODES`): every
-map but Harlan County plays it; picking it on a map that doesn't switches to its own map
-(`MODE_LIST` entry `map: 'sandstone'`, `fixModeCombo`), and `mergeSettings` then switches the time
-to the map's `defaultTime`. `game.horde` is a `HordeDirector` (null in the other modes); the
+map but Harlan County plays it; switching to it in the lobby goes to its own map (`MODE_LIST`
+entry `map: 'sandstone'`; `mergeSettings` when the mode changes without a map pick, `fixModeCombo`
+on a map that doesn't play it), and `mergeSettings` then switches the time to the map's
+`defaultTime`; another map that plays it can be picked after. `game.horde` is a `HordeDirector` (null in the other modes); the
 lobby's waves row does not apply (the round is `HORDE.surges` surges; `totalWaves` = the surge count).
 
 - **Size.** `hordeTotal(n, diff)` = round(150 × (1 + 0.6 (n − 1)) × difficulty.count), bots count

@@ -74,6 +74,13 @@ describe('Sandstone: the map', () => {
     assert.deepEqual([s.mapId, s.mode, s.time], [ID, 'horde', 'day']);
     assert.equal(mergeSettings(s, { time: 'dusk' }).time, 'dusk', 'and at dusk when asked');
     assert.equal(mergeSettings({ ...DEFAULT_SETTINGS }, { mode: 'zone' }).time, 'night', 'other maps keep the time');
+    // switching to Horde goes to Sandstone even from a map that plays it; picking another map then stays
+    const h = mergeSettings({ ...DEFAULT_SETTINGS }, { mode: 'horde' });
+    assert.deepEqual([h.mapId, h.mode, h.time], [ID, 'horde', 'day']);
+    const t = mergeSettings(h, { mapId: 'truckstop' });
+    assert.deepEqual([t.mapId, t.mode], ['truckstop', 'horde']);
+    assert.equal(mergeSettings(t, { mode: 'horde' }).mapId, 'truckstop', 'the same mode again changes nothing');
+    assert.equal(mergeSettings(t, { mode: 'horde', mapId: 'bridge' }).mapId, 'bridge');
     const m = getMap();
     assert.ok(m.width >= 3500 && m.width <= 4500 && m.height >= 3500 && m.height <= 4500, `${m.width} x ${m.height}`);
     assert.ok(m.obstacles.length >= 120 && m.obstacles.length <= 260, `${m.obstacles.length} obstacles`);
