@@ -1,31 +1,42 @@
-// The 3D art of the story level "forest" (JOURNEY.md §5). Owner: agent C1.
+// The 3D art of the story level "forest", Blackpine (JOURNEY.md §5). Owner: agent C1.
 //
-// world.js hands this module the level's obstacles, its free props and a finish/update/quality/dispose
-// cycle, exactly like the hideouts (world-hideout.js). Return null (the default below) and the level is
-// drawn with the generic models of world-bld.js / world-props.js from the obstacle kinds alone.
+// The layout (shared/levels/forest.js) tags its obstacles with a style and records floors, door frames, free
+// props and the trails kept clear in map.art; the kit (millroad-kit.js, shared with Mill Road and Hollow Creek)
+// draws the walls, doors and floors and runs the model tables of the six sections:
+//   forest-atlas.js   the forest's pictures (routed signs, the trail map, boards, notices, ferns, needles)
+//   forest-looks.js   its rock ridges and canyon walls, the stockade, the farm fence, the station's and mill's walls
+//   forest-camp.js    the trailhead and Blackpine Campground
+//   forest-ranger.js  the ranger station and its lookout, Cutter's Gorge and its footbridge
+//   forest-mill.js    Harlan Lumber, the farm fence and its signal, and the forest floor
 //
-// The interface (every member optional; render3d/levels/index.js fills in no-ops):
-//   BUCKETS                   (export) extra geo-builder buckets, merged into world.js's own
-//   art.material(bucket, t)   the material of one of those buckets at tier t ('low' | 'high' | 'ultra')
-//   art.obstacle(B, o)        true = this module drew obstacle o (by o.style / o.prop / o.gate), false = default model
-//   art.objective(B, ob)      the same for the map's objective (a level usually has none)
-//   art.roof(B, r)            true = this module drew the ceiling of map.roofs entry r (r.style); else E's generic one
-//   art.gateModel(B, gate, o) optional: the model of a gate piece, which the engine animates (JOURNEY.md §4.1)
-//   art.props(B)              free props that are not obstacles (drawn once, in the static meshes)
-//   art.finish()              after the static meshes exist: build separate meshes (signs, animated parts)
-//   art.update(view, frame)   per frame
-//   art.setQuality(full)      the tier changed ('low' | 'high' | 'ultra' | 'cinematic')
-//   art.dispose()
+// The interface is the one of render3d/levels/index.js (obstacle, gateModel, roof, props, finish, update,
+// setQuality, dispose, material, buckets).
 
-/** Extra geo-builder buckets of this level (none yet). */
-export const BUCKETS = {};
+import './forest-atlas.js';
+import './forest-looks.js';
+import { createKitArt, KIT_BUCKETS } from './millroad-kit.js';
+import { CAMP_MODELS, CAMP_GATES } from './forest-camp.js';
+import { RANGER_MODELS, RANGER_GATES } from './forest-ranger.js';
+import { MILL_MODELS, MILL_GATES, MILL_ROOFS, forestFloor } from './forest-mill.js';
+import { PARK_MODELS } from './millroad-park.js';
+import { JAM_MODELS } from './millroad-jam.js';
+import { SCHOOL_MODELS, SCHOOL_GATES } from './hollowcreek-school.js';
+
+/** Extra geo-builder buckets of this level (the kit's). */
+export const BUCKETS = KIT_BUCKETS;
+
+const MODELS = {
+  'mr-trailer': PARK_MODELS['mr-trailer'], 'mr-logtrailer': JAM_MODELS['mr-logtrailer'], 'bp-flag': SCHOOL_MODELS['hc-flag'],
+  ...CAMP_MODELS, ...RANGER_MODELS, ...MILL_MODELS,
+};
+const GATES = { 'hc-schoolpanel': SCHOOL_GATES['hc-schoolpanel'], ...CAMP_GATES, ...RANGER_GATES, ...MILL_GATES };
+const ROOFS = { ...MILL_ROOFS };
 
 /**
  * @param {object} ctx renderer ctx (ctx.map is the built level)
  * @param {object} deps { root, mats, fx, halos, shafts, day, aniso, gy, tier, full, newBuilder(), matOf(bucket, tier) }
- * @returns {object|null}
+ * @returns {object}
  */
 export function createLevelArt(ctx, deps) {
-  void ctx; void deps;
-  return null;
+  return createKitArt(ctx, deps, { models: MODELS, gates: GATES, roofs: ROOFS, props(P) { forestFloor(P); } });
 }

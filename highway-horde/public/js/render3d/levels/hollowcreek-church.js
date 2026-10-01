@@ -5,7 +5,7 @@
 
 import {
   atlasUV, T, S, WOOD, RUSTY, METAL, CONC, FABRIC, PLAST, CHROME, NJ, HALF, PI, shadeHex, mixHex, hash01,
-  DET, rod, plank, sign, sign2, decal, floorDecal, glowBox, carton, toWorld, lvUV, litter, pendant, tubeFixture,
+  DET, rod, plank, sign, sign2, shelfRow, decal, floorDecal, glowBox, carton, toWorld, lvUV, litter, pendant, tubeFixture,
 } from './millroad-kit.js';
 import { building } from '../world-bld.js';
 
@@ -39,8 +39,8 @@ function grille(P) {
 /** The Rexall's fascia on the front, the Rx blade sign out over the sidewalk (lit at night). */
 function pharmsign(P) {
   const { B, o, halos } = P;
-  sign(B, 'hc_rexall', 1.4, 119, 0, 300, 30, HALF);
-  const z = -205;
+  sign(B, 'hc_rexall', 1.4, 127, 0, 230, 23, HALF);
+  const z = -160;
   B.box('std', 30, 108, z, 50, 3, 3, '#3a3c3e', null, METAL);
   B.box('std', 32, 96, z, 44, 24, 5, '#1a4a8a', null, METAL);
   for (const s of [-1, 1]) sign(B, 'hc_rx', 32, 96, z + s * 2.8, 42, 11, s > 0 ? 0 : PI, P.day ? {} : { bucket: 'lvglow' });
@@ -58,7 +58,7 @@ function wallshelf(P) {
   for (let x = -L / 2; x <= L / 2 + 0.1; x += L / Math.round(L / 90)) B.box('std', x, H / 2, 0, 2, H, D, '#8a9296', null, METAL);
   for (const y of [8, 26, 44, 62, 80]) {
     B.box('std', 0, y, 0, L, 1.4, D - 2, '#c8ccce', null, METAL);
-    sign(B, r.pick(['hc_meds', 'hc_meds', 'shelfD', 'shelfB', 'shelfC']), 0, y + 8, D / 2 - 1, L - 4, 14, 0);
+    shelfRow(B, ['hc_meds', 'hc_meds', 'shelfD', 'shelfB', 'shelfC'], -L / 2 + 2, L / 2 - 2, y + 8, D / 2 - 1, 14, 0, 60);
   }
   if (P.lod >= 1) for (let k = 0; k < 14; k++) B.rblock('std', r.range(-L / 2, L / 2), 0, D / 2 + r.range(4, 50), r.range(4, 8), r.range(2, 5), r.range(3, 6), 0.4, r.pick(['#e8e8e8', '#2a6ab0', '#c62828', '#f0c020']), [0, r.range(0, 6), 0], PLAST);
 }
@@ -73,7 +73,7 @@ function gondola(P) {
   for (const s of [-1, 1]) {
     for (const y of [16, 34, 52]) {
       B.box('std', 0, y, s * D / 4, L, 1.2, D / 2 - 1, '#c8ccce', null, METAL);
-      sign(B, r.pick(['hc_meds', 'hc_meds', 'shelfD', 'shelfC']), 0, y + 7, s * (D / 2 - 0.8), L - 4, 13, s > 0 ? 0 : PI);
+      shelfRow(B, ['hc_meds', 'hc_meds', 'shelfD', 'shelfC'], -L / 2 + 2, L / 2 - 2, y + 7, s * (D / 2 - 0.8), 13, s > 0 ? 0 : PI, 60);
     }
     for (let k = 0; k < (P.lod >= 1 ? 16 : 5); k++) B.rblock('std', r.range(-L / 2, L / 2), 0, s * (D / 2 + r.range(3, 40)), r.range(4, 8), r.range(2, 5), r.range(3, 6), 0.4, r.pick(['#e8e8e8', '#2a6ab0', '#c62828', '#f0c020', '#3a9a5a']), [0, r.range(0, 6), 0], PLAST);
   }
@@ -416,7 +416,7 @@ function naveRoof(P) {
   // the gables: stone triangles at both ends, the rose window in the south one, a cross on the apex
   for (const s of [-1, 1]) {
     const z = s * (h / 2 - 8);
-    B.prism('std', 'hcgable' + Math.round(w), [[-w / 2 - 8, 0], [w / 2 + 8, 0], [0, rise + 8]], z - 8, 16, '#b3a893', { noJitter: true, surf: [DET.rock, 0.92, 0] });
+    B.prism('std', 'hcgable' + Math.round(w), [[-w / 2 - 8, y0], [w / 2 + 8, y0], [0, y0 + rise + 8]], z - 8, 16, '#b3a893', { noJitter: true, surf: [DET.rock, 0.92, 0] });
     if (s > 0) {
       B.add('lvsign', T.plane(), [0, y0 + rise * 0.42, z + 8.6], [90, 90, 1], null, P.day ? '#7a7a88' : '#2a2a34', { uv: lvUV('hc_rose'), noAO: true, noJitter: true });
       B.add('lvglow', T.plane(), [0, y0 + rise * 0.42, z - 8.6], [90, 90, 1], [0, PI, 0], P.day ? '#fff4e8' : '#3a3c50', { uv: lvUV('hc_rose'), noAO: true, noJitter: true });

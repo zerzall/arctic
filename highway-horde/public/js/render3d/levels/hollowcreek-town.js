@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import {
   atlasUV, T, S, WOOD, RUSTY, METAL, CORR, CONC, FABRIC, PLAST, RUBBER, CHROME, NJ, HALF, PI, shadeHex, mixHex, hash01,
-  DET, rod, plank, sign, sign2, decal, floorDecal, glowBox, crate, carton, drum, tyre, toWorld, lvUV, litter, pendant, tubeFixture,
+  DET, rod, plank, sign, sign2, shelfRow, decal, floorDecal, glowBox, crate, carton, drum, tyre, toWorld, lvUV, litter, pendant, tubeFixture,
 } from './millroad-kit.js';
 import { lvSub } from './millroad-atlas.js';
 import { wheel } from './millroad-jam.js';
@@ -381,7 +381,7 @@ function hwshelf(P) {
   for (const s of [-1, 1]) {
     for (const y of [22, 42, 62]) {
       B.box('std', 0, y, s * D / 4, L, 1.4, D / 2 - 1, '#5a6a7a', null, METAL);
-      sign(B, r.pick(['shelfA', 'shelfB', 'shelfD', 'shelfB']), 0, y + 8, s * (D / 2 - 1.5), L - 4, 15, s > 0 ? 0 : PI);
+      shelfRow(B, ['shelfA', 'shelfB', 'shelfD', 'shelfB'], -L / 2 + 2, L / 2 - 2, y + 8, s * (D / 2 - 1.5), 15, s > 0 ? 0 : PI, 60);
     }
     // paint cans on the bottom deck, some knocked into the aisle
     for (let x = -L / 2 + 8; x < L / 2 - 4; x += 10) if (r.chance(0.75)) B.cyl('std', x, 6, s * (D / 2 - 6), 4, 9, r.pick(['#e8e4dc', '#c8281e', '#2a5ab0', '#e0b020', '#3a8a4a']), 10, 1, null, S(0, 0.4, 0.6));

@@ -70,6 +70,16 @@ export function sign2(B, cell, x, y, z, w, h, ry = 0, o = {}) {
   sign(B, cell, x, y, z, w, h, ry + PI, o);
 }
 
+/**
+ * A shelf's front of product pictures from x0 to x1 (centre height y, depth z, facing ry), in pieces of about
+ * `piece` units, each a random cell of `cells` (so a long shelf is not one stretched picture).
+ */
+export function shelfRow(B, cells, x0, x1, y, z, h, ry = 0, piece = 70) {
+  const n = Math.max(1, Math.round((x1 - x0) / piece));
+  const pw = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) sign(B, cells[Math.floor(B.rng.next() * cells.length)], x0 + (i + 0.5) * pw, y, z, pw - 0.3, h, ry);
+}
+
 /** A blended decal (graffiti, blood, grime) on a plane facing local +z. */
 export function decal(B, cell, x, y, z, w, h, ry = 0, o = {}) {
   B.add('lvdecal', T.plane(), [x, y, z], [w, h, 1], [o.rx || 0, ry, o.rz || 0], o.color || '#ffffff', { uv: lvUV(cell), noAO: true, noJitter: true });

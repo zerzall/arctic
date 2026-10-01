@@ -66,7 +66,7 @@ Object.assign(LOOKS, {
   dinerint: { h: 130, ext: F('#e8ece8', DET.tile, 0.4), int: F('#e8ece8', DET.tile, 0.4), skirt: '#3a3c3e', crown: 124 },
   // the Rexall
   pharm: { h: 140, ext: F('#c8a47a', DET.brick, 0.9), int: F('#e8ecee', DET.drywall, 0.8), plinth: '#7a6a5a', cap: '#1a4a8a', band: { c: '#e06a1a', y0: 118, y1: 126 }, skirt: '#3a5a6a', crown: 132, win: { w: 60, h: 36, sill: 64, pitch: 190, margin: 90, state: 'mix' } },
-  pharmfront: { h: 140, ext: F('#c8a47a', DET.brick, 0.9), int: F('#e8ecee', DET.drywall, 0.8), plinth: '#7a6a5a', cap: '#1a4a8a', band: { c: '#1a4a8a', y0: 104, y1: 134 }, skirt: '#3a5a6a', crown: 132, store: { sill: 18, head: 96, pitch: 70, frame: '#b8bcc0' } },
+  pharmfront: { h: 140, ext: F('#c8a47a', DET.brick, 0.9), int: F('#e8ecee', DET.drywall, 0.8), plinth: '#7a6a5a', cap: '#1a4a8a', band: { c: '#1a4a8a', y0: 115, y1: 139 }, skirt: '#3a5a6a', crown: 132, store: { sill: 18, head: 96, pitch: 70, frame: '#b8bcc0' } },
   pharmint: { h: 130, ext: F('#e0e4e4', DET.drywall, 0.8), int: F('#e0e4e4', DET.drywall, 0.8), skirt: '#3a5a6a', crown: 126 },
   brickwall: { h: 104, ext: F('#8a4a3a', DET.brick, 0.9), plinth: '#6a5e54', cap: '#9a948a' },
   // St. Anne's
@@ -202,7 +202,7 @@ Object.assign(DOORS, {
   grille(P) {
     const { B, w, t, dh } = P;
     const z = -t / 2 - 5;
-    B.rblock('std', 0, dh + 2, z, w + 16, 20, 12, 1, '#8a8e92', null, { noJitter: true, ...S(DET.panel, 0.45, 0.6) });
+    B.rblock('std', 0, dh + 1, z, w + 16, 15, 12, 1, '#8a8e92', null, { noJitter: true, ...S(DET.panel, 0.45, 0.6) });
     for (const s of [-1, 1]) B.box('std', s * (w / 2 + 3), dh / 2, z + 2, 5, dh, 6, '#7a7e82', null, { noJitter: true, ...RUSTY });
     const al = '#b8bcc0';
     const lw = w / 4;
