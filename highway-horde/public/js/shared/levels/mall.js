@@ -195,7 +195,7 @@ function buildLot(B, K) {
   // parked and abandoned cars: in the stalls (some gone), a jam in the aisles, a crash into the corral
   for (const [x, y] of [[860, 2600], [1640, 1250], [1640, 3350], [440, 2000]]) B.ob('wall', x, y, 130, 30, 0, { style: 'corral', solid: false });
   const stall = (x, y, a) => {
-    if (drng.chance(0.3) || B.blockedAt(x, y, 34)) return;
+    if (drng.chance(0.5) || B.blockedAt(x, y, 34)) return;   // (half the stalls empty: the lot reads as full at a fraction of the triangles)
     B.vehicle(rng.pick(['car', 'car', 'suv', 'suv', 'pickup', 'van']), x, y, a + rng.range(-0.06, 0.06), { wrecked: drng.chance(0.15) });
   };
   for (const [x0, x1] of [[160, 440], [600, 880], [1000, 1280], [1400, 1680], [1800, 2080]]) {
@@ -585,13 +585,13 @@ function buildGarage(B, K) {
   const { rng, drng } = B;
   for (let x = 7340; x < 9300; x += 110) {
     for (const [y, a] of [[330, HALF], [930, -HALF], [1540, -HALF]]) {
-      if (drng.chance(0.35) || (y > 1500 && Math.abs(x - 8600) < 200)) continue;
+      if (drng.chance(0.55) || (y > 1500 && Math.abs(x - 8600) < 200)) continue;
       B.vehicle(rng.pick(['car', 'suv', 'car', 'van', 'pickup']), x, y, a + rng.range(-0.05, 0.05), { wrecked: drng.chance(0.15) });
     }
   }
   for (let x = 9780; x < 11500; x += 110) {
     for (const [y, a] of [[250, HALF], [1030, -HALF]]) {
-      if (drng.chance(0.4) || (x > 11050 && y > 900)) continue;
+      if (drng.chance(0.6) || (x > 11050 && y > 900)) continue;
       B.vehicle(rng.pick(['car', 'suv', 'car', 'pickup']), x, y, a + rng.range(-0.05, 0.05), { wrecked: drng.chance(0.2) });
     }
   }
