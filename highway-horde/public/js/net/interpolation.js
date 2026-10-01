@@ -93,6 +93,8 @@ export function interpolateSnapshots(a, b, u) {
     campaign: blendCampaign(useA, b, u),
     // Road to Haven: the objective tracker and the spots are taken from the newer snapshot, NPCs glide
     story: b.story || null,
+    // a story level's gates, sections and lights (the renderers animate the gates themselves)
+    level: b.level || null,
     npcs: b.npcs && b.npcs.length ? blendList(useA, b, 'npcs', u, true, true) : [],
     interactables: b.interactables || [],
     players: blendList(useA, b, 'players', u, true, true),

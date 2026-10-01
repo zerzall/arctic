@@ -16,6 +16,7 @@ import {
 import { buildMap } from '../shared/maps.js';
 import { mapBuildOptions } from '../shared/story/registry.js';
 import { createCollisionWorld, stepPlayerMovement } from '../shared/movement.js';
+import { syncGateColliders } from '../shared/level.js';
 import { copyVertical } from '../shared/jump.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
@@ -966,6 +967,11 @@ export class ClientSession extends Emitter {
     this.world.setBarricades(bars);
   }
 
+  /** A story level's gates as of `snap`: an open gate's colliders stop blocking the predicted player. */
+  _syncGates(snap) {
+    if (snap.level && this.map) syncGateColliders(this.world, this.map, snap.level.gates);
+  }
+
   _reconcile(snap) {
     const sp = snap.players.find((p) => p.id === this.localId) || null;
     this.newestLocal = sp;
@@ -990,6 +996,7 @@ export class ClientSession extends Emitter {
       // known, so a replay would start from the wrong place. Keep predicting until the
       // acks catch up (the host is only far behind, not in disagreement).
       this._syncBarricades(snap);
+      this._syncGates(snap);
       return;
     }
     const shownX = old ? old.x + this.offX : sp.x;
@@ -1021,6 +1028,7 @@ export class ClientSession extends Emitter {
     }
 
     this._syncBarricades(snap);
+    this._syncGates(snap);
     this.wpn.prevFire = this.ackFire;
     for (const cmd of this.pending) this._step(cmd, false);
     // Keep showing the player where they were and let the error melt away.

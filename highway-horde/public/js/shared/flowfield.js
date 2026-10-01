@@ -130,7 +130,10 @@ export class FlowField {
   constructor(map, { cell = NAV_CELL, pad = 3, inflate = 12, colliders = null, mask = MASK_MOVE } = {}) {
     this.cell = cell;
     this.pad = pad;
+    this.inflate = inflate;
     this.mask = mask;
+    /** The barricade list last given to setBarricades (re-applied after a patchRegion). */
+    this._bars = null;
     this.width = map.width;
     this.height = map.height;
     this.cols = Math.ceil(map.width / cell);
@@ -182,10 +185,18 @@ export class FlowField {
   }
 
   _buildStatic(inflate) {
-    const { cols, rows, cell, pad, mask } = this;
+    this._cellsStatic(0, 0, this.cols - 1, this.rows - 1, inflate);
+    // Edges: test E, SE, S, SW from every open cell and mirror them.
+    this._edgesStatic(0, 0, this.cols - 1, this.rows - 1, null);
+    this._buildEscape();
+  }
+
+  /** Blocked flags and wall costs of the cells in [cx0..cx1] × [cy0..cy1] (static graph). */
+  _cellsStatic(cx0, cy0, cx1, cy1, inflate) {
+    const { cols, cell, pad, mask } = this;
     const idx = this.index;
-    for (let cy = 0; cy < rows; cy++) {
-      for (let cx = 0; cx < cols; cx++) {
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
         const c = cy * cols + cx;
         const x = (cx + 0.5) * cell, y = (cy + 0.5) * cell;
         const outside = x > this.width || y > this.height;
@@ -193,15 +204,25 @@ export class FlowField {
         this.baseCost[c] = !this.blocked[c] && idx.pointBlocked(x, y, mask, pad + inflate) ? WALL_COST : 1;
       }
     }
-    // Edges: test E, SE, S, SW from every open cell and mirror them.
-    for (let cy = 0; cy < rows; cy++) {
-      for (let cx = 0; cx < cols; cx++) {
+  }
+
+  /**
+   * Forward edges (E, SE, S, SW, mirrored) of the cells in [cx0..cx1] × [cy0..cy1]. With `only`
+   * ({x0, y0, x1, y1} in cells) an edge is (re)made only when one of its ends lies in it.
+   */
+  _edgesStatic(cx0, cy0, cx1, cy1, only) {
+    const { cols, rows, cell, pad, mask } = this;
+    const idx = this.index;
+    const inOnly = (x, y) => x >= only.x0 && x <= only.x1 && y >= only.y0 && y <= only.y1;
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
         const c = cy * cols + cx;
         if (this.blocked[c]) continue;
         const x = (cx + 0.5) * cell, y = (cy + 0.5) * cell;
         for (let k = 0; k < 4; k++) {
           const nx = cx + NDX[k], ny = cy + NDY[k];
           if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          if (only && !inOnly(cx, cy) && !inOnly(nx, ny)) continue;
           const nc = ny * cols + nx;
           if (this.blocked[nc]) continue;
           // Diagonals must not clip a corner: both orthogonal cells must be open too.
@@ -214,8 +235,50 @@ export class FlowField {
         }
       }
     }
+  }
+
+  /**
+   * Re-derive the static walk graph inside a world rectangle after colliders there changed
+   * (a story level's gate opened or shut: its colliders' masks were switched, see
+   * shared/level.js). The shared static arrays are copied first (a field that was patched
+   * never shares its graph again, and every patch hands out fresh arrays so caches keyed on
+   * them, like the walk components of sim/zone.js, see the change); blocked cells, wall
+   * costs and edges are rebuilt around the rectangle, the escape map everywhere, and the
+   * barricade costs are applied again. The next update() uses the new graph.
+   */
+  patchRegion(x0, y0, x1, y1) {
+    this.blocked = this.blocked.slice();
+    this.edges = this.edges.slice();
+    this.baseCost = this.baseCost.slice();
+    this.escape = this.escape.slice();
+    const { cols, rows, cell, pad, inflate } = this;
+    const grow = pad + inflate + cell;
+    const cx0 = Math.max(0, Math.floor((x0 - grow) / cell)), cx1 = Math.min(cols - 1, Math.floor((x1 + grow) / cell));
+    const cy0 = Math.max(0, Math.floor((y0 - grow) / cell)), cy1 = Math.min(rows - 1, Math.floor((y1 + grow) / cell));
+    this._cellsStatic(cx0, cy0, cx1, cy1, inflate);
+    // drop every edge with an end in the region (both directions), then make them again
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const c = cy * cols + cx;
+        this.edges[c] = 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = cx + NDX[k], ny = cy + NDY[k];
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          this.edges[ny * cols + nx] &= ~(1 << ((k + 4) & 7));
+        }
+      }
+    }
+    // (an edge into the region may start one cell west, north or east of it: SW edges run west)
+    this._edgesStatic(Math.max(0, cx0 - 1), Math.max(0, cy0 - 1), Math.min(cols - 1, cx1 + 1), cy1, { x0: cx0, y0: cy0, x1: cx1, y1: cy1 });
+    this._buildEscape();
+    this.setBarricades(this._bars);
+  }
+
+  /** Escape map: for every blocked or isolated cell, the nearest connected open cell. */
+  _buildEscape() {
     // Isolated open cells (no edges) behave like blocked ones for escaping.
     // Escape map: multi-source BFS from connected open cells into everything else.
+    const { cols, rows } = this;
     const esc = this.escape;
     esc.fill(-1);
     const queue = new Int32Array(this.n);
@@ -244,6 +307,7 @@ export class FlowField {
    * Mark barricade cells as expensive. list: [{x, y, a}] (BARRICADE size).
    */
   setBarricades(list) {
+    this._bars = list || null;
     this.cost.set(this.baseCost);
     if (!list) return;
     const { cols, rows, cell } = this;

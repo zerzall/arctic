@@ -8,6 +8,9 @@
 // section, spawns and checkpoints per section, a little cover. It keeps every name of the contract, so
 // mission scripts and the engine can be built and tested against a level before its real art exists.
 
+import { FlowField } from '../flowfield.js';
+import { mapColliders, circleOverlapsObb, obbOverlap, makeObb, MASK_MOVE } from '../geom.js';
+
 /** The kinds of gate the engine opens and draws (JOURNEY.md §3.2). */
 export const GATE_KINDS = Object.freeze(['shutter', 'door', 'gate', 'fence', 'barricade', 'rubble', 'bars', 'vehicle']);
 
@@ -70,6 +73,9 @@ export function placeholderLevel(B, spec) {
   // the edges of the world beyond the route
   B.ob('wall', PAD + (SW * n) / 2, PAD - 20, SW * n, 40, 0, {});
   B.ob('wall', PAD + (SW * n) / 2, H - PAD + 20, SW * n, 40, 0, {});
+  // (and at both ends, or the margin outside the walls would be a way round every gate)
+  B.ob('wall', PAD - 20, H / 2, 40, SH + 80, 0, {});
+  B.ob('wall', PAD + SW * n + 20, H / 2, 40, SH + 80, 0, {});
   // the party starts at the west end of the first section
   for (let k = 0; k < 6; k++) B.pspawn(PAD + 140 + (k % 2) * 70, cy - 120 + Math.floor(k / 2) * 110);
   B.supply(PAD + 260, cy + 200);
@@ -101,5 +107,183 @@ export function checkLevelSpec(map, spec) {
     if (!map.zombieSpawns.some((z) => z.section === s.id)) out.push(`section "${s.id}" has no zombie spawns`);
   }
   if (!map.playerSpawns.length) out.push('no player spawns');
+  return out;
+}
+
+/** Walk-graph pad of validateLevel: a survivor (radius 16) through the gaps bots plan with. */
+const WALK_PAD = 12;
+/** A checkpoint or anchor must keep a survivor-sized circle clear of every collider. */
+const SPOT_R = 16;
+
+/**
+ * Check a built level the way the engine plays it (JOURNEY.md §4.4). Returns a list of
+ * problems (empty = fine); the level modules' tests assert it is empty.
+ *   1. The route is walkable: with every gate open, every section's checkpoints (and every
+ *      anchor, unless `opts.anchors === false`) are reachable from `start` (the anchor, else
+ *      the first player spawn) on a survivor-sized walk graph (shared/flowfield.js).
+ *   2. Gates block: for each gate from section A to a later section B, with the gates leading
+ *      up to A open and every other gate shut, A's checkpoints are reachable from `start` and
+ *      none of B's are.
+ *   3. No anchor or checkpoint stands inside an obstacle (any obstacle, a shut gate included)
+ *      or in water.
+ *   4. No zombie spawn rect lies inside a roofed room (`map.roofs`) of an earlier section.
+ * @param {object} map built level (buildMap)
+ * @param {object} [spec] the level's SPEC: each gate's `from` / `to` sections come from it (else
+ *   from where the gate stands: between the two sections whose rectangles hold it)
+ * @param {object} [opts] { pad = 12 (walk-graph pad), anchors = true }
+ * @returns {string[]}
+ */
+export function validateLevel(map, spec = null, opts = {}) {
+  const out = [];
+  if (!map || map.kind !== 'level') return ['map.kind is not "level"'];
+  const sections = map.sections || [];
+  const secIdx = (id) => sections.findIndex((s) => s.id === id);
+  const colliders = mapColliders(map);
+  // ---- the gates: their colliders and the sections they join
+  const gates = (map.gates || []).map((g) => {
+    const ids = (g.obstacles || []).filter((id) => colliders[id] && colliders[id].ref && colliders[id].ref.gate === g.id);
+    let x = 0, y = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id of ids) {
+      const c = colliders[id];
+      x += c.x / ids.length;
+      y += c.y / ids.length;
+      x0 = Math.min(x0, c.minX);
+      y0 = Math.min(y0, c.minY);
+      x1 = Math.max(x1, c.maxX);
+      y1 = Math.max(y1, c.maxY);
+    }
+    const sg = spec && Array.isArray(spec.gates) ? spec.gates.find((e) => e.id === g.id) : null;
+    let from = sg ? secIdx(sg.from) : -1, to = sg ? secIdx(sg.to) : -1;
+    if (from < 0 || to < 0) {
+      const holding = [];
+      sections.forEach((s, k) => {
+        if (Math.abs(x - s.x) <= s.w / 2 + 80 && Math.abs(y - s.y) <= s.h / 2 + 80) holding.push(k);
+      });
+      if (from < 0) from = holding.length ? holding[0] : -1;
+      if (to < 0) to = holding.length > 1 ? holding[holding.length - 1] : from >= 0 && from + 1 < sections.length ? from + 1 : -1;
+    }
+    if (!ids.length) out.push(`gate "${g.id}" has no obstacles`);
+    return { id: g.id, ids, from, to, x0, y0, x1, y1, mask0: ids.map((id) => colliders[id].mask) };
+  });
+  const setGate = (g, open) => {
+    g.ids.forEach((id, k) => {
+      colliders[id].mask = open ? 0 : g.mask0[k];
+    });
+  };
+
+  // ---- 3. anchors and checkpoints on clear ground (every gate shut)
+  const blockedAt = (x, y) => {
+    for (const c of colliders) if ((c.mask & MASK_MOVE) && circleOverlapsObb(c, x, y, SPOT_R)) return c;
+    return null;
+  };
+  const what = (c) => (c.ref && c.ref.gate ? `gate "${c.ref.gate}"` : c.ref && c.ref.kind ? `a ${c.ref.kind} obstacle` : 'an obstacle');
+  for (const [name, a] of Object.entries(map.anchors || {})) {
+    const c = blockedAt(a.x, a.y);
+    if (c) out.push(`anchor "${name}" stands inside ${what(c)}`);
+  }
+  for (const cp of map.checkpoints || []) {
+    const c = blockedAt(cp.x, cp.y);
+    if (c) out.push(`a checkpoint of "${cp.section}" (${Math.round(cp.x)}, ${Math.round(cp.y)}) stands inside ${what(c)}`);
+  }
+
+  // ---- 1. the route with every gate open
+  for (const g of gates) setGate(g, true);
+  const field = new FlowField(map, { colliders, pad: opts.pad > 0 ? opts.pad : WALK_PAD, inflate: 0 });
+  const startA = (map.anchors && map.anchors.start) || (map.playerSpawns && map.playerSpawns[0]) || null;
+  if (!startA) return out.concat(['no "start" anchor and no player spawn']);
+  const reach = new Uint8Array(field.n);
+  const flood = () => {
+    reach.fill(0);
+    let s = field.cellAt(startA.x, startA.y);
+    if (field.blocked[s] || !field.edges[s]) s = field.escape[s];
+    if (s < 0) return;
+    const stack = [s];
+    reach[s] = 1;
+    while (stack.length) {
+      const c = stack.pop();
+      const e = field.edges[c];
+      for (let k = 0; k < 8; k++) {
+        if (!(e & (1 << k))) continue;
+        const nc = c + field.offs[k];
+        if (!reach[nc]) {
+          reach[nc] = 1;
+          stack.push(nc);
+        }
+      }
+    }
+  };
+  // a spot counts as reached when its own cell is, or (a cell hugging a wall) the open cell next to it
+  const reached = (x, y) => {
+    const c = field.cellAt(x, y);
+    if (reach[c]) return true;
+    const e = field.escape[c];
+    if (e < 0 || !reach[e]) return false;
+    const ex = ((e % field.cols) + 0.5) * field.cell, ey = (Math.floor(e / field.cols) + 0.5) * field.cell;
+    return Math.hypot(ex - x, ey - y) <= field.cell * 1.5;
+  };
+  flood();
+  for (const cp of map.checkpoints || []) {
+    if (!reached(cp.x, cp.y)) out.push(`a checkpoint of "${cp.section}" (${Math.round(cp.x)}, ${Math.round(cp.y)}) cannot be reached from the start with every gate open`);
+  }
+  if (opts.anchors !== false) {
+    for (const [name, a] of Object.entries(map.anchors || {})) {
+      if (!reached(a.x, a.y)) out.push(`anchor "${name}" cannot be reached from the start with every gate open`);
+    }
+  }
+
+  // ---- 2. every gate blocks the way into the section it leads to
+  const open = gates.map(() => true);
+  const cpsOf = (i) => (map.checkpoints || []).filter((c) => c.section === (sections[i] && sections[i].id));
+  for (const g of gates) {
+    if (g.from < 0 || g.to < 0) {
+      out.push(`gate "${g.id}": cannot tell which sections it joins`);
+      continue;
+    }
+    if (g.to <= g.from || !g.ids.length) continue;
+    const changed = [];
+    gates.forEach((h, k) => {
+      const want = h !== g && h.to >= 0 && h.to <= g.from && h.to > h.from;
+      if (open[k] !== want) {
+        open[k] = want;
+        setGate(h, want);
+        changed.push(h);
+      }
+    });
+    for (const h of changed) field.patchRegion(h.x0, h.y0, h.x1, h.y1);
+    flood();
+    if (!cpsOf(g.from).some((c) => reached(c.x, c.y))) {
+      out.push(`gate "${g.id}": section "${sections[g.from].id}" cannot be reached with the gates before it open`);
+    }
+    for (const c of cpsOf(g.to)) {
+      if (reached(c.x, c.y)) {
+        out.push(`gate "${g.id}" does not block: a checkpoint of "${sections[g.to].id}" can be reached with it shut`);
+        break;
+      }
+    }
+  }
+  for (const g of gates) setGate(g, false);
+
+  // ---- 4. no spawn inside a roofed room of an earlier section
+  const roofSec = (r) => {
+    const i = r.section !== undefined ? secIdx(r.section) : -1;
+    if (i >= 0) return i;
+    for (let k = sections.length - 1; k >= 0; k--) {
+      const s = sections[k];
+      if (Math.abs(r.x - s.x) <= s.w / 2 && Math.abs(r.y - s.y) <= s.h / 2) return k;
+    }
+    return -1;
+  };
+  const roofs = (map.roofs || []).map((r) => ({ i: roofSec(r), box: makeObb(r.x, r.y, r.w, r.h, r.a || 0) }));
+  map.zombieSpawns.forEach((z, k) => {
+    const i = z.section !== undefined ? secIdx(z.section) : -1;
+    if (i < 0) return;
+    const box = makeObb(z.x, z.y, z.w, z.h, 0);
+    for (const r of roofs) {
+      if (r.i >= 0 && r.i < i && obbOverlap(r.box, box)) {
+        out.push(`zombie spawn ${k} of "${z.section}" lies inside a roofed room of "${sections[r.i].id}"`);
+        break;
+      }
+    }
+  });
   return out;
 }

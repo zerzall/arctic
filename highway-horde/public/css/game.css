@@ -1606,6 +1606,42 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   .hud-camp.urgent, .camp-warn, .camp-edge { animation: none; }
 }
 
+/* ---- Story levels: the location card of a new section or a scripted title (ui/levelhud.js) ---- */
+.level-card {
+  position: absolute;
+  left: clamp(1rem, 4vw, 3.5rem);
+  bottom: 24%;
+  z-index: 9;
+  max-width: min(40rem, 80vw);
+  padding: 0.25rem 0 0.375rem 1rem;
+  border-left: 0.3125rem solid var(--hazard);
+  pointer-events: none;
+  opacity: 0;
+}
+.level-card.show { animation: level-card 4.2s ease-out both; }
+@keyframes level-card { 0% { opacity: 0; transform: translateX(-1.5rem); } 10% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; } }
+.level-card-kicker { font-family: var(--font-cond); font-weight: 700; font-size: 0.9375rem; letter-spacing: 0.22em; color: var(--hazard); text-shadow: 0 0.125rem 0 #000; }
+.level-card-kicker:empty { display: none; }
+.level-card-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.875rem, 5vw, 3.75rem);
+  line-height: 1.02;
+  letter-spacing: 0.08em;
+  color: #f3eee2;
+  text-shadow: 0 0 1.5rem rgba(0, 0, 0, 0.6), 0 0.25rem 0 #000;
+}
+.level-card-sub { margin-top: 0.125rem; font-family: var(--font-cond); font-weight: 700; font-size: 1.1875rem; letter-spacing: 0.14em; text-transform: uppercase; color: #cfc8b8; text-shadow: 0 0.125rem 0 #000; }
+.level-card-sub:empty { display: none; }
+@media (max-width: 760px), (max-height: 520px) {
+  .level-card { bottom: 30%; }
+  .level-card-title { font-size: 1.625rem; }
+  .level-card-sub { font-size: 0.875rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .level-card.show { animation-name: level-card-fade; }
+  @keyframes level-card-fade { 0% { opacity: 0; } 10% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
+}
+
 /* ---- Road to Haven: the objective tracker, helper chips, the radio strip, the hold ring (ui/storyhud.js) ---- */
 .hud-story {
   width: min(26rem, 100%);

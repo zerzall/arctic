@@ -22,6 +22,10 @@
 //
 // Road to Haven (opts.story): the current objective's markers, story items, NPCs and hold-to-use
 // spots are drawn over the map (storymarks.js); on the radar the markers pin to the rim.
+//
+// A story level (map.kind === 'level'): the roofs are dark blocks, the route runs dashed through
+// the sections, the section the party is in is outlined, and the gates are drawn live (amber bars
+// while shut, a faint green gap once open). Long levels scroll (SCROLL_ASPECT).
 
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { routePointExt, pathLen } from '../shared/campaign.js';
@@ -29,6 +33,7 @@ import { currentUiScale } from './uiscale.js';
 import { isRangeTarget } from '../shared/sim/range.js';
 import { STATION_COLORS, UPGRADE_COLORS } from '../shared/maps-hideouts.js';
 import { drawStoryMap } from './storymarks.js';
+import { levelGates } from '../shared/level.js';
 
 const MINIMAP_HZ = 20;
 const AREA_COLORS = {
@@ -62,6 +67,8 @@ export function createMinimap(canvas, map, opts = {}) {
   const hubMode = map.kind === 'hideout' && !!map.hub;
   const storyMode = !!opts.story;
   const cfg = campMode ? map.campaign : null;
+  const levelMode = map.kind === 'level';
+  const gatesOf = levelMode ? levelGates(map) : [];
   // dpr: backing pixels per CSS px; u: backing pixels per design px (dpr × UI scale), so
   // markers and labels grow with the rem-sized minimap on big screens.
   let W = 0, H = 0, dpr = 1, u = 1, scale = 1, ox = 0, oy = 0;
@@ -106,6 +113,7 @@ export function createMinimap(canvas, map, opts = {}) {
     }
     if (cfg) paintCampaignBase(b);
     if (hubMode) paintHubBase(b);
+    if (levelMode) paintLevelBase(b);
     // zombie spawn zones, faint
     b.fillStyle = 'rgba(210,40,40,0.16)';
     if (!zoneMode && !campMode) for (const z of map.zombieSpawns || []) b.fillRect(z.x - z.w / 2, z.y - z.h / 2, z.w, z.h);
@@ -153,6 +161,71 @@ export function createMinimap(canvas, map, opts = {}) {
       b.beginPath();
       b.arc(st.x, st.y, 4.6 / scale * u, 0, Math.PI * 2);
       b.fill();
+    }
+  }
+
+  /** A level's roofs (dark blocks with a light rim) and its route through the sections (dashed). */
+  function paintLevelBase(b) {
+    for (const r of map.roofs || []) {
+      b.fillStyle = 'rgba(20,22,25,0.72)';
+      rotRect(b, r.x, r.y, r.w, r.h, r.a);
+      b.save();
+      b.translate(r.x, r.y);
+      if (r.a) b.rotate(r.a);
+      b.strokeStyle = 'rgba(170,176,184,0.5)';
+      b.lineWidth = 1.2 / scale * u;
+      b.strokeRect(-r.w / 2, -r.h / 2, r.w, r.h);
+      b.restore();
+    }
+    const secs = map.sections || [];
+    if (secs.length > 1) {
+      b.strokeStyle = 'rgba(255,209,102,0.3)';
+      b.lineWidth = 3 / scale * u;
+      b.setLineDash([16 / scale * u, 12 / scale * u]);
+      b.beginPath();
+      secs.forEach((s, i) => (i ? b.lineTo(s.x, s.y) : b.moveTo(s.x, s.y)));
+      b.stroke();
+      b.setLineDash([]);
+    }
+  }
+
+  /**
+   * A level's live state: the party's section outlined, the gates (amber while shut, a faint
+   * green gap once open). `at(x, y)` maps world → screen (north-up or the rotated radar).
+   */
+  function drawLevel(lv, at) {
+    const s = (map.sections || [])[lv.section];
+    if (s) {
+      g.strokeStyle = 'rgba(255,255,255,0.28)';
+      g.lineWidth = 1.2 * u;
+      g.beginPath();
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => {
+        const p = at(s.x + sx * s.w / 2, s.y + sy * s.h / 2);
+        if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y);
+      });
+      g.closePath();
+      g.stroke();
+    }
+    const blink = 0.65 + 0.35 * Math.sin(pulse * 4);
+    for (const gt of gatesOf) {
+      const st = lv.gates && lv.gates[gt.i];
+      const open = !!(st && st.open);
+      g.strokeStyle = open ? 'rgba(109,255,154,0.35)' : `rgba(255,179,0,${blink.toFixed(3)})`;
+      g.lineWidth = (open ? 1.5 : 3.2) * u;
+      g.lineCap = 'butt';
+      for (const o of gt.obs) {
+        // the piece's long axis
+        const along = o.w >= o.h, L = (along ? o.w : o.h) / 2, a = (o.a || 0) + (along ? 0 : Math.PI / 2);
+        const p = at(o.x - Math.cos(a) * L, o.y - Math.sin(a) * L);
+        const x0 = p.x, y0 = p.y;
+        const q = at(o.x + Math.cos(a) * L, o.y + Math.sin(a) * L);
+        if (open) g.setLineDash([2 * u, 2 * u]);
+        g.beginPath();
+        g.moveTo(x0, y0);
+        g.lineTo(q.x, q.y);
+        g.stroke();
+        if (open) g.setLineDash([]);
+      }
     }
   }
 
@@ -256,6 +329,7 @@ export function createMinimap(canvas, map, opts = {}) {
     }
     if (view.zone) drawZone(view.zone, X(view.zone.x), Y(view.zone.y), X(view.zone.nx), Y(view.zone.ny), k, false);
     if (campMode && view.campaign) drawCampaign(view.campaign, (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; }, k, false);
+    if (levelMode && view.level) drawLevel(view.level, (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; });
     if (storyMode) {
       const at = (x, y) => { _pt.x = X(x); _pt.y = Y(y); return _pt; };
       at.k = k;
@@ -366,6 +440,7 @@ export function createMinimap(canvas, map, opts = {}) {
     g.restore();
     const zn = view && view.zone;
     if (zn) drawZone(zn, rx(zn.x, zn.y), ry(zn.x, zn.y), rx(zn.nx, zn.ny), ry(zn.nx, zn.ny), k, true);
+    if (levelMode && view && view.level) drawLevel(view.level, (x, y) => { _pt.x = rx(x, y); _pt.y = ry(x, y); return _pt; });
     const cz = campMode && view ? view.campaign : null;
     if (cz) drawCampaign(cz, (x, y) => { _pt.x = rx(x, y); _pt.y = ry(x, y); return _pt; }, k, true);
     const inside = (x, y, m) => x >= m && x <= W - m && y >= m && y <= H - m;

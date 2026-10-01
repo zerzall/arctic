@@ -4,7 +4,7 @@
 // way Harlan County fixes the mode to Evac Run. Pure helpers shared by the lobby rules, the
 // UI, the simulation's settings and both renderers; nothing here touches the DOM.
 
-import { MAP_LIST } from './maps.js';
+import { MAP_LIST, mapMeta } from './maps.js';
 
 /** Times of day in lobby order. 'night' is the original look and the default. */
 export const TIME_LIST = [
@@ -20,7 +20,7 @@ export const TIME_IDS = TIME_LIST.map((t) => t.id);
  * @returns {string[]}
  */
 export function mapTimes(map) {
-  const meta = typeof map === 'string' ? MAP_LIST.find((m) => m.id === map) : map;
+  const meta = typeof map === 'string' ? mapMeta(map) : map;
   if (meta && Array.isArray(meta.times)) {
     const l = meta.times.filter((t) => TIME_IDS.includes(t));
     if (l.length) return l;

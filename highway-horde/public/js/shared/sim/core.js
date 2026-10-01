@@ -38,6 +38,8 @@ import { updateInteractables, interactablesSnapshot } from './interact.js';
 import { updateNpcs, npcsSnapshot, npcTargetable } from './npcs.js';
 import { mapModes } from '../zone.js';
 import { resolveTime } from '../timeofday.js';
+import { LevelDirector } from './level.js';
+import { isLevel } from '../level.js';
 
 /** Events that are pure presentation and may be dropped when a snapshot overflows. */
 const COSMETIC = new Set(['shot', 'zattack', 'pdamage', 'melee', 'chain', 'objhit', 'empty', 'spit', 'reload', 'switch', 'freeze']);
@@ -145,6 +147,11 @@ export class GameCore {
     // "fits along the centre line".
     this.flowBig = new FlowField(map, { colliders, pad: HEAVY_BODY_RADIUS, mask: MASK_HEAVY });
     this.zgrid = new SpatialHash(map.width, map.height, 64);
+    /**
+     * A story level's director (sim/level.js: gates, sections, checkpoints, lights, the level's
+     * spawns), else null. Made before the mission director, which drives it.
+     */
+    this.level = isLevel(map) ? new LevelDirector(this) : null;
     /** The mission director (sim/story.js) of a 'mission' or 'hideout' game, else null. */
     this.story = storyMode ? new StoryDirector(this, mode === 'hideout') : null;
     /** Multiplier on the size of a wave (a mission's `waveScale`). */
@@ -337,6 +344,7 @@ export class GameCore {
     if (this.zone) this.zone.update();
     if (this.campaign) this.campaign.update();
     if (this.story) this.story.update();
+    if (this.level) this.level.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
     // AI survivors decide now and queue their cmds like everyone else's input.
@@ -393,6 +401,7 @@ export class GameCore {
       zone: this.zone ? this.zone.snapshot() : null,
       campaign: this.campaign ? this.campaign.snapshot() : null,
       story: this.story ? this.story.snapshot() : null,
+      level: this.level ? this.level.snapshot() : null,
       npcs: this.npcs.length ? npcsSnapshot(this) : [],
       interactables: this.interactables.length ? interactablesSnapshot(this) : [],
       players: this.players.map((p) => playerSnapshot(this, p)),

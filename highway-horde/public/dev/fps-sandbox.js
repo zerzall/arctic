@@ -18,7 +18,7 @@
 
 import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
-import { MAP_LIST } from '../js/shared/maps.js';
+import { MAP_LIST, buildMap } from '../js/shared/maps.js';
 import { HIDEOUT_IDS, applyHideoutUpgrades, UPGRADE_KINDS } from '../js/shared/maps-hideouts.js';
 import { LEVEL_IDS } from '../js/shared/levels/index.js';
 import { DRESS_KINDS } from '../js/shared/dress.js';
@@ -294,7 +294,10 @@ function setup(mapId) {
   // (a story level plays its missions; here it is walked like a hideout, or with plain waves while zombies are on)
   const levelMap = LEVEL_IDS.includes(mapId);
   const mode = hubMap || (levelMap && !opt.zombies) ? 'hideout' : levelMap ? 'defend' : opt.mode;
-  game = new Game({ mapId, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode } });
+  // demo=rooms (a story level): walled rooms with a roof of every kind from its second section on, to review
+  // the interiors (roofs3d.js, the indoor light mask) before the level's own art exists
+  const demoMap = levelMap && params.get('demo') === 'rooms' ? demoRooms(buildMap(mapId, opt.seed)) : null;
+  game = new Game({ mapId, map: demoMap || undefined, seed: opt.seed, players, settings: { difficulty: 'normal', waves: 15, objective: true, friendlyFire: false, time: opt.time, mode } });
   if (hubMap) applyHideoutUpgrades(game.map, parseUpgrades(params.get('up')));
   roster = players.map((p) => ({ ...p, ready: true, ping: 0, host: p.id === 1 }));
   if (opt.wave && opt.zombies) for (let t = 0; t < 60 * 30 && game.phase === 'prep'; t++) game.step();
@@ -315,7 +318,7 @@ function setup(mapId) {
   const t0 = performance.now();
   renderer = createRenderer3D(canvas, { map: game.map, quality, time: opt.time, mode: game.mode });
   console.log(`[fps-sandbox] ${mapId}: renderer created in ${(performance.now() - t0).toFixed(0)} ms`);
-  window.__fps.views = viewpoints(game.map, snap && snap.zone);
+  window.__fps.views = viewpoints(game.map, snap && snap.zone).concat(game.map.demoViews || []);
   if (opt.view) setView(opt.view);
 }
 
@@ -333,6 +336,56 @@ function levelViewpoints(map) {
   }
   for (const [name, a] of Object.entries(map.anchors)) v.push(at('a:' + name, a.x - 260, a.y + 40, a.x, a.y));
   return v;
+}
+
+/**
+ * demo=rooms: walled rooms under roofs of every kind from the second section of a story level on (north
+ * and south of the road), each with a doorway toward the road and a window gap; the walls are ordinary
+ * `wall` obstacles, so the sim and both renderers see them. Views `room:<kind>` (inside, looking at
+ * the doorway) and `door:<kind>` (outside, looking in).
+ */
+function demoRooms(map) {
+  let si = Math.min(1, map.sections.length - 1);
+  const kinds = ['office', 'industrial', 'hospital', 'house', 'mall', 'metro', 'plain'];
+  const views = [];
+  const wall = (x, y, w, h, s) => map.obstacles.push({ id: map.obstacles.length, kind: 'wall', x, y, w, h, a: 0, color: '#8c877c', solid: true, wrecked: false, roof: null, section: s.id });
+  const layout = kinds.map((kind) => ({ kind, w: kind === 'mall' ? 520 : kind === 'industrial' ? 460 : 320, d: kind === 'mall' ? 420 : 300, x: 0, side: -1, s: null }));
+  // (two rows: the first of each pair north of the road, the second south; x advances per pair,
+  // on into the next section when a pair does not fit)
+  let s = map.sections[si];
+  let x = s.x - s.w / 2 + 140;
+  for (let i = 0; i < layout.length; i += 2) {
+    const pair = layout.slice(i, i + 2);
+    const w = Math.max(...pair.map((q) => q.w));
+    if (x + w > s.x + s.w / 2 - 40 && si + 1 < map.sections.length) {
+      s = map.sections[++si];
+      x = s.x - s.w / 2 + 140;
+    }
+    pair.forEach((q, j) => { q.x = x + w / 2; q.side = j === 0 ? -1 : 1; q.s = s; });
+    x += w + 70;
+  }
+  for (const q of layout) {
+    const s = q.s;
+    if (q.x + q.w / 2 > s.x + s.w / 2 - 40) continue;
+    const road = s.y;
+    const cy = road + q.side * (170 + q.d / 2);
+    const near = cy - q.side * q.d / 2, far = cy + q.side * q.d / 2;
+    wall(q.x, far, q.w, 14, s);
+    wall(q.x - q.w / 2, cy, 14, q.d, s);
+    // the east wall with a window gap
+    wall(q.x + q.w / 2, cy - q.d * 0.3, 14, q.d * 0.4, s);
+    wall(q.x + q.w / 2, cy + q.d * 0.35, 14, q.d * 0.3, s);
+    // the road side with a doorway (wide for the garage and the mall)
+    const door = q.kind === 'industrial' || q.kind === 'mall' ? 150 : 84;
+    const seg = (q.w - door) / 2;
+    wall(q.x - q.w / 2 + seg / 2, near, seg, 14, s);
+    wall(q.x + q.w / 2 - seg / 2, near, seg, 14, s);
+    map.roofs.push({ x: q.x, y: cy, w: q.w + 14, h: q.d + 14, a: 0, height: q.kind === 'mall' ? 250 : q.kind === 'industrial' ? 210 : 150, kind: q.kind, section: s.id, dark: 0.78 });
+    views.push({ name: 'room:' + q.kind, x: q.x - q.w * 0.3, y: cy + q.side * q.d * 0.3, yaw: Math.atan2(near - (cy + q.side * q.d * 0.3), q.x - (q.x - q.w * 0.3)), pitch: 0.05 });
+    views.push({ name: 'door:' + q.kind, x: q.x - 40, y: near - q.side * 220, yaw: Math.atan2(q.side, 0.12), pitch: 0 });
+  }
+  map.demoViews = views;
+  return map;
 }
 
 /** up=3 (every upgrade at tier 3) | up=generator:2,palisade:1 | absent = nothing built. */
@@ -537,6 +590,9 @@ async function main() {
       game.snapshot();
     },
     look(y, p = 0) { yaw = y; pitch = p; },
+    /** A story level: open (or shut) gate `id` now; cut (or restore) a section's lights. */
+    gate(id, open = true) { return !!(game.level && game.level.setGate(id, open)); },
+    lights(section, on = false) { return !!(game.level && game.level.setLights(section, on)); },
     /** Graphics settings object handed to render() (mutate it to test live changes). */
     gfx,
     setTour(on) { opt.tour = !!on; tourT = 0; },

@@ -74,6 +74,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { PeerServer } from 'peer';
+import { LEVEL_TEST_MISSION } from '../tests/fixtures/level-mission.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'e2e-output');
@@ -2114,7 +2115,7 @@ async function startMission(pl, mission, bots) {
     const orig = s.drainEvents.bind(s);
     s.drainEvents = () => {
       const ev = orig();
-      for (const e of ev) if (['objective', 'radio', 'item', 'talk', 'interact', 'storyend', 'npc'].includes(e.type)) window.__e2eStory.events.push(e);
+      for (const e of ev) if (['objective', 'radio', 'item', 'talk', 'interact', 'storyend', 'npc', 'gate', 'area', 'title', 'checkpoint', 'lights', 'horde'].includes(e.type)) window.__e2eStory.events.push(e);
       return ev;
     };
   }, mission);
@@ -2300,6 +2301,118 @@ async function scenarioStory(sc) {
   }
 }
 
+/**
+ * n: a story level (JOURNEY.md §4) played by bots: the test mission on Mill Road. Three bots
+ * hotwire the semi (the first gate opens), take the gas station (a section reach), hold the tow
+ * truck (a defend point), and the second gate opens behind a blast and a power cut. The scripted
+ * player rides along with them (kept alive); the HUD shows the location card of every section,
+ * the gate toasts and the defend point's name; then a first-person client looks at the gates.
+ */
+async function scenarioLevel(sc) {
+  const pl = await sc.player('level');
+  pl.url = sc.env.relay.url;
+  await titleSetup(pl, { name: 'Pathfinder', cls: 'soldier' });
+  await startMission(pl, LEVEL_TEST_MISSION, 3);
+  await waitFor(pl, () => {
+    const v = window.__HH.getView && window.__HH.getView();
+    return !document.querySelector('#screen-game').hidden && !!v && v.players.length === 4 && !!v.level;
+  }, null, 'the level mission game', 60e3);
+  const card = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .level-card');
+    return el && !el.hidden && el.textContent ? el.textContent : false;
+  }, null, 'the location card', 20e3);
+  expect(/jam|mission/i.test(card), `the first card names the level's first section or the mission's title: "${card}"`);
+  log(`    level: card "${card.replace(/\s+/g, ' ').trim()}"`);
+  await sc.screenshots('-card');
+  // The scripted player rides with the crew (a few px behind the lead bot, kept alive).
+  const ride = () => pl.page.evaluate(() => {
+    const s = window.__HH.session;
+    const g = s.game;
+    const me = g.getPlayer(s.localId);
+    if (!me || me.state !== 'alive') return null;
+    me.hp = me.maxHp;
+    const b = g.players.filter((p) => p.bot && p.state === 'alive').sort((p, q) => q.x - p.x)[0];
+    if (b && Math.hypot(b.x - me.x, b.y - me.y) > 260) {
+      me.x = b.x - 60;
+      me.y = b.y;
+      if (!g.world.unstick(me, 16, 0)) g.world.resolveCircle(me, 16);
+    }
+    return g.level ? g.level.section : null;
+  });
+  const levelEvents = (type) => pl.page.evaluate((t) => window.__e2eStory.events.filter((e) => e.type === t), type);
+  const until = async (fn, what, ms) => {
+    const t0 = Date.now();
+    for (;;) {
+      await ride();
+      const v = await fn();
+      if (v) return v;
+      if (Date.now() - t0 > ms) throw new Failure(`timed out waiting for ${what}`);
+      await sleep(700);
+    }
+  };
+  // 1) the first gate: the bots hotwire the semi
+  await until(async () => (await levelEvents('gate')).some((e) => e.id === 'gas_shutter' && e.open), 'the first gate to open', 150e3);
+  const toast = await waitFor(pl, () => [...document.querySelectorAll('#hud .toast')].map((t) => t.textContent).find((t) => /open/i.test(t)) || false, null, 'the gate toast', 10e3);
+  log(`    level: first gate open ("${toast}")`);
+  await sc.screenshots('-gate-open');
+  // 2) the gas station: a new card, then the defend point with its name on the bar
+  await until(async () => (await levelEvents('area')).some((e) => e.id === 'gasstation'), 'the crew to reach the gas station', 120e3);
+  const card2 = await waitFor(pl, () => {
+    const el = document.querySelector('#hud .level-card');
+    return el && !el.hidden && /gas/i.test(el.textContent) ? el.textContent : false;
+  }, null, 'the gas station card', 15e3);
+  log(`    level: card "${card2.replace(/\s+/g, ' ').trim()}"`);
+  const defend = await until(() => pl.page.evaluate(() => {
+    const v = window.__HH.getView();
+    const name = document.querySelector('#hud .obj-name');
+    return v.level && v.level.defend && v.objective ? { defend: v.level.defend, bar: name ? name.textContent : '' } : false;
+  }), 'the defend point', 60e3);
+  expect(defend.bar === defend.defend, `the objective bar names the defend point: ${JSON.stringify(defend)}`);
+  log(`    level: defending "${defend.defend}"`);
+  await sc.screenshots('-defend');
+  // 3) the second gate, after the checkpoint, the blast and the power cut
+  await until(async () => (await levelEvents('gate')).some((e) => e.id === 'trailer_gate' && e.open), 'the second gate to open', 150e3);
+  const [cps, lights] = [await levelEvents('checkpoint'), await levelEvents('lights')];
+  expect(cps.length >= 1 && lights.some((e) => !e.on), `a checkpoint and a power cut before the second gate: ${JSON.stringify({ cps, lights })}`);
+  const st = await pl.page.evaluate(() => { const v = window.__HH.getView(); return { gates: v.level.gates.map((g) => g.open), dark: v.level.dark, section: v.level.section }; });
+  expect(st.gates[0] && st.gates[1] && st.dark !== 0, `both gates open, a section dark: ${JSON.stringify(st)}`);
+  log(`    level: second gate open, level state ${JSON.stringify(st)}`);
+  await sc.screenshots('-gate2');
+  const win = await until(() => pl.page.evaluate(() => window.__HH.getView().phase === 'victory'), 'victory', 120e3).catch(() => false);
+  log(`    level: ${win ? 'mission complete' : 'still going (the bots got through both gates)'}`);
+  await sc.close(pl);
+
+  // First person: the gates as models (one shut, one opening), the level's own card
+  const fp = await sc.player('level-fps', { view: 'fps', quality: 'low', context: { viewport: FPS_VIEWPORT } });
+  fp.url = sc.env.relay.url;
+  await titleSetup(fp, { name: 'Pointman', cls: 'soldier' });
+  await startMission(fp, { ...LEVEL_TEST_MISSION, steps: [{ id: 'w', type: 'wait', seconds: 600, pressure: false, text: 'Look around' }] }, 0);
+  await waitFpsGame(fp, 1, 'the first-person level');
+  const gate = await fp.page.evaluate(async () => {
+    const { levelGates } = await import('/js/shared/level.js');
+    const g = levelGates(window.__HH.session.game.map)[0];
+    return { id: g.id, x: g.x, y: g.y, x0: g.x0 };
+  });
+  await teleport(fp, gate.x0 - 260, gate.y);
+  await turnTo(fp, 0);
+  await sleep(2500);
+  const g3 = await waitFor(fp, () => {
+    const d = window.__HH.renderer.debug;
+    const grp = d && d.scene && d.scene.getObjectByName('gates3d');
+    return grp ? { pieces: grp.children.length } : false;
+  }, null, 'the gates group in the 3D scene', 60e3);
+  expect(g3.pieces >= 2, `the gate models are in the scene: ${JSON.stringify(g3)}`);
+  await sc.screenshots('-fps-gate-shut', FPS_SHOT_MS);
+  await fp.page.evaluate((id) => window.__HH.session.game.level.setGate(id, true), gate.id);
+  await sleep(600);
+  await sc.screenshots('-fps-gate-opening', FPS_SHOT_MS);
+  await sleep(2000);
+  const open = await fp.page.evaluate(() => window.__HH.getView().level.gates[0].open);
+  expect(open, 'the gate is open in the view');
+  await sc.screenshots('-fps-gate-open', FPS_SHOT_MS);
+  log(`    level fps: ${g3.pieces} gate models; the first gate opened in view`);
+}
+
 const SCENARIOS = [
   ['a', 'solo', scenarioSolo],
   ['b', 'relay-mp', scenarioRelay],
@@ -2314,6 +2427,7 @@ const SCENARIOS = [
   ['k', 'campaign', scenarioCampaign, 420e3],
   ['l', 'story-loop', scenarioStoryLoop, 200e3],
   ['m', 'story', scenarioStory, 300e3],
+  ['n', 'level', scenarioLevel, 600e3],
 ];
 
 // ---- main --------------------------------------------------------------------------------------

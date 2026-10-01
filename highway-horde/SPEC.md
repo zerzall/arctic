@@ -849,6 +849,38 @@ sim's own flow field, stations and NPC spots unique and reachable, dress, every 
 valid and inside the hub, the range in the sim and its isolation from the other modes, audio hooks,
 the renderer's model registry and a triangle budget, run headless).
 
+### 3.11 Story levels — `buildMap('<level id>')`, played in `settings.mode 'mission'` (§3.9) (`shared/levels/*`, `shared/level.js`, `shared/sim/level.js`, `level-actions.js`)
+
+Long hand-made routes (JOURNEY.md): `kind: 'level'`, `sections[]` (rects in route order, each with
+checkpoints and spawn rects), `gates[]` (wall obstacles tagged `o.gate` with a `kind`), `roofs[]`
+(`{ x, y, w, h, a, height, kind, section, dark }`), `anchors`. Like the hideouts they are in `buildMap`
+(`LEVEL_LIST`, `mapMeta(id)`) but not in `MAP_LIST`. `validateLevel(map)` (`shared/levels/kit.js`) checks
+the route walkable with every gate open, each gate blocking, anchors and checkpoints free, and no spawn
+rect under an earlier section's roof.
+
+- **Gates**: shut gates collide; opening one clears its colliders' mask (players, zombies, bullets,
+  grenades, sight) and patches the flow fields in place (`FlowField.patchRegion`); shutting pushes out
+  whoever stands in it. The bits and the tick they changed are state (`snapshot.level.gates`); prediction
+  follows them.
+- **Sections**: `level.section` is the furthest section a living player entered (first entry emits
+  `area`); spawns come from the current and the next section (`pressure.section` and the `horde` action
+  override), zombies a section behind and far from everyone are culled; respawns and late joiners use
+  the current section's checkpoint (`checkpoint` action moves it). `reach { section }`; `defend
+  { target: <anchor> }` puts a defend point with hp there; `prop: 'supply'` obstacles are supply points.
+- **Actions** in a step's `onStart` / `onDone`, in order with `delay`: `gate`, `horde`, `explode`,
+  `lights`, `title`, `music`, `shake`, `checkpoint` (JOURNEY.md §4.3). They reach clients as events
+  (`gate`, `area`, `title`, `music`, `shake`, `lights`, `checkpoint`, `horde`); only gate bits, dark
+  sections, the checkpoint and the defend point are state.
+- **Snapshot** `level: { section, checkpoint, dark, gates: [{ open, t }], defend } | null`; wire flag
+  `H_LEVEL`, protocol 11 (JOURNEY.md §8).
+- **Clients**: animated gate models by kind (3D) or fading gates (2D); roofs with ceilings and fixtures
+  that cast the sun's and moon's shadows, keep rain and grass out and darken the room through a world-space
+  indoor light mask (daylight spills in through openings; by day a room is dim but readable, at night its
+  lamps light it); a section's lights go out with the `lights` action; a location card per section, gate
+  toasts, the defend point on the objective bar, gates and the route on the minimap, gate sounds and a
+  held music state.
+- **Tests**: `tests/level-engine*.test.js`, the level agents' `tests/level-<id>.test.js`, e2e scenario `n`.
+
 ---------------------------------------------------------------------------------------
 
 ## 4. Snapshot (render state)

@@ -62,6 +62,16 @@ const BUILDERS = {
 };
 
 /**
+ * The list entry of any map id: a match map (MAP_LIST), a hideout (HIDEOUT_LIST) or a story level
+ * (LEVEL_LIST); null when unknown. Name, times of day, modes and the rest of the menu metadata.
+ * @param {string} id
+ * @returns {object|null}
+ */
+export function mapMeta(id) {
+  return MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id) || LEVEL_LIST.find((m) => m.id === id) || null;
+}
+
+/**
  * Build the full map definition for `id`. Deterministic for a given (id, seed).
  * @param {string} id one of the MAP_LIST ids
  * @param {number} seed any integer; the same seed always yields the same map
@@ -71,7 +81,7 @@ const BUILDERS = {
 export function buildMap(id, seed, opts = null) {
   const build = Object.prototype.hasOwnProperty.call(BUILDERS, id) ? BUILDERS[id] : null;
   if (!build) throw new Error(`Unknown map id: ${id}`);
-  const meta = MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id) || LEVEL_LIST.find((m) => m.id === id);
+  const meta = mapMeta(id);
   const s = Number.isFinite(seed) ? seed : 0;
   const B = createBuilder(meta, s);
   build(B);

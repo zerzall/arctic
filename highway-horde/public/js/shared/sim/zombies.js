@@ -144,8 +144,10 @@ export function pickType(game, w) {
  */
 export function pickSpawnRect(game) {
   let rects = game.map.zombieSpawns, farD = 700;
-  // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges.
-  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : game.story ? game.story.spawnRects() : null;
+  // Evac Run: a ring around the safe zone (sim/zone.js) instead of the map edges; a story
+  // level: the spawns of the sections just ahead of the party (sim/level.js).
+  const zr = game.zone ? game.zone.spawnRects() : game.campaign ? game.campaign.spawnRects() : game.story ? game.story.spawnRects()
+    : game.level ? game.level.spawnRects() : null;
   if (zr) {
     rects = zr.rects;
     farD = zr.far;

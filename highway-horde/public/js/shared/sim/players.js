@@ -16,6 +16,7 @@ import { makeObb, circleOverlapsObb, MASK_MOVE } from '../geom.js';
 import { stepPlayerMovement, settleVertical } from '../movement.js';
 import { resetVertical } from '../jump.js';
 import { RIDE_TICKS } from '../campaign.js';
+import { levelSupplies } from '../level.js';
 import { clearEdges, mergeEdges } from './core.js';
 import { weaponOf, applyProfileToPlayer, giveStoryKit } from './profile-mods.js';
 import {
@@ -887,6 +888,10 @@ function shopOpen(game, p) {
   if (game.phase !== 'wave') return false;
   const s = game.map.supply;
   if (s && Math.hypot(p.x - s.x, p.y - s.y) <= SUPPLY_RADIUS) return true;
+  // A story level: every crate tagged prop 'supply' is a station too (shared/level.js).
+  if (game.level) {
+    for (const c of levelSupplies(game.map)) if (Math.hypot(p.x - c.x, p.y - c.y) <= SUPPLY_RADIUS) return true;
+  }
   // Evac Run: the zone's supply drop is a shop too.
   const z = (game.zone && game.zone.supply) || (game.campaign && game.campaign.supply);
   return !!z && Math.hypot(p.x - z.x, p.y - z.y) <= SUPPLY_RADIUS;

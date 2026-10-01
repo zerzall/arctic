@@ -39,6 +39,16 @@ const FAR = new Set(['pole', 'wire', 'billboard', 'watertower', 'flagpole', 'ban
 const NEAR_MAX = 2800;
 const OWN = new Set(['sign', 'lit', 'flat', 'wet', 'cloth']);
 const UNLIT = new Set(['glow', 'blink']);
+/** Dressing that grows: kept out from under a story level's roofs. */
+const PLANTS = new Set(['tallgrass', 'fern', 'flowers', 'shrub', 'mushrooms', 'reeds', 'lily', 'cactus', 'perch', 'deadtree', 'stump', 'log']);
+/** (x, y) under one of the oriented roof rects. */
+function underRoof(roofs, x, y) {
+  for (const r of roofs) {
+    const c = Math.cos(r.a || 0), s = Math.sin(r.a || 0), dx = x - r.x, dy = y - r.y;
+    if (Math.abs(dx * c + dy * s) <= r.w / 2 + 4 && Math.abs(-dx * s + dy * c) <= r.h / 2 + 4) return true;
+  }
+  return false;
+}
 
 /** Wave the cloth on the GPU: the vertex is pushed along its normal by a travelling wave that grows away from the pinned edge (uv.x = 0). */
 function clothPatch(mat, uniforms, key) {
@@ -91,7 +101,9 @@ export function createDress(ctx, deps) {
   const matFor = (bucket) => (OWN.has(bucket) ? (tier === 'low' ? own.low : own.hi)[bucket] : mats.get(bucket, tier));
 
   // (map.dressItems: a dev hook, the prop gallery of dev/fps-sandbox.html?gallery=... lays its own list)
-  const items = map.dressItems || buildDress(map);
+  let items = map.dressItems || buildDress(map);
+  // (a story level: no plants indoors, whatever the ground under a roof was painted as)
+  if (map.kind === 'level' && map.roofs && map.roofs.length) items = items.filter((it) => !PLANTS.has(it.k) || !underRoof(map.roofs, it.x, it.y));
   const ranked = items.slice().sort((a, b) => a.q - b.q);
   let meshes = [];
   let triangles = 0;

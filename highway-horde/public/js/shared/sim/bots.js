@@ -20,6 +20,8 @@ import { FlowField, BARRICADE_COST } from '../flowfield.js';
 import { angleDiff, turnTowards, TAU } from '../math.js';
 import { activeWeapon, priceFor, shopWave, findPlacement } from './players.js';
 import { MODE_CHARGE } from './zombies.js';
+import { walkComponents, componentAt } from './zone.js';
+import { nearestSupply } from '../level.js';
 
 // Zombie target kinds (z.tgtKind, see zombies.js).
 const TK_PLAYER = 1, TK_OBJECTIVE = 3;
@@ -619,6 +621,38 @@ function humansOf(game) {
 }
 
 function strategy(game, b, index) {
+  strategyGoal(game, b, index);
+  // A story level: never press against a shut gate for a goal on its far side (sim/level.js)
+  if (game.level && b.p.state === 'alive') levelGoalFix(game, b);
+}
+
+/**
+ * A story level: when the goal lies beyond a shut gate (another walk component of the bots'
+ * graph), wait on this side of the nearest shut gate instead of wedging into it.
+ */
+function levelGoalFix(game, b) {
+  const p = b.p, lv = game.level, f = game.botNav.field;
+  if (!lv.gates.length) return;
+  const comp = walkComponents(f);
+  const mine = componentAt(f, comp, p.x, p.y);
+  const theirs = componentAt(f, comp, b.goalX, b.goalY);
+  if (mine < 0 || theirs < 0 || mine === theirs) return;
+  let best = null, bd = Infinity;
+  for (const gt of lv.gates) {
+    if (lv.open[gt.i]) continue;
+    const d = Math.hypot(gt.x - p.x, gt.y - p.y);
+    if (d < bd) {
+      bd = d;
+      best = gt;
+    }
+  }
+  if (!best) return;
+  const dx = p.x - best.x, dy = p.y - best.y, d = Math.hypot(dx, dy) || 1;
+  const rr = Math.min(d, 100 + (b.pid % 3) * 30);
+  setGoal(b, b.mode, best.x + (dx / d) * rr, best.y + (dy / d) * rr, 70);
+}
+
+function strategyGoal(game, b, index) {
   const p = b.p;
   anchor(game, b, index);
   if (b.prof.lapse > 0 && game.phase === 'wave' && game.time >= b.lapseT && game.rng.next() < b.prof.lapse) {
@@ -709,7 +743,7 @@ function strategy(game, b, index) {
  * zone's supply drop when it is closer (and inside the circle).
  */
 function supplyFor(game, p) {
-  const s = game.campaign ? game.campaign.supply : game.map.supply;
+  const s = game.campaign ? game.campaign.supply : game.level ? nearestSupply(game.map, p.x, p.y) : game.map.supply;
   const z = game.zone;
   if (!z) return s || null;
   const d = z.supply;
@@ -743,7 +777,7 @@ function anchor(game, b, index) {
     zoneAnchor(game, b, index);
     return;
   }
-  const o = game.campaign ? campaignPoint(game) : game.map.objective;
+  const o = holdPoint(game);
   let n = 0;
   for (const q of game.players) if (!q.bot && q.state === 'alive') n++;
   if (n > 0) {
@@ -790,6 +824,28 @@ function zoneAnchor(game, b, index) {
   b.ax = c.x;
   b.ay = c.y;
   b.anchorHuman = false;
+}
+
+/**
+ * The objective-like box bots hold around when no human is standing: the campaign's point, a
+ * story level's defend point (else the survivors' centre: a level has no middle to hold), the
+ * map's objective.
+ */
+function holdPoint(game) {
+  if (game.campaign) return campaignPoint(game);
+  if (game.level) {
+    const box = game.level.anchorBox();
+    if (box) return box;
+    let x = 0, y = 0, n = 0;
+    for (const q of game.players) {
+      if (q.state !== 'alive') continue;
+      x += q.x;
+      y += q.y;
+      n++;
+    }
+    return n ? { x: x / n, y: y / n, w: 100, h: 100 } : null;
+  }
+  return game.map.objective;
 }
 
 /**
@@ -854,7 +910,7 @@ function chooseSpot(game, b, index) {
   b.spotAY = b.ay;
   b.spotT = game.time + 2 + game.rng.range(0, 1);
   const world = game.world, field = game.botNav.field;
-  const o = game.campaign ? campaignPoint(game) : game.map.objective;
+  const o = holdPoint(game);
   const nb = game.bots.length;
   const bearing = ((index + 0.5) / Math.max(1, nb)) * TAU + (b.anchorHuman ? 0.8 : 0.3);
   const r0 = b.anchorHuman ? 115 : game.zone ? Math.min(170, (b.zoneR || 400) * 0.3) : o ? Math.max(o.w, o.h) / 2 + 70 : 150;

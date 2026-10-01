@@ -4,6 +4,7 @@
 // hideout or a retry). Both are overlays over the running hideout / frozen mission game.
 
 import { h, setText } from './dom.js';
+import { mapMeta } from '../shared/maps.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { xpBar } from '../shared/story/progression.js';
@@ -81,7 +82,7 @@ export function createFlow({ root, ctx, audio, deps, getSession, dialogue, panel
     const roster = session.roster;
     const ready = new Set(st.ready);
     const isHost = st.isHost;
-    const map = (deps.MAP_LIST || []).find((q) => q.id === m.map);
+    const map = mapMeta(m.map);
     const preview = h('canvas.st-map-preview', { width: 520, height: 292, 'aria-hidden': 'true' });
     drawPreview(preview, m);
     const rw = m.rewards || {};

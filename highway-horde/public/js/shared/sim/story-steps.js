@@ -22,6 +22,7 @@ import { pickType } from './zombies.js';
 import { createNpc, npcByKey } from './npcs.js';
 import { SUB } from '../campaign.js';
 import { explode } from './combat.js';
+import { sectionIndex, sectionAt, gateOutOf, checkpointsOf } from '../level.js';
 
 const RUN = 0, DONE = 1, FAIL = -1;
 const REACH_MARGIN = 20;
@@ -199,12 +200,14 @@ export const STEP_IMPL = {
     ownWaves: true,
     label(dir, s) {
       const o = dir.map.objective;
-      const nm = o ? o.name : 'the objective';
+      const lv = dir.game.level && dir.game.level.defend;
+      const nm = o ? o.name : lv ? lv.name.toLowerCase() : 'the objective';
       return s.def.seconds > 0 ? `Defend ${nm}` : `Defend ${nm}: wave ${Math.min(s.max, s.cur + 1)} of ${s.max}`;
     },
     start(dir, s) {
       const d = s.def;
-      dir.enableObjective();
+      // (a story level puts a defend point at the target anchor; `name` is its HUD name)
+      dir.enableObjective(d.target, typeof d.name === 'string' ? d.name : '');
       if (d.seconds > 0) {
         s.timed = true;
         s.max = d.seconds;
@@ -231,7 +234,9 @@ export const STEP_IMPL = {
     },
     marks(dir, s, add) {
       const o = dir.map.objective;
+      const lv = dir.game.level && dir.game.level.defend;
       if (o) add('defend', o.x, o.y, Math.max(o.w, o.h) / 2);
+      else if (lv) add('defend', lv.x, lv.y, Math.min(lv.r, 160));
     },
     goal() {
       return null;
@@ -357,9 +362,27 @@ export const STEP_IMPL = {
     timed: true,
     pressure: { pace: 0.25 },
     label(dir, s) {
+      if (s.sec) return `Get to ${s.sec.name}`;
       return s.def.hold > 0 ? 'Hold the position' : 'Get to the marker';
     },
     start(dir, s) {
+      // `section` (a story level): done when the party is in that section (who: 'any' by default)
+      if (s.def.section !== undefined && dir.game.level) {
+        const i = sectionIndex(dir.map, String(s.def.section));
+        if (i >= 0) {
+          s.secI = i;
+          s.sec = dir.map.sections[i];
+          s.hold = Math.max(0, Number(s.def.hold) || 0);
+          s.held = 0;
+          s.total = s.hold;
+          s.t = s.hold;
+          s.max = s.hold > 0 ? Math.round(s.hold) : 1;
+          s.cur = 0;
+          s.at = { x: s.sec.x, y: s.sec.y, r: Math.min(s.sec.w, s.sec.h) / 2 };
+          s.radius = s.at.r;
+          return;
+        }
+      }
       const a = dir.anchor(s.def.at);
       s.at = a || { ...dir.centre(), r: 200 };
       s.radius = (s.def.radius > 0 ? s.def.radius : s.at.r) + 0;
@@ -375,8 +398,15 @@ export const STEP_IMPL = {
       if (!list.length) return RUN;
       const R = s.radius + REACH_MARGIN * 0;
       let inside = 0;
-      for (const p of list) if (Math.hypot(p.x - s.at.x, p.y - s.at.y) <= R) inside++;
-      const ok = s.def.who === 'any' ? inside > 0 : inside === list.length;
+      let ok;
+      if (s.sec) {
+        // in the section, or past it
+        for (const p of list) if (sectionAt(dir.map, p.x, p.y) >= s.secI) inside++;
+        ok = s.def.who === 'all' ? inside === list.length : inside > 0;
+      } else {
+        for (const p of list) if (Math.hypot(p.x - s.at.x, p.y - s.at.y) <= R) inside++;
+        ok = s.def.who === 'any' ? inside > 0 : inside === list.length;
+      }
       if (ok) s.held += DT;
       else s.held = Math.max(0, s.held - DT * 2);
       if (s.hold > 0) {
@@ -388,11 +418,22 @@ export const STEP_IMPL = {
       return ok ? DONE : RUN;
     },
     marks(dir, s, add) {
+      if (s.sec) {
+        const w = sectionWay(dir, s.secI);
+        add(w.gate ? 'exit' : 'reach', w.x, w.y, w.gate ? 60 : 120);
+        return;
+      }
       add('reach', s.at.x, s.at.y, s.radius);
     },
     goal(dir, s, b, index) {
       const n = Math.max(1, dir.game.bots.length);
       const ang = ((index + 0.5) / n) * TAU;
+      if (s.sec) {
+        // the next checkpoint on the way; a shut gate on the way: wait on this side of it
+        const w = sectionWay(dir, s.secI);
+        const rr = w.gate ? 70 : 60;
+        return { mode: 'quest', x: w.bx + Math.cos(ang) * rr, y: w.by + Math.sin(ang) * rr, r: 50 };
+      }
       const rr = Math.max(30, s.radius * 0.45);
       return { mode: 'quest', x: s.at.x + Math.cos(ang) * rr, y: s.at.y + Math.sin(ang) * rr, r: Math.max(40, s.radius * 0.3) };
     },
@@ -806,6 +847,35 @@ export function defaultText(dir, s) {
   return s.impl && s.impl.label ? s.impl.label(dir, s) : '';
 }
 
+/**
+ * On a story level, the way to section `target` from where the party is: the first shut gate
+ * on it `{ gate, x, y (the gate), bx, by (a spot on this side of it) }`, else the target's
+ * checkpoint nearest the party `{ gate: null, x, y, bx, by }`.
+ */
+function sectionWay(dir, target) {
+  const lv = dir.game.level, map = dir.map;
+  const from = lv ? Math.min(lv.section, target) : 0;
+  for (let k = from; lv && k < target; k++) {
+    const gt = gateOutOf(map, k);
+    if (!gt || lv.isOpen(gt.i)) continue;
+    const s = map.sections[gt.from] || map.sections[k];
+    const dx = s.x - gt.x, dy = s.y - gt.y, d = Math.hypot(dx, dy) || 1;
+    const p = dir.freeNear(gt.x + (dx / d) * 110, gt.y + (dy / d) * 110, 90, 24);
+    return { gate: gt, x: gt.x, y: gt.y, bx: p.x, by: p.y };
+  }
+  const cps = checkpointsOf(map, target);
+  const c = dir.centre();
+  let best = cps[0] || map.sections[target], bd = Infinity;
+  for (const q of cps) {
+    const d = Math.hypot(q.x - c.x, q.y - c.y);
+    if (d < bd) {
+      bd = d;
+      best = q;
+    }
+  }
+  return { gate: null, x: best.x, y: best.y, bx: best.x, by: best.y };
+}
+
 /** Path length left for an escorted NPC (straight legs through its remaining route points). */
 function pathLeft(n) {
   let x = n.x, y = n.y, len = 0;
@@ -827,7 +897,9 @@ function packSpawn(dir, s, type, count, at, tier, far = false) {
   const a = at !== undefined ? dir.anchor(at) : null;
   const c = a || dir.centre();
   const lo = far ? 900 : 700, hi = far ? 1300 : 1000;
-  const spot = dir.ringSpot(c.x, c.y, a ? 60 : lo, a ? Math.max(a.r, 200) : hi, a ? 0 : 560) || dir.ringSpot(c.x, c.y, 500, 900, 300) || dir.freeNear(c.x + 500, c.y, 200, 40);
+  // (a story level: out of the spawns of the sections ahead unless the script names the spot)
+  const lvSpot = !a && g.level ? g.level.spawnSpot(dir.rng, dir.sectionHint(), false, 44) : null;
+  const spot = lvSpot || dir.ringSpot(c.x, c.y, a ? 60 : lo, a ? Math.max(a.r, 200) : hi, a ? 0 : 560) || dir.ringSpot(c.x, c.y, 500, 900, 300) || dir.freeNear(c.x + 500, c.y, 200, 40);
   const saved = g.wave;
   g.wave = tier - g.tierBonus;
   const out = [];

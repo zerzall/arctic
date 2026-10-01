@@ -26,6 +26,7 @@ import { clamp, lerp } from '../shared/math.js';
 import { SOUNDS, SOUND_IDS } from './sounds.js';
 import { createBank } from './bank.js';
 import { createMusic } from './music.js';
+import { levelGates } from '../shared/level.js';
 
 export const MAX_VOICES = 24;
 export const MAX_LOOPS = 12;
@@ -130,7 +131,18 @@ export const RELOADS = {
 const LOOP_GUNS = new Set(['minigun', 'flame', 'cryo', 'chainsaw']);
 
 // Events that still matter when a tab returns from the background with a backlog.
-const STATE_EVENTS = new Set(['wave', 'waveclear', 'bossspawn', 'gameover', 'victory', 'down', 'died', 'revived', 'respawn', 'buy', 'buyfail', 'objective', 'radio', 'storyend', 'npc']);
+/** What a story level's gate sounds like opening, per kind: [sound id, delay s, gain]. */
+const GATE_SOUNDS = {
+  shutter: [['crank', 0, 1], ['crank', 0.45, 0.8], ['slam', 1.1, 0.6]],
+  door: [['breach', 0, 0.9], ['slam', 0.35, 0.5]],
+  gate: [['crank', 0, 0.9], ['slide', 0.2, 1], ['slam', 1.05, 0.5]],
+  fence: [['break_barricade', 0, 1], ['drop_thud', 0.55, 1]],
+  barricade: [['break_barricade', 0, 1], ['drop_thud', 0.4, 0.9], ['drop_thud', 0.8, 0.6]],
+  rubble: [['expl_grenade', 0, 0.6], ['drop_thud', 0.3, 1], ['drop_thud', 0.7, 0.8]],
+  bars: [['crank', 0, 1], ['slide', 0.3, 0.8]],
+  vehicle: [['horn', 0, 0.5], ['crank', 0.2, 0.9], ['drop_thud', 1, 0.7]],
+};
+const STATE_EVENTS = new Set(['wave', 'waveclear', 'bossspawn', 'gameover', 'victory', 'down', 'died', 'revived', 'respawn', 'buy', 'buyfail', 'objective', 'radio', 'storyend', 'npc', 'music']);
 
 const PRIO_OWN = 90;
 const PRIO_UI = 100;
@@ -782,6 +794,20 @@ class Engine {
         this.play('victory', { local: true, prio: PRIO_UI });
         this.musicMode = 'victory';
         return;
+      // a story level's scripted moments (JOURNEY.md §4.3)
+      case 'gate': return void this.gateSound(e);
+      case 'lights':
+        this.play('switch', { local: true, prio: PRIO_UI, gain: 0.9 });
+        if (!e.on) this.play('crank', { local: true, prio: PRIO_UI, gain: 0.5, delay: 0.15 });
+        return;
+      case 'checkpoint': return void this.play('radio_blip', { local: true, prio: PRIO_UI });
+      case 'horde':
+        this.play('scream', { ...pos, minGain: 0.3 });
+        this.musicTarget = Math.max(this.musicTarget, 0.4);
+        return;
+      case 'music':
+        if (this.music && this.music.hold) this.music.hold(e.state);
+        return;
       default:
     }
   }
@@ -1338,6 +1364,22 @@ class Engine {
     this.terrain = t && !t.flat ? t : null;
     const st = map && Array.isArray(map.obstacles) ? map.obstacles.filter((o) => o.kind === 'stairs') : [];
     this.stairs = st.length ? st : null;
+    // a story level's gates (where a 'gate' event is heard, and what it sounds like)
+    this.gates = map && map.kind === 'level' ? levelGates(map) : null;
+  }
+
+  /** A story level's gate opening or shutting (JOURNEY.md §4.1): the kind's sound where it stands. */
+  gateSound(e) {
+    const g = this.gates && this.gates.find((q) => q.id === e.id);
+    if (!g) return;
+    const pos = { x: g.x, y: g.y, minGain: 0.25 };
+    if (!e.open) {
+      this.play('slam', pos);
+      this.play('drop_thud', { ...pos, delay: 0.5 });
+      return;
+    }
+    const steps = GATE_SOUNDS[g.kind] || GATE_SOUNDS.shutter;
+    for (const [id, delay, gain] of steps) this.play(id, { ...pos, delay, gain });
   }
 
   stats() {
