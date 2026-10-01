@@ -290,6 +290,8 @@ function mainstreet(B) {
   // ---- the square: the fountain, the memorial, benches, trees
   ob(B, 'rock', 'hc-fountain', 6500, FRONT_N - 260, 180, 180, 0, { sec, color: '#a8a498' });
   B.anchor('main_fountain', 6500, FRONT_N - 90, 150);
+  // the bandstand the town made its stand on (sandbags on the deck)
+  ob(B, 'counter', 'hc-gazebo', 6640, FRONT_N - 470, 150, 150, 0, { sec });
   prop(B, 'hc-memorial', 6250, FRONT_N - 470, 0);
   ob(B, 'rock', 'nodraw', 6250, FRONT_N - 470, 40, 40, 0, { sec, color: '#888888' });
   for (const [x, y] of [[6180, FRONT_N - 120], [6820, FRONT_N - 120], [6820, FRONT_N - 470]]) B.tree(x, y, 1.1);

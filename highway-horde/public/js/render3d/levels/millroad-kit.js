@@ -49,6 +49,7 @@ export const KIT_BUCKETS = {
   hub: { uv: true },
   hubneon: { uv: true, ao: false },
   hubflick: { uv: true, ao: false },
+  lvbeam: { uv: true, ao: false },
 };
 
 // ---- small helpers ------------------------------------------------------------------------------------
@@ -125,12 +126,42 @@ export function tyre(B, x, y, z, rad = 9, rot = [HALF, 0, 0]) {
   B.add('std', T.torus(14, 0.42, 6), [x, y, z], [rad, rad, rad * 1.4], rot, '#1b1b1c', RUBBER);
 }
 
-/** A fluorescent ceiling fixture at height y (dead / flickering / lit). */
+/** By day the level's lamps are dim (set by createKitArt). */
+let dayMode = false;
+/** The direction the sunlight travels in the sim frame (x, up, y), or null at night (set by createKitArt). */
+let sunRay = null;
+
+/**
+ * A shaft of daylight in through a window of a wall (the wall's frame; indoors on +z): sheets from the
+ * window's top and bottom edges down along the sun's rays to the floor, faint, additive, fading with
+ * length. Nothing when the sun is behind the wall or below the horizon.
+ * @param {object} P model context (P.o: the wall obstacle)
+ * @param {object} h the opening { x0, x1, y0, y1 }
+ * @param {string} color tint (warm daylight; stained glass passes its own)
+ */
+export function lightBeam(P, h, color = '#c8b090') {
+  if (!sunRay || P.lod < 1) return;
+  const { B, o } = P;
+  const a = o.a || 0, c = Math.cos(a), s = Math.sin(a);
+  // the ray in the wall's frame: along the wall (x), down (y), into the room (z)
+  const dx = sunRay[0] * c + sunRay[2] * s, dy = sunRay[1], dz = -sunRay[0] * s + sunRay[2] * c;
+  if (dz < 0.12 || dy > -0.05) return;
+  const w = h.x1 - h.x0, cx = (h.x0 + h.x1) / 2;
+  const maxT = 320;
+  const uv = lvUV('beam');
+  for (const y of [h.y1, h.y0 + (h.y1 - h.y0) * 0.35]) {
+    const t = Math.min(maxT, y / -dy);
+    const e2 = [dx * t, dy * t, dz * t];
+    B.quad('lvbeam', [cx + e2[0] / 2, y + e2[1] / 2, e2[2] / 2 + 0.6], [w, 0, 0], e2, color, { uv, noAO: true, noJitter: true });
+  }
+}
+
+/** A fluorescent ceiling fixture at height y (dead / flickering / lit; dim by day). */
 export function tubeFixture(B, halos, x, y, z, rot, state, wx, wz) {
   B.box('std', x, y + 1.2, z, 48, 2.4, 11, '#d8d8d4', [0, rot, 0], S(DET.panel, 0.5, 0.3));
   if (state === 'dead') { B.box('std', x, y - 0.4, z, 44, 1.2, 8, '#a8aaa8', [0, rot, 0], PLAST); return; }
   const bucket = state === 'flicker' ? 'flicker' : 'glow';
-  B.add(bucket, T.box(), [x, y - 0.3, z], [44, 1, 8], [0, rot, 0], '#eef4ff', { emissive: 3.2, uv: atlasUV('white'), noAO: true, noJitter: true });
+  B.add(bucket, T.box(), [x, y - 0.3, z], [44, 1, 8], [0, rot, 0], '#eef4ff', { emissive: dayMode ? 0.7 : 3.2, uv: atlasUV('white'), noAO: true, noJitter: true });
   if (halos && wx !== undefined) halos.push({ x: wx, y: wz, h: y - 2, color: '#e8f0ff', size: 70, strength: 0.4, flicker: state === 'flicker' ? 0.6 : 0 });
 }
 
@@ -341,6 +372,8 @@ function windowUnit(P, h, t, look, side) {
     }
     B.box('std', cx, cy, 0, w - 2, hh - 2, 1, '#1a1814', null, NJ);
   }
+  // daylight in through it
+  if (state !== 'boarded' && (side === 'in')) lightBeam(P, h, st ? '#b8a080' : '#c8b090');
   // sill outside, stool inside
   if (!st) {
     B.box('std', cx, h.y0 - 1.4, -t / 2 - 1.4, w + 5, 2.4, 4, shadeHex(look.plinth || look.ext.c, 0.1), null, { noJitter: true, ...CONC });
@@ -597,6 +630,13 @@ export function levelDress(map, extraSkip = null) {
 export function createKitArt(ctx, deps, spec) {
   const map = ctx.map;
   useAtlas(map.id);
+  dayMode = !!deps.day;
+  const dl = map.look && map.look.day;
+  sunRay = null;
+  if (dayMode && dl && Number.isFinite(dl.az) && Number.isFinite(dl.el) && dl.el > 3) {
+    const az = (dl.az * Math.PI) / 180, el = (dl.el * Math.PI) / 180;
+    sunRay = [-Math.cos(el) * Math.cos(az), -Math.sin(el), -Math.cos(el) * Math.sin(az)];
+  }
   const art = map.art || { floors: [], doors: [], props: [] };
   const day = deps.day;
   const full = deps.full || deps.tier || 'high';
@@ -613,6 +653,7 @@ export function createKitArt(ctx, deps, spec) {
       hub: new THREE.MeshStandardMaterial({ vertexColors: true, map: hubTex, alphaTest: 0.5, roughness: 0.75, metalness: 0, envMapIntensity: 0.55 }),
       hubneon: neonMaterial(hubTex, neonK),
       hubflick: neonMaterial(hubTex, neonK),
+      lvbeam: new THREE.MeshBasicMaterial({ vertexColors: true, map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }),
     },
   };
   own.low = {
@@ -623,7 +664,9 @@ export function createKitArt(ctx, deps, spec) {
     hub: new THREE.MeshLambertMaterial({ vertexColors: true, map: hubTex, alphaTest: 0.5 }),
     hubneon: own.hi.hubneon,
     hubflick: own.hi.hubflick,
+    lvbeam: own.hi.lvbeam,
   };
+  own.hi.lvbeam.color.setScalar(day ? 0.32 : 0);
   // by day a back-lit sign is just paint in the sun (dimmer than a lit face would be at night)
   own.hi.lvglow.color.setScalar(day ? 0.82 : 1);
   const warned = new Set();

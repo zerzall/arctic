@@ -6,7 +6,7 @@
 
 import {
   LOOKS, FLOORS, WALL_DRAW, DOORS, DOOR_TRIM, DOOR_H, T, S, WOOD, METAL, RUSTY, CONC, CHROME, HALF, PI,
-  shadeHex, mixHex, hash01, DET, rod, plank, sign, decal, lvUV,
+  shadeHex, mixHex, hash01, DET, rod, plank, sign, decal, lvUV, lightBeam,
 } from './millroad-kit.js';
 import { card, cardList, listGeo, randDir } from '../world-flora.js';
 import { LEAF_CELLS } from '../world-tex.js';
@@ -48,6 +48,8 @@ function lancetWindow(P, h, t, look, side) {
     // a pane knocked out low down: a dark hole in the glass
     B.box('std', cx + (hash01(seed + 7) - 0.5) * w * 0.4, h.y0 + hh * 0.18, 0, w * 0.3, hh * 0.14, 1.4, '#0a0a0c', null, { noJitter: true, surf: [0, 0.9, 0] });
   }
+  // coloured daylight in through the glass
+  if (side !== 'out') lightBeam(P, h, ['#a8a0d0', '#d0a090', '#a0c8a8'][Math.floor(hash01(seed) * 3)]);
   // the sill and a hood moulding over the arch (outside)
   B.box('std', cx, h.y0 - 1.6, -t / 2 - 1.4, w + 6, 3, 4, shadeHex(look.ext.c, 0.08), null, { noJitter: true, ...CONC });
   if (P.lod >= 1) {
@@ -83,7 +85,7 @@ Object.assign(LOOKS, {
   woodfence: { h: 64, draw: 'woodfence' },
   stonewall: { h: 64, draw: 'stonewall' },
   hedge: { h: 88, draw: 'hedge' },
-  bars: { h: 120, draw: 'bars' },
+  bars: { h: 125, draw: 'bars' },
 });
 
 Object.assign(FLOORS, {

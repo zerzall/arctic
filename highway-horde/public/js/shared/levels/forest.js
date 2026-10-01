@@ -325,7 +325,7 @@ function campground(B) {
   // the shower block north of the loop: two sides, a breezeway between
   room(B, {
     x: 3300, y: 1050, w: 340, h: 200, look: 'block', sec, floor: 'tile-white',
-    doors: { s: [[-90, 84, 'steel'], [90, 84, 'steel']] }, roof: { kind: 'plain', height: 120, dark: 0.7 },
+    doors: { s: [[-90, 84, 'steel'], [90, 84, 'steel']] }, roof: { kind: 'plain', height: 110, dark: 0.7 },
   });
   wall(B, 3300, 950, 3300, 1150, 'block', { t: 12, side: 'both', sec });
   prop(B, 'bp-showers', 3300, 1050, 0, { w: 340, h: 200 });

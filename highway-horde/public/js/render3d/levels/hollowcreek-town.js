@@ -561,6 +561,42 @@ function fountain(P) {
   }
 }
 
+/** The square's bandstand: an octagonal deck on a lattice skirt, white posts and rails, the roof and finial,
+ *  and the sandbags someone stacked on it, the casings, the blood. */
+function gazebo(P) {
+  const { B, o } = P;
+  const R = o.w / 2 - 2, r = B.rng;
+  const white = '#ece8dc';
+  const wd = { noJitter: true, ...WOOD };
+  B.add('std', T.cyl(8), [0, 18, 0], [R, 36, R], [0, PI / 8, 0], white, { ...wd, map: 'cyl' });
+  B.add('std', T.cyl(8), [0, 37, 0], [R + 3, 3, R + 3], [0, PI / 8, 0], '#c8c0b0', { ...wd, map: 'cyl' });
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2, x = Math.cos(a) * (R - 4), z = Math.sin(a) * (R - 4);
+    B.box('std', x, 38 + 50, z, 4, 100, 4, white, null, wd);
+    const a2 = ((k + 1) / 8) * PI * 2, x2 = Math.cos(a2) * (R - 4), z2 = Math.sin(a2) * (R - 4);
+    if (k !== 2) {
+      plank(B, 'std', [x, 64, z], [x2, 64, z2], 3, 2, white, wd);
+      for (let t = 0.1; t < 1; t += 0.12) B.box('std', x + (x2 - x) * t, 51, z + (z2 - z) * t, 1.4, 26, 1.4, white, null, wd);
+    } else {
+      // the steps down to the square
+      const mx = (x + x2) / 2, mz = (z + z2) / 2, am = (a + a2) / 2;
+      for (let s = 0; s < 4; s++) B.box('std', mx * (1 + (s + 1) * 0.12), 31 - s * 9, mz * (1 + (s + 1) * 0.12), 44, 4, 14, white, [0, -am + HALF, 0], wd);
+    }
+    plank(B, 'std', [x, 138, z], [x2, 138, z2], 6, 3, white, wd);
+  }
+  B.add('std', T.cyl(8, 0.05), [0, 160, 0], [R + 14, 44, R + 14], [0, PI / 8, 0], '#3a4a5a', { noJitter: true, surf: [DET.shingle, 0.8, 0.1], map: 'cyl' });
+  B.add('std', T.sphere(8, 6), [0, 186, 0], [4, 6, 4], null, '#c8a040', S(0, 0.3, 0.8));
+  // sandbags round the deck's edge (not across the steps), ammo boxes, casings
+  for (let k = 0; k < 22; k++) {
+    const a = (k / 22) * PI * 2;
+    if (Math.abs(a - (2.5 * PI) / 4) < 0.4) continue;
+    B.add('std', T.pillow(8, 5, 0.4), [Math.cos(a) * (R - 14), 42 + (k % 2) * 7, Math.sin(a) * (R - 14)], [8.4, 4, 6], [0, -a + HALF, 0], mixHex('#8a7a55', '#6a5e40', r.next()), FABRIC);
+  }
+  for (let i = 0; i < 3; i++) B.rblock('std', r.range(-20, 20), 39, r.range(-20, 20), 10, 7, 6, 0.5, '#3a4a2a', [0, r.range(0, 3), 0], METAL);
+  for (let i = 0; i < 30; i++) B.add('std', T.cyl(6), [r.range(-R + 10, R - 10), 39.6, r.range(-R + 10, R - 10)], [0.7, 2.4, 0.7], [HALF, r.range(0, 6), 0], '#c8a040', { ...S(0, 0.3, 0.9), map: 'cyl' });
+  floorDecal(B, 'blood1', 10, -10, 50, 50, 0.4, 39.4);
+}
+
 /** The war memorial: a granite obelisk on a stepped base, the bronze plaque, small flags, a wreath, candles. */
 function memorial(P) {
   const { B, o, halos } = P;
@@ -672,7 +708,7 @@ export const TOWN_MODELS = {
   'hc-rails': rails, 'hc-crossing': crossing, 'hc-boxcar': boxcar, 'hc-tankcar': tankcar, 'hc-watertower': watertower, 'hc-welcome': welcome,
   'hc-feedstore': feedstore, 'hc-cruiser': cruiser, 'hc-barricadeback': barricadeback, 'hc-theater': theater, 'hc-postoffice': postoffice,
   'hc-hwshelf': hwshelf, 'hc-hwcounter': hwcounter, 'hc-hwstuff': hwstuff, 'hc-dinercounter': dinercounter, 'hc-booth': booth, 'hc-dinerstuff': dinerstuff,
-  'hc-fountain': fountain, 'hc-memorial': memorial, 'hc-bunting': bunting, 'hc-lamp': streetlamp, 'hc-laststand': laststand,
+  'hc-fountain': fountain, 'hc-gazebo': gazebo, 'hc-memorial': memorial, 'hc-bunting': bunting, 'hc-lamp': streetlamp, 'hc-laststand': laststand,
 };
 export const TOWN_GATES = { 'hc-barricade': barricade };
 void [crate, carton, drum, tyre, RUBBER, sign2];

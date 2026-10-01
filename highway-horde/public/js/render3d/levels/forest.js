@@ -32,11 +32,26 @@ const MODELS = {
 const GATES = { 'hc-schoolpanel': SCHOOL_GATES['hc-schoolpanel'], ...CAMP_GATES, ...RANGER_GATES, ...MILL_GATES };
 const ROOFS = { ...MILL_ROOFS };
 
+// The automatic road dressing (shared/dress.js) is a highway's: in the forest only what campers, hikers and
+// the fleeing would leave keeps (and the mill's yard its pallets and drums); the county road keeps its poles.
+const KEEP = new Set([
+  'puddle', 'mud', 'leaves', 'blood', 'tread', 'stain', 'suitcase', 'duffel', 'backpack', 'shoe', 'shoes', 'bag', 'litter', 'clothes',
+  'teddy', 'toy', 'sleeping_bag', 'cooler', 'tent_camp', 'chair', 'campfire', 'grill', 'flare', 'fuel_can', 'box', 'box_open',
+  'bicycle', 'woodpile', 'bodybag', 'helmet', 'tarp', 'cross', 'shrine', 'sawhorse', 'plywood', 'graf', 'poster', 'wposter', 'paperf',
+]);
+const MILL = new Set(['pallet', 'pallets', 'crate', 'crates', 'drum', 'drums', 'pipes', 'generator', 'reel', 'ibc', 'gascyl', 'wheelbarrow', 'spill', 'soot']);
+function forestSkip(it) {
+  if (KEEP.has(it.k)) return false;
+  if (MILL.has(it.k) && it.x > 8900 && it.x < 10900) return false;
+  if ((it.k === 'pole' || it.k === 'wire') && it.x < 1000 && it.y > 2900) return false;
+  return true;
+}
+
 /**
  * @param {object} ctx renderer ctx (ctx.map is the built level)
  * @param {object} deps { root, mats, fx, halos, shafts, day, aniso, gy, tier, full, newBuilder(), matOf(bucket, tier) }
  * @returns {object}
  */
 export function createLevelArt(ctx, deps) {
-  return createKitArt(ctx, deps, { models: MODELS, gates: GATES, roofs: ROOFS, props(P) { forestFloor(P); } });
+  return createKitArt(ctx, deps, { models: MODELS, gates: GATES, roofs: ROOFS, extraSkip: forestSkip, props(P) { forestFloor(P); } });
 }

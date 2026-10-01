@@ -18,7 +18,7 @@ const SERIF = 'Georgia,"DejaVu Serif","Liberation Serif",serif';
 /** Cell sizes (w, h) in atlas pixels, in packing order. */
 export const LV_CELLS = {
   // generic, alpha-cut (the 'lvdecal' / 'lvleaf' buckets)
-  white: [16, 16], blood1: [256, 256], blood2: [256, 256], blood3: [256, 128], hands: [128, 128], grime: [256, 128], drip: [128, 256],
+  white: [16, 16], beam: [64, 128], blood1: [256, 256], blood2: [256, 256], blood3: [256, 128], hands: [128, 128], grime: [256, 128], drip: [128, 256],
   graf1: [256, 96], graf2: [256, 96], graf3: [256, 96], graf4: [256, 96], graf5: [256, 128], xcode: [128, 128],
   corn1: [256, 512], corn2: [256, 512], corn3: [256, 512], cornrow: [512, 256], papers: [128, 128],
   // posters and notices
@@ -244,6 +244,21 @@ function blood(g, w, h, r, kind) {
 
 const PAINT = {
   white(g, w, h) { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); },
+  beam(g, w, h) {
+    // a shaft of light: bright at the window (the cell's bottom), fading along its length, soft at the sides
+    g.clearRect(0, 0, w, h);
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      const along = Math.pow(y / (h - 1), 1.6);
+      for (let x = 0; x < w; x++) {
+        const side = Math.sin((x / (w - 1)) * Math.PI);
+        const i = (y * w + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(255 * along * Math.pow(side, 0.7));
+      }
+    }
+    g.putImageData(img, 0, 0);
+  },
   blood1(g, w, h, r) { blood(g, w, h, r, 'splat'); },
   blood2(g, w, h, r) { blood(g, w, h, r, 'smear'); },
   blood3(g, w, h, r) { blood(g, w, h, r, 'pool'); },

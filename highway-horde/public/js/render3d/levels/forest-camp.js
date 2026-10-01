@@ -325,7 +325,7 @@ function showers(P) {
     sign(B, s < 0 ? 'bp_men' : 'bp_women', s * 90, 92, h / 2 + 8.4, 32, 12, 0);
     B.box('std', s * 90, 100, h / 2 + 10, 10, 6, 6, '#2a2a2a', null, METAL);
     if (!P.day) { const [wx, wy] = toWorld(o, s * 90, h / 2 + 14); halos.push({ x: wx, y: wy, h: 98, color: '#fff0d0', size: 50, strength: 0.6 }); B.add('glow', T.box(), [s * 90, 97, h / 2 + 12], [7, 2, 4], null, '#fff0d0', { emissive: 2.6, uv: atlasUV('white'), noAO: true }); }
-    tubeFixture(B, P.halos, xc, 114, 0, 0, r.chance(0.3) ? 'flicker' : 'lit');
+    tubeFixture(B, P.halos, xc, 104, 0, 0, r.chance(0.3) ? 'flicker' : 'lit');
   }
   for (let k = 0; k < 5; k++) floorDecal(B, r.pick(['grime', 'blood3', 'grime']), r.range(-w / 2 + 30, w / 2 - 30), r.range(-h / 2 + 30, h / 2 - 30), r.range(20, 50), r.range(20, 40), r.range(0, 6), 0.55);
   decal(B, 'hands', -w / 2 + 7.4, 50, 20, 30, 30, HALF);
