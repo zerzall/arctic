@@ -55,14 +55,16 @@ page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') 
 page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
 try {
   await page.goto(`http://127.0.0.1:${port}/dev/fps-sandbox.html?${q}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__fps && window.__fps.renderer, null, { timeout: 120000 });
+  // (software GL: a big level takes minutes to build and up to a minute a frame; SHOT_TIMEOUT in ms overrides)
+  const limit = Number(process.env.SHOT_TIMEOUT || 600000);
+  await page.waitForFunction(() => window.__fps && window.__fps.renderer, null, { timeout: limit });
   for (const v of views.length ? views : [null]) {
     const view = v && v.startsWith('{') ? JSON.parse(v) : v;
     if (view) await page.evaluate((x) => window.__fps.setView(x), view);
     await page.evaluate(() => window.__fps.step && window.__fps.step(3));
     await page.waitForTimeout(600);
     const name = `${mapId}-${(v ? (typeof view === 'string' ? view : `${Math.round(view.x)}_${Math.round(view.y)}`) : 'start').replace(/[^a-z0-9_-]+/gi, '_')}.png`;
-    await page.screenshot({ path: join(outDir, name) });
+    await page.screenshot({ path: join(outDir, name), timeout: limit });
     console.log('wrote', join(outDir, name));
   }
 } finally {
