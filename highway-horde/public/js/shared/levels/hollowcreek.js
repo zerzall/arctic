@@ -515,6 +515,7 @@ function school(B) {
   ob(B, 'cabinet', 'hc-bleachers', 650, 200, 400, 60, 0, { sec });
   prop(B, 'hc-gym', 650, 400, 0, { w: 490, h: 490 });
   prop(B, 'hc-hall', (900 + SX1) / 2, (HY0 + HY1) / 2, 0, { w: SX1 - 900, h: HY1 - HY0 });
+  prop(B, 'hc-schoolfront', (SX0 + SX1) / 2, SY1, 0, { w: SX1 - SX0 });
   for (const [x, y, c] of [[650, 400, '#fff4e0'], [1100, 450, '#e8f0ff'], [1700, 450, '#e8f0ff'], [1450, 580, '#fff0d8'], [1500, 260, '#e8f0ff']]) B.light(x, y, 220, c, 0.35, 110);
   B.anchor('school_gym', 700, 470, 150);
   B.anchor('school_office', 1330, 590, 70);

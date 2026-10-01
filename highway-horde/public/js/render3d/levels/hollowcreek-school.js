@@ -9,6 +9,7 @@ import {
   DET, rod, plank, sign, sign2, decal, floorDecal, carton, toWorld, lvUV, litter, tubeFixture,
 } from './millroad-kit.js';
 import { buildVehicle, buildBus } from '../world-veh.js';
+import { lvSub } from './millroad-atlas.js';
 
 const GLASS = { noJitter: true, surf: [0, 0.06, 0] };
 const BRICK = { noJitter: true, surf: [DET.brick, 0.9, 0] };
@@ -476,7 +477,28 @@ function policesign(P) {
   B.rblock('std', 0, 0, 34, 180, 5, 30, 2, '#5a4a36', null, { noJitter: true, surf: [DET.dirt, 0.95, 0] });
 }
 
+/** The school's front (the south wall, outside): the entrance canopy on posts, the name in letters over it, the
+ *  hornet painted on the gym, a bike rack, the drop-off kerb's paint. */
+function schoolfront(P) {
+  const { B, o } = P;
+  const w = o.w;
+  const z0 = 8;
+  const xe = -160;                 // the glass doors
+  B.box('std', xe, 104, z0 + 40, 170, 5, 80, '#e8e4dc', null, S(DET.panel, 0.5, 0.2));
+  B.box('std', xe, 100, z0 + 80, 172, 8, 2, '#1a3a6a', null, METAL);
+  for (const x of [xe - 80, xe + 80]) B.cyl('std', x, 0, z0 + 76, 2.4, 100, '#e8e4dc', 10, 1, null, METAL);
+  B.box('std', xe, 128, z0 + 0.8, 220, 26, 1.2, '#efe8d6', null, S(0, 0.6, 0));
+  B.add('lvsign', T.plane(), [xe, 128, z0 + 1.6], [216, 24, 1], null, '#ffffff', { uv: lvSub('hc_school', 0, 0.56, 1, 1), noAO: true, noJitter: true });
+  // the hornet on the gym's wall, a bike rack, a bench
+  B.add('lvsign', T.plane(), [-650, 114, z0 + 0.8], [60, 60, 1], null, '#ffffff', { uv: lvUV('hc_hornet'), noAO: true, noJitter: true });
+  for (let k = 0; k < 6; k++) B.add('std', T.torus(10, 0.06, 4), [xe + 140 + k * 10, 12, z0 + 30], [10, 10, 10], null, '#2a5ab0', METAL);
+  B.box('std', xe + 165, 2, z0 + 30, 64, 1.4, 4, '#2a5ab0', null, METAL);
+  B.rblock('std', 160, 0, z0 + 24, 70, 16, 18, 1, '#6a4a30', null, WOOD);
+  B.box('std', 0, 0.5, z0 + 120, w * 0.6, 0.4, 3, '#e8c020', null, NJ);
+}
+
 export const SCHOOL_MODELS = {
+  'hc-schoolfront': schoolfront,
   'hc-schoolbus': schoolbus, 'hc-schoolsign': schoolsign, 'hc-flag': flag, 'hc-portable': portable, 'hc-dumpster': dumpster, 'hc-hoop': hoop,
   'hc-lockers': lockers, 'hc-classroom': classroom, 'hc-officecounter': officecounter, 'hc-office': office, 'hc-bleachers': bleachers, 'hc-gym': gym,
   'hc-hall': hall, 'hc-sallyframe': sallyframe, 'hc-cells': cells, 'hc-gunrack': gunrack, 'hc-armory': armory, 'hc-booking': booking,
