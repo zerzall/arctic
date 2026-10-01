@@ -196,6 +196,13 @@ export function build(B) {
   buildHangars(B, A);
   buildTower(B, A, plats);
   buildRunway(B, A);
+  // pines close in on the base from north and south (the field's edges are the treeline)
+  B.forest(3700, 560, 1150, 300, 70);
+  B.forest(6700, 200, 1600, 140, 55);
+  B.forest(10300, 650, 1650, 420, 110);
+  B.forest(3600, 3560, 1100, 300, 70);
+  B.forest(7100, 3730, 1300, 180, 55);
+  B.forest(10500, 3640, 1450, 260, 90);
 
   // the world's edges
   wallBox(B, 0, 0, 40, H, { style: 'nodraw' });
@@ -244,6 +251,14 @@ function buildPerimeter(B, A) {
   B.ob('suv', 1880, 2060, 104, 52, -0.35, { color: '#4b5320', style: 'humvee', section: 'perimeter' });
   B.vehicle('pickup', 520, 1830, 0.6, { wrecked: true });
   B.fire(1180, 1840, 18);
+  // the queue that never got in: cars left on the shoulders up to the gate, a refugee camp in the field
+  for (const [x, y, a] of [[1780, 1860, 0.05], [1900, 1866, -0.04], [2030, 2140, 0.08], [1700, 2146, -0.1], [2150, 2142, 3.1], [1610, 1862, 0.2]]) {
+    B.vehicle(x % 3 ? 'car' : 'suv', x, y, a, { wrecked: x % 2 === 0 });
+  }
+  B.vehicle('van', 2260, 2165, 0.1, {});
+  for (const [x, y, a] of [[1950, 2420, 0.3], [2120, 2520, -0.2], [1830, 2600, 0.8], [2260, 2380, 0.1]]) B.ob('tent', x, y, 90, 70, a, { color: ['#3a5a7a', '#7a4a3a', '#5a6a3a', '#8a7a4a'][Math.round(x) % 4], roof: '#6a6a5a', section: 'perimeter' });
+  B.fire(2050, 2470, 10);
+  B.ob('barrier', 2280, 2120, 100, 20, -0.02);
   // signs along the road
   B.ob('wall', 1000, 1840, 70, 10, 0, { style: 'signrestricted', ...S });
   B.ob('wall', 2080, 1800, 240, 24, 0, { style: 'signbase', ...S });
@@ -430,6 +445,10 @@ function buildHangars(B, A) {
   for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) B.ob('desk', 7400 + c * 110, 900 + r * 130, 44, 90, 0, { style: 'cot', label: (r + c) % 3 === 0 ? 'bag' : undefined, ...S });
   B.ob('tent', 7780, 950, 160, 150, Math.PI / 2, { style: 'medtent', color: '#c8c4b8', roof: '#d8d4c8', label: 'white', ...S });
   B.ob('bus', 7600, H3.y0 + 70, 250, 60, 0, { style: 'reefer', color: '#d8d8d4', ...S });
+  // the apron's paint: lead-in lines from each hangar door to the taxi lane, the lane east to the tower
+  for (const h of BASE.hangars) B.line('yellow', (h.door[0] + h.door[1]) / 2, h.y1 + 10, (h.door[0] + h.door[1]) / 2, 2150, 6);
+  B.line('yellow', BASE.apron.x0 + 60, 2150, BASE.towerX - 40, 2150, 6);
+  B.line('white', BASE.apron.x0 + 60, 2560, BASE.towerX - 40, 2560, 4);
   // the apron: floodlight towers, the crashed Black Hawk burning, a refueler, tugs, pallets, HESCO
   for (const x of [5500, 6600, 7700]) lightTower(B, x, 2300, 'hangars', { r: 760, h: 420 });
   B.ob('wall', 7550, 2050, 200, 70, 2.5, { style: 'helowreck', ...S });
@@ -544,6 +563,9 @@ function buildRunway(B, A) {
   A.marks.push({ t: 'flares', x0: R.x0 + 300, x1: R.x1 - 200, y: cy, at: R.flares });
   // the edge lights and threshold bars (art), the PAPI, the approach lights past the end
   A.marks.push({ t: 'runway', x0: R.x0, x1: R.x1, y0: R.y0, y1: R.y1 });
+  // the last drop that tried: a transport burnt out past the end of the runway (art only, off the map)
+  A.marks.push({ t: 'planewreck', x: 12700, y: 2980, a: -0.25 });
+  B.fire(11960, 3010, 20);
   // cover for the last stand: HESCO bastions and sandbags either side, an abandoned loader, a burnt truck
   for (const [x, y] of [[10150, 2420], [10650, 2420], [10150, 3180], [10650, 3180]]) {
     for (let k = -1; k <= 1; k++) B.ob('hesco', x + k * 60, y, 60, 60, 0, S);

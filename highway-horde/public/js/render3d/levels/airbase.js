@@ -13,7 +13,7 @@ import { C3_BUCKETS, createC3Materials, setKitDay, ammoCrate } from './dam-kit.j
 import { BASE } from '../../shared/levels/airbase.js';
 import { buildingWall, partitionWall, guardhouse, barracksRoof, armoryRoof, messHall } from './airbase-build.js';
 import { fencePiece, gatePiece, lightTower, prop } from './airbase-props.js';
-import { cargoPlane, helicopter, humvee, refueler, crashTender, apronMachine } from './airbase-air.js';
+import { cargoPlane, helicopter, humvee, refueler, crashTender, apronMachine, planeWreck } from './airbase-air.js';
 import { hangar, hangarDoor, fuelPiece, tower, fireStation, shelterRoof, runway, flarePath, fieldProp } from './airbase-field.js';
 import { createBaseFx } from './airbase-fx.js';
 
@@ -102,6 +102,7 @@ export function createLevelArt(ctx, deps) {
         for (const m of art.marks || []) {
           if (m.t === 'runway') runway(P, m);
           else if (m.t === 'flares') flarePath(P, m);
+          else if (m.t === 'planewreck') planeWreck(P, m);
         }
       });
     },

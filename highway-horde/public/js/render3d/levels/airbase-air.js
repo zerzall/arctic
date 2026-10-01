@@ -3,7 +3,7 @@
 // K-loaders, the crash tender and the morgue's reefer trailer. Each is drawn in its obstacle's frame
 // (local x along the length, front at +x unless noted, z across, y up).
 
-import { T, DET, S, STEEL, PAINTED, COL, pic, rod, lampGlow, shadeHex, mixHex, hash01, toWorld } from './dam-kit.js';
+import { T, DET, S, STEEL, PAINTED, COL, at, pic, rod, lampGlow, shadeHex, mixHex, hash01, toWorld } from './dam-kit.js';
 
 const HALF = Math.PI / 2;
 const AIR = S(DET.panel, 0.5, 0.35);
@@ -288,3 +288,41 @@ export function apronMachine(P, o) {
 }
 
 void COL;
+
+// ---- the failed drop ------------------------------------------------------------------------------------------
+
+/**
+ * A burnt-out four-engine transport past the runway's end (a mark, art only: it lies beyond the playable
+ * map): the fuselage broken in three, the tail standing on its ramp, a wing torn off, engines thrown
+ * clear, a field of scorched ground, embers still glowing.
+ */
+export function planeWreck(P, m) {
+  const { B, gy, halos, tier } = P;
+  const seg = tier === 'low' ? 10 : 18;
+  const col = '#2a2a26', colL = '#46463f';
+  at(B, gy, m.x, m.y, 0, m.a || 0, 8501);
+  B.add('std', T.cyl(18, 1), [0, 0.6, 0], [620, 1, 300], null, '#121210', BURNT);
+  // the forward fuselage on its belly, nose crushed, the flight deck's windows gone dark
+  B.add('std', T.lathe('c3wreckfwd', [[0, 0], [24, 10], [44, 34], [58, 80], [62, 130], [62, 440]], seg), [-620, 64, 0], [1, 1, 1], [0.06, 0, -HALF - 0.05], col, BURNT);
+  B.cylX('std', -180, 60, 6, 58, 8, '#141412', seg, BURNT);
+  // the centre box broken off and turned across, the torn wing root and the left wing on the ground
+  B.add('std', T.cyl(seg, 1), [-40, 62, 70], [62, 260, 62], [0.12, 0.45, -HALF], col, BURNT);
+  B.add('std', T.profile('c3wreckwing', [[-70, 0], [40, 0], [10, 520], [-60, 520]], 0, 1), [-30, 118, 90], [1, 1, 10], [HALF, 0, 0], colL, BURNT);
+  B.add('std', T.profile('c3wreckwing2', [[-60, 0], [30, 0], [0, 380], [-50, 380]], 0, 1), [-90, 14, -150], [1, 1, 9], [HALF - 0.06, 0.5, 0], col, BURNT);
+  // the tail section standing on its ramp, fin up against the sky
+  B.add('std', T.lathe('c3wrecktail', [[62, 0], [54, 90], [38, 190], [18, 270]], seg), [190, 66, 120], [1, 1, 1], [0, 0.55, -HALF + 0.3], colL, BURNT);
+  B.add('std', T.profile('c3wreckfin', [[-80, 0], [80, 0], [110, 230], [50, 230]], 0, 1), [360, 170, 220], [1, 1, 8], [0, 0.55, 0.12], colL, BURNT);
+  pic(B, 'tail', 360, 300, 226, 14, 0.55, { w: 90, color: '#8a8a80' });
+  // engines thrown clear, a propeller blade standing in the dirt, debris
+  for (const [x, z, ry] of [[-260, -260, 0.4], [80, -330, 1.9], [-420, 210, 2.6]]) {
+    B.add('std', T.cyl(seg, 0.8), [x, 18, z], [20, 120, 20], [0.1, ry, HALF], '#1e1e1c', BURNT);
+    B.add('std', T.box(), [x + 40, 30, z + 20], [3, 80, 12], [0.3, ry, 0.2], '#1a1a1a', STEEL);
+  }
+  for (let k = 0; k < 14; k++) {
+    const a = hash01(k * 7 + 3) * Math.PI * 2, d = 200 + hash01(k * 11) * 260;
+    B.add('std', T.box(), [Math.cos(a) * d, 3, Math.sin(a) * d * 0.6], [20 + hash01(k) * 40, 3, 10 + hash01(k + 1) * 30], [hash01(k + 2) * 0.4, a, 0], k % 3 ? '#2a2a26' : '#5a5e62', BURNT);
+  }
+  // embers in the wreck (fires burn at the map's edge; these glow beyond it)
+  for (const [x, y, z] of [[-200, 40, 10], [-40, 70, 90], [180, 50, 130]]) lampGlow(B, halos, x, y, z, ...toWorld(m, x, z), '#ff7a2a', { size: [8, 4, 8], k: 5, halo: 160, strength: 0.7, flicker: 0.8, y0: 0, shape: 'sphere' });
+}
+
