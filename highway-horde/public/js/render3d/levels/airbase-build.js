@@ -120,7 +120,7 @@ export function doorHead(P, axis, at0, a0, a1, t, H, look, dh = 104, o = {}) {
   for (const s of [-1, 1]) {
     B.box('std', 0, dh + 3, s * (t / 2 + 0.8), w + 10, 6, 1.6, o.trim || '#3a3c3a', null, PAINTED);
     for (const e of [-1, 1]) B.box('std', e * (w / 2 + 2.5), dh / 2, s * (t / 2 + 0.8), 5, dh, 1.6, o.trim || '#3a3c3a', null, PAINTED);
-    if (o.inside) B.box('std', 0, (dh + Math.min(H, o.inH || H)) / 2, s * (t / 2 + 0.5), w, Math.min(H, o.inH || H) - dh, 0.8, s === o.inside ? look.inHi : look.out, null, PLASTER);
+    if (o.inside) B.box('std', 0, (dh + Math.min(H, o.inH || H)) / 2, s * (t / 2 + 0.5), w, Math.min(H, o.inH || H) - dh, 0.8, look.inHi, null, PLASTER);
   }
 }
 
@@ -263,9 +263,9 @@ export function barracksRoof(P, r) {
   }
   // door heads: the corridor's ends, the front door with its canopy and the unit's sign, the rooms' doors
   const inside = { inside: 1, inH: 140 };
-  doorHead(P, 'y', K.x0, K.hall[0], K.hall[1], 16, look.H, look, 104);
-  doorHead(P, 'y', K.x1, K.hall[0], K.hall[1], 16, look.H, look, 104);
-  doorHead(P, 'x', K.y1, K.door[0], K.door[1], 16, look.H, look, 104);
+  doorHead(P, 'y', K.x0, K.hall[0], K.hall[1], 16, 290, look, 104);
+  doorHead(P, 'y', K.x1, K.hall[0], K.hall[1], 16, 290, look, 104);
+  doorHead(P, 'x', K.y1, K.door[0], K.door[1], 16, 290, look, 104);
   for (const [a0, a1] of [[2760, 2840], [2960, 3040], [3160, 3240], [3360, 3440]]) doorHead(P, 'x', K.hall[0], a0, a1, 10, 140, LOOK.barracks, 100, inside);
   for (const [a0, a1] of [[2800, 2880], [3320, 3400]]) doorHead(P, 'x', K.hall[1], a0, a1, 10, 140, LOOK.barracks, 100, inside);
   at(B, gy, (K.door[0] + K.door[1]) / 2, K.y1, 0, 0, 7203);
