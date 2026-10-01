@@ -18,7 +18,7 @@ import { T, shadeHex, mixHex, hash01 } from '../world-geo.js';
 import { DET } from '../world-surf.js';
 import { atlasUV } from '../world-tex.js';
 import { rod, plank } from '../dress-kit.js';
-import { lvUV, makeLevelTexture } from './millroad-atlas.js';
+import { lvUV, makeLevelTexture, useAtlas } from './millroad-atlas.js';
 import { makeHubTexture } from '../world-hideout-atlas.js';
 import { buildDress } from '../../shared/dress.js';
 
@@ -280,6 +280,8 @@ export function drawWall(P) {
 }
 
 function windowUnit(P, h, t, look, side) {
+  // a look may draw its own windows (a church's lancets)
+  if (look.win && look.win.draw) { look.win.draw(P, h, t, look, side); return; }
   const { B, o } = P;
   const lod = P.lod;
   const w = h.x1 - h.x0, hh = h.y1 - h.y0, cx = (h.x0 + h.x1) / 2, cy = (h.y0 + h.y1) / 2;
@@ -339,7 +341,8 @@ function windowUnit(P, h, t, look, side) {
 
 // ---- custom wall drawers: barricades and fences ---------------------------------------------------------
 
-const WALL_DRAW = {
+/** Custom wall drawers by look.draw (the levels add theirs). */
+export const WALL_DRAW = {
   /** Deke's barricade: wrecked cars on their sides, corrugated sheets, plywood, tyres, razor wire. */
   junk(P) {
     const { B, o } = P;
@@ -432,6 +435,12 @@ const WALL_DRAW = {
 
 // ---- door frames ------------------------------------------------------------------------------------------
 
+/** More door kinds (the levels add theirs): kind → fn(P) with P.w, P.t, P.dh, P.look, P.side, P.d, P.open(x0, len, color, surf, angle, zside). */
+export const DOORS = {};
+/** The casing colour of a door kind, and its opening height when not the default. */
+export const DOOR_TRIM = {};
+export const DOOR_H = {};
+
 /**
  * A door frame in an opening (map.art.doors record; frame at the opening's centre, local x along the wall):
  * the wall above the opening (in the wall's look), casings both sides, a threshold and the leaves.
@@ -441,14 +450,16 @@ export function drawDoor(P, d) {
   const look = LOOKS[d.wall] || LOOKS.store;
   const w = d.w, t = d.t, side = d.side || 'in';
   const kind = d.look;
-  const dh = kind === 'rollup' ? Math.min(look.h - 20, 118) : d.h || 76;
-  const H = look.draw ? dh + 6 : look.h;
+  const dh = kind === 'rollup' ? Math.min(look.h - 20, 118) : DOOR_H[kind] || d.h || 76;
+  // a door in a custom-drawn wall (a fence, a line of bars): only the leaves, no header or casings
+  if (look.draw) { if (DOORS[kind]) DOORS[kind]({ ...P, w, t, dh, look, side, d }); return; }
+  const H = look.h;
   // the wall over the opening
   skins(B, -w / 2 - 0.2, w / 2 + 0.2, dh, H, t, look, side);
   if (!look.draw && look.cap && side !== 'both') B.box('std', 0, H + 1.2, -0.6, w + 0.4, 2.4, t + 2.6, look.cap, null, { noJitter: true, ...S(DET.panel, 0.5, 0.3) });
   if (look.band && side !== 'both' && P.lod >= 1) B.box('std', 0, (look.band.y0 + look.band.y1) / 2, -t / 2 - 0.5, w, look.band.y1 - look.band.y0, 1, look.band.c, null, { noJitter: true, ...S(DET.panel, 0.45, 0.2) });
   const r = B.rng;
-  const trim = kind === 'glass2' ? '#b8bcc0' : kind === 'steel' || kind === 'rollup' ? '#4a4e52' : '#e8e2d0';
+  const trim = DOOR_TRIM[kind] || (kind === 'glass2' ? '#b8bcc0' : kind === 'steel' || kind === 'rollup' ? '#4a4e52' : '#e8e2d0');
   const tro = { noJitter: true, ...(kind === 'glass2' ? CHROME : S(DET.panel, 0.55, 0.2)) };
   // casings (both faces) and the jambs
   for (const f of [-1, 1]) {
@@ -462,6 +473,7 @@ export function drawDoor(P, d) {
     const cx = x0 + Math.cos(a) * len / 2 * Math.sign(len), cz = zside * (t / 2 + Math.sin(Math.abs(a)) * Math.abs(len) / 2);
     B.add('std', T.box(), [cx, dh / 2, cz], [Math.abs(len), dh - 2, 2.2], [0, -zside * a * Math.sign(len), 0], color, o2);
   };
+  if (DOORS[kind]) { DOORS[kind]({ ...P, w, t, dh, look, side, d, open }); return; }
   switch (kind) {
     case 'glass2': {
       // aluminium double doors: one shut, one hanging open; push bars; a broken pane
@@ -574,6 +586,7 @@ export function levelDress(map, extraSkip = null) {
  */
 export function createKitArt(ctx, deps, spec) {
   const map = ctx.map;
+  useAtlas(map.id);
   const art = map.art || { floors: [], doors: [], props: [] };
   const day = deps.day;
   const full = deps.full || deps.tier || 'high';

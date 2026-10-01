@@ -33,13 +33,34 @@ export const LV_CELLS = {
   mr_radio: [256, 128], mr_parkmap: [256, 192], mr_hours: [128, 128], mr_beer: [128, 64], mr_evac: [256, 128], mr_tagx: [128, 64],
 };
 
+// Which level a cell belongs to: the atlas holds the common cells plus the active level's own (one
+// 2048² sheet each, so every level has the room). Mill Road's are the corn and its mr_ cells; the kit's
+// generic dressing uses a few mr_ cells too, which stay common.
+const OWNER = {};
+for (const k of Object.keys(LV_CELLS)) {
+  if (/^corn/.test(k) || (/^mr_/.test(k) && !['mr_hours', 'mr_lotto', 'mr_beer', 'mr_flammable', 'mr_closed', 'mr_evac', 'mr_tagx'].includes(k))) OWNER[k] = 'millroad';
+}
+let active = 'millroad';
+
 let canvas = null;
 let cells = null;
+
+/**
+ * Pick the level whose cells the atlas holds (call before any lvUV of that level's build; the texture is
+ * repainted when the level changes).
+ */
+export function useAtlas(level) {
+  if (level === active) return;
+  active = level;
+  cells = null;
+  canvas = null;
+}
 
 function pack() {
   const out = {};
   let x = 0, y = 0, rowH = 0;
   for (const [k, [w, h]] of Object.entries(LV_CELLS)) {
+    if (OWNER[k] && OWNER[k] !== active) continue;
     if (x + w + 2 > AW) { x = 0; y += rowH + 2; rowH = 0; }
     out[k] = [x, y, x + w, y + h];
     x += w + 2;
@@ -804,15 +825,19 @@ function paintAtlas() {
 }
 
 /**
- * Register more cells before the atlas is first painted (the other levels of this owner add theirs).
+ * Register a level's own cells (the other levels of this owner add theirs at import time).
  * @param {object} sizes name → [w, h]
  * @param {object} painters name → fn(g, w, h, rng)
+ * @param {string} level the level they belong to (null: common to all)
  */
-export function addCells(sizes, painters) {
-  if (canvas) return;
-  for (const [k, v] of Object.entries(sizes)) if (!LV_CELLS[k]) LV_CELLS[k] = v;
+export function addCells(sizes, painters, level = null) {
+  for (const [k, v] of Object.entries(sizes)) {
+    if (!LV_CELLS[k]) LV_CELLS[k] = v;
+    if (level) OWNER[k] = level;
+  }
   for (const [k, fn] of Object.entries(painters)) PAINT[k] = fn;
   cells = null;
+  canvas = null;
 }
 
 /** Painting helpers for the cells other modules add. */

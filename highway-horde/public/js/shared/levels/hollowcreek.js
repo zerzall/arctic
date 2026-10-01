@@ -198,12 +198,12 @@ function outskirts(B) {
   for (const y of [3360, 3630, 3900]) ob(B, 'bus', 'hc-boxcar', 9700, y, 250, 62, HALF, { sec, color: '#5a3a2a' });
   // the water tower, the welcome sign, the feed store, a farm
   for (const [dx, dy] of [[-44, -44], [44, -44], [44, 44], [-44, 44]]) ob(B, 'ipillar', 'nodraw', 9100 + dx, 1300 + dy, 12, 12, 0, { sec });
-  prop(B, 'hc-watertower', 9100, 1300, 0.4);
+  prop(B, 'hc-watertower', 9100, 1300, 0);
   B.anchor('water_tower', 9100, 1460, 160);
   prop(B, 'hc-welcome', 10330, 3280, -HALF);
   ob(B, 'wall', 'nodraw', 10330, 3280, 20, 180, 0, { sec });
   B.anchor('welcome_sign', 10420, 3180, 150);
-  facade(B, 8950, 3560, 360, 180, PI, 'industrial', { sec, color: '#8a8478', roof: '#5a5a58', style: 'hc-feedstore' });
+  facade(B, 8950, 3560, 360, 180, PI, 'industrial', { sec, color: '#8a8478', roof: '#5a5a58', top: 150, style: 'hc-feedstore' });
   facade(B, 10500, 1100, 240, 170, HALF, 'house', { sec, color: '#e0d8c8', roof: '#3a3a40', lit: 0.1 });
   facade(B, 10750, 1500, 200, 150, 0, 'barn', { sec, color: '#7d3a2c', roof: '#5a2b22' });
   B.ob('silo', 10900, 900, 80, 80, 0, { color: '#b8bcbf', section: sec });
@@ -281,8 +281,8 @@ function mainstreet(B) {
     doors: { s: [[60, 100, 'glass2']], n: [[-150, 84, 'steel']] }, roof: { kind: 'office', height: 130, dark: 0.55 },
   });
   wallGaps(B, 6900, FRONT_N - 200, 7350, FRONT_N - 200, [[80, 170, 'wood'], [320, 400, null]], 'dinerint', { t: 10, side: 'both', sec });
-  ob(B, 'counter', 'hc-dinercounter', 7150, FRONT_N - 150, 300, 30, 0, { sec });
-  for (const x of [6960, 7040, 7250]) ob(B, 'desk', 'hc-booth', x, FRONT_N - 36, 60, 44, 0, { sec });
+  ob(B, 'counter', 'hc-dinercounter', 7190, FRONT_N - 150, 280, 30, 0, { sec });
+  for (const x of [6960, 7040, 7290]) ob(B, 'desk', 'hc-booth', x, FRONT_N - 36, 60, 44, 0, { sec });
   prop(B, 'hc-dinerstuff', 7125, FRONT_N - dN / 2, 0, { w: 450, h: dN });
   B.light(7050, FRONT_N - 90, 220, '#ffe0b0', 0.3, 120);
   B.light(7200, FRONT_N - 250, 160, '#e8f0ff', 0.5, 110);
