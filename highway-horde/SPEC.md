@@ -940,8 +940,11 @@ lobby's waves row does not apply (the round is `HORDE.surges` surges; `totalWave
   `lane`) or the spawn rects grouped by compass sector from the hold point ("North", "South-East",
   …); at most 16 (a u16 mask). Surge k comes out of `HORDE.lanes[k]` entrances (1, 1, 2, 2, 2, 3, 3,
   all) picked from the director's own seeded stream, never the same set twice in a row when there
-  is a choice; a `late` lane opens from surge `lateFrom` (4). Spawns use those rects only,
-  preferring ones ≥ 600 px from every survivor.
+  is a choice; a `late` lane opens from surge `lateFrom` (4); the first surge picks among the
+  count + 1 entrances nearest the hold point. Spawns use those rects only, preferring ones ≥ 600 px
+  from every survivor. On the way in a zombie farther than `travel.far` (1100) px from its
+  survivor moves up to `travel.mult` (1.8) × faster (full 500 px further out), so the first
+  zombies reach the crew ~20-25 s after the buy time even from a gate across the town.
 - **Pacing** (stages `HORDE_STAGES`: prep, breather, surge, hold, over). Each surge is announced
   (`surge` event 'next' with its lanes and the breather's length: 4 s before the first, then 12 s
   down to 5 s), let loose ('go'; from the second on every living survivor gets `surgeBonus` $100),

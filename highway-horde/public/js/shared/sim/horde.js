@@ -132,7 +132,14 @@ export class HordeDirector {
   _pickLanes(n, count) {
     const lanes = this.lanes;
     const open = lanes.filter((l) => !l.late || n >= HORDE.lateFrom);
-    const pool = open.length ? open : lanes;
+    let pool = open.length ? open : lanes;
+    // (the first surge comes through one of the nearer entrances: the round starts with a fight,
+    // not a minute's wait for a walk across the map)
+    if (n === 1 && count && pool.length > count + 1) {
+      const h = this.hold;
+      pool = pool.slice().sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y) || a.i - b.i)
+        .slice(0, count + 1);
+    }
     if (!count || count >= pool.length) {
       let m = 0;
       for (const l of pool) m |= 1 << l.i;
@@ -212,6 +219,17 @@ export class HordeDirector {
   aliveCap() {
     const s = this.plan[Math.max(0, this.surge - 1)];
     return s ? s.cap : this.game.diff.maxAlive;
+  }
+
+  /**
+   * Speed factor of a zombie on its way in (zombies.js moveZombie): far from its survivor it
+   * strides out (HORDE.travel), so a surge from a gate across the town reaches the fight in
+   * about half a minute instead of a minute and a half; close in it walks at its own pace.
+   */
+  travelMult(z) {
+    const T = HORDE.travel, d = z.tgtDist;
+    if (!(d > T.far) || !Number.isFinite(d)) return 1;
+    return 1 + (T.mult - 1) * Math.min(1, (d - T.far) / T.ramp);
   }
 
   /** Zombies in the next spawn group. */

@@ -526,7 +526,8 @@ function stepNormal(game, z) {
   }
   if (inReach) move = 0;
   const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1)
-    * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move * (game.campaign ? game.campaign.slowMult(z) : 1);
+    * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move * (game.campaign ? game.campaign.slowMult(z) : 1)
+    * (game.horde ? game.horde.travelMult(z) : 1);
   moveZombie(game, z, dirX * speed, dirY * speed, true);
   // Pressed against the perch of a survivor out of reach: climb up after them.
   if (needUp && def.climb && z.tgtDist < CLIMB_NEAR) {

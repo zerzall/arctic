@@ -32,6 +32,9 @@ import { TAU } from './math.js';
  *              `min` s over the round; the next one is announced once its predecessor is all out
  *              and down to `lull` (from lull[0] to lull[1] over the round) of its size alive, or
  *              `wait` s after its last group
+ *   travel     a zombie farther than `far` px from its survivor moves up to `mult` × faster (full
+ *              from far + ramp): the entrances are a long walk from the defenders (a walker
+ *              does 34-48 px/s; Sandstone's gates are 2000-3800 px from the square)
  *   bossDelay  the last surge's bosses (ceil(n / 3)) walk in this long after it starts
  *   surgeBonus cash to every living survivor at each surge after the first (resupply money)
  *   shopMin    the shop always sells at least wave `shopMin`'s guns (the buy time)
@@ -50,6 +53,7 @@ export const HORDE = Object.freeze({
   groupPer: 3,
   every: Object.freeze([1.3, 2.4]),
   gap: Object.freeze({ first: 4, max: 12, min: 5, lull: Object.freeze([0.2, 0.55]), wait: 24 }),
+  travel: Object.freeze({ far: 1100, ramp: 500, mult: 1.8 }),
   bossDelay: 8,
   surgeBonus: 100,
   shopMin: 2,

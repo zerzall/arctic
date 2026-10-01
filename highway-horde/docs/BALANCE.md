@@ -430,20 +430,27 @@ to try numbers.
 Horde sizes (`hordeTotal`, bots count as players): Normal 150 solo, 240 for 2, 420 for 4, 600
 for 6; Easy 0.8x (120 / 192 / 336), Hard 1.25x (188 / 300 / 525), Nightmare 1.5x.
 
-| Sandstone, 3 runs each | average bots | skilled bots |
+| Sandstone (4 runs each; easy and nightmare 3) | average bots | skilled bots |
 |---|---|---|
-| easy 1 / 2 / 4 | 100% / 100% / 100% | 100% / 100% / 100% |
-| normal 1 player | 67% (lost with ~19 left, last surge) | 100% |
-| normal 2 / 4 / 6 | 33% / 100% / 100% | 100% / 100% / 100% |
-| hard 1 player | 0% (~28 left) | 67% |
-| hard 2 / 4 / 6 | 33% / 67% / 100% | 67% / 100% |
-| nightmare 1 / 2 / 4 | 0% / 0% / 33% (lost at surge 6-8) | |
-| other maps, normal 1 / 4 (8 runs) | 63% / 100% | |
+| easy 1 / 2 / 4 | 100% / 100% / 100% | |
+| normal 1 player | 25% (lost with ~32 left, last surge) | 100% |
+| normal 2 / 4 | 100% / 100% | 75% / 100% |
+| hard 1 player | 25% (~45 left) | 75% |
+| hard 2 / 4 | 50% / 100% | 75% / 100% |
+| nightmare 1 / 2 | 0% / 0% (lost at surge 7) | |
+| other maps, normal 1 / 4 (8 runs) | 75% / 100% | |
 
-Round length with bots: 6-7 min on Sandstone (Normal: 370-415 s after a 25 s buy time; bigger
-teams the same, the pacing is the surges' breathers and lulls), 5-6 min on the other maps.
-Losses come in the last surge (the bosses plus the biggest, toughest surge).
+Round length with bots: 5.5-6.5 min on Sandstone (Normal: 330-390 s after a 25 s buy time; bigger
+teams the same, the pacing is the surges' breathers and lulls), about 5 min on the other maps.
+The first zombies reach the crew 20-26 s after the buy time. Losses come in the last surge (the
+bosses plus the biggest, toughest surge). A solo average bot is the hardest case (one gun, no
+reviver); a human playing alone usually brings bots.
 
+* **The walk in.** Sandstone's gates are 2000-3800 px from Fountain Square and a walker does
+  34-48 px/s, so the first zombies arrived ~50-85 s into the round. Now the first surge uses one of
+  the nearer entrances and a zombie far from its survivor strides out (`HORDE.travel`: up to 1.8x
+  beyond 1100-1600 px): first contact at 20-26 s. It made solo rounds harder (the surges arrive
+  bunched): solo average Normal 67% -> 25%, teams unchanged.
 * **Team scaling** follows the defend waves: `total.perPlayer` 0.6 (was 0.5) and the alive cap's
   `cap.perPlayer` 0.55 (was 0.45). With 0.5 / 0.45 average 4p teams won 100% even on Hard with
   no downs; they are still easier than solo (as in every mode, see below), the gap is structural.
