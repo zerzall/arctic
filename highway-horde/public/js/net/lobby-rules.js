@@ -8,7 +8,7 @@ import {
 import { CLASS_IDS } from '../shared/classes.js';
 import { MAP_LIST } from '../shared/maps.js';
 import { MODE_IDS, fixModeCombo } from '../shared/zone.js';
-import { TIME_IDS, fixTimeCombo } from '../shared/timeofday.js';
+import { TIME_IDS, fixTimeCombo, defaultTimeOf } from '../shared/timeofday.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { ITEMS } from '../shared/items.js';
 
@@ -166,6 +166,8 @@ export function mergeSettings(current, patch) {
   // Same for the time of day (a day-only map): the pick wins, the other setting follows.
   const timePicked = TIME_IDS.includes(patch.time);
   if (timePicked) out.time = patch.time;
+  // a map with a time of its own (Sandstone: day) switches to it when it is picked
+  else if (mapPicked && defaultTimeOf(out.mapId)) out.time = defaultTimeOf(out.mapId);
   const tfix = fixTimeCombo(out.mapId, out.time, timePicked && !mapPicked ? 'time' : 'map');
   out.mapId = tfix.mapId;
   out.time = tfix.time;

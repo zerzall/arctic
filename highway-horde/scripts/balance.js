@@ -430,7 +430,10 @@ const list = (v, def) => (typeof v === 'string' ? v.split(',').map((s) => s.trim
 export function buildJobs(opt) {
   const quick = !!opt.quick;
   const campaign = opt.mode === 'campaign';
-  const maps = list(opt.maps, MAP_LIST.map((m) => m.id)).filter((m) => !campaign || mapModes(m).includes('campaign'));
+  // (a map built for Horde Elimination runs in the defend sweeps only when asked for by name)
+  const horde = opt.mode === 'horde';
+  const all = MAP_LIST.map((m) => m.id).filter((m) => (horde ? mapModes(m).includes('horde') : mapModes(m)[0] !== 'horde'));
+  const maps = list(opt.maps, all).filter((m) => !campaign || mapModes(m).includes('campaign'));
   const waves = Number(opt.waves) || (campaign ? 10 : 15);
   const seeds = Number(opt.seeds) || (quick ? 1 : 3);
   const jobs = [];

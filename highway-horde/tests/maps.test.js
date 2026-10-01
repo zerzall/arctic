@@ -12,9 +12,11 @@ import { createCollisionWorld } from '../public/js/shared/movement.js';
 import { pickSpawnRect } from '../public/js/shared/sim/zombies.js';
 import { createRng } from '../public/js/shared/rng.js';
 
-const MAP_IDS = ['highway', 'truckstop', 'bridge', 'checkpoint', 'harlan'];
+const MAP_IDS = ['highway', 'truckstop', 'bridge', 'checkpoint', 'harlan', 'sandstone'];
 /** Maps built for the Evac Run only (SPEC §3.7): big, no central objective to defend. */
 const ZONE_ONLY = new Set(['harlan']);
+/** Maps built for Horde Elimination (SPEC §3.12): the defenders start at one end (tests/map-sandstone.test.js has its layout rules). */
+const HORDE_FIRST = new Set(['sandstone']);
 const SEEDS = [1, 42, 9001];
 const WALKER_RADIUS = 14;
 
@@ -22,13 +24,13 @@ const AREA_KINDS = ['asphalt', 'concrete', 'grass', 'dirt', 'gravel', 'sand', 'w
 const LINE_KINDS = ['white', 'white_dashed', 'yellow', 'yellow_double', 'crosswalk', 'parking', 'stop'];
 const OBSTACLE_KINDS = ['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker', 'barrier',
   'sandbags', 'building', 'wall', 'container', 'pump', 'tree', 'rock', 'hesco', 'tent', 'booth',
-  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave'];
+  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave', 'counter', 'parapet'];
 const DECOR_KINDS = ['tree_canopy', 'bush', 'grass_tuft', 'rock', 'cone', 'debris', 'tire', 'crack',
   'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble', 'signal', 'pylon'];
 const OBJECTIVE_KINDS = ['bus', 'diner', 'apc', 'radio'];
 const LOW_COVER = ['guardrail', 'barrier', 'sandbags', 'grave'];
 /** Obstacle budget per map (the long highway map holds more wrecks and rails, Harlan County its woods). */
-const MAX_OBSTACLES = { highway: 300, harlan: 900 };
+const MAX_OBSTACLES = { highway: 300, harlan: 900, sandstone: 260 };
 /** Headroom under a deck a player walks beneath (eye 52, plus a jump, plus margin). */
 const DECK_CLEARANCE = 150;
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -180,7 +182,7 @@ function getMap(id, seed) {
 
 // ---------------------------------------------------------------------------------
 
-test('MAP_LIST lists the five maps in lobby order', () => {
+test('MAP_LIST lists the six maps in lobby order', () => {
   assert.deepEqual(MAP_LIST.map((m) => m.id), MAP_IDS);
   for (const m of MAP_LIST) {
     assert.equal(typeof m.name, 'string');
@@ -189,7 +191,7 @@ test('MAP_LIST lists the five maps in lobby order', () => {
     assert.ok(m.description.length > 10);
   }
   assert.deepEqual(MAP_LIST.map((m) => m.name),
-    ['Highway 9 Pileup', 'Last Chance Truck Stop', 'Blackwater Bridge', 'Checkpoint Delta', 'Harlan County']);
+    ['Highway 9 Pileup', 'Last Chance Truck Stop', 'Blackwater Bridge', 'Checkpoint Delta', 'Harlan County', 'Sandstone']);
 });
 
 test('buildMap throws on an unknown id', () => {
@@ -205,6 +207,7 @@ test('objectives match the spec', () => {
     bridge: ['apc', 'Army APC'],
     checkpoint: ['radio', 'Radio Tower'],
     harlan: ['radio', 'Radio Tower'],
+    sandstone: ['radio', 'Radio Mast'],
   };
   for (const id of MAP_IDS) {
     const m = getMap(id, 1);
@@ -222,7 +225,7 @@ for (const id of MAP_IDS) {
       assert.equal(m.name, MAP_LIST.find((e) => e.id === id).name);
       assert.equal(m.seed, seed);
       assert.ok(Number.isFinite(m.width) && m.width >= 2400 && m.width <= 8000, 'width');
-      assert.ok(Number.isFinite(m.height) && m.height >= 1600 && m.height <= (ZONE_ONLY.has(id) ? 8000 : 3000), 'height');
+      assert.ok(Number.isFinite(m.height) && m.height >= 1600 && m.height <= (ZONE_ONLY.has(id) ? 8000 : HORDE_FIRST.has(id) ? 4500 : 3000), 'height');
       assert.equal(typeof m.ambient, 'object');
       assert.ok(m.ambient.darkness >= 0.55 && m.ambient.darkness <= 0.75, 'darkness');
       assert.match(m.ambient.tint, HEX);
@@ -306,7 +309,7 @@ for (const id of MAP_IDS) {
       }
     });
 
-    test(`${label}: layout rules (objective central, supply distance, spawns near edges)`, { skip: ZONE_ONLY.has(id) && 'an Evac Run map: its own layout test below' }, () => {
+    test(`${label}: layout rules (objective central, supply distance, spawns near edges)`, { skip: (ZONE_ONLY.has(id) && 'an Evac Run map: its own layout test below') || (HORDE_FIRST.has(id) && 'a Horde Elimination map: tests/map-sandstone.test.js') }, () => {
       const m = getMap(id, seed);
       const ob = m.objective;
       assert.ok(Math.abs(ob.x - m.width / 2) < m.width * 0.2, 'objective roughly central (x)');
@@ -603,7 +606,8 @@ test('highway: spawn weights send most zombies from near the bus, a few from the
 
 test('the renderers know every obstacle and decor kind the maps use', () => {
   const src = (p) => fs.readFileSync(new URL(`../public/js/${p}`, import.meta.url), 'utf8');
-  const topdown = src('render/obstacles.js'), world3d = src('render3d/world.js'), flat = src('render/maplayer.js');
+  // (the campaign's kinds, which Sandstone borrows for its low cover, are drawn by obstacles-campaign.js)
+  const topdown = src('render/obstacles.js') + src('render/obstacles-campaign.js'), world3d = src('render3d/world.js'), flat = src('render/maplayer.js');
   const modelled = new Set(src('render3d/ground.js').match(/MODELLED_DECOR = new Set\(\[([^\]]*)\]/)[1].match(/'[a-z_]+'/g).map((k) => k.slice(1, -1)));
   const obstacleKinds = new Set(), decorKinds = new Set();
   for (const id of MAP_IDS) {

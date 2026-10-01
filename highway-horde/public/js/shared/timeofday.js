@@ -60,6 +60,19 @@ export function fixTimeCombo(mapId, time, changed = 'map') {
  */
 export function resolveTime(map, requested) {
   const times = mapTimes(map);
-  const want = TIME_IDS.includes(requested) ? requested : TIME_IDS[0];
+  // (no request: the map's own default time when it names one — Sandstone is a day map that also plays by night)
+  const want = TIME_IDS.includes(requested) ? requested : defaultTimeOf(map) || TIME_IDS[0];
   return times.includes(want) ? want : times[0];
+}
+
+/**
+ * The time a map plays when nobody asked for one (its MAP_LIST `defaultTime`), or null. The lobby
+ * switches to it when the map is picked (net/lobby-rules.js mergeSettings).
+ * @param {object|string} map MapDef, MAP_LIST entry or id
+ * @returns {string|null}
+ */
+export function defaultTimeOf(map) {
+  const meta = typeof map === 'string' ? mapMeta(map) : map && map.id && !map.defaultTime ? mapMeta(map.id) || map : map;
+  const t = meta && meta.defaultTime;
+  return TIME_IDS.includes(t) && mapTimes(meta).includes(t) ? t : null;
 }

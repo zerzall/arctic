@@ -122,7 +122,8 @@ export class GameCore {
     this.simMode = simMode;
     this.settings.mode = mode;
     // Time of day (SPEC §7.5.1): cosmetic only (lighting); a day-only map plays day whatever was asked.
-    this.settings.time = resolveTime(map, this.settings.time);
+    // (asked for nothing: the map's own default time, e.g. Sandstone's day)
+    this.settings.time = resolveTime(map, settings.time);
     // (Horde Elimination, §3.12: one round against the whole horde, nothing to defend but each other)
     if (mode === 'zone' || mode === 'campaign' || mode === 'horde' || storyMode) this.settings.objective = false;
     /** Road to Haven: nothing can hurt a survivor in a hideout. */
