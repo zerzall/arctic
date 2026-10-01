@@ -725,6 +725,7 @@ function farmstand(P) {
   B.rblock('std', L / 2 - 10, 38, -D / 2 + 8, 10, 12, 8, 1, '#3a5a3a', null, METAL);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const TOWN_MODELS = {
   'hc-farmstand': farmstand,
   'hc-rails': rails, 'hc-crossing': crossing, 'hc-boxcar': boxcar, 'hc-tankcar': tankcar, 'hc-watertower': watertower, 'hc-welcome': welcome,
@@ -732,5 +733,6 @@ export const TOWN_MODELS = {
   'hc-hwshelf': hwshelf, 'hc-hwcounter': hwcounter, 'hc-hwstuff': hwstuff, 'hc-dinercounter': dinercounter, 'hc-booth': booth, 'hc-dinerstuff': dinerstuff,
   'hc-fountain': fountain, 'hc-gazebo': gazebo, 'hc-memorial': memorial, 'hc-bunting': bunting, 'hc-lamp': streetlamp, 'hc-laststand': laststand,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const TOWN_GATES = { 'hc-barricade': barricade };
 void [crate, carton, drum, tyre, RUBBER, sign2];

@@ -346,11 +346,14 @@ export function forestFloor(P) {
   }
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const MILL_MODELS = {
   'bp-logdeck': logdeck, 'bp-loader': loader, 'bp-carriage': carriage, 'bp-bandsaw': bandsaw, 'bp-rollers': rollers, 'bp-greenchain': greenchain,
   'bp-sawhall': sawhall, 'bp-burner': burner, 'bp-conveyor': conveyor, 'bp-milldesk': milldesk, 'bp-milloffice': milloffice, 'bp-millsign': millsign,
   'bp-pondlogs': pondlogs, 'bp-signal': signal, 'bp-cattleguard': cattleguard,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const MILL_GATES = { 'bp-farmpanel': farmpanel };
+/** Roof models by style, drawn in the roof's frame (the art draws that ceiling itself). */
 export const MILL_ROOFS = { 'bp-sawroof': sawroof };
 void [carton, tubeFixture, glowBox, hash01, shadeHex, sign2, PLAST, CHROME];

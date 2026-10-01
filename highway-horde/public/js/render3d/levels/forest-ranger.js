@@ -410,6 +410,7 @@ function pyre(P) {
   B.add('std', T.box(), [70, 1, 0], [30, 2, 8], [0, 1.1, 0], '#4a4a48', METAL);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const RANGER_MODELS = {
   'bp-pyre': pyre,
   'bp-rcounter': rcounter, 'bp-radiodesk': radiodesk, 'bp-station': station, 'bp-radiomast': radiomast, 'bp-rangersign': rangersign,
@@ -417,6 +418,7 @@ export const RANGER_MODELS = {
   'bp-rockfallside': rockfallside, 'bp-footbridge': footbridge, 'bp-winch': winch, 'bp-roadbridge': roadbridge, 'bp-rapids': rapids,
   'bp-boulder': boulder, 'bp-gorgesign': gorgesign, 'bp-millgatesign': millgatesign,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const RANGER_GATES = { 'bp-rockfall': rockfall, 'bp-millgate': millgate };
 export { rock, fallenPine };
 void [carton, tubeFixture, hash01, shadeHex, GLASS, NJ, PLAST];

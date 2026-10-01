@@ -506,11 +506,13 @@ function roadclosed(P) {
   for (const z of [-222, -206, -194, -178]) B.rbox('std', 94, 214, z, 8, 10, 12, 1, '#2a2c2e', [0, 0, 0.3], METAL);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const GAS_MODELS = {
   'mr-coolers': coolers, 'mr-shelf': shelf, 'mr-checkout': checkout, 'mr-officedesk': officedesk, 'mr-storestuff': storestuff,
   'mr-liftpost': liftpost, 'mr-liftcar': liftcar, 'mr-workbench': workbench, 'mr-toolchest': toolchest, 'mr-tyrerack': tyrerack, 'mr-garagestuff': garagestuff,
   'mr-canopycol': canopycol, 'mr-canopy': canopy, 'mr-pump': pump, 'mr-pylon': pylon, 'mr-tow': tow, 'mr-tank': tank, 'mr-propane': propane,
   'mr-icechest': icechest, 'mr-airstand': airstand, 'mr-carwash': carwash, 'mr-vacuum': vacuum, 'mr-quarantine': quarantine, 'mr-roadclosed': roadclosed,
 };
+/** Roof models by style, drawn in the roof's frame (the art draws that ceiling itself). */
 export const GAS_ROOFS = { 'mr-carwash': carwashRoof };
 void [CORR, FABRIC, mixHex, sign2, NJ, WOOD];

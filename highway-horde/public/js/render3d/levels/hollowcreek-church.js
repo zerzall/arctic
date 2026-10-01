@@ -472,11 +472,14 @@ function steeple(P) {
   B.box('std', 0, top + 270, 0, 22, 3, 3, '#c8b060', null, S(0, 0.3, 0.8));
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const CHURCH_MODELS = {
   'hc-pharmsign': pharmsign, 'hc-wallshelf': wallshelf, 'hc-gondola': gondola, 'hc-pcounter': pcounter, 'hc-bins': bins, 'hc-till': till,
   'hc-rack': rack, 'hc-drugsafe': drugsafe, 'hc-pallet': pallet, 'hc-pstuff': pstuff, 'hc-stock': stock, 'hc-bank': bank, 'hc-laundromat': laundromat,
   'hc-gateposts': gateposts, 'hc-pew': pew, 'hc-altar': altar, 'hc-nave': naveProps, 'hc-bell': bell, 'hc-churchsign': churchsign, 'hc-mausoleum': mausoleum,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const CHURCH_GATES = { 'hc-grille': grille, 'hc-irongate': irongate };
+/** Roof models by style, drawn in the roof's frame (the art draws that ceiling itself). */
 export const CHURCH_ROOFS = { 'hc-nave': naveRoof, 'hc-steeple': steeple };
 void [mixHex, sign2, glowBox, CONC];

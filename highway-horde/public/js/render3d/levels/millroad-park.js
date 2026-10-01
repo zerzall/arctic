@@ -476,11 +476,14 @@ function fencepanel(P) {
   sign(B, 'notice', -L * 0.3, 40, -1.2, 14, 18, PI);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const PARK_MODELS = {
   'mr-trailer': trailer, 'mr-trailer-burnt': trailerBurnt, 'mr-trailer-tree': trailerTree, 'mr-parkarch': parkarch, 'mr-officetrailer': officetrailer,
   'mr-reception': reception, 'mr-files': files, 'mr-desk': desk, 'mr-laundry': laundry, 'mr-playground': playground, 'mr-mailboxes': mailboxes,
   'mr-pool': pool, 'mr-pooldeck': pooldeck, 'mr-poolhouse': poolhouse, 'mr-radiodesk': radiodesk, 'mr-mast': mast, 'mr-shack': shack, 'mr-gatetrack': gatetrack,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const PARK_GATES = { 'mr-slidegate': slidegate, 'mr-fencepanel': fencepanel };
+/** Roof models by style, drawn in the roof's frame (the art draws that ceiling itself). */
 export const PARK_ROOFS = { 'mr-shackroof': shackRoof };
 void [CORR, RUSTY, NJ, crate, drum, tyre, carton, atlasUV, sign2];

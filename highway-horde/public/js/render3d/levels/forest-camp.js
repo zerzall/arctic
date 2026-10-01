@@ -382,6 +382,7 @@ function lanternpost(P) {
   }
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const CAMP_MODELS = {
   'bp-lanternpost': lanternpost,
   'bp-wheelstop': wheelstop, 'bp-opencar': opencar, 'bp-kiosk': kiosk, 'bp-outhouse': outhouse, 'bp-bearbin': bearbin, 'bp-trailsign': trailsign,
@@ -389,5 +390,6 @@ export const CAMP_MODELS = {
   'bp-campscreen': campscreen, 'bp-picnic': picnic, 'bp-ringsmall': ringsmall, 'bp-tent': tent, 'bp-tent2': tent2, 'bp-sitepost': sitepost, 'bp-rv': rv,
   'bp-rvcamp': rvcamp, 'bp-showers': showers, 'bp-spigot': spigot, 'bp-campboard': campboard, 'bp-firewood': firewood,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const CAMP_GATES = { 'bp-campgate': campgate };
 void [pendant, carton, hash01, PLAST, CONC];

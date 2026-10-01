@@ -396,10 +396,13 @@ function junk(P) {
   for (let i = 0; i < 5; i++) drum(B, r.range(-150, 150), 0, r.range(-280, 280), r.pick(['#3b5f8a', '#6a4a38', '#c8a020']), 30, 10, r.chance(0.4) ? r.range(0, 3) : 0);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const FARM_MODELS_LV = {
   'mr-scarecrow': scarecrow, 'mr-tractor': tractor, 'mr-pivot': pivot, 'mr-siloextras': siloextras, 'mr-grainbin': grainbin, 'mr-barnsign': barnsign,
   'mr-combine': combine, 'mr-farmgate': farmgate, 'mr-rhoffice': rhoffice, 'mr-rhdiner': rhdiner, 'mr-rhsign': rhsign, 'mr-rhgateframe': rhgateframe, 'mr-junk': junk,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const FARM_GATES = { 'mr-rhgate': rhgate };
+/** Roof models by style, drawn in the roof's frame (the art draws that ceiling itself). */
 export const FARM_ROOFS = { 'mr-shedroof': shedroof };
 void [CORR, FABRIC, NJ, glowBox, crate, atlasUV, pic, CHROME, WOOD];

@@ -497,6 +497,7 @@ function schoolfront(P) {
   B.box('std', 0, 0.5, z0 + 120, w * 0.6, 0.4, 3, '#e8c020', null, NJ);
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const SCHOOL_MODELS = {
   'hc-schoolfront': schoolfront,
   'hc-schoolbus': schoolbus, 'hc-schoolsign': schoolsign, 'hc-flag': flag, 'hc-portable': portable, 'hc-dumpster': dumpster, 'hc-hoop': hoop,
@@ -504,5 +505,6 @@ export const SCHOOL_MODELS = {
   'hc-hall': hall, 'hc-sallyframe': sallyframe, 'hc-cells': cells, 'hc-gunrack': gunrack, 'hc-armory': armory, 'hc-booking': booking,
   'hc-frontdesk': frontdesk, 'hc-copdesk': copdesk, 'hc-station': station, 'hc-copvan': copvan, 'hc-policesign': policesign,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const SCHOOL_GATES = { 'hc-schoolpanel': schoolpanel, 'hc-sallybars': sallybars };
 void [RUSTY, mixHex, sign2, carton, CONC];

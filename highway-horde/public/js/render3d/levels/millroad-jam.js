@@ -362,10 +362,12 @@ function shutterframe(P) {
   if (P.lod >= 1) for (let i = 0; i < 3; i++) floorDecal(B, 'graf2', 0, -80 - i * 2, 90, 30, HALF, 0.5 + i * 0.01, '#ffffff');
 }
 
+/** Models by obstacle style or prop name: fn(P), P the kit's model context (createKitArt). */
 export const JAM_MODELS = {
   'mr-reefer': reefer, 'mr-logtrailer': logtrailer, 'mr-log': log, 'mr-ambulance': ambulance, 'mr-triage': triage, 'mr-plane': plane,
   'mr-bale': bale, 'mr-bridge': bridge, 'mr-chevrons': chevrons, 'mr-farmfence': farmfence, 'mr-roadsign': roadsign, 'mr-mailbox': mailbox,
   'mr-windmill': windmill, 'mr-shutterframe': shutterframe,
 };
+/** Gate models by style, drawn in the gate obstacle's frame (the engine animates them open). */
 export const JAM_GATES = { 'mr-shutter': shutter };
 void [WOOD, METAL, drum, decal, plank, CONC, NJ, tyre];
