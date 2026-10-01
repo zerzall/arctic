@@ -240,7 +240,7 @@ const SITES = {
   hip: { p: [2.0, 27.5, 4.6], r: [1.8, 2.5] },
 };
 const SITE_NAMES = Object.keys(SITES);
-const BELLY_SITE = { p: [11.2, 36.5, 4.5], r: [2, 3] };
+const BELLY_SITE = { p: [10.3, 35.0, 3.8], r: [2, 3] };
 
 function makeWound(r, type, siteName, T) {
   let s = SITES[siteName];
@@ -284,10 +284,11 @@ export function zombieLook(type, id, theme = '') {
   // ---- skin: the person's own tone, drained (pallor), then shifted by decay toward an ashen
   // grey-green, sallow yellow-grey or bruised blue-grey (hue, not brightness); runners are fresh ----
   const human = lin(pick(r, SKIN_TONES));
-  const tint = lin(chance(r, 0.25) ? def.look.skin : pick(r, DECAY));
+  // (the freshly dead go grey-blue before they go green)
+  const tint = lin(T === 'runner' ? pick(r, ['#80889a', '#8e9088', '#9a9c8c', '#8a8a96']) : chance(r, 0.25) ? def.look.skin : pick(r, DECAY));
   const stage = T === 'runner' ? pickW(r, [[0.08, 3], [0.2, 3], [0.35, 1]]) : pickW(r, [[0.25, 2], [0.45, 4], [0.7, 4], [0.95, 2]]);
   const hl = luma(human);
-  let skin = mixRgb(human, [hl, hl, hl], 0.3 + stage * 0.35);
+  let skin = mixRgb(human, [hl, hl, hl], 0.42 + stage * 0.3);
   const tl = luma(tint) || 1;
   skin = mixRgb(skin, [tint[0] * hl / tl, tint[1] * hl / tl, tint[2] * hl / tl], 0.2 + stage * 0.35);
   if (hl < 0.1) skin = mixRgb(skin, [0.085, 0.082, 0.074], 0.25 + stage * 0.3);   // dark skin goes ashen grey
@@ -338,7 +339,7 @@ export function zombieLook(type, id, theme = '') {
 
   // ---- gear colours and shoes ----
   const gearC = arch.gearFromBot ? botC : lin(pick(r, arch.gearC || CAP));
-  look.gear = grime(gearC, 0.15, 0.4, 0.22);
+  look.gear = grime(gearC, 0.25, 0.5, 0.2);
   const shoeList = arch.shoeC || (arch.shoe === 'boot' ? BOOT : arch.shoe === 'sneaker' ? SNEAKER : SHOE_DARK);
   look.trim = grime(lin(pick(r, shoeList)), 0.15, 0.4, 0.18);
   const gloveC = arch.gloveC ? lin(pick(r, arch.gloveC)) : null;

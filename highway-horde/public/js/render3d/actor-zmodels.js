@@ -751,14 +751,19 @@ function extras(sb, P, L, type) {
   const GLOWC = { bloater: '#b8c060', spitter: '#9cd83a', boss: '#c8a040' };
   if (type === 'bloater') {
     // the belly: a huge distended, sagging bag on X1 (pulses), stretched marbled skin, weeping blisters
-    sb.ellipsoid([4.0, 32.6, 0], [8.4, 9.4, 9.2], {
+    // (not a ball: it grows out of the ribcage, bulges forward and sags in a fold over the belt)
+    const bc = [3.6, 32.0, 0], br = [8.0, 10.2, 8.6];
+    const bellyDef = (p) => {
+      if (p.y > 0.2) { const t = (p.y - 0.2) / 0.8; p.x *= 1 - 0.38 * t * t; p.z *= 1 - 0.3 * t * t; }   // into the ribcage
+      if (p.y < -0.15) { const t = (-0.15 - p.y) / 0.85; p.x *= 1 + 0.18 * t; p.y -= 0.12 * t * Math.max(0, p.x); p.z *= 1 - 0.1 * t; }   // the sagging fold
+      if (p.x < 0) p.x *= 0.7;                                 // (the back is the torso's)
+      const k = 1 + 0.045 * Math.sin(p.x * 7) * Math.sin(p.z * 6) + 0.03 * Math.sin(p.y * 11 + p.z * 5);
+      p.x *= k; p.z *= k;
+    };
+    const onBelly = (x, y, z) => { const l = Math.hypot(x, y, z); const p = { x: x / l, y: y / l, z: z / l }; bellyDef(p); return [bc[0] + p.x * br[0], bc[1] + p.y * br[1], bc[2] + p.z * br[2]]; };
+    sb.ellipsoid(bc, br, {
       segW: L === 0 ? dq(26) : L === 1 ? 14 : 8, segH: L === 0 ? dq(18) : L === 1 ? 10 : 6, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#f0ece0', bone: B.X1, part: L < 2 ? PART.TORSO : PART.NONE,
-      paint: (x, y) => (y < 27 ? 0.55 : 0.2),
-      deform: (p) => {
-        if (p.y < -0.2) { p.y *= 1.08; p.x *= 1 + 0.12 * Math.max(0, -p.y); }       // it sags over the belt
-        const k = 1 + 0.05 * Math.sin(p.x * 7) * Math.sin(p.z * 6) + 0.03 * Math.sin(p.y * 11 + p.z * 5);
-        p.x *= k; p.z *= k;
-      },
+      paint: (x, y) => (y < 26 ? 0.55 : 0.2), deform: bellyDef,
     });
     if (L < 2) {
       for (let k = 0; k < (L === 0 ? 14 : 7); k++) {
@@ -770,10 +775,11 @@ function extras(sb, P, L, type) {
         const cy = Math.sin(ph), cr = Math.cos(ph);
         const s = 0.25 + ((k * 0.77) % 1) * 0.4;
         const lit = k % 3 === 0;
-        sb.ellipsoid([4.0 + Math.cos(lon) * cr * 8.25, 32.6 + cy * 9.25, Math.sin(lon) * cr * 9.05], [s, s * 0.8, s], { segW: 6, segH: 4, slot: lit ? SLOT.GLOW : SLOT.FIXED, mat: lit ? MAT.GLOW : MAT.FLESH, color: lit ? GLOWC.bloater : '#7a7440', bone: B.X1, paint: lit ? 0 : 0.1 });
+        sb.ellipsoid(onBelly(Math.cos(lon) * cr * 0.99, cy * 0.99, Math.sin(lon) * cr * 0.99), [s, s * 0.8, s], { segW: 6, segH: 4, slot: lit ? SLOT.GLOW : SLOT.FIXED, mat: lit ? MAT.GLOW : MAT.FLESH, color: lit ? GLOWC.bloater : '#7a7440', bone: B.X1, paint: lit ? 0 : 0.1 });
       }
       // split navel
-      sb.ellipsoid([12.3, 30.8, 0], [0.4, 1.7, 0.6], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#3a0e0e', bone: B.X1 });
+      const nav = onBelly(1, -0.12, 0);
+      sb.ellipsoid([nav[0] - 0.2, nav[1], 0], [0.4, 1.5, 0.55], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#3a0e0e', bone: B.X1 });
     }
   } else if (type === 'spitter') {
     // a distended throat: a goitre of acid under stretched, split skin (the acid shows through the cracks)
