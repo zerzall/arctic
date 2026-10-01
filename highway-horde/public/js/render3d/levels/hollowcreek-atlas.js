@@ -315,9 +315,10 @@ const PAINT = {
     chalk('Tuesday, September 14', 20, 26, 22);
     chalk('Spelling:  harvest  bridge  family  quiet', 20, 62, 18);
     chalk('Homework: page 42 (all)', 20, 94, 18);
-    chalk('STAY INSIDE', 250, 150, 40, '#f0a0a0', { weight: 'bold' });
-    chalk("Mrs. Park went for help - wait for her", 30, 200, 20, '#f0e080');
-    chalk('she did not come back', 250, 232, 18, '#e8e8e0');
+    chalk('JUNE -', 30, 140, 34, '#f0a0a0', { weight: 'bold' });
+    chalk('your mom and dad are coming. Go to the', 30, 178, 20, '#f0e080');
+    chalk("police station, I'll be there.  - Mrs. Park", 30, 206, 20, '#f0e080');
+    chalk('STAY INSIDE', 330, 236, 22, '#e8e8e0');
     g.fillStyle = '#8a6a48'; g.fillRect(0, h - 6, w, 6);
   },
   hc_kids(g, w, h, r) {

@@ -409,6 +409,7 @@ function ranger(B) {
   for (const [dx, dy] of [[-55, -55], [55, -55], [55, 55], [-55, 55]]) ob(B, 'ipillar', 'nodraw', LX + dx, LY + dy, 14, 14, 0, { sec });
   prop(B, 'bp-lookout', LX, LY, 0);
   B.anchor('ranger_lookout', LX, LY + 120, 90);
+  prop(B, 'bp-pyre', LX - 150, LY + 60, 0.3);
   // the ranger's truck, the fuel tank, the generator shed, the helipad, the brush engine
   ob(B, 'pickup', 'bp-rangertruck', 5000, 1620, 92, 44, 0.25, { sec, color: '#2f5a3a' });
   B.anchor('ranger_truck', 5050, 1750, 100);

@@ -393,7 +393,25 @@ function millgatesign(P) {
   if (!P.day) { glowBox(B, w / 2 + 8, 194, -11, 10, 6, 1, '#f0f4ff', 3); const [wx, wy] = toWorld(o, w / 2 + 8, -20); halos.push({ x: wx, y: wy, h: 194, color: '#e8f0ff', size: 90, strength: 0.6 }); }
 }
 
+/** The signal fire laid ready by the lookout: a cone of split logs and brush on a stone ring, a fuel can. */
+function pyre(P) {
+  const { B } = P;
+  const r = B.rng;
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * PI * 2;
+    rock(B, Math.cos(a) * 40, 3, Math.sin(a) * 40, 9, '#6a6660', 0.6);
+  }
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * PI * 2 + r.range(-0.1, 0.1);
+    rod(B, 'std', [Math.cos(a) * 32, 0, Math.sin(a) * 32], [Math.cos(a) * 3, 70, Math.sin(a) * 3], 3.4, r.pick(['#6a5038', '#7a5a3a', '#5a4632']), BARK, 6);
+  }
+  for (let k = 0; k < 10; k++) B.add('std', T.sphere(6, 4), [r.range(-20, 20), r.range(10, 40), r.range(-20, 20)], [r.range(8, 14), r.range(6, 10), r.range(8, 14)], null, r.pick(['#5a5a30', '#6a6038', '#4a4a28']), { noJitter: true, surf: [DET.grass, 0.95, 0] });
+  B.rblock('std', 60, 0, 20, 10, 16, 14, 1, '#c8281e', [0, 0.4, 0], PLAST);
+  B.add('std', T.box(), [70, 1, 0], [30, 2, 8], [0, 1.1, 0], '#4a4a48', METAL);
+}
+
 export const RANGER_MODELS = {
+  'bp-pyre': pyre,
   'bp-rcounter': rcounter, 'bp-radiodesk': radiodesk, 'bp-station': station, 'bp-radiomast': radiomast, 'bp-rangersign': rangersign,
   'bp-lookout': lookout, 'bp-rangertruck': rangertruck, 'bp-fueltank': fueltank, 'bp-genshed': genshed, 'bp-helipad': helipad,
   'bp-rockfallside': rockfallside, 'bp-footbridge': footbridge, 'bp-winch': winch, 'bp-roadbridge': roadbridge, 'bp-rapids': rapids,
