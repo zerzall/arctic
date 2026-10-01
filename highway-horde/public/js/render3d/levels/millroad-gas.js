@@ -5,7 +5,7 @@
 
 import {
   T, S, WOOD, RUSTY, METAL, CORR, CONC, FABRIC, PLAST, RUBBER, CHROME, NJ, HALF, PI, shadeHex, mixHex, hash01,
-  DET, atlasUV, rod, plank, sign, sign2, decal, floorDecal, glowBox, carton, crate, drum, tyre, toWorld, litter, tubeFixture, lvUV,
+  DET, atlasUV, rod, plank, sign, sign2, shelfRow, decal, floorDecal, glowBox, carton, crate, drum, tyre, toWorld, litter, tubeFixture, lvUV,
 } from './millroad-kit.js';
 import { wheel } from './millroad-jam.js';
 import { buildVehicle } from '../world-veh.js';
@@ -50,8 +50,7 @@ function shelf(P) {
       const y = 6 + k * 15;
       B.box('std', 0, y, sd * W * 0.3, L - 4, 1.2, W * 0.42, '#e8e8e4', null, METAL);
       B.box('std', 0, y + 0.4, sd * (W / 2 - 0.2), L - 4, 2.6, 0.4, '#f0e030', null, PLAST);
-      const cell = ['shelfA', 'shelfB', 'shelfC', 'shelfD'][Math.floor(hash01(k * 5 + sd + Math.round(P.o.y)) * 4)];
-      sign(B, cell, 0, y + 7.6, sd * (W * 0.26), L - 6, 13, sd > 0 ? 0 : PI);
+      shelfRow(B, ['shelfA', 'shelfB', 'shelfC', 'shelfD', 'shelfD'], -L / 2 + 3, L / 2 - 3, y + 7.6, sd * (W * 0.26), 13, sd > 0 ? 0 : PI, 50);
     }
   }
   // end caps: stacked cases, a chips rack
