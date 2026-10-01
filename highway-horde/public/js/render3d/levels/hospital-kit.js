@@ -427,7 +427,12 @@ export function createInteriorArt(ctx, deps, level) {
   const baseCache = new WeakMap();
   function roomBase(r) {
     let b = baseCache.get(r);
-    if (b === undefined) { b = gy(r.x, r.y); baseCache.set(r, b); }
+    if (b === undefined) {
+      // (a finish may fix its floor: a hall whose centre falls on a raised platform)
+      const fin = level.rooms && level.rooms[r.style];
+      b = fin && Number.isFinite(fin.base) ? fin.base : gy(r.x, r.y);
+      baseCache.set(r, b);
+    }
     return b;
   }
   /** The floor height at a window (cached; the map's own items are never written). */

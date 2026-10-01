@@ -53,7 +53,7 @@ const ROOMS = {
   'wg-kitchen': { floor: '#7a3a2a', floorDet: DET.tile, floorRough: 0.35, lower: '#eeeee8', lowerH: 100, lowerDet: DET.tile, upper: '#d8d4ca', skirt: '#4a2a1a', ceil: '#dcdcd4', ceilKind: 'plain', fixture: TUBE, grime: 0.8, grimeCells: ['grime2', 'blood_drip', 'blood_hand'], floorDecals: ['blood_pool', 'grime2', 'blood_trail'], decalArea: 80000 },
   'wg-stock': { floor: '#7a7870', floorDet: DET.concrete, floorRough: 0.75, upper: '#b8b8ae', upperDet: DET.brick, skirt: '#3a3a36', ceil: '#9a9a94', ceilKind: 'slab', fixture: TUBE, grime: 0.7, grimeCells: ['grime', 'mold', 'grime2', 'wstain'], wallProps: BACK_PROPS, floorDecals: ['grime2', 'mud', 'blood_trail'] },
   'wg-store': { floor: '#bdb6a8', floorDet: DET.linoleum, floorRough: 0.3, upper: '#d8d2c6', skirt: '#4a4a48', skirtH: 6, ceil: '#b8b4ac', ceilKind: 'grid', tile: 50, fixture: { ...TROF, stray: 0.02 }, missing: 0.09, grime: 0.6, wallProps: ['poster', 'ext', 'graffiti', 'blood', 'exit'], floorDecals: BLOODY, decalArea: 150000 },
-  'wg-garage': { floor: '#6a6862', floorDet: DET.concrete, floorRough: 0.8, lower: '#8a867c', lowerH: 24, lowerDet: DET.concrete, upper: '#a8a498', upperDet: DET.concrete, skirt: '#c8a01a', skirtH: 6, ceil: '#8a8680', ceilKind: 'slab', fixture: SODIUM, grime: 0.7, grimeCells: ['grime', 'wstain', 'grime2', 'g_arrow'], wallProps: ['ext', 'garagesign', 'graffiti', 'vent', 'exit'], wallStep: 260, floorDecals: ['grime2', 'mud', 'grime2', 'blood_trail'], decalArea: 120000 },
+  'wg-garage': { floor: '#6a6862', floorDet: DET.concrete, floorRough: 0.8, lower: '#8a867c', lowerH: 24, lowerDet: DET.concrete, upper: '#a8a498', upperDet: DET.concrete, skirt: '#c8a01a', skirtH: 6, ceil: '#9c9c98', ceilKind: 'slab', fixture: SODIUM, grime: 0.7, grimeCells: ['grime', 'wstain', 'grime2', 'g_arrow'], wallProps: ['ext', 'garagesign', 'graffiti', 'vent', 'exit'], wallStep: 260, floorDecals: ['grime2', 'mud', 'grime2', 'blood_trail'], decalArea: 120000 },
   'wg-office': { floor: '#7a7a70', floorDet: DET.linoleum, upper: '#d8d4c8', skirt: '#3a3a36', ceil: '#dcdcd4', ceilKind: 'grid', fixture: TROF, grime: 0.5, wallProps: ['notice', 'poster', 'clock'], floorDecals: ['grime', 'mud'] },
   'wg-void': { noFloor: true, ceilKind: 'none', upper: '#3a3a38', skirtH: 0 },
 };
@@ -280,16 +280,18 @@ function ceilingsFor(state) {
           pane([r.x + xa + bw / 2, (ya + yb) / 2 + 3, r.y + (za + zb) / 2], [-bw + 4, 0, 0], [0, yb - ya, zb - za]);
         }
       }
-      // the gables: white panels under the arch at both ends (both faces)
+      // the gables: glazed under the arch at both ends, a mullion at every node
       for (const e of [-1, 1]) {
-        const x = e * w / 2;
+        const x = e * w / 2, wx = r.x + x;
         for (let k = 0; k < segs; k++) {
           const [za, ya] = prof(k), [zb, yb] = prof(k + 1);
           const lo = Math.min(ya, yb);
-          for (const f of [1, -1]) B.quad('std', [x, (H + lo) / 2, (za + zb) / 2], [0, 0, f * (zb - za)], [0, lo - H, 0], W, PAINT);
-          if (yb > ya) B.add('std', RTRI(), [x, ya, za], [zb - za, yb - ya, 1], [0, -HALF, 0], W, PAINT);
-          else B.add('std', RTRI(), [x, yb, zb], [zb - za, ya - yb, 1], [0, HALF, 0], W, PAINT);
+          pane([wx, (H + lo) / 2, r.y + (za + zb) / 2], [0, 0, zb - za], [0, lo - H, 0]);
+          if (yb > ya) state.gtris.push({ p: [wx, ya, r.y + za], s: [zb - za, yb - ya, 1], r: [0, -HALF, 0] });
+          else state.gtris.push({ p: [wx, yb, r.y + zb], s: [zb - za, ya - yb, 1], r: [0, HALF, 0] });
+          if (k > 0) B.box('std', x, (H + ya) / 2, za, 4, ya - H, 4, W, null, PAINT);
         }
+        B.box('std', x, H + rise * 0.5, 0, 4, 3, d, W, null, PAINT);
       }
     },
     /** The food court: a plaster ceiling with lantern skylights (wells up to the roof, glass lanterns on it). */
@@ -327,7 +329,7 @@ function ceilingsFor(state) {
     /** A concrete slab: beams across, a sprinkler main and a cable tray along. */
     slab(C) {
       const { B, r, H, fin } = C;
-      B.quad('std', [0, H, 0], [r.w, 0, 0], [0, 0, r.h], fin.ceil, { noAO: true, surf: [DET.concrete, 0.9, 0] });
+      B.quad('std', [0, H, 0], [r.w, 0, 0], [0, 0, r.h], fin.ceil, { noAO: true, surf: [DET.slab, 0.9, 0] });
       const along = r.w >= r.h;
       const len = along ? r.w : r.h, wid = along ? r.h : r.w;
       const nb = Math.max(1, Math.floor(len / 320));
@@ -572,7 +574,7 @@ function buildWater(P, waters, day) {
 
 /** The vault's and the lanterns' glass (see-through, no shadow: the sun comes in). */
 function buildGlass(P, state) {
-  if (!state.glass.length && !state.tris.length) return;
+  if (!state.glass.length && !state.tris.length && !state.gtris.length) return;
   const b = P.newBuilder();
   P.at(b, 0, 0, 0, 1, 0);
   const c = P.day ? '#a8bcc8' : '#3a4a54';
@@ -580,7 +582,8 @@ function buildGlass(P, state) {
     b.quad('vglass', q.c, q.e1, q.e2, c, { noAO: true, noJitter: true });
     b.quad('vglass', q.c, q.e1.map((v) => -v), q.e2, c, { noAO: true, noJitter: true });
   }
-  // the lanterns' gable ends: two right triangles each
+  // the vault's gable triangles, the lanterns' gable ends (two right triangles each)
+  for (const t of state.gtris) b.add('vglass', RTRI(), t.p, t.s, t.r, c, { noAO: true, noJitter: true });
   for (const t of state.tris) {
     const zc = (t.z0 + t.z1) / 2, half = (t.z1 - t.z0) / 2;
     b.add('vglass', RTRI(), [t.x, t.y, t.z0], [half, t.H, 1], [0, -HALF, 0], c, { noAO: true, noJitter: true });
@@ -614,6 +617,14 @@ function signs(P) {
     P.pic(B, cell, 0, 126, -3.2, 300, 22, Math.PI, { lit: !P.day, k: 0.7 });
   }
   put(4988 - 0.6, 2300, -HALF, 'wg_foodcourt', 180, 34, 176);
+  // the food court's north wall over the stalls: a bulkhead of panels, FOOD COURT, neon stars
+  P.at(B, 6100, 1308, 0, 37, 0);
+  B.block('std', 0, 150, 2, 2176, 70, 4, '#2a3a4a', null, PAINT);
+  B.block('std', 0, 146, 4, 2176, 4, 6, '#b89a5a', null, S(0, 0.3, 0.8));
+  B.block('std', 0, 220, 4, 2176, 4, 6, '#b89a5a', null, S(0, 0.3, 0.8));
+  P.pic(B, 'wg_foodcourt', 0, 185, 4.3, 420, 64, 0, { lit: !P.day, k: 0.9 });
+  for (const x of [-700, 700]) P.pic(B, 'n_star', x, 185, 4.3, 60, 60, 0, { lit: !P.day, k: 1.6, color: x < 0 ? '#ff5ab0' : '#5ab8ff' });
+  for (let x = -1000; x <= 1000; x += 250) B.box('std', x, 260, 1, 6, 80, 2, '#c8c2b4', null, PLASTER);
   put(7188 - 0.6, 2750, -HALF, 'wg_harrows', 200, 44, 176, { lit: !P.day, k: 0.9 });
   put(8600, 1812.6, 0, 'wg_parking', 90, 22, 108);
   put(3620, 1248.6, 0, 'wg_security', 80, 20, 100, { base: 150 });
@@ -637,7 +648,7 @@ function signs(P) {
  */
 export function createLevelArt(ctx, deps) {
   const map = ctx.map;
-  const state = { waters: [], glass: [], tris: [] };
+  const state = { waters: [], glass: [], tris: [], gtris: [] };
   const { OBSTACLES, ITEMS } = mallProps(state);
   let sky = null, water = null;
   const bays = VAULT.bays, bw = (VAULT.x1 - VAULT.x0) / bays;
