@@ -302,7 +302,8 @@ export function createGrassField(scene, ground, quality) {
         float lush = smoothstep(0.35, 0.8, mk.b);
         float dens = (lush + loose * 0.14) * smoothstep(0.7, 0.95, mk.a);
         float fade = smoothstep(uRadius, uRadius * 0.7, distance(base, cameraPosition.xz));
-        float s = step(h3, dens * uDensity) * fade * (0.65 + 0.7 * h4) * (0.55 + 0.45 * lush);
+        // (h3 + 1e-3: far from the origin the hash loses precision and returns 0, and step(0, 0) grew a tuft on bare road)
+        float s = step(h3 + 1e-3, dens * uDensity) * fade * (0.65 + 0.7 * h4) * (0.55 + 0.45 * lush);
         // some tufts in the lush grass grow a flower (yellow, white, purple, red); the others hide theirs
         float fl = step(0.93, fract(h4 * 7.13 + h1 * 3.7)) * step(0.5, lush) * step(0.5, aKind);
         if (aKind > 0.5 && fl < 0.5) s = 0.0;
