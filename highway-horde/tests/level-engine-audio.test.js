@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAudio } from '../public/js/audio/audio.js';
-import { buildMap } from '../public/js/shared/maps.js';
+import { buildMap, buildPlaceholderLevel } from '../public/js/shared/maps.js';
+import { LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 import { levelGates } from '../public/js/shared/level.js';
 import { MockAudioContext } from './fixtures/audio-mock-context.js';
 
@@ -45,7 +46,7 @@ test('a music action holds the score in its state, then the fight leads again', 
 
 test('gates, lights, checkpoints and hordes are heard; gates where they stand', async () => {
   await run((ctx, audio, eng) => {
-    const map = buildMap('millroad', 3);
+    const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 3);
     audio.setMap(map);
     const g = levelGates(map)[0];
     ctx.currentTime = 1;

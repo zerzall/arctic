@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { register } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildMap } from '../public/js/shared/maps.js';
-import { LEVEL_IDS } from '../public/js/shared/levels/index.js';
+import { buildMap, buildPlaceholderLevel } from '../public/js/shared/maps.js';
+import { LEVEL_IDS, LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 import { GATE_KINDS, ROOF_KINDS } from '../public/js/shared/levels/kit.js';
 import { levelGates } from '../public/js/shared/level.js';
 
@@ -148,7 +148,7 @@ test('gates3d: every level builds its gates; a level art model is animated as a 
     assert.equal(g.stats.gates, levelGates(map).length, id);
     g.dispose();
   }
-  const map = buildMap('millroad', 2);
+  const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 2);
   const seen = [];
   const art = { gateModel(B, gate, o) { seen.push(gate.id); B.block('std', 0, 0, 0, o.w, 100, o.h, '#ff0000'); return true; } };
   const h = harness(map, { level: art });
@@ -162,7 +162,7 @@ test('gates3d: every level builds its gates; a level art model is animated as a 
 
 /** A placeholder level with one roof of every kind over walled rooms. */
 function roomsMap() {
-  const m = JSON.parse(JSON.stringify(buildMap('millroad', 3)));
+  const m = JSON.parse(JSON.stringify(buildPlaceholderLevel(LEVEL_SPECS.millroad, 3)));
   let x = 400;
   for (const kind of ROOF_KINDS) {
     const w = kind === 'mall' ? 700 : 360, d = 300, cx = x + w / 2, cy = 420;
@@ -251,7 +251,7 @@ test('indoor mask: dark under a roof, lighter at the doorway, sky outside and ab
   ind.dispose();
   assert.notEqual(indoorMod.INDOOR_UNIFORMS.uIndoorMap.value, ind.texture, 'disposed: back to the empty mask');
   // no roofs: no mask
-  assert.equal(indoorMod.createIndoor(buildMap('millroad', 3), {}), null);
+  assert.equal(indoorMod.createIndoor(buildPlaceholderLevel(LEVEL_SPECS.millroad, 3), {}), null);
 });
 
 test('indoor mask: the shader patch (chunks inert without the define; a patched material defines it)', () => {

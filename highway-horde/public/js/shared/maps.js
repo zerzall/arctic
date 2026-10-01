@@ -17,6 +17,7 @@ import { buildHarlan } from './maps-harlan.js';
 import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
 import { LEVEL_LIST, LEVEL_DEFS, LEVEL_BUILDERS } from './levels/index.js';
+import { placeholderLevel, placeholderSize } from './levels/kit.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -69,6 +70,20 @@ const BUILDERS = {
  */
 export function mapMeta(id) {
   return MAP_LIST.find((m) => m.id === id) || HIDEOUT_LIST.find((m) => m.id === id) || LEVEL_LIST.find((m) => m.id === id) || null;
+}
+
+/**
+ * A stand-in story level built from a SPEC alone (shared/levels/kit.js placeholderLevel), not registered
+ * anywhere: tests and tools exercise the level engine with it without depending on a real level's layout.
+ * @param {object} spec a level SPEC ({ id, name, sections, anchors, gates })
+ * @param {number} [seed]
+ */
+export function buildPlaceholderLevel(spec, seed = 0) {
+  const meta = { id: spec.id, name: spec.name, kind: 'level', modes: ['mission'] };
+  const def = { ...placeholderSize(spec.sections.length), darkness: 0.62, tint: '#3a4a60', ground: '#3f4a33' };
+  const B = createBuilder(meta, Number.isFinite(seed) ? seed : 0, def);
+  placeholderLevel(B, spec);
+  return B.finish();
 }
 
 /**
@@ -275,8 +290,8 @@ function mixColor(hex, toHex, t) {
 // ---------------------------------------------------------------------------------
 // Builder: the small vocabulary the four layouts are written in.
 
-function createBuilder(meta, seed) {
-  const def = MAP_DEFS[meta.id];
+function createBuilder(meta, seed, defOverride = null) {
+  const def = defOverride || MAP_DEFS[meta.id];
   const map = {
     id: meta.id,
     name: meta.name,

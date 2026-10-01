@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMap } from '../public/js/shared/maps.js';
+import { buildMap, buildPlaceholderLevel } from '../public/js/shared/maps.js';
 import { LEVEL_IDS, LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 import { validateLevel } from '../public/js/shared/levels/kit.js';
 import { FlowField } from '../public/js/shared/flowfield.js';
@@ -20,17 +20,21 @@ function copyMap(m) {
   return JSON.parse(JSON.stringify(m));
 }
 
-test('every placeholder level passes validateLevel', () => {
+test('every level passes validateLevel against its SPEC', () => {
+  for (const id of LEVEL_IDS) assert.deepEqual(validateLevel(buildMap(id, 7), LEVEL_SPECS[id]), [], id);
+});
+
+test('without a SPEC, validateLevel works the gates\' sections out from where they stand (a placeholder level)', () => {
+  // (a real level may stand its gates where the guess is ambiguous, stairs and terrain, so it is checked with its SPEC above)
   for (const id of LEVEL_IDS) {
-    const map = buildMap(id, 7);
-    assert.deepEqual(validateLevel(map, LEVEL_SPECS[id]), [], id);
-    // (the SPEC is optional: the gates' sections are worked out from where they stand)
-    assert.deepEqual(validateLevel(map), [], `${id} without its SPEC`);
+    const ph = buildPlaceholderLevel(LEVEL_SPECS[id], 7);
+    assert.deepEqual(validateLevel(ph, LEVEL_SPECS[id]), [], `${id} placeholder`);
+    assert.deepEqual(validateLevel(ph), [], `${id} placeholder without its SPEC`);
   }
 });
 
 test('validateLevel catches a gate that does not block, a blocked spot, a lost checkpoint and a spawn in an earlier room', () => {
-  const base = buildMap('millroad', 7);
+  const base = buildPlaceholderLevel(LEVEL_SPECS.millroad, 7);
   // a gate whose piece leaves a gap beside it
   let m = copyMap(base);
   const g = m.obstacles[m.gates[1].obstacles[0]];
@@ -64,7 +68,7 @@ test('validateLevel catches a gate that does not block, a blocked spot, a lost c
 });
 
 test('shared/level.js: gates, sections, supplies and the way forward', () => {
-  const map = buildMap('millroad', 7);
+  const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 7);
   assert.ok(isLevel(map) && !isLevel(buildMap('highway', 1)));
   const gates = levelGates(map);
   assert.equal(gates.length, map.gates.length);
@@ -95,7 +99,7 @@ test('shared/level.js: gates, sections, supplies and the way forward', () => {
 });
 
 test('a gate collider switches off and on in a collision world', () => {
-  const map = buildMap('millroad', 7);
+  const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 7);
   const world = createCollisionWorld(map);
   const g = levelGates(map)[0];
   const o = g.obs[0];
@@ -110,7 +114,7 @@ test('a gate collider switches off and on in a collision world', () => {
 });
 
 test('FlowField.patchRegion: the field paths through a gate once its colliders are off', () => {
-  const map = buildMap('millroad', 7);
+  const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 7);
   const world = createCollisionWorld(map);
   const field = new FlowField(map, { colliders: world.colliders, pad: 3 });
   const shared = field.edges;

@@ -41,6 +41,15 @@ const OWN = new Set(['sign', 'lit', 'flat', 'wet', 'cloth']);
 const UNLIT = new Set(['glow', 'blink']);
 /** Dressing that grows: kept out from under a story level's roofs. */
 const PLANTS = new Set(['tallgrass', 'fern', 'flowers', 'shrub', 'mushrooms', 'reeds', 'lily', 'cactus', 'perch', 'deadtree', 'stump', 'log']);
+/**
+ * Generated dressing that only belongs outdoors (tall street furniture, farm and garden things): on a
+ * story level it stays out from under the roofs too (a flagpole stood inside a hangar). Hand-placed
+ * dressing (`map.dressItems`) is trusted.
+ */
+const OUTDOOR = new Set(['billboard', 'flagpole', 'pole', 'wire', 'lamp_old', 'watertower', 'busstop', 'rsign', 'banner', 'hydrant',
+  'tractor', 'hay', 'hay_sq', 'scarecrow', 'tent_camp', 'umbrella', 'picnic', 'gnome', 'campfire', 'mailbox', 'postbox', 'phone',
+  'meter', 'bikerack', 'planter', 'trough', 'woodpile', 'boulders', 'tumbleweed', 'rowboat', 'driftwood', 'fence_cl', 'fence_pk',
+  'bollard', 'sandarc', 'medtent']);
 /** (x, y) under one of the oriented roof rects. */
 function underRoof(roofs, x, y) {
   for (const r of roofs) {
@@ -102,8 +111,12 @@ export function createDress(ctx, deps) {
 
   // (map.dressItems: a dev hook, the prop gallery of dev/fps-sandbox.html?gallery=... lays its own list)
   let items = map.dressItems || buildDress(map);
-  // (a story level: no plants indoors, whatever the ground under a roof was painted as)
-  if (map.kind === 'level' && map.roofs && map.roofs.length) items = items.filter((it) => !PLANTS.has(it.k) || !underRoof(map.roofs, it.x, it.y));
+  // (a story level: no plants indoors, whatever the ground under a roof was painted as, and no generated
+  // street or farm furniture either)
+  if (map.kind === 'level' && map.roofs && map.roofs.length) {
+    const generated = !map.dressItems;
+    items = items.filter((it) => !(PLANTS.has(it.k) || (generated && OUTDOOR.has(it.k))) || !underRoof(map.roofs, it.x, it.y));
+  }
   const ranked = items.slice().sort((a, b) => a.q - b.q);
   let meshes = [];
   let triangles = 0;

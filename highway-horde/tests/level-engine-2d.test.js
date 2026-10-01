@@ -5,6 +5,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { buildPlaceholderLevel } from '../public/js/shared/maps.js';
+import { LEVEL_SPECS } from '../public/js/shared/levels/index.js';
 
 function mockContext(canvas, log) {
   const store = {
@@ -53,7 +55,7 @@ const MISSION = { id: 'lv2d', map: 'millroad', mode: 'free', steps: [{ id: 'w', 
 
 /** Mill Road with a roofed room in its second section (the placeholder has none of its own). */
 function roofedMap() {
-  const map = buildMap('millroad', 3);
+  const map = buildPlaceholderLevel(LEVEL_SPECS.millroad, 3);
   const s = map.sections[1];
   map.roofs = (map.roofs || []).concat([{ x: s.x, y: s.y - 300, w: 300, h: 220, a: 0, height: 150, kind: 'office', section: s.id, dark: 0.78 }]);
   return map;
