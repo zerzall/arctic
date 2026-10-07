@@ -28,6 +28,7 @@
 // obstacles' `style` / `prop` tags and the `map.sandArt` list (render3d/maps/sandstone.js).
 
 import { createRng, hashString } from './rng.js';
+import { sandstoneDecals } from './maps-decals.js';
 
 /** World size and mood (maps.js MAP_DEFS). */
 export const SANDSTONE_DEF = { width: 4000, height: 4000, darkness: 0.6, tint: '#9a6a3a', ground: '#c7a77a' };
@@ -451,6 +452,8 @@ export function buildSandstone(B) {
   B.sprinkle('blood_old', 30, 0, 0, 4000, 4000, { s: [0.6, 1.4] });
   B.sprinkle('rock', 40, 0, 0, 4000, 4000, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
   B.sprinkle('bush', 14, 0, 0, 4000, 4000, { on: ['sand', 'dirt'], s: [0.5, 0.9], keep: true });
+  // the hand-placed decals (maps-decals.js)
+  sandstoneDecals(B);
 }
 
 const STALL_ROOF = ['#b8452f', '#2e6a8f', '#d7a43a', '#3f7d4d', '#e2d7c0', '#8a3a5c'];

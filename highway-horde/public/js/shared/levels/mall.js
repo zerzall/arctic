@@ -24,6 +24,7 @@
 // (render3d/levels/mall.js); the set dressing is hand placed (`map.dressItems`).
 
 import { levelKit } from './hospital.js';
+import { decals } from './mall-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "mall",
@@ -171,6 +172,8 @@ export function build(B) {
   for (let k = 0; k < 6; k++) B.pspawn(sx - 100 + (k % 3) * 90, sy - 40 + Math.floor(k / 3) * 100);
   B.supply(sx + 240, sy - 60);
   K.finish();
+  // the hand-placed decals (mall-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---------------------------------------------------------------------------------------------

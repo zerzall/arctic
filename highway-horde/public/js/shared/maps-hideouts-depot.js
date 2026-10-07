@@ -7,6 +7,7 @@
 //   a garden and the range.
 
 import { kit, stdSlot, TAU, PI, HALF } from './maps-hideouts-kit.js';
+import { hideoutDecals } from './maps-decals.js';
 
 export function buildDepot(B) {
   const K = kit(B, 'depot', 'Blackwater Depot', {
@@ -182,6 +183,8 @@ export function buildDepot(B) {
   B.sprinkle('rock', 24, 60, 60, 2140, 1540, { s: [0.5, 1.2] });
   B.sprinkle('debris', 16, 200, 220, 2000, 1340, { s: [0.6, 1.1] });
   K.dress(DEPOT_DRESS);
+  // the hand-placed decals (maps-decals.js)
+  hideoutDecals(B, 'depot');
 }
 
 const DEPOT_DRESS = [

@@ -29,6 +29,7 @@
 // set dressing is hand placed (`map.dressItems`).
 
 import { createRng, hashString } from '../rng.js';
+import { decals } from './hospital-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "hospital",
@@ -436,6 +437,8 @@ export function build(B) {
   B.supply(sx + 220, sy + 40);
   K.finish();
   void rng;
+  // the hand-placed decals (hospital-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---------------------------------------------------------------------------------------------

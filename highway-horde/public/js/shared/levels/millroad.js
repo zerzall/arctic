@@ -26,6 +26,7 @@
 // levels of this owner (hollowcreek.js, forest.js import them).
 
 import { TAU } from '../math.js';
+import { decals } from './millroad-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "millroad",
@@ -335,6 +336,8 @@ export function build(B) {
   trailers(B);
   corn(B);
   motel(B);
+  // the hand-placed decals (millroad-decals.js: graffiti, notes, posters, blood, oil)
+  decals(B);
 }
 
 // ---- the ground: fields, roads, the creek ------------------------------------------------------------

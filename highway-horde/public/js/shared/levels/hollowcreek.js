@@ -20,6 +20,7 @@
 //   4000  +-----------+------------------+-----------------+-----------+
 
 import { artOf, prop, wall, wallGaps, room, fence, spawn, ob, dress, facade, HALF, PI } from './millroad.js';
+import { decals } from './hollowcreek-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "hollowcreek",
@@ -175,6 +176,8 @@ export function build(B) {
   church(B);
   school(B);
   police(B);
+  // the hand-placed decals (hollowcreek-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---- 1. Town line -----------------------------------------------------------------------------------------

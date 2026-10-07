@@ -6,6 +6,7 @@
 //   south-middle, the pond and its dock the south-west; the range is the east paddock.
 
 import { kit, stdSlot, TAU, PI, HALF } from './maps-hideouts-kit.js';
+import { hideoutDecals } from './maps-decals.js';
 
 export function buildFarmstead(B) {
   const K = kit(B, 'farmstead', 'Harlan Farmstead', {
@@ -175,6 +176,8 @@ export function buildFarmstead(B) {
   B.sprinkle('bush', 26, 60, 60, 2140, 1540, { s: [0.7, 1.3], keep: true });
   B.sprinkle('rock', 22, 60, 60, 2140, 1540, { s: [0.5, 1.1], off: ['water'] });
   K.dress(FARM_DRESS);
+  // the hand-placed decals (maps-decals.js)
+  hideoutDecals(B, 'farmstead');
 }
 
 const FARM_DRESS = [

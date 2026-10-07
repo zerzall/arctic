@@ -1,6 +1,7 @@
 // The Roadhouse (chapters 1–2): see maps-hideouts.js for the hideout data contract.
 
 import { kit, tier, TAU, PI, r1, r3 } from './maps-hideouts-kit.js';
+import { hideoutDecals } from './maps-decals.js';
 
 // ---------------------------------------------------------------------------------------------
 // 1. The Roadhouse (chapters 1–2): a desert motel and diner on the highway shoulder
@@ -247,6 +248,8 @@ export function buildRoadhouse(B) {
   B.sprinkle('rock', 26, 60, 60, 2140, 1540, { s: [0.5, 1.2], off: ['asphalt', 'concrete'] });
   B.sprinkle('debris', 12, 200, 220, 2000, 1340, { s: [0.6, 1.1] });
   K.dress(ROADHOUSE_DRESS);
+  // the hand-placed decals (maps-decals.js)
+  hideoutDecals(B, 'roadhouse');
 }
 
 // [kind, x, y, angle, scale] — DRESS_KINDS of dress.js. Order = importance (first = always shown).
