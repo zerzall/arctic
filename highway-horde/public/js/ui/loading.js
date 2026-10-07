@@ -87,7 +87,7 @@ function renderTasks() {
     fill.style.cssText = 'height:100%;width:0;background:#ffc400;transition:width 0.25s ease;';
     bar.appendChild(fill);
     row.append(label, bar);
-    const anchor = e.querySelector('.loading-text');
+    const anchor = e.querySelector('.loading-sub') || e.querySelector('.loading-text');
     if (anchor && anchor.parentNode === e) anchor.after(row); else e.appendChild(row);
   }
   row.hidden = false;
