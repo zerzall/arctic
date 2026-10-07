@@ -148,6 +148,20 @@ Double-click `Highway-Horde.html` to play. Online games work from it too: the ho
 the file, or the website) use **Join Game** with that code. Invite links point at the
 host's own disk, so use the code.
 
+The file carries the game's own texture library (about 250 MB; the page is up while the
+browser is still reading the rest). `HH_NO_TEXTURES=1 npm run standalone` builds a ~5 MB file
+that draws the surfaces with the procedural layers instead.
+
+## The texture library
+
+`public/textures/` holds the game's own materials: 55 tileable PBR sets (brick, concrete,
+asphalt, plaster, wood, metal, tile, ground…) and the hero sets of the story levels, each as
+albedo, normal, roughness / AO / height and metalness / tint PNGs. They are made by our own
+code, not downloaded: `node scripts/bake-textures.js` renders them at 2048² and stores them at
+1024² (`--only brick_red --preview <dir>` re-bakes one material and writes lit previews). The
+game uses them on High and up; Low keeps the procedural layers, and so does any page where
+they fail to load (or the address has `?textures=procedural`).
+
 ## Playing with friends
 
 The host's browser runs the game and everyone else connects to it. There are three ways to

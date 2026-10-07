@@ -134,7 +134,7 @@ export const MASONRY = [
       const board = fbm(N, { pu: 3, pv: 40, oct: 4, seed: seed + 20 });
       for (let i = 0; i < m.NN; i++) { m.h[i] += (board[i] - 0.5) * 0.04; m.mul(i, 1 + (board[i] - 0.5) * 0.05); }
       applyCracks(m, cracks(N, { cells: 5, seed: seed + 21, keep: 0.35, width: 1.6 }), { dark: 0.5, depth: 0.2 });
-      applyCracks(m, hairlines(N, { seed: seed + 22, p: 5, thr: 0.955 }), { dark: 0.25, depth: 0.08 });
+      applyCracks(m, hairlines(N, { seed: seed + 22, p: 3, thr: 0.972 }), { dark: 0.25, depth: 0.08 });
       spotRust(m, seed + 23, 3, 0.5);
       m.grime({ amt: 0.35, rad: 6, gain: 9, color: [0.2, 0.18, 0.15], wear: 0.04 });
       streaks(m, { seed: seed + 24, amt: 0.22, t: 0.58, color: [0.22, 0.21, 0.19] });
