@@ -12,18 +12,52 @@ export const DET = Object.freeze({
   macro: 23, plaster: 24, tile: 25, metalroof: 26, paver: 27, cracked: 28, strata: 29, crackmacro: 30, sand: 31,
   // interior surfaces of the story levels (JOURNEY.md §6)
   linoleum: 32, carpet: 33, drywall: 34, ceiltile: 35, wallpaper: 36, terrazzo: 37,
+  // surfaces of the baked texture library (world-surf-bake.js) with no procedural layer of their own:
+  // the procedural path draws each with its base layer (DET_BASE); the baked path with its own set
+  brickyellow: 38, cinder: 39, adobe: 40, diamond: 41, tilehosp: 42, tilemetro: 43, marble: 44, mud: 45,
+  runway: 46, ballast: 47, railrust: 48, camo: 49, shutter: 50, plasterbleach: 51, concretedam: 52,
+  linohosp: 53, roadpaint: 54, tileceramic: 55, corrugatedrust: 56,
 });
 const LAYERS = 38;
-/** Number of surface layers; the colour / height slice of layer L is L + DET_LAYERS. */
+/** Number of procedural surface layers; the colour / height slice of layer L is L + DET_LAYERS. */
 export const DET_LAYERS = LAYERS;
+/** Number of surface ids (procedural layers + the baked-only ones). */
+export const DET_COUNT = 57;
 const NAMES = [];
 for (const [k, v] of Object.entries(DET)) if (NAMES[v] === undefined) NAMES[v] = k;
+/** Surface id → name. */
+export const DET_NAMES = Object.freeze(NAMES.slice());
+
+// The baked-only surfaces: the procedural layer that stands in for each, its tile (world units), its
+// parallax depth / near grain / weathering class, and (elements) its grid.
+const ANY_ = [0.43, 0.29];
+const EXTRA = {
+  brickyellow: ['brick', 48, [0.55, 0.7, 1], [5, 16, 0.5, 0.18], [2 / 5, 2 / 16]],
+  cinder: ['concrete', 80, [0.5, 0.8, 1], [6, 12, 0.5, 0.1], [2 / 6, 2 / 12]],
+  adobe: ['stucco', 72, [0.4, 0.9, 1], null, ANY_],
+  diamond: ['panel', 40, [0.15, 0.3, 2], null, [0.25, 0.25]],
+  tilehosp: ['tile', 40, [0.08, 0.3, 6], [8, 8, 0, 0.05], [3 / 8, 3 / 8]],
+  tilemetro: ['tile', 40, [0.1, 0.4, 6], [8, 16, 0.5, 0.06], [3 / 8, 2 / 16]],
+  marble: ['terrazzo', 80, [0.02, 0.2, 6], [2, 2, 0, 0.06], [1 / 2, 1 / 2]],
+  mud: ['dirt', 44, [0.3, 1, 5], [0, 0, 0, -0.7], ANY_],
+  runway: ['slab', 128, [0.12, 1, 1], [1, 1, 0, 0.1], null],
+  ballast: ['gravel', 40, [0.8, 0.8, 5], [0, 0, 0, -0.4], ANY_],
+  railrust: ['rust', 44, [0.15, 0.7, 2], [0, 0, 0, -0.5], ANY_],
+  camo: ['panel', 96, [0, 0.15, 2], null, ANY_],
+  shutter: ['siding', 40, [0.5, 0.3, 3], null, [0.37, 2 / 8]],
+  plasterbleach: ['plaster', 64, [0.15, 0.7, 1], [0, 0, 0, -0.6], ANY_],
+  concretedam: ['concrete', 96, [0.15, 1, 1], [0, 0, 0, -0.8], ANY_],
+  linohosp: ['linoleum', 80, [0.02, 0.2, 6], null, null],
+  roadpaint: ['asphalt', 20, [0.05, 0.6, 5], null, ANY_],
+  tileceramic: ['tile', 40, [0.06, 0.3, 6], [8, 8, 0, 0.06], [3 / 8, 3 / 8]],
+  corrugatedrust: ['corrugated', 36, [0.45, 0.4, 2], null, [5 / 14, 1 / 2]],
+};
 
 /**
  * World units covered by one repeat of each layer (1 unit ≈ 3 cm): brick courses ≈ 9 cm,
  * corrugation ≈ 7 cm, asphalt stones ≈ 1 cm at 8 texels per unit.
  */
-export const DET_TILE = new Float32Array(LAYERS);
+export const DET_TILE = new Float32Array(DET_COUNT);
 Object.entries({
   none: 64, brick: 48, concrete: 96, siding: 64, corrugated: 36, panel: 48, char: 40, wood: 40, fabric: 14,
   bark: 36, rubber: 18, shingle: 56, hesco: 30, stucco: 40, rock: 60, glass: 44, asphalt: 30,
@@ -33,6 +67,11 @@ Object.entries({
   // every 1.2 m, 2 x 2 ceiling tiles of 60 cm in their grid, three strips of wallpaper, terrazzo panels
   linoleum: 80, carpet: 50, drywall: 80, ceiltile: 40, wallpaper: 48, terrazzo: 40,
 }).forEach(([k, v]) => { DET_TILE[DET[k]] = v; });
+for (const [k, e] of Object.entries(EXTRA)) DET_TILE[DET[k]] = e[1];
+
+/** Surface id → the procedural layer that draws it (itself for the procedural layers). */
+export const DET_BASE = new Uint8Array(DET_COUNT);
+for (let i = 0; i < DET_COUNT; i++) DET_BASE[i] = i < LAYERS ? i : DET[EXTRA[NAMES[i]][0]];
 
 // Per layer: parallax depth (world units; 0 = flat, no parallax), strength of the fine grain
 // added near the eye (0..1) and the weathering class the world material reads:
@@ -78,9 +117,9 @@ const LAYER_SHIFT = {
 };
 
 /** Per-layer self-mapping shift, 2 floats per layer (u, v in tiles; 0, 0 = the layer is never shifted). */
-export const DET_SHIFT = new Float32Array(LAYERS * 2);
-for (let i = 0; i < LAYERS; i++) {
-  const d = LAYER_SHIFT[NAMES[i]];
+export const DET_SHIFT = new Float32Array(DET_COUNT * 2);
+for (let i = 0; i < DET_COUNT; i++) {
+  const d = i < LAYERS ? LAYER_SHIFT[NAMES[i]] : EXTRA[NAMES[i]][4];
   if (d) DET_SHIFT.set(d, i * 2);
 }
 
@@ -88,9 +127,9 @@ for (let i = 0; i < LAYERS; i++) {
  * Per-layer element grid, 4 floats per layer: cells along u and v, the shift of odd rows, the
  * tone amplitude (0 = no elements; negative = an organic layer's second-scale blend amount).
  */
-export const DET_CELLS = new Float32Array(LAYERS * 4);
-for (let i = 0; i < LAYERS; i++) {
-  const d = LAYER_CELLS[NAMES[i]];
+export const DET_CELLS = new Float32Array(DET_COUNT * 4);
+for (let i = 0; i < DET_COUNT; i++) {
+  const d = i < LAYERS ? LAYER_CELLS[NAMES[i]] : EXTRA[NAMES[i]][3];
   if (d) DET_CELLS.set(d, i * 4);
 }
 
@@ -100,9 +139,9 @@ for (let i = 0; i < LAYERS; i++) {
  * are generated; the material raises the roughness by it where the layer is minified) and the
  * weathering class. The array object is shared: a uniform can hold it directly.
  */
-export const DET_PARAMS = new Float32Array(LAYERS * 4);
-for (let i = 0; i < LAYERS; i++) {
-  const d = LAYER_DEF[NAMES[i]] || [0, 0, 0];
+export const DET_PARAMS = new Float32Array(DET_COUNT * 4);
+for (let i = 0; i < DET_COUNT; i++) {
+  const d = (i < LAYERS ? LAYER_DEF[NAMES[i]] : EXTRA[NAMES[i]][2]) || [0, 0, 0];
   DET_PARAMS[i * 4] = d[0] / DET_TILE[i];
   DET_PARAMS[i * 4 + 1] = d[1];
   DET_PARAMS[i * 4 + 3] = d[2];
@@ -1506,7 +1545,7 @@ export function* generateSteps(n) {
   if (n === 256) {
     genStats.ms = Math.round(tWork); genStats.fieldsMs = Math.round(fieldsMs); genStats.layerMs = layerMs;
     // the normal variance each layer loses in its mips (the material turns it into roughness)
-    for (let i = 0; i < LAYERS; i++) DET_PARAMS[i * 4 + 2] = variance[i];
+    for (let i = 0; i < DET_COUNT; i++) DET_PARAMS[i * 4 + 2] = variance[DET_BASE[i]];
   } else genStats.ms512 = Math.round(tWork);
   return data;
 }

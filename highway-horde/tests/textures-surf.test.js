@@ -30,7 +30,8 @@ before(async () => {
 });
 
 const INTERIOR = ['linoleum', 'carpet', 'drywall', 'ceiltile', 'wallpaper', 'terrazzo'];
-const SURFACES = () => Object.keys(surf.DET).filter((k) => k !== 'none' && k !== 'macro');
+// (the procedural layers; the ids past DET_LAYERS are the baked library's own surfaces, drawn here by a base layer)
+const SURFACES = () => Object.keys(surf.DET).filter((k) => k !== 'none' && k !== 'macro' && surf.DET[k] < L);
 
 /** Channel c (0..3) of slice `layer` as a Float64 statistic: mean and standard deviation. */
 function stats(layer, c) {
@@ -56,12 +57,15 @@ test('layer ids: the old ones stay put, the interior names are layers of their o
   }
   assert.equal(ids.size, INTERIOR.length, 'six distinct interior layers');
   assert.equal(new Set(Object.values(surf.DET)).size, Object.keys(surf.DET).length, 'no aliases left');
-  assert.equal(L, Math.max(...Object.values(surf.DET)) + 1);
+  assert.equal(surf.DET_COUNT, Math.max(...Object.values(surf.DET)) + 1);
+  assert.equal(L, 38, 'the procedural array keeps its 38 layers');
+  // every baked-only surface is drawn by a procedural layer on the procedural path
+  for (let id = L; id < surf.DET_COUNT; id++) assert.ok(surf.DET_BASE[id] > 0 && surf.DET_BASE[id] < L, `base of ${surf.DET_NAMES[id]}`);
   assert.ok(Object.isFrozen(surf.DET));
 });
 
 test('tile sizes: every layer has a positive, finite repeat in world units', () => {
-  assert.equal(surf.DET_TILE.length, L);
+  assert.equal(surf.DET_TILE.length, surf.DET_COUNT);
   for (const [k, id] of Object.entries(surf.DET)) {
     const t = surf.DET_TILE[id];
     assert.ok(Number.isFinite(t) && t > 4 && t <= 400, `${k}: ${t}`);
@@ -116,7 +120,7 @@ test('the interior layers differ from each other and from the layers they used t
 
 test('shading tables: parallax depth, grain, the mip variance and the weathering class', () => {
   const P = surf.DET_PARAMS;
-  assert.equal(P.length, L * 4);
+  assert.equal(P.length, surf.DET_COUNT * 4);
   for (const [k, id] of Object.entries(surf.DET)) {
     const depth = P[id * 4], grain = P[id * 4 + 1], variance = P[id * 4 + 2], cls = P[id * 4 + 3];
     assert.ok(depth >= 0 && depth < 0.05, `${k}: parallax depth ${depth} (texture units)`);
@@ -133,12 +137,12 @@ test('shading tables: parallax depth, grain, the mip variance and the weathering
   const G = surf.DET_CELLS;
   assert.deepEqual([...G.subarray(surf.DET.brick * 4, surf.DET.brick * 4 + 3)], [5, 16, 0.5]);
   assert.equal(G[surf.DET.slab * 4], 1);
-  for (let i = 0; i < L; i++) if (G[i * 4 + 3] > 0) assert.ok(G[i * 4] >= 1 && G[i * 4 + 1] >= 1, `layer ${i} cells`);
+  for (let i = 0; i < surf.DET_COUNT; i++) if (G[i * 4 + 3] > 0) assert.ok(G[i * 4] >= 1 && G[i * 4 + 1] >= 1, `layer ${i} cells`);
 });
 
 test('tile breaking: each layer\'s shift maps its elements onto themselves', () => {
   const S = surf.DET_SHIFT, G = surf.DET_CELLS;
-  assert.equal(S.length, L * 2);
+  assert.equal(S.length, surf.DET_COUNT * 2);
   const whole = (v) => Math.abs(v - Math.round(v)) < 1e-4;
   for (const [k, id] of Object.entries(surf.DET)) {
     const su = S[id * 2], sv = S[id * 2 + 1];

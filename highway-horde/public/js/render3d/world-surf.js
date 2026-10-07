@@ -20,11 +20,15 @@
 // own GPU texture from it. 256² layers are generated synchronously (world-surf-gen.js has the
 // recipes); the cinematic tier regenerates them at 512² in a worker (world-surf-worker.js), or
 // where workers are missing (the one-file build, Node) in slices of a few ms spread over frames.
+//
+// On 'high' and up the baked texture library (world-surf-bake.js, public/textures/) replaces these
+// layers once it has loaded; the procedural array stays bound for the weathering's noise fields
+// (layer 23) and as the fallback.
 
 import * as THREE from 'three';
-import { DET, DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT, generateLayers, generateSteps, cachedLayers, keepLayers, genStats, now } from './world-surf-gen.js';
+import { DET, DET_LAYERS, DET_COUNT, DET_BASE, DET_NAMES, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT, generateLayers, generateSteps, cachedLayers, keepLayers, genStats, now } from './world-surf-gen.js';
 
-export { DET, DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT };
+export { DET, DET_LAYERS, DET_COUNT, DET_BASE, DET_NAMES, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT };
 
 const LAYERS = DET_LAYERS;
 

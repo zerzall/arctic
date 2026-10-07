@@ -58,6 +58,10 @@ try {
   // (software GL: a big level takes minutes to build and up to a minute a frame; SHOT_TIMEOUT in ms overrides)
   const limit = Number(process.env.SHOT_TIMEOUT || 600000);
   await page.waitForFunction(() => window.__fps && window.__fps.renderer, null, { timeout: limit });
+  // (the baked texture library loads after the world is built: wait for it, or for its failure)
+  await page.waitForFunction(() => !window.__hhTextures || window.__hhTextures.state !== 'loading', null, { timeout: limit });
+  const tex = await page.evaluate(() => window.__hhTextures || null);
+  if (tex) console.log('textures:', tex.state, tex.info ? `${tex.info.layers} sets at ${tex.info.size}², ${(tex.info.bytes / 1e6).toFixed(0)} MB, ${tex.ms} ms` : tex.error || '');
   for (const v of views.length ? views : [null]) {
     const view = v && v.startsWith('{') ? JSON.parse(v) : v;
     if (view) await page.evaluate((x) => window.__fps.setView(x), view);

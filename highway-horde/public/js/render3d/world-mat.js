@@ -27,7 +27,8 @@
 // program and a mesh created later hits the program cache.
 
 import * as THREE from 'three';
-import { DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT } from './world-surf.js';
+import { DET_LAYERS, DET_COUNT, DET_TILE } from './world-surf.js';
+import { createDetailUniforms } from './world-surf-bake.js';
 
 const DETAIL_VERT_PARS = `
 attribute vec3 aDet;
@@ -216,19 +217,27 @@ vec3 hhRoom(vec2 uv, vec2 sz, vec3 d, float rid, float lamp, float amb, float tm
 const glslList = (a) => Array.from(a, (v) => (Math.round(v * 1e5) / 1e5).toFixed(5)).join(', ');
 
 const DETAIL_FRAG_PARS = `
-// per layer: tile size (world units) and the shift that maps its structure onto itself (tiles)
-const float hhTile[${DET_LAYERS}] = float[${DET_LAYERS}](${glslList(DET_TILE)});
-const vec2 hhShift[${DET_LAYERS}] = vec2[${DET_LAYERS}](${Array.from({ length: DET_LAYERS }, (_, i) => `vec2(${glslList(DET_SHIFT.subarray(i * 2, i * 2 + 2))})`).join(', ')});
+// per surface id: tile size (world units)
+const float hhTile[${DET_COUNT}] = float[${DET_COUNT}](${glslList(DET_TILE)});
+// D slices (procedural: normal / roughness / albedo; baked: normal / roughness / tint-metal), C slices
+// (procedural: hue / desaturation / height; baked: albedo / height), the procedural array (its layer 23:
+// the weathering's noise fields), the per-surface table (world-surf-bake.js) and the path flag
 uniform highp sampler2DArray uDetail;
+uniform highp sampler2DArray uDetailC;
+uniform highp sampler2DArray uDetailP;
+uniform highp sampler2D uDetTab;
+uniform float uDetBaked;
 uniform float uDetN;
-uniform vec4 uDetP[${DET_LAYERS}];
-uniform vec4 uDetG[${DET_LAYERS}];
 uniform vec4 uDetQ;
 varying vec3 vDet;
 varying vec2 vSurf;
+vec4 hhTab(int id, int row) { return texelFetch(uDetTab, ivec2(id, row), 0); }
 vec4 hhD;
 vec4 hhC = vec4(0.5, 0.5, 0.0, 0.5);
 vec4 hhP = vec4(0.0);
+vec4 hhM = vec4(0.5);
+float hhTone = 1.0, hhHue = 0.0, hhMetal = 0.0;
+bool hhHas = false;
 vec2 hhUv;
 float hhFlip = 1.0;
 float hhLod = 0.0;
@@ -247,7 +256,7 @@ float hhSelfShadow(vec3 L) {
   vec2 duv = Lt.xy / Lt.z * dh * hhPdG;
   float occ = 0.0;
   for (int k = 1; k <= 6; k++) {
-    float h = textureGrad(uDetail, vec3(hhUvG + duv * float(k), hhClG), hhDxG, hhDyG).a;
+    float h = textureGrad(uDetailC, vec3(hhUvG + duv * float(k), hhClG), hhDxG, hhDyG).a;
     occ = max(occ, (h - (hhH0 + dh * float(k))) * (1.0 - float(k) / 7.0));
   }
   return 1.0 - clamp(occ * 7.0, 0.0, 0.8);
@@ -288,30 +297,36 @@ const DETAIL_COLOR_GLSL = `
   vec2 hhDx = dFdx(vDet.xy), hhDy = dFdy(vDet.xy);
   mat3 hhTbn = hhTangentFrame(-vViewPosition, normalize(vNormal), vDet.xy);
   hhUv = vDet.xy;
-  if (vDet.z > 0.5 && !hhPane) {
-    float hhL = floor(vDet.z + 0.5);
-    hhP = uDetP[int(hhL)];
+  bool hhBk = uDetBaked > 0.5;
+  int hhId = int(floor(vDet.z + 0.5));
+  vec4 hhS = vec4(-1.0);
+  if (vDet.z > 0.5 && !hhPane) hhS = hhTab(hhId, 2);
+  if (hhS.x >= 0.0) {
+    hhHas = true;
+    // the surface's D and C slices (the table: the procedural layer, or the baked set's slot)
+    float hhL = hhS.x, hhCl = hhS.y;
+    hhP = hhTab(hhId, 0);
+    hhM = hhTab(hhId, 3);
     vec3 hhUp = (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
     hhFlip = dot(hhTbn[1], hhUp) < -0.05 ? -1.0 : 1.0;
     hhUv.y *= hhFlip;
     hhDx.y *= hhFlip; hhDy.y *= hhFlip;
     float hhDist = length(vViewPosition);
     hhLod = log2(max(max(length(hhDx), length(hhDy)) * float(textureSize(uDetail, 0).x), 1e-4));
-    float hhCl = hhL + ${DET_LAYERS}.0;
     // a planar world position (one oblique projection: seamless round corners, needs no normal).
     // World space, not the layer's: a facade of repeated modules restarts the layer on each one
     vec3 hhW = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
     vec2 hhQw = hhW.xz + hhW.y * vec2(0.61, -0.47);
     // tile breaking: over patches of the world under a tile across, the layer is shown moved by
-    // none, one or two of its self-mapping shifts (whole bricks, boards, ribs: hhShift), so a peel,
-    // stain or knot does not come back tile after tile and the joints still line up. The copy that
+    // none, one or two of its self-mapping shifts (whole bricks, boards, ribs), so a peel, stain or
+    // knot does not come back tile after tile and the joints still line up. The copy that
     // dominates goes through the parallax; its neighbour is blended in across the patch edges. hhOff
     // undoes the move for everything tied to the elements themselves (their tones, the second-scale
     // copy, the grain)
-    vec2 hhSh = hhShift[int(hhL)], hhOff = vec2(0.0);
+    vec2 hhSh = hhS.zw, hhOff = vec2(0.0);
     float hhSw = 0.0;
     if (hhSh.x + hhSh.y > 0.0) {
-      float n = texture(uDetail, vec3(hhQw / (hhTile[int(hhL)] * 6.0) + 0.29, 23.0)).g;
+      float n = texture(uDetailP, vec3(hhQw / (hhTile[hhId] * 6.0) + 0.29, 23.0)).g;
       float f = smoothstep(0.42, 0.47, n) + smoothstep(0.53, 0.58, n);
       float i = floor(f + 0.5), fr = f - i;
       hhOff = hhSh * i;
@@ -330,57 +345,83 @@ const DETAIL_COLOR_GLSL = `
       float lay = 1.0 / steps;
       vec2 uvC = hhUv, uvP = hhUv;
       float dC = 0.0, dP = 0.0;
-      float hC = 1.0 - textureGrad(uDetail, vec3(uvC, hhCl), hhDx, hhDy).a, hP = hC;
+      float hC = 1.0 - textureGrad(uDetailC, vec3(uvC, hhCl), hhDx, hhDy).a, hP = hC;
       for (int k = 0; k < 32; k++) {
         if (float(k) >= steps || dC >= hC) break;
         uvP = uvC; dP = dC; hP = hC;
         uvC -= dUv; dC += lay;
-        hC = 1.0 - textureGrad(uDetail, vec3(uvC, hhCl), hhDx, hhDy).a;
+        hC = 1.0 - textureGrad(uDetailC, vec3(uvC, hhCl), hhDx, hhDy).a;
       }
       float after = hC - dC, before = hP - dP;
       float w = after / min(after - before, -1e-5);
       hhUv = mix(uvC, uvP, clamp(w, 0.0, 1.0));
     }
     hhD = textureGrad(uDetail, vec3(hhUv, hhL), hhDx, hhDy);
-    hhC = textureGrad(uDetail, vec3(hhUv, hhCl), hhDx, hhDy);
+    hhC = textureGrad(uDetailC, vec3(hhUv, hhCl), hhDx, hhDy);
     if (hhSw > 0.0) {
       hhD = mix(hhD, textureGrad(uDetail, vec3(hhUv + hhSh, hhL), hhDx, hhDy), hhSw);
-      hhC = mix(hhC, textureGrad(uDetail, vec3(hhUv + hhSh, hhCl), hhDx, hhDy), hhSw);
+      hhC = mix(hhC, textureGrad(uDetailC, vec3(hhUv + hhSh, hhCl), hhDx, hhDy), hhSw);
     }
     hhUvG = hhUv; hhDxG = hhDx; hhDyG = hhDy; hhTbnG = hhTbn; hhClG = hhCl; hhPdG = hhPd; hhH0 = hhC.a;
     vec2 hhUe = hhUv - hhOff;
     // elements (bricks, slabs, shingles): a tone and a hue of their own from their place in the world
-    vec4 hhG = uDetG[int(hhL)];
+    vec4 hhG = hhTab(hhId, 1);
     if (hhG.w > 0.0) {
       vec2 cu = hhUe * hhG.xy;
       float row = floor(cu.y);
       vec2 cell = vec2(floor(cu.x + hhG.z * mod(row, 2.0)), row);
       float e1 = hhCell(cell), e2 = hhCell(cell + vec2(71.0, 13.0));
-      hhD.a *= 1.0 + (e1 - 0.5) * hhG.w * 2.0;
-      hhC.r += (e2 - 0.5) * hhG.w * 0.3;
+      if (hhBk) { hhTone *= 1.0 + (e1 - 0.5) * hhG.w * 2.0; hhHue += (e2 - 0.5) * hhG.w * 0.3; }
+      else { hhD.a *= 1.0 + (e1 - 0.5) * hhG.w * 2.0; hhC.r += (e2 - 0.5) * hhG.w * 0.3; }
     } else if (hhG.w < 0.0) {
       // an organic layer: its own albedo and roughness again, 3.4x larger and turned, over the tile
       vec2 q = vec2(hhUe.x * 0.8 - hhUe.y * 0.6, hhUe.x * 0.6 + hhUe.y * 0.8) * 0.294 + 0.43;
-      vec4 s2 = texture(uDetail, vec3(q, hhL));
-      hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
-      hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
+      if (hhBk) {
+        vec4 s2 = texture(uDetailC, vec3(q, hhCl));
+        float r2 = dot(s2.rgb, vec3(0.2126, 0.7152, 0.0722)) / max(dot(hhM.rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+        hhTone *= clamp(1.0 + (r2 - 1.0) * -hhG.w * 0.5, 0.6, 1.4);
+        hhD.b -= (texture(uDetail, vec3(q, hhL)).b - hhM.w) * hhG.w * 0.5;
+      } else {
+        vec4 s2 = texture(uDetail, vec3(q, hhL));
+        hhD.a *= 1.0 - (s2.a - 0.5) * hhG.w * 1.2;
+        hhD.b -= (s2.b - 0.5) * hhG.w * 0.6;
+      }
     }
     // the layer's markings (peeled paint, stains, burnt bricks) fade in and out over the world on a
     // period of ~300 units, so a long wall never shows the same blotch at the same strength
     {
-      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetail, vec3(hhQw / 300.0 + 0.17, 23.0)).r));
-      hhD.a = 0.5 + (hhD.a - 0.5) * k;
-      hhC.rgb = vec3(0.5, 0.5, 0.0) + (hhC.rgb - vec3(0.5, 0.5, 0.0)) * k;
+      float k = mix(0.25, 1.3, smoothstep(0.32, 0.68, texture(uDetailP, vec3(hhQw / 300.0 + 0.17, 23.0)).r));
+      if (hhBk) hhC.rgb = hhM.rgb + (hhC.rgb - hhM.rgb) * mix(1.0, k, 0.4);
+      else {
+        hhD.a = 0.5 + (hhD.a - 0.5) * k;
+        hhC.rgb = vec3(0.5, 0.5, 0.0) + (hhC.rgb - vec3(0.5, 0.5, 0.0)) * k;
+      }
     }
-    // fine grain close to the eye: at 4K the layer alone was magnified ~5x there
-    float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y;
+    // fine grain close to the eye: at 4K the layer alone was magnified there (less on the baked
+    // sets, which carry their own grain)
+    float hhNear = (1.0 - smoothstep(70.0, 260.0, hhDist)) * hhP.y * (hhBk ? 0.35 : 1.0);
     if (hhNear > 0.0) {
-      vec4 m = texture(uDetail, vec3(hhUe * 6.7 + 0.31, 23.0 + ${DET_LAYERS}.0));
+      vec4 m = texture(uDetailP, vec3(hhUe * 6.7 + 0.31, 23.0 + ${DET_LAYERS}.0));
       hhD.xy += (m.xy - 0.5) * 0.5 * hhNear;
-      hhD.a *= 1.0 + (m.b - 0.5) * 0.3 * hhNear;
+      if (hhBk) hhTone *= 1.0 + (m.b - 0.5) * 0.3 * hhNear; else hhD.a *= 1.0 + (m.b - 0.5) * 0.3 * hhNear;
     }
   }
-  {
+  if (hhBk && hhHas) {
+    // the baked set's colour: where it takes the tint (paint, a brick's body) the object's own colour
+    // replaces the set's mean colour, texel for texel; elsewhere (rust, mortar, bare wood) the set's
+    // colour stays, a little darker or lighter with the object's
+    vec3 c = diffuseColor.rgb;
+    float tm = hhD.a;
+    float tnt = clamp(tm * 2.0 - 1.0, 0.0, 1.0);
+    hhMetal = clamp(1.0 - tm * 2.0, 0.0, 1.0);
+    vec3 A = hhC.rgb;
+    vec3 ratio = clamp(c / max(hhM.rgb, vec3(0.004)), 0.0, 8.0);
+    float lv = dot(c, vec3(0.2126, 0.7152, 0.0722)), lm = dot(hhM.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 un = A * mix(1.0, clamp(lv / max(lm, 1e-3), 0.3, 2.5), 0.45);
+    c = mix(un, A * ratio, tnt) * hhTone;
+    c *= vec3(1.0 + hhHue, 1.0, 1.0 - hhHue);
+    diffuseColor.rgb = c;
+  } else {
     // the layer's colour: desaturate (mortar, bare metal, ash), shift the hue, scale the brightness
     vec3 c = diffuseColor.rgb;
     c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), hhC.b);
@@ -401,16 +442,16 @@ const WEATHER_GLSL = `
 {
   vec3 hhWp = cameraPosition + (vec4(-vViewPosition, 0.0) * viewMatrix).xyz;
   vec3 hhWn = normalize((vec4(vNormal, 0.0) * viewMatrix).xyz);
-  float cls = vDet.z > 0.5 && vDet.z < 50.0 ? hhP.w : 0.0;
+  float cls = hhHas ? hhP.w : 0.0;
   float nY = hhWn.y;
   float horiz = step(0.6, abs(nY));
   bool alongX = abs(hhWn.x) <= abs(hhWn.z);
   vec2 pw = horiz > 0.5 ? hhWp.xz : (alongX ? hhWp.xy : hhWp.zy);
   float along = horiz > 0.5 ? hhWp.x : (alongX ? hhWp.x : hhWp.z);
-  vec4 m1 = texture(uDetail, vec3(pw / 230.0, 23.0));
-  vec4 m2 = texture(uDetail, vec3(pw / 57.0 + 0.31, 23.0));
-  vec4 m0 = texture(uDetail, vec3(pw / 900.0 + 0.57, 23.0));
-  float st = texture(uDetail, vec3(along / 66.0, hhWp.y / 340.0, 23.0)).b;
+  vec4 m1 = texture(uDetailP, vec3(pw / 230.0, 23.0));
+  vec4 m2 = texture(uDetailP, vec3(pw / 57.0 + 0.31, 23.0));
+  vec4 m0 = texture(uDetailP, vec3(pw / 900.0 + 0.57, 23.0));
+  float st = texture(uDetailP, vec3(along / 66.0, hhWp.y / 340.0, 23.0)).b;
   float wall = 1.0 - smoothstep(0.35, 0.7, abs(nY));
   float cMason = hhIs(cls, 1.0);
   float cMetal = min(1.0, hhIs(cls, 2.0) + step(0.45, vSurf.y));
@@ -492,9 +533,12 @@ export function setDetailTier(tier) {
   const q = DETAIL_Q[tier] || DETAIL_Q.high;
   DETAIL_TIER.value.set(q[0], q[1], q[2], q[3]);
 }
-/** The per-layer parameters uniform (world-surf.js DET_PARAMS, filled in when the layers are generated). */
-const DETAIL_PARAMS = { value: DET_PARAMS };
-const DETAIL_CELLS = { value: DET_CELLS };
+/** Fallback detail uniforms for a material patched with a `shared` that predates the baked library. */
+let FALLBACK = null;
+function fallbackDetail(shared) {
+  if (!FALLBACK) FALLBACK = createDetailUniforms(shared.uDetail ? shared.uDetail.value : null);
+  return FALLBACK.uniforms;
+}
 
 /**
  * Patch a MeshStandard/Physical material to read the per-vertex surface attributes.
@@ -510,10 +554,13 @@ export function patchDetail(mat, shared, key, opts = {}) {
   const prevKey = prev ? mat.customProgramCacheKey() + '|' : '';
   mat.onBeforeCompile = function (sh, renderer) {
     if (prev) prev.call(this, sh, renderer);
+    const fb = shared.uDetTab ? null : fallbackDetail(shared);
     sh.uniforms.uDetail = shared.uDetail;
+    sh.uniforms.uDetailC = shared.uDetailC || shared.uDetail;
+    sh.uniforms.uDetailP = shared.uDetailP || shared.uDetail;
+    sh.uniforms.uDetTab = shared.uDetTab || fb.uDetTab;
+    sh.uniforms.uDetBaked = shared.uDetBaked || fb.uDetBaked;
     sh.uniforms.uDetN = shared.uDetN;
-    sh.uniforms.uDetP = DETAIL_PARAMS;
-    sh.uniforms.uDetG = DETAIL_CELLS;
     sh.uniforms.uDetQ = DETAIL_TIER;
     if (rooms) {
       sh.uniforms.uRoomAmb = shared.uRoomAmb;
@@ -545,7 +592,8 @@ export function patchDetail(mat, shared, key, opts = {}) {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         if (vSurf.x >= 0.0 && !hhPane) roughnessFactor = vSurf.x;
         // floor 0.14: nothing on the map is a mirror under a light carried at the eye
-        roughnessFactor = clamp(roughnessFactor + (hhD.b - 0.5) * 0.9, 0.14, 1.0);
+        // (a baked set's roughness is absolute: half of it, half the object's own varied by the set)
+        roughnessFactor = clamp(hhBk && hhHas ? mix(roughnessFactor + (hhD.b - hhM.w), hhD.b, 0.5) : roughnessFactor + (hhD.b - 0.5) * 0.9, 0.14, 1.0);
         roughnessFactor = mix(roughnessFactor, 0.86, hhRust * 0.8);
         roughnessFactor = mix(roughnessFactor, 0.97, hhDirt);
         // the normal detail the mips average away turns into roughness (no glossy far walls, no sparkle)
@@ -553,12 +601,13 @@ export function patchDetail(mat, shared, key, opts = {}) {
         ${rooms ? 'if (hhPane) roughnessFactor = 0.14;' : ''}`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         if (vSurf.y >= 0.0 && !hhPane) metalnessFactor = vSurf.y;
+        metalnessFactor = mix(metalnessFactor, 1.0, hhMetal);   // (a baked set's bare metal: scratches, worn tops)
         metalnessFactor *= 1.0 - hhRust * 0.92;
         ${rooms ? 'if (hhPane) metalnessFactor = 0.28;' : ''}
         // brushed metal: roughness varies along the grain (a stretched highlight, no smooth mirror)
         {
-          float hhBrush = texture(uDetail, vec3(vDet.x * 2.6, vDet.y * 0.06, 23.0)).b;
-          roughnessFactor += (hhBrush - 0.5) * 0.36 * step(0.5, metalnessFactor) * step(0.5, vDet.z) * (1.0 - step(50.0, vDet.z));
+          float hhBrush = texture(uDetailP, vec3(vDet.x * 2.6, vDet.y * 0.06, 23.0)).b;
+          roughnessFactor += (hhBrush - 0.5) * 0.36 * step(0.5, metalnessFactor) * step(0.5, vDet.z) * (1.0 - step(99.5, vDet.z));
         }
         // bare chrome square to the flashlight threw it straight back into the eye as a
         // blooming glare: polished metal gets a higher floor than paint or glass
@@ -723,21 +772,23 @@ function coverageLeaves(m, key) {
  */
 export function createWorldMaterials(tex) {
   const uniforms = { uTime: { value: 0 }, uRoomK: { value: 1 } };
-  const shared = { uDetail: { value: tex.detail }, uDetN: { value: 0.95 }, uRoomAmb: { value: 0.05 } };
+  // (the detail uniforms: world-surf-bake.js createDetailUniforms, shared with the ground)
+  const du = tex.detailUniforms ? tex.detailUniforms.uniforms : createDetailUniforms(tex.detail).uniforms;
+  const shared = { ...du, uDetN: { value: 0.95 }, uRoomAmb: { value: 0.05 } };
   const all = [];
   const track = (m) => { all.push(m); return m; };
 
   const hi = {
-    std: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.7 }), shared, 'hh-std-v3')),
+    std: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.7 }), shared, 'hh-std-v4')),
     paint: track(patchDetail(new THREE.MeshPhysicalMaterial({
       // the flashlight sits at the eye: its specular peak on a near-mirror coat came straight
       // back into the camera as a blooming glare (a white disc on the bus at the crosshair),
       // so the coat is glossy, not a mirror
       vertexColors: true, roughness: 0.42, metalness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.22, envMapIntensity: 1.1,
-    }), shared, 'hh-paint-v3', { paint: true })),
+    }), shared, 'hh-paint-v4', { paint: true })),
     // glass: mostly Fresnel + the probe; low metalness keeps the flashlight's reflection
     // off camera-facing panes from blowing out. Panes show a dim interior-mapped room.
-    glass: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.16, metalness: 0.32, envMapIntensity: 2.6 }), shared, 'hh-glass-v3', { weather: false, rooms: true })),
+    glass: track(patchDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.16, metalness: 0.32, envMapIntensity: 2.6 }), shared, 'hh-glass-v4', { weather: false, rooms: true })),
     vglass: track(vglassMaterial()),
     decal: track(new THREE.MeshStandardMaterial({ vertexColors: true, map: tex.atlas, roughness: 0.55, metalness: 0.05, envMapIntensity: 0.8 })),
     // graffiti and stains: the atlas blended over the wall (its alpha), just off the surface
