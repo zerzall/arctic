@@ -20,6 +20,9 @@
 // gap, width scale), uDay (1 in daylight: no cold rim outline).
 
 import { T_COL4, T_COL5, T_HAIR } from './actor-consts.js';
+import { FACE_FRAME as FF, SKIN_TILE, CLOTH_TILE, SCALP_TILE, GRIME_TILE, WOUND_Q } from './actor-ztex.js';
+
+const f1 = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 
 /** Declarations and helpers (fragment shader, after actor-rigmat's own head). */
 export const Z_HEAD = /* glsl */`
@@ -158,11 +161,12 @@ export const Z_CUTS = /* glsl */`
   }
 `;
 
-/** Per-material shading of a zombie (replaces actor-rigmat's survivor chain). */
-export const Z_SHADE = /* glsl */`
+// the per-material shading of a zombie, in pieces (the baked-texture variant swaps the skin and
+// cloth branches: actor-ztex.js / Z_SHADE_TEX below)
+const SHADE_PRE = /* glsl */`
   zCav = hhM == 0 ? zRelief(vMP, hhPart).y * 0.2 : 0.0;
-  if (hhM == 0) {
-    vec3 c = diffuseColor.rgb;
+`;
+const SKIN_PROC = /* glsl */`    vec3 c = diffuseColor.rgb;
     float m = hhD.r;
     float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(c, vec3(lum), 0.16);
@@ -197,8 +201,8 @@ export const Z_SHADE = /* glsl */`
     // dead skin: barely any light gets under it
     hhSSS = 0.22; hhSSSCol = vec3(0.3, 0.26, 0.24);
     zSpec = 0.5;
-  } else if (hhM == 1 || hhM == 2) {
-    vec3 c = diffuseColor.rgb;
+`;
+const CLOTH_PROC = /* glsl */`    vec3 c = diffuseColor.rgb;
     int pat = (hhPart == 1 || hhPart == 2 || hhPart == 18) ? int(v1.w + 0.5) : ((hhPart == 3 || hhPart == 4 || hhPart == 19 || hhPart == 21) ? int(v2.x + 0.5) : 0);
     if (pat > 0) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
     if (shirtFront) {
@@ -241,7 +245,8 @@ export const Z_SHADE = /* glsl */`
     // fibres: a soft grazing sheen (full on cinematic, lighter on ultra, none below)
     zSheen = uCin > 0.5 ? 1.0 : uZLite > 0.5 ? 0.0 : 0.6;
     zSheenCol = c * 0.6 + 0.004;
-  } else if (hhM == 3 || hhM == 10) {
+`;
+const SHADE_REST = /* glsl */`  } else if (hhM == 3 || hhM == 10) {
     diffuseColor.rgb *= 0.78 + hhD.r * 0.3;
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.5, 0.42), hhD.b * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.45, 0.4, 0.32), smoothstep(12.0, 1.0, vMP.y) * 0.5);
@@ -293,6 +298,9 @@ export const Z_SHADE = /* glsl */`
   }
 `;
 
+/** Per-material shading of a zombie (replaces actor-rigmat's survivor chain). */
+export const Z_SHADE = SHADE_PRE + '  if (hhM == 0) {\n' + SKIN_PROC + '  } else if (hhM == 1 || hhM == 2) {\n' + CLOTH_PROC + SHADE_REST;
+
 /** Blood (replaces the base): the paint mask plus the bib from the mouth; fresh vs dried. */
 export const Z_BLOOD = /* glsl */`
   float bib = 0.0;
@@ -330,6 +338,9 @@ export const Z_ROUGH = /* glsl */`
   else if (hhM == 12) roughnessFactor = 0.05;
   else if (hhM == 13) roughnessFactor = 0.09;
   else if (hhM == 14) roughnessFactor = 0.38 + hhD.b * 0.3;
+#ifdef HH_ZTEX
+  if (zRoughT >= 0.0) roughnessFactor = zRoughT;
+#endif
   roughnessFactor = mix(roughnessFactor, 0.15, hhWet);
   roughnessFactor = mix(roughnessFactor, 0.97, max(hhChar, zDry * 0.85));
   zSpec = mix(zSpec, 1.0, hhWet);`;
@@ -378,3 +389,321 @@ export const Z_SPEC = /* glsl */`
   material.specularColor *= zSpec;
   material.specularColorBlended *= zSpec;
   material.specularF90 = mix(0.35, 1.0, zSpec);`;
+
+// ---------------------------------------------------------------------------------------------
+// The baked texture sets (actor-ztex.js) on high and up: `#define HH_ZTEX` swaps the skin and cloth
+// branches above for these, maps the sets by triplanar projection in rest-pose model space
+// (vMP, the rest normal vMN: a texture sticks to the body as it moves) and the faces by a front
+// projection on the head's anchors, and lays the baked normals through a per-plane screen-space
+// frame. The procedural pieces that depend on where a texel is on the body (lividity, mud from
+// the feet, blood soaking down from the collar, sweat under the arms) threshold the grime set's
+// masks, so their edges are tide-lined and ragged instead of smooth gradients.
+
+/** Declarations and helpers (fragment shader, after Z_HEAD and the layout's samplers). */
+export const Z_TEX_HEAD = /* glsl */`
+uniform vec4 uZTex;    // x the special's skin layer (−1: by decay stage), y 1 on the spitter, z tile scale, w 1 on the bloater
+uniform vec4 uZFace;   // this type's face anchors (unit head coordinates): eye z, eye y, mouth y, chin y
+uniform vec4 uZHead;   // the head's radii (model units)
+varying vec3 vMN;
+vec3 zW = vec3(0.0);
+vec2 zNP[3];
+vec3 zDpx = vec3(0.0), zDpy = vec3(0.0), zDEx = vec3(0.0), zDEy = vec3(0.0);
+float zRoughT = -1.0;
+const vec3 ZLUMA = vec3(0.2126, 0.7152, 0.0722);
+// sRGB → linear (a cubic fit, good to 8 bits)
+vec3 zLin(vec3 c) { return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878); }
+vec3 zTriW(vec3 n) {
+  vec3 w = n * n;
+  w *= w;
+  w /= max(1e-5, w.x + w.y + w.z);
+  w = max(w - 0.06, 0.0);
+  return w / max(1e-5, w.x + w.y + w.z);
+}
+// triplanar look-up (p in tiles, k tiles per model unit for the gradients); every plane has its
+// own offset so the planes do not repeat each other
+vec4 zTri(highp sampler2DArray s, float L, vec3 p, float k, vec2 off) {
+  vec4 c = vec4(0.0);
+  if (zW.x > 0.0) c += zW.x * textureGrad(s, vec3(p.zy + off, L), zDpx.zy * k, zDpy.zy * k);
+  if (zW.y > 0.0) c += zW.y * textureGrad(s, vec3(p.xz + off + vec2(0.37, 0.61), L), zDpx.xz * k, zDpy.xz * k);
+  if (zW.z > 0.0) c += zW.z * textureGrad(s, vec3(p.xy + off + vec2(0.71, 0.29), L), zDpx.xy * k, zDpy.xy * k);
+  return c;
+}
+// the same, and the layer's normal (xy, or zw when zw) blended into each plane's accumulator by mk
+vec4 zTriN(highp sampler2DArray s, float L, vec3 p, float k, vec2 off, float amt, bool zw, float mk) {
+  vec4 c = vec4(0.0), t;
+  if (zW.x > 0.0) { t = textureGrad(s, vec3(p.zy + off, L), zDpx.zy * k, zDpy.zy * k); c += zW.x * t; zNP[0] = mix(zNP[0], ((zw ? t.zw : t.xy) * 2.0 - 1.0) * amt, mk); }
+  if (zW.y > 0.0) { t = textureGrad(s, vec3(p.xz + off + vec2(0.37, 0.61), L), zDpx.xz * k, zDpy.xz * k); c += zW.y * t; zNP[1] = mix(zNP[1], ((zw ? t.zw : t.xy) * 2.0 - 1.0) * amt, mk); }
+  if (zW.z > 0.0) { t = textureGrad(s, vec3(p.xy + off + vec2(0.71, 0.29), L), zDpx.xy * k, zDpy.xy * k); c += zW.z * t; zNP[2] = mix(zNP[2], ((zw ? t.zw : t.xy) * 2.0 - 1.0) * amt, mk); }
+  return c;
+}
+// a tangent-space normal through the screen-space frame of a planar projection (st0 / st1: the
+// projection's uv per screen pixel)
+vec3 zPerturb2(vec3 N, vec2 st0, vec2 st1, vec2 nxy) {
+  vec3 q1p = cross(zDEy, N), q0p = cross(N, zDEx);
+  vec3 T = q1p * st0.x + q0p * st1.x;
+  vec3 Bt = q1p * st0.y + q0p * st1.y;
+  float det = max(dot(T, T), dot(Bt, Bt));
+  float s = det == 0.0 ? 0.0 : inversesqrt(det);
+  float l = length(nxy);
+  if (l > 0.95) nxy *= 0.95 / l;
+  float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
+  return normalize(T * (nxy.x * s) + Bt * (nxy.y * s) + N * nz);
+}
+// unit head coordinates of a rest-pose point (x forward, y up, z right)
+vec3 zHeadQ(vec3 p) { return vec3((p.x - uBody2.x) / uZHead.x, (p.y - uBody2.y) / uZHead.y, p.z / uZHead.z); }
+// the face frame was painted on the walker's anchors: stretch this type's onto them
+float zFaceYk(float uy) { return uy > uZFace.z ? (${f1(FF.EY)} - (${f1(FF.MY)})) / (uZFace.y - uZFace.z) : (${f1(FF.MY)} - (${f1(FF.CY)})) / (uZFace.z - uZFace.w); }
+float zFaceY(float uy) { return uy > uZFace.z ? ${f1(FF.EY)} + (uy - uZFace.y) * zFaceYk(uy) : ${f1(FF.MY)} + (uy - uZFace.z) * zFaceYk(uy); }
+// the face set at a head point → false outside the frame
+bool zFaceAt(float face, vec3 q, out vec4 A, out vec4 B) {
+  float kz = ${f1(FF.EZ)} / uZFace.x, ky = zFaceYk(q.y);
+  vec2 uv = vec2((q.z * kz - (${f1(FF.Z0)})) / ${f1(FF.SPAN)}, (zFaceY(q.y) - (${f1(FF.Y0)})) / ${f1(FF.SPAN)});
+  A = vec4(0.0); B = vec4(0.5, 0.5, 0.6, 0.0);
+  // (outside the frame, or on the eye spots in its bottom corners)
+  if (uv.x < 0.01 || uv.x > 0.99 || uv.y < 0.01 || uv.y > 0.995 || (uv.y < 0.15 && abs(uv.x - 0.5) > 0.33)) return false;
+  vec2 gx = vec2(zDpx.z / uZHead.z * kz, zDpx.y / uZHead.y * ky) / ${f1(FF.SPAN)};
+  vec2 gy = vec2(zDpy.z / uZHead.z * kz, zDpy.y / uZHead.y * ky) / ${f1(FF.SPAN)};
+  A = textureGrad(ZS_faceA, vec3(uv, ZB_faceA + face), gx, gy);
+  B = textureGrad(ZS_faceB, vec3(uv, ZB_faceB + face), gx, gy);
+  return true;
+}
+// an eye: its painted spot in the face frame, in eye-local coordinates (x outward, y up)
+vec4 zEyeAt(float face, vec3 q) {
+  float sd = q.z < 0.0 ? -1.0 : 1.0;
+  float kz = ${f1(FF.EZ)} / uZFace.x, ky = zFaceYk(q.y);
+  vec2 l = vec2((q.z * kz - sd * ${f1(FF.EZ)}) * sd / ${f1(FF.EYE_RZ)}, (zFaceY(q.y) - ${f1(FF.EY)}) / ${f1(FF.EYE_RY)});
+  float ll = length(l);
+  if (ll > 1.1) l *= 1.1 / ll;
+  vec2 spot = sd < 0.0 ? vec2(${f1(FF.SPOT_L[0])}, ${f1(FF.SPOT_L[1])}) : vec2(${f1(FF.SPOT_R[0])}, ${f1(FF.SPOT_R[1])});
+  vec2 uv = spot + l * ${f1(FF.SPOT_R0)};
+  float g = ${f1(FF.SPOT_R0)} / ${f1(FF.EYE_RZ)};
+  vec2 gx = vec2(zDpx.z / uZHead.z * kz * sd, zDpx.y / uZHead.y * ky) * g;
+  vec2 gy = vec2(zDpy.z / uZHead.z * kz * sd, zDpy.y / uZHead.y * ky) * g;
+  return textureGrad(ZS_faceA, vec3(uv, ZB_faceA + face), gx, gy);
+}
+// a wound from the atlas, projected along the dominant axis of the rest normal; its normal goes
+// into that plane's accumulator (age = rot dries it)
+void zWoundTex(vec4 W, float stage, float age, inout vec3 col, inout float rough, inout float wet) {
+  if (W.w <= 0.0) return;
+  float type = floor(W.w / 8.0), r = W.w - type * 8.0;
+  vec3 dv = (vMP - W.xyz) / r;
+  vec3 an = abs(vMN);
+  vec2 q, gx, gy;
+  int pl;
+  if (an.x >= an.y && an.x >= an.z) { q = dv.zy; gx = zDpx.zy; gy = zDpy.zy; pl = 0; }
+  else if (an.y >= an.z) { q = dv.xz; gx = zDpx.xz; gy = zDpy.xz; pl = 1; }
+  else { q = dv.xy; gx = zDpx.xy; gy = zDpy.xy; pl = 2; }
+  if (abs(q.x) > ${f1(WOUND_Q)} || abs(q.y) > ${f1(WOUND_Q)}) return;
+  // gashes: on the long dead some are maggot-pocked rot, some a torn flap
+  float cell = type;
+  float hs = fract(sin(dot(W.xyz, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+  if (type < 0.5) cell = stage > 1.5 && hs < 0.55 ? 6.0 : hs > 0.6 ? 7.0 : 0.0;
+  vec2 k = vec2(0.98 / (2.0 * ${f1(WOUND_Q)} * r)) / vec2(4.0, 2.0);
+  vec2 uv = (vec2(mod(cell, 4.0), floor(cell / 4.0)) + 0.5) / vec2(4.0, 2.0) + q * r * k;
+  vec4 A = textureGrad(ZS_woundA, vec3(uv, ZB_woundA), gx * k, gy * k);
+  vec4 B = textureGrad(ZS_woundB, vec3(uv, ZB_woundB), gx * k, gy * k);
+  float cov = A.a;
+  if (cov <= 0.0) return;
+  float dry = age * 0.55;
+  col = mix(col, zLin(A.rgb), cov);
+  rough = mix(rough, mix(B.z, max(B.z, 0.72), dry), cov);
+  wet = max(wet, B.w * cov * (1.0 - dry));
+  zNP[pl] = mix(zNP[pl], B.xy * 2.0 - 1.0, cov);
+}
+`;
+
+/** The setup of the textured shading (top level, before the material branches: the derivatives). */
+const TEX_PRE = /* glsl */`
+  zDpx = dFdx(vMP); zDpy = dFdy(vMP);
+  zDEx = dFdx(-vViewPosition); zDEy = dFdy(-vViewPosition);
+  zNP[0] = vec2(0.0); zNP[1] = vec2(0.0); zNP[2] = vec2(0.0);
+  zW = vec3(0.0);
+  float zCode = floor(hhT(${T_COL4}).w / 2.0);
+  float zFace = mod(zCode, 6.0);
+  float zStage = floor(zFace / 2.0);
+  float zSeed = hhT(${T_HAIR}).w;
+  vec2 zOff = fract(vec2(zSeed * 0.3719, zSeed * 0.6133));
+  vec4 zG = vec4(0.0);
+  zCav = 0.0;
+`;
+
+/** Skin: the stage (or the special's) set, the person's tone, the face, the scalp, wounds, lividity, mud. */
+const SKIN_TEX = /* glsl */`
+    zW = zTriW(vMN);
+    float kS = 1.0 / (${f1(SKIN_TILE)} * uZTex.z);
+    vec4 A, B;
+    if (uZTex.x >= 0.0) {
+      A = zTri(ZS_specA, ZB_specA + uZTex.x, vMP * kS, kS, zOff);
+      B = zTriN(ZS_specB, ZB_specB + uZTex.x, vMP * kS, kS, zOff, 1.0, false, 1.0);
+    } else {
+      A = zTri(ZS_skinA, ZB_skinA + zStage, vMP * kS, kS, zOff);
+      B = zTriN(ZS_skinB, ZB_skinB + zStage, vMP * kS, kS, zOff, 1.0, false, 1.0);
+    }
+    // the person's own skin tone: its lightness and a share of its hue (the decay colours stay)
+    float tl = max(0.004, dot(tSkin.rgb, ZLUMA));
+    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.3) * clamp(tl / 0.33, 0.12, 1.2);
+    vec3 c = zLin(A.rgb) * toneK * mix(vec3(1.0), baseCol * 1.12, 0.75);
+    float rough = B.z, wet = 0.0, thick = A.a;
+    float ao = B.w;
+    if (hhPart == 17) {
+      vec3 q = zHeadQ(vMP);
+      // the face: the head skin in front (and under the chin)
+      float front = smoothstep(0.0, 0.35, vMN.x + max(0.0, -vMN.y) * step(q.y, uZFace.z) * 0.6) * step(-0.25, q.x);
+      vec4 FA, FB;
+      if (front > 0.0 && zFaceAt(zFace, q, FA, FB)) {
+        float fk = FA.a * front;
+        vec3 fc = zLin(FA.rgb);
+        fc = mix(fc * toneK, fc, FB.w);
+        c = mix(c, fc, fk);
+        rough = mix(rough, FB.z, fk);
+        wet = max(wet, smoothstep(0.4, 0.12, FB.z) * fk * FB.w);
+        zNP[0] = mix(zNP[0], FB.xy * 2.0 - 1.0, fk);
+        thick = mix(thick, thick * 0.6, fk);
+      }
+      // an ear torn off on the faces that lost one (d, f): the left ear's outer part is gone
+      if ((zFace > 2.5 && zFace < 3.5 || zFace > 4.5) && q.z < -0.9 && q.x > -0.5 && q.x < 0.4 && q.y > -0.5 && q.y < 0.6
+          && dot(q, q) > 1.02 + (hhD.r - 0.5) * 0.08) discard;
+      // the scalp: thinning, matted hair over grey skin on the top and back of the head
+      float line = mix(0.62, -0.35, smoothstep(0.15, -0.65, q.x));
+      float hm = smoothstep(line - 0.05, line + 0.12, q.y);
+      if (hm > 0.0) {
+        float kH = 1.0 / ${f1(SCALP_TILE)};
+        vec4 SA = zTri(ZS_scalpA, ZB_scalpA, vMP * kH, kH, zOff);
+        vec3 hc = hhT(${T_HAIR}).rgb * (0.4 + SA.r * 1.4);
+        c = mix(c, mix(zLin(SA.rgb) * toneK, hc, SA.a * 0.9), hm);
+        rough = mix(rough, 0.6, hm * SA.a);
+      }
+    }
+    // wounds from the atlas (the cloth over them is torn away)
+    zWoundTex(wA, zStage, rot, c, rough, wet);
+    zWoundTex(wB, zStage, rot, c, rough, wet);
+    // lividity: blood settled low in the legs and the hands, purple-red (less on the long dead)
+    float liv = smoothstep(17.0, 1.0, vMP.y) * 0.7 + (hhPart == 5 ? 0.45 : 0.0);
+    c = mix(c, c * vec3(0.66, 0.42, 0.55), clamp(liv, 0.0, 1.0) * 0.55 * (1.0 - zStage * 0.3));
+    // mud and grime from the feet up and on the hands, ragged (the grime set's mask)
+    float gk = 1.0 / ${f1(GRIME_TILE)};
+    zG = zTri(ZS_grimeA, ZB_grimeA, vMP * gk, gk, zOff);
+    float mudT = clamp(smoothstep(22.0, 1.0, vMP.y) * 0.85 + (hhPart == 5 ? 0.45 : 0.0), 0.0, 1.0);
+    float mud = smoothstep(1.0 - mudT, 1.12 - mudT, zG.g);
+    c = mix(c, vec3(0.045, 0.036, 0.026) + c * 0.3, mud * 0.8);
+    rough = mix(rough, 0.95, mud);
+    // the spitter: throat and chest stained green-yellow by what it brings up
+    if (uZTex.y > 0.5) {
+      vec3 dq = vMP - vec3(uBody2.x + 1.2, uBody.z + 2.0, 0.0);
+      float th = exp(-dot(dq * vec3(0.6, 0.18, 0.45), dq * vec3(0.6, 0.18, 0.45))) * smoothstep(-1.0, 1.5, vMP.x);
+      float st = smoothstep(1.0 - th, 1.1 - th, zG.r);
+      c = mix(c, c * vec3(0.92, 1.05, 0.42) * 1.2 + vec3(0.02, 0.025, 0.0), st * 0.8);
+      rough = mix(rough, 0.42, st * 0.6);
+    }
+    diffuseColor.rgb = c * mix(1.0, ao, 0.45);
+    zRoughT = rough;
+    hhWet = max(hhWet, wet);
+    // subsurface: a faint cold wrap through fresh, thin skin; nothing through the desiccated; the
+    // bloater's stretched skin glows a sick yellow-green
+    hhSSS = thick * 0.32;
+    hhSSSCol = uZTex.w > 0.5 ? vec3(0.44, 0.46, 0.26) : vec3(0.3, 0.33, 0.38);
+    zSpec = mix(0.45, 1.0, smoothstep(0.4, 0.12, rough));
+`;
+
+/** Cloth: the zombie's fabric, then holes, blood from the collar, mud from the hem, sweat stains. */
+const CLOTH_TEX = /* glsl */`
+    vec3 c = diffuseColor.rgb;
+    bool topG = hhPart == 1 || hhPart == 2 || hhPart == 18;
+    bool botG = hhPart == 3 || hhPart == 4 || hhPart == 19 || hhPart == 21;
+    float fab = botG ? floor(zCode / 66.0) : mod(floor(zCode / 6.0), 11.0);
+    zW = zTriW(vMN);
+    float kC = 1.0 / ${f1(CLOTH_TILE)};
+    vec4 T = zTriN(ZS_cloth, ZB_cloth + fab, vMP * kC, kC, zOff, 0.9, true, 1.0);
+    int pat = (hhPart == 1 || hhPart == 2 || hhPart == 18) ? int(v1.w + 0.5) : ((hhPart == 3 || hhPart == 4 || hhPart == 19 || hhPart == 21) ? int(v2.x + 0.5) : 0);
+    // (plaid, camo and prints are woven into their fabrics; pinstripes, hi-vis bands, stripes and grease stay painted)
+    if (pat == 1 || pat == 4 || pat == 6 || pat == 7) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
+    if (shirtFront) { c = baseCol * vec3(0.4, 0.39, 0.36); c *= mix(1.0, 0.35, lapelK); }
+    float rel = T.x * 2.0;
+    c *= rel;
+    float lum = dot(c, ZLUMA);
+    c = mix(c, vec3(lum * 1.35 + 0.02) * vec3(1.02, 1.0, 0.95), T.y * 0.7);
+    // seams down the sides, a button placket
+    if (hhPart == 1 || hhPart == 18) c *= 1.0 - 0.28 * smoothstep(0.16, 0.03, abs(vMP.x - 0.1)) * step(2.4 * uBody2.w, abs(vMP.z));
+    else if (botG) c *= 1.0 - 0.25 * smoothstep(0.16, 0.03, abs(vMP.x - 0.3)) * step(uBody2.z + 0.4, abs(vMP.z));
+    // the grime set: masks and the crust, and the holes torn in the garment
+    float gk = 1.0 / ${f1(GRIME_TILE)};
+    zG = zTri(ZS_grimeA, ZB_grimeA, vMP * gk, gk, zOff);
+    float W = max(0.5, uBody2.w);
+    float fresh = clamp(1.0 - rot * 1.25, 0.0, 1.0);
+    // blood soaked down from the collar and the front of a top (and dripping below it)
+    float neckY = uBody.z + 1.2;
+    float soakH = 3.0 + blood * 24.0;
+    float frontK = smoothstep(-0.8, 2.2, vMP.x) * smoothstep(5.5 * W, 1.0 * W, abs(vMP.z));
+    float soakT = topG ? clamp(1.0 - (neckY - vMP.y) / soakH, 0.0, 1.0) * (0.3 + 0.7 * frontK) * smoothstep(0.15, 0.45, blood) : 0.0;
+    float sk = soakT > 0.0 ? smoothstep(1.0 - soakT, 1.06 - soakT, zG.r) : 0.0;
+    float tide = soakT > 0.0 ? smoothstep(0.97 - soakT, 1.0 - soakT, zG.r) * (1.0 - sk) : 0.0;
+    float drip = topG ? zG.a * clamp(1.0 - (neckY - vMP.y) / (soakH * 1.9), 0.0, 1.0) * frontK * blood : 0.0;
+    sk = max(sk, smoothstep(0.25, 0.6, drip));
+    vec3 bc = mix(vec3(0.04, 0.014, 0.009), vec3(0.085, 0.008, 0.006), fresh);
+    c = mix(c, bc * (0.7 + rel * 0.3), sk * 0.92);
+    c = mix(c, c * vec3(0.5, 0.36, 0.32), tide * 0.75);
+    // mud from the hem up, caked on the knees; a top's lower edge picks some up too
+    float kn = botG ? exp(-pow((vMP.y - 15.6) / 2.4, 2.0)) * smoothstep(-0.5, 1.2, vMP.x) * 0.6 : 0.0;
+    float mudT = clamp((botG ? smoothstep(32.0, 2.0, vMP.y) : smoothstep(v1.x + 9.0, v1.x, vMP.y) * 0.45) + kn, 0.0, 1.0);
+    float md = smoothstep(1.0 - mudT, 1.1 - mudT, zG.g);
+    c = mix(c, vec3(0.05, 0.04, 0.028) + c * 0.25, md * 0.85);
+    // sweat and body fluids: under the arms, down the back, seeping through from the rot
+    float pits = exp(-pow((vMP.y - (uBody.z - 3.2)) / 2.6, 2.0)) * smoothstep(3.0 * W, 5.0 * W, abs(vMP.z));
+    float backK = smoothstep(0.5, -2.0, vMP.x) * smoothstep(uBody.x, uBody.z, vMP.y) * 0.45;
+    float flT = clamp((topG ? pits + backK : 0.0) + rot * 0.22, 0.0, 1.0);
+    float fl = smoothstep(1.0 - flT, 1.08 - flT, zG.b);
+    c = mix(c, c * vec3(0.6, 0.55, 0.34), fl * 0.6);
+    // holes: opened wider the more torn the clothes (frayed, dirty rims)
+    vec4 GB = zTriN(ZS_grimeB, ZB_grimeB, vMP * gk, gk, zOff, 1.0, false, clamp(max(sk * (1.0 - fresh * 0.6), md) * 0.85, 0.0, 1.0));
+    float th = 1.02 - tear * 0.5;
+    if (GB.w > th) discard;
+    c *= mix(1.0, 0.45, smoothstep(th - 0.1, th, GB.w));
+    diffuseColor.rgb = c;
+    float rough = mix(0.93, 0.74, sk * (1.0 - fresh));
+    rough = mix(rough, 0.3, sk * fresh);
+    rough = mix(rough, 0.97, md);
+    zRoughT = rough;
+    hhWet = max(hhWet, sk * fresh * 0.55);
+    zSpec = 0.28;
+    zSheen = uCin > 0.5 ? 1.0 : 0.6;
+    zSheenCol = c * 0.6 + 0.004;
+`;
+
+/**
+ * After the material branches: the eyes from their painted spots, the face's blood on the lips,
+ * gums and teeth, the hair shell thinned to matted clumps.
+ */
+const TEX_POST = /* glsl */`
+  if ((hhM == 7 || hhM == 13) && hhEyeK > 0.05) {
+    vec4 E = zEyeAt(zFace, zHeadQ(vMP));
+    diffuseColor.rgb = zLin(E.rgb) * (hhM == 13 ? 0.95 : 0.85);
+  } else if (hhM == 6 || hhM == 14) {
+    vec3 q = zHeadQ(vMP);
+    vec4 FA, FB;
+    if (dot(q, q) < 1.7 && q.x > -0.1 && zFaceAt(zFace, q, FA, FB)) {
+      float fk = FA.a * (hhM == 14 ? FB.w : 1.0);
+      diffuseColor.rgb = mix(diffuseColor.rgb, zLin(FA.rgb) * mix(0.9, 1.0, FB.w), fk);
+      hhWet = max(hhWet, smoothstep(0.4, 0.12, FB.z) * fk * FB.w);
+    }
+  } else if (hhM == 5 && hhPart != 9) {
+    zW = zTriW(vMN);
+    float kH = 1.0 / ${f1(SCALP_TILE)};
+    vec4 SA = zTri(ZS_scalpA, ZB_scalpA, vMP * kH, kH, zOff + 0.5);
+    if (SA.a < 0.1 + rot * 0.18) discard;
+    diffuseColor.rgb *= 0.55 + SA.r * 1.1;
+    zW = vec3(0.0);
+  }
+`;
+
+/** The zombie shading with the baked sets (replaces Z_SHADE under HH_ZTEX). */
+export const Z_SHADE_TEX = TEX_PRE + '  if (hhM == 0) {\n' + SKIN_TEX + '  } else if (hhM == 1 || hhM == 2) {\n' + CLOTH_TEX + SHADE_REST + TEX_POST;
+
+/** Normals with the baked sets: the per-plane accumulators through each plane's frame; else the detail map. */
+export const Z_TEX_NORMAL = /* glsl */`
+  if (zW.x + zW.y + zW.z > 0.0) {
+    vec3 N0 = normal, acc = vec3(0.0);
+    if (zW.x > 0.0) acc += zW.x * (zPerturb2(N0, zDpx.zy, zDpy.zy, zNP[0]) - N0);
+    if (zW.y > 0.0) acc += zW.y * (zPerturb2(N0, zDpx.xz, zDpy.xz, zNP[1]) - N0);
+    if (zW.z > 0.0) acc += zW.z * (zPerturb2(N0, zDpx.xy, zDpy.xy, zNP[2]) - N0);
+    normal = normalize(N0 + acc);
+  } else ` + Z_NORMAL_DETAIL.trimStart();

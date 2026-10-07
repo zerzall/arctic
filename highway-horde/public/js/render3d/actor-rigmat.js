@@ -24,7 +24,8 @@ import * as THREE from 'three';
 import {
   T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3,
 } from './actor-consts.js';
-import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC, Z_SHEEN } from './actor-zmat.js';
+import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC, Z_SHEEN, Z_TEX_HEAD, Z_SHADE_TEX, Z_TEX_NORMAL } from './actor-zmat.js';
+import { ztexGLSL } from './actor-ztex.js';
 
 const RIG_VERT_HEAD = /* glsl */`
 uniform highp sampler2D uRigTex;
@@ -464,14 +465,21 @@ export function makeMaterials(shared, opts = {}) {
     uniforms.uBody2 = { value: new THREE.Vector4(...Z.body2) };
     uniforms.uDay = Z.day || { value: 0 };
     uniforms.uZLite = Z.lite || { value: 0 };
+    // the baked texture sets (actor-ztex.js): the arrays are shared by the pool, the rest per mesh
+    if (Z.ztex) Object.assign(uniforms, Z.ztex.uniforms);
+    uniforms.uZTex = { value: new THREE.Vector4(Z.special ?? -1, Z.spitter ? 1 : 0, Z.tileK || 1, Z.bloater ? 1 : 0) };
+    uniforms.uZFace = { value: new THREE.Vector4(...(Z.face || [0.266, 0.074, -0.325, -0.985])) };
+    uniforms.uZHead = { value: new THREE.Vector4(...(Z.head || [3.35, 3.85, 2.8]), 0) };
   }
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
   const skinned = 'rigP = vec3(dot(r0, p), dot(r1, p), dot(r2, p));';
   const vhead = Z ? RIG_VERT_HEAD.replace(skinned, skinned + Z_SWAY) : RIG_VERT_HEAD;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
+    // zombies on high and up, once their texture arrays are in (the define keys the program)
+    const zt = Z && Z.ztex && Z.ztex.state.layout && mat.defines && mat.defines.HH_ZTEX !== undefined ? Z.ztex.state.layout : null;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + vhead + VARYINGS)
+      .replace('#include <common>', '#include <common>\n' + vhead + VARYINGS + (Z ? 'varying vec3 vMN;\n' : ''))
       .replace('#include <beginnormal_vertex>', /* glsl */`
   rigSkin();
   vRow = rigRow;
@@ -482,18 +490,18 @@ export function makeMaterials(shared, opts = {}) {
   {
     vec4 hair = rigT(${T_HAIR});
     vI = vec4(aInfo.z, aInfo.w, aExt.y, aInfo.y);
-    vMP = position;
+    vMP = position;${Z ? '\n    vMN = normal;' : ''}
     vDUv = uv + vec2(fract(hair.w * 0.3719), fract(hair.w * 0.6133));
   }`)
       .replace('#include <begin_vertex>', 'vec3 transformed = rigP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
     let frag = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FRAG_HEAD + (Z ? Z_HEAD : ''))
+      .replace('#include <common>', '#include <common>\n' + FRAG_HEAD + (Z ? Z_HEAD : '') + (zt ? ztexGLSL(zt) + Z_TEX_HEAD : ''))
       .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment, !!Z))
-      .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + COLOR_CLOTH + (Z ? Z_SHADE : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
+      .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + COLOR_CLOTH + (Z ? (zt ? Z_SHADE_TEX : Z_SHADE) : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
       .replace('#include <roughnessmap_fragment>', Z ? Z_ROUGH : ROUGH_BASE)
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
-      .replace('#include <normal_fragment_maps>', Z ? Z_NORMAL_DETAIL + Z_NORMAL : NORMAL_BASE);
+      .replace('#include <normal_fragment_maps>', Z ? (zt ? Z_TEX_NORMAL : Z_NORMAL_DETAIL) + Z_NORMAL : NORMAL_BASE);
     if (Z) frag = frag.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n' + Z_SPEC);
     sh.fragmentShader = frag
       .replace('#include <emissivemap_fragment>', /* glsl */`
