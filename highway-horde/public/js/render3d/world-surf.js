@@ -22,9 +22,9 @@
 // where workers are missing (the one-file build, Node) in slices of a few ms spread over frames.
 
 import * as THREE from 'three';
-import { DET, DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT, generateLayers, generateSteps, cachedLayers, keepLayers, genStats, now } from './world-surf-gen.js';
+import { DET, DET_LAYERS, DET_COUNT, DET_BASE, DET_NAMES, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT, generateLayers, generateSteps, cachedLayers, keepLayers, genStats, now } from './world-surf-gen.js';
 
-export { DET, DET_LAYERS, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT };
+export { DET, DET_LAYERS, DET_COUNT, DET_BASE, DET_NAMES, DET_TILE, DET_PARAMS, DET_CELLS, DET_SHIFT };
 
 const LAYERS = DET_LAYERS;
 
