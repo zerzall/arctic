@@ -1,0 +1,80 @@
+name: Highway Horde
+
+on:
+  push:
+    paths:
+      - "highway-horde/**"
+      - ".github/workflows/highway-horde.yml"
+  pull_request:
+    paths:
+      - "highway-horde/**"
+      - ".github/workflows/highway-horde.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # (~16 min as a rule: the end-to-end run alone is ~12; room for a slow Chromium download)
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: highway-horde
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: highway-horde/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Starts the relay server and a local PeerJS server, then plays solo, relay
+      # multiplayer, late join, peer-to-peer and phone games in headless Chromium.
+      - name: End-to-end tests
+        run: npm run e2e
+
+      - name: Upload e2e screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: highway-horde-e2e-output
+          path: highway-horde/e2e-output
+          if-no-files-found: ignore
+
+  # The whole game as one HTML file (textures embedded, ~650 MB), to download from the run's
+  # page and open in a browser. Only after the tests pass, and not twice for a PR's pushes.
+  game:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: highway-horde
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: highway-horde/package-lock.json
+
+      - run: npm ci
+
+      - name: Build the one-file game
+        run: npm run standalone
+
+      - name: Upload the game
+        uses: actions/upload-artifact@v4
+        with:
+          name: Highway-Horde-game
+          path: highway-horde/dist/Highway-Horde.html
+          if-no-files-found: error
+          retention-days: 30

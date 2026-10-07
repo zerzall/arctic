@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actors 3D Sandbox</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>
+  :root { color-scheme: dark; --panel: rgba(16,19,24,0.86); --text: #d8dee6; --muted: #8a96a3; --accent: #ffb74d; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070a; color: var(--text); font: 12px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #hud { position: fixed; top: 8px; left: 8px; background: var(--panel); border-radius: 6px; padding: 8px 10px; max-width: calc(100vw - 16px); z-index: 5; }
+  #hud .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  #stats { font: 11px ui-monospace, monospace; color: var(--muted); white-space: pre; }
+  button, select { font: inherit; background: #0d1014; color: var(--text); border: 1px solid #333b45; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  body.shot #hud { display: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="stats">loading…</div>
+  <div class="row">
+    <select id="mode" aria-label="Scene">
+      <option value="lineup">lineup (every zombie + flags)</option>
+      <option value="horde">horde (fixture scene, 250 zombies)</option>
+      <option value="team">teammates + items</option>
+      <option value="guns">viewmodel cycle</option>
+      <option value="fx">effects showcase</option>
+      <option value="closeup">close-up (?types=&amp;anim=)</option>
+      <option value="gallery">gallery (?types=&amp;n=&amp;cols=&amp;start=)</option>
+    </select>
+    <button id="quality">quality: high</button>
+    <button id="weapon">next weapon</button>
+    <button id="pause">pause</button>
+  </div>
+  <div class="row" style="color:var(--muted)">drag to look · WASD move · 1-9 weapons · F fire · ?ctx=stub forces the stub renderer · ?q=ultra|high|low · ?studio=1 inspection light (stub)</div>
+</div>
+<script type="module" src="./actors3d-sandbox.js"></script>
+</body>
+</html>
