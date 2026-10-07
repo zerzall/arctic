@@ -5,7 +5,7 @@
 
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
+import { register, createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -225,7 +225,12 @@ test('the loader falls back: no WebGL 2, no library, a broken file — it reject
   du.dispose();
 });
 
-test('the one-file build embeds the texture library: its manifest and every file, after the game\'s code', () => {
+// (the build needs esbuild, a dev dependency of highway-horde: the repository root's own test run
+// collects this file without highway-horde's packages installed)
+let esbuildOk = true;
+try { createRequire(import.meta.url).resolve('esbuild'); } catch { esbuildOk = false; }
+
+test('the one-file build embeds the texture library: its manifest and every file, after the game\'s code', { skip: !esbuildOk && 'esbuild is not installed' }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'hh-onefile-'));
   try {
     const lib = path.join(dir, 'textures');
