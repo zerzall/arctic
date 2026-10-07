@@ -46,3 +46,34 @@ jobs:
           name: highway-horde-e2e-output
           path: highway-horde/e2e-output
           if-no-files-found: ignore
+
+  # The whole game as one HTML file (textures embedded, ~650 MB), to download from the run's
+  # page and open in a browser. Only after the tests pass, and not twice for a PR's pushes.
+  game:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: highway-horde
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: highway-horde/package-lock.json
+
+      - run: npm ci
+
+      - name: Build the one-file game
+        run: npm run standalone
+
+      - name: Upload the game
+        uses: actions/upload-artifact@v4
+        with:
+          name: Highway-Horde-game
+          path: highway-horde/dist/Highway-Horde.html
+          if-no-files-found: error
+          retention-days: 30
