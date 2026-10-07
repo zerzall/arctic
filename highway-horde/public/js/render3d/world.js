@@ -34,6 +34,7 @@ import { createLevelArt, levelBuckets } from './levels/index.js';
 import { createGates } from './gates3d.js';
 import { createRoofs } from './roofs3d.js';
 import { createIndoor, patchIndoor, patchIndoorTree } from './indoor.js';
+import { createDecals } from './decals.js';
 import { nearestSection } from '../shared/level.js';
 import { terrainHeight } from '../shared/terrain.js';
 import { baseTier } from './tier.js';
@@ -486,6 +487,22 @@ export function createWorld(ctx, deps) {
     }
   }
 
+  // ---- the decal library (decals.js): graffiti, posters, signs, blood and grime on the surfaces ----
+  let decals = null;
+  const makeDecals = () => {
+    try {
+      decals = createDecals(ctx, {
+        root, tier: full, gy, maxAniso, patchIndoor: indoor ? patchIndoor : null,
+        // (a wall under a roof reaches the ceiling)
+        heightOf: (o) => { const top = obstacleHeight(o.kind, o); const c = roofs ? roofs.ceilingAt(o.x, o.y) : 0; return c > 0 ? Math.max(top, c) : top; },
+      });
+    } catch (err) {
+      console.warn('world: decals failed', err);
+      decals = null;
+    }
+  };
+  makeDecals();
+
   // ---- water ----
   const waterNormal = track(makeWaterNormal());
   waterNormal.repeat.set(1, 1);
@@ -699,6 +716,7 @@ export function createWorld(ctx, deps) {
     if (dress) { dress.cull(cam); dress.update(view, frame); }
     if (hideout) hideout.update(view, frame);
     if (level) level.update(view, frame);
+    if (decals) decals.update();
     sky.position.copy(cam.position);
     sky.userData.updateGlow(cam.position.x, cam.position.z);
     // points sizing: drawing-buffer pixels per world unit at distance 1
@@ -807,6 +825,7 @@ export function createWorld(ctx, deps) {
       if (level) level.setQuality(full);
       if (gates) gates.setQuality(tier);
       if (roofs) roofs.setQuality(tier);
+      if (decals) { decals.dispose(); makeDecals(); }
       if (indoor) {
         indoor.setSunK(tier === 'low' ? 1 : 0.35);
         patchIndoorTree(ground.group);
@@ -820,13 +839,17 @@ export function createWorld(ctx, deps) {
         staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
         grass: grass.instances, detail512,
         dress: dress ? dress.stats : null,
+        decals: decals ? decals.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
           obstacles: Math.round(tObsMs), decor: Math.round(tDecMs), treeLine: Math.round(tTlMs), flora: Math.round(tFloraMs),
         },
       };
     },
+    /** The decal layer (decals.js) or null. */
+    get decals() { return decals; },
     dispose() {
+      if (decals) decals.dispose();
       if (hideout) hideout.dispose();
       if (level) level.dispose();
       if (gates) gates.dispose();
