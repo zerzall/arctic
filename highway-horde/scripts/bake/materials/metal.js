@@ -258,8 +258,8 @@ export const METAL = [
       for (let i = 0; i < m.NN; i++) { m.set(i, vary([0.22, 0.2, 0.19], 0.9 + fine[i] * 0.2)); m.h[i] = 0.5; m.metal[i] = 0.6; m.rough[i] = 0.55; m.tint[i] = 0.1; }
       const rf = fbm(N, { p: 5, oct: 7, seed: seed + 2, gain: 0.6 });
       const rustM = field(N);
-      for (let i = 0; i < m.NN; i++) rustM[i] = smooth(0.3, 0.55, rf[i]);
-      applyRust(m, rustM, { seed: seed + 3, lift: 0.03, age: -0.05 });
+      for (let i = 0; i < m.NN; i++) rustM[i] = smooth(0.38, 0.62, rf[i]);
+      applyRust(m, rustM, { seed: seed + 3, lift: 0.03, age: 0.25 });
       const scuff = scratchField(N, seed + 4, 900, { dirs: [0, Math.PI], spread: 0.08, len: 220, w: 1.6 });
       const oil = blotch(N, { p: 4, oct: 6, seed: seed + 5, t: 0.6, e: 0.08 }).mask;
       for (let i = 0; i < m.NN; i++) {

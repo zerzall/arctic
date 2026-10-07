@@ -334,9 +334,9 @@ export const MASONRY = [
       const coat = fbm(N, { p: 5, oct: 6, seed: seed + 4 });
       const er = fbm(N, { p: 2, oct: 7, seed: seed + 5, gain: 0.6 });
       const stone = voronoi(N, 10, 14, seed + 6, { jitter: 0.8 });
-      const ochre = hex('#cfae78'), rose = hex('#c99a7a'), limeC = hex('#efe9dc'), stoneC = hex('#b49a70');
+      const ochre = hex('#cfae78'), rose = hex('#c99a7a'), limeC = hex('#efe9dc'), stoneC = hex('#c2a982');
       for (let i = 0; i < m.NN; i++) {
-        const eroded = smooth(0.74, 0.77, er[i]);
+        const eroded = smooth(0.8, 0.83, er[i]);
         const old = vary(coat[i] > 0.53 ? rose : ochre, 0.95 + sk[i] * 0.1);
         const lime = vary(limeC, 0.96 + (brush[i] - 0.5) * 0.12 + (sk[i] - 0.5) * 0.06);
         const thin = smooth(0.35, 0.65, brush[i] * 0.6 + coat[i] * 0.4);

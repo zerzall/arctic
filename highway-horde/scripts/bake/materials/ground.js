@@ -470,7 +470,7 @@ export const GROUND = [
         const curl = smooth(m.mm(60), m.mm(12), e) * (1 - crack);
         const fine = (1 - smooth(m.mm(1), m.mm(4), v2.edge[i])) * (1 - crack) * smooth(0.4, 0.6, v2.id[i]);
         m.h[i] += curl * 0.18 - crack * 0.55 - fine * 0.12 + (v.id[i] - 0.5) * 0.06;
-        m.mul(i, (1 + (v.id[i] - 0.5) * 0.1 + curl * 0.08) * (1 - crack * 0.65 - fine * 0.3));
+        m.mul(i, (1 + (v.id[i] - 0.5) * 0.06 + curl * 0.03) * (1 - crack * 0.45 - fine * 0.2));
         m.mix(i, [0.82, 0.76, 0.66], smooth(0.5, 0.75, dust[i]) * 0.3 * (1 - crack));
         m.tint[i] *= 1 - crack * 0.8;
       }
