@@ -36,8 +36,8 @@ export const ZT_SETS = [
 /** The special infected with their own skin: type → index into the spec class. */
 export const SPECIAL = { bloater: 0, spitter: 1, brute: 2, screamer: 3, boss: 4 };
 
-/** Model units per texture tile (scripts/zbake: skin 20, cloth 16). */
-export const SKIN_TILE = 20, CLOTH_TILE = 16, SCALP_TILE = 12, GRIME_TILE = 30;
+/** Model units per texture tile (1 unit = 3 cm: a skin tile spans 33 cm, a fabric 48 cm). */
+export const SKIN_TILE = 11, CLOTH_TILE = 16, SCALP_TILE = 10, GRIME_TILE = 18;
 /** The face frame (scripts/zbake/face.js FACE / EYE_SPOT): canonical anchors, extent, eye spots. */
 export const FACE_FRAME = { EZ: 0.266, EY: 0.074, MY: -0.325, CY: -0.985, Z0: -1.1, Y0: -1.25, SPAN: 2.2, EYE_RZ: 0.162, EYE_RY: 0.1143, SPOT_L: [0.075, 0.075], SPOT_R: [0.925, 0.075], SPOT_R0: 0.065 };
 /** Wound atlas: 4 × 2 cells, a cell spans ±WOUND_Q wound radii. */
@@ -126,6 +126,7 @@ export function ztexFileURL(file) {
 // PNG decoding (8-bit, non-interlaced; grey, grey+alpha, RGB, RGBA)
 
 async function inflate(bytes) {
+  // (also stringified into the decode worker: keep it self-contained)
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
@@ -247,11 +248,67 @@ export function packLayer(out, offset, size, kind, part, maps) {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Load a tier's sets and build its texture arrays (one at a time, yielding between files so a
- * frame never waits long). Resolves { layout, textures: [DataArrayTexture], bytes, ms } or null
- * when anything is missing or fails (the caller keeps the procedural shading).
+ * Decode a set's three maps and pack every layer that wants them: [{ size, part }] → one
+ * Uint8Array (size² RGBA) per use. Runs in the decode worker, or here when there is none.
+ */
+async function decodeSet(kind, uses, files) {
+  const maps = {};
+  for (const k of ['albedo', 'normal', 'pack']) maps[k] = await decodePNG(new Uint8Array(files[k]));
+  const out = [];
+  for (const u of uses) {
+    const m = { albedo: fit(maps.albedo, u.size), normal: fit(maps.normal, u.size), pack: fit(maps.pack, u.size) };
+    const buf = new Uint8Array(u.size * u.size * 4);
+    packLayer(buf, 0, u.size, kind, u.part, m);
+    out.push(buf);
+  }
+  return out;
+}
+
+// The decode worker: the functions above, as source (no imports: they are self-contained), in a
+// blob, so the one-file build has it too. The PNG inflate and the packing never touch the main thread.
+const WORKER_SRC = () => [inflate, decodePNG, halve, grow, fit, packLayer, decodeSet].map(String).join('\n') + `
+self.onmessage = async (e) => {
+  const { id, kind, uses, files } = e.data;
+  try { const out = await ${decodeSet.name}(kind, uses, files); self.postMessage({ id, out }, out.map((b) => b.buffer)); }
+  catch (err) { self.postMessage({ id, error: String((err && err.message) || err) }); }
+};`;
+
+function makeDecoder() {
+  let w = null;
+  try {
+    if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
+      const url = URL.createObjectURL(new Blob([WORKER_SRC()], { type: 'text/javascript' }));
+      w = new Worker(url);
+      URL.revokeObjectURL(url);
+    }
+  } catch { w = null; }
+  if (!w) return { run: (kind, uses, files) => decodeSet(kind, uses, files), close() {}, worker: false };
+  let n = 0;
+  const wait = new Map();
+  let broken = null;
+  w.onmessage = (e) => { const m = e.data, p = wait.get(m.id); if (!p) return; wait.delete(m.id); if (m.error) p.reject(new Error(m.error)); else p.resolve(m.out); };
+  w.onerror = (e) => { broken = new Error((e && e.message) || 'decode worker failed'); for (const p of wait.values()) p.reject(broken); wait.clear(); };
+  return {
+    worker: true,
+    run(kind, uses, files) {
+      if (broken) return decodeSet(kind, uses, files);
+      return new Promise((resolve, reject) => {
+        const id = ++n;
+        wait.set(id, { resolve, reject });
+        w.postMessage({ id, kind, uses, files }, Object.values(files));
+      }).catch(() => decodeSet(kind, uses, files));
+    },
+    close() { w.terminate(); },
+  };
+}
+
+/**
+ * Load a tier's sets and build its texture arrays: the files are fetched here, decoded and
+ * packed in a worker (or here, a set at a time with breaks between), then uploaded once.
+ * Resolves { layout, textures: [DataArrayTexture], bytes, ms, worker } or null when anything is
+ * missing or fails (the caller keeps the procedural shading).
  * @param {string} tier
- * @param {{ anisotropy?: number, fetch?: Function, signal?: { gone: boolean } }} [opts]
+ * @param {{ anisotropy?: number, fetch?: Function, signal?: { gone: boolean }, worker?: boolean }} [opts]
  */
 export async function loadZombieTextures(tier, opts = {}) {
   const layout = ztexLayout(tier);
@@ -259,6 +316,7 @@ export async function loadZombieTextures(tier, opts = {}) {
   const doFetch = opts.fetch || (typeof fetch === 'function' ? fetch : null);
   if (!doFetch || typeof DecompressionStream === 'undefined') return null;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const dec = opts.worker === false ? { run: decodeSet, close() {}, worker: false } : makeDecoder();
   try {
     const kinds = new Map(ZT_SETS);
     const datas = layout.groups.map((g) => new Uint8Array(g.size * g.size * 4 * g.layers.length));
@@ -268,19 +326,26 @@ export async function loadZombieTextures(tier, opts = {}) {
       if (!want.has(s)) want.set(s, []);
       want.get(s).push({ gi, li, part: CLASSES[c].part, size: g.size });
     }));
-    for (const [set, uses] of want) {
-      if (opts.signal && opts.signal.gone) return null;
-      const maps = {};
+    const getFiles = async (set) => {
+      const files = {};
       for (const k of ['albedo', 'normal', 'pack']) {
         const res = await doFetch(ztexFileURL(`${set}-${k}.png`));
         if (!res || !res.ok) throw new Error(`no ${set}-${k}.png`);
-        maps[k] = await decodePNG(new Uint8Array(await res.arrayBuffer()));
-        await tick();
+        files[k] = await res.arrayBuffer();
       }
-      for (const u of uses) {
-        const m = { albedo: fit(maps.albedo, u.size), normal: fit(maps.normal, u.size), pack: fit(maps.pack, u.size) };
-        packLayer(datas[u.gi], u.li * u.size * u.size * 4, u.size, kinds.get(set), u.part, m);
-      }
+      return files;
+    };
+    // (two sets in flight: one decoding while the next downloads)
+    const sets = [...want.keys()];
+    const ahead = (set) => { const p = getFiles(set); p.catch(() => {}); return p; };
+    let pending = ahead(sets[0]);
+    for (let i = 0; i < sets.length; i++) {
+      if (opts.signal && opts.signal.gone) return null;
+      const files = await pending;
+      if (i + 1 < sets.length) pending = ahead(sets[i + 1]);
+      const uses = want.get(sets[i]);
+      const out = await dec.run(kinds.get(sets[i]), uses.map((u) => ({ size: u.size, part: u.part })), files);
+      uses.forEach((u, k) => datas[u.gi].set(out[k], u.li * u.size * u.size * 4));
       await tick();
     }
     const textures = layout.groups.map((g, gi) => {
@@ -298,9 +363,11 @@ export async function loadZombieTextures(tier, opts = {}) {
       return tex;
     });
     const ms = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
-    return { layout, textures, bytes: ztexBytes(layout), ms };
+    return { layout, textures, bytes: ztexBytes(layout), ms, worker: dec.worker };
   } catch (err) {
     if (typeof console !== 'undefined' && opts.quiet !== true) console.info('zombie textures unavailable, keeping the procedural shading:', err && err.message);
     return null;
+  } finally {
+    dec.close();
   }
 }

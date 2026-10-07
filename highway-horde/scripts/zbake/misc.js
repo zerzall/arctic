@@ -90,12 +90,17 @@ function wounds(N) {
           const halo = smooth(2.0, 0.9, rr) * smooth(1.2, 0.6, Math.abs(a));
           put(i, bruise, halo * 0.45 * edgeFade, { abs: 0 });
           if (t < 1.6 && Math.abs(a) < 1.15) {
-            put(i, crust, smooth(1.6, 1.15, t) * 0.9, { rough: 0.85, h: 0.25 });
-            put(i, skinEdge, smooth(1.15, 1.0, t) * smooth(0.75, 0.95, t), { rough: 0.6, h: 0.5 });
-            put(i, mixc(fat, sc(fat, 0.75), nz2 * 0.5 + 0.5), smooth(0.98, 0.9, t) * smooth(0.6, 0.75, t), { rough: 0.35, h: 0.1, wet: 0.5 });
+            // a ragged rim of dried blood and torn skin, then the open wound: dark wet muscle torn
+            // in clumps, globs of yellow fat caught at the edges, black clot in the deepest part
+            const rn = fbm(u, v, 40, 3, 5120 + cell) * 0.5 + 0.5;
+            put(i, mixc(crust, C('#4a120c'), rn), smooth(1.6, 1.1, t) * (0.6 + 0.4 * rn), { rough: 0.8, h: 0.2 });
+            put(i, mixc(skinEdge, C('#9a7a6a'), rn), smooth(1.12, 0.98, t) * smooth(0.8, 0.98, t) * smooth(0.35, 0.6, rn), { rough: 0.6, h: 0.5 });
             const fib = Math.abs(noise(b * 40, a * 4, 128, 16, 5104 + cell));
-            put(i, mixc(mus, musD, fib * 0.6 + smooth(0.6, 0.1, t) * 0.4), smooth(0.75, 0.6, t), { rough: 0.22, h: -0.6 + fib * 0.2, wet: 0.85 });
-            put(i, deep, smooth(0.25, 0.08, t), { rough: 0.18, h: -0.8, wet: 1 });
+            const clump = fbm(u, v, 90, 3, 5121 + cell) * 0.5 + 0.5;
+            put(i, mixc(mixc(mus, musD, fib * 0.5 + clump * 0.4), deep, smooth(0.5, 0.0, t) * 0.7), smooth(0.92, 0.75, t), { rough: 0.2, h: -0.5 + clump * 0.3, wet: 0.9 });
+            const fatK = smooth(0.95, 0.85, t) * smooth(0.45, 0.7, t) * smooth(0.55, 0.75, clump);
+            put(i, mixc(fat, sc(fat, 0.7), rn), fatK, { rough: 0.32, h: 0.15, wet: 0.5 });
+            put(i, mixc(deep, C('#2a0605'), clump), smooth(0.3, 0.05, t + (clump - 0.5) * 0.3), { rough: 0.15, h: -0.8, wet: 1 });
             if (cell === 1) {
               const bt = Math.abs(b) / 0.2;
               if (bt < 1 && Math.abs(a) < 0.8) {
@@ -216,16 +221,43 @@ function grime(N) {
     }
   }
   // holes: a warped field (the runtime cuts at a level set by the tear), threads across the rims
-  const holes = new Float32Array(n);
+  const holes = new Float32Array(n), dmg = new Float32Array(n);
   for (let y = 0; y < N; y++) {
     const v = (y + 0.5) / N;
-    for (let x = 0; x < N; x++) { const u = (x + 0.5) / N; holes[y * N + x] = clamp01((wfbm(u, v, 5, 6, 5208, 0.12) - 0.5) / 0.3); }
+    for (let x = 0; x < N; x++) {
+      const u = (x + 0.5) / N;
+      // where the cloth has taken the most damage
+      dmg[y * N + x] = smooth(0.38, 0.62, wfbm(u, v, 3, 4, 5208, 0.1));
+    }
   }
+  // rips: short tears along the threads (mostly down the cloth, some across, some an L), jagged,
+  // widest in the middle; the runtime opens them from the core out
+  for (let k = 0; k < 300; k++) {
+    const x = r(), y = r();
+    const vert = r() < 0.7, L = 0.015 + r() * r() * 0.12, w = 0.003 + r() * 0.006;
+    const pts = [];
+    let px = x, py = y;
+    const steps = 10;
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      pts.push([px, py, w * Math.pow(Math.sin(Math.PI * (0.05 + t * 0.9)), 0.7)]);
+      const j = (r() - 0.5) * 0.35;
+      px += (vert ? j : 1) * L / steps; py += (vert ? 1 : j) * L / steps;
+    }
+    stroke(holes, N, pts, (d) => 1 - d * d, 'max');
+    if (r() < 0.25) {
+      // a corner tear: a second leg across the first
+      const [ex, ey] = pts[steps];
+      const L2 = L * (0.4 + r() * 0.5);
+      stroke(holes, N, [[ex, ey, w * 0.8], [ex + (vert ? L2 : 0), ey + (vert ? 0 : L2), w * 0.2]], (d) => 1 - d * d, 'max');
+    }
+  }
+  for (let i = 0; i < n; i++) holes[i] = clamp01(holes[i] * (0.55 + 0.45 * dmg[i]));
   const fray = new Float32Array(n);
   for (let k = 0; k < 9000; k++) {
     const x = r(), y = r();
     const hv = holes[Math.floor(y * N) * N + Math.floor(x * N)];
-    if (hv < 0.35 || hv > 0.85) continue;
+    if (hv < 0.3 || hv > 0.8) continue;
     const vert = r() < 0.5, L = 0.003 + r() * 0.01;
     const ang = vert ? Math.PI / 2 + (r() - 0.5) * 0.4 : (r() - 0.5) * 0.4;
     stroke(fray, N, [[x - Math.cos(ang) * L, y - Math.sin(ang) * L, 0.0006], [x + Math.cos(ang) * L, y + Math.sin(ang) * L, 0.0004]], (d) => 1 - d);

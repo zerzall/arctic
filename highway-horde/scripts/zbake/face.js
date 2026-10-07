@@ -242,8 +242,8 @@ function mouthBlood(F, o) {
 /** The rotted-away nose: a dark triangular cavity with ragged, crusted edges. */
 function noseCavity(F) {
   each(F, (z, y, i, u, v) => {
-    if (y > 0.1 || y < -0.32) return;
-    const t = clamp01((0.05 - y) / 0.32);
+    if (y > 0.0 || y < -0.32) return;
+    const t = clamp01((-0.02 - y) / 0.26);
     const half = 0.035 + t * 0.09;
     const n = fbm(u, v, 30, 3, F.seed + 61) * 0.045;
     const d = (Math.abs(z) - half - n) / 0.03;

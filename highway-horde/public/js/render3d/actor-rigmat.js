@@ -503,6 +503,8 @@ export function makeMaterials(shared, opts = {}) {
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
       .replace('#include <normal_fragment_maps>', Z ? (zt ? Z_TEX_NORMAL : Z_NORMAL_DETAIL) + Z_NORMAL : NORMAL_BASE);
     if (Z) frag = frag.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n' + Z_SPEC);
+    // (dev: window.__HH_ZDBG = 1 raw baked albedo, 2 the triplanar weights, 3 the tile coordinates)
+    if (zt && globalThis.__HH_ZDBG) frag = `#define ZDBG ${globalThis.__HH_ZDBG | 0}\n` + frag;
     sh.fragmentShader = frag
       .replace('#include <emissivemap_fragment>', /* glsl */`
   #include <emissivemap_fragment>

@@ -513,7 +513,7 @@ export const FAB = { denim: 0, flannel: 1, tee: 2, gown: 3, police: 4, military:
 
 /** The decay stage of a look (0 fresh, 1 weeks, 2 months) from its rot. */
 export function stageOf(rot) {
-  return rot < 0.38 ? 0 : rot < 0.74 ? 1 : 2;
+  return rot < 0.38 ? 0 : rot < 0.8 ? 1 : 2;
 }
 
 const TOP_FAB = {

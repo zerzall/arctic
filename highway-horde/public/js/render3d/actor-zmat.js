@@ -312,11 +312,22 @@ export const Z_BLOOD = /* glsl */`
   float bl = max(vI.y * blood, bib * blood * 1.1);
   // (soaked-in stains that spread through the weave, a few splashes: not polka dots)
   float bm = smoothstep(0.46, 0.6, bl + (hhD2.b - 0.5) * 0.5 + (hhD.a - 0.5) * 0.3 + (hhD.b - 0.5) * 0.15);
+#ifdef HH_ZTEX
+  // (with the baked sets: the stain's edge ragged and tide-lined by the grime set's soak mask)
+  if (zG.r > 0.0) {
+    float bf = bl + (zG.r - 0.5) * 0.75 + (hhD.a - 0.5) * 0.25;
+    bm = smoothstep(0.48, 0.58, bf);
+    diffuseColor.rgb *= 1.0 - 0.35 * smoothstep(0.42, 0.48, bf) * (1.0 - bm);
+  }
+#endif
   if (hhM != 7 && hhM != 8 && hhM != 13) {
     // fresh (red, wet) on the newly dead and where it still runs; old blood dries to a brown-black crust
     float fresh = clamp((1.0 - rot) * 0.8 + smoothstep(0.75, 1.0, vI.y) * 0.3 - bib * 0.3, 0.0, 1.0);
     vec3 bc = mix(vec3(0.05, 0.018, 0.011), vec3(0.085, 0.009, 0.007), fresh);
     bc = mix(bc, bc * 0.55, hhD.b * 0.6);
+#ifdef HH_ZTEX
+    bc *= 0.75 + 0.5 * zG.b;
+#endif
     diffuseColor.rgb = mix(diffuseColor.rgb, bc, bm * 0.94);
     hhWet = max(hhWet, bm * fresh * smoothstep(0.5, 0.75, bl) * 0.7);
     zDry = max(zDry, bm * (1.0 - fresh));
@@ -490,10 +501,12 @@ void zWoundTex(vec4 W, float stage, float age, inout vec3 col, inout float rough
   vec3 an = abs(vMN);
   vec2 q, gx, gy;
   int pl;
-  if (an.x >= an.y && an.x >= an.z) { q = dv.zy; gx = zDpx.zy; gy = zDpy.zy; pl = 0; }
-  else if (an.y >= an.z) { q = dv.xz; gx = zDpx.xz; gy = zDpy.xz; pl = 1; }
-  else { q = dv.xy; gx = zDpx.xy; gy = zDpy.xy; pl = 2; }
-  if (abs(q.x) > ${f1(WOUND_Q)} || abs(q.y) > ${f1(WOUND_Q)}) return;
+  float depth;
+  if (an.x >= an.y && an.x >= an.z) { q = dv.zy; gx = zDpx.zy; gy = zDpy.zy; pl = 0; depth = dv.x; }
+  else if (an.y >= an.z) { q = dv.xz; gx = zDpx.xz; gy = zDpy.xz; pl = 1; depth = dv.y; }
+  else { q = dv.xy; gx = zDpx.xy; gy = zDpy.xy; pl = 2; depth = dv.z; }
+  // (only the surface at the wound: the projection must not shine through to the far side of the body)
+  if (abs(q.x) > ${f1(WOUND_Q)} || abs(q.y) > ${f1(WOUND_Q)} || abs(depth) > 1.2) return;
   // gashes: on the long dead some are maggot-pocked rot, some a torn flap
   float cell = type;
   float hs = fract(sin(dot(W.xyz, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
@@ -502,7 +515,7 @@ void zWoundTex(vec4 W, float stage, float age, inout vec3 col, inout float rough
   vec2 uv = (vec2(mod(cell, 4.0), floor(cell / 4.0)) + 0.5) / vec2(4.0, 2.0) + q * r * k;
   vec4 A = textureGrad(ZS_woundA, vec3(uv, ZB_woundA), gx * k, gy * k);
   vec4 B = textureGrad(ZS_woundB, vec3(uv, ZB_woundB), gx * k, gy * k);
-  float cov = A.a;
+  float cov = A.a * smoothstep(1.2, 0.7, abs(depth));
   if (cov <= 0.0) return;
   float dry = age * 0.55;
   col = mix(col, zLin(A.rgb), cov);
@@ -541,8 +554,10 @@ const SKIN_TEX = /* glsl */`
     }
     // the person's own skin tone: its lightness and a share of its hue (the decay colours stay)
     float tl = max(0.004, dot(tSkin.rgb, ZLUMA));
-    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.3) * clamp(tl / 0.33, 0.12, 1.2);
+    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.15) * clamp(tl / 0.33, 0.3, 1.2);
     vec3 c = zLin(A.rgb) * toneK * mix(vec3(1.0), baseCol * 1.12, 0.75);
+    // (dead skin is a drained colour: the decay tints stay, but greyed; dark skin goes ashen)
+    c = mix(c, vec3(dot(c, ZLUMA)) * (1.0 + 0.5 * smoothstep(0.2, 0.05, tl)), 0.25 + 0.15 * smoothstep(0.2, 0.05, tl));
     float rough = B.z, wet = 0.0, thick = A.a;
     float ao = B.w;
     if (hhPart == 17) {
@@ -586,7 +601,17 @@ const SKIN_TEX = /* glsl */`
     float mudT = clamp(smoothstep(22.0, 1.0, vMP.y) * 0.85 + (hhPart == 5 ? 0.45 : 0.0), 0.0, 1.0);
     float mud = smoothstep(1.0 - mudT, 1.12 - mudT, zG.g);
     c = mix(c, vec3(0.045, 0.036, 0.026) + c * 0.3, mud * 0.8);
+    c *= mix(vec3(1.0), vec3(0.74, 0.68, 0.58), smoothstep(0.45, 0.8, zG.b) * 0.45);
     rough = mix(rough, 0.95, mud);
+    // dirt smeared over the body (dragged through the road, hands wiped on it) and old blood
+    // smeared on the hands, forearms and chest: big, ragged patches that read from afar
+    float smear = smoothstep(0.48, 0.74, zG.b * 0.55 + hhD.b * 0.45) * 0.6;
+    c = mix(c, c * vec3(0.52, 0.45, 0.36), smear);
+    rough = mix(rough, 0.88, smear);
+    float bodyB = blood * (hhPart == 5 ? 1.0 : smoothstep(18.0, 30.0, vMP.y) * smoothstep(-1.0, 2.0, vMP.x) * 0.55 + 0.15);
+    float bs = smoothstep(1.0 - bodyB * 0.55, 1.08 - bodyB * 0.55, zG.r * 0.7 + hhD.a * 0.3);
+    c = mix(c, mix(vec3(0.045, 0.014, 0.01), vec3(0.08, 0.01, 0.007), (1.0 - rot) * 0.6), bs * 0.85);
+    rough = mix(rough, 0.7, bs);
     // the spitter: throat and chest stained green-yellow by what it brings up
     if (uZTex.y > 0.5) {
       vec3 dq = vMP - vec3(uBody2.x + 1.2, uBody.z + 2.0, 0.0);
@@ -596,6 +621,11 @@ const SKIN_TEX = /* glsl */`
       rough = mix(rough, 0.42, st * 0.6);
     }
     diffuseColor.rgb = c * mix(1.0, ao, 0.45);
+#ifdef ZDBG
+    if (ZDBG == 1) diffuseColor.rgb = zLin(A.rgb);
+    if (ZDBG == 2) diffuseColor.rgb = vec3(zW);
+    if (ZDBG == 3) diffuseColor.rgb = vec3(fract(vMP * kS));
+#endif
     zRoughT = rough;
     hhWet = max(hhWet, wet);
     // subsurface: a faint cold wrap through fresh, thin skin; nothing through the desiccated; the
@@ -621,7 +651,7 @@ const CLOTH_TEX = /* glsl */`
     float rel = T.x * 2.0;
     c *= rel;
     float lum = dot(c, ZLUMA);
-    c = mix(c, vec3(lum * 1.35 + 0.02) * vec3(1.02, 1.0, 0.95), T.y * 0.7);
+    c = mix(c, vec3(lum * 1.12 + 0.01) * vec3(1.0, 0.97, 0.9), T.y * 0.5);
     // seams down the sides, a button placket
     if (hhPart == 1 || hhPart == 18) c *= 1.0 - 0.28 * smoothstep(0.16, 0.03, abs(vMP.x - 0.1)) * step(2.4 * uBody2.w, abs(vMP.z));
     else if (botG) c *= 1.0 - 0.25 * smoothstep(0.16, 0.03, abs(vMP.x - 0.3)) * step(uBody2.z + 0.4, abs(vMP.z));
@@ -632,11 +662,13 @@ const CLOTH_TEX = /* glsl */`
     float fresh = clamp(1.0 - rot * 1.25, 0.0, 1.0);
     // blood soaked down from the collar and the front of a top (and dripping below it)
     float neckY = uBody.z + 1.2;
-    float soakH = 3.0 + blood * 24.0;
-    float frontK = smoothstep(-0.8, 2.2, vMP.x) * smoothstep(5.5 * W, 1.0 * W, abs(vMP.z));
-    float soakT = topG ? clamp(1.0 - (neckY - vMP.y) / soakH, 0.0, 1.0) * (0.3 + 0.7 * frontK) * smoothstep(0.15, 0.45, blood) : 0.0;
-    float sk = soakT > 0.0 ? smoothstep(1.0 - soakT, 1.06 - soakT, zG.r) : 0.0;
-    float tide = soakT > 0.0 ? smoothstep(0.97 - soakT, 1.0 - soakT, zG.r) * (1.0 - sk) : 0.0;
+    float soakH = (2.0 + blood * 15.0) * (0.45 + 0.9 * (0.5 + 0.5 * sin(vMP.z * 0.9 + zSeed * 3.0)) * (0.6 + 0.4 * sin(vMP.z * 2.3 + zSeed)));
+    float frontK = smoothstep(-0.5, 2.5, vMP.x) * smoothstep(4.5 * W, 0.8 * W, abs(vMP.z));
+    float soakT = topG ? clamp(1.0 - (neckY - vMP.y) / soakH, 0.0, 1.0) * (0.15 + 0.85 * frontK) * smoothstep(0.15, 0.45, blood) : 0.0;
+    // (the soak's edge broken up finer by the procedural splatter)
+    float soakF = zG.r * 0.72 + hhD.a * 0.28;
+    float sk = soakT > 0.0 ? smoothstep(1.0 - soakT, 1.08 - soakT, soakF) : 0.0;
+    float tide = soakT > 0.0 ? smoothstep(0.96 - soakT, 1.0 - soakT, soakF) * (1.0 - sk) : 0.0;
     float drip = topG ? zG.a * clamp(1.0 - (neckY - vMP.y) / (soakH * 1.9), 0.0, 1.0) * frontK * blood : 0.0;
     sk = max(sk, smoothstep(0.25, 0.6, drip));
     vec3 bc = mix(vec3(0.04, 0.014, 0.009), vec3(0.085, 0.008, 0.006), fresh);
@@ -644,8 +676,8 @@ const CLOTH_TEX = /* glsl */`
     c = mix(c, c * vec3(0.5, 0.36, 0.32), tide * 0.75);
     // mud from the hem up, caked on the knees; a top's lower edge picks some up too
     float kn = botG ? exp(-pow((vMP.y - 15.6) / 2.4, 2.0)) * smoothstep(-0.5, 1.2, vMP.x) * 0.6 : 0.0;
-    float mudT = clamp((botG ? smoothstep(32.0, 2.0, vMP.y) : smoothstep(v1.x + 9.0, v1.x, vMP.y) * 0.45) + kn, 0.0, 1.0);
-    float md = smoothstep(1.0 - mudT, 1.1 - mudT, zG.g);
+    float mudT = clamp((botG ? smoothstep(30.0, 2.0, vMP.y) * 0.9 : smoothstep(v1.x + 4.0, v1.x, vMP.y) * 0.35) + kn, 0.0, 1.0);
+    float md = smoothstep(1.0 - mudT, 1.12 - mudT, zG.g * 0.8 + hhD.b * 0.2);
     c = mix(c, vec3(0.05, 0.04, 0.028) + c * 0.25, md * 0.85);
     // sweat and body fluids: under the arms, down the back, seeping through from the rot
     float pits = exp(-pow((vMP.y - (uBody.z - 3.2)) / 2.6, 2.0)) * smoothstep(3.0 * W, 5.0 * W, abs(vMP.z));
@@ -657,7 +689,16 @@ const CLOTH_TEX = /* glsl */`
     vec4 GB = zTriN(ZS_grimeB, ZB_grimeB, vMP * gk, gk, zOff, 1.0, false, clamp(max(sk * (1.0 - fresh * 0.6), md) * 0.85, 0.0, 1.0));
     float th = 1.02 - tear * 0.5;
     if (GB.w > th) discard;
-    c *= mix(1.0, 0.45, smoothstep(th - 0.1, th, GB.w));
+    c *= mix(1.0, 0.5, smoothstep(th - 0.05, th, GB.w));
+    // dinginess: everything they wear has gone a dirty yellow-grey, sun-faded where it was bright
+    float dl = dot(c, ZLUMA);
+    c = mix(c, vec3(dl) * vec3(1.02, 0.98, 0.9), 0.18 + 0.2 * smoothstep(0.1, 0.4, dl));
+    c *= mix(1.0, 0.62, smoothstep(0.05, 0.3, dl));
+    // grime worked into the cloth in blotches, wiped hands, dragged through the dirt
+    c *= mix(vec3(1.0), vec3(0.5, 0.45, 0.36), smoothstep(0.46, 0.74, zG.b * 0.55 + hhD.b * 0.45) * 0.8);
+    // sun-faded across the shoulders and the top of the back
+    c = mix(c, vec3(dot(c, ZLUMA)) * vec3(1.05, 1.02, 0.95), (topG ? smoothstep(uBody.y, uBody.z + 1.0, vMP.y) * 0.3 : 0.0));
+    c *= mix(vec3(1.0), vec3(0.74, 0.66, 0.52), 0.4 + 0.45 * zG.b);
     diffuseColor.rgb = c;
     float rough = mix(0.93, 0.74, sk * (1.0 - fresh));
     rough = mix(rough, 0.3, sk * fresh);
