@@ -134,6 +134,8 @@ export function createVmLighting(ctx, scene) {
         const dx = L.position.x - eye.x, dy = L.position.y - eye.y, dz = L.position.z - eye.z;
         const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (L.distance > 0 && d > L.distance) continue;
+        // (the world's light of our own muzzle flash: the viewmodel has its own)
+        if (d < 30) continue;
         const fall = L.distance > 0 ? Math.pow(Math.max(0, 1 - Math.pow(d / L.distance, 4)), 2) : 1;
         const w = L.intensity * fall / Math.max(1, Math.pow(d, L.decay || 1.5));
         if (w <= 1e-4) continue;
