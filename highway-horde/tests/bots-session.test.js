@@ -88,7 +88,7 @@ test('addBot: host only, lobby only, bot roster entries seen by every client', a
   await flush();
   assert.ok(a && b);
   for (const e of [a, b]) {
-    assert.deepEqual(Object.keys(e).sort(), ['bot', 'cls', 'color', 'host', 'id', 'name', 'ping', 'ready']);
+    assert.deepEqual(Object.keys(e).sort(), ['bot', 'cls', 'color', 'host', 'id', 'name', 'ping', 'ready', 'skin']);   // (skin: the bot's gun skin, shared/gun-finish.js)
     assert.equal(e.bot, true);
     assert.equal(e.ready, true, 'bots are ready by definition');
     assert.equal(e.ping, 0);
