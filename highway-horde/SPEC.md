@@ -1189,15 +1189,16 @@ story block above came with 10, the level block with 11, the horde block with 12
 
 ```js
 export async function getServerInfo()   // → { relay: boolean }
-export async function hostGame({ name, color, cls, transport })  // → Session (resolves when joinable)
-export async function joinGame({ code, via, name, color, cls })  // → Session; rejects Error(msg)
+export async function hostGame({ name, color, cls, skin, transport })  // → Session (resolves when joinable)
+export async function joinGame({ code, via, name, color, cls, skin })  // → Session; rejects Error(msg)
                                         // msgs: 'Room not found', 'Room is full',
                                         // 'Game version mismatch', 'Could not connect',
                                         // 'Room is locked', 'You were kicked from this room'
 
 session.isHost, session.localId, session.code, session.inviteUrl, session.transport
-session.roster      // [{ id, name, color, cls, ready, ping, host, bot? }]  (lobby + in game;
-                    //   bot: true on AI survivors, see "Bots" below)
+session.roster      // [{ id, name, color, cls, skin, ready, ping, host, bot? }]  (lobby + in game;
+                    //   bot: true on AI survivors, see "Bots" below; skin: the gun skin id,
+                    //   shared/gun-finish.js GUN_SKIN_IDS, sanitised by the host, cosmetic)
 session.settings    // { mapId, mode, time, difficulty, waves, objective, friendlyFire } (mergeSettings
                     //   in net/lobby-rules.js keeps map + mode and map + time compatible: the pick wins;
                     //   travels as JSON in the settings / start control messages: no wire change)
@@ -1206,7 +1207,7 @@ session.on(event, fn) / session.off(event, fn)
    // 'roster' (roster), 'settings' (settings), 'chat' ({ pid, name, text, system }),
    // 'start' ({ mapId, seed, settings }), 'lobby' (), 'disconnected' ({ reason }),
    // 'notice' ({ text })
-session.setProfile({ name, color, cls, ready })   // any subset; lobby only for cls
+session.setProfile({ name, color, cls, skin, ready })   // any subset; lobby only for cls (skin: any time)
 session.setSettings(partial)          // host only, lobby only
 session.start()                       // host only: builds Game, broadcasts start (late joiners get it too)
 session.returnToLobby()               // host only, after gameover/victory
@@ -1666,7 +1667,14 @@ actor-rigmat.js the rig's material: garment cuts, cloth patterns, wounds, skin (
 actor-zlook.js  per-zombie look from (type, sim id): archetype (office worker … prisoner), skin/decay, hems, wounds, gear, gait — pure JS, deterministic
 actor-zkit.js   the accessory groups of the zombie models (hats, hair, packs, belts, gore, armour), switched on per instance
 actor-sgear.js  class gear of the survivors (helmets, packs, bandoliers, plates) + the gloves shared with the first-person hands
-actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles)
+actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles);
+                every vertex carries its material family (shared/gun-finish.js familyFor); setGunTier(q) (renderer3d)
+gun-mat.js      the gun material: the baked textures by box / triplanar projection, part colour tint, grip textures,
+                skins, edge wear, scratches, carbon, grime, cinematic fingerprints / oil / engraved markings; the
+                procedural atlas fallback in the same program (see "Gun materials and skins" below)
+gun-tex.js      the baked gun textures as texture arrays per tier (GUN_TEX_TIERS), page-global uniforms, loader
+vm-light.js     the viewmodel's lights: the world's sun / moon (shaded by obstacles and roofs), sky, probe, nearest
+                pool lights and the flashlight's bounce, mirrored into camera space
 fx-core.js      shared particle / streak / glow pools (3 draw calls), acquireFx(ctx)
 post.js         post-processing chain, dynamic resolution (refresh-aware), GPU timer with per-pass slots (see below)
 post-atmos.js   atmosphere + wet-ground reflections pass of the chain (see below); on 'cinematic' also the
@@ -1808,6 +1816,30 @@ them playable); a first-time desktop profile whose GPU is recognised as strong s
 any table keyed by tier must carry a 'cinematic' row (`tests/render3d-tiers.test.js`); use
 `tier.js` (`tierAtLeast(q, 'ultra')`, `tierRow`, `baseTier`) instead of `q === 'ultra'`, or
 'cinematic' would fall through to the 'high' branch.
+
+**Gun materials and skins** (`scripts/bake-guns.js`, `shared/gun-finish.js`, `render3d/gun-tex.js`,
+`gun-mat.js`, `vm-light.js`). The baker draws every texture in code (tileable noise, cellular grain, strokes; PNGs
+on node's zlib; deterministic, `tests/gun-textures.test.js`) into `public/textures/guns/`: 21 material families
+(`GUN_FAMILIES`: parkerised and zinc-phosphate steel, blued, anodised aluminium black / tan / OD, bead-blasted
+stainless, brushed, stippled polymer black / FDE / OD, a polymer grip pattern, walnut, birch, pebbled rubber,
+checkering, knurling, Cerakote, brass, enamel paint, sight steel), each `<id>_albedo.png` (sRGB), `_normal.png`,
+`_orm.png` (AO, roughness, metalness), 2048² (1024² for grip and small parts); 10 skin patterns
+(`skin_<pattern>_*`, 1024², albedo alpha = coverage); `wear.png` (2048²: scratches, chip breakup, fingerprints,
+grime). Every gun part gets a family from its builder class, colour and gun (`WEAPON_FINISH` per weapon, builder
+hints for sights and knurled turrets); the shader projects the texture along the gun's axes (no UVs needed): the
+dominant axis on 'high' and on teammates' guns, triplanar blending on the viewmodel from 'ultra' up. Layers per tier
+(`GUN_TEX_TIERS`): 'low' none (the procedural atlas), 'high' 512², 'ultra' 1024², 'cinematic' 2048²; GPU memory with
+mips ≈ 92 / 369 / 1074 MB. The arrays load after the renderer is up (fetch + createImageBitmap, packed and
+uploaded once); until then — and on 'low', in node, without a decoder or with `?guntex=0` — the guns keep the
+procedural finish, switched by a uniform (no recompile). The one-file build embeds the PNGs (`window.__HH_FILES`).
+Skins (`GUN_SKINS`, 12: factory, battle-worn, woodland, desert, urban digital, arctic, tiger stripe, carbon fibre,
+damascus, gold, zombie hunter, hazard) are per-material uniforms (pattern layer, coverage of family groups, wear /
+grime / scratch strength); the player picks one in the lobby (Gun finish) or the story armory, stored in
+`prefs.skin`, sent in the roster's `skin`, worn by the first-person gun and by the teammate's guns others see
+(`gunMaterialFor(skin)`, one material per skin sharing one program). The viewmodel mirrors the world's lights into
+its own scene (vm-light.js, the scene's onBeforeRender): the reflection probe rotated with the camera, the sun or moon
+(a ray through the obstacles shades it; the indoor mask under the eye takes the sky away), the hemisphere, the 1–4
+strongest pool lights at their places, the flashlight's bounce, a soft studio key / rim at night.
 
 **Post-processing & graphics settings** (`render3d/post.js`). The world renders into a
 linear half-float target: world → GTAO at half resolution (high/ultra, `ao`) → atmosphere

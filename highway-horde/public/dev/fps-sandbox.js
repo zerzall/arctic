@@ -5,6 +5,7 @@
 // URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=cinematic|ultra|high|low (or q=), bots=N (0..5),
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
+// waittex=1 (wait for the baked gun textures; on software GL add guntex=1, render3d/gun-tex.js), weapon=<id> (the held gun), skin=<gun finish id> (shared/gun-finish.js), cls=<class> (the gloves),
 // graphics settings (SPEC §7.5): scale=auto|0.5..2, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
 // Cinematic extras (default: the Cinematic preset's; ignored on the other tiers): msaa=0|2|4|8, shadows=0|1 (4096 cascades),
@@ -26,6 +27,7 @@ import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
 import { GRAPHICS_PRESETS } from '../js/ui/storage.js';
 import { TIERS } from '../js/render3d/tier.js';
+import { gunTexStats } from '../js/render3d/gun-tex.js';
 
 const params = new URLSearchParams(location.search);
 const opt = {
@@ -49,6 +51,8 @@ const opt = {
   time: ['day', 'dusk'].includes(params.get('time')) ? params.get('time') : 'night',
 };
 if (params.get('clean') === '1') document.body.classList.add('clean');
+// vmpose=inspect|close|side (gun close-ups: render3d/viewmodel.js reads globalThis.__HH_VM_POSE)
+if (params.get('vmpose')) globalThis.__HH_VM_POSE = { inspect: { inspect: 1, close: 0 }, close: { inspect: 0, close: 1 }, side: { inspect: 1, close: 0.6 } }[params.get('vmpose')] || null;  // (also per view: see setView)
 // graphics settings passed to render() every frame (the object is reused, like ui/match.js)
 const gfx = {
   screenShake: true, showNames: true, fov: opt.fov, lighting: true,
@@ -288,7 +292,7 @@ function viewpoints(map, zone) {
 function setup(mapId) {
   if (renderer) { renderer.destroy(); renderer = null; }
   const { Game } = gameMod;
-  const players = [{ id: 1, name: 'You', color: 0, cls: 'soldier' }];
+  const players = [{ id: 1, name: 'You', color: 0, cls: params.get('cls') || 'soldier', ...(params.get('skin') ? { skin: params.get('skin') } : null) }];
   for (let i = 0; i < opt.bots; i++) players.push({ id: i + 2, name: ['Doc', 'Sparks', 'Swift', 'Boom', 'Tank'][i], color: i + 1, cls: CLASS_IDS[(i + 1) % CLASS_IDS.length], bot: true });
   const hubMap = HIDEOUT_IDS.includes(mapId);
   // (a story level plays its missions; here it is walked like a hideout, or with plain waves while zombies are on)
@@ -440,8 +444,25 @@ function galleryMap(map, spec) {
   window.__galleryCenter = { x: 1000, y: (first + y) / 2, w: y - first };
 }
 
+// a named view may carry gun-review options: 'objective@weapon=pistol&skin=gold&pose=side' (scripts/shot.js)
+let devWeapon = params.get('weapon');
+const VM_POSES = { inspect: { inspect: 1, close: 0 }, close: { inspect: 0, close: 1 }, side: { inspect: 1, close: 0.6 }, none: { inspect: 0, close: 0 } };
 function setView(v) {
   if (!v) { fixedView = null; return; }
+  if (typeof v === 'string' && v.includes('@')) {
+    const [name, opts] = v.split('@');
+    const o = new URLSearchParams(opts);
+    if (o.get('weapon')) devWeapon = o.get('weapon');
+    if (o.get('skin') && roster[0]) roster = roster.map((r) => (r.id === 1 ? { ...r, skin: o.get('skin') } : r));
+    if (o.get('pose')) globalThis.__HH_VM_POSE = VM_POSES[o.get('pose')] || null;
+    v = name;
+  }
+  if (typeof v === 'object') {
+    // (a JSON view may carry them too: { x, y, yaw, pitch, weapon, skin, pose })
+    if (v.weapon) devWeapon = v.weapon;
+    if (v.skin) roster = roster.map((r) => (r.id === 1 ? { ...r, skin: v.skin } : r));
+    if (v.pose) globalThis.__HH_VM_POSE = VM_POSES[v.pose] || null;
+  }
   if (typeof v === 'string') {
     const f = window.__fps.views.find((x) => x.name === v);
     if (!f) { console.warn('unknown view', v); return; }
@@ -539,7 +560,9 @@ function step(dt, nowS) {
   if (opt.tour) { tourT += dt; cam = tourView(tourT); }
   if (cam) {
     // ghost camera: the local record is moved to the viewpoint for this render only
-    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(opt.hp ? { hp: opt.hp } : null), ...(params.get('gallery') || params.get('ghost') === '1' ? { slots: [] } : null) } : p)) };
+    view = { ...snap, players: snap.players.map((p) => (p.id === 1 ? { ...p, x: cam.x, y: cam.y, z: cam.z || 0, angle: cam.yaw, state: 'alive', vzq: 0, climbT: 0, ...(opt.hp ? { hp: opt.hp } : null), ...(params.get('gallery') || params.get('ghost') === '1' ? { slots: [] } : null),
+      // weapon=<id>: the held gun (gun / skin review shots)
+      ...(devWeapon ? { slots: [devWeapon, null, null], slot: 0, ammo: [[30, 90], [0, 0], [0, 0]], reloading: 0 } : null) } : p)) };
     look = { yaw: cam.yaw, pitch: cam.pitch || 0 };
   }
   renderer.addEvents(snap.events, { localId: 1 });
@@ -570,7 +593,10 @@ async function main() {
     ready: false,
     views: [],
     setView,
-    get renderer() { return renderer; },
+    // (waittex=1: the renderer shows up once the baked gun textures are loaded, so scripts/shot.js
+    // waits for them; a tier without them, or a failed load, does not wait)
+    get renderer() { return params.get('waittex') === '1' && opt.quality !== 'low' && gunTexStats().status === 'loading' ? null : renderer; },
+    gunTex: () => gunTexStats(),
     get game() { return game; },
     get snap() { return snap; },
     stats: () => ({ ...renderer.stats, world: renderer.debug.world.stats }),

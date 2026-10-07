@@ -7,6 +7,7 @@
 // position; the fire cooldown and minigun spin run locally. Predicted 'shot' events
 // leave drainEvents() at once; the host's own 'shot' for us later arrives as `echo`.
 
+import { sanitizeSkin } from '../shared/gun-finish.js';
 import {
   GAME_VERSION, PROTOCOL_VERSION, DT, INTERP_DELAY, DEFAULT_SETTINGS, PLAYER_RADIUS,
 } from '../shared/constants.js';
@@ -235,6 +236,7 @@ export class ClientSession extends Emitter {
         name: sanitizeName(profile.name),
         color: isColor(profile.color) ? profile.color : 0,
         cls: sanitizeClass(profile.cls),
+        skin: sanitizeSkin(profile.skin),
         token: this.hooks.token || tabToken(),
       };
       // Story rooms: our profile (the host checks it against its caps) and which copy of
@@ -255,7 +257,7 @@ export class ClientSession extends Emitter {
 
   setProfile(patch = {}) {
     const msg = { t: 'profile' };
-    for (const k of ['name', 'color', 'cls', 'ready']) if (patch[k] !== undefined) msg[k] = patch[k];
+    for (const k of ['name', 'color', 'cls', 'skin', 'ready']) if (patch[k] !== undefined) msg[k] = patch[k];
     this._sendCtl(msg);
   }
 

@@ -106,6 +106,7 @@ function embedFiles(dir, pattern) {
   return `window.__HH_FILES = Object.assign(window.__HH_FILES || {}, ${JSON.stringify(files)});`;
 }
 scripts.splice(1, 0, embedFiles('textures/decals', /\.png$/));
+scripts.splice(1, 0, embedFiles('textures/guns', /\.png$/));
 
 const swap = (from, to) => {
   if (!from.test(html)) throw new Error(`index.html no longer contains ${from}`);

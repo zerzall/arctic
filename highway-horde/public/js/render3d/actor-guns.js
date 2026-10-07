@@ -12,6 +12,12 @@
 // knurling — normal + roughness + albedo) and a per-vertex edge-wear value lets bare
 // metal show through on edges.
 //
+// Baked materials ('high' and up, gun-mat.js / gun-tex.js): every vertex also carries the
+// material family of its part (shared/gun-finish.js familyFor: blued or parkerised steel,
+// anodised aluminium, stippled polymer, walnut ... by the gun, the class and the colour), so
+// the 2048² texture sets of scripts/bake-guns.js replace the atlas once they are loaded, and
+// a player's gun skin (camo, carbon, damascus, gold, ...) is a material uniform.
+//
 // Gun space: +X toward the muzzle, +Y up, +Z to the right; the origin is where the firing
 // hand wraps the grip. Units are world units (1 ≈ 3 cm), a rifle is ~34 long.
 
@@ -20,6 +26,11 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { WEAPONS } from '../shared/weapons.js';
 import { shadeHex, mixHex } from './actor-kit.js';
 import { gunAtlasTexture, gunAtlasPixelsAsync, markRow, markTexture, markVersion } from './actor-tex.js';
+import { familyFor, FAMILY_LAYER, sanitizeSkin, GUN_SKIN_IDS } from '../shared/gun-finish.js';
+import { createGunMaterial, setGunMaterialSkin, setGunMaterialModel } from './gun-mat.js';
+import { loadGunTextures, releaseGunTextures, gunTexStats, gunTexEnabled } from './gun-tex.js';
+
+export { createGunMaterial, setGunMaterialSkin, setGunMaterialModel, gunTexStats };
 
 const HALF_PI = Math.PI / 2;
 const TAU = Math.PI * 2;
@@ -51,6 +62,8 @@ let LITE = false;
 // The cinematic tier builds the full-size guns with finer curves: 1.7x the radial segments, twice
 // the bevel and curve steps (rounded boxes, extrusions), more sides on tubes and tori.
 let BUILD_CIN = false;
+// the weapon being built (its finish picks the families: shared/gun-finish.js WEAPON_FINISH)
+let CUR_ID = null;
 const segs = (n) => (LITE ? Math.max(6, Math.round(n * 0.5)) : BUILD_CIN ? Math.min(64, Math.round(n * 1.7)) : n);
 
 /** Accumulates transformed primitives into named parts (each: solid + glow geometry). */
@@ -83,6 +96,11 @@ class GunBuilder {
     _c.set(o.color || '#888888');
     const mat = o.mat ?? GM.STEEL;
     const wearK = o.wear ?? 1;
+    // family texture layer (+1; 0 = none): a marking takes the surface it is on, its style in the wear slot
+    let layer = 0;
+    if (mat === GM.MARK) layer = o.layer || 0;
+    else { const fam = familyFor(mat, o.color || '#888888', CUR_ID, o.fin); layer = fam ? FAMILY_LAYER[fam] + 1 : 0; }
+    const markStyle = o.markStyle || 0;
     const tile = o.tile || 3.2;
     const woodGrain = mat === GM.WOOD;
     for (let i = 0; i < P.count; i++) {
@@ -101,7 +119,7 @@ class GunBuilder {
       if (o.rawUv && UV0) { u = UV0.getX(i); v = UV0.getY(i); } else if (woodGrain) { u = _v.x / tile * 0.35; v = (ay > az ? _v.z : _v.y) / tile; } else if (ax >= ay && ax >= az) { u = _v.z / tile; v = _v.y / tile; } else if (ay >= az) { u = _v.x / tile; v = _v.z / tile; } else { u = _v.x / tile; v = _v.y / tile; }
       b.uv.push(u, v);
       b.col.push(_c.r, _c.g, _c.b);
-      b.gun.push(mat, wear);
+      b.gun.push(mat, mat === GM.MARK ? markStyle : wear, layer, 0);
     }
     if (g.index) for (let i = 0; i < g.index.count; i++) b.idx.push(g.index.getX(i) + base);
     else for (let i = 0; i < P.count; i++) b.idx.push(i + base);
@@ -118,7 +136,7 @@ class GunBuilder {
       g.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(b.col, 3));
-      g.setAttribute('aGun', new THREE.Float32BufferAttribute(b.gun, 2));
+      g.setAttribute('aGun', new THREE.Float32BufferAttribute(b.gun, 4));
       g.setIndex(b.idx);
       g.computeBoundingSphere();
       out[key] = g;
@@ -196,9 +214,21 @@ function rail(gb, x0, x1, y, z, w, o = {}) {
   rbox(gb, x0, x1, y, y + (LITE ? 0.34 : 0.22), z - w / 2, z + w / 2, 0.05, { color: DARK, mat: GM.ALLOY, ...o });
   if (LITE) return;
   const n = Math.max(2, Math.floor((x1 - x0) / 0.52));
+  const fam = familyFor(o.mat ?? GM.ALLOY, o.color || DARK, CUR_ID, o.fin);
   for (let i = 0; i < n; i++) {
     const x = x0 + 0.18 + i * ((x1 - x0 - 0.36) / (n - 1));
     rbox(gb, x - 0.15, x + 0.15, y + 0.2, y + 0.36, z - w / 2 - 0.06, z + w / 2 + 0.06, 0.04, { color: DARK, mat: GM.ALLOY, ...o, seg: 1 });
+    // cinematic: the slot numbers on the lug tops (every other lug), cut and paint-filled
+    if (BUILD_CIN && DETAIL && i % 2 === 0 && fam) {
+      const info = markRow(String(i / 2 + 1));
+      const hq = 0.2, wq = hq * info.aspect;
+      const g = new THREE.PlaneGeometry(wq, hq);
+      const uv = g.attributes.uv;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * info.u1, info.v0 + uv.getY(k) * (info.v1 - info.v0));
+      g.rotateX(-HALF_PI);
+      g.rotateY(-HALF_PI);
+      gb.add(g, { at: [x, y + 0.372, z], color: '#c9c5b6', mat: GM.MARK, rawUv: true, wear: 0, layer: FAMILY_LAYER[fam] + 1, markStyle: 1, part: o.part });
+    }
   }
 }
 /** Trigger + guard with a real hole. */
@@ -243,7 +273,7 @@ function makeCaster(gb) {
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
       const nl = Math.hypot(nx, ny, nz) || 1;
       tris.push({
-        key, ax, ay, az, bx, by, bz, cx, cy, cz, nz: nz / nl, area2: nz,
+        key, ax, ay, az, bx, by, bz, cx, cy, cz, nz: nz / nl, area2: nz, layer: b.gun[b.idx[i] * 4 + 2],
         x0: Math.min(ax, bx, cx), x1: Math.max(ax, bx, cx), y0: Math.min(ay, by, cy), y1: Math.max(ay, by, cy),
       });
     }
@@ -280,7 +310,7 @@ function makeCaster(gb) {
       const l3 = 1 - l1 - l2;
       if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
       const z = l1 * t.az + l2 * t.bz + l3 * t.cz;
-      if (!best || (s > 0 ? z > best.z : z < best.z)) best = { z, nz: t.nz, key: t.key };
+      if (!best || (s > 0 ? z > best.z : z < best.z)) best = { z, nz: t.nz, key: t.key, layer: t.layer };
     }
     return best;
   }
@@ -305,14 +335,14 @@ function screwHead(gb, x, y, z, s, key, angle) {
   gb.add(slot, { part: key, at: [x, y, z + s * 0.066], rot: [0, 0, angle], color: '#050506', mat: GM.STEEL });
 }
 
-function markQuad(gb, x, y, z, s, text, h = 0.5, color = '#c9c5b6') {
+function markQuad(gb, x, y, z, s, text, h = 0.5, color = '#c9c5b6', layer = 0, style = 0) {
   const info = markRow(text);
   const w = h * info.aspect;
   const g = new THREE.PlaneGeometry(w, h);
   const uv = g.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * info.u1, info.v0 + uv.getY(i) * (info.v1 - info.v0));
   if (s < 0) g.rotateY(Math.PI);
-  gb.add(g, { at: [x, y, z + s * 0.014], color, mat: GM.MARK, rawUv: true, wear: 0 });
+  gb.add(g, { at: [x, y, z + s * 0.014], color, mat: GM.MARK, rawUv: true, wear: 0, layer, markStyle: style });
   return w;
 }
 
@@ -340,10 +370,15 @@ function detailPass(gb, out, id, w) {
   // ---- stamped markings: the model on the left flank, a serial number on the right ----
   const name = (w.name || id).toUpperCase();
   const serial = 'SN ' + String(10000 + Math.floor(hash01(seed) * 89999)) + ' US';
-  const marks = [[-1, name, 0.62], [1, serial, 0.5], [-1, '▸ SAFE ▸ FIRE', 0.42]];
-  if (BUILD_CIN) marks.push([1, 'PROOF ✚ HH', 0.36], [-1, 'MADE IN USA', 0.34], [1, 'CAL ' + (w.caliber || '5.56') + ' NATO', 0.34], [-1, 'REV ' + (10 + Math.floor(hash01(seed + 5) * 80)) + '-' + (1000 + Math.floor(hash01(seed) * 8999)), 0.3]);
+  // [side, text, height, style]: 0 = cut into the metal, 1 = cut and paint-filled (white)
+  const marks = [[-1, name, 0.62, 0], [1, serial, 0.5, 0], [-1, '▸ SAFE ▸ FIRE', 0.42, 1]];
+  if (BUILD_CIN) {
+    marks.push([1, 'PROOF ✚ HH', 0.36, 0], [-1, 'HIGHWAY ARMS CO.', 0.34, 0], [1, 'CAL ' + (w.caliber || '5.56') + ' NATO', 0.34, 0],
+      [-1, 'REV ' + (10 + Math.floor(hash01(seed + 5) * 80)) + '-' + (1000 + Math.floor(hash01(seed) * 8999)), 0.3, 0],
+      [-1, 'S  ·  1  ·  F', 0.34, 1], [1, 'LOT ' + String.fromCharCode(65 + Math.floor(hash01(seed + 9) * 26)) + (100 + Math.floor(hash01(seed + 3) * 899)), 0.3, 0]);
+  }
   const used = [];
-  for (const [s, text, h] of marks) {
+  for (const [s, text, h, style] of marks) {
     const info = markRow(text);
     const wq = h * info.aspect;
     let done = false;
@@ -356,7 +391,7 @@ function detailPass(gb, out, id, w) {
         const c0 = hits[2];
         if (!c0 || Math.abs(c0.nz) < 0.96) continue;
         if (hits.some((q) => !q || q.key !== c0.key || Math.abs(q.z - c0.z) > 0.03)) continue;
-        markQuad(gb, x + wq / 2, y, c0.z, s, text, h);
+        markQuad(gb, x + wq / 2, y, c0.z, s, text, h, '#c9c5b6', c0.layer, style);
         used.push({ s, y, x0: x, x1: x + wq });
         done = true;
       }
@@ -417,7 +452,8 @@ export function gunModel(weaponId, lite = false) {
   if (!m) {
     LITE = lite;
     BUILD_CIN = !lite && CIN;
-    try { m = build(id); } finally { LITE = false; BUILD_CIN = false; }
+    CUR_ID = id;
+    try { m = build(id); } finally { LITE = false; BUILD_CIN = false; CUR_ID = null; }
     m.lite = lite;
     cache.set(key, m);
   }
@@ -438,10 +474,28 @@ function build(id) {
   const B = BUILDERS[style] || BUILDERS.pistol;
   B(gb, L, sp, out, w);
   if (!LITE && DETAIL && !globalThis.__HH_NO_DETAIL) detailPass(gb, out, id, w);
+  sootPass(gb, out, w);
   const geos = gb.build();
   out.geos = geos;
   out.partNames = [...new Set(Object.keys(geos).map((k) => k.split(':')[0]))];
   return out;
+}
+
+/**
+ * Carbon fouling per vertex (aGun.w): the muzzle end of the barrel and its device black with
+ * powder residue, fading back over a few units (guns that burn no powder stay clean).
+ */
+function sootPass(gb, out, w) {
+  if (!w || w.kind === 'melee' || w.kind === 'chain' || w.kind === 'cryo' || w.kind === 'flame' || out.style === 'crossbow' || out.style === 'harpoon') return;
+  const [mx, my, mz] = out.muzzle;
+  for (const [key, b] of gb.parts) {
+    if (key.endsWith(':glow') || key.startsWith('mag')) continue;
+    for (let i = 0, n = b.pos.length / 3; i < n; i++) {
+      const dx = b.pos[i * 3] - mx, dy = b.pos[i * 3 + 1] - my, dz = b.pos[i * 3 + 2] - mz;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      b.gun[i * 4 + 3] = Math.max(0, Math.exp(-d / 2.4) - 0.04) * 0.95;
+    }
+  }
 }
 
 const BUILDERS = {};
@@ -464,8 +518,8 @@ BUILDERS.pistol = (gb, L, sp, out) => {
   }
   rbox(gb, 1.2, 3.8, 1.25, 1.96, 0.5, 0.67, 0.06, { ...S, color: '#0c0c0c', mat: GM.STEEL });           // ejection port
   rbox(gb, 1.35, 3.6, 1.3, 1.85, 0.3, 0.55, 0.05, { ...S, color: BRASS, mat: GM.BRASS });                 // barrel hood
-  rbox(gb, L - 1.2, L - 0.7, 1.95, 2.35, -0.14, 0.14, 0.05, { ...S, color: DARK });                       // front sight
-  rbox(gb, -1.4, -0.9, 1.95, 2.4, -0.45, 0.45, 0.06, { ...S, color: DARK });                              // rear sight
+  rbox(gb, L - 1.2, L - 0.7, 1.95, 2.35, -0.14, 0.14, 0.05, { ...S, color: DARK, fin: 'sight' });                       // front sight
+  rbox(gb, -1.4, -0.9, 1.95, 2.4, -0.45, 0.45, 0.06, { ...S, color: DARK, fin: 'sight' });                              // rear sight
   rbox(gb, -1.2, -0.7, 1.4, 1.75, 0.64, 0.84, 0.06, { ...S, color: DARK });                              // decocker
   cylX(gb, L - 0.5, L - 0.18, 1.25, 0, 0.36, 0.36, { ...S, color: '#101010' });                          // muzzle crown
   cylX(gb, L - 0.2, L - 0.16, 1.25, 0, 0.22, 0.22, { ...S, color: '#030303' });
@@ -508,7 +562,7 @@ BUILDERS.revolver = (gb, L, sp, out) => {
   for (let x = 5; x < L - 1; x += 1.1) rbox(gb, x, x + 0.5, 1.95, 2.28, -0.31, 0.31, 0.04, { color: '#101010', seg: 1 });
   rbox(gb, L - 1.0, L - 0.2, 2.2, 2.75, -0.13, 0.13, 0.05, { color: '#c62828', mat: GM.PAINT });           // red ramp
   cylX(gb, L - 0.05, L + 0.01, 1.45, 0, 0.32, 0.32, { color: '#050505' });
-  rbox(gb, -0.9, 0.2, 2.25, 2.45, -0.35, 0.35, 0.05, { color: DARK });                                      // rear sight notch
+  rbox(gb, -0.9, 0.2, 2.25, 2.45, -0.35, 0.35, 0.05, { color: DARK, fin: 'sight' });                                      // rear sight notch
   // cylinder (rotates; swings out on reload)
   const C = { part: 'cyl' };
   latheX(gb, [[0.95, 0], [0.95, 1.0], [1.05, 1.15], [3.55, 1.15], [3.65, 1.02], [3.65, 0]], 1.2, 0, { ...C, color: shadeHex(col, -0.05), mat: GM.STEEL, seg: 24 });
@@ -724,9 +778,9 @@ function scope(gb, x0, x1, y, r, o = {}) {
     [x0 + L * 0.74, r * 1.45], [x1 - L * 0.02, r * 1.5], [x1, r * 1.38], [x1, 0]], y, 0, { color: '#131517', mat: GM.ALLOY, seg: 24 });
   cylX(gb, x0 + L * 0.38, x0 + L * 0.46, y + r * 1.25, 0, 0.5 * r, 0.5 * r, { color: DARK, rot: [0, 0, 0] });
   const tg = new THREE.CylinderGeometry(r * 0.45, r * 0.45, r * 0.9, 14);
-  gb.add(tg, { at: [x0 + L * 0.42, y + r * 1.1, 0], color: '#18191b', mat: GM.ALLOY, round: true });
+  gb.add(tg, { at: [x0 + L * 0.42, y + r * 1.1, 0], color: '#18191b', mat: GM.ALLOY, round: true, fin: 'knurl' });
   const tg2 = new THREE.CylinderGeometry(r * 0.4, r * 0.4, r * 0.8, 14);
-  gb.add(tg2, { at: [x0 + L * 0.42, y, r * 1.05], rot: [HALF_PI, 0, 0], color: '#18191b', mat: GM.ALLOY, round: true });
+  gb.add(tg2, { at: [x0 + L * 0.42, y, r * 1.05], rot: [HALF_PI, 0, 0], color: '#18191b', mat: GM.ALLOY, round: true, fin: 'knurl' });
   for (const f of [0.28, 0.58]) rbox(gb, x0 + L * f, x0 + L * f + 0.7, y - r * 1.4, y + r * 0.9, -r * 1.05, r * 1.05, 0.15, { color: DARK, mat: GM.ALLOY });
   // lenses: objective glints (glass), eyepiece dark
   const lg = new THREE.CircleGeometry(r * 1.32, 20);
@@ -764,7 +818,7 @@ BUILDERS.rifle = (gb, L, sp, out) => {
   cylX(gb, L - 0.02, L + 0.02, 1.35, 0, 0.26, 0.26, { color: '#020202', seg: 10 });
   redDot(gb, 1.2, 2.9);
   // flip-up front sight on the rail
-  ext(gb, [[L * 0.68, 2.85], [L * 0.71, 2.85], [L * 0.705, 3.9], [L * 0.685, 3.9]], -0.45, 0.45, { color: DARK, bevel: 0.05, holes: [[[L * 0.688, 3.05], [L * 0.702, 3.05], [L * 0.7, 3.7], [L * 0.69, 3.7]]] });
+  ext(gb, [[L * 0.68, 2.85], [L * 0.71, 2.85], [L * 0.705, 3.9], [L * 0.685, 3.9]], -0.45, 0.45, { color: DARK, fin: 'sight', bevel: 0.05, holes: [[[L * 0.688, 3.05], [L * 0.702, 3.05], [L * 0.7, 3.7], [L * 0.69, 3.7]]] });
   pistolGrip(gb, -0.2, DARK, { mat: GM.POLY, h: 3.7, rake: 1.1, top: -0.1 });
   buffStock(gb, DARK);
   stanag(gb, 2.05, 1.3, '#1d1d1d');
@@ -1228,7 +1282,7 @@ BUILDERS.tommy = (gb, L, sp, out) => {
   // receiver: a long steel box with a rounded top
   ext(gb, [[-2.2, 0.15], [9.4, 0.15], [9.8, 0.8], [9.8, 2.1], [8.9, 2.85], [-1.3, 2.85], [-2.2, 2.2]], -0.95, 0.95, { color: steel, mat: GM.STEEL, bevel: 0.22 });
   rbox(gb, 3.0, 6.4, 1.3, 2.35, 0.88, 1.0, 0.08, { color: '#070707' });                                   // ejection port
-  rbox(gb, -1.6, -0.4, 2.8, 3.5, -0.4, 0.4, 0.08, { color: DARK });                                         // rear sight
+  rbox(gb, -1.6, -0.4, 2.8, 3.5, -0.4, 0.4, 0.08, { color: DARK, fin: 'sight' });                                         // rear sight
   rbox(gb, -1.4, -0.6, 3.35, 3.6, -0.12, 0.12, 0.03, { color: '#050505', seg: 1 });
   for (const z of [-0.98, 0.98]) rbox(gb, 0.4, 1.6, 0.6, 1.2, z - 0.06, z + 0.06, 0.05, { color: DARK });     // selector + safety
   // cocking knob in the slot on top (racks back on reload)
@@ -1326,7 +1380,7 @@ BUILDERS.flare = (gb, L, sp, out) => {
   rbox(gb, 2.6, 3.4, 0.9, 1.5, 0.7, 0.9, 0.08, { color: dark });                                             // break lever
   // standing breech: closes the back of the barrel, the firing pin in its face
   ext(gb, [[-1.4, 1.1], [0.15, 1.1], [0.15, 3.3], [-0.2, 3.75], [-1.0, 3.7], [-1.5, 2.6]], -0.95, 0.95, { color: orange, mat: GM.POLY, bevel: 0.22, bevelSeg: 3 });
-  rbox(gb, -1.1, -0.3, 3.55, 3.95, -0.3, 0.3, 0.08, { color: dark });                                          // rear sight notch
+  rbox(gb, -1.1, -0.3, 3.55, 3.95, -0.3, 0.3, 0.08, { color: dark, fin: 'sight' });                                          // rear sight notch
   cylX(gb, 0.12, 0.2, 2.35, 0, 0.18, 0.18, { color: STEEL, seg: 8 });
   // spur hammer
   ext(gb, [[-1.2, 1.2], [-0.8, 1.9], [-1.4, 2.3], [-2.3, 2.6], [-2.4, 2.25], [-1.8, 1.8], [-1.7, 1.2]], -0.26, 0.26, { part: 'hammer', color: dark, bevel: 0.06 });
@@ -1580,115 +1634,36 @@ BUILDERS.amr = (gb, L, sp, out) => {
 // ---------------------------------------------------------------------------------------
 // materials + objects
 
-const GUN_VERT = /* glsl */`
-attribute vec2 aGun;
-varying vec2 vGun;
-varying vec2 vGUv;
-`;
-const GUN_FRAG = /* glsl */`
-uniform sampler2D uGunAtlas;
-uniform sampler2D uMark;
-varying vec2 vGun;
-varying vec2 vGUv;
-vec4 gT;
-vec4 gT2;
-int gM;
-float gWear;
-vec3 gPerturb(vec3 N, vec3 eyePos, vec2 uv, vec2 nxy) {
-  vec3 q0 = dFdx(eyePos), q1 = dFdy(eyePos);
-  vec2 st0 = dFdx(uv), st1 = dFdy(uv);
-  vec3 q1p = cross(q1, N), q0p = cross(N, q0);
-  vec3 T = q1p * st0.x + q0p * st1.x;
-  vec3 Bt = q1p * st0.y + q0p * st1.y;
-  float det = max(dot(T, T), dot(Bt, Bt));
-  float s = det == 0.0 ? 0.0 : inversesqrt(det);
-  float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
-  return normalize(T * (nxy.x * s) + Bt * (nxy.y * s) + N * nz);
-}
-`;
+let shared = null;
+// the tier the shared (world) gun materials are built for: 'low' keeps the procedural atlas
+let TEX_TIER = 'high';
+// whether the baked textures will be there (tier, decoder, not a software rasterizer): only then do
+// the gun materials compile the textured path (a software rasterizer pays for every unused branch)
+let TEX_ON = false;
+/** True when the gun materials are (to be) textured: the viewmodel builds its material to match. */
+export function gunTexOn() { return TEX_ON; }
+const skinMats = new Map();
 
 /**
- * The shared gun material (vertex colours + surface class → atlas). `envMap` is only set
- * for the viewmodel (its own studio reflections); world guns use scene.environment.
+ * The renderer's quality tier for every gun (renderer3d calls this before the sub-systems are
+ * made, and again on setQuality): 'high' and up compile the baked-texture path and load the
+ * texture arrays at the tier's size (gun-tex.js); 'low' draws the procedural atlas.
  */
-export function createGunMaterial(atlas, opts = {}) {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.5, envMap: opts.envMap || null, envMapIntensity: opts.envIntensity ?? 1 });
-  const uniforms = { uGunAtlas: { value: atlas }, uMark: { value: opts.mark || atlas } };
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    if (opts.cinematic) sh.fragmentShader = '#define GUN_CIN\n' + sh.fragmentShader;
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + GUN_VERT)
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvGun = aGun; vGUv = uv;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + GUN_FRAG)
-      .replace('#include <color_fragment>', /* glsl */`
-  #include <color_fragment>
-  gM = int(vGun.x + 0.5);
-  gWear = vGun.y;
-  if (gM == 8) {
-    // stamped markings: paint where the label texture has ink
-    if (texture2D(uMark, vGUv).a < 0.42) discard;
+export function setGunTier(q, opts = {}) {
+  const textured = gunTexEnabled(q, opts.gl);
+  const was = TEX_ON;
+  TEX_TIER = q;
+  TEX_ON = textured;
+  if (shared && textured !== was) {
+    // (a new program for the world guns: the old materials go, gunObject() hands out the new)
+    shared.std.dispose();
+    shared.std = shared.lambert = createGunMaterial(shared.atlas, { mark: shared.mark, textured });
+    for (const m of skinMats.values()) m.dispose();
+    skinMats.clear();
   }
-  vec2 tile = gM == 2 ? vec2(0.5, 0.0) : gM == 3 ? vec2(0.0, 0.5) : gM == 4 ? vec2(0.5, 0.5) : vec2(0.0);
-  {
-    float aN = float(textureSize(uGunAtlas, 0).x);
-    vec2 f = fract(vGUv);
-    vec2 a = tile + f * (0.5 - 4.0 / aN) + 2.0 / aN;
-    gT = textureGrad(uGunAtlas, a, dFdx(vGUv) * 0.5, dFdy(vGUv) * 0.5);
-    gT2 = gT;
-    #ifdef GUN_CIN
-    // a second, finer and offset sample: micro-scratches, machining marks and oily smudges
-    vec2 f2 = fract(vGUv * 3.7 + vec2(0.37, 0.11));
-    vec2 a2 = tile + f2 * (0.5 - 4.0 / aN) + 2.0 / aN;
-    gT2 = textureGrad(uGunAtlas, a2, dFdx(vGUv) * 0.5 * 3.7, dFdy(vGUv) * 0.5 * 3.7);
-    #endif
-  }
-  float alb = gM == 3 ? 0.45 + gT.r * 0.75 : 0.72 + gT.r * 0.36;
-  diffuseColor.rgb *= alb;
-  // edge wear: bare steel on metal edges, scuffs on polymer/wood
-  float wm = smoothstep(0.3, 0.75, gWear + (gT.a - 0.45) * 0.6);
-  if (gM <= 1 || gM == 7) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.53, 0.55), wm * 0.75);
-  if (gM == 8) diffuseColor.rgb = vColor.rgb * 0.0 + diffuseColor.rgb / max(alb, 0.001);
-  else if (gM == 2 || gM == 4) diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.7 + 0.03, wm * 0.45);
-  else if (gM == 3) diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.5, wm * 0.5);`)
-      .replace('#include <roughnessmap_fragment>', /* glsl */`
-  float roughnessFactor = 0.5;
-  if (gM == 0) roughnessFactor = 0.38 + gT.a * 0.5;
-  else if (gM == 1) roughnessFactor = 0.45 + gT.a * 0.4;
-  else if (gM == 2) roughnessFactor = 0.35 + gT.a * 0.55;
-  else if (gM == 3) roughnessFactor = 0.3 + gT.a * 0.5;
-  else if (gM == 4) roughnessFactor = 0.55 + gT.a * 0.4;
-  else if (gM == 5) roughnessFactor = 0.22 + gT.a * 0.2;
-  else if (gM == 6) roughnessFactor = 0.04;
-  else if (gM == 7) roughnessFactor = 0.38 + gT.a * 0.35;
-  else if (gM == 8) roughnessFactor = 0.7;
-  if (gM <= 1 || gM == 7) roughnessFactor = mix(roughnessFactor, 0.24, wm);
-  #ifdef GUN_CIN
-  if (gM != 6 && gM != 8) roughnessFactor = clamp(roughnessFactor + (gT2.a - 0.5) * 0.22 + (gT.r - 0.5) * 0.08, 0.04, 1.0);
-  #endif`)
-      .replace('#include <metalnessmap_fragment>', /* glsl */`
-  // parkerized steel and anodised alloy are finishes over the metal: mostly matte and
-  // dark; only the worn edges show bare, fully metallic steel
-  float metalnessFactor = gM == 0 ? 0.5 + wm * 0.5 : gM == 1 ? 0.3 + wm * 0.7 : gM == 5 ? 1.0 : gM == 6 ? 0.3 : gM == 7 ? 0.15 + wm * 0.8 : 0.0;`)
-      .replace('#include <normal_fragment_maps>', /* glsl */`
-  {
-    float ns = gM == 3 ? 0.7 : gM == 4 ? 1.1 : gM == 6 || gM == 8 ? 0.0 : gM == 2 ? 0.8 : 0.55;
-    vec2 nxy = (gT.gb * 2.0 - 1.0) * ns;
-    #ifdef GUN_CIN
-    nxy += (gT2.gb * 2.0 - 1.0) * ns * 0.45;
-    #endif
-    normal = gPerturb(normal, -vViewPosition, vGUv, nxy);
-  }`)
-      .replace('#include <emissivemap_fragment>', /* glsl */`
-  #include <emissivemap_fragment>
-  if (gM == 6) totalEmissiveRadiance += diffuseColor.rgb * 0.35;`);
-  };
-  mat.customProgramCacheKey = () => 'hh-gun-std2' + (opts.envMap ? '-env' : '') + (opts.cinematic ? '-cin' : '');
-  return mat;
+  if (textured) loadGunTextures(q, opts);
 }
 
-let shared = null;
 /**
  * Free the GPU copies of the cached gun geometries, the shared materials and the atlas in
  * every renderer that drew them (renderer3d calls this from destroy()). The objects stay
@@ -1704,6 +1679,8 @@ export function releaseSharedGuns() {
     shared.atlas.dispose();
     shared.mark.dispose();
   }
+  for (const m of skinMats.values()) m.dispose();
+  releaseGunTextures();
 }
 
 /**
@@ -1728,7 +1705,7 @@ export function gunMaterials() {
   const mark = markTexture();
   shared = {
     atlas, mark,
-    std: createGunMaterial(atlas, { mark }),
+    std: createGunMaterial(atlas, { mark, textured: TEX_ON }),
     // glowing parts: vertex colour × 2.6 in HDR (they bloom; ACES rolls them off)
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) }),
   };
@@ -1737,16 +1714,34 @@ export function gunMaterials() {
 }
 
 /**
+ * The world-gun material of a skin (teammates' guns): one per skin, sharing the program of the
+ * plain one (uniforms differ only). The factory finish is the shared material itself.
+ */
+export function gunMaterialFor(skinId) {
+  const id = sanitizeSkin(skinId);
+  const mats = gunMaterials();
+  if (id === 'factory') return mats.std;
+  let m = skinMats.get(id);
+  if (!m) {
+    m = createGunMaterial(mats.atlas, { mark: mats.mark, textured: TEX_ON, skin: id });
+    skinMats.set(id, m);
+  }
+  return m;
+}
+
+export { GUN_SKIN_IDS };
+
+/**
  * A ready-to-place gun: a Group with one mesh per part (moving parts in pivot groups).
  * userData: { model, parts: { name: Object3D }, glowMeshes, animate(state), dispose() }.
  * @param {string} weaponId
- * @param {{ shadow?: boolean, mirror?: boolean, lite?: boolean, material?: THREE.Material, glowMaterial?: THREE.Material }} o
+ * @param {{ shadow?: boolean, mirror?: boolean, lite?: boolean, material?: THREE.Material, glowMaterial?: THREE.Material, skin?: string }} o
  */
 export function gunObject(weaponId, o = {}) {
   const model = gunModel(weaponId, !!o.lite);
   const mats = gunMaterials();
   if (mats.mark.userData.v !== markVersion()) { mats.mark.userData.v = markVersion(); mats.mark.needsUpdate = true; }
-  const mat = o.material || mats.std;
+  const mat = o.material || (o.skin ? gunMaterialFor(o.skin) : mats.std);
   const glowMat = o.glowMaterial || mats.glow;
   const group = new THREE.Group();
   const inner = new THREE.Group();

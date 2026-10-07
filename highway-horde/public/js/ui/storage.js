@@ -2,6 +2,7 @@
 // last lobby settings between visits. Every storage access is wrapped: private windows,
 // blocked cookies and full quotas must never stop the game from starting.
 
+import { DEFAULT_SKIN, sanitizeSkin } from '../shared/gun-finish.js';
 import { CLASS_IDS } from '../shared/classes.js';
 import { SENS_MIN, SENS_MAX } from './look.js';
 import { NAME_MAX_LENGTH, DEFAULT_SETTINGS, DIFFICULTY_IDS, WAVE_OPTIONS } from '../shared/constants.js';
@@ -162,6 +163,8 @@ function defaults() {
   return {
     name: '',
     cls: CLASS_IDS[0],
+    // the gun skin (shared/gun-finish.js): cosmetic, shown on your guns to everyone in the room
+    skin: DEFAULT_SKIN,
     color: 0,
     settings: defaultClientSettings(),
     lobby: { ...DEFAULT_SETTINGS },
@@ -272,7 +275,7 @@ export function validateSettings(s) {
 /**
  * Load preferences, validating every field (storage may hold data from an older build
  * or something a player edited by hand).
- * @returns {{name: string, cls: string, color: number, settings: object, lobby: object, seenHowTo: boolean}}
+ * @returns {{name: string, cls: string, skin: string, color: number, settings: object, lobby: object, seenHowTo: boolean}}
  */
 export function loadPrefs() {
   const d = defaults();
@@ -281,6 +284,7 @@ export function loadPrefs() {
   const out = d;
   if (typeof raw.name === 'string') out.name = cleanName(raw.name);
   if (CLASS_IDS.includes(raw.cls)) out.cls = raw.cls;
+  out.skin = sanitizeSkin(raw.skin);
   if (Number.isInteger(raw.color) && raw.color >= 0 && raw.color < 6) out.color = raw.color;
   out.seenHowTo = bool(raw.seenHowTo, false);
   out.settings = validateSettings(raw.settings);
