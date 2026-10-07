@@ -430,23 +430,29 @@ to try numbers.
 Horde sizes (`hordeTotal`, bots count as players): Normal 150 solo, 240 for 2, 420 for 4, 600
 for 6; Easy 0.8x (120 / 192 / 336), Hard 1.25x (188 / 300 / 525), Nightmare 1.5x.
 
-| Sandstone (4 runs each; easy and nightmare 3) | average bots | skilled bots |
+| Sandstone, two-site layout (4 runs each) | average bots | skilled bots |
 |---|---|---|
-| easy 1 / 2 / 4 | 100% / 100% / 100% | |
-| normal 1 player | 25% (lost with ~32 left, last surge) | 100% |
-| normal 2 / 4 | 100% / 100% | 75% / 100% |
-| hard 1 player | 25% (~45 left) | 75% |
-| hard 2 / 4 | 50% / 100% | 75% / 100% |
-| nightmare 1 / 2 | 0% / 0% (lost at surge 7) | |
+| easy 1 / 2 / 4 | 100% / 100% / 100% | 100% / 100% / 100% |
+| normal 1 player | 75% (lost with ~18 left, last surge) | 75% |
+| normal 2 / 4 | 75% / 100% | 100% / 100% |
+| hard 1 player | 25% (~50 left) | 50% |
+| hard 2 / 4 | 25% / 100% | 75% / 100% |
 | other maps, normal 1 / 4 (8 runs) | 75% / 100% | |
 
-Round length with bots: 5.5-6.5 min on Sandstone (Normal: 330-390 s after a 25 s buy time; bigger
+Round length with bots: 5.5-6.5 min on Sandstone (Normal: 340-385 s after a 25 s buy time; bigger
 teams the same, the pacing is the surges' breathers and lulls), about 5 min on the other maps.
-The first zombies reach the crew 20-26 s after the buy time. Losses come in the last surge (the
-bosses plus the biggest, toughest surge). A solo average bot is the hardest case (one gun, no
-reviver); a human playing alone usually brings bots.
+Losses come in the last surge (the bosses plus the biggest, toughest surge). A solo average bot is
+the hardest case (one gun, no reviver); a human playing alone usually brings bots.
 
-* **The walk in.** Sandstone's gates are 2000-3800 px from Fountain Square and a walker does
+* **The two-site layout** (Sandstone rebuilt like the classic desert map: CT spawn, A up the ramp,
+  B behind its doors, the horde from the four T-side entrances) left the numbers where the walled
+  town had them (the old table: normal solo average 25%, skilled 100%; hard solo 25% / 75%; teams
+  of 2 and 4 50-100%), within the noise of 4 runs, so nothing was retuned. The walks in are
+  2500-3700 px from the entrances to CT spawn (the town's gates were 2000-3800 px). One thing did
+  matter: letting a lone bot move to the site a surge's entrances call for (`hordeHoldFor`: long →
+  A, tunnels → B, top mid → CT mid) cost solo Hard skilled 3 wins in 5 (it dies crossing the map
+  between surges), so only teams of three or more split to the sites; one or two hold CT spawn.
+* **The walk in.** (the walled town) Sandstone's gates were 2000-3800 px from Fountain Square and a walker does
   34-48 px/s, so the first zombies arrived ~50-85 s into the round. Now the first surge uses one of
   the nearer entrances and a zombie far from its survivor strides out (`HORDE.travel`: up to 1.8x
   beyond 1100-1600 px): first contact at 20-26 s. It made solo rounds harder (the surges arrive

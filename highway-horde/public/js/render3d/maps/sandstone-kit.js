@@ -121,7 +121,7 @@ export function toWorld(o, lx, lz) {
  * neighbour top, ceil: the lowest vault springing over the street there (Infinity in the open),
  * samples: [{ t, top }] }.
  */
-export function faceCover(P, o, F) {
+export function faceCover(P, o, F, base = 0) {
   const out = [];
   let open = 0, cover = 0, ceil = Infinity;
   const n = Math.max(3, Math.round(F.L / 60));
@@ -129,13 +129,40 @@ export function faceCover(P, o, F) {
     const t = -F.L / 2 + ((i + 0.5) / n) * F.L;
     const [lx, lz] = F.at(t, 8);
     const [wx, wy] = toWorld(o, lx, lz);
-    const top = P.blockTop(wx, wy, o);
+    // (blockTop is absolute, 0 in the open: a neighbour's top over this face's street)
+    const abs = P.blockTop(wx, wy, o);
+    const top = abs > 0 ? Math.max(0, abs - base) : 0;
     out.push({ t, top });
     if (top <= 0) open++;
     cover = Math.max(cover, top);
-    if (P.ceilAt) ceil = Math.min(ceil, P.ceilAt(wx, wy));
+    if (P.ceilAt) ceil = Math.min(ceil, P.ceilAt(wx, wy) - base);
   }
   return { open: open / n, cover, ceil, samples: out };
+}
+
+/**
+ * The ground along a face of obstacle o (a few points `out` units off it), relative to the ground at
+ * the obstacle's centre (where its frame stands): { lo, hi } (0, 0 on flat ground).
+ */
+export function faceGround(P, o, F, out = 10) {
+  if (!P.gy) return { lo: 0, hi: 0 };
+  const g0 = P.gy(o.x, o.y);
+  let lo = Infinity, hi = -Infinity;
+  for (const u of [-0.45, -0.15, 0.15, 0.45]) {
+    const [lx, lz] = F.at(u * F.L, out);
+    const [wx, wy] = toWorld(o, lx, lz);
+    const g = P.gy(wx, wy) - g0;
+    lo = Math.min(lo, g);
+    hi = Math.max(hi, g);
+  }
+  return { lo, hi };
+}
+
+/** The lowest ground around obstacle o (just off each face), relative to its centre's (≤ 0). */
+export function lowGround(P, o, out = 8) {
+  let lo = 0;
+  for (const side of [0, 1, 2, 3]) lo = Math.min(lo, faceGround(P, o, faceOf(o, side), out).lo);
+  return lo;
 }
 
 // ---- the house ---------------------------------------------------------------------------------------
@@ -154,11 +181,28 @@ export function house(P) {
   const roofCol = o.roof || '#b9a27c';
   const adobe = h0 < 0.35;
   const fin = adobe ? STUCCO : PLASTER;
+  // the streets around it: on a town of levels a face may stand over a lower street (the body
+  // reaches down to it) or a higher one (its doors and windows climb with it)
+  const faces = [0, 1, 2, 3].map((side) => {
+    const F = faceOf(o, side);
+    return { F, g: faceGround(P, o, F) };
+  });
+  const y0 = Math.min(0, ...faces.map((f) => f.g.lo));
   // the body (rounded corners from 'high' up: lime plaster softens every edge)
-  if (lod >= 1) B.rblock('std', 0, 0, 0, w, H, d, Math.min(3.5, w * 0.05, d * 0.05), col, null, fin);
-  else B.block('std', 0, 0, 0, w, H, d, col, null, fin);
-  // a darker plinth where the street splashes the wall
-  B.block('std', 0, 0, 0, w + 1.2, 13, d + 1.2, shadeHex(col, -0.22), null, STUCCO);
+  if (lod >= 1) B.rblock('std', 0, y0, 0, w, H - y0, d, Math.min(3.5, w * 0.05, d * 0.05), col, null, fin);
+  else B.block('std', 0, y0, 0, w, H - y0, d, col, null, fin);
+  // a darker plinth where the street splashes the wall (at each face's own street)
+  for (const { F, g } of faces) {
+    const [px, pz] = F.at(0, 0.6);
+    B.box('std', px, g.lo + 6.5, pz, F.L + 1.2, 13, 1.2, shadeHex(col, -0.22), [0, F.ry, 0], STUCCO);
+  }
+  // the cornice: a moulded band under the parapet (two steps out)
+  if (lod >= 1) {
+    const cc = shadeHex(col, -0.06);
+    B.block('std', 0, H - 7, 0, w + 3, 3, d + 3, cc, null, STONE);
+    B.block('std', 0, H - 4, 0, w + 5, 4, d + 5, shadeHex(col, 0.03), null, STONE);
+    if (lod >= 2) B.block('std', 0, H - 10, 0, w + 1.6, 2, d + 1.6, shadeHex(col, -0.14), null, STONE);
+  }
   // the roof: an earth slab behind a parapet with a cap
   const PT = 4, PH = 12 + Math.round(hash01(seed + 5) * 8);
   B.block('std', 0, H, 0, w - PT * 2, 1, d - PT * 2, roofCol, null, ROOFS);
@@ -188,13 +232,19 @@ export function house(P) {
       }
     }
   }
-  // the faces
-  const storeys = Math.max(1, Math.floor((H - 20) / 46));
-  for (const side of [0, 1, 2, 3]) {
-    const F = faceOf(o, side);
+  // the faces, each from its own street up (the frame lifted to it for the facade)
+  const objSeed = Math.round(o.id * 31);
+  for (const { F, g } of faces) {
     if (F.L < 60) continue;
-    const cov = faceCover(P, o, F);
-    facade(P, F, cov, { H, storeys, col, seed: seed + side * 101, adobe });
+    const base = g.lo;
+    const Hf = H - base;
+    if (Hf < 40) continue;
+    const storeys = Math.max(1, Math.floor((Hf - 20) / 46));
+    const cov = faceCover(P, o, F, (P.gy ? P.gy(o.x, o.y) : 0) + base);
+    if (base !== 0) B.obj(o.x, o.y, o.a || 0, objSeed + F.side, base);
+    // (a face along a ramp: no door, it would sink into the slope at one end)
+    facade(P, F, cov, { H: Hf, storeys, col, seed: seed + F.side * 101, adobe, slope: g.hi - g.lo > 8 });
+    if (base !== 0) B.obj(o.x, o.y, o.a || 0, objSeed + 7);
   }
   roofProps(P, { H, PH, w, d, seed, col });
 }
@@ -218,7 +268,7 @@ function facade(P, F, cov, h) {
     }
   }
   // the ground floor: a door or a shop front on a face to the street, else windows
-  const ground = cov.open >= 0.5;
+  const ground = cov.open >= 0.5 && !h.slope;
   const pitch = 64 + rnd(2) * 34;
   const n = Math.max(1, Math.floor((L - 40) / pitch));
   const step = (L - 40) / n;
@@ -498,16 +548,19 @@ function roofProps(P, h) {
 // ---- walls and doors -----------------------------------------------------------------------------------
 
 /** A thick sandstone wall (the court's east wall): ashlar courses, a cap, fallen plaster. */
-export function courtWall(P, H = 130) {
+export function courtWall(P, H0 = 130) {
   const { B, o, lod } = P;
+  const H = o.top || H0;
   const col = o.color || '#cbb089';
-  B.block('std', 0, 0, 0, o.w, H, o.h, col, null, STONE);
+  const y0 = lowGround(P, o);
+  B.block('std', 0, y0, 0, o.w, H - y0, o.h, col, null, STONE);
   B.block('std', 0, H, 0, o.w + 3, 4, o.h + 3, shadeHex(col, -0.15), null, STONE);
-  B.block('std', 0, 0, 0, o.w + 1.4, 12, o.h + 1.4, shadeHex(col, -0.22), null, STUCCO);
+  if (lod >= 1) B.block('std', 0, H - 6, 0, o.w + 2, 3, o.h + 2, shadeHex(col, -0.06), null, STONE);
+  B.block('std', 0, y0, 0, o.w + 1.4, 12, o.h + 1.4, shadeHex(col, -0.22), null, STUCCO);
   if (lod >= 1) {
     // ashlar courses: shallow grooves every 20 units on both long faces
     const long = o.w >= o.h ? 'x' : 'z';
-    for (let y = 20; y < H; y += 20) {
+    for (let y = y0 + 20; y < H; y += 20) {
       if (long === 'x') for (const s of [-1, 1]) B.box('std', 0, y, s * (o.h / 2 + 0.15), o.w, 0.8, 0.3, shadeHex(col, -0.3), null, STONE);
       else for (const s of [-1, 1]) B.box('std', s * (o.w / 2 + 0.15), y, 0, 0.3, 0.8, o.h, shadeHex(col, -0.3), null, STONE);
     }
@@ -517,14 +570,16 @@ export function courtWall(P, H = 130) {
 /** A gatehouse wall beside the big doors: tall masonry with a battered base and crenellations. */
 export function gatehouse(P) {
   const { B, o, lod } = P;
-  const H = 175;
+  const H = o.top || 175;
   const col = '#c9ad84';
-  B.block('std', 0, 0, 0, o.w, H, o.h, col, null, STONE);
-  B.block('std', 0, 0, 0, o.w + 6, 26, o.h + 6, shadeHex(col, -0.12), null, STONE);
+  const y0 = lowGround(P, o);
+  B.block('std', 0, y0, 0, o.w, H - y0, o.h, col, null, STONE);
+  B.block('std', 0, y0, 0, o.w + 6, 26 - y0, o.h + 6, shadeHex(col, -0.12), null, STONE);
+  if (lod >= 1) B.block('std', 0, H - 8, 0, o.w + 5, 5, o.h + 5, shadeHex(col, -0.05), null, STONE);
   if (lod >= 1) {
     const n = Math.max(2, Math.round(o.w / 22));
     for (let i = 0; i < n; i += 2) B.block('std', -o.w / 2 + (i + 0.5) * (o.w / n), H, 0, o.w / n, 12, o.h, col, null, STONE);
-    for (let y = 30; y < H; y += 24) for (const s of [-1, 1]) B.box('std', 0, y, s * (o.h / 2 + 0.15), o.w, 0.8, 0.3, shadeHex(col, -0.3), null, STONE);
+    for (let y = 30; y < H - 10; y += 24) for (const s of [-1, 1]) B.box('std', 0, y, s * (o.h / 2 + 0.15), o.w, 0.8, 0.3, shadeHex(col, -0.3), null, STONE);
   }
 }
 
@@ -551,11 +606,43 @@ export function bigDoor(P) {
     }
     for (const y of [20, 80, 140]) B.add('std', T.box(), [0, y, 0], [len + 0.4, 4, th * 0.8 + 1.2], [0, ry, 0], '#262422', IRON);
   }
-  if (lod >= 2) {
+  if (lod >= 1) {
     for (let i = 0; i < 5; i++) for (const y of [20, 80, 140]) for (const s of [-1, 1]) {
       const t = -len / 2 + 6 + i * ((len - 12) / 4);
       const lx = long ? s * (th * 0.4 + 0.8) : t, lz = long ? t : s * (th * 0.4 + 0.8);
       B.add('std', T.sphere(5, 3), [lx, y, lz], [1.3, 1.3, 1.3], null, '#1c1a18', IRON);
+    }
+  }
+}
+
+/**
+ * The side wall of a flight of stairs over a lower street (the catwalk stairs over mid, the pit's
+ * stairs): a balustrade of masonry stepping up with the treads, from the street to above the steps.
+ */
+export function stairWall(P) {
+  const { B, o, lod } = P;
+  const col = o.color || '#cbb089';
+  const alongZ = o.h >= o.w;
+  const L = alongZ ? o.h : o.w, th = alongZ ? o.w : o.h;
+  const g0 = P.gy ? P.gy(o.x, o.y) : 0;
+  const n = Math.max(2, Math.round(L / 24));
+  for (let i = 0; i < n; i++) {
+    const t = -L / 2 + ((i + 0.5) / n) * L;
+    let lo = Infinity, hi = -Infinity;
+    for (const s of [-1, 1]) {
+      const [wx, wy] = toWorld(o, alongZ ? s * (th / 2 + 8) : t, alongZ ? t : s * (th / 2 + 8));
+      const g = (P.gy ? P.gy(wx, wy) : 0) - g0;
+      lo = Math.min(lo, g);
+      hi = Math.max(hi, g);
+    }
+    const top = hi + 30;
+    const seg = L / n + 0.3;
+    if (alongZ) B.block('std', 0, lo, t, th, top - lo, seg, col, null, STONE);
+    else B.block('std', t, lo, 0, seg, top - lo, th, col, null, STONE);
+    if (lod >= 1) {
+      // the coping stones, a shade darker
+      if (alongZ) B.block('std', 0, top, t, th + 3, 3, seg, shadeHex(col, -0.12), null, STONE);
+      else B.block('std', t, top, 0, seg, 3, th + 3, shadeHex(col, -0.12), null, STONE);
     }
   }
 }
