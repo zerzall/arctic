@@ -12,8 +12,8 @@
 // uniforms point at 1-texel placeholders and uGunTexOn is 0 — the shader's procedural path.
 //
 // Loading: fetch + createImageBitmap (resized to the layer size off the main thread), drawn into
-// a canvas to read the pixels back, packed into the array and uploaded once with mipmaps; the
-// CPU copy is dropped after the upload. The one-file build embeds the PNGs (window.__HH_FILES).
+// a canvas to read the pixels back (one file a frame), packed into the array and uploaded once
+// with mipmaps; the CPU copy is dropped after the upload. The one-file build embeds the PNGs (window.__HH_FILES).
 // `?guntex=0` in the page address leaves them off (before / after screenshots).
 
 import * as THREE from 'three';
@@ -96,6 +96,13 @@ function canLoad() {
 }
 
 async function decode(file, size) {
+  const bmp = await decodeBitmap(file, size);
+  // (the copy into the arrays runs on the main thread: one file a frame keeps the game smooth)
+  await packTurn();
+  return bmp;
+}
+
+async function decodeBitmap(file, size) {
   const res = await fetch(gunTexURL(file));
   if (!res.ok) throw new Error(`${res.status} ${file}`);
   const blob = await res.blob();
@@ -119,6 +126,24 @@ function pixelsOf(bmp, size) {
   g.drawImage(bmp, 0, 0, size, size);
   if (bmp.close) bmp.close();
   return g.getImageData(0, 0, size, size).data;
+}
+
+/** The next frame (or 50 ms, whichever first: a hidden tab gets no frames): one decoded file is packed per frame. */
+function nextFrame() {
+  return new Promise((r) => {
+    let done = false;
+    const go = () => { if (!done) { done = true; r(); } };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(go);
+    setTimeout(go, 50);
+  });
+}
+
+let packGate = Promise.resolve();
+/** Resolves on a frame of its own: the decoded files take turns, one a frame. */
+function packTurn() {
+  const p = packGate.then(nextFrame);
+  packGate = p;
+  return p;
 }
 
 /** A pool running jobs `limit` at a time. */
@@ -191,7 +216,7 @@ export function loadGunTextures(tier, opts = {}) {
     let wearPx = null;
     jobs.push(async () => { wearPx = new Uint8Array(pixelsOf(await decode(`${GUN_WEAR_FILE}.png`, row.wear), row.wear)); });
     // (one at a time per decode slot: each failure is recorded, the rest carry on)
-    const guarded = jobs.map((j, k) => async () => {
+    const guarded = jobs.map((j) => async () => {
       if (stale()) return;
       try { await j(); } catch (err) { state.failed.push(String(err && err.message || err).slice(0, 80)); if (state.failed.length === 1) console.warn('gun textures: a file failed', err && err.message ? err.message : err); }
     });
