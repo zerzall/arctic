@@ -17,7 +17,8 @@ import * as THREE from 'three';
 import { tierAtLeast } from './tier.js';
 
 /** Pool lights mirrored per tier. */
-const POOL_N = { low: 1, high: 2, ultra: 3, cinematic: 4 };
+// (fixed when the viewmodel is made: a light count never changes; every light costs every gun pixel)
+const POOL_N = { low: 0, high: 1, ultra: 2, cinematic: 4 };
 /** Eye height (SPEC §7.5 canonical heights). */
 const EYE = 52;
 
@@ -34,14 +35,14 @@ export function createVmLighting(ctx, scene) {
   const sun = new THREE.DirectionalLight('#ffffff', 0);
   const key = new THREE.DirectionalLight('#ffe8cc', 0);
   const rim = new THREE.DirectionalLight('#9cc0ff', 0);
-  const bounce = new THREE.DirectionalLight('#ffe2c0', 0);
   key.position.set(-3, 6, 4);
   rim.position.set(4, 3, -8);
-  bounce.position.set(0.15, -0.35, -1);
-  scene.add(hemi, sun, key, rim, bounce);
+  scene.add(hemi, sun, key, rim);
   const nPool = POOL_N[ctx.quality] ?? POOL_N.high;
   const pool = [];
-  for (let i = 0; i < POOL_N.cinematic; i++) {
+  const RIM = new THREE.Vector3(4, 3, -8).normalize(), BOUNCE = new THREE.Vector3(0.15, -0.35, -1).normalize();
+  const RIM_C = new THREE.Color('#9cc0ff'), BOUNCE_C = new THREE.Color('#ffe2c0');
+  for (let i = 0; i < nPool; i++) {
     const p = new THREE.PointLight('#ffffff', 0, 1, 1.5);
     scene.add(p);
     pool.push(p);
@@ -121,10 +122,13 @@ export function createVmLighting(ctx, scene) {
     // night studio: a soft key and rim so the gun's outline reads in the dark; less indoors and by day
     const night = day ? 0 : 1;
     key.intensity = (day ? 0.25 : 1.45) * (0.55 + 0.45 * sky);
-    rim.intensity = (day ? 0.2 : 1.1) * (0.6 + 0.4 * sky);
-    // the flashlight's bounce from what it lights ahead (night, torch on)
+    // the rim from the front; at night with the torch on it swings low and warm: the bounce of
+    // what the flashlight lights ahead (one light for both)
     const torch = rig && rig.flashlight ? Math.min(1, rig.flashlight.intensity / 40) : 0;
-    bounce.intensity = night * torch * 0.9;
+    const tb = night * torch;
+    rim.position.copy(RIM).lerp(BOUNCE, tb * 0.65);
+    rim.color.copy(RIM_C).lerp(BOUNCE_C, tb * 0.7);
+    rim.intensity = (day ? 0.2 : 1.1) * (0.6 + 0.4 * sky) + tb * 0.8;
     // pool lights: the strongest contributions at the eye, at their world places in camera space
     const lights = rig && rig.poolLights ? rig.poolLights : null;
     const best = [];
@@ -169,9 +173,9 @@ export function createVmLighting(ctx, scene) {
       return e && e.mapping === THREE.CubeUVReflectionMapping ? e : null;
     },
     dispose() {
-      for (const l of [hemi, sun, key, rim, bounce, ...pool]) { l.removeFromParent(); if (l.dispose) l.dispose(); }
+      for (const l of [hemi, sun, key, rim, ...pool]) { l.removeFromParent(); if (l.dispose) l.dispose(); }
     },
-    lights: { hemi, sun, key, rim, bounce, pool },
+    lights: { hemi, sun, key, rim, pool },
     tierHasPool: tierAtLeast(ctx.quality, 'high'),
   };
 }

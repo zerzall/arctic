@@ -217,7 +217,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
 
   // the guns' material path and their baked textures for this tier (actor-guns.js, gun-tex.js);
   // the viewmodel reads the indoor mask under the eye (story levels, Sandstone's tunnels)
-  setGunTier(q, { maxAniso: renderer.capabilities.getMaxAnisotropy() });
+  setGunTier(q, { maxAniso: renderer.capabilities.getMaxAnisotropy(), gl: renderer.getContext() });
   ctx.indoorAt = (x, y, h) => (world.indoor && world.indoor.at ? world.indoor.at(x, y, h) : 0);
   // (read-only: the viewmodel mirrors the sun / moon, the hemisphere, the flashlight and the nearest pool lights)
   ctx.lightRig = lights;
@@ -703,7 +703,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       if (n === q) return;
       q = n;
       ctx.quality = n;
-      setGunTier(n, { maxAniso: renderer.capabilities.getMaxAnisotropy() });
+      setGunTier(n, { maxAniso: renderer.capabilities.getMaxAnisotropy(), gl: renderer.getContext() });
       lights.setQuality(n);
       for (const s of subs) {
         if (typeof s.setQuality !== 'function') continue;

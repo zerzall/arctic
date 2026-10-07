@@ -33,7 +33,7 @@ import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
 import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
-import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas, setGunMaterialSkin, setGunMaterialModel } from './actor-guns.js';
+import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas, setGunMaterialSkin, setGunMaterialModel, gunTexOn } from './actor-guns.js';
 import { createVmLighting } from './vm-light.js';
 import { tierAtLeast } from './tier.js';
 import { sanitizeSkin } from '../shared/gun-finish.js';
@@ -101,7 +101,8 @@ export function createViewmodel(ctx) {
   const atlas = gunMaterials().atlas;
   let skin = 'factory';
   let tri = tierAtLeast(ctx.quality, 'ultra');
-  const makeGunMat = () => createGunMaterial(gunMaterials().atlas, { envMap, envIntensity: 1, mark: gunMaterials().mark, cinematic: cin, textured: high, triplanar: tri, skin });
+  let texd = gunTexOn();
+  const makeGunMat = () => createGunMaterial(gunMaterials().atlas, { envMap, envIntensity: 1, mark: gunMaterials().mark, cinematic: cin, textured: texd, triplanar: tri, skin });
   let gunMat = makeGunMat();
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) });
   const actorTex = actorTextures(high ? 8 : 4);
@@ -925,9 +926,10 @@ export function createViewmodel(ctx) {
       const nc = q === 'cinematic';
       const nt = tierAtLeast(q, 'ultra');
       setGunDetail(nh, nc);
-      if (nc !== cin || nh !== high || nt !== tri) {
+      const nx = gunTexOn();
+      if (nc !== cin || nh !== high || nt !== tri || nx !== texd) {
         // a new tier of guns and hands: a fresh material (textured / triplanar / cinematic variants) and a rebuild
-        cin = nc; high = nh; tri = nt;
+        cin = nc; high = nh; tri = nt; texd = nx;
         const old = gunMat;
         gunMat = makeGunMat();
         clearGun();

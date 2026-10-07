@@ -14,7 +14,8 @@
 // Loading: fetch + createImageBitmap (resized to the layer size off the main thread), drawn into
 // a canvas to read the pixels back (one file a frame), packed into the array and uploaded once
 // with mipmaps; the CPU copy is dropped after the upload. The one-file build embeds the PNGs (window.__HH_FILES).
-// `?guntex=0` in the page address leaves them off (before / after screenshots).
+// `?guntex=0` in the page address leaves them off (before / after screenshots); a software
+// rasterizer (SwiftShader, llvmpipe: no graphics card) leaves them off too unless `?guntex=1`.
 
 import * as THREE from 'three';
 import { GUN_FAMILIES, SKIN_PATTERNS, GUN_WEAR_FILE } from '../shared/gun-finish.js';
@@ -88,10 +89,26 @@ export function gunTexBudget(tier) {
   return Math.round((2 * GUN_FAMILIES.length * row.family * row.family * 4 + 2 * SKIN_PATTERNS.length * row.skin * row.skin * 4 + row.wear * row.wear * 4) * mip);
 }
 
-function canLoad() {
+const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/i;
+/** A software rasterizer (no graphics card): every texel is CPU time there. */
+export function isSoftwareGL(gl) {
+  try {
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl ? gl.getParameter(gl.RENDERER) : '';
+    return SOFTWARE_GL.test(String(name || ''));
+  } catch {
+    return false;
+  }
+}
+
+function canLoad(gl) {
   if (typeof fetch !== 'function' || typeof createImageBitmap !== 'function') return false;
   if (typeof OffscreenCanvas !== 'function' && typeof document === 'undefined') return false;
-  try { if (typeof location !== 'undefined' && /[?&]guntex=0\b/.test(location.search || '')) return false; } catch { /* (no location) */ }
+  let q = '';
+  try { q = typeof location !== 'undefined' ? location.search || '' : ''; } catch { /* (no location) */ }
+  if (/[?&]guntex=0\b/.test(q)) return false;
+  // a software renderer keeps the procedural finish unless asked (?guntex=1: screenshots)
+  if (isSoftwareGL(gl) && !/[?&]guntex=1\b/.test(q)) return false;
   return true;
 }
 
@@ -170,16 +187,21 @@ function makeArray(data, size, layers, srgb, aniso) {
   return t;
 }
 
+/** Will the textures load for this tier and context (else the guns draw the procedural finish only)? */
+export function gunTexEnabled(tier, gl) {
+  return !!tierRow(GUN_TEX_TIERS, tier) && canLoad(gl);
+}
+
 /**
  * Load (or keep) the textures for a tier. Idempotent: a tier whose sizes are already loaded or
  * loading does nothing; another tier reloads at its sizes; 'low' leaves what is there alone.
  * @param {string} tier
- * @param {{ maxAniso?: number }} opts
+ * @param {{ maxAniso?: number, gl?: WebGL2RenderingContext }} opts (gl: a software rasterizer loads nothing unless ?guntex=1)
  * @returns {Promise<boolean>} true once the textures of this call are in use
  */
 export function loadGunTextures(tier, opts = {}) {
   const row = tierRow(GUN_TEX_TIERS, tier);
-  if (!row || !canLoad()) return Promise.resolve(false);
+  if (!row || !canLoad(opts.gl)) return Promise.resolve(false);
   const key = JSON.stringify(row);
   if (state.tier === key && (state.status === 'loading' || state.status === 'ready')) return state.promise;
   const gen = ++state.gen;

@@ -28,8 +28,7 @@ import { shadeHex, mixHex } from './actor-kit.js';
 import { gunAtlasTexture, gunAtlasPixelsAsync, markRow, markTexture, markVersion } from './actor-tex.js';
 import { familyFor, FAMILY_LAYER, sanitizeSkin, GUN_SKIN_IDS } from '../shared/gun-finish.js';
 import { createGunMaterial, setGunMaterialSkin, setGunMaterialModel } from './gun-mat.js';
-import { loadGunTextures, releaseGunTextures, gunTexStats } from './gun-tex.js';
-import { tierAtLeast } from './tier.js';
+import { loadGunTextures, releaseGunTextures, gunTexStats, gunTexEnabled } from './gun-tex.js';
 
 export { createGunMaterial, setGunMaterialSkin, setGunMaterialModel, gunTexStats };
 
@@ -1638,6 +1637,11 @@ BUILDERS.amr = (gb, L, sp, out) => {
 let shared = null;
 // the tier the shared (world) gun materials are built for: 'low' keeps the procedural atlas
 let TEX_TIER = 'high';
+// whether the baked textures will be there (tier, decoder, not a software rasterizer): only then do
+// the gun materials compile the textured path (a software rasterizer pays for every unused branch)
+let TEX_ON = false;
+/** True when the gun materials are (to be) textured: the viewmodel builds its material to match. */
+export function gunTexOn() { return TEX_ON; }
 const skinMats = new Map();
 
 /**
@@ -1646,9 +1650,10 @@ const skinMats = new Map();
  * texture arrays at the tier's size (gun-tex.js); 'low' draws the procedural atlas.
  */
 export function setGunTier(q, opts = {}) {
-  const textured = tierAtLeast(q, 'high');
-  const was = tierAtLeast(TEX_TIER, 'high');
+  const textured = gunTexEnabled(q, opts.gl);
+  const was = TEX_ON;
   TEX_TIER = q;
+  TEX_ON = textured;
   if (shared && textured !== was) {
     // (a new program for the world guns: the old materials go, gunObject() hands out the new)
     shared.std.dispose();
@@ -1700,7 +1705,7 @@ export function gunMaterials() {
   const mark = markTexture();
   shared = {
     atlas, mark,
-    std: createGunMaterial(atlas, { mark, textured: tierAtLeast(TEX_TIER, 'high') }),
+    std: createGunMaterial(atlas, { mark, textured: TEX_ON }),
     // glowing parts: vertex colour × 2.6 in HDR (they bloom; ACES rolls them off)
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) }),
   };
@@ -1718,7 +1723,7 @@ export function gunMaterialFor(skinId) {
   if (id === 'factory') return mats.std;
   let m = skinMats.get(id);
   if (!m) {
-    m = createGunMaterial(mats.atlas, { mark: mats.mark, textured: tierAtLeast(TEX_TIER, 'high'), skin: id });
+    m = createGunMaterial(mats.atlas, { mark: mats.mark, textured: TEX_ON, skin: id });
     skinMats.set(id, m);
   }
   return m;

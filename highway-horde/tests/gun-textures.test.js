@@ -215,11 +215,13 @@ describe('renderer (source)', () => {
     assert.match(mat, /if \(!gTexOn\)/, 'the atlas path');
     assert.match(mat, /uGunTexOn > 0\.5/, 'textures only once loaded');
     assert.match(tex, /uGunTexOn: \{ value: 0 \}/, 'off until the upload');
-    assert.match(tex, /function canLoad\(\)/);
+    assert.match(tex, /function canLoad\(gl\)/);
     assert.match(tex, /typeof createImageBitmap !== 'function'/, 'no decoder: no textures');
     assert.match(tex, /guntex=0/, 'switchable off for before / after shots');
     assert.match(tex, /catch \(err\)/, 'a failed file leaves the guns on the procedural finish');
     assert.match(tex, /low: null/, "'low' never loads them");
+    assert.match(tex, /isSoftwareGL\(gl\) && !\/\[\?&\]guntex=1/, 'a software rasterizer keeps the procedural finish unless asked');
+    assert.match(read('actor-guns.js'), /textured: TEX_ON/, 'the textured program only where the textures will load');
   });
 
   test('the one-file build embeds the gun textures and the loader reads them', () => {
