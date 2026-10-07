@@ -510,7 +510,7 @@ function doorway(P, it) {
   if (it.kind === 'great') {
     if (lod >= 1) for (let i = 0; i < Math.floor((w + 20) / 24); i += 2) B.block('std', -w / 2 - 10 + (i + 0.5) * 24, H + 32, 0, 12, 12, th, col, null, STONE);
     // the carved name on both faces
-    for (const s of [-1, 1]) pic(B, 's_gate', 0, H + 6, s * (th / 2 + 0.3), w * 0.9, w * 0.17, s > 0 ? 0 : PI);
+    if (it.sign) for (const s of [-1, 1]) pic(B, 's_gate', 0, H + 6, s * (th / 2 + 0.3), w * 0.9, w * 0.17, s > 0 ? 0 : PI);
     // the iron pins of the leaves' hinges
     if (lod >= 2) for (const s of [-1, 1]) for (const y of [20, 80, 140]) B.cyl('std', s * (R - 2), y, 0, 1.6, 6, '#1e1c1a', 6, 1, null, IRON);
   } else {

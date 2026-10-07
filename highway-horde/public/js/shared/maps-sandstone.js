@@ -327,7 +327,7 @@ export function buildSandstone(B) {
    * Doors across a passage along x at y (x0..x1), the opening ox0..ox1, the leaves (length `leaf`)
    * hinged at the opening's sides swung `open` radians off the wall toward `side` (−1 = −y).
    */
-  const doorsX = (x0, x1, y, th, ox0, ox1, leaf, openL, openR, side, name, H = 175) => {
+  const doorsX = (x0, x1, y, th, ox0, ox1, leaf, openL, openR, side, name, H = 175, sign = false) => {
     B.ob('wall', (x0 + ox0) / 2, y, ox0 - x0, th, 0, wallOpts('gatehouse', { top: H }));
     B.ob('wall', (ox1 + x1) / 2, y, x1 - ox1, th, 0, wallOpts('gatehouse', { top: H }));
     const hy = y + side * (th / 2 + 4);
@@ -336,7 +336,7 @@ export function buildSandstone(B) {
       const ax = Math.cos(open) * s, ay = Math.sin(open) * side;
       B.ob('wall', hx + ax * leaf / 2, hy + ay * leaf / 2, leaf, 8, Math.atan2(ay, ax), wallOpts('bigdoor', { color: WOOD }));
     }
-    put('doorway', (ox0 + ox1) / 2, y, 0, { w: ox1 - ox0, h: H - 30, kind: 'great', th, name, ground: tH((ox0 + ox1) / 2, y) });
+    put('doorway', (ox0 + ox1) / 2, y, 0, { w: ox1 - ox0, h: H - 30, kind: 'great', th, name, sign, ground: tH((ox0 + ox1) / 2, y) });
   };
   /** The same for a passage along y at x (y0..y1), the leaves swung toward `side` (−1 = −x). */
   const doorsY = (y0, y1, x, th, oy0, oy1, leaf, openL, openR, side, name, H = 175) => {
@@ -350,7 +350,7 @@ export function buildSandstone(B) {
     put('doorway', x, (oy0 + oy1) / 2, HALF, { w: oy1 - oy0, h: H - 30, kind: 'great', th, name, ground: tH(x, (oy0 + oy1) / 2) });
   };
   // the mid doors: both leaves half open toward CT, the gap between them in the middle of mid
-  doorsX(S.lowerMid.x0, S.lowerMid.x1, 1405, 40, 1415, 1595, 76, 1.25, 1.25, -1, 'Mid Doors', 190);
+  doorsX(S.lowerMid.x0, S.lowerMid.x1, 1405, 40, 1415, 1595, 76, 1.25, 1.25, -1, 'Mid Doors', 190, true);
   // the long doors: the left leaf back against the wall, the right one half shut (the gap)
   doorsX(S.longDoors.x0, S.longDoors.x1, 2440, 40, 2730, 2880, 60, 1.45, 1.2, -1, 'Long Doors', 170);
   // the B doors: in B site's east wall, swung into the site
@@ -487,9 +487,12 @@ export function buildSandstone(B) {
   put('tarp', 1930, 820, 0, { w: 160, d: 110, h: L.up + 118, posts: 1 });            // CT spawn
   put('tarp', 2840, 2700, 0, { w: 200, d: 110, h: L.up + 120 });                     // outside long
   put('tarp', 3080, 1830, 0, { w: 200, d: 100, h: L.up + 116 });                     // over the pit's ledge
-  put('awning', 1505, 1953, 0, { w: 200, h: 92, ground: 0 });
-  put('awning', 2470, 2549, 0, { w: 160, h: 100, ground: L.t });
-  put('awning', 1101, 450, HALF, { w: 120, h: 92, ground: L.up });
+  put('awning', 2200, 2651, 0, { w: 180, h: 96 });                // T spawn
+  put('awning', 1351, 2470, -HALF, { w: 150, h: 92 });            // top mid
+  put('awning', 1351, 1800, -HALF, { w: 140, h: 92 });            // lower mid, across from xbox
+  put('awning', 2049, 780, HALF, { w: 140, h: 92 });              // CT spawn
+  put('awning', 3000, 2799, Math.PI, { w: 170, h: 96 });          // outside long
+  put('awning', 1101, 450, HALF, { w: 120, h: 92 });              // the window room
 
   // ---- lights: lanterns by the doors, braziers, the tunnels' bulbs (night and dusk); heights absolute
   const LANTERN = '#ffb562';
@@ -507,11 +510,11 @@ export function buildSandstone(B) {
   lantern(2960, 1300, 90);
   lantern(2715, 1900, 90);
   lantern(3165, 2100, 90, 200);
-  lantern(800, 1700, 110, 200);
-  lantern(800, 2200, 110, 200);
-  lantern(750, 1300, 110, 200);
+  lantern(712, 1720, 110, 200);
+  lantern(888, 2200, 110, 200);
+  lantern(662, 1300, 110, 200);
   lantern(1250, 1520, 90, 200);
-  lantern(820, 1470, 110, 200);
+  lantern(612, 1550, 110, 200);
   lantern(1820, 1200, 90);
   lantern(1365, 2200, 90);
   lantern(1735, 2400, 90);

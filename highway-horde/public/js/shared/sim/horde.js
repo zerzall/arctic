@@ -23,6 +23,9 @@ import {
   HS_PREP, HS_BREATHER, HS_SURGE, HS_HOLD, HS_OVER,
 } from '../horde.js';
 
+/** Smallest team that moves to the holding spot a surge's entrances call for (shared/horde.js hordeHoldFor). */
+const HORDE_SPLIT_HOLD = 3;
+
 /** Spawn rects prefer to be this far from every living survivor (zombies.js pickSpawnRect). */
 const SPAWN_FAR = 600;
 
@@ -92,7 +95,9 @@ export class HordeDirector {
     this.stageT = 0;
     this.next = surgeGap(n, this.surges);
     this.mask = this._pickLanes(n, s.lanes);
-    this.hold = hordeHoldFor(this.game.map, this.mask);
+    // (a team of three or more splits the map's holding spots by the surge's entrances; one or two
+    // stay home: a lone bot crossing the map to a far site between surges dies in the open)
+    this.hold = this.players >= HORDE_SPLIT_HOLD ? hordeHoldFor(this.game.map, this.mask) : this.home;
     this.tier = s.tier;
     this._pending = n;
     this.game.emit({ type: 'surge', what: 'next', n, lanes: this.mask, boss: s.bosses > 0, time: Math.round(this.next) });

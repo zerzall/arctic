@@ -971,7 +971,8 @@ lobby's waves row does not apply (the round is `HORDE.surges` surges; `totalWave
 - **Bots** hold near the crew (the human they follow, else the director's `hold`: the map's
   `horde.hold`, or against an announced surge `hordeHoldFor(map, lanes)`, the spot its entrances
   call for when they all name the same one in `horde.holds` — Sandstone: long → A site, tunnels → B
-  site, top mid → CT mid, otherwise CT spawn), hunt stragglers
+  site, top mid → CT mid, otherwise CT spawn; teams of three or more only, one or two stay at the
+  home hold), hunt stragglers
   when the horde is nearly done, and go shopping at the supply station in a surge's breather or a
   calm hold (≤ 6 alive, the station within 1400 px), once per surge.
 - **Snapshot** `horde: { stage, total, left, alive, surge, surges, tier, next (s of breather left),
