@@ -1,72 +1,123 @@
 // 6. Sandstone (the Horde Elimination map, SPEC §2 / §3.12)
 //
-// A sun-baked walled town of sandstone and adobe, 4000 x 4000, built for a crew holding out
-// against a finite horde: the defenders start in Fountain Square at the north end, with the
-// radio mast and the supply station, and two defensible courtyards ("sites") to hold:
+// A sun-baked walled town of sandstone and lime plaster, 3300 x 3200, laid out like the classic
+// two-site desert map of competitive shooters, scaled to our units (a Hammer unit ≈ 0.63 of ours):
+// the crew holds the CT side in the north, the horde comes from the T side in the south.
 //
-//   THE TERRACE    (north-east) a paved terrace 76 units up, reached by the A stairs from the
-//                  square, the ramp at the top of the Long Hall and the rampart walk over it;
-//                  a back stair climbs to it from the east edge (an entrance).
-//   CISTERN COURT  (north-west) an enclosed courtyard with several ways in: the upper tunnel
-//                  from Well Square, the big double doorway and a window from the square's west
-//                  wing, and a breach in its west wall (an entrance).
+//   CT SPAWN      (north centre, 76 up) the radio mast, the supply station, the crew's start.
+//   A SITE        (north-east, 140 up) reached up the long ramp from Long A, the short stairs from
+//                 the catwalk and the CT ramp from CT spawn; the A platform (156) with goose in its
+//                 far corner, the default crates.
+//   LONG A        (east, 76 up) outside long → the long doors (double doors with the gap) → the long
+//                 corridor straight north to the ramp; the pit (sunk to 0) at its bottom-east, out by
+//                 its stairs; a blue bin and the corner car.
+//   MID           (centre, a valley at 0) top mid (110) down the mid slope, xbox and the catwalk
+//                 stairs, the catwalk (76) along its east side with the drop, the mid doors (the big
+//                 double doors with the gap), CT mid and the CT ramp up into CT spawn.
+//   B             (north-west, 76) outside tunnels → the dark upper tunnels → the B tunnel into B
+//                 site (B platform at 116, the window, the B doors from CT, the B car); the lower
+//                 tunnels down stairs into lower mid.
+//   T SPAWN       (south, 110) and the four entrances of the horde: T Spawn, Outside Long, Top of
+//                 Tunnels and Top Mid (`map.horde.lanes`, every spawn rect tagged with its lane).
 //
-// Between them runs Mid Street, a long sightline from the Great Doors (big wooden double doors
-// at the square's south side) down to the South Souk plaza. The Long Hall is a long walled
-// corridor along the east side, with a raised rampart walk along its west wall and the Long
-// Doors at its south end onto the Caravan Yard. Two tunnels, dark inside, meet in the enclosed
-// Well Square: the upper one north into Cistern Court, the lower one east into Mid Street; a
-// market lane under tarps leads south from it to the souk.
-//
-// The horde comes in through six entrances at the edges (`map.horde.lanes`, every zombie spawn
-// rect tagged with its lane): the South Gate, the Caravan Gate, the Well Gate, the West Breach,
-// the East Stairs and, late in a round, the North Arch behind the defenders.
-//
-// Inspired by the feel of the classic competitive desert maps (tight lanes, long sightlines,
-// two sites, mid doors), but its own layout, names and places. Everything here is fixed layout
-// (the same for every seed) except the dressing scatter; the art module draws it from the
-// obstacles' `style` / `prop` tags and the `map.sandArt` list (render3d/maps/sandstone.js).
+// Heights: the terrain (shared/terrain.js plateaus; stairs and ramps are flights of small steps)
+// carries the levels; the one-way drops (the catwalk into mid, long into the pit, off the B platform)
+// are low retaining walls standing on the low side whose top is under the high side (`desk`, low
+// cover: a survivor up there walks over and drops, one below is stopped short of a jump, the horde
+// goes round by the stairs, shots pass over). Every walkable place is one of
+// the rectangles of SANDSTONE; everything between them is the town's houses (built from their
+// complement). The layout is fixed (the same for every seed) except the dressing scatter; the art
+// module draws it from the obstacles' `style` tags and `map.sandArt` (render3d/maps/sandstone.js).
 
 import { createRng, hashString } from './rng.js';
 import { sandstoneDecals } from './maps-decals.js';
 
 /** World size and mood (maps.js MAP_DEFS). */
-export const SANDSTONE_DEF = { width: 4000, height: 4000, darkness: 0.6, tint: '#9a6a3a', ground: '#c7a77a' };
+export const SANDSTONE_DEF = { width: 3300, height: 3200, darkness: 0.6, tint: '#9a6a3a', ground: '#c7a77a' };
 
-/** Height of the raised terrace and the rampart walk (units). */
-export const SANDSTONE_H = 76;
+/** Levels of the town (terrain heights, units). */
+export const SANDSTONE_LEVELS = Object.freeze({ low: 0, up: 40, t: 76, a: 100, aPlat: 112, bPlat: 76 });
+/** Height of the upper town (the catwalk, long, CT spawn, B): kept for the old name. */
+export const SANDSTONE_H = SANDSTONE_LEVELS.up;
 
-/** Key open places (axis-aligned rectangles, x0..x1 × y0..y1). Tests and the art read them. */
+const L = SANDSTONE_LEVELS;
+const rect = (x0, y0, x1, y1, h, name) => Object.freeze({ x0, y0, x1, y1, h, name });
+
+/**
+ * The walkable places (axis-aligned rectangles x0..x1 × y0..y1, `h` their floor; a ramp or a flight
+ * of stairs has `h0` → `h1`). Tests and the art read them. Everything else is houses.
+ */
 export const SANDSTONE = Object.freeze({
-  square: { x0: 1250, y0: 140, x1: 2550, y1: 820 },
-  terrace: { x0: 2800, y0: 340, x1: 3700, y1: 1000 },
-  rampart: { x0: 3240, y0: 1000, x1: 3350, y1: 2380 },
-  ramp: { x0: 3350, y0: 1000, x1: 3650, y1: 1360 },
-  long: { x0: 3350, y0: 1360, x1: 3650, y1: 3230 },
-  aStairs: { x0: 2550, y0: 560, x1: 2800, y1: 720 },
-  shortStairs: { x0: 3000, y0: 2210, x1: 3240, y1: 2370 },
-  backStairs: { x0: 3700, y0: 430, x1: 3880, y1: 590 },
-  mid: { x0: 1800, y0: 860, x1: 2200, y1: 3150 },
-  court: { x0: 300, y0: 250, x1: 1230, y1: 1150 },
-  upperTunnel: { x0: 550, y0: 1150, x1: 750, y1: 1950 },
-  lowerTunnel: { x0: 1300, y0: 2050, x1: 1800, y1: 2220 },
-  well: { x0: 300, y0: 1950, x1: 1300, y1: 2650 },
-  souk: { x0: 950, y0: 2650, x1: 1150, y1: 3150 },
-  plaza: { x0: 950, y0: 3150, x1: 2700, y1: 3820 },
-  yard: { x0: 3100, y0: 3270, x1: 3900, y1: 3850 },
+  // B
+  bSite: rect(200, 200, 900, 950, L.up, 'B Site'),
+  bPlat: rect(200, 200, 500, 360, L.bPlat, 'B Platform'),
+  bPlatStairs: Object.freeze({ ...rect(500, 200, 600, 300, 0, 'B Platform Stairs'), h0: L.up, h1: L.bPlat, axis: 'x', dir: -1, n: 8, stairs: true }),
+  bDoors: rect(900, 600, 940, 800, L.up, 'B Doors'),
+  bWindow: rect(900, 340, 940, 420, L.up, 'B Window'),
+  windowRoom: rect(940, 300, 1100, 600, L.up, 'Window Room'),
+  ctB: rect(940, 600, 1400, 800, L.up, 'CT to B'),
+  bTunnel: rect(650, 950, 850, 1450, L.up, 'B Tunnel'),
+  tunnelRoom: rect(600, 1450, 1000, 1650, L.up, 'Upper Tunnels'),
+  upperTunnel: rect(700, 1650, 900, 2500, L.up, 'Upper Tunnels'),
+  lowerStairs: Object.freeze({ ...rect(1000, 1500, 1150, 1650, 0, 'Tunnel Stairs'), h0: L.low, h1: L.up, axis: 'x', dir: -1, n: 8, stairs: true }),
+  lowerTunnel: rect(1150, 1500, 1350, 1650, L.low, 'Lower Tunnels'),
+  tunnelSlope: Object.freeze({ ...rect(700, 2500, 900, 2750, 0, 'Top of Tunnels'), h0: L.up, h1: L.t, axis: 'y', dir: 1, n: 8 }),
+  outsideTunnels: rect(0, 2750, 1350, 2950, L.t, 'Outside Tunnels'),
+  // CT
+  ctSpawn: rect(1400, 250, 2050, 900, L.up, 'CT Spawn'),
+  ctRamp: Object.freeze({ ...rect(1400, 900, 1660, 1150, 0, 'CT Ramp'), h0: L.low, h1: L.up, axis: 'y', dir: -1, n: 8 }),
+  ctMid: rect(1350, 1150, 1660, 1400, L.low, 'CT Mid'),
+  // mid
+  lowerMid: rect(1350, 1400, 1660, 1950, L.low, 'Lower Mid'),
+  midSlope: Object.freeze({ ...rect(1350, 1950, 1660, 2300, 0, 'Mid'), h0: L.low, h1: L.t, axis: 'y', dir: 1, n: 16 }),
+  topMid: rect(1350, 2300, 1750, 2600, L.t, 'Top Mid'),
+  xboxPocket: rect(1660, 1850, 1840, 1950, L.low, 'Xbox'),
+  catStairs: Object.freeze({ ...rect(1660, 1650, 1840, 1850, 0, 'Catwalk Stairs'), h0: L.low, h1: L.up, axis: 'y', dir: -1, n: 16, stairs: true }),
+  catwalk: rect(1660, 1400, 1840, 1650, L.up, 'Catwalk'),
+  catwalkN: rect(1700, 950, 1840, 1400, L.up, 'Catwalk'),
+  short: rect(1840, 950, 2400, 1100, L.up, 'Short A'),
+  shortStairs: Object.freeze({ ...rect(2220, 760, 2400, 950, 0, 'Short Stairs'), h0: L.up, h1: L.a, axis: 'y', dir: -1, n: 12, stairs: true }),
+  // A
+  aSite: rect(2200, 200, 2950, 760, L.a, 'A Site'),
+  aPlat: rect(2520, 200, 2950, 440, L.aPlat, 'A Platform'),
+  ctToA: Object.freeze({ ...rect(2050, 380, 2200, 620, 0, 'CT Ramp to A'), h0: L.up, h1: L.a, axis: 'x', dir: 1, n: 12 }),
+  longRamp: Object.freeze({ ...rect(2720, 760, 2900, 1000, 0, 'A Ramp'), h0: L.up, h1: L.a, axis: 'y', dir: -1, n: 12 }),
+  long: rect(2700, 1000, 2980, 2050, L.up, 'Long A'),
+  longBottom: rect(2700, 2050, 2980, 2350, L.up, 'Long A'),
+  pitLedge: rect(2980, 1780, 3180, 1880, L.up, 'Pit'),
+  pitStairs: Object.freeze({ ...rect(2980, 1880, 3180, 2050, 0, 'Pit Stairs'), h0: L.low, h1: L.up, axis: 'y', dir: -1, n: 16, stairs: true }),
+  pit: rect(2980, 2050, 3180, 2350, L.low, 'Pit'),
+  longDoors: rect(2700, 2350, 2900, 2520, L.up, 'Long Doors'),
+  outsideLong: rect(2650, 2520, 3300, 2800, L.up, 'Outside Long'),
+  outsideLongW: Object.freeze({ ...rect(2450, 2550, 2650, 2800, 0, 'Outside Long'), h0: L.up, h1: L.t, axis: 'x', dir: -1, n: 8 }),
+  // T
+  tSpawn: rect(1700, 2650, 2450, 3200, L.t, 'T Spawn'),
+  tRamp: rect(1600, 2600, 1750, 2700, L.t, 'T Ramp'),
+  tWest: rect(1550, 2800, 1700, 2950, L.t, 'T Spawn'),
+  midAlley: rect(1350, 2600, 1550, 3200, L.t, 'Mid Alley'),
 });
 
-/** The horde's entrances, in lane order (zombie spawn rects carry `lane`: the index). */
+/** The places below the upper town (the terrain's 76 plateau leaves them out). */
+const LOW = ['ctRamp', 'ctMid', 'lowerMid', 'midSlope', 'xboxPocket', 'catStairs', 'lowerStairs', 'lowerTunnel', 'pitStairs', 'pit'];
+/** Flat places above it. */
+const HIGH = ['tSpawn', 'tRamp', 'tWest', 'midAlley', 'topMid', 'outsideTunnels', 'aSite', 'aPlat', 'bPlat'];
+
+/** Where the defenders hold (bots without a human to follow): CT spawn, and the three spots a surge's entrances call for. */
+export const SANDSTONE_HOLDS = Object.freeze({
+  ct: Object.freeze({ x: 1720, y: 600, r: 340 }),
+  a: Object.freeze({ x: 2560, y: 600, r: 300 }),
+  b: Object.freeze({ x: 560, y: 640, r: 320 }),
+  mid: Object.freeze({ x: 1505, y: 1260, r: 220 }),
+});
+
+/** The horde's entrances (the T side), in lane order (zombie spawn rects carry `lane`: the index). */
 export const SANDSTONE_LANES = Object.freeze([
-  { name: 'South Gate', x: 2000, y: 3900 },
-  { name: 'Caravan Gate', x: 3530, y: 3900 },
-  { name: 'Well Gate', x: 80, y: 2535 },
-  { name: 'West Breach', x: 80, y: 950 },
-  { name: 'East Stairs', x: 3920, y: 510 },
-  { name: 'North Arch', x: 1350, y: 80, late: true },
+  Object.freeze({ name: 'T Spawn', x: 2080, y: 3150, hold: 'ct' }),
+  Object.freeze({ name: 'Outside Long', x: 3250, y: 2660, hold: 'a' }),
+  Object.freeze({ name: 'Top of Tunnels', x: 50, y: 2850, hold: 'b' }),
+  Object.freeze({ name: 'Top Mid', x: 1450, y: 3150, hold: 'mid' }),
 ]);
 
-const H = SANDSTONE_H;
 const HALF = Math.PI / 2;
 const r1 = (v) => Math.round(v * 10) / 10;
 const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -91,11 +142,51 @@ function fh(...v) {
 }
 
 /**
+ * The complement of a set of rectangles inside [0, W] × [0, H], as rectangles: a coordinate-compressed
+ * grid of the rectangles' edges, its free cells merged greedily (row by row, as wide and then as tall
+ * as they go). Deterministic.
+ * @param {object[]} rects [{ x0, y0, x1, y1 }]
+ * @returns {object[]} [{ x0, y0, x1, y1 }]
+ */
+export function complementRects(rects, W, H) {
+  const xs = [...new Set([0, W, ...rects.flatMap((r) => [r.x0, r.x1])])].filter((v) => v >= 0 && v <= W).sort((a, b) => a - b);
+  const ys = [...new Set([0, H, ...rects.flatMap((r) => [r.y0, r.y1])])].filter((v) => v >= 0 && v <= H).sort((a, b) => a - b);
+  const nx = xs.length - 1, ny = ys.length - 1;
+  const used = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const cx = (xs[i] + xs[i + 1]) / 2, cy = (ys[j] + ys[j + 1]) / 2;
+      if (rects.some((r) => cx > r.x0 && cx < r.x1 && cy > r.y0 && cy < r.y1)) used[j * nx + i] = 1;
+    }
+  }
+  const out = [];
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      if (used[j * nx + i]) continue;
+      let i1 = i;
+      while (i1 + 1 < nx && !used[j * nx + i1 + 1]) i1++;
+      let j1 = j;
+      for (;;) {
+        if (j1 + 1 >= ny) break;
+        let ok = true;
+        for (let k = i; k <= i1; k++) if (used[(j1 + 1) * nx + k]) { ok = false; break; }
+        if (!ok) break;
+        j1++;
+      }
+      for (let jj = j; jj <= j1; jj++) for (let k = i; k <= i1; k++) used[jj * nx + k] = 1;
+      out.push({ x0: xs[i], y0: ys[j], x1: xs[i1 + 1], y1: ys[j1 + 1] });
+    }
+  }
+  return out;
+}
+
+/**
  * Build Sandstone into builder B (see maps.js createBuilder).
  * @param {object} B map builder
  */
 export function buildSandstone(B) {
   const map = B.map;
+  const W = B.W, Hh = B.H;
   const art = map.sandArt = [];
   const put = (t, x, y, a = 0, extra = {}) => {
     const it = { t, x: r1(x), y: r1(y), a: r3(a), ...extra };
@@ -103,51 +194,52 @@ export function buildSandstone(B) {
     return it;
   };
   const S = SANDSTONE;
+  const mid = (R) => [(R.x0 + R.x1) / 2, (R.y0 + R.y1) / 2];
 
-  // ---- the terrain: the terrace, the rampart walk and their stairs and ramp (shared/terrain.js)
+  // ---- the terrain: the upper town, the high places and the flights between (shared/terrain.js)
   const terrain = map.terrain = { hills: [], plateaus: [] };
   const plateau = (x0, y0, x1, y1, h) => terrain.plateaus.push({ x0: r1(x0), y0: r1(y0), x1: r1(x1), y1: r1(y1), h: r3(h), edge: 0 });
   // (a zero-height plateau just outside a raised block: the ground mesh climbs the cliff at its edge)
-  const guard = (x0, y0, x1, y1) => terrain.plateaus.push({ x0: r1(x0 - 1), y0: r1(y0 - 1), x1: r1(x1 + 1), y1: r1(y1 + 1), h: 0, edge: 0 });
-  /** Steps rising along x (dir +1 = toward +x) from h0 at one end to h1 at the other, across y0..y1. */
-  const flightX = (xa, xb, y0, y1, h0, h1, dir, n) => {
-    const run = (xb - xa) / n, dh = (h1 - h0) / n;
-    for (let j = 1; j <= n; j++) {
-      if (dir > 0) plateau(xa + j * run, y0, xb, y1, h0 + j * dh);
-      else plateau(xa, y0, xb - j * run, y1, h0 + j * dh);
+  const guard = (R) => terrain.plateaus.push({ x0: r1(R.x0 - 1), y0: r1(R.y0 - 1), x1: r1(R.x1 + 1), y1: r1(R.y1 + 1), h: 0, edge: 0 });
+  /** A flight (or a ramp of fine steps) over rectangle F from F.h0 to F.h1, rising along F.axis toward F.dir. */
+  const flight = (F) => {
+    const alongX = F.axis === 'x';
+    const a0 = alongX ? F.x0 : F.y0, a1 = alongX ? F.x1 : F.y1;
+    const run = (a1 - a0) / F.n, dh = (F.h1 - F.h0) / F.n;
+    for (let j = 1; j < F.n; j++) {
+      const lo = F.dir > 0 ? a0 + j * run : a0, hi = F.dir > 0 ? a1 : a1 - j * run;
+      if (alongX) plateau(lo, F.y0, hi, F.y1, F.h0 + j * dh);
+      else plateau(F.x0, lo, F.x1, hi, F.h0 + j * dh);
     }
   };
-  /** The same along y (dir +1 = rising toward +y), across x0..x1. */
-  const flightY = (ya, yb, x0, x1, h0, h1, dir, n) => {
-    const run = (yb - ya) / n, dh = (h1 - h0) / n;
-    for (let j = 1; j <= n; j++) {
-      if (dir > 0) plateau(x0, ya + j * run, x1, yb, h0 + j * dh);
-      else plateau(x0, ya, x1, yb - j * run, h0 + j * dh);
-    }
+  // the upper town: everything but the low places
+  const ups = complementRects(LOW.map((k) => S[k]), W, Hh);
+  for (const R of ups) { plateau(R.x0, R.y0, R.x1, R.y1, L.up); guard(R); }
+  for (const k of HIGH) { plateau(S[k].x0, S[k].y0, S[k].x1, S[k].y1, S[k].h); guard(S[k]); }
+  const FLIGHTS = Object.keys(S).filter((k) => S[k].axis);
+  for (const k of FLIGHTS) {
+    flight(S[k]);
+    const F = S[k];
+    const kind = F.stairs ? 'stairs' : 'ramp';
+    put(kind, ...mid(F), 0, { x0: F.x0, y0: F.y0, x1: F.x1, y1: F.y1, h0: F.h0, h1: F.h1, axis: F.axis, dir: F.dir, n: F.n, name: F.name });
+  }
+  /** Terrain height of the layout at (x, y) (the plateaus as written so far: the final ones). */
+  const tH = (x, y) => {
+    let best = 0;
+    for (const p of terrain.plateaus) if (x >= p.x0 && x <= p.x1 && y >= p.y0 && y <= p.y1 && p.h > best) best = p.h;
+    return best;
   };
-  plateau(S.terrace.x0, S.terrace.y0, S.terrace.x1, S.terrace.y1, H);
-  plateau(S.rampart.x0, S.rampart.y0, S.rampart.x1, S.rampart.y1, H);
-  guard(S.terrace.x0, S.terrace.y0, S.terrace.x1, S.terrace.y1);
-  guard(S.rampart.x0, S.rampart.y0, S.rampart.x1, S.rampart.y1);
-  const AS = S.aStairs, SS = S.shortStairs, BS = S.backStairs, RP = S.ramp;
-  flightX(AS.x0, AS.x1, AS.y0, AS.y1, 0, H, 1, 16);        // the A stairs: up east from the square
-  flightX(SS.x0, SS.x1, SS.y0, SS.y1, 0, H, 1, 16);        // the short stairs: up east onto the rampart
-  flightX(BS.x0, BS.x1, BS.y0, BS.y1, 0, H, -1, 14);       // the back stairs: up west from the East Stairs alley
-  flightY(RP.y0, RP.y1, RP.x0, RP.x1, 0, H, -1, 24);       // the ramp: up north out of the Long Hall
-  put('stairs', (AS.x0 + AS.x1) / 2, (AS.y0 + AS.y1) / 2, 0, { ...AS, h0: 0, h1: H, axis: 'x', dir: 1, n: 16 });
-  put('stairs', (SS.x0 + SS.x1) / 2, (SS.y0 + SS.y1) / 2, 0, { ...SS, h0: 0, h1: H, axis: 'x', dir: 1, n: 16 });
-  put('stairs', (BS.x0 + BS.x1) / 2, (BS.y0 + BS.y1) / 2, 0, { ...BS, h0: 0, h1: H, axis: 'x', dir: -1, n: 14 });
-  put('ramp', (RP.x0 + RP.x1) / 2, (RP.y0 + RP.y1) / 2, 0, { ...RP, h0: 0, h1: H, axis: 'y', dir: -1 });
-  put('terrace', 0, 0, 0, { ...S.terrace, h: H });
-  put('rampart', 0, 0, 0, { ...S.rampart, h: H });
 
-  // ---- the defenders' start: Fountain Square (the radio mast, the supply station, the spawns)
-  B.objective('radio', 'Radio Mast', 2150, 230, 70, 70, 0, 4500, 110);
-  B.supply(2300, 560);
-  for (const [x, y] of [[1840, 360], [1940, 400], [2040, 420], [2140, 420], [2240, 400], [2340, 360], [1890, 470], [2190, 480]]) B.pspawn(x, y);
-  map.horde = { lanes: SANDSTONE_LANES.map((l) => ({ ...l })), hold: { x: 2000, y: 470, r: 380 } };
+  // ---- the defenders' start: CT spawn (the radio mast, the supply station, the spawns)
+  B.objective('radio', 'Radio Mast', 1560, 360, 70, 70, 0, 4500, 110);
+  B.supply(1840, 470);
+  for (const [x, y] of [[1620, 520], [1720, 520], [1620, 640], [1720, 640], [1840, 640], [1940, 560], [1840, 760], [1940, 760]]) B.pspawn(x, y);
+  map.horde = {
+    lanes: SANDSTONE_LANES.map((l) => ({ ...l })),
+    hold: { ...SANDSTONE_HOLDS.ct },
+    holds: Object.fromEntries(Object.entries(SANDSTONE_HOLDS).map(([k, v]) => [k, { ...v }])),
+  };
   // (the classic desert of the 3D view: palms and nothing else; the art module that draws the town)
-  // (no grass field and few weeds; the streets in sand, the squares in warm stone paving; a dry night)
   map.look = {
     trees: ['palm'], grass: false, weeds: 0.15, nightWet: 0.25,
     // (a clear desert night: a blue-black sky over the warm lanterns rather than the dust-brown of the tint)
@@ -156,307 +248,329 @@ export function buildSandstone(B) {
   };
   map.art = 'sandstone';
 
-  // ---- the horde's entrances (spawn rects at the edges, each tagged with its lane)
-  const zs = (lane, x, y, w, h) => {
-    const r = B.zspawn(x, y, w, h);
-    r.lane = lane;
+  // ---- the horde's entrances (spawn rects at the edges of the T side, each tagged with its lane)
+  const zs = (lane, x, y, w, h) => { B.zspawn(x, y, w, h).lane = lane; };
+  zs(0, 2080, 3150, 280, 70);     // T Spawn
+  zs(1, 3250, 2660, 70, 200);     // Outside Long
+  zs(2, 50, 2850, 70, 160);       // Top of Tunnels
+  zs(3, 1450, 3150, 150, 70);     // Top Mid
+  put('gatearch', 2080, 3180, 0, { w: 320, name: 'T Spawn', ground: L.t });
+  put('gatearch', 3285, 2660, HALF, { w: 260, name: 'Outside Long', ground: L.up });
+  put('gatearch', 15, 2850, HALF, { w: 180, name: 'Top of Tunnels', ground: L.t, broken: 1 });
+  put('gatearch', 1450, 3185, 0, { w: 180, name: 'Top Mid', ground: L.t });
+
+  // ---- ground: sand lanes, paved sites and spawns, a gravel pit
+  B.box('sand', 0, 0, W, Hh);
+  for (const k of ['ctSpawn', 'aSite', 'bSite', 'catwalk', 'catwalkN', 'short', 'windowRoom', 'ctB']) B.box('concrete', S[k].x0, S[k].y0, S[k].x1, S[k].y1);
+  B.box('gravel', S.pit.x0, S.pit.y0, S.pit.x1, S.pit.y1);
+  B.box('dirt', S.tSpawn.x0 + 120, S.tSpawn.y0 + 100, S.tSpawn.x1 - 120, S.tSpawn.y1 - 120);
+  B.box('dirt', S.lowerMid.x0 + 40, S.lowerMid.y0 + 60, S.lowerMid.x1 - 40, S.lowerMid.y1 - 60);
+
+  // ---- the town: houses filling everything between the walkable places
+  const WALK = Object.values(S).filter((R) => R.name !== 'B Platform' && R.name !== 'A Platform' && R.name !== 'B Platform Stairs');
+  const blocks = complementRects(WALK, W, Hh);
+  /** Highest walkable floor right around a block (its roofs stand over the street). */
+  const around = (R, pad) => {
+    let g = 0;
+    for (const P of WALK) {
+      if (P.x1 < R.x0 - pad || P.x0 > R.x1 + pad || P.y1 < R.y0 - pad || P.y0 > R.y1 + pad) continue;
+      g = Math.max(g, P.h1 !== undefined ? Math.max(P.h0, P.h1) : P.h);
+    }
+    return g;
   };
-  zs(0, 2000, 3935, 240, 70);    // South Gate
-  zs(1, 3530, 3935, 180, 70);    // Caravan Gate
-  zs(2, 60, 2535, 70, 190);      // Well Gate
-  zs(3, 60, 950, 70, 170);       // West Breach
-  zs(4, 3935, 510, 80, 130);     // East Stairs
-  zs(5, 1350, 60, 160, 70);      // North Arch (late in a round)
-  // the town's gates at the entrances (the art: towers, an arch, the West Breach a broken wall)
-  put('gatearch', 2000, 3895, 0, { w: 280, name: 'South Gate' });
-  put('gatearch', 3530, 3900, 0, { w: 220, name: 'Caravan Gate' });
-  put('gatearch', 40, 2535, HALF, { w: 230, name: 'Well Gate' });
-  put('gatearch', 40, 950, HALF, { w: 200, name: 'West Breach', broken: 1 });
-  put('gatearch', 3975, 510, HALF, { w: 160, name: 'East Stairs' });
-  put('gatearch', 1350, 40, 0, { w: 200, name: 'North Arch' });
-
-  // ---- ground: sand streets, paved squares and terrace, a gravel yard
-  B.box('sand', 0, 0, 4000, 4000);
-  B.box('concrete', S.square.x0, S.square.y0, S.square.x1, S.square.y1);
-  B.box('concrete', S.terrace.x0, S.terrace.y0, S.terrace.x1, S.terrace.y1);
-  B.box('concrete', S.rampart.x0, S.rampart.y0, S.rampart.x1, S.rampart.y1);
-  B.box('concrete', S.court.x0, S.court.y0, S.court.x1, S.court.y1);
-  B.box('concrete', S.well.x0 + 120, S.well.y0 + 120, S.well.x1 - 120, S.well.y1 - 120);
-  B.box('gravel', S.yard.x0, S.yard.y0, S.yard.x1, S.yard.y1);
-  B.box('dirt', S.plaza.x0 + 200, S.plaza.y0 + 120, S.plaza.x1 - 300, S.plaza.y1 - 140);
-
-  // ---- the town: blocks of houses between the lanes (solid, flat roofs of different heights)
-  /**
-   * A block of houses over the rectangle, split along its long side (and in two across a deep
-   * one) at fixed places; `lo`..`hi` storeys of height (units of 36 above a 110 ground floor).
-   */
-  const block = (x0, y0, x1, y1, lo = 0, hi = 3) => {
+  /** One house (or a thin wall where the gap is a sliver). */
+  const house = (x0, y0, x1, y1, R) => {
     const w = x1 - x0, h = y1 - y0;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const g = tH(cx, cy);
+    const street = around({ x0, y0, x1, y1 }, 40);
+    const k = fh(x0, y0, x1, y1);
+    const storeys = Math.floor(fh(y0, x1, 3) * 3);
+    const top = Math.max(0, street - g) + 104 + storeys * 36 + Math.round(fh(x1, y0, 5) * 8);
+    if (Math.min(w, h) < 70) {
+      B.ob('wall', cx, cy, w, h, 0, { color: WALLS[Math.floor(k * WALLS.length)], style: 'courtwall', top: r1(top - 30) });
+      return;
+    }
+    B.ob('building', cx, cy, w, h, 0, {
+      color: WALLS[Math.floor(k * WALLS.length)], roof: ROOFS[Math.floor(fh(x1, y1) * ROOFS.length)], top: r1(top), style: 'house',
+    });
+    void R;
+  };
+  /** A block split along its long side (and in two across a deep one) at fixed places. */
+  const block = (R) => {
+    const w = R.x1 - R.x0, h = R.y1 - R.y0;
     const along = w >= h;
-    const L = along ? w : h, D = along ? h : w;
+    const Lg = along ? w : h, D = along ? h : w;
     const cuts = [0];
     let t = 0;
-    for (let k = 0; L - t > 460; k++) {
-      t += 190 + Math.round(fh(x0, y0, k, 1) * 230);
-      if (L - t < 150) break;
+    for (let k = 0; Lg - t > 520; k++) {
+      t += 220 + Math.round(fh(R.x0, R.y0, k, 1) * 240);
+      if (Lg - t < 180) break;
       cuts.push(t);
     }
-    cuts.push(L);
-    const deep = D > 520 ? [0, Math.round(D * (0.42 + fh(x0, y1, 7) * 0.16)), D] : [0, D];
+    cuts.push(Lg);
+    const deep = D > 560 ? [0, Math.round(D * (0.42 + fh(R.x0, R.y1, 7) * 0.16)), D] : [0, D];
     for (let i = 0; i + 1 < cuts.length; i++) {
       for (let j = 0; j + 1 < deep.length; j++) {
         const a0 = cuts[i], a1 = cuts[i + 1], b0 = deep[j], b1 = deep[j + 1];
-        const hx0 = along ? x0 + a0 : x0 + b0, hx1 = along ? x0 + a1 : x0 + b1;
-        const hy0 = along ? y0 + b0 : y0 + a0, hy1 = along ? y0 + b1 : y0 + a1;
-        const k = fh(hx0, hy0, hx1, hy1);
-        const storeys = lo + Math.floor(fh(hy0, hx1, 3) * (hi - lo + 1));
-        B.ob('building', (hx0 + hx1) / 2, (hy0 + hy1) / 2, hx1 - hx0, hy1 - hy0, 0, {
-          color: WALLS[Math.floor(k * WALLS.length)], roof: ROOFS[Math.floor(fh(hx1, hy1) * ROOFS.length)],
-          top: 110 + storeys * 36, style: 'house',
-        });
+        house(along ? R.x0 + a0 : R.x0 + b0, along ? R.y0 + b0 : R.y0 + a0, along ? R.x0 + a1 : R.x0 + b1, along ? R.y0 + b1 : R.y0 + a1, R);
       }
     }
   };
-  block(0, 0, 1250, 250, 1, 2);           // north of Cistern Court
-  block(1450, 0, 2800, 140, 1, 3);        // north of the square
-  block(2550, 140, 2800, 560, 1, 2);      // the square's east side, north of the A stairs
-  block(2550, 720, 2800, 820, 0, 1);      // ... south of them
-  block(2200, 820, 2800, 2210, 0, 2);     // between Mid Street and the terrace
-  block(2800, 0, 4000, 340, 0, 2);        // north of the terrace (low: you see over the roofs)
-  block(3700, 340, 4000, 430, 0, 1);
-  block(3700, 590, 4000, 1000, 0, 1);
-  block(2800, 1000, 3240, 2210, 1, 3);    // behind the rampart walk
-  // the Long Hall's east wall, with an alcove half way down (the Pit: a flank spot with crates)
-  block(3650, 1000, 4000, 2480, 1, 3);
-  block(3800, 2480, 4000, 2760, 0, 1);
-  block(3650, 2760, 4000, 3230, 1, 3);
-  block(2200, 2370, 3350, 3150, 0, 2);    // between the short alley and the souk
-  block(2700, 3150, 3350, 3270, 0, 1);
-  block(2700, 3270, 3100, 3560, 0, 1);
-  block(2700, 3680, 3100, 3850, 0, 1);
-  block(0, 3820, 1860, 4000, 0, 1);       // the south edge
-  block(2140, 3820, 2700, 4000, 0, 1);
-  block(2700, 3850, 3420, 4000, 0, 1);
-  block(3640, 3850, 4000, 4000, 0, 1);
-  block(3900, 3270, 4000, 3850, 0, 1);
-  block(0, 250, 300, 850, 0, 2);          // west of Cistern Court
-  block(0, 1050, 300, 2420, 0, 2);
-  block(0, 2650, 950, 3820, 0, 2);        // the south-west quarter
-  block(300, 1150, 550, 1950, 1, 2);      // either side of the upper tunnel
-  block(750, 1150, 1250, 1950, 1, 2);
-  block(1250, 820, 1800, 1950, 1, 3);     // between the square's west wing and Mid Street
-  block(1300, 1950, 1800, 2050, 0, 1);
-  block(1300, 2220, 1800, 2650, 0, 2);
-  block(1150, 2650, 1800, 3150, 0, 2);
-  // (the block between the tunnels' mouths and Cistern Court is the tunnels' roof)
+  for (const R of blocks) block(R);
 
-  // ---- walls and doors: Cistern Court's east wall (the double doorway, the window), the Great
-  // Doors across Mid Street and the Long Doors at the foot of the Long Hall
+  // ---- doors: the mid doors across mid, the long doors in their passage, the B doors into B site.
+  // A doorway is a wall across the way with an opening, the two great wooden leaves standing open
+  // past it (the gap between their edges is what you look through).
   const wallOpts = (style, extra = {}) => ({ color: '#cbb089', style, ...extra });
-  B.ob('wall', 1240, 335, 20, 170, 0, wallOpts('courtwall'));            // y 250..420
-  B.ob('counter', 1240, 460, 20, 80, 0, { color: '#c4a982', style: 'sill' });   // the window (y 420..500): vault it, shoot through it
-  B.ob('wall', 1240, 570, 20, 140, 0, wallOpts('courtwall'));            // y 500..640
-  B.ob('wall', 1240, 975, 20, 350, 0, wallOpts('courtwall'));            // y 800..1150
-  put('window', 1240, 460, HALF, { w: 80, sill: 40, h: 64 });
-  put('doorway', 1240, 720, HALF, { w: 160, h: 132, kind: 'double' });
-  // the doorway's leaves stand open into the court
-  B.ob('wall', 1195, 645, 70, 10, 0, wallOpts('doorleaf', { color: '#2f6f9a' }));
-  B.ob('wall', 1195, 795, 70, 10, 0, wallOpts('doorleaf', { color: '#2f6f9a' }));
-  // the Great Doors (mid doors): a gatehouse wall across the street, the leaves swung open north
-  B.ob('wall', 1860, 840, 120, 40, 0, wallOpts('gatehouse'));
-  B.ob('wall', 2140, 840, 120, 40, 0, wallOpts('gatehouse'));
-  B.ob('wall', 1925, 782, 10, 76, 0, wallOpts('bigdoor', { color: WOOD }));
-  B.ob('wall', 2075, 782, 10, 76, 0, wallOpts('bigdoor', { color: WOOD }));
-  put('doorway', 2000, 840, 0, { w: 160, h: 170, kind: 'great', th: 40 });
-  // the Long Doors: a wall across the foot of the Long Hall, the leaves open into it
-  B.ob('wall', 3390, 3250, 80, 40, 0, wallOpts('gatehouse'));
-  B.ob('wall', 3610, 3250, 80, 40, 0, wallOpts('gatehouse'));
-  B.ob('wall', 3435, 3192, 10, 76, 0, wallOpts('bigdoor', { color: WOOD }));
-  B.ob('wall', 3565, 3192, 10, 76, 0, wallOpts('bigdoor', { color: WOOD }));
-  put('doorway', 3500, 3250, 0, { w: 140, h: 160, kind: 'great', th: 40 });
+  /**
+   * Doors across a passage along x at y (x0..x1), the opening ox0..ox1, the leaves (length `leaf`)
+   * hinged at the opening's sides swung `open` radians off the wall toward `side` (−1 = −y).
+   */
+  const doorsX = (x0, x1, y, th, ox0, ox1, leaf, openL, openR, side, name, H = 175) => {
+    B.ob('wall', (x0 + ox0) / 2, y, ox0 - x0, th, 0, wallOpts('gatehouse', { top: H }));
+    B.ob('wall', (ox1 + x1) / 2, y, x1 - ox1, th, 0, wallOpts('gatehouse', { top: H }));
+    const hy = y + side * (th / 2 + 4);
+    for (const [hx, s, open] of [[ox0 + 5, 1, openL], [ox1 - 5, -1, openR]]) {
+      // the leaf: from the hinge along +x (left) or −x (right), turned `open` toward the side
+      const ax = Math.cos(open) * s, ay = Math.sin(open) * side;
+      B.ob('wall', hx + ax * leaf / 2, hy + ay * leaf / 2, leaf, 8, Math.atan2(ay, ax), wallOpts('bigdoor', { color: WOOD }));
+    }
+    put('doorway', (ox0 + ox1) / 2, y, 0, { w: ox1 - ox0, h: H - 30, kind: 'great', th, name, ground: tH((ox0 + ox1) / 2, y) });
+  };
+  /** The same for a passage along y at x (y0..y1), the leaves swung toward `side` (−1 = −x). */
+  const doorsY = (y0, y1, x, th, oy0, oy1, leaf, openL, openR, side, name, H = 175) => {
+    B.ob('wall', x, (y0 + oy0) / 2, th, oy0 - y0, 0, wallOpts('gatehouse', { top: H }));
+    B.ob('wall', x, (oy1 + y1) / 2, th, y1 - oy1, 0, wallOpts('gatehouse', { top: H }));
+    const hx = x + side * (th / 2 + 4);
+    for (const [hy, s, open] of [[oy0 + 5, 1, openL], [oy1 - 5, -1, openR]]) {
+      const ay = Math.cos(open) * s, ax = Math.sin(open) * side;
+      B.ob('wall', hx + ax * leaf / 2, hy + ay * leaf / 2, leaf, 8, Math.atan2(ay, ax), wallOpts('bigdoor', { color: WOOD }));
+    }
+    put('doorway', x, (oy0 + oy1) / 2, HALF, { w: oy1 - oy0, h: H - 30, kind: 'great', th, name, ground: tH(x, (oy0 + oy1) / 2) });
+  };
+  // the mid doors: both leaves half open toward CT, the gap between them in the middle of mid
+  doorsX(S.lowerMid.x0, S.lowerMid.x1, 1405, 40, 1415, 1595, 76, 1.25, 1.25, -1, 'Mid Doors', 190);
+  // the long doors: the left leaf back against the wall, the right one half shut (the gap)
+  doorsX(S.longDoors.x0, S.longDoors.x1, 2440, 40, 2730, 2880, 60, 1.45, 1.2, -1, 'Long Doors', 170);
+  // the B doors: in B site's east wall, swung into the site
+  doorsY(S.bDoors.y0, S.bDoors.y1, 920, 40, 620, 780, 66, 1.3, 1.3, -1, 'B Doors', 165);
+  // B window: a sill in the slot of B's east wall (vault it, shoot through it)
+  B.ob('counter', 920, 380, 40, 80, 0, { color: '#c4a982', style: 'sill' });
+  put('window', 920, 380, HALF, { w: 80, sill: 40, h: 64, ground: L.up });
 
-  // ---- the terrace's edge over the Long Hall: a retaining wall below (climbable from its foot
-  // by the horde, not by a survivor) and a parapet on the rampart walk (shoot over it)
-  const RA = S.rampart;
-  for (let y = RA.y0 + 80; y < RA.y1 - 10; y += 200) {
-    const y1 = Math.min(RA.y1 - 10, y + 200);
-    B.ob('parapet', RA.x1 - 7, (y + y1) / 2, 14, y1 - y, 0, { color: '#cdb38b', style: 'parapet' });
-  }
-  for (let y = S.ramp.y1; y < RA.y1 - 10; y += 255) {
-    const y1 = Math.min(RA.y1 - 10, y + 255);
-    B.ob('hesco', RA.x1 + 8, (y + y1) / 2, 16, y1 - y, 0, { color: '#c2a57c', style: 'retain' });
-  }
+  // ---- the drops and edges: retaining walls whose top is under the high side
+  /** A run of retaining wall pieces along x = x (the low side's edge), y0..y1. */
+  const retainY = (x, y0, y1, th = 12, maxLen = 130) => {
+    const n = Math.max(1, Math.ceil((y1 - y0) / maxLen));
+    for (let i = 0; i < n; i++) {
+      const a = y0 + ((y1 - y0) * i) / n, b = y0 + ((y1 - y0) * (i + 1)) / n;
+      B.ob('desk', x, (a + b) / 2, th, b - a, 0, { color: '#c2a57c', style: 'retain', solid: false });
+    }
+  };
+  // the catwalk's edge over lower mid (drop down; xbox and a jump get you up)
+  retainY(S.catwalk.x0 - 6, S.catwalk.y0, S.catwalk.y1);
+  // the catwalk stairs' side wall over mid
+  B.ob('wall', S.catStairs.x0 - 6, (S.catStairs.y0 + S.catStairs.y1) / 2, 12, S.catStairs.y1 - S.catStairs.y0, 0, wallOpts('stairwall'));
+  // the pit: drop in from long, out by its stairs
+  retainY(S.pit.x0 + 6, S.pit.y0, S.pit.y1);
+  B.ob('wall', S.pitStairs.x0 + 6, (S.pitStairs.y0 + S.pitStairs.y1) / 2, 12, S.pitStairs.y1 - S.pitStairs.y0, 0, wallOpts('stairwall'));
+  // B platform's edge: a low wall (step down off it, climb it by the stairs)
+  B.ob('desk', (S.bPlat.x0 + S.bPlat.x1) / 2, S.bPlat.y1 + 6, S.bPlat.x1 - S.bPlat.x0, 12, 0, { color: '#c6a87c', style: 'platedge' });
+  B.ob('desk', S.bPlat.x1 + 6, (S.bPlatStairs.y1 + S.bPlat.y1) / 2 + 3, 12, S.bPlat.y1 - S.bPlatStairs.y1 + 6, 0, { color: '#c6a87c', style: 'platedge' });
+  // the A platform's step (16 units: walk up, step down)
+  put('step', 0, 0, 0, { x0: S.aPlat.x0, y0: S.aPlat.y0, x1: S.aPlat.x1, y1: S.aPlat.y1, h0: L.a, h1: L.aPlat, sides: ['w', 's'] });
 
-  // ---- cover: crates (stand on the big ones), low crates and barrels, stalls, carts, a well
+  // ---- cover: crates (stand on the big ones), low crates and barrels, carts, planters, the cars
   const crate = (x, y, a = 0, s = 56) => B.ob('container', x, y, s, s, a, { color: CRATE, roof: '#8a6a40', style: 'crate' });
   const low = (x, y, w, h, a = 0, style = 'lowcrate') => B.ob('counter', x, y, w, h, a, { color: '#a07a4c', style });
-  const stall = (x, y, a = 0, w = 120) => B.ob('booth', x, y, w, 56, a, { color: '#8a6440', roof: STALL_ROOF[Math.floor(fh(x, y) * STALL_ROOF.length)], style: 'stall' });
-  // Fountain Square: the dry fountain, planters, a few crates by the exits
-  low(1640, 560, 120, 120, 0, 'fountain');
-  crate(2470, 690, 0.1);
-  low(2470, 760, 44, 40, 0.3, 'barrels');
-  low(1330, 760, 70, 40, 0, 'lowcrate');
-  crate(1500, 330, 0);
-  B.tree(1560, 210, 1.1);
-  B.tree(2460, 220, 1.0);
-  // the Terrace (site): crate stacks, low cover, a cart, palms in raised beds
-  crate(3040, 600, 0);
-  crate(3098, 600, 0);
-  crate(3070, 655, 0.05);
-  low(3420, 800, 90, 40, 0);
-  low(2960, 900, 40, 80, 0, 'barrels');
-  low(3560, 520, 80, 60, 0.4, 'cart');
-  crate(3260, 420, 0.2);
-  low(3300, 930, 110, 40, 0, 'planter');
-  B.tree(3600, 400, 1.15);
-  B.tree(2900, 420, 0.95);
-  // the Long Hall: crates at the ramp's foot, a burnt-out car halfway, barrels by the doors
-  crate(3420, 1480, 0.15);
-  low(3600, 1720, 50, 90, 0, 'lowcrate');
-  B.vehicle('car', 3530, 2560, -HALF + 0.35, { wrecked: true, jitter: 0 });
-  low(3600, 2120, 44, 44, 0, 'barrels');
-  low(3410, 2900, 44, 80, 0, 'barrels');
-  crate(3600, 3090, 0.1);
-  crate(3740, 2540, 0);
-  low(3760, 2700, 44, 44, 0, 'barrels');
-  // Mid Street: a pair of crates, a cart, the corner crate at the short alley
-  crate(1880, 1520, 0.08);
-  low(1885, 1580, 60, 40, 0);
-  crate(2140, 2150, 0);
-  low(2120, 2640, 50, 110, 0, 'cart');
-  low(1870, 2980, 44, 44, 0, 'barrels');
-  // the short alley: barrels and crates for the climb
-  low(2560, 2250, 44, 44, 0, 'barrels');
-  crate(2860, 2330, 0.1);
-  // Cistern Court (site): the burnt-out car, crates, stalls along the west wall, palms
-  B.vehicle('car', 720, 560, 0.4, { wrecked: true, jitter: 0 });
-  crate(400, 330, 0);
-  crate(458, 330, 0);
-  crate(400, 388, 0.1);
-  crate(1110, 1040, 0.2);
-  low(980, 300, 120, 40, 0, 'planter');
-  stall(360, 720, HALF);
-  low(1150, 520, 44, 44, 0, 'barrels');
-  low(820, 960, 100, 40, 0.1);
-  B.tree(1050, 400, 1.05);
-  B.tree(430, 1060, 0.95);
-  // the upper tunnel: crates inside; the lower tunnel: barrels
-  low(600, 1420, 44, 44, 0, 'barrels');
-  crate(700, 1700, 0.1);
-  low(1500, 2190, 60, 40, 0);
-  // Well Square: the well, stalls, a cart, palms
-  low(800, 2300, 72, 72, 0, 'well');
-  stall(420, 2120, HALF);
-  stall(1180, 2560, 0);
-  low(560, 2560, 90, 50, 0.3, 'cart');
-  crate(1180, 2000, 0);
-  B.tree(1050, 2180, 1.0);
-  B.tree(520, 2380, 1.1);
-  // the souk lane: low crates of goods
-  low(1110, 2860, 40, 70, 0, 'lowcrate');
-  low(990, 3020, 40, 50, 0, 'barrels');
-  // the South Souk: rows of stalls, crates, a burnt van, palms
-  for (const [x, y, a] of [[1250, 3330, 0], [1430, 3330, 0], [1250, 3560, 0], [1430, 3560, 0], [2300, 3330, 0], [2480, 3330, 0], [2400, 3600, HALF]]) stall(x, y, a);
-  crate(1700, 3450, 0.2);
-  crate(2050, 3640, 0);
-  low(1960, 3330, 50, 50, 0, 'barrels');
-  B.vehicle('van', 1720, 3700, 0.25, { wrecked: true, jitter: 0 });
-  B.tree(1100, 3700, 1.1);
-  B.tree(2600, 3720, 1.0);
-  // the Caravan Yard: a burnt pickup, crates, barrels, palms, a fire
-  B.vehicle('pickup', 3300, 3560, 0.5, { wrecked: true, jitter: 0 });
-  B.fire(3300 + Math.cos(0.5) * 22, 3560 + Math.sin(0.5) * 22, 22);   // (still burning; a fixed fire, the same on every seed)
-  crate(3700, 3420, 0);
-  crate(3758, 3420, 0);
-  low(3520, 3700, 44, 44, 0, 'barrels');
-  low(3780, 3700, 110, 40, 0.2, 'cart');
-  B.tree(3200, 3780, 1.05);
-  B.tree(3830, 3320, 1.0);
-  // the side street: a cart
-  low(2900, 3620, 70, 40, 0, 'lowcrate');
+  // CT spawn: the crates by the ramps, planters, palms
+  crate(1980, 330, 0.05);
+  crate(1430, 620, 0);
+  low(1440, 860, 60, 40, 0, 'barrels');
+  low(1990, 860, 90, 40, 0, 'planter');
+  B.tree(1450, 820, 1.05);
+  B.tree(2010, 300, 1.0);
+  B.tree(1430, 290, 0.9);
+  // A site: the default crates on the platform, goose in the corner, the ramp's crates
+  crate(2640, 330, 0.0);
+  crate(2696, 330, 0.0);
+  crate(2668, 300, 0.04, 56);
+  low(2620, 400, 90, 40, 0);
+  crate(2900, 360, 0.08);
+  crate(2900, 416, 0.0);
+  low(2830, 250, 44, 44, 0, 'barrels');
+  crate(2260, 700, 0.1);
+  low(2420, 560, 80, 40, 0.2, 'cart');
+  low(2250, 260, 120, 40, 0, 'planter');
+  B.tree(2240, 330, 1.1);
+  B.tree(2920, 720, 1.0);
+  // long: the corner car at the top, the blue bin at the bottom, crates in the pit
+  B.vehicle('car', 2925, 1110, HALF + 0.12, { jitter: 0, color: '#8a3a2a' });
+  B.ob('container', 2740, 2160, 56, 100, 0, { color: '#2f5f8f' });
+  crate(2940, 1560, 0.1);
+  low(2730, 1300, 44, 44, 0, 'barrels');
+  crate(3140, 2310, 0.0);
+  crate(3140, 2254, 0.06);
+  low(3030, 2310, 44, 44, 0, 'barrels');
+  crate(3150, 2580, 0.1);
+  low(2950, 2760, 90, 40, 0, 'cart');
+  B.tree(2700, 2760, 1.0);
+  // mid: xbox by the catwalk, the top mid crates, the barrels at the doors
+  crate(1612, 1590, 0, 64);
+  crate(1390, 2340, 0.08);
+  crate(1710, 2560, 0.0);
+  low(1400, 1450, 44, 44, 0, 'barrels');
+  low(1420, 1700, 60, 40, 0.1);
+  low(1390, 1880, 44, 80, 0, 'barrels');
+  low(1810, 1930, 40, 36, 0, 'barrels');
+  // the catwalk and short: a crate at the short corner, barrels
+  crate(1880, 1060, 0.12);
+  low(1790, 1000, 44, 44, 0, 'barrels');
+  low(2360, 1040, 60, 40, 0);
+  // B site: the B car by the tunnel exit, the double stack, crates under the window, palms
+  B.vehicle('car', 380, 840, -HALF + 0.35, { jitter: 0, color: '#5a6a72' });
+  crate(560, 560, 0);
+  crate(560, 504, 0.03);
+  crate(616, 560, 0.0);
+  crate(840, 330, 0.1);
+  low(840, 880, 50, 90, 0, 'lowcrate');
+  low(260, 460, 44, 44, 0, 'barrels');
+  B.tree(250, 900, 1.05);
+  B.tree(860, 240, 0.95);
+  // the tunnels: crates and barrels inside
+  low(760, 1550, 60, 40, 0.1);
+  crate(940, 1490, 0.0);
+  low(860, 2100, 44, 44, 0, 'barrels');
+  crate(730, 1200, 0.1);
+  low(1300, 1530, 40, 40, 0, 'barrels');
+  // T spawn: crates, a cart, palms
+  crate(1780, 3080, 0.1);
+  crate(1836, 3080, 0.0);
+  low(2330, 2980, 90, 40, 0.3, 'cart');
+  low(2400, 2700, 44, 44, 0, 'barrels');
+  crate(1500, 2700, 0.05);
+  low(1120, 2800, 70, 40, 0);
+  B.tree(1760, 2720, 1.1);
+  B.tree(2400, 3120, 1.0);
+  B.tree(2050, 2700, 0.95);
+  B.tree(300, 2900, 1.0);
+  // CT to B: barrels, a planter
+  low(1200, 760, 90, 40, 0, 'planter');
+  low(980, 640, 44, 44, 0, 'barrels');
 
-  // ---- roofs: the two tunnels are dark inside (the art draws their stone vaults)
-  B.roof((S.upperTunnel.x0 + S.upperTunnel.x1) / 2, (S.upperTunnel.y0 + S.upperTunnel.y1) / 2, S.upperTunnel.x1 - S.upperTunnel.x0, S.upperTunnel.y1 - S.upperTunnel.y0, 0, { kind: 'plain', height: 120, dark: 0.85, style: 'tunnel' });
-  B.roof((S.lowerTunnel.x0 + S.lowerTunnel.x1) / 2, (S.lowerTunnel.y0 + S.lowerTunnel.y1) / 2, S.lowerTunnel.x1 - S.lowerTunnel.x0, S.lowerTunnel.y1 - S.lowerTunnel.y0, 0, { kind: 'plain', height: 112, dark: 0.85, style: 'tunnel' });
-  put('tunnel', 0, 0, 0, { ...S.upperTunnel, height: 120, axis: 'y', name: 'Upper Tunnel' });
-  put('tunnel', 0, 0, 0, { ...S.lowerTunnel, height: 112, axis: 'x', name: 'Lower Tunnel' });
+  // ---- roofs: the tunnels are dark inside (the art draws their stone vaults); heights are absolute
+  const tunnel = (R, height, axis, name) => {
+    B.roof((R.x0 + R.x1) / 2, (R.y0 + R.y1) / 2, R.x1 - R.x0, R.y1 - R.y0, 0, { kind: 'plain', height, dark: 0.86, style: 'tunnel' });
+    put('tunnel', 0, 0, 0, { x0: R.x0, y0: R.y0, x1: R.x1, y1: R.y1, height, axis, name });
+  };
+  tunnel({ x0: 700, y0: 1650, x1: 900, y1: 2380 }, L.up + 130, 'y', 'Upper Tunnels');
+  tunnel(S.tunnelRoom, L.up + 136, 'x', 'Upper Tunnels');
+  tunnel({ x0: 650, y0: 1100, x1: 850, y1: 1450 }, L.up + 130, 'y', 'B Tunnel');
+  tunnel({ x0: 1000, y0: 1500, x1: 1350, y1: 1650 }, L.up + 104, 'x', 'Lower Tunnels');
 
-  // ---- the art's free pieces: arches over passages, tarps over the souk, awnings, signs
-  put('arch', 650, 1150, 0, { w: 200, h: 120 });                 // the upper tunnel's mouth into the court
-  put('arch', 650, 1950, 0, { w: 200, h: 120 });                 // ... into Well Square
-  put('arch', 1300, 2135, HALF, { w: 170, h: 112 });             // the lower tunnel's mouths
-  put('arch', 1800, 2135, HALF, { w: 170, h: 112 });
-  put('arch', 1350, 380, 0, { w: 200, h: 150 });                 // the North Arch passage
-  put('arch', 150, 950, HALF, { w: 200, h: 130, broken: 1 });    // the West Breach
-  put('arch', 150, 2535, HALF, { w: 230, h: 140 });              // the Well Gate
-  put('arch', 2600, 2290, HALF, { w: 160, h: 130 });             // over the short alley
-  put('arch', 3245, 3620, HALF, { w: 120, h: 120 });             // the side street
-  put('arch', 1050, 2650, 0, { w: 200, h: 140 });                // the souk lane's gate
-  for (let y = 2700; y < 3120; y += 140) put('tarp', 1050, y + 60, 0, { w: 200, d: 110, h: 130 });
-  for (const [x, y, w] of [[1340, 3200, 420], [2390, 3200, 360], [1700, 3810, 300]]) put('tarp', x, y + (y > 3500 ? -60 : 60), 0, { w, d: 120, h: 125 });
-  put('tarp', 3180, 880, 0, { w: 240, d: 130, h: 118, posts: 1 });   // shade over the terrace, on posts
-  put('sign', 1251, 720, 0, { text: 'CISTERN', w: 90, h: 150 });
-  put('sign', 3500, 3271, HALF, { text: 'CARAVANSERAI', w: 120, h: 172 });
-  put('sign', 650, 1951, HALF, { text: 'SOUK', w: 70, h: 150 });
+  // ---- the art's free pieces: arches over the passages, awnings, signs, the sites' marks
+  put('arch', 750, 950, 0, { w: 200, h: 140, ground: L.up });                 // the B tunnel's mouth into B site
+  put('arch', 800, 2380, 0, { w: 200, h: 140, ground: L.up });                // the upper tunnels' mouth
+  put('arch', 1350, 1575, HALF, { w: 150, h: 112, ground: 0 });               // the lower tunnels into mid
+  put('arch', 1625, 2650, HALF, { w: 100, h: 130, ground: L.t });             // the T ramp
+  put('arch', 2550, 2675, HALF, { w: 250, h: 160, ground: 93 });              // outside long's arch
+  put('arch', 2050, 500, HALF, { w: 240, h: 170, ground: L.up });             // CT spawn's arch to A
+  put('arch', 1400, 700, HALF, { w: 200, h: 150, ground: L.up });             // CT to B
+  put('arch', 1770, 1100, 0, { w: 140, h: 120, ground: L.up });               // the catwalk under the short arch
+  put('sitemark', 2240, 205, 0, { letter: 'A', ground: L.a, z: 70 });
+  put('sitemark', 2945, 600, -HALF, { letter: 'A', ground: L.a, z: 60 });
+  put('sitemark', 205, 700, HALF, { letter: 'B', ground: L.up, z: 70 });
+  put('sitemark', 640, 205, 0, { letter: 'B', ground: L.up, z: 60 });
+  put('tarp', 1550, 2450, 0, { w: 160, d: 110, h: L.t + 118, posts: 1 });            // shade at top mid
+  put('tarp', 2040, 2760, 0, { w: 240, d: 120, h: L.t + 120, posts: 1 });            // T spawn
+  put('tarp', 1930, 820, 0, { w: 160, d: 110, h: L.up + 118, posts: 1 });            // CT spawn
+  put('tarp', 2840, 2700, 0, { w: 200, d: 110, h: L.up + 120 });                     // outside long
+  put('tarp', 3080, 1830, 0, { w: 200, d: 100, h: L.up + 116 });                     // over the pit's ledge
+  put('awning', 1505, 1953, 0, { w: 200, h: 92, ground: 0 });
+  put('awning', 2470, 2549, 0, { w: 160, h: 100, ground: L.t });
+  put('awning', 1101, 450, HALF, { w: 120, h: 92, ground: L.up });
 
-  // ---- lights: lanterns by the doors, braziers, the tunnels' bulbs (night and dusk)
+  // ---- lights: lanterns by the doors, braziers, the tunnels' bulbs (night and dusk); heights absolute
   const LANTERN = '#ffb562';
-  const lantern = (x, y, h = 70, r = 240) => { B.light(x, y, r, LANTERN, 0.12, h); put('lantern', x, y, 0, { h }); };
-  lantern(1920, 700, 120);
-  lantern(2080, 700, 120);
-  lantern(1260, 600, 90);
-  lantern(2560, 640, 90);
-  lantern(2820, 740, H + 70);
-  lantern(3640, 820, H + 70);
-  lantern(3350, 1300, 110);
-  lantern(3640, 2200, 90);
-  lantern(3640, 3120, 90);
-  lantern(650, 1300, 95, 200);
-  lantern(650, 1800, 95, 200);
-  lantern(1550, 2135, 90, 200);
-  lantern(1240, 1000, 90);
-  lantern(320, 650, 90);
-  lantern(1290, 2400, 90);
-  lantern(1150, 2900, 100);
-  lantern(2200, 3200, 90);
-  lantern(3120, 3400, 90);
-  lantern(2200, 1400, 90);
-  B.fire(1980, 3460, 14);       // braziers
-  B.fire(2620, 480, 14);
-  B.fire(900, 2120, 14);
+  const lantern = (x, y, h = 70, r = 240) => { const z = tH(x, y) + h; B.light(x, y, r, LANTERN, 0.12, z); put('lantern', x, y, 0, { h: z }); };
+  lantern(1440, 1440, 120);
+  lantern(1620, 1440, 120);
+  lantern(2715, 2400, 100);
+  lantern(2885, 2400, 100);
+  lantern(905, 600, 100);
+  lantern(905, 800, 100);
+  lantern(1700, 270, 90);
+  lantern(2030, 760, 90);
+  lantern(2930, 500, 90);
+  lantern(2220, 400, 90);
+  lantern(2960, 1300, 90);
+  lantern(2715, 1900, 90);
+  lantern(3165, 2100, 90, 200);
+  lantern(800, 1700, 110, 200);
+  lantern(800, 2200, 110, 200);
+  lantern(750, 1300, 110, 200);
+  lantern(1250, 1520, 90, 200);
+  lantern(820, 1470, 110, 200);
+  lantern(1820, 1200, 90);
+  lantern(1365, 2200, 90);
+  lantern(1735, 2400, 90);
+  lantern(2430, 2900, 90);
+  lantern(220, 400, 90);
+  lantern(880, 930, 90);
+  lantern(1100, 2770, 90);
+  lantern(3200, 2540, 90);
+  B.fire(2100, 2930, 14);       // braziers
+  B.fire(1980, 600, 14);
+  B.fire(1500, 2520, 14);
 
-  // ---- points of interest (Evac Run vocabulary; also the HUD's place names) and named anchors
-  B.poi('Fountain Square', 1900, 480, 420);
-  B.poi('The Terrace', 3250, 670, 380);
-  B.poi('Cistern Court', 765, 700, 420);
-  B.poi('Mid Street', 2000, 2000, 340);
-  B.poi('Well Square', 800, 2190, 340);
-  B.poi('South Souk', 1800, 3480, 420);
-  B.poi('Caravan Yard', 3500, 3560, 340);
-  B.anchor('square', 2000, 500, 260);
-  B.anchor('terrace', 3250, 760, 260);
-  B.anchor('cistern', 765, 760, 280);
-  B.anchor('mid', 2000, 1800, 200);
-  B.anchor('wellSquare', 800, 2200, 220);
-  B.anchor('longHall', 3500, 2000, 200);
-  B.anchor('souk', 1800, 3480, 260);
-  B.anchor('caravanYard', 3500, 3480, 220);
+  // ---- points of interest (also the HUD's place names) and named anchors
+  B.poi('CT Spawn', 1720, 580, 320);
+  B.poi('A Site', 2560, 520, 340);
+  B.poi('B Site', 560, 640, 340);
+  B.poi('Mid', 1505, 1700, 260);
+  B.poi('Long A', 2840, 1600, 300);
+  B.poi('Tunnels', 800, 1900, 260);
+  B.poi('T Spawn', 2080, 2900, 340);
+  B.anchor('ctSpawn', 1720, 600, 260);
+  B.anchor('aSite', 2470, 620, 240);
+  B.anchor('goose', 2870, 260, 60);
+  B.anchor('aPlat', 2780, 320, 120);
+  B.anchor('longRamp', 2810, 880, 90);
+  B.anchor('longCorner', 2800, 1120, 120);
+  B.anchor('long', 2840, 1650, 160);
+  B.anchor('pit', 3080, 2200, 100);
+  B.anchor('longDoors', 2800, 2400, 60);
+  B.anchor('outsideLong', 2950, 2660, 160);
+  B.anchor('bSite', 640, 700, 260);
+  B.anchor('bPlat', 330, 280, 100);
+  B.anchor('bDoors', 980, 700, 70);
+  B.anchor('bWindow', 1020, 400, 60);
+  B.anchor('bTunnel', 750, 1300, 90);
+  B.anchor('upperTunnels', 800, 2000, 100);
+  B.anchor('lowerTunnels', 1250, 1575, 70);
+  B.anchor('ctMid', 1505, 1260, 120);
+  B.anchor('midDoors', 1505, 1460, 80);
+  B.anchor('lowerMid', 1505, 1700, 140);
+  B.anchor('xbox', 1560, 1650, 60);
+  B.anchor('catwalk', 1750, 1500, 80);
+  B.anchor('short', 2100, 1025, 100);
+  B.anchor('topMid', 1550, 2420, 160);
+  B.anchor('tSpawn', 2080, 2900, 260);
+  B.anchor('outsideTunnels', 600, 2850, 140);
 
   // ---- decor (the set dressing is sandstoneDressItems below: client-side, never in the MapDef)
-  B.sprinkle('crack', 24, 0, 0, 4000, 4000, { on: ['concrete'], s: [0.5, 1.0] });
-  B.sprinkle('debris', 90, 0, 0, 4000, 4000, { s: [0.6, 1.1] });
-  B.sprinkle('rubble', 26, 0, 0, 4000, 4000, { s: [0.5, 1] });
-  B.sprinkle('paper', 60, 0, 0, 4000, 4000, { s: [0.6, 1] });
-  B.sprinkle('oil', 12, 0, 0, 4000, 4000, { on: ['concrete', 'gravel'], s: [0.5, 0.9] });
-  B.sprinkle('manhole', 6, 0, 0, 4000, 4000, { on: ['concrete'], s: [1, 1] });
-  B.sprinkle('blood_old', 30, 0, 0, 4000, 4000, { s: [0.6, 1.4] });
-  B.sprinkle('rock', 40, 0, 0, 4000, 4000, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
-  B.sprinkle('bush', 14, 0, 0, 4000, 4000, { on: ['sand', 'dirt'], s: [0.5, 0.9], keep: true });
+  B.sprinkle('crack', 24, 0, 0, W, Hh, { on: ['concrete'], s: [0.5, 1.0] });
+  B.sprinkle('debris', 80, 0, 0, W, Hh, { s: [0.6, 1.1] });
+  B.sprinkle('rubble', 22, 0, 0, W, Hh, { s: [0.5, 1] });
+  B.sprinkle('paper', 50, 0, 0, W, Hh, { s: [0.6, 1] });
+  B.sprinkle('oil', 10, 0, 0, W, Hh, { on: ['concrete', 'gravel'], s: [0.5, 0.9] });
+  B.sprinkle('blood_old', 26, 0, 0, W, Hh, { s: [0.6, 1.4] });
+  B.sprinkle('rock', 34, 0, 0, W, Hh, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
+  B.sprinkle('bush', 10, 0, 0, W, Hh, { on: ['sand', 'dirt'], s: [0.5, 0.9], keep: true });
   // the hand-placed decals (maps-decals.js)
   sandstoneDecals(B);
 }
-
-const STALL_ROOF = ['#b8452f', '#2e6a8f', '#d7a43a', '#3f7d4d', '#e2d7c0', '#8a3a5c'];
 
 // ---------------------------------------------------------------------------------------------
 // Set dressing (shared/dress.js buildDress dispatches here for this map): a desert town's
@@ -478,9 +592,12 @@ export function sandstoneDressItems(map) {
   const S = SANDSTONE;
   const items = [];
   const rng = createRng(hashString(`sandstone:dress:${map.seed}`));
+  // (no props on a flight of stairs or a ramp: they would float over the steps)
+  const flights = Object.values(S).filter((R) => R.axis);
   /** Free ground: no obstacle, spawn, supply or objective under or next to it. */
   const clear = (x, y, pad) => {
     if (x < 20 || y < 20 || x > map.width - 20 || y > map.height - 20) return false;
+    for (const F of flights) if (x > F.x0 - pad && x < F.x1 + pad && y > F.y0 - pad && y < F.y1 + pad) return false;
     for (const o of map.obstacles) {
       if (Math.abs(o.x - x) > o.w + o.h + pad || Math.abs(o.y - y) > o.w + o.h + pad) continue;
       if (inRect(o, x, y, pad)) return false;
@@ -504,71 +621,62 @@ export function sandstoneDressItems(map) {
       }
     }
   };
-  const OPEN = [S.square, S.court, S.well, S.plaza, S.yard, S.mid, S.long, S.terrace, S.souk];
+  const OPEN = [S.ctSpawn, S.aSite, S.bSite, S.long, S.longBottom, S.lowerMid, S.topMid, S.tSpawn, S.outsideLong, S.outsideTunnels, S.ctB, S.short, S.pit, S.upperTunnel];
   for (const R of OPEN) {
-    scatter('litter', 7, R);
-    scatter('stain', 5, R, [0.8, 1.6]);
-    scatter('pebbles', 6, R);
-    scatter('blood', 3, R, [0.7, 1.4]);
-    scatter('newsp', 3, R);
-    scatter('paperf', 3, R);
-    scatter('soot', 2, R, [0.8, 1.5]);
-    scatter('bag', 2, R);
+    scatter('litter', 5, R);
+    scatter('stain', 4, R, [0.8, 1.6]);
+    scatter('pebbles', 5, R);
+    scatter('blood', 2, R, [0.7, 1.4]);
+    scatter('newsp', 2, R);
+    scatter('paperf', 2, R);
+    scatter('soot', 1, R, [0.8, 1.5]);
+    scatter('bag', 1, R);
   }
-  // the souk: goods, boxes, parasols, rugs of clothes, chairs knocked over
-  for (const R of [S.plaza, S.souk, S.well]) {
-    scatter('box', 8, R);
-    scatter('box_open', 5, R);
-    scatter('box_stack', 3, R);
-    scatter('crates', 2, R);
-    scatter('clothes', 4, R);
-    scatter('chair', 5, R);
-    scatter('cooler', 1, R);
-    scatter('toy', 2, R);
-    scatter('teddy', 1, R);
+  // T spawn and outside long: a caravan stop's goods, boxes, rugs of clothes, chairs knocked over
+  for (const R of [S.tSpawn, S.outsideLong, S.topMid, S.outsideTunnels]) {
+    scatter('box', 5, R);
+    scatter('box_open', 3, R);
+    scatter('box_stack', 2, R);
+    scatter('clothes', 2, R);
+    scatter('chair', 3, R);
+    scatter('toy', 1, R);
   }
-  scatter('umbrella', 4, S.plaza, [0.9, 1.1], 120);
-  scatter('picnic', 1, S.plaza, [0.9, 1.0], 160);
-  scatter('grill', 2, S.plaza, [0.9, 1.1], 120);
-  // the yard and the long hall: a caravan stop and its fuel, pallets and drums
-  for (const R of [S.yard, S.long]) {
-    scatter('drum', 5, R);
-    scatter('drums', 2, R);
-    scatter('pallet', 4, R);
-    scatter('pallets', 1, R);
-    scatter('fuel_can', 3, R);
-    scatter('gascyl', 2, R);
+  scatter('umbrella', 2, S.tSpawn, [0.9, 1.1], 120);
+  scatter('grill', 1, S.tSpawn, [0.9, 1.1], 120);
+  // long and the pit: pallets, drums, fuel cans
+  for (const R of [S.long, S.longBottom, S.pit]) {
+    scatter('drum', 3, R);
+    scatter('pallet', 2, R);
+    scatter('fuel_can', 2, R);
   }
-  scatter('bones', 5, S.yard);
-  scatter('trough', 2, S.yard, [0.9, 1.1], 80);
-  scatter('ibc', 1, S.yard, [0.9, 1.0], 80);
-  scatter('generator', 1, S.yard, [0.9, 1.0], 80);
-  scatter('reel', 1, S.yard, [0.9, 1.0], 80);
-  // the defenders' corners: luggage of the people who fled, a last stand on the terrace
-  scatter('suitcase', 4, S.square);
-  scatter('duffel', 2, S.square);
-  scatter('backpack', 3, S.square);
-  scatter('shoes', 4, S.square);
-  scatter('sandarc', 2, S.terrace, [0.9, 1.1], 100);
-  scatter('milcrate', 4, S.terrace, [0.9, 1.1], 60);
-  scatter('mil_box', 3, S.terrace, [0.9, 1.1], 60);
-  scatter('helmet', 3, S.terrace);
-  scatter('bodybag', 2, S.terrace);
-  scatter('shrine', 1, S.court, [0.9, 1.0], 100);
-  scatter('crate', 8, S.court);
-  scatter('wheelbarrow', 2, S.court);
-  scatter('planter', 4, S.court);
-  scatter('bicycle', 2, S.well);
-  scatter('woodpile', 2, S.well, [0.9, 1.1], 60);
-  scatter('drum', 4, S.mid);
-  scatter('shoes', 4, S.mid);
-  scatter('bin_fall', 3, S.mid);
-  scatter('car_door', 1, S.mid);
+  scatter('drums', 1, S.pit, [0.9, 1.0], 60);
+  scatter('gascyl', 2, S.outsideLong);
+  scatter('generator', 1, S.outsideLong, [0.9, 1.0], 80);
   scatter('wheel_loose', 2, S.long);
+  // the defenders' side: luggage of the people who fled, the last stands on the sites
+  scatter('suitcase', 3, S.ctSpawn);
+  scatter('duffel', 2, S.ctSpawn);
+  scatter('backpack', 2, S.ctSpawn);
+  scatter('shoes', 3, S.ctSpawn);
+  scatter('milcrate', 3, S.aSite, [0.9, 1.1], 60);
+  scatter('mil_box', 2, S.aSite, [0.9, 1.1], 60);
+  scatter('helmet', 2, S.aSite);
+  scatter('sandarc', 1, S.aSite, [0.9, 1.1], 100);
+  scatter('bodybag', 1, S.bSite);
+  scatter('crate', 4, S.bSite);
+  scatter('wheelbarrow', 1, S.bSite);
+  scatter('planter', 2, S.bSite);
+  scatter('bicycle', 1, S.ctB);
+  scatter('woodpile', 1, S.tSpawn, [0.9, 1.1], 60);
+  scatter('drum', 3, S.lowerMid);
+  scatter('shoes', 3, S.lowerMid);
+  scatter('bin_fall', 2, S.topMid);
+  scatter('car_door', 1, S.lowerMid);
+  scatter('bones', 3, S.pit);
   // the desert creeping in: tumbleweed, dry shrubs and a few cacti in the corners
-  for (const R of OPEN) scatter('tumbleweed', 2, R, [0.7, 1.1]);
-  for (const R of [S.yard, S.plaza, S.well, S.court]) {
-    scatter('shrub', 3, R, [0.6, 1.0], 50);
+  for (const R of OPEN) scatter('tumbleweed', 1, R, [0.7, 1.1]);
+  for (const R of [S.tSpawn, S.outsideLong, S.outsideTunnels, S.bSite]) {
+    scatter('shrub', 2, R, [0.6, 1.0], 50);
     scatter('cactus', 1, R, [0.7, 1.0], 60);
     scatter('boulders', 1, R, [0.6, 0.9], 80);
   }

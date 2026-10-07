@@ -19,7 +19,7 @@
 import { DT } from '../constants.js';
 import { createRng, hashString } from '../rng.js';
 import {
-  HORDE, hordeTotal, hordeCrowd, surgePlan, surgeGap, surgeLull, hordeLanes, hordeHold,
+  HORDE, hordeTotal, hordeCrowd, surgePlan, surgeGap, surgeLull, hordeLanes, hordeHold, hordeHoldFor,
   HS_PREP, HS_BREATHER, HS_SURGE, HS_HOLD, HS_OVER,
 } from '../horde.js';
 
@@ -34,8 +34,10 @@ export class HordeDirector {
     this.rng = createRng((hashString(`horde:${game.map.id}`) ^ (game.seed >>> 0) ^ 0x68b2d1f3) >>> 0);
     /** The map's entrances (shared/horde.js hordeLanes). */
     this.lanes = hordeLanes(game.map);
-    /** Where the defenders hold by default (bots without a human to follow). */
-    this.hold = hordeHold(game.map);
+    /** Where the defenders hold by default (bots without a human to follow) ... */
+    this.home = hordeHold(game.map);
+    /** ... and against the announced surge (shared/horde.js hordeHoldFor: the spot its entrances call for). */
+    this.hold = this.home;
     this.surges = HORDE.surges;
     /** Team size the horde was sized for (fixed when the buy time ends). */
     this.players = 1;
@@ -90,6 +92,7 @@ export class HordeDirector {
     this.stageT = 0;
     this.next = surgeGap(n, this.surges);
     this.mask = this._pickLanes(n, s.lanes);
+    this.hold = hordeHoldFor(this.game.map, this.mask);
     this.tier = s.tier;
     this._pending = n;
     this.game.emit({ type: 'surge', what: 'next', n, lanes: this.mask, boss: s.bosses > 0, time: Math.round(this.next) });
@@ -136,7 +139,7 @@ export class HordeDirector {
     // (the first surge comes through one of the nearer entrances: the round starts with a fight,
     // not a minute's wait for a walk across the map)
     if (n === 1 && count && pool.length > count + 1) {
-      const h = this.hold;
+      const h = this.home;
       pool = pool.slice().sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y) || a.i - b.i)
         .slice(0, count + 1);
     }

@@ -166,7 +166,7 @@ export function hordeLanes(map) {
   const rects = map.zombieSpawns || [];
   if (map.horde && Array.isArray(map.horde.lanes) && map.horde.lanes.length) {
     out = map.horde.lanes.slice(0, MAX_LANES).map((l, i) => ({
-      i, name: l.name, x: l.x, y: l.y, late: !!l.late, rects: rects.filter((r) => r.lane === i),
+      i, name: l.name, x: l.x, y: l.y, late: !!l.late, hold: l.hold || null, rects: rects.filter((r) => r.lane === i),
     })).filter((l) => l.rects.length);
     out.forEach((l, i) => { l.i = i; });
   } else {
@@ -182,12 +182,35 @@ export function hordeLanes(map) {
       const list = sectors.get(s);
       let x = 0, y = 0;
       for (const r of list) { x += r.x; y += r.y; }
-      return { i, name: COMPASS[s], x: Math.round(x / list.length), y: Math.round(y / list.length), late: false, rects: list };
+      return { i, name: COMPASS[s], x: Math.round(x / list.length), y: Math.round(y / list.length), late: false, hold: null, rects: list };
     });
   }
-  if (!out.length && rects.length) out = [{ i: 0, name: 'The edge', x: rects[0].x, y: rects[0].y, late: false, rects: rects.slice() }];
+  if (!out.length && rects.length) out = [{ i: 0, name: 'The edge', x: rects[0].x, y: rects[0].y, late: false, hold: null, rects: rects.slice() }];
   LANE_CACHE.set(map, out);
   return out;
+}
+
+/**
+ * Where the defenders hold against a surge from the lanes in `mask`: a map may name holding spots
+ * (`map.horde.holds` { key: { x, y, r } }) and give each lane the one that covers it (`hold`: a key;
+ * Sandstone: Outside Long → A site, Top of Tunnels → B site, Top Mid → CT mid). When every lane of
+ * the surge calls for the same spot the bots hold there, otherwise (or on a map without holds) at
+ * the map's own hold point (hordeHold).
+ * @param {object} map MapDef
+ * @param {number} mask lanes (bit i = lane i)
+ * @returns {{ x: number, y: number, r: number }}
+ */
+export function hordeHoldFor(map, mask) {
+  const home = hordeHold(map);
+  const holds = map.horde && map.horde.holds;
+  if (!holds || !mask) return home;
+  let key = null;
+  for (const l of hordeLanes(map)) {
+    if (!(mask & (1 << l.i))) continue;
+    if (!l.hold || (key !== null && l.hold !== key)) return home;
+    key = l.hold;
+  }
+  return (key !== null && holds[key]) || home;
 }
 
 /** Names of the lanes in a 16-bit mask ("Long Doors · South Gate"). */
