@@ -110,7 +110,7 @@ function bluedRecipe(n, rng, seed) {
   const pits = worley(n, 220, seed + 4, 1);
   const scr = scratches(fill(n, 0), n, rng, Math.round(900 * S(n) * S(n)) + 10, { len: [40, 420], width: [0.5, 1.0], dir: 0, spread: 0.35, depth: 0.8 });
   const scr2 = scratches(fill(n, 0), n, rng, Math.round(160 * S(n) * S(n)) + 4, { len: [10, 80], width: [0.6, 1.4], depth: 0.6 });
-  const base = lin('#1b2230'), alt = lin('#2a1f2a'), brown = lin('#2d241c');
+  const base = lin('#1b1e25'), alt = lin('#241f26'), brown = lin('#29231d');
   const A = rgbFields(n), height = new Float32Array(n * n), rough = new Float32Array(n * n);
   for (let i = 0; i < n * n; i++) {
     const p = clamp01(0.5 + plum[i] * 1.2), b = clamp01(0.5 + tone[i] * 1.4);
@@ -123,7 +123,7 @@ function bluedRecipe(n, rng, seed) {
       A[c][i] = v * k * (1 + s * 1.6) * (1 - pit * 0.4);
     }
     height[i] = polish[i] * 0.5 - s * 1.0 - pit * 0.8;
-    rough[i] = clamp01(0.24 + polish[i] * 0.05 + (0.5 - p) * 0.03 + s * 0.08 + pit * 0.3);
+    rough[i] = clamp01(0.3 + polish[i] * 0.05 + (0.5 - p) * 0.03 + s * 0.08 + pit * 0.3);
   }
   return { albedo: A, height, rough, metal: fill(n, 0.92), aoK: 1, aoR: 2 };
 }
@@ -141,7 +141,7 @@ function anodRecipe(n, rng, seed, o) {
     const g = grain[i] * 0.6 + grain2[i] * 0.4;
     k[i] = (0.9 + g * 0.1 + dye[i] * o.dye + Math.sin(mill[i] * 9) * 0.015) * (1 + scr[i] * o.scratchLift);
     t[i] = clamp01(scr[i] * 1.5);
-    height[i] = g * 0.7 + mill[i] * 0.15 - scr[i] * 0.9;
+    height[i] = grain[i] * 0.45 + mill[i] * 0.12 - scr[i] * 0.8;
     rough[i] = clamp01(o.rough + g * 0.08 + dye[i] * 0.04 - scr[i] * 0.15);
   }
   return { albedo: paintAlbedo(n, lin(o.base), k, lin('#8c8f93'), t), height, rough, metal: map(fill(n, o.metal), (v, i) => lerp(v, 0.95, clamp01(scr[i] * 1.5))), grain: true, aoK: 0.8, aoR: 2 };
@@ -399,14 +399,14 @@ export const FAMILY_RECIPES = {
   blued: bluedRecipe,
   anod_black: (n, r, s) => anodRecipe(n, r, s, { base: '#1d1e20', dye: 0.05, rough: 0.46, metal: 0.45, scratchLift: 1.2 }),
   anod_tan: (n, r, s) => anodRecipe(n, r, s, { base: '#8b7756', dye: 0.06, rough: 0.5, metal: 0.3, scratchLift: 0.25 }),
-  anod_od: (n, r, s) => anodRecipe(n, r, s, { base: '#3b3f2d', dye: 0.06, rough: 0.5, metal: 0.35, scratchLift: 0.9 }),
+  anod_od: (n, r, s) => anodRecipe(n, r, s, { base: '#34382a', dye: 0.06, rough: 0.5, metal: 0.35, scratchLift: 0.9 }),
   stainless: stainlessRecipe,
   brushed: brushedRecipe,
   poly_black: (n, r, s) => polyRecipe(n, r, s, { base: '#1c1c1d', scuff: '#5a5a58', rough: 0.66 }),
   poly_fde: (n, r, s) => polyRecipe(n, r, s, { base: '#8a7451', scuff: '#c4b08a', rough: 0.7 }),
   poly_od: (n, r, s) => polyRecipe(n, r, s, { base: '#4a4f3a', scuff: '#8a8e78', rough: 0.68 }),
   poly_grip: polyGripRecipe,
-  walnut: (n, r, s) => woodRecipe(n, r, s, { dark: '#24140b', light: '#6a4428', ring: '#1a0e08', rings: 120, warp: 3.2, sharp: 5, ringK: 0.5, fleck: 0.3, gloss: 0.3 }),
+  walnut: (n, r, s) => woodRecipe(n, r, s, { dark: '#1e1109', light: '#563620', ring: '#160c07', rings: 120, warp: 3.2, sharp: 5, ringK: 0.38, fleck: 0.25, gloss: 0.3 }),
   birch: (n, r, s) => woodRecipe(n, r, s, { dark: '#94744c', light: '#c4a070', ring: '#7a5a3a', rings: 90, warp: 1.8, sharp: 4, ringK: 0.32, fleck: 1, gloss: 0.34 }),
   rubber: rubberRecipe,
   checker: checkerRecipe,

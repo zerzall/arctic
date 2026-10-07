@@ -181,7 +181,7 @@ export function startApp(deps) {
 
   function profile() {
     const name = title.ensureName();
-    return { name, color: prefs.color, cls: prefs.cls };
+    return { name, color: prefs.color, cls: prefs.cls, skin: prefs.skin };
   }
 
   /** Story menu: the Story screen replaces the title until the player goes back or hosts. */

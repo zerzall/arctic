@@ -7,6 +7,7 @@
 import { h } from './dom.js';
 import { mapMeta } from '../shared/maps.js';
 import { WEAPONS, WEAPON_IDS } from '../shared/weapons.js';
+import { GUN_SKINS, sanitizeSkin } from '../shared/gun-finish.js';
 import { PERKS, PERK_IDS, MAX_RANK, RANK_LEVELS, canBuyPerk, perkPointsSpent, PERK_RESET_COST } from '../shared/story/perks.js';
 import {
   MAX_TIER, tierEffect, tierMag, tierCost, canUpgradeWeapon, canBuyWeapon, weaponChapter, weaponScrapCost, HIDEOUT_UPGRADES,
@@ -266,7 +267,20 @@ export function createPanels({ root, ctx, audio, deps, getSession, onClose }) {
     const clear = sel.slot > 0 && lo[sel.slot]
       ? h('button.btn.btn-small', { type: 'button', text: 'Empty this slot', onclick: () => st.setLoadout(lo.map((x, i) => (i === sel.slot ? null : x))) })
       : null;
-    const left = h('section.st-col', null, [h('h3.st-h', { text: 'Loadout' }), slots, h('p.st-note', { text: `Choose what goes in slot ${sel.slot + 1}.` }), pick, clear]);
+    // the gun finish: cosmetic, the same choice as the lobby's (prefs.skin, the roster's `skin`)
+    const cur = sanitizeSkin(ctx && ctx.prefs ? ctx.prefs.skin : null);
+    const skins = h('div.st-skins', { role: 'radiogroup', 'aria-label': 'Gun finish' }, GUN_SKINS.map((sk) => h('button.st-skin', {
+      type: 'button', role: 'radio', 'aria-checked': sk.id === cur ? 'true' : 'false', title: sk.desc, dataset: { skin: sk.id },
+      onclick: () => {
+        audio.ui('click');
+        if (ctx && ctx.prefs) { ctx.prefs.skin = sk.id; if (ctx.savePrefs) ctx.savePrefs(); }
+        const ses = getSession && getSession();
+        if (ses && ses.setProfile) ses.setProfile({ skin: sk.id });
+        render();
+      },
+    }, [h('span.gun-skin-chip', { style: { background: `linear-gradient(135deg, ${sk.swatch[0]} 0 38%, ${sk.swatch[1]} 38% 70%, ${sk.swatch[2]} 70%)` } }), h('span', { text: sk.name })])));
+    const left = h('section.st-col', null, [h('h3.st-h', { text: 'Loadout' }), slots, h('p.st-note', { text: `Choose what goes in slot ${sel.slot + 1}.` }), pick, clear,
+      h('h3.st-h', { text: 'Gun finish' }), h('p.st-note', { text: 'Cosmetic: how your guns look, to you and your crew.' }), skins]);
 
     const stash = world.hideout.stash;
     const rows = KIT_IDS.map((k) => {

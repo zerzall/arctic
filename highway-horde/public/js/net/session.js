@@ -77,7 +77,7 @@ async function fetchServerInfo() {
  *   — `session.story` is then the StoryHost (net/story-host.js), else null
  * @returns {Promise<HostSession>} resolves once friends can join (code set, except local)
  */
-export async function hostGame({ name, color, cls, transport = 'auto', hooks, story = null } = {}) {
+export async function hostGame({ name, color, cls, skin, transport = 'auto', hooks, story = null } = {}) {
   let net;
   if (transport && typeof transport === 'object') {
     net = transport;
@@ -99,7 +99,7 @@ export async function hostGame({ name, color, cls, transport = 'auto', hooks, st
     }
     if (!net) net = await createPeerHost();
   }
-  return new HostSession(net, { name, color, cls }, hooks, story);
+  return new HostSession(net, { name, color, cls, skin }, hooks, story);
 }
 
 /**
@@ -117,7 +117,7 @@ export async function hostGame({ name, color, cls, transport = 'auto', hooks, st
  * @returns {Promise<ClientSession>} rejects Error('Room not found' | 'Room is full' |
  *   'Game version mismatch' | 'Could not connect')
  */
-export async function joinGame({ code, via, name, color, cls, hooks, story = null } = {}) {
+export async function joinGame({ code, via, name, color, cls, skin, hooks, story = null } = {}) {
   let net;
   if (via && typeof via === 'object') {
     net = await via;
@@ -142,5 +142,5 @@ export async function joinGame({ code, via, name, color, cls, hooks, story = nul
     }
   }
   const session = new ClientSession(net, hooks);
-  return session._handshake({ name, color, cls }, story);
+  return session._handshake({ name, color, cls, skin }, story);
 }

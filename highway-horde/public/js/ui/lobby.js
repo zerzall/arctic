@@ -3,6 +3,7 @@
 // Everyone sees the settings; only the host can change them.
 
 import { CLASSES, CLASS_IDS } from '../shared/classes.js';
+import { GUN_SKINS, sanitizeSkin, skinOf } from '../shared/gun-finish.js';
 import {
   PLAYER_COLORS, PLAYER_COLOR_NAMES, DIFFICULTIES, DIFFICULTY_IDS, WAVE_OPTIONS, MAX_PLAYERS,
 } from '../shared/constants.js';
@@ -59,6 +60,8 @@ export function createLobby(ctx) {
   const status = $('#lobby-status');
   const miniClasses = $('#lobby-classes');
   const miniColors = $('#lobby-colors');
+  const skinSelect = $('#lobby-skin');
+  const skinChip = $('#lobby-skin-chip');
   const botsRow = $('#roster-bots');
   const addBotBtn = $('#btn-add-bot');
 
@@ -188,6 +191,17 @@ export function createLobby(ctx) {
     });
     miniClasses.appendChild(b);
   });
+  // the gun finish (cosmetic; everyone in the room sees it on your guns)
+  if (skinSelect) {
+    for (const sk of GUN_SKINS) skinSelect.appendChild(h('option', { value: sk.id, text: sk.name, title: sk.desc }));
+    skinSelect.addEventListener('change', () => {
+      audio.ui('click');
+      prefs.skin = sanitizeSkin(skinSelect.value);
+      ctx.savePrefs();
+      if (session) session.setProfile({ skin: prefs.skin });
+      renderMine();
+    });
+  }
   PLAYER_COLORS.forEach((col, i) => {
     const b = h('button.swatch', {
       type: 'button', role: 'radio', 'aria-checked': 'false', 'aria-label': PLAYER_COLOR_NAMES[i], title: PLAYER_COLOR_NAMES[i],
@@ -382,6 +396,13 @@ export function createLobby(ctx) {
           // portraits are decorative
         }
       }
+    }
+    if (skinSelect) {
+      const skin = sanitizeSkin(me && me.skin ? me.skin : prefs.skin);
+      if (document.activeElement !== skinSelect) skinSelect.value = skin;
+      const sk = skinOf(skin);
+      skinSelect.title = sk.desc;
+      if (skinChip) skinChip.style.background = `linear-gradient(135deg, ${sk.swatch[0]} 0 38%, ${sk.swatch[1]} 38% 70%, ${sk.swatch[2]} 70%)`;
     }
     for (const b of miniColors.children) {
       b.setAttribute('aria-checked', Number(b.dataset.color) === color ? 'true' : 'false');

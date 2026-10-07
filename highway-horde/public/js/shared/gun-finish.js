@@ -9,6 +9,7 @@
 // shades) colours the texture: 0 = the texture's colour (only its brightness follows the
 // part), 1 = the part's colour (a neutral texture: paint, Cerakote). `ref` is the part colour
 // the texture is drawn for (a part of exactly that colour shows the texture as baked).
+// `ns` scales the baked normals (grainy finishes are kept subtle at arm's length).
 // `bare` is what shows where the finish wears through: 'steel' | 'alu' | 'brass' | 'scuff'
 // (polymer / rubber go pale) | 'wood' (raw wood under the lacquer).
 
@@ -20,27 +21,27 @@ export const GUN_CLASS = Object.freeze({ STEEL: 0, ALLOY: 1, POLY: 2, WOOD: 3, R
  * resizes every layer to its tier's size).
  */
 export const GUN_FAMILIES = Object.freeze([
-  { id: 'parkerized', name: 'Parkerised steel', group: 'metal', size: 2048, tile: 22, tint: 0.15, ref: '#2a2c2e', bare: 'steel' },
-  { id: 'phosphate', name: 'Zinc-phosphate steel', group: 'metal', size: 2048, tile: 22, tint: 0.15, ref: '#34362f', bare: 'steel' },
-  { id: 'blued', name: 'Blued steel', group: 'metal', size: 2048, tile: 24, tint: 0.1, ref: '#23262b', bare: 'steel' },
-  { id: 'anod_black', name: 'Anodised aluminium, black', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#1e1f21', bare: 'alu' },
-  { id: 'anod_tan', name: 'Anodised aluminium, tan', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#8a7656', bare: 'alu' },
-  { id: 'anod_od', name: 'Anodised aluminium, OD', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#3a3e2c', bare: 'alu' },
-  { id: 'stainless', name: 'Bead-blasted stainless', group: 'metal', size: 2048, tile: 20, tint: 0.1, ref: '#8d8d8d', bare: 'steel' },
-  { id: 'brushed', name: 'Brushed steel', group: 'metal', size: 2048, tile: 26, tint: 0.1, ref: '#8a8c8e', bare: 'steel' },
-  { id: 'poly_black', name: 'Black polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#1c1c1c', bare: 'scuff' },
-  { id: 'poly_fde', name: 'FDE polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#8a7350', bare: 'scuff' },
-  { id: 'poly_od', name: 'OD polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#4a4f3a', bare: 'scuff' },
-  { id: 'poly_grip', name: 'Polymer grip texture', group: 'grip', size: 1024, tile: 9, tint: 1, ref: '#808080', bare: 'scuff' },
-  { id: 'walnut', name: 'Walnut, oiled and lacquered', group: 'wood', size: 2048, tile: 30, tint: 0.3, ref: '#4a3020', bare: 'wood' },
-  { id: 'birch', name: 'Birch laminate', group: 'wood', size: 2048, tile: 30, tint: 0.3, ref: '#9a7a52', bare: 'wood' },
-  { id: 'rubber', name: 'Pebbled rubber', group: 'grip', size: 1024, tile: 12, tint: 0.6, ref: '#1a1a1a', bare: 'scuff' },
-  { id: 'checker', name: 'Checkering', group: 'grip', size: 1024, tile: 8, tint: 1, ref: '#808080', bare: 'scuff' },
-  { id: 'knurl', name: 'Knurled steel', group: 'grip', size: 1024, tile: 3.2, tint: 0.4, ref: '#2a2c2e', bare: 'steel' },
-  { id: 'cerakote', name: 'Cerakote', group: 'coating', size: 2048, tile: 22, tint: 1, ref: '#808080', bare: 'steel' },
-  { id: 'brass', name: 'Brass and copper', group: 'metal', size: 1024, tile: 14, tint: 0.55, ref: '#c9a24a', bare: 'brass' },
-  { id: 'paint', name: 'Enamel paint over steel', group: 'coating', size: 1024, tile: 18, tint: 1, ref: '#808080', bare: 'steel' },
-  { id: 'sight', name: 'Blackened sight steel', group: 'metal', size: 1024, tile: 6, tint: 0.2, ref: '#1b1c1e', bare: 'steel' },
+  { id: 'parkerized', name: 'Parkerised steel', group: 'metal', size: 2048, tile: 22, tint: 0.15, ref: '#2a2c2e', bare: 'steel', ns: 0.35 },
+  { id: 'phosphate', name: 'Zinc-phosphate steel', group: 'metal', size: 2048, tile: 22, tint: 0.15, ref: '#34362f', bare: 'steel', ns: 0.4 },
+  { id: 'blued', name: 'Blued steel', group: 'metal', size: 2048, tile: 24, tint: 0.1, ref: '#23262b', bare: 'steel', ns: 0.5 },
+  { id: 'anod_black', name: 'Anodised aluminium, black', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#1e1f21', bare: 'alu', ns: 0.3 },
+  { id: 'anod_tan', name: 'Anodised aluminium, tan', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#8a7656', bare: 'alu', ns: 0.3 },
+  { id: 'anod_od', name: 'Anodised aluminium, OD', group: 'metal', size: 2048, tile: 22, tint: 0.1, ref: '#3a3e2c', bare: 'alu', ns: 0.3 },
+  { id: 'stainless', name: 'Bead-blasted stainless', group: 'metal', size: 2048, tile: 20, tint: 0.1, ref: '#8d8d8d', bare: 'steel', ns: 0.4 },
+  { id: 'brushed', name: 'Brushed steel', group: 'metal', size: 2048, tile: 26, tint: 0.1, ref: '#8a8c8e', bare: 'steel', ns: 0.6 },
+  { id: 'poly_black', name: 'Black polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#1c1c1c', bare: 'scuff', ns: 0.55 },
+  { id: 'poly_fde', name: 'FDE polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#8a7350', bare: 'scuff', ns: 0.55 },
+  { id: 'poly_od', name: 'OD polymer, stippled', group: 'polymer', size: 2048, tile: 20, tint: 0.1, ref: '#4a4f3a', bare: 'scuff', ns: 0.55 },
+  { id: 'poly_grip', name: 'Polymer grip texture', group: 'grip', size: 1024, tile: 9, tint: 1, ref: '#808080', bare: 'scuff', ns: 1.0 },
+  { id: 'walnut', name: 'Walnut, oiled and lacquered', group: 'wood', size: 2048, tile: 30, tint: 0.3, ref: '#4a3020', bare: 'wood', ns: 0.6 },
+  { id: 'birch', name: 'Birch laminate', group: 'wood', size: 2048, tile: 30, tint: 0.3, ref: '#9a7a52', bare: 'wood', ns: 0.6 },
+  { id: 'rubber', name: 'Pebbled rubber', group: 'grip', size: 1024, tile: 12, tint: 0.6, ref: '#1a1a1a', bare: 'scuff', ns: 0.85 },
+  { id: 'checker', name: 'Checkering', group: 'grip', size: 1024, tile: 8, tint: 1, ref: '#808080', bare: 'scuff', ns: 1.0 },
+  { id: 'knurl', name: 'Knurled steel', group: 'grip', size: 1024, tile: 3.2, tint: 0.4, ref: '#2a2c2e', bare: 'steel', ns: 1.0 },
+  { id: 'cerakote', name: 'Cerakote', group: 'coating', size: 2048, tile: 22, tint: 1, ref: '#808080', bare: 'steel', ns: 0.4 },
+  { id: 'brass', name: 'Brass and copper', group: 'metal', size: 1024, tile: 14, tint: 0.55, ref: '#c9a24a', bare: 'brass', ns: 0.5 },
+  { id: 'paint', name: 'Enamel paint over steel', group: 'coating', size: 1024, tile: 18, tint: 1, ref: '#808080', bare: 'steel', ns: 0.5 },
+  { id: 'sight', name: 'Blackened sight steel', group: 'metal', size: 1024, tile: 6, tint: 0.2, ref: '#1b1c1e', bare: 'steel', ns: 0.8 },
 ]);
 
 /** Layer index of a family id (-1: none). */

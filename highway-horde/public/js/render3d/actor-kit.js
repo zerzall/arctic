@@ -25,7 +25,9 @@ export function col(hex) {
 
 /** Mix two '#rrggbb' colours in sRGB, t = 0..1 → '#rrggbb'. */
 export function mixHex(a, b, t) {
-  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  // (#rgb shorthand expands to #rrggbb: weapons.js accents like '#555' came out blue before)
+  const full = (h) => (h.length === 4 ? '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3] : h);
+  const pa = parseInt(full(a).slice(1), 16), pb = parseInt(full(b).slice(1), 16);
   const ch = (s) => {
     const x = (pa >> s) & 255, y = (pb >> s) & 255;
     return Math.round(x + (y - x) * t);

@@ -5,7 +5,7 @@
 // URL params: map (highway|truckstop|bridge|checkpoint|harlan), seed, quality=cinematic|ultra|high|low (or q=), bots=N (0..5),
 // time=day|night (time of day, default night), tour=1, paused=1 (render only on __fps.step), view=<name> (a fixed named viewpoint, see viewpoints()), fixed=1 (60 Hz dt for
 // reproducible screenshots), wave=1 (skip the prep phase), fov, zombies=0 (no waves), clean=1,
-// weapon=<id> (the held gun), skin=<gun finish id> (shared/gun-finish.js), cls=<class> (the gloves),
+// waittex=1 (wait for the baked gun textures), weapon=<id> (the held gun), skin=<gun finish id> (shared/gun-finish.js), cls=<class> (the gloves),
 // graphics settings (SPEC §7.5): scale=auto|0.5..2, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0,
 // vol=0 (no mist / light scattering), refl=0 (no wet-ground reflections), gore=on|low|off,
 // Cinematic extras (default: the Cinematic preset's; ignored on the other tiers): msaa=0|2|4|8, shadows=0|1 (4096 cascades),
@@ -27,6 +27,7 @@ import { terrainHeight } from '../js/shared/terrain.js';
 import { routePointExt } from '../js/shared/campaign.js';
 import { GRAPHICS_PRESETS } from '../js/ui/storage.js';
 import { TIERS } from '../js/render3d/tier.js';
+import { gunTexStats } from '../js/render3d/gun-tex.js';
 
 const params = new URLSearchParams(location.search);
 const opt = {
@@ -586,7 +587,10 @@ async function main() {
     ready: false,
     views: [],
     setView,
-    get renderer() { return renderer; },
+    // (waittex=1: the renderer shows up once the baked gun textures are loaded, so scripts/shot.js
+    // waits for them; a tier without them, or a failed load, does not wait)
+    get renderer() { return params.get('waittex') === '1' && opt.quality !== 'low' && gunTexStats().status === 'loading' ? null : renderer; },
+    gunTex: () => gunTexStats(),
     get game() { return game; },
     get snap() { return snap; },
     stats: () => ({ ...renderer.stats, world: renderer.debug.world.stats }),

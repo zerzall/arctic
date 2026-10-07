@@ -764,7 +764,7 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .my-survivor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'name colors' 'label label' 'classes classes';
+  grid-template-areas: 'name colors' 'label label' 'classes classes' 'skin skin';
   column-gap: 0.875rem;
   align-items: end;
   padding-top: 0.75rem;
@@ -774,6 +774,15 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .my-survivor > .field-label { grid-area: label; }
 .my-survivor .mini-classes { grid-area: classes; margin-bottom: 0; }
 .my-survivor .swatches { grid-area: colors; margin-bottom: 0.75rem; flex-wrap: nowrap; gap: 0.375rem; }
+.my-survivor .gun-skin-field { grid-area: skin; margin: 0.625rem 0 0; }
+.gun-skin-row { display: flex; align-items: center; gap: 0.5rem; }
+.gun-skin-row .select { flex: 1; min-width: 0; height: 2.125rem; padding: 0 0.5rem; background: #0b0d10; border: 1px solid var(--line-2); border-radius: 0.1875rem; color: var(--text); font-weight: 600; }
+.gun-skin-row .select:focus { outline: none; border-color: var(--hazard); box-shadow: 0 0 0 0.1875rem var(--hazard-dim); }
+.gun-skin-chip { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 0.1875rem; border: 1px solid var(--line-2); background: #2a2c2e; }
+.st-skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: 0.375rem; margin-top: 0.5rem; }
+.st-skin { display: flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.375rem; background: #121519; border: 1px solid var(--line-2); border-radius: 0.1875rem; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.st-skin .gun-skin-chip { width: 1.25rem; height: 1.25rem; }
+.st-skin[aria-checked='true'] { border-color: var(--accent, #ffb74d); box-shadow: 0 0 0 1px var(--accent, #ffb74d); }
 .field-inline { margin-bottom: 0.75rem; }
 .field-inline .text-input { height: 2.375rem; font-size: 1rem; }
 .mini-classes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.375rem; margin-bottom: 0.75rem; }

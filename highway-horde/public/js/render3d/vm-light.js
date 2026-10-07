@@ -106,7 +106,7 @@ export function createVmLighting(ctx, scene) {
     if (rig && rig.hemi) {
       hemi.color.copy(rig.hemi.color);
       hemi.groundColor.copy(rig.hemi.groundColor);
-      hemi.intensity = rig.hemi.intensity * (day ? 0.55 : 0.9) * (0.35 + 0.65 * sky);
+      hemi.intensity = rig.hemi.intensity * (day ? 0.42 : 0.9) * (0.35 + 0.65 * sky);
     } else hemi.intensity = 1.0 * (0.4 + 0.6 * sky);
     hemi.position.copy(_v.set(0, 1, 0).applyQuaternion(_qi));
     // sun / moon
@@ -150,7 +150,8 @@ export function createVmLighting(ctx, scene) {
       P.distance = b.L.distance;
       P.decay = b.L.decay;
     }
-    state.envIntensity = (day ? 0.9 : 1.15) * (0.18 + 0.82 * sky);
+    // (by day the probe is bright: the world itself takes 0.7 of it, renderer3d.js)
+    state.envIntensity = (day ? 0.7 : 1.15) * (0.18 + 0.82 * sky);
     state.under = under;
     state.sunVis = sunVis;
     state.envRotation = envRotation;

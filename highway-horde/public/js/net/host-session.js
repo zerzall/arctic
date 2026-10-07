@@ -2,6 +2,8 @@
 // runs the authoritative Game on a real-time fixed-step clock, feeds it every player's
 // inputs and broadcasts snapshots. See session.js for the message catalogue.
 
+import { sanitizeSkin } from '../shared/gun-finish.js';
+
 import {
   GAME_VERSION, PROTOCOL_VERSION, MAX_PLAYERS, DT, SNAPSHOT_EVERY, MAX_CATCHUP_TICKS, TICK_RATE,
   DEFAULT_SETTINGS, PLAYER_COLORS,
@@ -19,6 +21,9 @@ import {
 } from './lobby-rules.js';
 import { IMPORTANT_EVENTS, PERISHABLE_EVENTS } from './event-rules.js';
 import { StoryHost } from './story-host.js';
+
+// gun finishes of the AI survivors (by slot; shared/gun-finish.js)
+const BOT_SKINS = ['woodland', 'factory', 'desert', 'battleworn', 'tiger', 'urban'];
 
 /** Input older than this means the host is not looking (hidden tab): stand still. */
 const STALE_INPUT = 0.25;
@@ -94,6 +99,7 @@ export class HostSession extends Emitter {
       name: sanitizeName(profile.name),
       color: isColor(profile.color) ? profile.color : 0,
       cls: sanitizeClass(profile.cls),
+      skin: sanitizeSkin(profile.skin),
       ready: false,
       ping: 0,
       host: true,
@@ -251,7 +257,8 @@ export class HostSession extends Emitter {
     const pid = this._allocPid();
     if (!pid) return null;
     const prof = botProfile(this.roster);
-    const entry = { id: pid, name: prof.name, color: prof.color, cls: prof.cls, ready: true, ping: 0, host: false, bot: true };
+    // (bots carry a gun finish of their own, by their slot: a squad of AI survivors shows the skins off)
+    const entry = { id: pid, name: prof.name, color: prof.color, cls: prof.cls, skin: BOT_SKINS[pid % BOT_SKINS.length], ready: true, ping: 0, host: false, bot: true };
     this.roster.push(entry);
     this._rosterChanged();
     this._system(`${entry.name} (bot) joined the squad`);
@@ -585,6 +592,7 @@ export class HostSession extends Emitter {
       name: uniqueName(sanitizeName(msg.name), others.map((r) => r.name)),
       color: pickColor(msg.color, others.map((r) => r.color)),
       cls: sanitizeClass(msg.cls),
+      skin: sanitizeSkin(msg.skin),
       ready: false,
       ping: 0,
       host: false,
@@ -728,6 +736,14 @@ export class HostSession extends Emitter {
       const cls = sanitizeClass(patch.cls);
       if (cls !== entry.cls) {
         entry.cls = cls;
+        changed = true;
+      }
+    }
+    // the gun skin is cosmetic: it may change mid-game too
+    if (typeof patch.skin === 'string') {
+      const skin = sanitizeSkin(patch.skin);
+      if (skin !== entry.skin) {
+        entry.skin = skin;
         changed = true;
       }
     }

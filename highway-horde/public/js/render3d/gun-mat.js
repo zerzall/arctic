@@ -36,6 +36,7 @@ const float FAM_TILE[${L}] = float[${L}](${GUN_FAMILIES.map((f) => f5(1 / f.tile
 const float FAM_TINT[${L}] = float[${L}](${GUN_FAMILIES.map((f) => f5(f.tint)).join(', ')});
 const vec3 FAM_REF[${L}] = vec3[${L}](${GUN_FAMILIES.map((f) => `vec3(${toLin(f.ref).map(f5).join(', ')})`).join(', ')});
 const int FAM_BARE[${L}] = int[${L}](${GUN_FAMILIES.map((f) => BARE[f.bare] ?? 0).join(', ')});
+const float FAM_NS[${L}] = float[${L}](${GUN_FAMILIES.map((f) => f5(f.ns ?? 1)).join(', ')});
 const float LAYER_CHECKER = ${f5(FAMILY_LAYER.checker)};
 const float LAYER_PGRIP = ${f5(FAMILY_LAYER.poly_grip)};
 const float TILE_CHECKER = ${f5(1 / GUN_FAMILIES[FAMILY_LAYER.checker].tile)};
@@ -177,12 +178,14 @@ const TEX_COLOR = /* glsl */`
     float layer = float(gL);
     vec4 a, b;
     gSample(uFamA, uFamB, layer, FAM_TILE[gL], a, b, gDN);
+    gDN *= FAM_NS[gL];
     vec3 ref = FAM_REF[gL];
     vec3 vc = vColor.rgb;
     float lr = clamp(dot(vc, LUMA) / max(dot(ref, LUMA), 1e-4), 0.06, 2.4);
     vec3 tint = mix(vec3(lr), clamp(vc / max(ref, vec3(1e-4)), 0.0, 3.0), FAM_TINT[gL]);
     gAlb = a.rgb * tint;
-    gRough = a.a; gAO = b.z; gMetal = b.w;
+    // (the baked cavity AO is gentle: deepen it here)
+    gRough = a.a; gAO = clamp(1.0 - (1.0 - b.z) * 4.0, 0.0, 1.0); gMetal = b.w;
     // the grip: checkering on wood, a moulded grip pattern on polymer
     if (gM == 2 || gM == 3) {
       float gz = gGripZone(vGP);
@@ -191,15 +194,16 @@ const TEX_COLOR = /* glsl */`
         gSample(uFamA, uFamB, gM == 3 ? LAYER_CHECKER : LAYER_PGRIP, gM == 3 ? TILE_CHECKER : TILE_PGRIP, ga, gb, gdn);
         gAlb *= mix(vec3(1.0), ga.rgb / 0.2159, gz);
         gRough = mix(gRough, ga.a, gz);
-        gAO *= mix(1.0, gb.z, gz);
+        gAO *= mix(1.0, clamp(1.0 - (1.0 - gb.z) * 4.0, 0.0, 1.0), gz);
         gDN = mix(gDN, gdn, gz);
       }
     }
     vec4 wt = uGunWearOn > 0.5 ? gWearAt(0.07) : vec4(0.0, 0.5, 0.0, 0.5);
     float holster = uHolster.z * smoothstep(uHolster.x, uHolster.y, vGP.x);
-    float edge = clamp(gWear * uSkin.z + holster * 0.4, 0.0, 1.8);
     float brk = wt.g - 0.5;
-    float wm = smoothstep(0.42, 0.74, edge + brk * 0.95 + holster * (wt.g - 0.3) * 0.5);
+    // holster wear: the front of a handgun rubbed by its holster, broken up (never a clean band)
+    float edge = clamp((gWear + holster * 0.18 * smoothstep(0.45, 0.8, wt.g)) * uSkin.z, 0.0, 1.8);
+    float wm = smoothstep(0.42, 0.74, edge + brk * 0.9);
     float scr = smoothstep(0.22, 0.85, wt.r * uSkin2.x * 0.75);
     // the skin, over the classes it covers; its paint wears off the edges before the finish does
     float cov = 0.0;
