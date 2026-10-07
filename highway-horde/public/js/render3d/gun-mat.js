@@ -255,10 +255,13 @@ const TEX_COLOR = /* glsl */`
     gRough = mix(gRough, gRough * 0.5, oil * 0.75);
     gAlb *= 1.0 - oil * 0.18;
     #endif
-    // stamped markings: the surface they are on, cut into it (dark) or paint-filled
+    // markings: the surface they are on, cut through the finish (bright bare metal on metal, the
+    // laser-etched grey-white of anodising, a paler scar on polymer) or cut and paint-filled
     if (gM == 8) {
       if (vGun.y > 0.5) { gAlb = vec3(0.70, 0.69, 0.64); gRough = 0.6; gMetal = 0.0; }
-      else { gAlb *= 0.28; gRough = min(1.0, gRough + 0.25); gMetal *= 0.6; }
+      else if (bare == 1) { gAlb = vec3(0.42, 0.43, 0.45); gRough = 0.55; gMetal = 0.2; }
+      else if (bare <= 2) { gAlb = vec3(0.50, 0.51, 0.53); gRough = 0.36; gMetal = 1.0; }
+      else { gAlb = gAlb * 1.9 + 0.04; gRough = min(1.0, gRough + 0.1); }
     }
     diffuseColor.rgb = gAlb;
   }

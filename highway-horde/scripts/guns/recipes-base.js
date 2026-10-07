@@ -157,7 +157,7 @@ function stainlessRecipe(n, rng, seed) {
     const g = grain[i] * 0.55 + grain2[i] * 0.45;
     k[i] = 0.92 + g * 0.08 + cloud[i] * 0.06 + scr[i] * 0.08;
     height[i] = g * 0.8 - scr[i] * 0.8;
-    rough[i] = clamp01(0.36 + g * 0.09 + cloud[i] * 0.05 - scr[i] * 0.14);
+    rough[i] = clamp01(0.46 + g * 0.08 + cloud[i] * 0.05 - scr[i] * 0.14);
   }
   return { albedo: paintAlbedo(n, lin('#8e9093'), k), height, rough, metal: fill(n, 1), grain: true, aoK: 0.6, aoR: 2 };
 }

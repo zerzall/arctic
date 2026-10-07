@@ -9,7 +9,7 @@
 //   skin=<id> | lineup           the skin on every gun, or one gun (weapon=<id>) in every skin
 //   weapon=<id>                  the gun of a skin lineup
 //   cols=N, zoom=<k>, yaw=<rad>, pitch=<rad>   layout and view; clean=1 hides the readout
-// window.__lab: { ready (textures in and a frame drawn), stats() }.
+// window.__lab: { ready (textures in and a frame drawn), stats(), bench(n) }.
 
 import * as THREE from 'three';
 import { WEAPON_IDS, WEAPONS } from '../js/shared/weapons.js';
@@ -109,7 +109,7 @@ function matFor(skin) {
 }
 
 // ---- the grid ----
-const cellW = 52, cellH = 22;
+const cellW = 64, cellH = 22;
 const rows = Math.ceil(items.length / cols);
 const yaw = Number(P.get('yaw') || 0.32), pitch = Number(P.get('pitch') || 0.12);
 const tags = [];
@@ -152,6 +152,16 @@ function draw() {
   const loading = high && st.status === 'loading';
   if (!loading && frames > 2) window.__lab.ready = true;
 }
-window.__lab = { ready: false, stats: () => ({ ...gunTexStats(), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }) };
+window.__lab = {
+  ready: false,
+  stats: () => ({ ...gunTexStats(), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }),
+  /** ms per frame over n frames (the GPU finished each: a pixel read back) — relative costs only. */
+  bench(n = 20) {
+    const px = new Uint8Array(4), gl = renderer.getContext();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) { renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+    return (performance.now() - t0) / n;
+  },
+};
 function loop() { draw(); requestAnimationFrame(loop); }
 loop();

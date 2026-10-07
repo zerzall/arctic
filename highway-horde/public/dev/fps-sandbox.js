@@ -457,6 +457,12 @@ function setView(v) {
     if (o.get('pose')) globalThis.__HH_VM_POSE = VM_POSES[o.get('pose')] || null;
     v = name;
   }
+  if (typeof v === 'object') {
+    // (a JSON view may carry them too: { x, y, yaw, pitch, weapon, skin, pose })
+    if (v.weapon) devWeapon = v.weapon;
+    if (v.skin) roster = roster.map((r) => (r.id === 1 ? { ...r, skin: v.skin } : r));
+    if (v.pose) globalThis.__HH_VM_POSE = VM_POSES[v.pose] || null;
+  }
   if (typeof v === 'string') {
     const f = window.__fps.views.find((x) => x.name === v);
     if (!f) { console.warn('unknown view', v); return; }
