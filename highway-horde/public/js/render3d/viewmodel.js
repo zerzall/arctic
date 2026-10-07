@@ -3,8 +3,11 @@
 // buffer, so it never clips into walls and keeps a fixed FOV whatever the world FOV is.
 // Returned object: { scene, camera, update, addEvents, setQuality, dispose, muzzle }.
 //
-// Guns come from actor-guns.js (detailed PBR models with moving parts) and reflect a
-// small procedural night studio (actor-tex.js). Gloved hands with fingers are sculpted
+// Guns come from actor-guns.js (detailed PBR models with moving parts) in the baked gun
+// materials (gun-mat.js / gun-tex.js: triplanar on 'ultra' and up, the player's gun skin from
+// the roster), lit by the world's own lights mirrored into this scene (vm-light.js: the sun
+// or moon shaded by buildings and roofs, the sky, the nearest fires / lamps / flashes, the
+// flashlight's bounce) and reflecting the world's probe turned with the camera. Gloved hands with fingers are sculpted
 // per grip (actor-shape.js): the firing hand round the pistol grip with the index finger
 // on the trigger, the support hand under the handguard, round a vertical foregrip or
 // cupping a pistol hand; sleeves in the class outfit colour with the player's colour on
@@ -30,7 +33,10 @@ import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
 import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
-import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas } from './actor-guns.js';
+import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas, setGunMaterialSkin, setGunMaterialModel } from './actor-guns.js';
+import { createVmLighting } from './vm-light.js';
+import { tierAtLeast } from './tier.js';
+import { sanitizeSkin } from '../shared/gun-finish.js';
 import { makeCanvas, damp, angleDiff, shadeHex, mixHex, capLuma } from './actor-kit.js';
 import { GLOVES, CLASS_SKIN } from './actor-sgear.js';
 import { ShapeBuilder, SLOT, MAT, lineRings, noise3 } from './actor-shape.js';
@@ -85,24 +91,37 @@ export function createViewmodel(ctx) {
   const camera = new THREE.PerspectiveCamera(VM_FOV, ctx.camera.aspect || 16 / 9, 0.4, 400);
   scene.add(camera);
 
-  // lighting: cool moon fill, warm key from the flashlight side, rim from the front so the
-  // silhouette of the gun reads against the dark world; reflections from a night studio
-  const hemi = new THREE.HemisphereLight('#9aaad0', '#3a3028', 1.2);
-  scene.add(hemi);
-  const key = new THREE.DirectionalLight('#ffe8cc', 2.3);
-  key.position.set(-3, 6, 4);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight('#9cc0ff', 1.6);
-  rim.position.set(4, 3, -8);
-  scene.add(rim);
+  // lighting: the world's lights mirrored into camera space (vm-light.js), reflections of the
+  // world's probe (a small night studio when there is none); the muzzle flash's own light
+  const vml = createVmLighting(ctx, scene);
   const flashLight = new THREE.PointLight('#ffb060', 0, 70, 1.2);
   scene.add(flashLight);
   const envTex = viewmodelEnvTexture();
+  const envMap = vml.worldEnv() || envTex;
   const atlas = gunMaterials().atlas;
-  let gunMat = createGunMaterial(atlas, { envMap: envTex, envIntensity: 1.1, mark: gunMaterials().mark, cinematic: cin });
+  let skin = 'factory';
+  let tri = tierAtLeast(ctx.quality, 'ultra');
+  const makeGunMat = () => createGunMaterial(gunMaterials().atlas, { envMap, envIntensity: 1, mark: gunMaterials().mark, cinematic: cin, textured: high, triplanar: tri, skin });
+  let gunMat = makeGunMat();
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) });
   const actorTex = actorTextures(high ? 8 : 4);
-  const handMat = makeHandMaterial(actorTex, envTex);
+  const handMat = makeHandMaterial(actorTex, envMap);
+  // right before the gun is drawn: the lights follow the world and the camera, the reflections turn with it
+  scene.onBeforeRender = () => {
+    try {
+      vml.update();
+      const env = vml.worldEnv();
+      for (const m of [gunMat, handMat, brassMat, shellMat]) {
+        if (env && m.envMap !== env && m.envMap && m.envMap.mapping === env.mapping) m.envMap = env;
+        if (m.envMap === env && env) m.envMapRotation.copy(vml.envRotation);
+      }
+      gunMat.envMapIntensity = vml.state.envIntensity;
+      handMat.envMapIntensity = vml.state.envIntensity * 0.45;
+      brassMat.envMapIntensity = shellMat.envMapIntensity = vml.state.envIntensity;
+    } catch (err) {
+      console.warn('viewmodel: lighting', err);
+    }
+  };
   let upgrading = false, gone = false;
   function upgradeQuality() {
     if (!cin || upgrading) return;
@@ -173,8 +192,8 @@ export function createViewmodel(ctx) {
 
   // ---- casings (camera space) ----
   const casingGeo = casingGeometry('rifle'), pistolCaseGeo = casingGeometry('pistol'), shellGeo = casingGeometry('shell');
-  const brassMat = new THREE.MeshStandardMaterial({ color: '#d4a84a', metalness: 1, roughness: 0.28, envMap: envTex });
-  const shellMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.4, roughness: 0.4, envMap: envTex });
+  const brassMat = new THREE.MeshStandardMaterial({ color: '#d4a84a', metalness: 1, roughness: 0.28, envMap });
+  const shellMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.4, roughness: 0.4, envMap });
   const CASINGS = 12;
   const casings = [];
   for (let i = 0; i < CASINGS; i++) {
@@ -219,7 +238,7 @@ export function createViewmodel(ctx) {
     const pc = PLAYER_COLORS[(r && r.color) || 0] || PLAYER_COLORS[0];
     // near-white outfits (the medic) are toned down so the sleeves don't glow under lights
     const outfit = '#' + capLuma(new THREE.Color(look.outfit), 0.34).getHexString();
-    return { outfit, vest: look.vest, band: pc, cls, key: cls + pc };
+    return { outfit, vest: look.vest, band: pc, cls, key: cls + pc, skin: sanitizeSkin(r && r.skin) };
   }
 
   function clearGun() {
@@ -235,6 +254,7 @@ export function createViewmodel(ctx) {
   function buildGun(weaponId, look) {
     clearGun();
     model = gunModel(weaponId);
+    setGunMaterialModel(gunMat, model);
     gun = gunObject(weaponId, { material: gunMat, glowMaterial: glowMat });
     gunRoot.add(gun);
     const arms = buildArms(model, look, false, cin);
@@ -382,6 +402,7 @@ export function createViewmodel(ctx) {
       return;
     }
     const look = colorsFor(frame);
+    if (look.skin !== skin) { skin = look.skin; setGunMaterialSkin(gunMat, skin); }
     // weapon switch: lower the old gun, swap at the bottom, raise the new one
     if (curWeapon === null) {
       curWeapon = wid; curLook = look.key;
@@ -392,10 +413,12 @@ export function createViewmodel(ctx) {
       if (st.switchT >= 0.5) st.switchT = 0;
     }
     st.switchT += dt;
+    // (a held dev pose swaps guns at once: no lower / raise in a screenshot)
+    if (globalThis.__HH_VM_POSE && st.pending) st.switchT = 0.4;
     if (st.pending && st.switchT >= 0.14) {
       curWeapon = st.pending; st.pending = null; curLook = look.key;
       buildGun(curWeapon, look);
-      st.switchT = Math.max(st.switchT, 0.14);
+      st.switchT = globalThis.__HH_VM_POSE ? 1 : Math.max(st.switchT, 0.14);
     } else if (look.key !== curLook) {
       curLook = look.key;
       buildGun(curWeapon, look);
@@ -481,7 +504,10 @@ export function createViewmodel(ctx) {
       st.inspectT += dt;
       if (busy || st.inspectT > 3.6) { st.inspectT = -1; st.idleT = 0; }
     } else if (st.idleT > 9) { st.inspectT = 0; st.idleT = 0; }
-    const ik = st.inspectT >= 0 ? ease(Math.min(1, st.inspectT / 0.7)) * ease(Math.min(1, (3.6 - st.inspectT) / 0.7)) : 0;
+    // (dev: globalThis.__HH_VM_POSE = { inspect: 0..1, close: 0..1 } holds a pose for gun close-up screenshots)
+    const devPose = globalThis.__HH_VM_POSE || null;
+    const ik = devPose && Number.isFinite(devPose.inspect) ? devPose.inspect : st.inspectT >= 0 ? ease(Math.min(1, st.inspectT / 0.7)) * ease(Math.min(1, (3.6 - st.inspectT) / 0.7)) : 0;
+    const closeK = devPose && Number.isFinite(devPose.close) ? devPose.close : 0;
     // reviving a teammate: the gun drops and dips with each compression
     let reviving = 0;
     if (view && view.players) for (let q = 0; q < view.players.length; q++) { const o = view.players[q]; if (o.state === 'downed' && o.reviver === local.id && o.reviver) { reviving = 1; break; } }
@@ -512,7 +538,7 @@ export function createViewmodel(ctx) {
     const y = P[1] + VM_SHIFT_Y + idleY + bobY + st.swayY * 0.5 - st.sprint * 1.6 - sw * 9 + rlTilt * 1.0 * rlUp - thK * 2.5 - st.down * 2.5 + vibY
       + st.jumpY + st.air * 0.35 - st.climb * 7 + breath * 0.06 + ik * 1.4 - rvK * 8.5 - rvPump * 0.9;
     const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8 + ik * 1.5;
-    holder.position.set(x, y, z);
+    holder.position.set(x - closeK * (P[0] + VM_SHIFT_X) * 0.75, y + closeK * 2.2, z + closeK * 2.5);
     holder.rotation.set(
       rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04 - st.climb * 0.5 + breath * 0.004 + ik * 0.25 - rvK * 0.5,
       -0.04 + (P[4] || 0) + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp + ik * 0.6,
@@ -895,23 +921,27 @@ export function createViewmodel(ctx) {
     /** World position of the muzzle as seen on screen (x, y = sim plane, h = height). */
     muzzle: muzzleWorld,
     setQuality(q) {
-      high = q !== 'low';
+      const nh = q !== 'low';
       const nc = q === 'cinematic';
-      setGunDetail(high, nc);
-      if (nc !== cin) {
-        // a new tier of guns and hands: a fresh material (the cinematic shader has the micro-detail layer) and a rebuild
-        cin = nc;
+      const nt = tierAtLeast(q, 'ultra');
+      setGunDetail(nh, nc);
+      if (nc !== cin || nh !== high || nt !== tri) {
+        // a new tier of guns and hands: a fresh material (textured / triplanar / cinematic variants) and a rebuild
+        cin = nc; high = nh; tri = nt;
         const old = gunMat;
-        gunMat = createGunMaterial(gunMaterials().atlas, { envMap: envTex, envIntensity: 1.1, mark: gunMaterials().mark, cinematic: cin });
+        gunMat = makeGunMat();
         clearGun();
         old.dispose();
         curWeapon = null;
       }
+      high = nh;
       upgradeQuality();
     },
     dispose() {
       gone = true;
       clearGun();
+      scene.onBeforeRender = () => {};
+      vml.dispose();
       gunMat.dispose();
       glowMat.dispose();
       handMat.dispose();

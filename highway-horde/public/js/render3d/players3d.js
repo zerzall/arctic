@@ -229,22 +229,26 @@ export function createPlayers3D(ctx) {
     return id && WEAPONS[id] ? id : null;
   }
 
+  // each teammate's gun skin (roster `skin`, shared/gun-finish.js): their guns wear it
+  const skinByPid = new Map();
   function gunFor(pid, weaponId) {
     let g = guns.get(pid);
-    if (!g) { g = { obj: null, left: null, weapon: undefined, model: null }; guns.set(pid, g); }
-    if (g.weapon !== weaponId) {
+    if (!g) { g = { obj: null, left: null, weapon: undefined, model: null, skin: null }; guns.set(pid, g); }
+    const skin = skinByPid.get(pid) || null;
+    if (g.weapon !== weaponId || g.skin !== skin) {
+      g.skin = skin;
       if (g.obj) { g.obj.removeFromParent(); g.obj.userData.dispose(); }
       if (g.left) { g.left.removeFromParent(); g.left.userData.dispose(); }
       g.obj = g.left = null;
       g.weapon = weaponId;
       if (weaponId) {
-        g.obj = gunObject(weaponId, { shadow: high, lite: true });
+        g.obj = gunObject(weaponId, { shadow: high, lite: true, skin });
         g.obj.rotation.order = 'YXZ';
         g.obj.scale.setScalar(GUN_SCALE);
         root.add(g.obj);
         g.model = g.obj.userData.model;
         if (g.model.dual) {
-          g.left = gunObject(weaponId, { shadow: high, mirror: true, lite: true });
+          g.left = gunObject(weaponId, { shadow: high, mirror: true, lite: true, skin });
           g.left.rotation.order = 'YXZ';
           g.left.scale.setScalar(GUN_SCALE);
           root.add(g.left);
@@ -361,6 +365,7 @@ export function createPlayers3D(ctx) {
       const p = list[k];
       if (p.id === localId && !(spectating && p.state === 'dead')) { hideGun(p.id); continue; }
       const r = roster.find((q) => q.id === p.id);
+      skinByPid.set(p.id, (r && r.skin) || null);
       const cls = r && CLASSES[r.cls] ? r.cls : CLASS_IDS[(p.id - 1) % CLASS_IDS.length];
       const color = pcol[(r ? r.color : p.id - 1) % pcol.length] || pcol[0];
       const s = getState(p);
@@ -506,12 +511,13 @@ export function createPlayers3D(ctx) {
   }
 
   // ---- the weapons that are not in the hands: pistol in a thigh holster, one long gun slung on the back
-  function setStowed(slot, id, dead) {
-    if (slot.id !== id) {
+  function setStowed(slot, id, dead, skin = null) {
+    if (slot.id !== id || slot.skin !== skin) {
+      slot.skin = skin;
       if (slot.obj) { slot.obj.removeFromParent(); slot.obj.userData.dispose(); slot.obj = null; }
       slot.id = id;
       if (id) {
-        slot.obj = gunObject(id, { shadow: high, lite: true });
+        slot.obj = gunObject(id, { shadow: high, lite: true, skin });
         slot.obj.matrixAutoUpdate = false;
         root.add(slot.obj);
       }
@@ -532,8 +538,9 @@ export function createPlayers3D(ctx) {
       if ((cat === 'pistol' || cat === 'melee') && !pistolId && WEAPONS[id].sprite.style !== 'dual') pistolId = id;
       else if (!backId) backId = id;
     }
-    setStowed(st.pistol, pistolId, dead);
-    setStowed(st.back, backId, dead);
+    const skin = skinByPid.get(p.id) || null;
+    setStowed(st.pistol, pistolId, dead, skin);
+    setStowed(st.back, backId, dead, skin);
     if (st.pistol.obj) {
       // right thigh, muzzle down and a little back
       pool.boneMatrix(k, B.THIGH_R, _sm);

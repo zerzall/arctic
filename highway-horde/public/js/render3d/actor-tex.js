@@ -492,7 +492,8 @@ export function viewmodelEnvTexture() {
 // stamped markings on the guns: one shared label sheet, a row of text per label (the
 // builders ask for rows as they lay out a gun; the sheet is repainted and re-uploaded)
 
-const MARK_W = 512, MARK_H = 1024, MARK_ROW = 16;
+// (32 px rows: the engraved markings stay crisp in a cinematic close-up; 128 labels a sheet)
+const MARK_W = 1024, MARK_H = 4096, MARK_ROW = 32;
 const marks = { canvas: null, g: null, rows: new Map(), n: 0, version: 1 };
 
 /** Row of the label sheet holding `text`: { aspect (width / height), u1, v0, v1 }. */
@@ -506,12 +507,14 @@ export function markRow(text) {
   }
   const g = marks.g;
   const idx = marks.n++ % (MARK_H / MARK_ROW);
+  // a full sheet reuses its oldest row: forget the label that was there
+  for (const [k, v] of marks.rows) if (v.idx === idx) { marks.rows.delete(k); break; }
   g.clearRect(0, idx * MARK_ROW, MARK_W, MARK_ROW);
-  g.font = 'bold 12px "DejaVu Sans Mono", "Liberation Mono", "Courier New", monospace';
+  g.font = 'bold 24px "DejaVu Sans Mono", "Liberation Mono", "Courier New", monospace';
   g.textBaseline = 'middle';
   g.fillStyle = '#fff';
-  const w = Math.min(MARK_W - 4, Math.ceil(g.measureText(text).width) + 6);
-  g.fillText(text, 3, idx * MARK_ROW + MARK_ROW / 2 + 0.5);
+  const w = Math.min(MARK_W - 8, Math.ceil(g.measureText(text).width) + 12);
+  g.fillText(text, 6, idx * MARK_ROW + MARK_ROW / 2 + 1);
   r = { idx, aspect: w / MARK_ROW, u1: w / MARK_W, v0: 1 - (idx + 1) * MARK_ROW / MARK_H, v1: 1 - idx * MARK_ROW / MARK_H };
   marks.rows.set(text, r);
   marks.version++;
