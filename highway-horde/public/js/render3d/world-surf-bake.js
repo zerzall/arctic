@@ -401,7 +401,7 @@ export async function loadBaked(o) {
   const D = new THREE.ExternalTexture(texD), C = new THREE.ExternalTexture(texC);
   // (three only binds an external texture; the sampler state set above stays)
   const info = {
-    size: n, sets: plan.sets.slice(), layers: L, bytes: bakedBytes(n, L), ms: Math.round(now() - t0),
+    size: n, stored, sets: plan.sets.slice(), layers: L, bytes: bakedBytes(n, L), ms: Math.round(now() - t0),
   };
   let gone = false;
   return {

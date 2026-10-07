@@ -17,7 +17,7 @@ import { createGround, WATER } from './ground.js';
 import { atlasUV, makeAtlasTexture, makeChainLinkTexture, makeWaterNormal, makeLeafTexture } from './world-tex.js';
 import { makeDetailArray, makeDetailArrayAsync, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
-import { createDetailUniforms, loadBaked, usedSurfaceIds, bakedDisabled, bakedState } from './world-surf-bake.js';
+import { createDetailUniforms, loadBaked, usedSurfaceIds, bakedDisabled, bakedState, bakedSize } from './world-surf-bake.js';
 import { beginLoadTask } from '../ui/loading.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
@@ -775,6 +775,9 @@ export function createWorld(ctx, deps) {
   function startBaked() {
     if (!deps.renderer || tier === 'low' || bakedDisabled()) return;
     if (bakedTier === full) return;
+    // (a tier change that keeps the layer size — ultra ↔ cinematic on a 1024² library — keeps the arrays)
+    const info = detailU.info;
+    if (info && bakedTier && bakedSize(full, info.layers, info.stored) === info.size) { bakedTier = full; return; }
     bakedTier = full;
     const run = ++bakedLoad;
     const task = beginLoadTask('Loading textures…');
