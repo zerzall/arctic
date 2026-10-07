@@ -74,6 +74,7 @@ vGAz = normalize(normalMatrix * (gIm * vec3(0.0, 0.0, 1.0)));
 const GUN_FRAG = /* glsl */`
 uniform sampler2D uGunAtlas;
 uniform sampler2D uMark;
+uniform vec3 uEnvTint;     // the probe's light tinted by where the gun is (a warm room for an outdoor probe)
 varying vec4 vGun;
 varying vec2 vGUv;
 vec4 gT;
@@ -104,7 +105,7 @@ uniform float uGunTexOn;
 uniform float uGunSkinOn;
 uniform float uGunWearOn;
 uniform vec4 uSkin;       // pattern layer (-1 none), 1 / pattern tile, edge-wear ×, grime ×
-uniform vec4 uSkin2;      // scratch ×, metalness override (-1), roughness override (-1), normal strength
+uniform vec4 uSkin2;      // scratch ×, metalness override (-1), roughness floor, normal strength
 uniform int uSkinMask;    // family layers the skin covers (bit per layer)
 uniform vec4 uHolster;    // holster wear: from x0 to x1 along the gun, strength
 uniform vec4 uSootM;      // muzzle (gun space) + fouling strength
@@ -213,7 +214,7 @@ const TEX_COLOR = /* glsl */`
       float chip = smoothstep(0.28, 0.56, edge + brk * 0.95);
       cov = sa.a * (1.0 - chip) * (1.0 - scr * 0.8);
       gAlb = mix(gAlb, sa.rgb, cov);
-      gRough = mix(gRough, uSkin2.z >= 0.0 ? uSkin2.z : sb.z, cov);
+      gRough = mix(gRough, max(sb.z, uSkin2.z), cov);
       gMetal = mix(gMetal, uSkin2.y >= 0.0 ? uSkin2.y : sb.w, cov);
       gDN = mix(gDN, gDN * 0.25 + sdn * uSkin2.w, cov);
     }
@@ -359,7 +360,7 @@ function skinUniforms(skinId) {
   GUN_FAMILIES.forEach((f, i) => { if (s.covers.includes(familyGroup(f.id))) mask |= 1 << i; });
   return {
     skin: [layer ?? -1, s.pattern ? 1 / PATTERN_TILE[s.pattern] : 0, s.wear, s.grime],
-    skin2: [s.scratch, s.metal ?? -1, s.rough ?? -1, s.pattern === 'carbon' || s.pattern === 'damascus' ? 0.9 : 0.6],
+    skin2: [s.scratch, s.metal ?? -1, s.roughMin ?? 0, s.pattern === 'carbon' || s.pattern === 'damascus' ? 0.9 : 0.6],
     mask,
   };
 }
@@ -382,6 +383,7 @@ export function createGunMaterial(atlas, opts = {}) {
     uHolster: { value: new THREE.Vector4(0, 1, 0, 0) },
     uSootM: { value: new THREE.Vector4(0, 0, 0, 0) },
     uSootE: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uEnvTint: { value: new THREE.Color(1, 1, 1) },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, own);
@@ -411,6 +413,8 @@ export function createGunMaterial(atlas, opts = {}) {
       .replace('#include <normal_fragment_maps>', NORMAL)
       .replace('#include <aomap_fragment>', /* glsl */`
   #include <aomap_fragment>
+  reflectedLight.indirectSpecular *= uEnvTint;
+  reflectedLight.indirectDiffuse *= uEnvTint;
   #ifdef GUN_TEX
   if (gTexOn) {
     reflectedLight.indirectDiffuse *= gAO;

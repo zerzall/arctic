@@ -176,9 +176,9 @@ export function gripFamilyFor(cls, weaponId) {
 /**
  * The selectable gun skins. pattern: the baked pattern layer (skin texture array; null: none);
  * covers: which surface classes the finish is applied to; wear: edge-wear multiplier; grime:
- * dirt / carbon multiplier; scratch: scratch strength; metal / rough: the finish's own
- * metalness and roughness where it covers (null: the pattern's); colour: a flat finish colour
- * (gold); swatch: UI colours.
+ * dirt / carbon multiplier; scratch: scratch strength; metal: the finish's own metalness where
+ * it covers (null: the pattern's); roughMin: a roughness floor (polished finishes stay off a
+ * mirror: the sun's highlight in a mirror-gloss barrel blooms the whole gun); swatch: UI colours.
  */
 export const GUN_SKINS = Object.freeze([
   { id: 'factory', name: 'Factory', desc: 'The finish it left the factory with: light holster wear.', pattern: null, covers: [], wear: 0.55, grime: 0.6, scratch: 0.6, swatch: ['#2a2c2e', '#4a4f3a', '#6b5136'] },
@@ -188,9 +188,9 @@ export const GUN_SKINS = Object.freeze([
   { id: 'urban', name: 'Urban digital', desc: 'Pixelated greys for concrete and asphalt.', pattern: 'urban', covers: ['metal', 'polymer', 'coating'], wear: 0.9, grime: 0.9, scratch: 0.8, swatch: ['#8a8d90', '#55595e', '#2e3134'] },
   { id: 'arctic', name: 'Arctic', desc: 'Winter white over grey, chipped where the hands go.', pattern: 'arctic', covers: ['metal', 'polymer', 'coating'], wear: 1.1, grime: 0.7, scratch: 0.8, swatch: ['#e6eaec', '#b8c0c6', '#7e8890'] },
   { id: 'tiger', name: 'Tiger stripe', desc: 'Jungle tiger stripes, brushed on.', pattern: 'tiger', covers: ['metal', 'polymer', 'coating'], wear: 1.0, grime: 0.9, scratch: 0.8, swatch: ['#5a6a3a', '#2a2a1c', '#8a7a4a'] },
-  { id: 'carbon', name: 'Carbon fibre', desc: 'Twill-woven carbon under a gloss clear coat.', pattern: 'carbon', covers: ['metal', 'polymer', 'coating'], wear: 0.5, grime: 0.6, scratch: 0.7, swatch: ['#1a1b1d', '#3a3c40', '#0c0c0d'] },
-  { id: 'damascus', name: 'Damascus', desc: 'Pattern-welded steel, etched and polished.', pattern: 'damascus', covers: ['metal'], wear: 0.4, grime: 0.4, scratch: 0.6, metal: 1, swatch: ['#9a9ea4', '#4a4e54', '#c8ccd0'] },
-  { id: 'gold', name: 'Gold', desc: 'Every metal part plated in polished gold.', pattern: 'gold', covers: ['metal'], wear: 0.35, grime: 0.3, scratch: 0.5, metal: 1, colour: '#ffcf6b', swatch: ['#e8b84a', '#ffd97a', '#8a6a2a'] },
+  { id: 'carbon', name: 'Carbon fibre', desc: 'Twill-woven carbon under a gloss clear coat.', pattern: 'carbon', covers: ['metal', 'polymer', 'coating'], wear: 0.5, grime: 0.6, scratch: 0.7, roughMin: 0.22, swatch: ['#1a1b1d', '#3a3c40', '#0c0c0d'] },
+  { id: 'damascus', name: 'Damascus', desc: 'Pattern-welded steel, etched and polished.', pattern: 'damascus', covers: ['metal'], wear: 0.4, grime: 0.4, scratch: 0.6, metal: 1, roughMin: 0.32, swatch: ['#9a9ea4', '#4a4e54', '#c8ccd0'] },
+  { id: 'gold', name: 'Gold', desc: 'Every metal part plated in polished gold.', pattern: 'gold', covers: ['metal'], wear: 0.35, grime: 0.3, scratch: 0.5, metal: 1, roughMin: 0.26, swatch: ['#e8b84a', '#ffd97a', '#8a6a2a'] },
   { id: 'zombie', name: 'Zombie hunter', desc: 'Caked in grime and dried blood. It has seen things.', pattern: 'blood', covers: ['metal', 'polymer', 'coating', 'wood', 'grip'], wear: 1.6, grime: 2.0, scratch: 1.6, swatch: ['#4a1a14', '#2a2420', '#6a2a1e'] },
   { id: 'hazard', name: 'Hazard', desc: 'Hand-painted yellow and black stripes, chipped and scuffed.', pattern: 'hazard', covers: ['metal', 'polymer', 'coating'], wear: 1.3, grime: 1.0, scratch: 1.0, swatch: ['#f2b705', '#1a1a1a', '#c8920a'] },
 ]);

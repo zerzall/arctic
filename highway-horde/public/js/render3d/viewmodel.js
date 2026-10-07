@@ -117,6 +117,7 @@ export function createViewmodel(ctx) {
         if (m.envMap === env && env) m.envMapRotation.copy(vml.envRotation);
       }
       gunMat.envMapIntensity = vml.state.envIntensity;
+      if (gunMat.userData.gun) gunMat.userData.gun.own.uEnvTint.value.copy(vml.state.envTint);
       handMat.envMapIntensity = vml.state.envIntensity * 0.45;
       brassMat.envMapIntensity = shellMat.envMapIntensity = vml.state.envIntensity;
     } catch (err) {

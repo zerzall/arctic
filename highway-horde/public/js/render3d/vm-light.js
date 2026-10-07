@@ -51,7 +51,8 @@ export function createVmLighting(ctx, scene) {
   const _qi = new THREE.Quaternion(), _v = new THREE.Vector3(), _c = new THREE.Color(), _e = new THREE.Euler();
   const envRotation = new THREE.Euler();
   let sunVis = 1, sunT = 0, under = 0, frameNo = 0;
-  const state = { envIntensity: 1, under: 0, sunVis: 1 };
+  const state = { envIntensity: 1, under: 0, sunVis: 1, envTint: new THREE.Color(1, 1, 1) };
+  const _room = new THREE.Color();
 
   /** 0..1: how much of the sun reaches the eye (1 = clear sky). A 2D ray through the obstacles. */
   function sunVisibility(dir) {
@@ -105,9 +106,10 @@ export function createVmLighting(ctx, scene) {
     const sky = 1 - under;
     // hemisphere: the world's colours and strength, "up" turned into camera space
     if (rig && rig.hemi) {
-      hemi.color.copy(rig.hemi.color);
+      // under a roof the "sky" half is the warm bounce of the room (floor and walls), not the sky
+      hemi.color.copy(rig.hemi.color).lerp(rig.hemi.groundColor, under * 0.8);
       hemi.groundColor.copy(rig.hemi.groundColor);
-      hemi.intensity = rig.hemi.intensity * (day ? 0.42 : 0.9) * (0.35 + 0.65 * sky);
+      hemi.intensity = rig.hemi.intensity * (day ? 0.42 : 0.9) * (0.6 + 0.4 * sky);
     } else hemi.intensity = 1.0 * (0.4 + 0.6 * sky);
     hemi.position.copy(_v.set(0, 1, 0).applyQuaternion(_qi));
     // sun / moon
@@ -129,6 +131,8 @@ export function createVmLighting(ctx, scene) {
     rim.position.copy(RIM).lerp(BOUNCE, tb * 0.65);
     rim.color.copy(RIM_C).lerp(BOUNCE_C, tb * 0.7);
     rim.intensity = (day ? 0.2 : 1.1) * (0.6 + 0.4 * sky) + tb * 0.8;
+    // (indoors by day the rim is the light of the way out ahead: warm, not moonlight)
+    if (day) rim.color.copy(RIM_C).lerp(BOUNCE_C, under);
     // pool lights: the strongest contributions at the eye, at their world places in camera space
     const lights = rig && rig.poolLights ? rig.poolLights : null;
     const best = [];
@@ -157,7 +161,15 @@ export function createVmLighting(ctx, scene) {
       P.decay = b.L.decay;
     }
     // (by day the probe is bright: the world itself takes 0.7 of it, renderer3d.js)
-    state.envIntensity = (day ? 0.7 : 1.15) * (0.18 + 0.82 * sky);
+    state.envIntensity = (day ? 0.7 : 1.15) * (0.3 + 0.7 * sky);
+    // under a roof the probe (made outside) reflects the sky: tint it toward the room's own bounce
+    if (rig && rig.hemi) {
+      _room.copy(rig.hemi.groundColor);
+      const lum = Math.max(1e-3, _room.r * 0.2126 + _room.g * 0.7152 + _room.b * 0.0722);
+      _room.multiplyScalar(1 / lum);
+      _room.r = Math.min(_room.r, 2.2); _room.g = Math.min(_room.g, 2.2); _room.b = Math.min(_room.b, 2.2);
+      state.envTint.setRGB(1, 1, 1).lerp(_room, under * 0.85);
+    }
     state.under = under;
     state.sunVis = sunVis;
     state.envRotation = envRotation;
