@@ -25,6 +25,7 @@
 // terrain (shared/terrain.js plateaus). The level art (render3d/levels/railyard.js) reads map.levelArt.
 
 import { wallBox, wallLine, stairFlight, landing, artData, cliffLine, spawnRows, floorWithHoles, supplyCrate } from './dam.js';
+import { decals } from './railyard-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "railyard",
@@ -217,6 +218,8 @@ export function build(B) {
   wallBox(B, 0, 0, W, 40, { style: 'nodraw' });
   wallBox(B, 0, H - 40, W, H, { style: 'nodraw' });
   B.groundClutter({ cracks: 60, oil: 40, paper: 40, debris: 60, blood: 24, tires: 6, tufts: 500, bushes: 50, rocks: 30 });
+  // the hand-placed decals (railyard-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---- 1. the sidings ---------------------------------------------------------------------------------------

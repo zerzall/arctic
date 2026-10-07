@@ -24,6 +24,7 @@
 // (render3d/levels/metro.js); the set dressing is hand placed (`map.dressItems`).
 
 import { levelKit } from './hospital.js';
+import { decals } from './metro-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "metro",
@@ -205,6 +206,8 @@ export function build(B) {
   for (let k = 0; k < 6; k++) B.pspawn(sx - 90 + (k % 3) * 90, sy - 50 + Math.floor(k / 3) * 100);
   B.supply(sx + 220, sy - 80);
   K.finish();
+  // the hand-placed decals (metro-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---------------------------------------------------------------------------------------------

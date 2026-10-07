@@ -23,6 +23,7 @@
 // (shared/terrain.js plateaus). The level art (render3d/levels/airbase.js) reads BASE and map.levelArt.
 
 import { wallBox, wallLine, stairFlight, landing, artData, spawnRows, supplyCrate } from './dam.js';
+import { decals } from './airbase-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "airbase",
@@ -210,6 +211,8 @@ export function build(B) {
   wallBox(B, 0, 0, W, 40, { style: 'nodraw' });
   wallBox(B, 0, H - 40, W, H, { style: 'nodraw' });
   B.groundClutter({ cracks: 90, oil: 40, paper: 60, debris: 50, blood: 36, tires: 6, tufts: 700, bushes: 120, rocks: 40 });
+  // the hand-placed decals (airbase-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 /** A fence line across the whole field at x, with gaps [[y0, y1], ...] (the chain-link and razor wire). */

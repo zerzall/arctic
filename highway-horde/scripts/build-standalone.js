@@ -11,7 +11,7 @@
 // file) is unavailable, so the sounds bake on the main thread (bank.js falls back itself).
 
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,6 +54,23 @@ const scripts = [
   readFileSync(join(PUB, 'config.js'), 'utf8'),
   res.outputFiles[0].text,
 ];
+
+// ---- embedded asset files (the decal sheets) ----------------------------------------------
+// Files under public/<dir> become data: URLs in window.__HH_FILES['<dir>/<name>'], which the
+// renderer reads before it would fetch the file next to the game (render3d/decals.js decalFileURL).
+function embedFiles(dir, pattern) {
+  const files = {};
+  let bytes = 0;
+  for (const name of readdirSync(join(PUB, dir)).sort()) {
+    if (!pattern.test(name)) continue;
+    const buf = readFileSync(join(PUB, dir, name));
+    bytes += buf.length;
+    files[`${dir}/${name}`] = `data:image/png;base64,${buf.toString('base64')}`;
+  }
+  console.log(`embedding ${Object.keys(files).length} files of ${dir} (${(bytes / 1e6).toFixed(1)} MB)`);
+  return `window.__HH_FILES = Object.assign(window.__HH_FILES || {}, ${JSON.stringify(files)});`;
+}
+scripts.splice(1, 0, embedFiles('textures/decals', /\.png$/));
 
 const swap = (from, to) => {
   if (!from.test(html)) throw new Error(`index.html no longer contains ${from}`);

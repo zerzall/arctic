@@ -29,6 +29,8 @@
 // The helpers below (walls, stair terrain, cliff lines) are shared by the other two levels of this
 // owner (railyard.js, airbase.js).
 
+import { decals } from './dam-decals.js';
+
 export const SPEC = Object.freeze({
   "id": "dam",
   "name": "Blackwater Dam",
@@ -421,6 +423,8 @@ export function build(B) {
   wallBox(B, 0, H - 40, W, H, { style: 'nodraw' });
 
   B.groundClutter({ cracks: 90, oil: 16, paper: 40, debris: 50, blood: 26, tires: 5, tufts: 260, bushes: 40, rocks: 40 });
+  // the hand-placed decals (dam-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---- 1. the canyon road ---------------------------------------------------------------------------------

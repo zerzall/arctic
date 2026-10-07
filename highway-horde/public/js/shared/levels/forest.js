@@ -17,6 +17,7 @@
 //         | head    |              |              |       river |              |       |
 
 import { artOf, prop, wall, wallGaps, room, fence, spawn, ob, facade, HALF, PI } from './millroad.js';
+import { decals } from './forest-decals.js';
 
 export const SPEC = Object.freeze({
   "id": "forest",
@@ -243,6 +244,8 @@ export function build(B) {
   forest(B, CW[1], 0, X4, H, 150, 0.5);
   forest(B, X4, 0, X5, H, 190, 0.35);
   forest(B, X5, 0, W, H, 220, 0.3);
+  // the hand-placed decals (forest-decals.js: graffiti, posters, signs, notes, blood)
+  decals(B);
 }
 
 // ---- 1. The trailhead ----------------------------------------------------------------------------------------
