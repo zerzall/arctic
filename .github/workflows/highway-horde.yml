@@ -14,7 +14,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # (~16 min as a rule: the end-to-end run alone is ~12; room for a slow Chromium download)
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: highway-horde
