@@ -24,7 +24,7 @@ const AREA_KINDS = ['asphalt', 'concrete', 'grass', 'dirt', 'gravel', 'sand', 'w
 const LINE_KINDS = ['white', 'white_dashed', 'yellow', 'yellow_double', 'crosswalk', 'parking', 'stop'];
 const OBSTACLE_KINDS = ['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker', 'barrier',
   'sandbags', 'building', 'wall', 'container', 'pump', 'tree', 'rock', 'hesco', 'tent', 'booth',
-  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave', 'counter', 'parapet'];
+  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave', 'counter', 'parapet', 'desk'];
 const DECOR_KINDS = ['tree_canopy', 'bush', 'grass_tuft', 'rock', 'cone', 'debris', 'tire', 'crack',
   'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble', 'signal', 'pylon'];
 const OBJECTIVE_KINDS = ['bus', 'diner', 'apc', 'radio'];

@@ -528,9 +528,9 @@ export function buildSandstone(B) {
   B.poi('CT Spawn', 1720, 580, 320);
   B.poi('A Site', 2560, 520, 340);
   B.poi('B Site', 560, 640, 340);
-  B.poi('Mid', 1505, 1700, 260);
+  B.poi('Mid', 1505, 1700, 300);
   B.poi('Long A', 2840, 1600, 300);
-  B.poi('Tunnels', 800, 1900, 260);
+  B.poi('Tunnels', 800, 1900, 300);
   B.poi('T Spawn', 2080, 2900, 340);
   B.anchor('ctSpawn', 1720, 600, 260);
   B.anchor('aSite', 2470, 620, 240);
@@ -561,12 +561,12 @@ export function buildSandstone(B) {
 
   // ---- decor (the set dressing is sandstoneDressItems below: client-side, never in the MapDef)
   B.sprinkle('crack', 24, 0, 0, W, Hh, { on: ['concrete'], s: [0.5, 1.0] });
-  B.sprinkle('debris', 80, 0, 0, W, Hh, { s: [0.6, 1.1] });
-  B.sprinkle('rubble', 22, 0, 0, W, Hh, { s: [0.5, 1] });
-  B.sprinkle('paper', 50, 0, 0, W, Hh, { s: [0.6, 1] });
+  B.sprinkle('debris', 130, 0, 0, W, Hh, { s: [0.6, 1.1] });
+  B.sprinkle('rubble', 40, 0, 0, W, Hh, { s: [0.5, 1] });
+  B.sprinkle('paper', 90, 0, 0, W, Hh, { s: [0.6, 1] });
   B.sprinkle('oil', 10, 0, 0, W, Hh, { on: ['concrete', 'gravel'], s: [0.5, 0.9] });
   B.sprinkle('blood_old', 26, 0, 0, W, Hh, { s: [0.6, 1.4] });
-  B.sprinkle('rock', 34, 0, 0, W, Hh, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
+  B.sprinkle('rock', 60, 0, 0, W, Hh, { on: ['sand', 'gravel', 'dirt'], s: [0.4, 0.8] });
   B.sprinkle('bush', 10, 0, 0, W, Hh, { on: ['sand', 'dirt'], s: [0.5, 0.9], keep: true });
   // the hand-placed decals (maps-decals.js)
   sandstoneDecals(B);
@@ -673,6 +673,15 @@ export function sandstoneDressItems(map) {
   scatter('bin_fall', 2, S.topMid);
   scatter('car_door', 1, S.lowerMid);
   scatter('bones', 3, S.pit);
+  scatter('cooler', 1, S.tSpawn);
+  scatter('teddy', 1, S.ctSpawn);
+  scatter('picnic', 1, S.tSpawn, [0.9, 1.0], 160);
+  scatter('trough', 1, S.outsideLong, [0.9, 1.1], 80);
+  scatter('ibc', 1, S.outsideLong, [0.9, 1.0], 80);
+  scatter('reel', 1, S.longBottom, [0.9, 1.0], 60);
+  scatter('crates', 2, S.tSpawn);
+  scatter('box', 3, S.bSite);
+  scatter('drums', 1, S.outsideTunnels, [0.9, 1.0], 60);
   // the desert creeping in: tumbleweed, dry shrubs and a few cacti in the corners
   for (const R of OPEN) scatter('tumbleweed', 1, R, [0.7, 1.1]);
   for (const R of [S.tSpawn, S.outsideLong, S.outsideTunnels, S.bSite]) {

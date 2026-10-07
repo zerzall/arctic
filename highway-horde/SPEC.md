@@ -212,31 +212,44 @@ is its objective collider and landmark, the team starts on Main Street next to t
 station, and every POI is reachable from every other.
 Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
 
-**Sandstone** (`shared/maps-sandstone.js`, 4000 x 4000, ~200 obstacles, budget 260): a walled
-desert town of sandstone and adobe, built for Horde Elimination. The defenders start on
-**Fountain Square** (the north-centre square: the radio mast is the objective collider and a
-landmark, the supply station, 8 spawns). Two "sites": the square itself, enclosed, entered by the
-Great Doors from Mid Street, two arches from Cistern Court and the stairs from the Terrace; and
-**the Terrace**, a plateau 76 units up (`terrain.plateaus`) reached by a ramp from the Long Hall, a
-flight of stairs from the square, back stairs and the rampart (a walkway on top of the Long Hall's
-west wall, a hesco retaining wall with a parapet). Between them and the edges: the Long Hall (a
-long walled corridor with the Long Doors and an alcove), Mid Street (the long sightline from the
-plaza to the square through the Great Doors), the walled Cistern Court with several entrances, an
-upper and a lower tunnel (roofs with `style: 'tunnel'`, dark inside) into Well Square, the souk lane,
-the plaza and the caravan yard. Six entrances (`map.horde.lanes`, each spawn rect tagged with its
-`lane`): South Gate, Caravan Gate, Well Gate, West Breach, East Stairs and the North Arch (late:
-from surge `lateFrom` on, behind the defenders). MapDef extras: `horde { lanes: [{ name, x, y,
-late? }], hold { x, y, r } }` (where bots hold by default), `anchors`, `look` (`trees ['palm']`,
-`grass: false`, `weeds` 0.15, `areas` colours for the 2D map layer, `nightWet`, `night` sky colours),
-`art: 'sandstone'` (the 3D art module, §7.5) and `sandArt` (the free art pieces: stairs, the ramp,
-gates, arches, tarps, signs, lanterns, doorways). Obstacles carry a `style` for the art ('house',
-'courtwall', 'gatehouse', 'bigdoor', 'doorleaf', 'crate', 'lowcrate', 'barrels', 'cart', 'planter',
-'fountain', 'well', 'stall', 'sill', 'retain', 'parapet'); kinds are the usual ones ('counter' and
-'parapet' from the campaign set, §2 CampaignExt). The layout rules for the defend maps (central
-objective, supply distance) are skipped for it (`tests/maps.test.js` HORDE_FIRST); its own tests
-(`tests/map-sandstone.test.js`) check the flow fields from every entrance reach both sites and the
-supply for walkers and heavies, the terrace and its approaches step by step, anchors and spawns on
-open ground, determinism, a bot round and the art on every tier.
+**Sandstone** (`shared/maps-sandstone.js`, 3300 x 3200, ~170 obstacles, budget 300): a walled
+desert town of sandstone and lime plaster built for Horde Elimination, laid out like the classic
+two-site desert map of competitive shooters (proportions scaled ×0.63 from Hammer units; its own
+names, art and signs). The crew holds the CT side (north), the horde comes from the T side (south).
+Every walkable place is a rectangle of `SANDSTONE` (tests and the art read them); the houses fill
+their complement (`complementRects`). Levels (`SANDSTONE_LEVELS`, terrain plateaus; stairs and ramps
+are flights of steps ≤ 6 units): mid, CT mid, the pit and the lower tunnels at 0; CT spawn, long,
+the catwalk, short, B and the upper tunnels at 40; the T side at 76; the A site at 100 with the A
+platform (112, goose in its corner); the B platform at 76. **CT spawn** (the radio mast is the
+objective collider, the supply station, 8 spawns) opens onto the A site by the CT ramp, onto B by
+the CT-to-B passage (the window room, the B doors) and down the CT ramp into CT mid. **Long A**:
+outside long → the long doors (gatehouse walls, the two great leaves standing open, the gap
+between them) → the long corridor straight north to the A ramp (the doors see up long onto the
+site), the pit sunk at its bottom-east (out by its stairs), the corner car, the blue bin. **Mid**:
+top mid down the mid slope, lower mid with xbox and the catwalk stairs, the catwalk (40, the drop
+into mid), short and the short stairs onto A, the mid doors (top mid sees through their gap into
+CT mid and up the CT ramp). **B**: outside tunnels → the dark upper tunnels (roofs `style:
+'tunnel'`) → the B tunnel into B site (the B car, the double stack, the platform, the window, the B
+doors), and the stairs down the lower tunnels into lower mid. One-way drops are low retaining walls
+on the low side ('desk', style 'retain' / 'platedge', low cover: walk off from above, stopped below
+short of a jump, the horde goes round by the stairs). Four entrances (`map.horde.lanes`, each spawn
+rect tagged with its `lane`, at the T side's edges): T Spawn, Outside Long, Top of Tunnels, Top Mid;
+none late. MapDef extras: `horde { lanes: [{ name, x, y, hold }], hold { x, y, r } (CT spawn: where
+bots hold by default), holds { ct, a, b, mid } }` (`hordeHoldFor`, §3.12), `anchors` (the callouts:
+goose, longDoors, pit, xbox, catwalk, midDoors, bWindow ...), `look` (`trees ['palm']`, `grass:
+false`, `weeds` 0.15, `areas` colours for the 2D map layer, `nightWet`, `night` sky colours), `art:
+'sandstone'` (the 3D art module, §7.5) and `sandArt` (the free art pieces: stairs, ramps, the A
+platform's step, gates, arches, tarps, awnings, the sites' painted letters, lanterns, doorways, the
+window). Obstacles carry a `style` for the art ('house', 'courtwall', 'gatehouse', 'bigdoor',
+'crate', 'lowcrate', 'barrels', 'cart', 'planter', 'sill', 'retain', 'platedge', 'stairwall');
+kinds are the usual ones ('counter' and 'desk' from the campaign set, §2 CampaignExt). The layout
+rules for the defend maps (central objective, supply distance) are skipped for it
+(`tests/maps.test.js` HORDE_FIRST); its own tests (`tests/map-sandstone.test.js`) check the levels
+and every flight step by step, walk the ramps, the stairs and the drops with the movement code, the
+sightlines (long doors, mid doors, the window, the pit), each site from each of its routes alone,
+the dark tunnels, the lanes and holds, the flow fields from every entrance to both sites, the
+platforms, CT mid and the supply for walkers and heavies, anchors and spawns on open ground,
+determinism, a bot round and the art on every tier.
 
 ---------------------------------------------------------------------------------------
 
@@ -955,7 +968,10 @@ lobby's waves row does not apply (the round is `HORDE.surges` surges; `totalWave
 - **No respawns.** Dead survivors stay dead (`respawn` false; they spectate); the downed bleed out
   and can be revived as usual; late joiners spectate. `_checkEnd`: everyone dead → 'gameover'
   ('wiped'); the whole horde spawned and dead → 'victory'. The core never clears a wave in this mode.
-- **Bots** hold near the crew (the human they follow, else `map.horde.hold`), hunt stragglers
+- **Bots** hold near the crew (the human they follow, else the director's `hold`: the map's
+  `horde.hold`, or against an announced surge `hordeHoldFor(map, lanes)`, the spot its entrances
+  call for when they all name the same one in `horde.holds` — Sandstone: long → A site, tunnels → B
+  site, top mid → CT mid, otherwise CT spawn), hunt stragglers
   when the horde is nearly done, and go shopping at the supply station in a surge's breather or a
   calm hold (≤ 6 alive, the station within 1400 px), once per surge.
 - **Snapshot** `horde: { stage, total, left, alive, surge, surges, tier, next (s of breather left),
@@ -1901,11 +1917,13 @@ dispose, material(bucket, tier), buckets }`): the module draws the obstacles it 
 (the rest fall back to the generic models), the roofs (Sandstone's tunnel vaults; a map with roofs
 gets the indoor light mask and the roof fixtures like a level) and its free pieces. Sandstone:
 `sandstone.js` (dispatch, materials, the building grid), `sandstone-kit.js` (houses with
-interior-mapped windows, shutters, doors and shop fronts, the court wall, gatehouses, the great
-doors), `sandstone-props.js` (crates, carts, the fountain, the well, stalls, stairs, the ramp, gates,
-arches, tarps, signs, lanterns, the vaults), `sandstone-atlas.js` (one canvas atlas: awnings, rugs,
-zellige, signs, posters, grime); ~70 k triangles on 'low', ~240 k on 'ultra' (`tests/map-sandstone.test.js`
-builds it on every tier by day and night).
+interior-mapped windows, shutters, doors and shop fronts, cornices, each face from its own street on
+the terrain's levels; the court walls, gatehouses, the great studded doors, the stairs' side walls),
+`sandstone-props.js` (crates, barrels, carts, planters, the retaining walls, stairs, ramps, the A
+platform's step, gates, arches, tarps, awnings, the sites' letters, signs, lanterns, the vaults),
+`sandstone-atlas.js` (one canvas atlas: awnings, rugs, zellige, signs, posters, the site marks,
+grime); ~55 k triangles on 'low', ~180 k on 'ultra' (`tests/map-sandstone.test.js` builds it on
+every tier by day and night).
 
 ### 7.5.1 Time of day — `settings.time` 'night' | 'day' | 'dusk' (`shared/timeofday.js`, `render3d/daylight*.js`)
 

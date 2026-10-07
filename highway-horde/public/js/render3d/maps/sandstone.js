@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 import { makeSandTexture } from './sandstone-atlas.js';
-import { house, courtWall, gatehouse, bigDoor, doorLeaf } from './sandstone-kit.js';
+import { house, courtWall, gatehouse, bigDoor, doorLeaf, stairWall } from './sandstone-kit.js';
 import { MODELS, ITEMS, tunnelVault } from './sandstone-props.js';
 
 /** Extra geo-builder buckets of this map. */
@@ -30,7 +30,7 @@ export const BUCKETS = {
   sscloth: { uv: true, ao: false },
 };
 
-const WALLS = { house, courtwall: (P) => courtWall(P), gatehouse, bigdoor: bigDoor, doorleaf: doorLeaf };
+const WALLS = { house, courtwall: (P) => courtWall(P), gatehouse, bigdoor: bigDoor, doorleaf: doorLeaf, stairwall: stairWall };
 
 /** Point in an oriented rectangle. */
 function inRect(o, x, y, pad = 0) {
@@ -81,13 +81,16 @@ export function createLevelArt(ctx, deps) {
     }
   }
   const near = (x, y) => grid.get(Math.floor(y / CELL) * 1024 + Math.floor(x / CELL)) || [];
-  /** Height of the building standing at (x, y), other than `self` (0 = open ground; the map's edge counts as a wall). */
+  /**
+   * Top (absolute: over the terrain under it) of the building standing at (x, y), other than `self`
+   * (0 = open ground; the map's edge counts as a wall).
+   */
   const blockTop = (x, y, self) => {
-    if (x < 0 || y < 0 || x > map.width || y > map.height) return 400;
+    if (x < 0 || y < 0 || x > map.width || y > map.height) return 600;
     let top = 0;
     for (const o of near(x, y)) {
       if (o === self || !inRect(o, x, y)) continue;
-      top = Math.max(top, o.kind === 'building' ? o.top || 150 : 130);
+      top = Math.max(top, (o.kind === 'building' ? o.top || 150 : o.top || 130) + gy(o.x, o.y));
     }
     return top;
   };
@@ -107,7 +110,7 @@ export function createLevelArt(ctx, deps) {
   const objAbs = (B, x, y, a, seed) => B.obj(x, y, a, seed, -gy(x, y));
   // the tunnels' vaults: a house face under one keeps its upper floors plain (they would pierce the vault)
   const vaults = (map.roofs || []).filter((r) => r.style === 'tunnel');
-  /** Height where the vault over (x, y) springs (Infinity in the open); see sandstone-props.js tunnelVault. */
+  /** Height (absolute) where the vault over (x, y) springs (Infinity in the open); see sandstone-props.js tunnelVault. */
   const ceilAt = (x, y) => {
     let c = Infinity;
     for (const r of vaults) if (inRect(r, x, y, 2)) c = Math.min(c, (r.height || 120) - Math.min(r.w, r.h) / 4);
@@ -155,7 +158,6 @@ export function createLevelArt(ctx, deps) {
         B.setJitter(0.03);
         run(fn, it.t, { ...P0, B, o: it }, it);
       }
-      run(ITEMS.marks, 'marks', { ...P0, B }, null);
     },
     finish() {},
     update() {},

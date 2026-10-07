@@ -34,7 +34,7 @@ import { TAU } from './math.js';
  *              `wait` s after its last group
  *   travel     a zombie farther than `far` px from its survivor moves up to `mult` × faster (full
  *              from far + ramp): the entrances are a long walk from the defenders (a walker
- *              does 34-48 px/s; Sandstone's gates are 2000-3800 px from the square)
+ *              does 34-48 px/s; Sandstone's T-side entrances are 2500-3700 px of walk from CT spawn)
  *   bossDelay  the last surge's bosses (ceil(n / 3)) walk in this long after it starts
  *   surgeBonus cash to every living survivor at each surge after the first (resupply money)
  *   shopMin    the shop always sells at least wave `shopMin`'s guns (the buy time)

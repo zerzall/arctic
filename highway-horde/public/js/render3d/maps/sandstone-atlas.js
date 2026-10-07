@@ -31,7 +31,7 @@ export const SS_CELLS = {
   graf1: [256, 96], graf2: [256, 96], graf3: [256, 96], graf4: [256, 128], gx: [128, 128],
   stencil: [128, 128], stencil2: [128, 128],
   // the sites' marks
-  m_sun: [256, 256], m_drop: [256, 256],
+  m_sun: [256, 256], m_drop: [256, 256], m_a: [256, 256], m_b: [256, 256],
   // lantern glass, grilles, lattice, laundry, goods
   lantern: [64, 128], grille: [128, 128], lattice: [128, 256], laundry: [256, 64], fruit: [128, 64], spice: [128, 64], baskets: [128, 64],
   // weathering
@@ -251,6 +251,30 @@ function plaque(g, w, h, r, line1, line2) {
   }
 }
 
+/** A site's mark: a big brushed letter in a ring, an arrow under it, sun-faded and chipped. */
+function siteLetter(g, w, h, r, letter, color) {
+  g.save();
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.lineWidth = w * 0.045;
+  g.beginPath();
+  g.arc(w / 2, h * 0.42, w * 0.33, 0, Math.PI * 2);
+  g.stroke();
+  fit(g, letter, w / 2, h * 0.44, w * 0.5, h * 0.5, { color, font: FONT });
+  // the arrow
+  g.lineWidth = w * 0.05;
+  g.beginPath();
+  g.moveTo(w * 0.22, h * 0.88); g.lineTo(w * 0.74, h * 0.88);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(w * 0.84, h * 0.88); g.lineTo(w * 0.7, h * 0.8); g.lineTo(w * 0.7, h * 0.96);
+  g.fill();
+  g.restore();
+  // drips of the brush and chips where the plaster fell off
+  for (let i = 0; i < 6; i++) { g.fillStyle = color; g.fillRect(w * (0.3 + r() * 0.4), h * 0.7, 2, 6 + r() * 14); }
+  for (let i = 0; i < 160; i++) { g.clearRect(r() * w, r() * h, 1 + r() * 6, 1 + r() * 4); }
+}
+
 const PAINT = {
   white(g, w, h) { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); },
   st_red(g, w, h) { stripes(g, w, h, '#b33a28', '#e8dcc4'); },
@@ -413,6 +437,8 @@ const PAINT = {
     }
     for (let i = 0; i < 140; i++) { g.clearRect(r() * w, r() * h, 1 + r() * 6, 1 + r() * 4); }
   },
+  m_a(g, w, h, r) { siteLetter(g, w, h, r, 'A', 'rgba(170,40,26,0.9)'); },
+  m_b(g, w, h, r) { siteLetter(g, w, h, r, 'B', 'rgba(30,72,128,0.9)'); },
   lantern(g, w, h) {
     const grd = g.createRadialGradient(w / 2, h * 0.55, 2, w / 2, h * 0.55, w * 0.6);
     grd.addColorStop(0, '#fff6d8'); grd.addColorStop(0.5, '#ffc070'); grd.addColorStop(1, '#a8501a');

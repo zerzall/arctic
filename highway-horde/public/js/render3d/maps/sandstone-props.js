@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import {
   T, shadeHex, mixHex, hash01, DET, atlasUV, rod, ssUV, HALF, PI, S, STONE, STUCCO, PLASTER, WOOD, IRON, METAL, FABRIC,
-  pic, decal, glowBox, archWall, archHead, BLUES,
+  pic, decal, glowBox, archWall, archHead, BLUES, toWorld,
 } from './sandstone-kit.js';
 
 const CRATE = '#a07a4c', CRATE_D = '#6e4f2c';
@@ -210,22 +210,54 @@ export const MODELS = {
     B.block('std', 0, 102, 0, o.w + 4, 4, o.h + 2, '#b8a07a', null, STONE);
     for (const s of [-1, 1]) B.box('std', o.w / 2 + 2, 71, s * (o.h / 2 + 10), 1.4, 62, 20, BLUES[0], null, WOOD);
   },
-  /** The rampart's retaining wall over the Long Hall: ashlar courses, a string course, drain spouts. */
+  /**
+   * A retaining wall at the edge of a drop (the catwalk over mid, long over the pit, the B platform):
+   * it stands on the low side and reaches up to the high floor (its height is the terrain's step
+   * there), ashlar courses, a coping and drain spouts on the low face.
+   */
   retain(P) {
     const { B, o, lod } = P;
-    const H = 76;
-    const col = '#c6a87c';
+    const alongZ = o.h >= o.w;
+    const L = alongZ ? o.h : o.w, th = alongZ ? o.w : o.h;
+    const g0 = P.gy(o.x, o.y);
+    // which side is high: sample the ground just off both long faces
+    const off = (s) => {
+      const [wx, wy] = toWorld(o, alongZ ? s * (th / 2 + 6) : 0, alongZ ? 0 : s * (th / 2 + 6));
+      return P.gy(wx, wy) - g0;
+    };
+    const hiS = off(1) >= off(-1) ? 1 : -1;
+    const H = Math.max(14, Math.max(off(1), off(-1)));
+    const col = o.style === 'platedge' ? '#c9ae84' : '#c6a87c';
     B.block('std', 0, 0, 0, o.w, H, o.h, col, null, STONE);
-    B.block('std', 0, 0, 0, o.w + 4, 14, o.h, shadeHex(col, -0.15), null, STONE);
-    B.block('std', -1, H - 4, 0, o.w + 2, 4, o.h, shadeHex(col, -0.08), null, STONE);
+    // the coping, flush with the high floor and a lip over the low face
+    const lowN = -hiS;
+    if (alongZ) B.block('std', lowN * 1.5, H - 3, 0, th + 3, 4, L, shadeHex(col, -0.1), null, STONE);
+    else B.block('std', 0, H - 3, lowN * 1.5, L, 4, th + 3, shadeHex(col, -0.1), null, STONE);
+    // the foot: a darker band where the street splashes it
+    if (alongZ) B.block('std', lowN * 1, 0, 0, th + 2, Math.min(12, H * 0.3), L, shadeHex(col, -0.18), null, STONE);
+    else B.block('std', 0, 0, lowN * 1, L, Math.min(12, H * 0.3), th + 2, shadeHex(col, -0.18), null, STONE);
     if (lod >= 1) {
-      for (let y = 14; y < H - 4; y += 15) B.box('std', o.w / 2 + 0.2, y, 0, 0.4, 0.8, o.h, shadeHex(col, -0.32), null, STONE);
-      for (let z = -o.h / 2 + 30; z < o.h / 2; z += 70) {
-        B.box('std', o.w / 2 + 3, H - 12, z, 7, 3, 3, '#8a7656', null, STONE);
-        if (lod >= 2) decal(B, 'streak', o.w / 2 + 0.5, H - 46, z, 12, 64, HALF);
+      const face = lowN * (th / 2 + 0.2);
+      for (let y = 12; y < H - 4; y += 13) {
+        if (alongZ) B.box('std', face, y, 0, 0.4, 0.8, L, shadeHex(col, -0.32), null, STONE);
+        else B.box('std', 0, y, face, L, 0.8, 0.4, shadeHex(col, -0.32), null, STONE);
+      }
+      // vertical joints, staggered course by course
+      for (let k = 0, y = 0; y < H - 4; y += 13, k++) {
+        for (let t = -L / 2 + (k % 2 ? 14 : 28); t < L / 2 - 4; t += 28) {
+          if (alongZ) B.box('std', face, y + 6.5, t, 0.4, 12, 0.7, shadeHex(col, -0.26), null, STONE);
+          else B.box('std', t, y + 6.5, face, 0.7, 12, 0.4, shadeHex(col, -0.26), null, STONE);
+        }
+      }
+      if (H > 30) for (let t = -L / 2 + 30; t < L / 2; t += 70) {
+        const fx = alongZ ? lowN * (th / 2 + 3) : t, fz = alongZ ? t : lowN * (th / 2 + 3);
+        B.box('std', fx, H - 10, fz, alongZ ? 7 : 3, 3, alongZ ? 3 : 7, '#8a7656', null, STONE);
+        if (lod >= 2) decal(B, 'streak', alongZ ? lowN * (th / 2 + 0.5) : t, H - 34, alongZ ? t : lowN * (th / 2 + 0.5), 12, 48, alongZ ? (lowN > 0 ? HALF : -HALF) : (lowN > 0 ? 0 : PI));
       }
     }
   },
+  /** The B platform's edge: the same retaining wall. */
+  platedge(P) { MODELS.retain(P); },
   /** The rampart walk's parapet: a low stone wall with a rounded coping (shoot over it). */
   parapet(P) {
     const { B, o, lod } = P;
@@ -280,17 +312,71 @@ function stairs(P, it) {
   }
 }
 
-/** The ramp out of the Long Hall: a cobbled slab over the slope, kerbs, a worn middle. */
+/**
+ * A ramp (the A ramp up from long, the CT ramps, the mid slope, outside long): a slab of paving over
+ * the slope (the terrain under it is a flight of fine steps), stone kerbs along its sides, worn
+ * cobbles in the middle. Rising along its axis toward `dir`.
+ */
 function ramp(P, it) {
   const { B, lod } = P;
   const H = it.h1 - it.h0;
-  const len = it.y1 - it.y0, w = it.x1 - it.x0;
-  P.objAbs(B, (it.x0 + it.x1) / 2, (it.y0 + it.y1) / 2, 0, 9300);
-  const ang = Math.atan2(H, len);
-  // rising toward −y (north): the slab's top passes through (y1, h0) and (y0, h1)
-  B.add('std', T.box(), [0, (it.h0 + it.h1) / 2 - 0.9, 0], [w, 3, Math.hypot(len, H)], [ang, 0, 0], '#bda57c', { ...S(DET.paver, 0.9, 0), noJitter: true });
+  const alongX = it.axis === 'x';
+  const len = alongX ? it.x1 - it.x0 : it.y1 - it.y0, w = alongX ? it.y1 - it.y0 : it.x1 - it.x0;
+  P.objAbs(B, (it.x0 + it.x1) / 2, (it.y0 + it.y1) / 2, 0, 9300 + Math.round(it.x0 + it.y0));
+  const ang = Math.atan2(H, len) * (it.dir < 0 ? 1 : -1);
+  const slant = Math.hypot(len, H);
+  // (along y the slab tips about x: +rx lifts its −z (north) end; along x it tips about z: +rz lifts +x)
+  const rot = alongX ? [0, 0, -ang] : [ang, 0, 0];
+  const size = (a, b, c) => (alongX ? [c, b, a] : [a, b, c]);
+  const ym = (it.h0 + it.h1) / 2;
+  B.add('std', T.box(), [0, ym - 1.4, 0], size(w, 3, slant), rot, '#bda57c', { ...S(DET.paver, 0.9, 0), noJitter: true });
+  if (lod >= 1) {
+    for (const s of [-1, 1]) {
+      const p = alongX ? [0, ym + 1.6, s * (w / 2 - 3)] : [s * (w / 2 - 3), ym + 1.6, 0];
+      B.add('std', T.box(), p, size(6, 6, slant), rot, '#a88f68', { ...STONE, noJitter: true });
+    }
+    // a worn strip of darker cobbles up the middle
+    B.add('std', T.box(), [0, ym - 1.25, 0], size(w * 0.4, 3, slant - 6), rot, '#a99069', { ...S(DET.paver, 0.95, 0), noJitter: true });
+  }
+}
+
+/** The step up onto a raised floor (the A platform): a stone riser and nosing along the listed sides. */
+function step(P, it) {
+  const { B, lod } = P;
+  const cx = (it.x0 + it.x1) / 2, cy = (it.y0 + it.y1) / 2;
+  P.objAbs(B, cx, cy, 0, 9700);
+  const h = it.h1 - it.h0, col = '#c3a87e';
+  for (const side of it.sides || []) {
+    const alongX = side === 'n' || side === 's';
+    const at = side === 'w' ? it.x0 - cx : side === 'e' ? it.x1 - cx : side === 'n' ? it.y0 - cy : it.y1 - cy;
+    const L = alongX ? it.x1 - it.x0 : it.y1 - it.y0;
+    const shift = alongX ? 0 : 0;
+    if (alongX) B.block('std', shift, it.h0 - 2, at, L, h + 2, 3, col, null, STONE);
+    else B.block('std', at, it.h0 - 2, shift, 3, h + 2, L, col, null, STONE);
+    if (lod >= 1) {
+      if (alongX) B.block('std', 0, it.h1 - 1.4, at, L + 2, 2, 5, shadeHex(col, -0.14), null, STONE);
+      else B.block('std', at, it.h1 - 1.4, 0, 5, 2, L + 2, shadeHex(col, -0.14), null, STONE);
+    }
+  }
+}
+
+/** A site's painted letter on the wall (and its arrow), faded by the sun. */
+function siteMark(P, it) {
+  const { B } = P;
+  const z = it.z || 60;
+  pic(B, it.letter === 'B' ? 'm_b' : 'm_a', 0, z, 0.5, 72, 72, 0, { bucket: 'ssdecal' });
+}
+
+/** A striped awning over a doorway: a sloped canvas on two iron brackets, a valance. */
+function awning(P, it) {
+  const { B, lod } = P;
+  const w = it.w || 140, h = it.h || 92, depth = 38;
+  const cell = ['st_red', 'st_blue', 'st_ochre', 'st_green'][Math.floor(hash01(Math.round(it.x * 3 + it.y)) * 4)];
+  B.add('sscloth', T.plane(), [0, h - 6, depth / 2], [w, Math.hypot(depth, 14), 1], [-HALF + 0.36, 0, 0], '#ffffff', { uv: ssUV(cell), noAO: true, noJitter: true });
+  B.add('sscloth', T.plane(), [0, h - 16, depth], [w, 9, 1], null, '#ffffff', { uv: ssUV(cell), noAO: true, noJitter: true });
   if (lod >= 1) for (const s of [-1, 1]) {
-    B.add('std', T.box(), [s * (w / 2 - 3), (it.h0 + it.h1) / 2 + 2, 0], [6, 6, Math.hypot(len, H)], [ang, 0, 0], '#a88f68', { ...STONE, noJitter: true });
+    rod(B, 'std', [s * (w / 2 - 4), h + 2, 0.5], [s * (w / 2 - 4), h - 12, depth], 0.7, '#2a2420', IRON, 5);
+    rod(B, 'std', [s * (w / 2 - 4), h - 26, 0.5], [s * (w / 2 - 4), h - 12, depth * 0.6], 0.6, '#2a2420', IRON, 4);
   }
 }
 
@@ -506,23 +592,4 @@ function ribGeometry() {
   return g;
 }
 
-/** The terrace's floor dressing: a mosaic inlay in front of the site's mark and the site marks on the walls. */
-function terrace(P, it) {
-  const { B, lod } = P;
-  if (lod < 1) return;
-  P.objAbs(B, (it.x0 + it.x1) / 2, (it.y0 + it.y1) / 2, 0, 9500);
-  const cx = (it.x0 + it.x1) / 2, cy = (it.y0 + it.y1) / 2;
-  // a tiled rosette set in the paving
-  B.add('sssign', T.plane(), [3150 - cx, it.h + 0.35, 760 - cy], [90, 90, 1], [-HALF, 0, 0], '#ffffff', { uv: ssUV('zel3'), noAO: true, noJitter: true });
-  // the site's sun on the wall of the house north of it
-  pic(B, 'm_sun', 3150 - cx, it.h + 70, it.y0 + 0.4 - cy, 70, 70, 0, { bucket: 'ssdecal' });
-}
-
-/** The Cistern Court's mark and the square's frieze. */
-function marks(P) {
-  const { B } = P;
-  P.objAbs(B, 765, 252, 0, 9600);
-  decal(B, 'm_drop', 0, 80, 0.5, 70, 70, 0);
-}
-
-export const ITEMS = { stairs, ramp, gatearch: gateArch, arch: passArch, tarp, sign: signItem, lantern, doorway, window: windowItem, terrace, rampart() {}, tunnel() {}, marks };
+export const ITEMS = { stairs, ramp, step, sitemark: siteMark, awning, gatearch: gateArch, arch: passArch, tarp, sign: signItem, lantern, doorway, window: windowItem, tunnel() {} };
