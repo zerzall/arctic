@@ -107,6 +107,7 @@ function embedFiles(dir, pattern) {
 }
 scripts.splice(1, 0, embedFiles('textures/decals', /\.png$/));
 scripts.splice(1, 0, embedFiles('textures/guns', /\.png$/));
+scripts.splice(1, 0, embedFiles('textures/zombies', /\.png$/));
 
 const swap = (from, to) => {
   if (!from.test(html)) throw new Error(`index.html no longer contains ${from}`);

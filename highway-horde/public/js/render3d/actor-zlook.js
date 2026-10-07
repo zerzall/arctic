@@ -506,6 +506,68 @@ export function optionsForType(type) {
 }
 
 // ---------------------------------------------------------------------------------------
+// the baked textures a zombie wears (actor-ztex.js; pure: the look and its id decide)
+
+/** Fabric indices (the order of the baked cloth sets, actor-ztex.js ZT_SETS). */
+export const FAB = { denim: 0, flannel: 1, tee: 2, gown: 3, police: 4, military: 5, work: 6, shirt: 7, suit: 8, hoodie: 9, dress: 10 };
+
+/** The decay stage of a look (0 fresh, 1 weeks, 2 months) from its rot. */
+export function stageOf(rot) {
+  return rot < 0.38 ? 0 : rot < 0.8 ? 1 : 2;
+}
+
+const TOP_FAB = {
+  tee: FAB.tee, polo: FAB.tee, tank: FAB.tee, crop: FAB.tee, rags: FAB.tee, apron: FAB.tee,
+  long: FAB.shirt, lab: FAB.shirt, scrubs: FAB.shirt, sweater: FAB.hoodie, hoodie: FAB.hoodie,
+  jacket: FAB.suit, coat: FAB.work, gown: FAB.gown, dress: FAB.dress, flannel: FAB.flannel, bare: FAB.tee,
+};
+const ARCH_FAB = {
+  police: FAB.police, riot: FAB.police, emt: FAB.police, soldier: FAB.military, exec: FAB.suit, suit: FAB.suit,
+  worker: FAB.work, mechanic: FAB.work, coverall: FAB.work, janitor: FAB.work, hazmat: FAB.work, firefighter: FAB.work,
+  welded: FAB.work, butcher: FAB.work, vagrant: FAB.work, inmate: FAB.work,
+};
+
+/** Small integer hash → [0, 1). */
+function h01(n) {
+  let x = Math.imul((n | 0) ^ 0x5bd1e995, 0x9e3779b1);
+  x ^= x >>> 15; x = Math.imul(x, 0x85ebca6b); x ^= x >>> 13;
+  return (x >>> 0) / 4294967296;
+}
+
+/**
+ * Which face and fabrics a zombie wears: { face 0..5, top, bottom } (face = stage * 2 + variant;
+ * the variants with a rotted-away nose only go to zombies without one).
+ */
+export function ztexChoice(look) {
+  const stage = stageOf(look.rot);
+  const noNose = look.opts && !look.opts.has('nose');
+  const pick = h01(look.id * 7 + 13);
+  const face = stage * 2 + (noNose ? (pick < 0.85 ? 1 : 0) : 0);
+  let top = TOP_FAB[look.topKind] ?? FAB.tee;
+  if (look.topPat === 2) top = FAB.flannel;
+  else if (look.topPat === 3) top = FAB.military;
+  else if (look.topPat === 5) top = FAB.dress;
+  if (ARCH_FAB[look.arch] !== undefined && look.topKind !== 'tee' && look.topKind !== 'tank' && look.topKind !== 'apron') top = ARCH_FAB[look.arch];
+  let bottom;
+  const leg = look.legKind;
+  if (look.botPat === 3) bottom = FAB.military;
+  else if (ARCH_FAB[look.arch] !== undefined && leg !== 'jeans') bottom = ARCH_FAB[look.arch];
+  else if (leg === 'jeans' || leg === 'torn') bottom = FAB.denim;
+  else if (leg === 'skirt') bottom = look.arch === 'office' ? FAB.suit : FAB.dress;
+  else if (look.arch === 'scrubs' || look.arch === 'nurse') bottom = FAB.gown;
+  else if (look.arch === 'pajamas') bottom = FAB.tee;
+  else if (leg === 'shorts') bottom = pick < 0.4 ? FAB.denim : FAB.police;
+  else bottom = look.arch === 'commuter' || look.arch === 'labcoat' || look.arch === 'office' ? FAB.suit : FAB.police;
+  return { face, top, bottom };
+}
+
+/** The packed choice for the shader (T_COL4.w = shoe lost + 2 × this). */
+export function ztexCode(look) {
+  const c = look._zt || (look._zt = ztexChoice(look));
+  return c.face + 6 * (c.top + 11 * c.bottom);
+}
+
+// ---------------------------------------------------------------------------------------
 // packing
 
 /** The three 24-bit option words of a look. */
@@ -539,7 +601,8 @@ export function packLook(look, stage, base, eliteEye = null) {
   put(T_OPT, words[0], words[1], words[2], look.glove ? 1 : 0);
   put(T_VAR3, look.hairCut, look.hairSparse, look.shoeKind + (look.visor ? 10 : 0), look.lensDark);
   put(T_COL3, g[0], g[1], g[2], look.openFront ? 1 : 0);
-  put(T_COL4, tr[0], tr[1], tr[2], look.shoeLost ? 1 : 0);
+  // (w: the lost shoe in bit 0, the baked face and fabrics above it: ztexCode)
+  put(T_COL4, tr[0], tr[1], tr[2], (look.shoeLost ? 1 : 0) + 2 * ztexCode(look));
   put(T_COL5, gl[0], gl[1], gl[2], look.neck || 0);
 }
 const _words = [0, 0, 0];

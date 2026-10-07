@@ -9,7 +9,10 @@
 //
 // The material is the corpse variant of the rig shader (actor-zmat.js: per-mesh body landmarks,
 // no cold rim outline by day, a cheaper fragment on low), and the look's theme follows the map id
-// (patients at the hospital, soldiers at the airbase ...).
+// (patients at the hospital, soldiers at the airbase ...). On high and up the baked texture sets
+// (actor-ztex.js: skin by stage of decay, the specials' skins, faces, fabrics, wounds, grime) load
+// in the background and swap in when they are all there; until then, on low, or should they fail
+// to load, the procedural corpse shading draws them.
 //
 // Animation (per type, phased by id): a lurching shamble — the weight rolling onto the stance
 // leg, the torso pitching into each step, a head too heavy for its neck lagging and lolling,
@@ -27,11 +30,12 @@ import * as THREE from 'three';
 import { ZOMBIES, ZOMBIE_IDS, ZFLAG } from '../shared/zombies.js';
 import { col, hash01, angleDiff, damp } from './actor-kit.js';
 import { RigPool, Pose, B, T_FX, T_FX2, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_VAR2, TEX_W } from './actor-rig.js';
-import { buildZombie, zombieSkeleton } from './actor-zmodels.js';
+import { buildZombie, zombieSkeleton, faceAnchors } from './actor-zmodels.js';
+import { loadZombieTextures, SPECIAL } from './actor-ztex.js';
 import { zombieLook, packLook } from './actor-zlook.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
 import { actorTextures, actorTexturesAsync } from './actor-tex.js';
-import { tierAtLeast, tierRow } from './tier.js';
+import { tierAtLeast, tierRow, tierRank, anisoFor } from './tier.js';
 import { acquireFx, releaseFx, F_ADD, F_FIRE, F_BOUNCE, F_FLICKER, FR } from './fx-core.js';
 
 const TAU = Math.PI * 2;
@@ -102,6 +106,9 @@ export function createZombies3D(ctx) {
       stats.hiTex = 2;
     }).catch((err) => { hiTex = 0; console.warn('zombies3d: hi-res textures failed', err); });
   }
+  // the baked texture sets: the arrays (shared by every mesh) and their layout, null until loaded
+  const ztex = { state: { layout: null, tier: null }, uniforms: { uZT0: { value: null }, uZT1: { value: null }, uZT2: { value: null } } };
+  let ztexTextures = null, ztexReq = 0;
   const types = {};
   // daylight: no cold rim outline (it only helps a silhouette read in the dark)
   const uDay = { value: ctx.time === 'day' ? 1 : 0 };
@@ -112,7 +119,12 @@ export function createZombies3D(ctx) {
     const P = sk.P;
     const rim = t === 'boss' ? '#b89ac8' : t === 'spitter' ? '#a8c890' : '#8ea4c8';
     // the corpse material (actor-zmat.js) knows where the body's landmarks are
-    const zombie = { body: [P.waist, P.chest, P.sY, P.gaunt], body2: [P.headC[0], P.headC[1], P.legGap, P.bulk * P.upper], day: uDay, lite: uZLite };
+    const fa = faceAnchors(t);
+    const zombie = {
+      body: [P.waist, P.chest, P.sY, P.gaunt], body2: [P.headC[0], P.headC[1], P.legGap, P.bulk * P.upper], day: uDay, lite: uZLite,
+      // (the baked sets: the special's own skin, the face anchors, the texel size kept the same on the giants)
+      ztex, special: SPECIAL[t] ?? -1, spitter: t === 'spitter', bloater: t === 'bloater', face: [fa.ez, fa.ey, fa.my, fa.cy], head: P.headR, tileK: 1 / (SCALE[t] || 1),
+    };
     const lods = [];
     for (let L = 0; L < 3; L++) {
       const m = pool.addModel(instancedGeometry(modelArrays(t, L, tier < 0 ? 0 : tier)), sk, {
@@ -126,6 +138,45 @@ export function createZombies3D(ctx) {
   pool.warm();
   pool.shared.uCin.value = quality === 'cinematic' ? 1 : 0;
   upgradeTextures();
+
+  /** Every zombie material on (or off) the baked sets: a new program, compiled when next drawn. */
+  function setZTexDefine(on) {
+    for (const t of ZOMBIE_IDS) {
+      for (const m of types[t].lods) {
+        const mat = m.material;
+        if (on) mat.defines = { ...(mat.defines || {}), HH_ZTEX: tierRank(ztex.state.tier) };
+        else if (mat.defines) delete mat.defines.HH_ZTEX;
+        mat.needsUpdate = true;
+      }
+    }
+  }
+  function dropZTex() {
+    ztexReq++;
+    if (!ztex.state.layout) return;
+    ztex.state.layout = null; ztex.state.tier = null;
+    setZTexDefine(false);
+    if (ztexTextures) for (const t of ztexTextures) t.dispose();
+    ztexTextures = null;
+    for (const k in ztex.uniforms) ztex.uniforms[k].value = null;
+    stats.ztex = 0; stats.ztexMB = 0;
+  }
+  /** Load the tier's baked sets (high and up) and swap them in; a failure keeps the procedural look. */
+  function loadZTex() {
+    if (!tierAtLeast(quality, 'high') || ctx.zombieTextures === false) { dropZTex(); return; }
+    if (ztex.state.tier === quality) return;
+    const req = ++ztexReq, want = quality;
+    stats.ztex = 1;
+    loadZombieTextures(want, { anisotropy: anisoFor(want), signal: { get gone() { return gone || req !== ztexReq; } }, quiet: true }).then((r) => {
+      if (!r) { if (req === ztexReq) stats.ztex = -1; return; }
+      if (gone || req !== ztexReq) { for (const t of r.textures) t.dispose(); return; }
+      if (ztexTextures) for (const t of ztexTextures) t.dispose();
+      ztexTextures = r.textures;
+      r.textures.forEach((t, i) => { ztex.uniforms['uZT' + i].value = t; });
+      ztex.state.layout = r.layout; ztex.state.tier = want;
+      setZTexDefine(true);
+      stats.ztex = 2; stats.ztexMB = Math.round(r.bytes / 1e5) / 10; stats.ztexMs = Math.round(r.ms);
+    }, () => { if (req === ztexReq) stats.ztex = -1; });
+  }
   // cinematic: the hero models (LOD 0, ~40k triangles a type) are built one type at a time in the
   // first seconds and swapped in as they finish; the ultra ones stand in meanwhile
   let heroTimer = 0;
@@ -186,7 +237,9 @@ export function createZombies3D(ctx) {
   let gn = 0;
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 
-  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0], hiTex: 0, heroes: 0 };
+  // ztex: 0 off · 1 loading · 2 the baked sets are in · −1 they failed (procedural); ztexMB their GPU memory
+  const stats = { zombies: 0, drawn: 0, corpses: 0, gibs: 0, lod: [0, 0, 0], hiTex: 0, heroes: 0, ztex: 0, ztexMB: 0 };
+  loadZTex();
 
   function getState(z) {
     let s = state.get(z.id);
@@ -1063,6 +1116,7 @@ export function createZombies3D(ctx) {
       pool.shared.uCin.value = q === 'cinematic' ? 1 : 0;
       uZLite.value = q === 'low' ? 1 : 0;
       upgradeTextures();
+      if (ztex.state.tier !== q) { dropZTex(); loadZTex(); }
       if (tierOf(q) !== tier) {
         // a different tier of models: swap every mesh's geometry (the old ones are freed)
         tier = tierOf(q);
@@ -1083,6 +1137,8 @@ export function createZombies3D(ctx) {
     dispose() {
       gone = true;
       clearTimeout(heroTimer);
+      if (ztexTextures) for (const t of ztexTextures) t.dispose();
+      ztexTextures = null;
       pool.dispose();
       tex.detail.dispose();
       tex.normal.dispose();

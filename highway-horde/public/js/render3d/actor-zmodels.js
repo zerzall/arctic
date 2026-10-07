@@ -153,6 +153,22 @@ export function zombieParams(type) {
   return params(type);
 }
 
+/**
+ * Where a type's face features sit, in unit head coordinates (x forward, y up, z right, the
+ * head ellipsoid's radii = 1): the eye centre { ez, ey }, the line of the mouth `my` and the
+ * point of the chin `cy`. The baked face textures (actor-ztex.js) are painted for the walker's
+ * anchors and stretched onto every other type's.
+ */
+export function faceAnchors(type) {
+  const P = params(type);
+  const def = headDeform(P, type);
+  const c = P.headC, r = P.headR;
+  const e = headPoint(P, 0.9, 0.1, 0.36, def, 0.9);
+  const m = headPoint(P, 0.93, -0.32, 0, def, 1.0);
+  const jcY = c[1] - r[1] * 0.7, jrY = r[1] * 0.3 * Math.min(1.35, P.jawDrop);
+  return { ez: e[2] / r[2], ey: (e[1] - c[1]) / r[1], my: (m[1] - c[1]) / r[1], cy: (jcY - jrY * 0.95 - c[1]) / r[1] };
+}
+
 // ---------------------------------------------------------------------------------------
 
 // Quality tier of the build being made: 0 ultra (everything), 1 high (rounder-but-coarser

@@ -207,6 +207,9 @@ test('packLook carries the neckline and the lost shoe to the shader', () => {
     stage.fill(0);
     look.packLook(l, stage, 0, null);
     assert.equal(stage[consts.T_COL5 * 4 + 3], l.neck || 0);
-    assert.equal(stage[consts.T_COL4 * 4 + 3], l.shoeLost ? 1 : 0);
+    // (bit 0 the lost shoe, above it the baked face and fabrics: actor-zlook ztexCode)
+    const w = stage[consts.T_COL4 * 4 + 3];
+    assert.equal(w % 2, l.shoeLost ? 1 : 0);
+    assert.equal(Math.floor(w / 2), look.ztexCode(l));
   }
 });
