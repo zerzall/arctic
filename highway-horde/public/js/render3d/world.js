@@ -17,6 +17,8 @@ import { createGround, WATER } from './ground.js';
 import { atlasUV, makeAtlasTexture, makeChainLinkTexture, makeWaterNormal, makeLeafTexture } from './world-tex.js';
 import { makeDetailArray, makeDetailArrayAsync, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
+import { createDetailUniforms, loadBaked, usedSurfaceIds, bakedDisabled, bakedState } from './world-surf-bake.js';
+import { beginLoadTask } from '../ui/loading.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
 import { setDetailLevel } from './world-arch.js';
@@ -168,7 +170,10 @@ export function createWorld(ctx, deps) {
   // and gets them the first time the player picks a higher tier
   let detailTex = tier === 'low' ? null : track(makeDetailArray(aniso));
   const tDetail = performance.now() - tA;
-  const ground = createGround({ scene, map, quality: full, renderer: deps.renderer, detail: detailTex });
+  // the detail uniforms every lit world material and the ground share: the procedural layers now,
+  // the baked texture library once it is loaded (world-surf-bake.js)
+  const detailU = createDetailUniforms(detailTex);
+  const ground = createGround({ scene, map, quality: full, renderer: deps.renderer, detail: detailTex, detailUniforms: detailU });
   const tGround = performance.now() - tA - tDetail;
   const amb = deps.lights.ambient;
   const day = amb.time === 'day';
@@ -182,7 +187,7 @@ export function createWorld(ctx, deps) {
   atlasTex.anisotropy = aniso;
   const chainTex = track(makeChainLinkTexture());
   const leafTex = track(makeLeafTexture(Math.min(cin ? 8 : 4, maxAniso), cin ? 2 : 1));
-  const mats = createWorldMaterials({ detail: detailTex, atlas: atlasTex, chain: chainTex, leaves: leafTex });
+  const mats = createWorldMaterials({ detail: detailTex, detailUniforms: detailU, atlas: atlasTex, chain: chainTex, leaves: leafTex });
   // cinematic: the 512² surface layers are generated in time slices and swapped in when ready
   let gone = false, detail512 = 0;
   if (cin) {
@@ -190,8 +195,7 @@ export function createWorld(ctx, deps) {
       if (gone) { t.dispose(); return; }
       const old = detailTex;
       detailTex = track(t);
-      mats.shared.uDetail.value = t;
-      ground.uniforms.uDetail.value = t;
+      detailU.setProcedural(t);
       if (old) old.dispose();
       detail512 = 1;
     }).catch((err) => console.warn('world: 512 surface layers failed', err));
@@ -765,6 +769,38 @@ export function createWorld(ctx, deps) {
   let triangles = 0;
   for (const m of staticMeshes) triangles += m.geometry.attributes.position.count / 3;
 
+  // ---- the baked texture library (high and up): loaded after the build, swapped in when ready; the
+  // procedural layers stay if it fails or is turned off. A tier change reloads it at the new size.
+  let bakedLoad = 0, bakedTier = null;
+  function startBaked() {
+    if (!deps.renderer || tier === 'low' || bakedDisabled()) return;
+    if (bakedTier === full) return;
+    bakedTier = full;
+    const run = ++bakedLoad;
+    const task = beginLoadTask('Loading textures…');
+    bakedState.state = 'loading';
+    const t0 = performance.now();
+    loadBaked({
+      renderer: deps.renderer, mapId: map.id, usedIds: usedSurfaceIds(root), tier: full, anisotropy: anisoFor(full, maxAniso),
+      onProgress: (d, n) => task.progress(d / n, `Loading textures… ${d} / ${n}`),
+      cancelled: () => gone || run !== bakedLoad,
+    }).then((b) => {
+      if (gone || run !== bakedLoad) { b.dispose(); return; }
+      detailU.setBaked(b);
+      bakedState.state = 'done';
+      bakedState.info = b.info;
+      bakedState.ms = Math.round(performance.now() - t0);
+    }).catch((err) => {
+      if (run !== bakedLoad) return;
+      bakedTier = null;
+      bakedState.state = 'failed';
+      bakedState.error = String((err && err.message) || err);
+      // (silently: the procedural layers keep drawing)
+      if (typeof console !== 'undefined' && console.info) console.info('world: baked textures unavailable —', bakedState.error);
+    }).finally(() => task.done());
+  }
+  startBaked();
+
   return {
     ground,
     root,
@@ -796,9 +832,9 @@ export function createWorld(ctx, deps) {
       tier = nt;
       if (tier !== 'low' && !detailTex) {
         detailTex = track(makeDetailArray(anisoFor(tier === 'high' ? 'high' : 'ultra', maxAniso)));
-        mats.shared.uDetail.value = detailTex;
-        ground.uniforms.uDetail.value = detailTex;
+        detailU.setProcedural(detailTex);
       }
+      if (tier !== 'low') startBaked();
       for (const m of staticMeshes) m.material = matOf(m.userData.bucket, tier);
       grass.setQuality(noGrass ? 'low' : full);
       ground.setQuality(full);
@@ -818,7 +854,7 @@ export function createWorld(ctx, deps) {
     get stats() {
       return {
         staticMeshes: staticMeshes.length, staticTriangles: Math.round(triangles), fxMeshes: fxMeshes.length, ground: ground.stats,
-        grass: grass.instances, detail512,
+        grass: grass.instances, detail512, baked: detailU.info,
         dress: dress ? dress.stats : null,
         buildMs: {
           detail: Math.round(tDetail), ground: Math.round(tGround), geometry: Math.round(tGeo), env: Math.round(tEnv),
@@ -833,6 +869,8 @@ export function createWorld(ctx, deps) {
       if (roofs) roofs.dispose();
       if (indoor) indoor.dispose();
       gone = true;
+      bakedLoad++;
+      detailU.dispose();
       setSegBoost(1);
       if (dress) dress.dispose();
       ground.dispose();

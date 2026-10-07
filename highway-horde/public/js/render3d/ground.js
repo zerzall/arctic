@@ -32,6 +32,7 @@ import { planGroundExtras } from './ground-extra.js';
 import { normTier, tierAtLeast, tierRow, anisoFor } from './tier.js';
 import { setDetailTier } from './world-mat.js';
 import { DET_LAYERS } from './world-surf.js';
+import { createDetailUniforms } from './world-surf-bake.js';
 
 const TILE = 1024;              // playable-area tile size (world units): ~10 visible draw calls
 const SKIRT = 1300;             // how far the ground continues past the map bounds
@@ -52,7 +53,7 @@ const EXTEND_KINDS = new Set(['asphalt', 'concrete', 'gravel', 'water']);
  * @param {object} o { scene, map, quality, renderer }
  * @returns {{ meshes, decal, update, waters, heightAt, dispose, stats }}
  */
-export function createGround({ scene, map, quality, renderer, detail }) {
+export function createGround({ scene, map, quality, renderer, detail, detailUniforms }) {
   const high = quality !== 'low';
   const ultra = tierAtLeast(quality, 'ultra');
   let tier = normTier(quality);
@@ -100,7 +101,9 @@ export function createGround({ scene, map, quality, renderer, detail }) {
   noiseTex.anisotropy = maxAniso;
   const mask = buildMask(prep, ext, map, SKIRT);
   const uniforms = {
-    detailMap: { value: noiseTex }, wetness: { value: 1 }, uDetail: { value: detail || null },
+    // (the detail arrays and table are shared with the world's materials: world-surf-bake.js)
+    ...(detailUniforms ? detailUniforms.uniforms : createDetailUniforms(detail || null).uniforms),
+    detailMap: { value: noiseTex }, wetness: { value: 1 },
     uMask: { value: mask.texture }, uMaskRect: { value: new THREE.Vector4(mask.x0, mask.y0, mask.w, mask.h) },
     uTime: { value: 0 }, uRain: { value: 0 }, uDesert: { value: isDesert(map) ? 1 : 0 },
   };
@@ -559,29 +562,47 @@ export function makeGroundMaterial(tex, uniforms) {
         varying vec2 vGroundXZ;
         uniform sampler2D detailMap;
         uniform highp sampler2DArray uDetail;
+        uniform highp sampler2DArray uDetailC;
+        uniform highp sampler2DArray uDetailP;
+        uniform highp sampler2D uDetTab;
+        uniform float uDetBaked;
         uniform sampler2D uMask;
         uniform vec4 uMaskRect;
         uniform float wetness, uTime, uRain, uDesert;
         float gHard, gPuddle, gMip, gEdge, gCurb, gDamp, gPaintK;
-        vec4 gD, gLC, gCc;
+        vec4 gD, gLC, gCc, gLM, gMc;
+        float gWA = 1.0;
+        const vec3 gLUM = vec3(0.2126, 0.7152, 0.0722);
+        // the surface table (world-surf-bake.js): row 2 = (D slice, C slice, shift), row 3 = mean colour, roughness
+        vec4 gTab(float id, int row) { return texelFetch(uDetTab, ivec2(int(id), row), 0); }
         vec2 gCurbN;
         float gH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         // one detail layer at two scales (the second rotated) so it never visibly tiles; the layer's
         // colour / height slice at the first scale goes to gLC
-        vec4 gLayer(float layer, float tile, vec2 xz) {
-          vec4 a = texture(uDetail, vec3(xz / tile, layer));
+        vec4 gLayer(float id, float tile, vec2 xz) {
+          vec4 S = gTab(id, 2);
+          gLM = gTab(id, 3);
+          vec4 a = texture(uDetail, vec3(xz / tile, S.x));
           vec2 r = vec2(xz.x * 0.8 - xz.y * 0.6, xz.x * 0.6 + xz.y * 0.8);
-          vec4 b = texture(uDetail, vec3(r / (tile * 3.7) + 0.37, layer));
-          gLC = texture(uDetail, vec3(xz / tile, layer + ${DET_LAYERS}.0));
+          vec4 b = texture(uDetail, vec3(r / (tile * 3.7) + 0.37, S.x));
+          gLC = texture(uDetailC, vec3(xz / tile, S.y));
           // (the second scale's normals count less: its 3.7x stones read as cobbles in a wet road's reflections)
           return vec4(mix(a.xy, b.xy, 0.16), (a.b + b.b) * 0.5, a.a * 0.7 + b.a * 0.3);
         }
         // a big-scale wear layer (cracks, seams, patches, oil) at two incommensurate scales and angles:
         // returns its deviation from neutral in xy (normal), z (roughness) and w (albedo)
-        vec4 gWear(float layer, float tile, vec2 xz, float far) {
-          vec4 a = texture(uDetail, vec3(xz / tile, layer));
+        vec4 gWear(float id, float tile, vec2 xz, float far) {
+          vec4 S = gTab(id, 2);
+          vec4 a = texture(uDetail, vec3(xz / tile, S.x));
           vec2 r = vec2(xz.x * 0.6 - xz.y * 0.8, xz.x * 0.8 + xz.y * 0.6);
-          vec4 b = texture(uDetail, vec3(r / (tile * 1.63) + 0.21, layer));
+          vec4 b = texture(uDetail, vec3(r / (tile * 1.63) + 0.21, S.x));
+          if (uDetBaked > 0.5) {
+            // (a baked set: roughness about its mean, brightness relative to its mean colour)
+            vec4 M = gTab(id, 3);
+            float lm = max(dot(M.rgb, gLUM), 1e-3);
+            float la = dot(texture(uDetailC, vec3(xz / tile, S.y)).rgb, gLUM) / lm, lb = dot(texture(uDetailC, vec3(r / (tile * 1.63) + 0.21, S.y)).rgb, gLUM) / lm;
+            return vec4(((a.xy - 0.5) + (b.xy - 0.5) * 0.7) * far, ((a.b - M.w) + (b.b - M.w) * 0.7) * far, (la - 1.0) * 0.45 + (lb - 1.0) * 0.3);
+          }
           return vec4(((a.xy - 0.5) + (b.xy - 0.5) * 0.7) * far, ((a.b - 0.5) + (b.b - 0.5) * 0.7) * far, (a.a - 0.5) + (b.a - 0.5) * 0.7);
         }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -596,37 +617,46 @@ export function makeGroundMaterial(tex, uniforms) {
         float wearFar = 1.0 - smoothstep(420.0, 1000.0, gDist);
         vec4 sA = vec4(0.5), sC = vec4(0.5), sG = vec4(0.5), sL = vec4(0.5);
         vec4 cA = vec4(0.5, 0.5, 0.0, 0.5), cC = cA, cG = cA, cL = cA;
+        vec4 mA = vec4(0.5), mC = mA, mG = mA, mL = mA;
+        bool gBk = uDetBaked > 0.5;
         if (wA > 0.02) {
-          sA = gLayer(16.0, 30.0, xz); cA = gLC;
+          sA = gLayer(16.0, 30.0, xz); cA = gLC; mA = gLM;
           vec4 cw = gWear(30.0, 240.0, xz, wearFar);
-          sA.xy += cw.xy; sA.b += cw.z; sA.a += cw.w;
+          sA.xy += cw.xy; sA.b += cw.z;
+          if (gBk) gWA *= 1.0 + cw.w * wA; else sA.a += cw.w;
           cA.a += cw.w * 0.6;
         }
         if (wC > 0.02) {
-          sC = gLayer(17.0, 128.0, xz); cC = gLC;
+          sC = gLayer(17.0, 128.0, xz); cC = gLC; mC = gLM;
           vec4 cw = gWear(30.0, 310.0, xz, wearFar);
-          sC.xy += cw.xy * 0.6; sC.b += cw.z * 0.6; sC.a += cw.w * 0.6;
+          sC.xy += cw.xy * 0.6; sC.b += cw.z * 0.6;
           // each poured slab (one per 128 units) a shade of its own; the finer concrete layer on top
           // (pores, fines, trowel marks) so a slab is not a smooth blur at the feet
-          sC.a *= 0.9 + 0.2 * gH(floor(xz / 128.0) + 0.5);
-          vec4 c1 = texture(uDetail, vec3(xz / 37.0 + 0.19, 2.0));
-          sC.xy = mix(sC.xy, c1.xy, 0.45); sC.b = mix(sC.b, c1.b, 0.4); sC.a *= 0.82 + 0.36 * c1.a;
+          float slabK = 0.9 + 0.2 * gH(floor(xz / 128.0) + 0.5);
+          vec4 c1 = texture(uDetail, vec3(xz / 37.0 + 0.19, gTab(2.0, 2).x));
+          if (gBk) {
+            gWA *= mix(1.0, (1.0 + cw.w * 0.6) * slabK, wC);
+            sC.xy = mix(sC.xy, c1.xy, 0.3); sC.b = mix(sC.b, c1.b, 0.25);
+          } else {
+            sC.a += cw.w * 0.6; sC.a *= slabK;
+            sC.xy = mix(sC.xy, c1.xy, 0.45); sC.b = mix(sC.b, c1.b, 0.4); sC.a *= 0.82 + 0.36 * c1.a;
+          }
         }
-        if (wG > 0.02) { sG = gLayer(18.0, 40.0, xz); cG = gLC; }
+        if (wG > 0.02) { sG = gLayer(18.0, 40.0, xz); cG = gLC; mG = gLM; }
         if (wL > 0.02) {
           // loose ground: dirt with patches of gravel; in the desert wind-rippled sand and plates of cracked earth
           float gv = smoothstep(0.4, 0.6, gN.r);
-          sL = gLayer(22.0, 44.0, xz); cL = gLC;
+          sL = gLayer(22.0, 44.0, xz); cL = gLC; mL = gLM;
           vec4 s2 = gLayer(19.0, 26.0, xz);
           // (the stones stand out of the dirt: the gravel wins where it is higher)
           float gvh = clamp(gv * 1.6 - 0.3 + (gLC.a - cL.a) * 1.2, 0.0, 1.0);
-          sL = mix(sL, s2, gvh); cL = mix(cL, gLC, gvh);
+          sL = mix(sL, s2, gvh); cL = mix(cL, gLC, gvh); mL = mix(mL, gLM, gvh);
           if (uDesert > 0.5) {
             float plates = smoothstep(0.5, 0.64, gN.g * 0.7 + gN.b * 0.3);
-            vec4 sd = gLayer(31.0, 44.0, xz); vec4 cd = gLC;
+            vec4 sd = gLayer(31.0, 44.0, xz); vec4 cd = gLC, md = gLM;
             vec4 sk = gLayer(28.0, 90.0, xz);
-            sd = mix(sd, sk, plates); cd = mix(cd, gLC, plates);
-            sL = mix(sd, sL, gvh * 0.3); cL = mix(cd, cL, gvh * 0.3);
+            sd = mix(sd, sk, plates); cd = mix(cd, gLC, plates); md = mix(md, gLM, plates);
+            sL = mix(sd, sL, gvh * 0.3); cL = mix(cd, cL, gvh * 0.3); mL = mix(md, mL, gvh * 0.3);
           }
         }
         // height-blended transitions: where two surfaces meet, the higher texels win (tufts of grass
@@ -639,6 +669,7 @@ export function makeGroundMaterial(tex, uniforms) {
           float bs = max(bA + bC + bG + bL, 1e-4);
           gD = (sA * bA + sC * bC + sG * bG + sL * bL) / bs;
           gCc = (cA * bA + cC * bC + cG * bG + cL * bL) / bs;
+          gMc = (mA * bA + mC * bC + mG * bG + mL * bL) / bs;
         }
         // road edges: asphalt crumbling into the verge, dirt washed onto it; curbs where it meets concrete
         gEdge = smoothstep(0.03, 0.32, wA) * (1.0 - smoothstep(0.6, 0.96, wA));
@@ -658,9 +689,10 @@ export function makeGroundMaterial(tex, uniforms) {
           // fine grain at the player's feet (4K: the layers alone were magnified there)
           float near = 1.0 - smoothstep(60.0, 240.0, gDist);
           if (near > 0.0) {
-            vec4 m = texture(uDetail, vec3(xz / 8.5 + 0.13, 23.0 + ${DET_LAYERS}.0));
-            gD.xy += (m.xy - 0.5) * 0.55 * near * (1.0 - 0.6 * wetness * clamp(wA + wC, 0.0, 1.0));
-            gD.a *= 1.0 + (m.b - 0.5) * 0.3 * near;
+            vec4 m = texture(uDetailP, vec3(xz / 8.5 + 0.13, 23.0 + ${DET_LAYERS}.0));
+            float nk = gBk ? 0.35 : 1.0;
+            gD.xy += (m.xy - 0.5) * 0.55 * near * nk * (1.0 - 0.6 * wetness * clamp(wA + wC, 0.0, 1.0));
+            if (gBk) gWA *= 1.0 + (m.b - 0.5) * 0.12 * near; else gD.a *= 1.0 + (m.b - 0.5) * 0.3 * near;
           }
         }
         float gMax = max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b);
@@ -680,6 +712,25 @@ export function makeGroundMaterial(tex, uniforms) {
         diffuseColor.rgb *= mix(1.45, 1.0, smoothstep(0.08, 0.35, gLum));
         // the layers' albedo: firmer on the hard surfaces (slab joints, stains, aggregate read in the sun),
         // gentler on the soft ground whose painted colour already varies
+        if (gBk) {
+          // the baked sets: the painted ground colour stands in for each set's mean colour where the set
+          // takes the tint (aggregate binder, soil, blades), the set's own colour elsewhere (stones of other
+          // rock, straw, rust); lane paint gets the road-paint set (thermoplastic lumps, beads, cracks)
+          vec3 c = diffuseColor.rgb;
+          float tnt = clamp(gD.a * 2.0 - 1.0, 0.0, 1.0);
+          vec3 ratio = clamp(c / max(gMc.rgb, vec3(0.004)), 0.0, 8.0);
+          float lv = dot(c, gLUM), lm = dot(gMc.rgb, gLUM);
+          vec3 lay = mix(gCc.rgb * mix(1.0, clamp(lv / max(lm, 1e-3), 0.3, 2.5), 0.5), gCc.rgb * ratio, tnt);
+          lay *= gWA * (0.9 + 0.2 * gN.b);
+          if (gPaintK > 0.01) {
+            vec4 PS = gTab(54.0, 2), PM = gTab(54.0, 3);
+            vec4 pc = texture(uDetailC, vec3(xz / 20.0, PS.y));
+            float pt = clamp(texture(uDetail, vec3(xz / 20.0, PS.x)).a * 2.0 - 1.0, 0.0, 1.0);
+            vec3 pcol = c * clamp(pc.rgb / max(PM.rgb, vec3(0.004)), 0.0, 3.0);
+            lay = mix(lay, mix(lay * 0.7, pcol, pt), gPaintK);
+          }
+          diffuseColor.rgb = lay;
+        } else {
         diffuseColor.rgb *= mix(0.74 + 0.52 * gD.a, 0.62 + 0.76 * gD.a, gHard * (1.0 - gPaint * 0.7)) * (0.9 + 0.2 * gN.b);
         // the layers' own colour (stones of different rock, dry blades in the grass, rusty soil), not on paint
         {
@@ -689,12 +740,13 @@ export function makeGroundMaterial(tex, uniforms) {
           float co = (gCc.r - 0.5) * k, cg = (gCc.g - 0.5) * k;
           diffuseColor.rgb = c * max(vec3(1.0 + co - cg, 1.0 + cg, 1.0 - co - cg), 0.0);
         }
+        }
         // large-scale colour: mottled tone everywhere, dry / lush patches in the grass, bleached and rusty
         // patches in the dirt, so a field never reads as one tiling texture
         {
-          vec4 mA = texture(uDetail, vec3(xz / 1450.0 + 0.11, 23.0));
-          vec4 mB = texture(uDetail, vec3(xz / 380.0 + 0.47, 23.0));
-          vec4 mC = texture(uDetail, vec3(xz / 97.0 + 0.83, 23.0));
+          vec4 mA = texture(uDetailP, vec3(xz / 1450.0 + 0.11, 23.0));
+          vec4 mB = texture(uDetailP, vec3(xz / 380.0 + 0.47, 23.0));
+          vec4 mC = texture(uDetailP, vec3(xz / 97.0 + 0.83, 23.0));
           float tone = 0.84 + 0.32 * (mA.r * 0.45 + mB.g * 0.35 + mC.g * 0.2);
           diffuseColor.rgb *= tone;
           diffuseColor.rgb *= 1.0 - 0.1 * wC;
@@ -740,7 +792,7 @@ export function makeGroundMaterial(tex, uniforms) {
         // damp concrete stays rougher than wet asphalt: glossier, a fire's reflection on the
         // forecourt broke into streaks that read as wood grain
         float gWetR = mix(0.5, 0.64, clamp(wC / max(wA + wC, 1e-3), 0.0, 1.0));
-        float gR = mix(0.92, gWetR, gHard * wetness) + (gD.b - 0.5) * 0.5;
+        float gR = mix(0.92, gWetR, gHard * wetness) + (uDetBaked > 0.5 ? (gD.b - gMc.a) * 0.6 : (gD.b - 0.5) * 0.5);
         gR = mix(gR, 0.32, gPaint * 0.5);
         gR = mix(gR, 0.95, clamp(gEdge, 0.0, 1.0) * 0.6);
         gR = max(gR, clamp(gMip * 0.09 - 0.05, 0.0, 0.3));
@@ -770,7 +822,7 @@ export function makeGroundMaterial(tex, uniforms) {
         }`);
   };
   // every tile uses the same patched program
-  mat.customProgramCacheKey = () => 'hh-ground-v4';
+  mat.customProgramCacheKey = () => 'hh-ground-v5';
   return mat;
 }
 

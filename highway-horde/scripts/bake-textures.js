@@ -69,6 +69,7 @@ export function bakeOne(recipe, size, seed, o = {}) {
 export function manifestEntry(recipe, name, stats, sizes, store, size) {
   return {
     about: recipe.about || '',
+    det: recipe.det,
     size: store,
     render: size,
     tile: Math.round(recipeTile(recipe) * 1e4) / 1e4,

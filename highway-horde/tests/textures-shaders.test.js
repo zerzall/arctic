@@ -53,15 +53,20 @@ test('world materials: both slices, the tables, parallax and the relief shadow a
   for (const key of ['std', 'paint', 'glass']) {
     const sh = compile(mats.hi[key], key === 'paint' ? 'physical' : 'standard');
     const f = sh.fragmentShader;
-    assert.ok(f.includes(`uniform vec4 uDetP[${surf.DET_LAYERS}]`), key + ' per-layer parameters');
-    assert.ok(f.includes(`uniform vec4 uDetG[${surf.DET_LAYERS}]`), key + ' element grids');
-    assert.ok(f.includes(`hhL + ${surf.DET_LAYERS}.0`), key + ' reads the colour / height slice');
-    assert.ok(f.includes('textureGrad(uDetail'), key + ' parallax samples');
-    assert.ok(f.includes(`const vec2 hhShift[${surf.DET_LAYERS}]`) && f.includes('hhUv + hhSh'), key + ' tile breaking');
+    // the per-surface table (parameters, element grid, slots + shift, the baked set's mean colour)
+    assert.ok(f.includes('uniform highp sampler2D uDetTab;'), key + ' surface table');
+    for (const row of [0, 1, 2, 3]) assert.ok(f.includes(`hhTab(hhId, ${row})`), key + ' table row ' + row);
+    assert.ok(f.includes('textureGrad(uDetail, vec3(hhUv, hhL)') && f.includes('textureGrad(uDetailC, vec3(hhUv, hhCl)'), key + ' reads both slices');
+    assert.ok(f.includes('textureGrad(uDetailC, vec3(uvC, hhCl)'), key + ' parallax samples the height');
+    assert.ok(f.includes('hhSh = hhS.zw') && f.includes('hhUv + hhSh'), key + ' tile breaking');
+    assert.ok(f.includes(`const float hhTile[${surf.DET_COUNT}]`), key + ' tile sizes of every surface id');
+    assert.ok(f.includes('if (hhBk && hhHas)') && f.includes('A * ratio'), key + ' baked colour path');
+    assert.ok(f.includes('texture(uDetailP, vec3(pw / 230.0, 23.0))') || key === 'glass', key + ' weathering reads the procedural noise fields');
     assert.equal((f.match(/hhSelfShadow\( directLight\.direction \)/g) || []).length, 2, key + ' relief shadow on the sun and directional lights');
     assert.ok(!/#include <lights_fragment_begin>/.test(f), key + ' light loop replaced');
-    assert.equal(sh.uniforms.uDetP.value, surf.DET_PARAMS);
-    assert.equal(sh.uniforms.uDetG.value, surf.DET_CELLS);
+    for (const u of ['uDetail', 'uDetailC', 'uDetailP', 'uDetTab', 'uDetBaked']) assert.equal(sh.uniforms[u], mats.shared[u], key + ' shares ' + u);
+    assert.equal(sh.uniforms.uDetail.value, detail, 'the procedural array until the baked library is in');
+    assert.equal(sh.uniforms.uDetBaked.value, 0);
     assert.equal(sh.uniforms.uDetQ, mat.DETAIL_TIER);
     assert.ok(sh.vertexShader.includes('vDet = aDet;'));
     if (key === 'glass') assert.ok(f.includes('hhRoomCol'), 'glass keeps its rooms');
@@ -104,13 +109,16 @@ test('parallax quality follows the tier: none on low and high, ultra short, cine
   mat.setDetailTier('high');
 });
 
-test('ground material: layers with their colour slice, height-blended, puddles in the low spots', () => {
-  const uniforms = { detailMap: { value: null }, wetness: { value: 1 }, uDetail: { value: null }, uMask: { value: null }, uMaskRect: { value: new THREE.Vector4() }, uTime: { value: 0 }, uRain: { value: 0 }, uDesert: { value: 0 } };
+test('ground material: layers with their colour slice, height-blended, puddles in the low spots', async () => {
+  const bake = await import('../public/js/render3d/world-surf-bake.js');
+  const uniforms = { ...bake.createDetailUniforms(null).uniforms, detailMap: { value: null }, wetness: { value: 1 }, uMask: { value: null }, uMaskRect: { value: new THREE.Vector4() }, uTime: { value: 0 }, uRain: { value: 0 }, uDesert: { value: 0 } };
   const m = ground.makeGroundMaterial(new THREE.Texture(), uniforms);
   const sh = compile(m);
   const f = sh.fragmentShader;
-  assert.ok(f.includes(`layer + ${surf.DET_LAYERS}.0`), 'colour / height slice');
+  assert.ok(f.includes('gLC = texture(uDetailC, vec3(xz / tile, S.y));'), 'colour / height slice through the table');
   assert.ok(f.includes('gCc = (cA * bA + cC * bC + cG * bG + cL * bL) / bs;'), 'height blend');
+  assert.ok(f.includes('gMc = (mA * bA + mC * bC + mG * bG + mL * bL) / bs;'), 'the baked sets\' mean colours blend the same way');
+  assert.ok(f.includes('if (gBk) {') && f.includes('gTab(54.0, 2)'), 'baked colour path with the road-paint set');
   assert.ok(f.includes('gDamp'), 'damp rims');
   assert.ok(sh.vertexShader.includes('vGroundXZ = '), 'world position');
   for (const k of Object.keys(uniforms)) assert.equal(sh.uniforms[k], uniforms[k], k);
