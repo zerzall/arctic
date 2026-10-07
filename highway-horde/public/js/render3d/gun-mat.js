@@ -107,6 +107,7 @@ uniform float uGunWearOn;
 uniform vec4 uSkin;       // pattern layer (-1 none), 1 / pattern tile, edge-wear ×, grime ×
 uniform vec4 uSkin2;      // scratch ×, metalness override (-1), roughness floor, normal strength
 uniform int uSkinMask;    // family layers the skin covers (bit per layer)
+uniform vec4 uSkin3;      // albedo ×
 uniform vec4 uHolster;    // holster wear: from x0 to x1 along the gun, strength
 uniform vec4 uSootM;      // muzzle (gun space) + fouling strength
 uniform vec4 uSootE;      // ejection port + fouling strength
@@ -213,7 +214,7 @@ const TEX_COLOR = /* glsl */`
       gSample(uSkinA, uSkinB, uSkin.x, uSkin.y, sa, sb, sdn);
       float chip = smoothstep(0.28, 0.56, edge + brk * 0.95);
       cov = sa.a * (1.0 - chip) * (1.0 - scr * 0.8);
-      gAlb = mix(gAlb, sa.rgb, cov);
+      gAlb = mix(gAlb, sa.rgb * uSkin3.x, cov);
       gRough = mix(gRough, max(sb.z, uSkin2.z), cov);
       gMetal = mix(gMetal, uSkin2.y >= 0.0 ? uSkin2.y : sb.w, cov);
       gDN = mix(gDN, gDN * 0.25 + sdn * uSkin2.w, cov);
@@ -361,6 +362,7 @@ function skinUniforms(skinId) {
   return {
     skin: [layer ?? -1, s.pattern ? 1 / PATTERN_TILE[s.pattern] : 0, s.wear, s.grime],
     skin2: [s.scratch, s.metal ?? -1, s.roughMin ?? 0, s.pattern === 'carbon' || s.pattern === 'damascus' ? 0.9 : 0.6],
+    skin3: [s.albedoK ?? 1, 0, 0, 0],
     mask,
   };
 }
@@ -380,6 +382,7 @@ export function createGunMaterial(atlas, opts = {}) {
     uSkin: { value: new THREE.Vector4(...su.skin) },
     uSkin2: { value: new THREE.Vector4(...su.skin2) },
     uSkinMask: { value: su.mask },
+    uSkin3: { value: new THREE.Vector4(...su.skin3) },
     uHolster: { value: new THREE.Vector4(0, 1, 0, 0) },
     uSootM: { value: new THREE.Vector4(0, 0, 0, 0) },
     uSootE: { value: new THREE.Vector4(0, 0, 0, 0) },
@@ -415,6 +418,16 @@ export function createGunMaterial(atlas, opts = {}) {
   #include <aomap_fragment>
   reflectedLight.indirectSpecular *= uEnvTint;
   reflectedLight.indirectDiffuse *= uEnvTint;
+  {
+    // the probe holds the sun's disc in HDR: a polished bright metal (gold, damascus, stainless)
+    // a hand's breadth from the eye mirrored it into a glowing bar; keep reflections to the sky's level
+    float gEl = dot(reflectedLight.indirectSpecular, vec3(0.2126, 0.7152, 0.0722));
+    reflectedLight.indirectSpecular *= min(1.0, 0.9 / max(gEl, 1e-4));
+    // and the highlights of the sun and the nearby fires / lamps on a bright smooth metal: a glint,
+    // not a bar that blooms over half the screen
+    float gDl = dot(reflectedLight.directSpecular, vec3(0.2126, 0.7152, 0.0722));
+    reflectedLight.directSpecular *= min(1.0, 1.8 / max(gDl, 1e-4));
+  }
   #ifdef GUN_TEX
   if (gTexOn) {
     reflectedLight.indirectDiffuse *= gAO;
@@ -438,6 +451,7 @@ export function setGunMaterialSkin(mat, skinId) {
   g.own.uSkin.value.set(...su.skin);
   g.own.uSkin2.value.set(...su.skin2);
   g.own.uSkinMask.value = su.mask;
+  g.own.uSkin3.value.set(...su.skin3);
   g.skin = skinId;
 }
 

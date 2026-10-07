@@ -118,7 +118,8 @@ export function createVmLighting(ctx, scene) {
     if (frameNo % 6 === 1 || sunT === 0) { sunT = 1; sunVis += (sunVisibility(dir) - sunVis) * (frameNo < 3 ? 1 : 0.5); }
     if (moon) {
       sun.color.copy(moon.color);
-      sun.intensity = moon.intensity * (day ? 0.95 : 1.4) * sunVis * (1 - under * 0.92);
+      // (by day a little under the world's: the gun is a hand's breadth from the eye, its highlights bloom)
+      sun.intensity = moon.intensity * (day ? 0.78 : 1.4) * sunVis * (1 - under * 0.92);
     }
     sun.position.copy(dir).applyQuaternion(_qi);
     // night studio: a soft key and rim so the gun's outline reads in the dark; less indoors and by day
