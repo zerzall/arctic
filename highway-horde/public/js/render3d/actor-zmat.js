@@ -315,7 +315,7 @@ export const Z_BLOOD = /* glsl */`
 #ifdef HH_ZTEX
   // (with the baked sets: the stain's edge ragged and tide-lined by the grime set's soak mask)
   if (zG.r > 0.0) {
-    float bf = bl + (zG.r - 0.5) * 0.75 + (hhD.a - 0.5) * 0.25;
+    float bf = bl + (zG.r - 0.5) * 0.8 + (hhD.b - 0.5) * 0.2;
     bm = smoothstep(0.48, 0.58, bf);
     diffuseColor.rgb *= 1.0 - 0.35 * smoothstep(0.42, 0.48, bf) * (1.0 - bm);
   }
@@ -611,7 +611,7 @@ const SKIN_TEX = /* glsl */`
     c = mix(c, c * vec3(0.52, 0.45, 0.36), smear);
     rough = mix(rough, 0.88, smear);
     float bodyB = blood * (hhPart == 5 ? 1.0 : smoothstep(18.0, 30.0, vMP.y) * smoothstep(-1.0, 2.0, vMP.x) * 0.6 + 0.3);
-    float bs = smoothstep(1.0 - bodyB * 0.55, 1.08 - bodyB * 0.55, zG.r * 0.7 + hhD.a * 0.3);
+    float bs = smoothstep(1.0 - bodyB * 0.55, 1.08 - bodyB * 0.55, zG.r * 0.75 + zG.a * 0.25 + (hhD.b - 0.5) * 0.15);
     c = mix(c, mix(vec3(0.045, 0.014, 0.01), vec3(0.08, 0.01, 0.007), (1.0 - rot) * 0.6), bs * 0.85);
     rough = mix(rough, 0.7, bs);
     // the spitter: throat and chest stained green-yellow by what it brings up
@@ -668,7 +668,7 @@ const CLOTH_TEX = /* glsl */`
     float frontK = smoothstep(-0.5, 2.5, vMP.x) * smoothstep(4.5 * W, 0.8 * W, abs(vMP.z));
     float soakT = topG ? clamp(1.0 - (neckY - vMP.y) / soakH, 0.0, 1.0) * (0.15 + 0.85 * frontK) * smoothstep(0.15, 0.45, blood) : 0.0;
     // (the soak's edge broken up finer by the procedural splatter)
-    float soakF = zG.r * 0.72 + hhD.a * 0.28;
+    float soakF = zG.r * 0.8 + hhD.b * 0.2;
     float sk = soakT > 0.0 ? smoothstep(1.0 - soakT, 1.08 - soakT, soakF) : 0.0;
     float tide = soakT > 0.0 ? smoothstep(0.96 - soakT, 1.0 - soakT, soakF) * (1.0 - sk) : 0.0;
     float drip = topG ? zG.a * clamp(1.0 - (neckY - vMP.y) / (soakH * 1.9), 0.0, 1.0) * frontK * blood : 0.0;
@@ -698,8 +698,9 @@ const CLOTH_TEX = /* glsl */`
     c *= mix(1.0, 0.62, smoothstep(0.05, 0.3, dl));
     // grime worked into the cloth in blotches, wiped hands, dragged through the dirt
     c *= mix(vec3(1.0), vec3(0.42, 0.37, 0.3), smoothstep(0.4, 0.68, zG.b * 0.55 + hhD.b * 0.45) * 0.85);
-    // spatters and smears of old blood anywhere on it, more the bloodier the zombie
-    float spat = smoothstep(0.7 - blood * 0.14, 0.75 - blood * 0.14, hhD.a * 0.65 + zG.r * 0.35);
+    // smears and runs of old blood anywhere on it, more the bloodier the zombie (ragged
+    // shapes from the soak mask and the drip runs: no polka dots)
+    float spat = smoothstep(0.74 - blood * 0.12, 0.8 - blood * 0.12, zG.r * 0.7 + zG.a * 0.45);
     c = mix(c, mix(vec3(0.04, 0.014, 0.009), vec3(0.075, 0.01, 0.007), fresh) * (0.7 + 0.6 * zG.b), spat * 0.85);
     sk = max(sk, spat * 0.6);
     // sun-faded across the shoulders and the top of the back
