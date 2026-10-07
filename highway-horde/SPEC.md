@@ -1605,6 +1605,22 @@ world-surf.js   the 32-layer detail texture array (brick ... plaster, roof tile,
                 paving, cracked earth, rock strata, a road-wear layer with cracks / tar seams /
                 patches / oil, wind-rippled sand, and layer 23 'macro', four raw noise fields the
                 world-space weathering samples)
+world-surf-bake.js / world-surf-sets.js  the baked texture library at run time (high and up): the
+                sets of public/textures/ (scripts/bake-textures.js renders 55 tileable PBR materials at
+                2048² — albedo, normal, roughness / AO / height, metalness / tint — stored at 1024²)
+                replace the procedural layers. world-surf-sets.js maps every DET id to a set, with
+                per-map themes (hospital and metro tile, dam concrete, rail ballast and rusted rail,
+                airbase camouflage and runway, Sandstone plaster / adobe / shutters); ids 38–56 are
+                library-only surfaces drawn by a base layer on the procedural path (DET_BASE). Only the
+                sets a map uses are loaded: decoded off the main thread (createImageBitmap), packed by a
+                shader pass into two GPU arrays (D: normal xy, roughness, tint / metal; C: sRGB albedo
+                with AO, height) with mips and anisotropy, one layer per set (high 512², ultra and
+                cinematic 1024², byte budgets 360 MB / 800 MB / 1.4 GB). A float table (uDetTab: per id
+                parameters, grid, slots + shift, the set's mean colour and roughness) serves both paths,
+                so world-mat.js and ground.js look surfaces up the same way; where a set takes the tint,
+                the object's vertex colour replaces the set's mean colour texel for texel. Any failure
+                keeps the procedural layers (silently); `?textures=procedural` forces them. Load
+                progress shows on the loading screen (ui/loading.js beginLoadTask).
 world-mat.js    world materials: PBR with per-vertex detail + a world-space weathering pass (rain
                 streaks, stains, dust, moss on north sides, rust, brushed-metal roughness, edge
                 wear); interior-mapped rooms behind window panes ('glass' dark rooms, 'room' lit

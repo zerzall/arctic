@@ -308,17 +308,17 @@ export const MASONRY = [
       const sk = fbm(N, { p: 48, oct: 4, seed: seed + 2 });
       const sand = fbm(N, { p: 512, oct: 1, seed: seed + 3 });
       for (let i = 0; i < m.NN; i++) {
-        m.set(i, vary(hex('#a59f94'), 0.95 + (sk[i] - 0.5) * 0.15 + (sand[i] - 0.5) * 0.08));
+        m.set(i, vary(hex('#b7b1a5'), 0.95 + (sk[i] - 0.5) * 0.15 + (sand[i] - 0.5) * 0.08));
         m.h[i] = 0.45 + (und[i] - 0.5) * 0.12 + (sk[i] - 0.5) * 0.03;
         m.micro[i] = sand[i] * 0.5;
         m.rough[i] = 0.9;
         m.tint[i] = 0.15;
       }
-      paintedOver(m, seed, { paint: '#d9d4c8', peel: 0.7, under: '#b9c4b0', paintRough: 0.72, chalk: 0.1 });
+      paintedOver(m, seed, { paint: '#d9d4c8', peel: 0.76, peelP: 2, under: '#c3cbb9', paintRough: 0.72, chalk: 0.1 });
       const st = fbm(N, { p: 160, oct: 2, seed: seed + 5 });
       for (let i = 0; i < m.NN; i++) m.micro[i] += st[i] * m.tint[i] * 0.6;
       applyCracks(m, hairlines(N, { seed: seed + 6, p: 4, thr: 0.958, soft: 0.02 }), { dark: 0.3, depth: 0.12 });
-      tideStains(m, { seed: seed + 7, amt: 0.25, t: 0.66, color: [0.5, 0.42, 0.3] });
+      tideStains(m, { seed: seed + 7, amt: 0.15, t: 0.71, color: [0.55, 0.47, 0.36] });
       m.grime({ amt: 0.25, rad: 8, gain: 9, color: [0.3, 0.27, 0.23], wear: 0.03 });
       streaks(m, { seed: seed + 8, amt: 0.12, t: 0.62, color: [0.35, 0.32, 0.27] });
     },
@@ -332,15 +332,15 @@ export const MASONRY = [
       const sk = fbm(N, { p: 40, oct: 4, seed: seed + 2 });
       const brush = fbm(N, { pu: 30, pv: 6, oct: 4, seed: seed + 3 });
       const coat = fbm(N, { p: 5, oct: 6, seed: seed + 4 });
-      const er = fbm(N, { p: 6, oct: 6, seed: seed + 5 });
+      const er = fbm(N, { p: 2, oct: 7, seed: seed + 5, gain: 0.6 });
       const stone = voronoi(N, 10, 14, seed + 6, { jitter: 0.8 });
       const ochre = hex('#cfae78'), rose = hex('#c99a7a'), limeC = hex('#efe9dc'), stoneC = hex('#b49a70');
       for (let i = 0; i < m.NN; i++) {
-        const eroded = smooth(0.7, 0.74, er[i]);
+        const eroded = smooth(0.74, 0.77, er[i]);
         const old = vary(coat[i] > 0.53 ? rose : ochre, 0.95 + sk[i] * 0.1);
         const lime = vary(limeC, 0.96 + (brush[i] - 0.5) * 0.12 + (sk[i] - 0.5) * 0.06);
         const thin = smooth(0.35, 0.65, brush[i] * 0.6 + coat[i] * 0.4);
-        const w = 0.55 + thin * 0.45;
+        const w = 0.7 + thin * 0.3;
         let c = [lerp(old[0], lime[0], w), lerp(old[1], lime[1], w), lerp(old[2], lime[2], w)];
         const jt = smooth(m.mm(8), m.mm(2), stone.edge[i]);
         const st = vary(stoneC, (0.88 + stone.id[i] * 0.18) * (1 - jt * 0.18));
@@ -349,7 +349,7 @@ export const MASONRY = [
         m.h[i] = 0.55 + (und[i] - 0.5) * 0.12 + (brush[i] - 0.5) * 0.03 - eroded * (0.15 + jt * 0.2);
         m.micro[i] = sk[i];
         m.rough[i] = 0.93;
-        m.tint[i] = (1 - eroded) * (0.35 + thin * 0.4);
+        m.tint[i] = (1 - eroded) * (0.7 + thin * 0.25);
       }
       applyCracks(m, hairlines(N, { seed: seed + 7, p: 3, thr: 0.95 }), { dark: 0.25, depth: 0.15, color: [0.4, 0.35, 0.28] });
       streaks(m, { seed: seed + 8, amt: 0.15, t: 0.6, color: [0.55, 0.48, 0.38] });

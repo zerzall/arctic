@@ -108,7 +108,7 @@ export const METAL = [
     about: 'painted sheet steel (vehicles, machines, posts, signs): orange-peel enamel, chips to the red primer and bare steel, scratches, smudged gloss, dust, soft dents',
     bake(m, seed) {
       const N = m.N;
-      const { bare } = paintedSteel(m, seed, { paint: '#9a9c9a', chips: 0.1, scratches: 700 });
+      const { bare } = paintedSteel(m, seed, { paint: '#9a9c9a', chips: 0.07, scratches: 180, scratchLen: 60 });
       const dents = voronoi(N, 7, 7, seed + 20, { jitter: 1 });
       for (let i = 0; i < m.NN; i++) if (dents.id[i] < 0.3) m.h[i] -= smooth(m.mm(120), 0, dents.f1[i]) * 0.25;
       const rustM = field(N);
@@ -124,7 +124,7 @@ export const METAL = [
     bake(m, seed) {
       const N = m.N;
       const prof = ribs(m);
-      const { paint } = paintedSteel(m, seed, { paint: '#8f9590', chips: 0.05, scratches: 250, gloss: 0.5 });
+      const { paint } = paintedSteel(m, seed, { paint: '#8f9590', chips: 0.05, scratches: 110, gloss: 0.5 });
       const chalk = fbm(N, { p: 4, oct: 6, seed: seed + 10 });
       for (let i = 0; i < m.NN; i++) {
         m.h[i] = prof[i] * 0.85 + (m.h[i] - 0.6) * 0.5 + 0.05;
@@ -312,7 +312,7 @@ export const METAL = [
     about: 'camouflage-painted airframe and vehicle skin: hard-edged green, brown and black disruptive pattern, panel lines with rivet rows, chipped and faded paint, exhaust soot, dust',
     bake(m, seed) {
       const N = m.N;
-      const { paint } = paintedSteel(m, seed, { paint: '#4d5a3a', chips: 0.06, scratches: 400, gloss: 0.7 });
+      const { paint } = paintedSteel(m, seed, { paint: '#4d5a3a', chips: 0.06, scratches: 150, gloss: 0.7 });
       const b1 = warp(N, fbm(N, { p: 3, oct: 6, seed: seed + 1, gain: 0.55 }), fbm(N, { p: 6, oct: 3, seed: seed + 2 }), fbm(N, { p: 6, oct: 3, seed: seed + 3 }), 80 * m.s);
       const b2 = warp(N, fbm(N, { p: 4, oct: 6, seed: seed + 4, gain: 0.55 }), fbm(N, { p: 6, oct: 3, seed: seed + 5 }), fbm(N, { p: 6, oct: 3, seed: seed + 6 }), 80 * m.s);
       const fade = fbm(N, { p: 4, oct: 5, seed: seed + 7 });

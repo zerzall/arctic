@@ -140,16 +140,16 @@ export const GROUND = [
       const N = m.N;
       soil(m, seed, { pal: ['#3a3a3a', '#434241', '#3c3b3a'], h: 0.55, relief: 0.03, rough: 0.85, tint: 0.7, grain: 0.15 });
       // patches: rectangles of other asphalt with a tarred seam
-      for (let k = 0; k < 7; k++) {
+      for (let k = 0; k < 4; k++) {
         const cx = hash01(k, 1, seed) * N, cy = hash01(k, 2, seed) * N;
         const w = m.mm(400 + hash01(k, 3, seed) * 1400), h = m.mm(300 + hash01(k, 4, seed) * 900);
-        const tone = hash01(k, 5, seed) < 0.5 ? 0.72 : 1.3;
+        const tone = hash01(k, 5, seed) < 0.5 ? 0.88 : 1.12;
         for (let y = Math.floor(cy - h / 2 - 4); y < cy + h / 2 + 4; y++) {
           for (let x = Math.floor(cx - w / 2 - 4); x < cx + w / 2 + 4; x++) {
             const i = ((y + N) % N) * N + ((x + N) % N);
             const d = Math.min(x - (cx - w / 2), cx + w / 2 - x, y - (cy - h / 2), cy + h / 2 - y);
             if (d < -m.mm(25)) continue;
-            const inside = smooth(-1, 1, d), seam = smooth(m.mm(25), 0, Math.abs(d));
+            const inside = smooth(-m.mm(30), m.mm(30), d + (hash01(x >> 3, y >> 3, k) - 0.5) * m.mm(40)), seam = smooth(m.mm(15), 0, Math.abs(d)) * 0.6;
             m.mul(i, lerp(1, tone, inside));
             m.h[i] += inside * 0.03 * (tone > 1 ? -1 : 1);
             m.mix(i, [0.07, 0.07, 0.07], seam * 0.8);
@@ -193,7 +193,7 @@ export const GROUND = [
       const beads = fbm(N, { p: 512, oct: 1, seed: seed + 6 });
       for (let i = 0; i < m.NN; i++) {
         const p = 1 - smooth(0.66, 0.69, wear[i]);
-        const crack = plates.id[i] < 0.3 ? 1 - smooth(m.mm(0.3), m.mm(0.8), plates.edge[i] + (lump[i] - 0.5) * m.mm(1.5)) : 0;
+        const crack = plates.id[i] < 0.1 ? 0.25 - 0.25 * smooth(m.mm(0.3), m.mm(0.8), plates.edge[i] + (lump[i] - 0.5) * m.mm(1.5)) : 0;
         const k = p * (1 - crack * 0.9);
         const c = vary([0.86, 0.86, 0.83], 0.92 + (lump[i] - 0.5) * 0.12 + (beads[i] > 0.85 ? 0.08 : 0));
         m.mix(i, c, k);
@@ -361,11 +361,16 @@ export const GROUND = [
       const speck = fbm(N, { p: 512, oct: 1, seed: seed + 6 });
       const speck2 = fbm(N, { p: 200, oct: 2, seed: seed + 7 });
       const fr = cracks(N, { cells: 4, seed: seed + 10, keep: 0.6, width: 4, warp: 260 });
+      const facets = voronoi(N, 7, 7, seed + 13, { jitter: 1, wx: big, wy: tone, wamt: 120 * m.s });
       const fr2 = cracks(N, { cells: 11, seed: seed + 11, keep: 0.3, width: 1.8, warp: 120 });
       for (let i = 0; i < m.NN; i++) {
         const j = Math.max(fr[i], fr2[i] * 0.7);
         // big rounded masses, sharpened by ridged erosion runnels, split by fractures
-        m.h[i] = 0.2 + big[i] * 0.4 + (chunk[i] - 0.5) * 0.25 + (ero[i] - 0.5) * 0.14 + (speck2[i] - 0.5) * 0.03 - j * 0.3;
+        // angular facets: each fracture block a tilted plane, rounded off by erosion near its edges
+        const fa = facets.id[i] * 6.283, ft = 0.25 + facets.id[i] * 0.3;
+        const fdx = ((i % N) + 0.5 - facets.px[i]) / (N / 7), fdy = (Math.floor(i / N) + 0.5 - facets.py[i]) / (N / 7);
+        const facet = (Math.cos(fa) * fdx + Math.sin(fa) * fdy) * ft * smooth(0, m.mm(60), facets.edge[i]);
+        m.h[i] = 0.3 + big[i] * 0.3 + facet * 0.5 + (chunk[i] - 0.5) * 0.15 + (ero[i] - 0.5) * 0.12 + (speck2[i] - 0.5) * 0.03 - j * 0.3;
         m.set(i, vary(hex('#8a857d'), 0.82 + tone[i] * 0.3 + (big[i] - 0.5) * 0.15, (tone[i] - 0.5) * 0.1));
         if (speck[i] > 0.78) m.mix(i, [0.88, 0.86, 0.82], 0.55);
         else if (speck[i] < 0.15) m.mix(i, [0.18, 0.17, 0.16], 0.55);

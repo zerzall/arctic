@@ -162,7 +162,7 @@ export const INTERIOR = [
       const und = fbm(N, { p: 4, oct: 5, seed: seed + 2 });
       const patch = blotch(N, { p: 3, oct: 6, seed: seed + 3, t: 0.7, e: 0.02 }).mask;
       const dings = voronoi(N, 30, 30, seed + 4, { jitter: 1 });
-      const sc = scuffs(N, seed + 5, 200, { y0: 0, yspan: 0.12, len: 70, w: 3 });
+      const sc = new Float32Array(m.NN);   // (no scuffs: a wall's height is not the tile's, and the decals mark the walls)
       for (let y = 0; y < N; y++) {
         for (let x = 0; x < N; x++) {
           const i = y * N + x;
@@ -295,12 +295,19 @@ export const INTERIOR = [
     bake(m, seed) {
       const N = m.N;
       const wx = fbm(N, { p: 3, oct: 6, seed: seed + 1 }), wy = fbm(N, { p: 3, oct: 6, seed: seed + 2 });
-      const vein = warp(N, fbm(N, { p: 3, oct: 7, seed: seed + 3, ridge: true, gain: 0.55 }), wx, wy, 300 * m.s);
-      const vein2 = warp(N, fbm(N, { p: 8, oct: 5, seed: seed + 4, ridge: true }), wy, wx, 120 * m.s);
+      // veins: iso-lines of a turbulent field (the classic marble: sin of a warped noise), thin and branching
+      const turb = fbm(N, { p: 2, oct: 7, seed: seed + 3, gain: 0.6 });
+      const turb2 = fbm(N, { p: 5, oct: 6, seed: seed + 4, gain: 0.6 });
+      const vein = new Float32Array(m.NN), vein2 = new Float32Array(m.NN);
+      for (let i = 0; i < m.NN; i++) {
+        const x = (i % N) / N, y = Math.floor(i / N) / N;
+        vein[i] = Math.pow(1 - Math.abs(Math.sin((x * 1.5 + y * 0.8 + turb[i] * 2.6) * Math.PI * 2)), 9);
+        vein2[i] = Math.pow(1 - Math.abs(Math.sin((x * -0.6 + y * 1.9 + turb2[i] * 3.2) * Math.PI * 4)), 30) * smooth(0.4, 0.7, turb[i]);
+      }
       const cloud = fbm(N, { p: 4, oct: 7, seed: seed + 5 });
       const lane = lanes(N, seed + 6);
       grid(N, 2, 2, 0, (i, e) => {
-        const v1 = smooth(0.8, 0.93, vein[i]), v2 = smooth(0.84, 0.95, vein2[i]) * 0.6;
+        const v1 = vein[i] * (0.6 + cloud[i] * 0.6), v2 = vein2[i] * 0.6;
         const c = vary([0.9, 0.89, 0.87], 0.94 + (cloud[i] - 0.5) * 0.08 + (e.id - 0.5) * 0.04);
         m.set(i, c);
         m.mix(i, [0.42, 0.43, 0.45], Math.max(v1, v2) * 0.8);
@@ -318,7 +325,7 @@ export const INTERIOR = [
     bake(m, seed) {
       const N = m.N;
       ceramic(m, seed, { cu: 8, cv: 8, color: '#dfe3e1', grout: '#a6a9a5', tone: 0.04, chips: 0.04, cracked: 0.04, groutDirt: 0.25, gloss: 0.1, tint: 0.9 });
-      const sc = scuffs(N, seed + 20, 120, { y0: 0, yspan: 0.3, len: 60, w: 2.5 });
+      const sc = scuffs(N, seed + 20, 25, { len: 40, w: 1.5 });
       for (let y = 0; y < N; y++) {
         const low = smooth(0.35, 0, y / N);
         for (let x = 0; x < N; x++) {

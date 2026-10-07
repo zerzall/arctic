@@ -96,7 +96,7 @@ export const WOOD = [
           m.h[i] = 0.75 + round * 0.12 - g.ring[i] * 0.03 * (0.3 + w) + (g.fibre[i] - 0.5) * 0.04 * (0.5 + w) - gap * 0.7 - check * 0.15 + (hash01(b, 11, seed) - 0.5) * 0.06;
           m.micro[i] = g.fibre[i];
           m.rough[i] = 0.7 + w * 0.2 - g.knot[i] * 0.1;
-          m.tint[i] = (1 - gap) * (0.75 - w * 0.25);
+          m.tint[i] = (1 - gap) * (0.88 - w * 0.12);
         }
         const b = Math.floor(y / g.bh);
         if (Math.abs((y + 0.5) - (b + 0.5) * g.bh) < 0.5) {
@@ -187,24 +187,26 @@ export const WOOD = [
     about: 'tree bark: deep vertical fissures between corky ridges plated by cross-cracks, grey weathered tops, brown in the furrows, moss and lichen patches',
     bake(m, seed) {
       const N = m.N;
-      // ridges: Voronoi stretched along v (the trunk), warped so they braid
-      const wx = fbm(N, { pu: 6, pv: 2, oct: 4, seed: seed + 1 }), wy = fbm(N, { pu: 6, pv: 2, oct: 4, seed: seed + 2 });
-      const v = voronoi(N, 9, 3, seed + 3, { jitter: 1, wx, wy, wamt: 140 * m.s });
-      const plates = voronoi(N, 9, 14, seed + 4, { jitter: 1, wx, wy, wamt: 60 * m.s });
+      // ridges: noise stretched up the trunk (v), warped sideways so the fissures braid and fork
+      const wx = fbm(N, { pu: 4, pv: 3, oct: 4, seed: seed + 1 });
+      const base = fbm(N, { pu: 7, pv: 1, oct: 5, seed: seed + 3, gain: 0.55 });
+      const ridgeF = warp(N, base, wx, wx, 90 * m.s);
+      const breaks = fbm(N, { pu: 10, pv: 18, oct: 4, seed: seed + 4, ridge: true });
       const fine = fbm(N, { pu: 40, pv: 10, oct: 3, seed: seed + 5 });
-      const fib = fbm(N, { pu: 6, pv: 200, oct: 2, seed: seed + 6 });
+      const fib = fbm(N, { pu: 200, pv: 6, oct: 2, seed: seed + 6 });
       const moss = fbm(N, { p: 5, oct: 6, seed: seed + 7 });
       const cork = fbm(N, { pu: 24, pv: 6, oct: 4, seed: seed + 8, ridge: true });
       for (let i = 0; i < m.NN; i++) {
-        // broad corky ridges, rounded, split by deep narrow fissures; a few cross-breaks on the ridges
-        const ridge = Math.sqrt(smooth(0, m.mm(45), v.edge[i]));
-        const cross = (1 - smooth(m.mm(1.5), m.mm(5), plates.edge[i])) * smooth(0.3, 0.7, ridge) * (plates.id[i] < 0.5 ? 1 : 0);
-        const hgt = ridge * (0.8 - cross * 0.3) + (cork[i] - 0.5) * 0.12 * ridge + (fine[i] - 0.5) * 0.06 + (fib[i] - 0.5) * 0.04;
+        // broad corky ridges, flat-topped, split by deep narrow fissures; cross-breaks on the ridges
+        const ridge = smooth(0.3, 0.55, ridgeF[i]);
+        const cross = smooth(0.9, 0.97, breaks[i]) * ridge;
+        const hgt = ridge * (0.8 - cross * 0.4) + (cork[i] - 0.5) * 0.14 * ridge + (fine[i] - 0.5) * 0.06 + (fib[i] - 0.5) * 0.04;
         m.h[i] = 0.15 + hgt * 0.8;
         const top = smooth(0.5, 0.9, hgt);
-        const deep = vary([0.24, 0.17, 0.12], 0.9 + fine[i] * 0.2);
-        const grey = vary([0.48, 0.45, 0.4], 0.85 + fib[i] * 0.3 + (v.id[i] - 0.5) * 0.15);
+        const deep = vary([0.22, 0.15, 0.1], 0.9 + fine[i] * 0.2);
+        const grey = vary([0.48, 0.45, 0.4], 0.85 + fib[i] * 0.3 + (base[i] - 0.5) * 0.2);
         m.set(i, [lerp(deep[0], grey[0], top), lerp(deep[1], grey[1], top), lerp(deep[2], grey[2], top)]);
+        m.mix(i, [0.1, 0.07, 0.05], cross * 0.6);
         m.micro[i] = fib[i];
         m.rough[i] = 0.92;
         m.tint[i] = 0.6;
@@ -250,24 +252,31 @@ export const WOOD = [
     about: 'charred timber: alligator checking into glossy black blocks, deep cracks, silver ash in drifts, brown half-burnt wood showing where it flaked',
     bake(m, seed) {
       const N = m.N;
-      // checking: blocks elongated along the grain (u)
-      const v = voronoi(N, 22, 36, seed + 1, { jitter: 0.8, wx: fbm(N, { p: 16, oct: 3, seed: seed + 2 }), wy: fbm(N, { p: 16, oct: 3, seed: seed + 3 }), wamt: 20 * m.s });
-      const fine = fbm(N, { pu: 8, pv: 120, oct: 3, seed: seed + 4 });
+      // a burnt skin (timber, paint, upholstery, car bodies): soot-black, blistered, crazed into small
+      // plates only where it burnt deepest; grey ash lying in drifts; rust-brown or charred-brown where
+      // the skin has flaked off
+      const deep = fbm(N, { p: 4, oct: 6, seed: seed + 7 });
+      const v = voronoi(N, 44, 60, seed + 1, { jitter: 0.9, wx: fbm(N, { p: 16, oct: 3, seed: seed + 2 }), wy: fbm(N, { p: 16, oct: 3, seed: seed + 3 }), wamt: 24 * m.s });
+      const blis = voronoi(N, 120, 120, seed + 8, { jitter: 1 });
+      const fine = fbm(N, { p: 96, oct: 3, seed: seed + 4 });
       const ash = fbm(N, { p: 5, oct: 6, seed: seed + 5 });
-      const flake = fbm(N, { p: 8, oct: 6, seed: seed + 6 });
+      const flake = warp(N, fbm(N, { p: 6, oct: 6, seed: seed + 6 }), fine, deep, 30 * m.s);
       for (let i = 0; i < m.NN; i++) {
-        const blk = smooth(0, m.mm(8), v.edge[i]);
-        const crack = 1 - smooth(m.mm(1), m.mm(3.5), v.edge[i]);
-        m.h[i] = 0.3 + Math.sqrt(blk) * 0.55 + (v.id[i] - 0.5) * 0.08 + (fine[i] - 0.5) * 0.05;
-        m.set(i, vary([0.06, 0.055, 0.05], 0.8 + blk * 0.5 + fine[i] * 0.3));
-        m.mix(i, [0.01, 0.01, 0.01], crack * 0.9);
-        const fl = smooth(0.68, 0.72, flake[i]);
-        m.mix(i, vary([0.32, 0.2, 0.12], 0.8 + fine[i] * 0.4), fl * 0.85);
-        const a = smooth(0.55, 0.8, ash[i]) * (0.5 + (1 - blk) * 0.5);
-        m.mix(i, [0.55, 0.53, 0.5], a * 0.7);
+        const d = smooth(0.5, 0.7, deep[i]);
+        const blk = smooth(0, m.mm(5), v.edge[i]);
+        const crack = (1 - smooth(m.mm(0.6), m.mm(2), v.edge[i])) * d;
+        const bl = blis.id[i] < 0.35 ? smooth(m.mm(6), m.mm(1), blis.f1[i]) * (1 - d) : 0;
+        m.h[i] = 0.45 + (Math.sqrt(blk) - 0.5) * 0.25 * d + bl * 0.12 + (fine[i] - 0.5) * 0.05;
+        m.set(i, vary([0.06, 0.055, 0.05], 0.75 + fine[i] * 0.4 + bl * 0.3 + blk * d * 0.2));
+        m.mix(i, [0.012, 0.011, 0.01], crack * 0.9);
+        const fl = smooth(0.66, 0.7, flake[i]);
+        m.mix(i, vary(deep[i] > 0.55 ? [0.3, 0.16, 0.08] : [0.3, 0.2, 0.13], 0.7 + fine[i] * 0.5), fl * 0.8);
+        m.h[i] -= fl * 0.06;
+        const a = smooth(0.55, 0.8, ash[i]) * (0.4 + (1 - blk * d) * 0.6);
+        m.mix(i, [0.52, 0.5, 0.47], a * 0.65);
         m.micro[i] = fine[i];
-        m.rough[i] = lerp(0.45, 0.95, Math.max(a, fl, crack)) + (fine[i] - 0.5) * 0.1;
-        m.tint[i] = 0.25 * (1 - a);
+        m.rough[i] = lerp(0.5 - bl * 0.15, 0.95, Math.max(a, fl, crack)) + (fine[i] - 0.5) * 0.1;
+        m.tint[i] = 0.25 * (1 - a) * (1 - fl);
       }
       m.grime({ amt: 0.3, rad: 6, gain: 7, color: [0.01, 0.01, 0.01], wear: 0.03 });
     },
