@@ -24,7 +24,7 @@
 // The runtime (public/js/render3d/actor-ztex.js) packs them into two or three texture arrays.
 // Rows are written top-down with +v up, so the files look the right way round.
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { availableParallelism } from 'node:os';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -150,10 +150,14 @@ async function main() {
     w.on('error', fail);
     feed();
   })));
+  // (a partial bake updates its sets' entries in an existing manifest of the same size)
+  let old = null;
+  try { old = JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8')); } catch { old = null; }
+  if (old && old.size === SIZE) for (const s of old.sets) if (!entries.has(s.name)) entries.set(s.name, s);
   const manifest = { size: SIZE, sets: SETS.filter((s) => entries.has(s.name)).map((s) => entries.get(s.name)) };
-  const bytes = manifest.sets.reduce((b, s) => b + s.files.albedo.bytes + s.files.normal.bytes + s.files.pack.bytes, 0);
-  if (!ONLY) writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n');
-  console.log(`baked ${manifest.sets.length} sets at ${SIZE}² in ${((Date.now() - t0) / 1000).toFixed(0)} s (${(bytes / 1e6).toFixed(1)} MB) → ${OUT}`);
+  const bytes = manifest.sets.filter((s) => !ONLY || ONLY.has(s.name)).reduce((b, s) => b + s.files.albedo.bytes + s.files.normal.bytes + s.files.pack.bytes, 0);
+  if (!ONLY || (old && old.size === SIZE)) writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n');
+  console.log(`baked ${todo.length} sets at ${SIZE}² in ${((Date.now() - t0) / 1000).toFixed(0)} s (${(bytes / 1e6).toFixed(1)} MB) → ${OUT}`);
 }
 
 if (!isMainThread && workerData && workerData.OUT) {

@@ -544,13 +544,13 @@ export function skinFresh(N) {
 export function skinWeeks(N) {
   const S = skinCtx(N, 1201);
   S.rough.fill(0.64); S.thick.fill(0.36);
-  baseTone(S, ['#8f967c', '#a8a070', '#857680'], { f0: 2, mottle: 0.5, fine: 0.12 });
+  baseTone(S, ['#8a8c7c', '#9e9576', '#80737a'], { f0: 2, mottle: 0.5, fine: 0.12 });
   relief(S, { pores: 0.3, lines: 0.3, crease: 0.6, creaseF: 10, lump: 0.45 });
   // decomposition: dark green-black and purple-brown patches, sallow yellow ones
-  patches(S, { f: 2, at: 0.5, soft: 0.16, mul: [0.42, 0.5, 0.36], mul2: [0.62, 0.5, 0.62], k: 0.9, salt: 1, rough: 0.05 });
-  patches(S, { f: 3, at: 0.58, soft: 0.12, mul: [1.15, 1.06, 0.7], k: 0.7, salt: 2 });
+  patches(S, { f: 2, at: 0.5, soft: 0.16, mul: [0.42, 0.44, 0.34], mul2: [0.6, 0.5, 0.56], k: 0.9, salt: 1, rough: 0.05 });
+  patches(S, { f: 3, at: 0.58, soft: 0.12, mul: [1.1, 1.02, 0.74], k: 0.6, salt: 2 });
   patches(S, { f: 4, at: 0.6, soft: 0.12, mul: [0.66, 0.56, 0.62], k: 0.7, salt: 3 });
-  veins(S, { count: 60, len: 0.28, w: 0.0075, depth: 4, core: [0.26, 0.3, 0.22], halo: [0.55, 0.6, 0.48], coreK: 1.0, haloK: 0.95, cap: 0.5, raise: 0.12, clusterAt: 0.2 });
+  veins(S, { count: 60, len: 0.28, w: 0.0075, depth: 4, core: [0.26, 0.27, 0.22], halo: [0.56, 0.57, 0.5], coreK: 1.0, haloK: 0.95, cap: 0.5, raise: 0.12, clusterAt: 0.2 });
   bruises(S, { f: 3, at: 0.6, k: 0.8, core: [0.45, 0.36, 0.48], mid: [0.58, 0.64, 0.5], rim: [1.0, 0.96, 0.66] });
   slip(S, { f: 3, at: 0.64 });
   blisters(S, { count: 20, min: 0.004, max: 0.022, burst: 0.3, cluster: 5 });

@@ -35,7 +35,7 @@ function wounds(N) {
     if (o.wet !== undefined) wet[i] = mix(wet[i], o.wet, t);
   };
   const C = (hex) => lin(hex);
-  const skinEdge = C('#7a5a52'), crust = C('#2a0d08'), fat = C('#b89a5a'), mus = C('#621610'), musD = C('#2c0605'), deep = C('#140303');
+  const skinEdge = C('#6e5450'), crust = C('#240b07'), fat = C('#a88c52'), mus = C('#4e120d'), musD = C('#240504'), deep = C('#100202');
   const bruise = C('#4c3446'), bone = C('#d2c6a6');
   const r = rng(5101);
   for (let cell = 0; cell < 8; cell++) {
@@ -84,9 +84,12 @@ function wounds(N) {
           // a long cut along a diagonal: layers by the distance across it
           const ang = cell === 7 ? 0.25 : -0.5, ca = Math.cos(ang), sa = Math.sin(ang);
           const a = (qx * ca + qy * sa) / 1.15, b = -qx * sa + qy * ca;
-          const zig = cell === 7 ? Math.abs(((a * 4 + 0.25) % 1 + 1) % 1 - 0.5) * 0.25 - 0.06 : 0;
-          const wid = (cell === 1 ? 0.6 : cell === 7 ? 0.42 : 0.38) * Math.pow(Math.max(0, 1 - a * a), 0.6) * (1 + nz * 0.5);
-          const t = (Math.abs(b - zig)) / Math.max(0.02, wid);
+          // (not a lens: the cut wanders, its width swells and pinches, the torn edges are ragged)
+          const zig = (cell === 7 ? Math.abs(((a * 4 + 0.25) % 1 + 1) % 1 - 0.5) * 0.25 - 0.06 : 0)
+            + 0.1 * noise(a * 3 + cell, 0.5, 64, 64, 5130) + 0.05 * Math.sin(a * 7 + cell);
+          const swell = 0.45 + 0.95 * (noise(a * 4 + 7 * cell, 1.5, 64, 64, 5131) * 0.5 + 0.5);
+          const wid = (cell === 1 ? 0.55 : cell === 7 ? 0.4 : 0.36) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(a), 2.5)), 0.45) * swell * (1 + nz * 0.9);
+          const t = (Math.abs(b - zig) + (nz2 * 0.06)) / Math.max(0.02, wid);
           const halo = smooth(2.0, 0.9, rr) * smooth(1.2, 0.6, Math.abs(a));
           put(i, bruise, halo * 0.45 * edgeFade, { abs: 0 });
           if (t < 1.6 && Math.abs(a) < 1.15) {
@@ -102,10 +105,13 @@ function wounds(N) {
             put(i, mixc(fat, sc(fat, 0.7), rn), fatK, { rough: 0.32, h: 0.15, wet: 0.5 });
             put(i, mixc(deep, C('#2a0605'), clump), smooth(0.3, 0.05, t + (clump - 0.5) * 0.3), { rough: 0.15, h: -0.8, wet: 1 });
             if (cell === 1) {
-              const bt = Math.abs(b) / 0.2;
-              if (bt < 1 && Math.abs(a) < 0.8) {
+              // a short splinter of bone in the wound, broken off at one end, smeared with blood and torn tissue
+              const bt = Math.abs(b + 0.03 * Math.sin(a * 9)) / (0.12 * (1 - 0.4 * smooth(-0.1, 0.5, a)));
+              if (bt < 1 && a > -0.55 && a < 0.5 + nz * 0.3) {
                 const crack = Math.pow(ridged(u, v, 60, 2, 5105), 18);
-                put(i, mixc(sc(bone, 0.85 + 0.25 * Math.sqrt(1 - bt * bt)), C('#6a2a20'), crack * 0.6 + smooth(0.6, 0.8, Math.abs(a)) * 0.5), 1, { rough: 0.55, h: 1.2 * Math.sqrt(1 - bt * bt), wet: 0.3 });
+                const smear = smooth(0.35, 0.7, fbm(u, v, 30, 3, 5106) * 0.5 + 0.5);
+                const bc = mixc(mixc(sc(bone, 0.7 + 0.25 * Math.sqrt(1 - bt * bt)), C('#8a6a48'), smooth(0.2, 0.5, a)), C('#5a1a12'), crack * 0.6 + smear * 0.55);
+                put(i, bc, smooth(1, 0.8, bt), { rough: 0.45, h: 1.0 * Math.sqrt(1 - bt * bt), wet: 0.45 });
               }
             }
             if (cell === 7) {
@@ -116,11 +122,12 @@ function wounds(N) {
           }
         } else if (cell === 2) {
           // bite: a torn-out chunk, crescents of tooth marks above and below, bruising
-          const d = Math.hypot(qx, qy * 1.25) * (1 + nz * 0.6);
-          put(i, bruise, smooth(2.0, 1.1, rr) * 0.6 * edgeFade, {});
+          const d = Math.hypot(qx * 0.9, qy * 1.3) * (1 + nz * 1.3);
+          put(i, bruise, smooth(2.0, 1.0, rr * (1 + nz)) * 0.6 * edgeFade, {});
           const ang = Math.atan2(qy, qx);
-          const ringD = Math.abs(Math.hypot(qx, qy * 1.25) - 0.95);
-          const tooth = smooth(0.22, 0.05, ringD) * smooth(0.45, 0.85, Math.abs(Math.cos(ang * 7))) * smooth(0.3, 0.6, Math.abs(Math.sin(ang)));
+          const ringD = Math.abs(Math.hypot(qx, qy * 1.3) - 0.95 - 0.12 * Math.sin(ang * 3 + 1));
+          const tk = noise(ang * 2.2, 3.5, 64, 64, 5140);
+          const tooth = smooth(0.2, 0.04, ringD) * smooth(0.55, 0.9, Math.abs(Math.cos(ang * 5 + tk * 2))) * smooth(0.25, 0.55, Math.abs(Math.sin(ang))) * smooth(-0.3, 0.2, tk);
           put(i, C('#300504'), tooth, { rough: 0.35, h: -0.7, wet: 0.6 });
           if (d < 0.8) {
             const k = smooth(0.8, 0.62, d);
@@ -139,19 +146,21 @@ function wounds(N) {
           put(i, C('#5a3848'), smooth(0.9, 0.35, d) * 0.4, {});
         } else if (cell === 4) {
           // burn: charred black centre (cracked), raw wet ring, peeling blistered skin, reddened halo
-          const d = rr * (1 + nz * 0.8);
+          const d = rr * (1 + nz * 1.2);
+          const dB = rr * (1 + (fbm(u, v, 14, 4, 5141) * 0.5) * 1.4), dC = rr * (1 + (fbm(u, v, 18, 4, 5142) * 0.5) * 1.5);
           const crack = Math.pow(ridged(u, v, 40, 3, 5108), 10);
           put(i, C('#6a2a22'), smooth(1.9, 1.2, d) * 0.5 * edgeFade, {});
           if (d < 1.3) put(i, mixc(C('#d2c4a0'), C('#a89060'), nz2 * 0.5 + 0.5), smooth(1.3, 1.15, d) * smooth(0.95, 1.1, d), { rough: 0.7, h: 0.6 });
-          if (d < 1.0) put(i, mixc(C('#8a2a20'), C('#5a1410'), nz2 * 0.5 + 0.5), smooth(1.0, 0.9, d) * smooth(0.55, 0.7, d), { rough: 0.2, h: -0.2, wet: 0.85 });
-          if (d < 0.7) put(i, mixc(C('#100a08'), C('#3a1408'), crack), smooth(0.7, 0.6, d), { rough: 0.92, h: -0.1 - crack * 0.6 + nz2 * 0.3, wet: 0 });
+          if (dB < 1.0) put(i, mixc(C('#7a261c'), C('#4a120c'), nz2 * 0.5 + 0.5), smooth(1.0, 0.9, dB) * smooth(0.45, 0.7, dB), { rough: 0.2, h: -0.2, wet: 0.85 });
+          if (dC < 0.75) put(i, mixc(C('#100a08'), C('#3a1408'), crack), smooth(0.75, 0.6, dC), { rough: 0.92, h: -0.1 - crack * 0.6 + nz2 * 0.3, wet: 0 });
         } else if (cell === 5) {
           // acid: a crater with a bubbled yellow-green crust, a dark rim, wet sickly fluid inside
-          const d = rr * (1 + nz * 0.7);
+          const d = rr * (1 + nz * 1.2);
           const pit = cells(u, v, 70, 5109, {}, 1).f1;
+          const dB = rr * (1 + (fbm(u, v, 16, 4, 5143) * 0.5) * 1.5);
           if (d < 1.4) put(i, mixc(C('#a89e48'), C('#6a6a2a'), smooth(0.2, 0.5, pit)), smooth(1.4, 1.15, d) * smooth(0.75, 0.95, d), { rough: 0.75, h: 0.5 - pit * 0.5 });
           if (d < 0.95) put(i, C('#2a2010'), smooth(0.95, 0.85, d) * smooth(0.65, 0.78, d), { rough: 0.6, h: -0.2 });
-          if (d < 0.75) put(i, mixc(C('#7a7a2a'), C('#3a3a10'), smooth(0.6, 0.0, d) + pit * 0.3), smooth(0.75, 0.65, d), { rough: 0.12, h: -0.9 - pit * 0.4, wet: 1 });
+          if (dB < 0.8) put(i, mixc(C('#6a6a26'), C('#34340e'), smooth(0.6, 0.0, dB) + pit * 0.3), smooth(0.8, 0.65, dB), { rough: 0.12, h: -0.9 - pit * 0.4, wet: 1 });
         } else if (cell === 6) {
           // maggot-pocked rot: grey-green-brown flesh full of pits, pale maggots in some (subtle)
           const d = rr * (1 + nz * 0.7);
