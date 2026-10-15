@@ -9,6 +9,7 @@
   "roundTime": 120,
   "suddenDeath": true,
   "mode": "ffa",
+  "difficulty": "normal",
   "theme": "random",
   "layout": "classic",
   "blocks": "normal",

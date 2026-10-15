@@ -57,15 +57,22 @@
 //     exceptions that would only make the picture worse: frames while a sprite set is being built do not count, and a window of frames that
 //     are steadily 33.3 ms apart does not either (a display capped to 30 Hz, e.g. iOS Low Power Mode: a lower level cannot speed it up).
 //   * Explosions leave soot on the floor for a few seconds; a rolling bomb kicks up dust; popups appear below a fighter on the top row.
+//   * Co-op modes (docs/SPEC.md Appendix C): the sprite set is built with the monster and door extras only for a co-op View (view.mode
+//     'coop' | 'adventure'), so battle matches never pay for them. Monsters are y-sorted with everything else (a bob cycle, a white flash
+//     while they are invulnerable, a pop-in when they appear); a monster that pops shows its x-eyed face swelling away in a puff of smoke
+//     with its points floating up. The exit door is floor art under everything that stands; open, it swirls and glows and sends sparkles up.
+//     A coop wave or adventure level that is cleared makes the survivors cheer (an adventure: also confetti out of the door); in coop the
+//     enemy bots wear a coral ring so a child can tell friend from foe.
 //   * Debug overlay (`?debug=1`): setDebug(true) draws it on the canvas (main.js can put rtt, ws state and its recent errors in
 //     renderer.debugInfo), or main.js feeds debugText() to boot.js's DOM overlay; renderer.errors holds the last five caught errors.
 
 import {
   GRID_W, GRID_H, PLAYER_COLORS, ITEM_KINDS, THEMES, STATE, EMOTES,
-  DEATH_ANIM_TICKS, FLAME_TICKS, SD_WARN_TICKS, SHIELD_FOREVER, THROW_TICKS, FUSE_TICKS,
+  DEATH_ANIM_TICKS, FLAME_TICKS, SD_WARN_TICKS, SHIELD_FOREVER, THROW_TICKS, FUSE_TICKS, COOP_MODES,
 } from '../../shared/constants.js';
 import {
   startSpriteBuild, drawSprite, walkFrame, THEME_PALETTES, BOMB_FUSE_TIP, BOMB_PULSE, SOFT_POP_FRAMES, EXTRA_EMOTE_ICONS, WALK_FRAMES,
+  MONSTER_FRAMES, DOOR_FRAMES,
 } from './sprites.js';
 import { EVENT_ARGS } from '../../shared/protocol.js';
 import { ParticleSystem, FloatingText, RING, POOL_SIZE } from './particles.js';
@@ -116,6 +123,9 @@ const ITEM_COLORS = { bomb: '#5cc0ff', flame: '#ff6a4d', speed: '#7dff5a', kick:
 const ITEM_LABELS = { bomb: '+1 BOMB', flame: '+1 RANGE', speed: 'SPEED UP', kick: 'KICK!', glove: 'GLOVE!', shield: 'SHIELD!' };
 const CURSE_LABELS = { slow: 'SLOW', rush: 'RUSH', reverse: 'REVERSED', nobomb: 'NO BOMBS', spam: 'BOMB SPAM' };
 const CURE_COLOR = '#8ff7a8';
+const MONSTER_POP_MS = 420;          // a popped monster's x-eyed face swells away for this long
+const MONSTER_IN_MS = 300;           // ... and a new one pops in
+const isCoopMode = (mode) => COOP_MODES.includes(mode);
 const CURSE_COLOR = '#d59bff';
 
 const ZERO2 = [0, 0];               // shake offsets are written into CAM to avoid allocating
@@ -307,10 +317,15 @@ class ItemFx {
   constructor(now, rand) { this.seen = 0; this.born = now; this.glintAcc = rand(); }
 }
 
+/** What the renderer remembers about one monster between frames (co-op). */
+class MonsterFx {
+  constructor(now, rand) { this.seen = 0; this.born = now; this.phase = rand() * 3; this.x = 0; this.y = 0; this.init = false; this.puffAcc = rand(); }
+}
+
 // ---- Depth-sorted entity list (preallocated) ------------------------------------------------------------------------
 
 const LIST_CAP = 384;
-const E_PLAYER = 0, E_BOMB = 1, E_GHOST = 2, E_ITEM = 3, E_POP = 4;
+const E_PLAYER = 0, E_BOMB = 1, E_GHOST = 2, E_ITEM = 3, E_POP = 4, E_MONSTER = 5, E_MPOP = 6;
 
 class DrawList {
   constructor() {
@@ -387,11 +402,15 @@ export class Renderer {
     this.tintCurse = null; this.tintDanger = null; this.tintBase = null; this.dimTop = 0;
     this.hintTheme = 'meadow';
     this.mode = 'ffa';
+    this.hintCoop = false;
     this.lastView = null;
 
     this.now = 0; this.frameNo = 0;
     this.gridStr = ''; this.cells = new Uint8Array(CELLS); this.hardVersion = 0;
-    this.players = new Map(); this.bombs = new Map(); this.items = new Map();
+    this.players = new Map(); this.bombs = new Map(); this.items = new Map(); this.monsters = new Map();
+    this.mpops = [];                                   // co-op: popped monsters swelling away { kind, angry, x, y, t0 }
+    this.clearAt = -1e9;                               // co-op: when the level or wave was cleared (the survivors cheer)
+    this.doorFx = { open: false, at: -1e9, sparkAcc: 0 };
     this.tilePop = new Float64Array(CELLS).fill(-1e9); this.tileSeen = new Int32Array(CELLS).fill(-1e6); this.tilePhase = new Float32Array(CELLS);
     this.scorch = new Float64Array(CELLS).fill(-1e9);   // render-clock ms of the last explosion centred on each tile (soot on the floor)
     this.pops = [];                                    // crates bursting apart: { tx, ty, t0 }
@@ -444,7 +463,7 @@ export class Renderer {
     try {
       // Without a View (before the first `round`) the frame still moves the sprite build along, so a theme hint has a head start.
       if (drawable) { this.lastView = view; this.updateCells(view.grid); }
-      this.syncSprites(drawable ? view.theme : undefined);
+      this.syncSprites(drawable ? view.theme : undefined, drawable ? isCoopMode(view.mode) : this.hintCoop);
       if (this.set && drawable) {
         this.advance(view, dt);
         this.paint(view);
@@ -488,7 +507,8 @@ export class Renderer {
   /** Optional hint: the `round` message (or its players array). Only `mode` is used; the View stays the source of truth. */
   setPlayers(info) {
     if (info && typeof info === 'object' && !Array.isArray(info)) {
-      if (info.mode === 'teams' || info.mode === 'ffa') this.mode = info.mode;
+      if (info.mode === 'teams' || info.mode === 'ffa' || isCoopMode(info.mode)) this.mode = info.mode;
+      this.hintCoop = isCoopMode(info.mode);
       if (THEMES.includes(info.theme)) this.hintTheme = info.theme;
     }
   }
@@ -535,7 +555,7 @@ export class Renderer {
     this.dropSet();
     if (this.probeCanvas) { releaseCanvas(this.probeCanvas); this.probeCanvas = null; this.probe = null; }
     this.players.forEach((fx) => fx.releaseTag());
-    this.players.clear(); this.bombs.clear(); this.items.clear();
+    this.players.clear(); this.bombs.clear(); this.items.clear(); this.monsters.clear();
     this.lastView = null;
   }
 
@@ -640,14 +660,14 @@ export class Renderer {
    * drawing. A build that fails (out of canvas memory on a phone) is dropped and retried after a pause, and after the second failure at a
    * lower quality, which means smaller sprites. Never throws: a broken build must not take the picture down with it.
    */
-  syncSprites(viewTheme) {
+  syncSprites(viewTheme, coop = false) {
     const L = this.layout;
     const theme = THEMES.includes(viewTheme) ? viewTheme : this.hintTheme;
     const cur = this.set;
-    if (cur && cur.tile === L.tile && cur.theme === theme) { if (this.build || this.prepared) this.dropBuild(); return; }
+    if (cur && cur.tile === L.tile && cur.theme === theme && cur.coop === coop) { if (this.build || this.prepared) this.dropBuild(); return; }
     if (this.now < this.buildRetryAt) return;
     try {
-      this.stepBuild(L, theme, cur);
+      this.stepBuild(L, theme, cur, coop);
     } catch (err) {
       this.noteError(err);
       this.dropBuild();
@@ -659,12 +679,12 @@ export class Renderer {
     }
   }
 
-  stepBuild(L, theme, cur) {
-    if (!this.build || this.buildTile !== L.tile || this.buildTheme !== theme) {
+  stepBuild(L, theme, cur, coop = false) {
+    if (!this.build || this.buildTile !== L.tile || this.buildTheme !== theme || this.build.set.coop !== coop) {
       // While a window is being dragged the tile size changes every frame; wait until it settles (the old set keeps drawing, scaled).
       if (cur && cur.tile !== L.tile && this.now - this.wantTileSince < 150) return;
       this.dropBuild();
-      this.build = startSpriteBuild({ tile: L.tile, theme, dpr: Math.round(L.dpr * 100) / 100, createCanvas: this.makeCanvas === defaultCreateCanvas ? undefined : this.makeCanvas });
+      this.build = startSpriteBuild({ tile: L.tile, theme, dpr: Math.round(L.dpr * 100) / 100, createCanvas: this.makeCanvas === defaultCreateCanvas ? undefined : this.makeCanvas, coop });
       this.buildTile = L.tile; this.buildTheme = theme;
     }
     // A new theme is on screen the moment it is ready, so it gets a bigger slice than a same-theme resize (terrain alone is ~15 ms);
@@ -837,7 +857,8 @@ export class Renderer {
       if (view.state === STATE.ENDING && this.lastState !== STATE.OVER) this.endAt = now;
       this.lastState = view.state;
     }
-    this.winners = ending && alive > 0 && (this.teamMode(view) ? sameTeam : alive === 1) ? 1 : 0;
+    if (isCoopMode(view.mode)) this.winners = ending && this.coopCleared(view) ? 1 : 0;   // co-op: only a cleared level or wave is a win
+    else this.winners = ending && alive > 0 && (this.teamMode(view) ? sameTeam : alive === 1) ? 1 : 0;
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i], fx = this.fxFor(p.id);
       fx.seen = this.frameNo;
@@ -894,6 +915,14 @@ export class Renderer {
         }
       }
     }
+    // co-op: monsters, popped monsters, the open door
+    if (view.monsters && view.monsters.length) this.advanceMonsters(view, dt, reduced, detail);
+    for (let i = this.mpops.length - 1; i >= 0; i--) if (now - this.mpops[i].t0 >= MONSTER_POP_MS) this.mpops.splice(i, 1);
+    if (view.door && view.door.open && !reduced && detail > 0) {
+      const d = this.doorFx;
+      d.sparkAcc += dt * 7;
+      while (d.sparkAcc >= 1) { d.sparkAcc -= 1; pt.glint(view.door.tx + 0.2 + rand() * 0.6, view.door.ty + 0.25 + rand() * 0.5, 0.1 + rand() * 0.5); }
+    }
     // burst crates
     for (let i = this.pops.length - 1; i >= 0; i--) if (now - this.pops[i].t0 >= 50 * SOFT_POP_FRAMES) this.pops.splice(i, 1);
     pt.update(dt);
@@ -943,6 +972,32 @@ export class Renderer {
     }
   }
 
+  /** Co-op: per-monster animation state; an angry tank puffs steam. */
+  advanceMonsters(view, dt, reduced, detail) {
+    const ms = view.monsters, pt = this.particles;
+    for (let i = 0; i < ms.length; i++) {
+      const m = ms[i];
+      let fx = this.monsters.get(m.id);
+      if (!fx) { fx = new MonsterFx(this.now, this.rand); this.monsters.set(m.id, fx); }
+      fx.seen = this.frameNo;
+      if (!fx.init || Math.abs(m.x - fx.x) + Math.abs(m.y - fx.y) > 3) fx.init = true;
+      fx.x = m.x; fx.y = m.y;
+      if (m.angry && m.kind === 'tank' && !reduced && detail > 0) {
+        fx.puffAcc += dt * 2.5;
+        if (fx.puffAcc >= 1) { fx.puffAcc -= 1; pt.smoke(m.x + (this.rand() - 0.5) * 0.3, m.y - 0.45, 0.2, 1, false, 0.22, 0.7, 0.1); }
+      }
+    }
+  }
+
+  /** Co-op: was the level or wave cleared? An adventure says so with its `exit` event; in coop the enemy team is gone. */
+  coopCleared(view) {
+    if (view.mode === 'adventure') return this.now - this.clearAt < 20000;
+    let team = 0, foes = 0;
+    const ps = view.players;
+    for (let i = 0; i < ps.length; i++) { if (!ps[i].alive) continue; if (ps[i].team === 1) foes++; else team++; }
+    return team > 0 && foes === 0;
+  }
+
   trackGhost(gb, dt) {
     const idx = Math.floor(gb.y) * GRID_W + Math.floor(gb.x);
     if (idx < 0 || idx >= CELLS) return;
@@ -957,6 +1012,7 @@ export class Renderer {
     this.players.forEach((fx, id) => { if (fx.seen < cutoff) { fx.releaseTag(); this.players.delete(id); } });
     this.bombs.forEach((fx, id) => { if (fx.seen < cutoff) this.bombs.delete(id); });
     this.items.forEach((fx, id) => { if (fx.seen < cutoff) this.items.delete(id); });
+    this.monsters.forEach((fx, id) => { if (fx.seen < cutoff) this.monsters.delete(id); });
   }
 
   /** A countdown that starts from the top means a new round: forget the last one's effects and per-fighter animation state. */
@@ -968,7 +1024,10 @@ export class Renderer {
     this.shake.t0 = -1e9;
     this.flash.t0 = -1e9;
     this.goAt = -1e9;
-    this.bombs.clear(); this.items.clear();
+    this.bombs.clear(); this.items.clear(); this.monsters.clear();
+    this.mpops.length = 0;
+    this.clearAt = -1e9;
+    this.doorFx.open = false; this.doorFx.at = -1e9;
     this.tileSeen.fill(-1e6);
     this.scorch.fill(-1e9);
     this.players.forEach((fx) => {
@@ -978,7 +1037,7 @@ export class Renderer {
     this.seedAmbient();
   }
 
-  teamMode(view) { return view.mode === 'teams' || (view.mode !== 'ffa' && this.mode === 'teams'); }
+  teamMode(view) { return view.mode === 'teams' || (view.mode !== 'ffa' && !isCoopMode(view.mode) && this.mode === 'teams'); }
 
   // ---- Painting ---------------------------------------------------------------------------------------------------
 
@@ -1077,6 +1136,11 @@ export class Renderer {
       drawSprite(g, set.fx.scorch, ((idx % GRID_W) + 0.5) * T, (Math.floor(idx / GRID_W) + 0.52) * T);
     }
     g.globalAlpha = 1;
+    const door = view.door;                                  // co-op: the exit door is floor art, under the danger marks
+    if (door && set.coop) {
+      const sprite = set.door(door.open, reduced ? 0 : Math.floor(now / 110) % DOOR_FRAMES);
+      if (sprite) drawSprite(g, sprite, door.tx * T, door.ty * T);
+    }
     this.paintDanger(g, view, T, now, reduced);
     // Sudden death: the tile darkens and a warning mark pulses as the block comes down.
     const fl = view.falling;
@@ -1228,6 +1292,11 @@ export class Renderer {
     for (let i = 0; i < gs.length; i++) list.add(E_GHOST, i, gs[i].y + 0.32);
     for (let i = 0; i < its.length; i++) list.add(E_ITEM, i, its[i].y + 0.1);
     for (let i = 0; i < this.pops.length; i++) list.add(E_POP, i, this.pops[i].ty + 1);
+    if (set.coop) {
+      const ms = view.monsters;
+      for (let i = 0; i < ms.length; i++) list.add(E_MONSTER, i, ms[i].y + 0.33);
+      for (let i = 0; i < this.mpops.length; i++) list.add(E_MPOP, i, this.mpops[i].y + 0.33);
+    }
     list.sort();
     const { order, key } = list;
     let e = 0;
@@ -1251,6 +1320,8 @@ export class Renderer {
       case E_BOMB: this.drawBomb(g, view, view.bombs[ref[i]], T, now, reduced); break;
       case E_GHOST: this.drawGhostBomb(g, view.ghostBombs[ref[i]], T, now, reduced); break;
       case E_ITEM: this.drawItem(g, view.items[ref[i]], T, now, reduced); break;
+      case E_MONSTER: this.drawMonster(g, view.monsters[ref[i]], T, now, reduced); break;
+      case E_MPOP: this.drawMonsterPop(g, this.mpops[ref[i]], T, now); break;
       default: {
         const p = this.pops[ref[i]];
         drawSprite(g, this.set.softPopAt(p.tx, p.ty, Math.floor((now - p.t0) / 50)), p.tx * T, p.ty * T);
@@ -1301,6 +1372,7 @@ export class Renderer {
     drawSprite(g, set.fx.shadow, Math.round(px), Math.round(py + 0.36 * T), 0.95 - lift * 0.5);
     const teams = this.teamMode(view);
     if (teams) drawSprite(g, set.teamRing[p.team & 1], Math.round(px), Math.round(py + 0.34 * T));
+    else if (view.mode === 'coop' && p.team === 1) drawSprite(g, set.teamRing[0], Math.round(px), Math.round(py + 0.34 * T));   // co-op: the enemy bots wear coral
     if (p.isMe) this.paintLocalRing(g, px, py, T, now, teams, this.dangerAt(p));
     drawSprite(g, sprite, cx, cy, pose.sx, pose.sy);
     // shield bubble: item shield first (its last 2 s blink), else the spawn shield (blinks all along)
@@ -1421,6 +1493,36 @@ export class Renderer {
     drawSprite(g, token, px, py, sc);
   }
 
+  // ---- Monsters (co-op) ----------------------------------------------------------------------------------------------
+
+  /** A monster: its shadow, the bob frame for where it looks, a pop-in, and a white flash while it is invulnerable. */
+  drawMonster(g, m, T, now, reduced) {
+    const set = this.set, fx = this.monsters.get(m.id), sprites = set.monster(m.kind, m.angry);
+    if (!fx || !sprites) return;
+    const face = m.facing & 3;
+    const frame = reduced ? 0 : Math.floor(now / 150 + fx.phase) % MONSTER_FRAMES;
+    const t = clamp((now - fx.born) / MONSTER_IN_MS, 0, 1), pop = t < 1 ? 0.3 + 0.7 * easeOutBack(t) : 1;
+    const floats = m.kind === 'puff' || m.kind === 'ghost';
+    const px = Math.round(m.x * T), py = Math.round(m.y * T);
+    drawSprite(g, set.fx.shadow, px, Math.round(py + 0.36 * T), (floats ? 0.6 : 0.85) * pop);
+    drawSprite(g, sprites.walk[face][frame], px, py, pop);
+    if (m.hurt && (reduced || (Math.floor(now / 90) & 1))) {
+      g.globalAlpha = 0.75;
+      drawSprite(g, sprites.flash[face], px, py, pop);
+      g.globalAlpha = 1;
+    }
+  }
+
+  /** A popped monster: its x-eyed face swells and fades (the smoke and the points are particles). */
+  drawMonsterPop(g, p, T, now) {
+    const sprites = this.set.monster(p.kind, p.angry);
+    if (!sprites) return;
+    const u = clamp((now - p.t0) / MONSTER_POP_MS, 0, 1);
+    g.globalAlpha = 1 - u * u;
+    drawSprite(g, sprites.dead, Math.round(p.x * T), Math.round((p.y - 0.15 * u) * T), 1 + 0.35 * Math.sin(u * Math.PI * 0.5));
+    g.globalAlpha = 1;
+  }
+
   // ---- Things above the y-sorted layer -------------------------------------------------------------------------------
 
   paintAloft(g, view, T, now) {
@@ -1450,9 +1552,17 @@ export class Renderer {
     }
   }
 
-  /** Additive bloom around flames. */
+  /** Additive bloom around flames (and the open exit door of an adventure level). */
   paintLight(g, view, T, now, reduced) {
     const fl = view.flames, set = this.set;
+    const door = view.door;
+    if (door && door.open && set.doorGlow) {
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = reduced ? 0.45 : 0.4 + 0.12 * Math.sin(now * 0.004);
+      drawSprite(g, set.doorGlow, (door.tx + 0.5) * T, (door.ty + 0.52) * T);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+    }
     if (!fl.length) return;
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < fl.length; i++) {
@@ -1572,7 +1682,7 @@ export class Renderer {
       g.scale(pop, pop);
       g.font = boldFont(size); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       g.lineWidth = size * 0.2; g.strokeStyle = 'rgba(27,16,51,0.95)'; g.strokeText(b.text, 0, size * 0.05);
-      g.fillStyle = b.kind === 'sd' ? '#ff6a3d' : GOLD; g.fillText(b.text, 0, 0);
+      g.fillStyle = b.kind === 'sd' ? '#ff6a3d' : b.kind === 'clear' ? '#8ff7a8' : GOLD; g.fillText(b.text, 0, 0);
     } finally {
       g.restore();
     }
@@ -1804,6 +1914,63 @@ export class Renderer {
         break;
       }
       case 'showdown': this.showBanner('SHOWDOWN', 'showdown', 2300, now); break;
+      // ---- co-op (Appendix C)
+      case 'mspawn': {
+        const [, id, , x, y] = e;
+        const fx = new MonsterFx(now, this.rand);
+        fx.x = x; fx.y = y; fx.init = true;
+        this.monsters.set(id, fx);
+        if (this.spend(8)) { pt.ring(x, y + 0.2, 0.05, 0.1, 0.8, 0.35, RING.CURSE, 0.8); pt.stars(x, y, 0.3, 3, 1.6); }
+        break;
+      }
+      case 'mhit': {
+        const [, , , x, y] = e;
+        if (this.spend(10)) { pt.ring(x, y, 0.2, 0.2, 1, 0.3, RING.WHITE, 0.9); pt.sparks(x, y, 0.3, 5, 3, 0.4, 0.6); pt.stars(x, y - 0.3, 0.4, 3, 1.8); }
+        this.texts.add('BONK!', x, y - 0.2, '#fff3a6', 0.38, 0.9);
+        this.startShake(1.6 * this.proximity(view, x, y), now);
+        break;
+      }
+      case 'mdeath': {
+        const [, id, kind, x, y, , points] = e;
+        const fx = this.monsters.get(id);
+        this.monsters.delete(id);
+        this.mpops.push({ kind, angry: false, x: fx ? fx.x : x, y: fx ? fx.y : y, t0: now });
+        if (this.spend(16)) { pt.smoke(x, y, 0.15, 4, false, 0.5, 0.9, 0.3); pt.stars(x, y, 0.3, 5, 2.4); pt.ring(x, y + 0.2, 0.1, 0.15, 1.1, 0.4, RING.WHITE, 0.9); }
+        if (points > 0) this.texts.add(`+${points}`, x, y - 0.1, GOLD, 0.44, 1.2);
+        break;
+      }
+      case 'door': {
+        const [, tx, ty, open] = e;
+        const x = tx + 0.5, y = ty + 0.5;
+        if (open === 1) {
+          this.doorFx.open = true; this.doorFx.at = now;
+          if (this.spend(20)) { pt.ring(x, y, 0.05, 0.2, 2.2, 0.6, RING.FIRE, 0.95); pt.sparkle(x, y, 0.3, 10, ITEM_KINDS.indexOf('glove'), 2.4); pt.glow(x, y, 0.2, 3, 0.5, false, 0.9); }
+          this.startFlash(0.5, now);
+        } else if (this.spend(12)) {
+          pt.ring(x, y, 0.05, 0.15, 1.4, 0.5, RING.WHITE, 0.9); pt.stars(x, y, 0.3, 5, 2);
+        }
+        break;
+      }
+      case 'exit': {
+        const [, , tx, ty] = e;
+        const x = tx + 0.5, y = ty + 0.5;
+        this.clearAt = now;
+        if (!this.reducedEffects && this.spend(40)) { pt.confetti(x, y - 0.3, 0.6, 26, 3.6, 7); pt.stars(x, y, 0.4, 8, 3); }
+        if (this.spend(6)) pt.ring(x, y, 0.05, 0.2, 2.6, 0.7, RING.FIRE, 0.95);
+        this.startFlash(0.7, now);
+        break;
+      }
+      case 'respawn': {
+        const [, id, x, y] = e;
+        const fx = this.fxFor(id);
+        fx.dead = false; fx.deathAt = -1; fx.poofed = false; fx.gone = false; fx.init = false; fx.hitAt = -1e9;
+        if (this.spend(12)) { pt.ring(x, y + 0.2, 0.05, 0.15, 1.2, 0.5, RING.ICE, 0.9); pt.sparkle(x, y, 0.3, 6, ITEM_KINDS.indexOf('shield'), 2); }
+        break;
+      }
+      case 'hurry':
+        this.showBanner('HURRY UP!', 'sd', 2300, now);
+        this.startShake(2, now);
+        break;
       default: break;
     }
   }

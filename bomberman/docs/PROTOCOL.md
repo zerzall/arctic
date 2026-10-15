@@ -191,6 +191,7 @@ Names and chat go through `protocol.sanitizeText(raw, max, fallback)`: NFC; cont
   "roundTime": 120,
   "suddenDeath": true,
   "mode": "ffa",
+  "difficulty": "normal",
   "theme": "random",
   "layout": "classic",
   "blocks": "normal",
@@ -307,6 +308,7 @@ Names and chat go through `protocol.sanitizeText(raw, max, fallback)`: NFC; cont
 | `bad_phase` | Not allowed in the current phase. |
 | `need_players` | `start` with fewer than 2 entries. |
 | `need_teams` | `start` in team mode without a fighter in each team. |
+| `need_seat` | `start` in Co-op vs bots with all 8 seats taken: the enemy bots need at least one. |
 | `rate_limited` | Too many messages of that type, too many rooms, or too many failed joins. |
 | `kicked` | A banned token tried to rejoin. |
 | `closed` | The room or the server is closing. |
@@ -408,7 +410,7 @@ An event is `[code, ...args]`. Ids are integers, `tx`/`ty` integers, `x`/`y` flo
 | `pickup` | `itemId`, `playerId`, `kind`, `tx`, `ty` | `kind` is an item kind; a `skull` additionally emits `curse`. | `["pickup",7,2,"speed",10,11]` |
 | `itemgone` | `itemId`, `tx`, `ty`, `kind` | An item was destroyed by an explosion or a sudden-death tile. | `["itemgone",1,4,1,"speed"]` |
 | `bombgone` | `bombId`, `tx`, `ty` | A bomb was removed WITHOUT exploding (a sudden-death tile landed on it). | `["bombgone",200,1,1]` |
-| `death` | `playerId`, `killerId`, `x`, `y` | `killerId` >= 0 is the flame owner (equal to `playerId` for an own goal); -1 = sudden death or an orphaned bomb. | `["death",1,1,1.34,3]` |
+| `death` | `playerId`, `killerId`, `x`, `y` | `killerId` >= 0 is the flame owner (equal to `playerId` for an own goal); -1 = sudden death or an orphaned bomb; -3 = a monster (adventure). | `["death",1,1,1.34,3]` |
 | `left` | `playerId` | A fighter was removed (leave, kick, grace expiry). No `death` event is emitted for it. | `["left",1]` |
 | `shieldhit` | `playerId`, `x`, `y` | A flame was absorbed by a shield or spawn shield (at most one per fighter per 12 ticks). | `["shieldhit",1,1.34,1.34]` |
 | `kick` | `playerId`, `bombId`, `dir` | A bomb started sliding; `dir` is 1..4. | `["kick",0,9,3]` |
@@ -418,6 +420,65 @@ An event is `[code, ...args]`. Ids are integers, `tx`/`ty` integers, `x`/`y` flo
 | `sdstart` | (none) | Sudden death began. | `["sdstart"]` |
 | `sdland` | `tx`, `ty` | A falling tile landed; the cell is now `X`. | `["sdland",1,1]` |
 | `showdown` | (none) | The last human died with a fight left: the round clock was cut to 15 s. | `["showdown"]` |
+| `mspawn` | `monsterId`, `kind`, `x`, `y` | Co-op (adventure): a monster appeared mid-level (a jelly split in two, or a hurry-up). Monsters placed at the start of a level have no event. | `["mspawn",7,"mini",3.5,5.5]` |
+| `mhit` | `monsterId`, `kind`, `x`, `y`, `ownerId` | Adventure: a monster with hit points left took a flame (it flashes, invulnerable, for a moment). `ownerId` is the flame owner, -1 orphaned. | `["mhit",4,"tank",13.5,4.58,0]` |
+| `mdeath` | `monsterId`, `kind`, `x`, `y`, `ownerId`, `points` | Adventure: a monster was popped by `ownerId`'s flame (-1 orphaned); `points` were added to the team score. | `["mdeath",3,"ghost",3.816,3.5,1,300]` |
+| `door` | `tx`, `ty`, `open` | Adventure: the exit door was uncovered (`open` 0, or 1 if every monster is already gone) or opened (`open` 1). | `["door",5,4,0]` |
+| `exit` | `playerId`, `tx`, `ty` | Adventure: a team member stepped on the open door; the level is cleared (same tick as the outcome lock). | `["exit",1,5,4]` |
+| `life` | `playerId`, `livesLeft` | Adventure: a human team member went down and spent a shared life; `livesLeft` is the pool after it (0: this was the last). | `["life",1,8]` |
+| `respawn` | `playerId`, `x`, `y` | Adventure: a downed human came back (shielded) at `x`, `y` after the respawn delay. | `["respawn",1,1.5,1.5]` |
+| `hurry` | (none) | Adventure: the level clock ran out; two angry monsters join and the clock shows "hurry" (`r` is -1 from now on). | `["hurry"]` |
+
+## Co-op modes (`mode` `coop` and `adventure`)
+
+SPEC Appendix C. Battle matches (`ffa`, `teams`) never carry any of the fields below, and their snapshots are byte-identical to a build without co-op. Every lobby entry is team 0 (`profile.team` is ignored); `difficulty` (settings) applies only here.
+
+| message | co-op additions |
+|---|---|
+| `lobby` | `round.winsNeeded` is the number of waves (`rounds`) or levels (8). In coop, the enemy bots are not lobby entries. |
+| `round` | `coop: { mode, level, of, difficulty }` (`level` is the wave or level number, `of` how many there are). In coop, `players` also lists the wave's enemy bots (`team` 1, `isBot` true, ids beyond the lobby's). In adventure, `roundTime` is the level clock (180 s) and `suddenDeath` is false. |
+| `snap` | adventure: `m`, `lv`, `rp` always, `dr` once the door was uncovered; both modes: `sc` (see below). |
+| `roundEnd` | `reason` is `clear` (wave beaten / door taken), `wipe` (no team member left) or `timeout`; `winnerTeam` 0 and `draw` false on `clear`, else `null` / true; `coop: { mode, level, of, cleared, lives, score }` (the run so far). Anything but `clear` ends the run (`matchOver: true`). |
+| `matchEnd` | `reason` is `victory` (all waves / levels cleared), `gameover` or `not_enough_players`; `winnerTeam` 0 on victory; standings rows add `monsters` (popped), ranked by monsters + kills, then fewer deaths; `coop: { mode, difficulty, of, cleared, reached, score, lives, victory }`. |
+| `death` event | `killerId` -3: caught by a monster. |
+| `error` | `need_seat` (coop with no seat left for an enemy). |
+
+| snapshot key | meaning |
+|---|---|
+| `m` | monsters `[[id, kind, x, y, facing, flags, hp], ...]`, ascending id |
+| `dr` | exit door `[tx, ty, open]` (`open` 0\|1); absent while it is still under its crate |
+| `lv` | shared lives left |
+| `sc` | team score |
+| `rp` | humans waiting to respawn `[[id, ticksLeft], ...]` (fighter order); `[]` when none |
+
+### Monster row `m[n]`
+
+| index | name | meaning |
+|---|---|---|
+| 0 | `M.ID` | monster id (ascending, never reused in a round) |
+| 1 | `M.K` | kind (below) |
+| 2 | `M.X` | centre x (3 decimals) |
+| 3 | `M.Y` | centre y |
+| 4 | `M.F` | facing 0..3 |
+| 5 | `M.FL` | flags (below) |
+| 6 | `M.HP` | hit points left |
+
+**Flags** `m[n][M.FL]`: `1` hurt, `2` angry. `decodeMonster(row)` in `shared/protocol.js` turns a row into a named object.
+
+| kind | speed (tiles/s) | hit points | points | behaviour |
+|---|---|---|---|---|
+| `puff` | 1.25 | 1 | 100 | wanders |
+| `zippy` | 2.2 | 1 | 200 | chases within 6 tiles |
+| `ghost` | 1.5 | 1 | 300 | chases within 8 tiles, floats through crates |
+| `tank` | 1.05 | 2 | 400 | wanders, angry and faster after the first hit |
+| `jelly` | 1.6 | 1 | 300 | wanders, splits into two `mini` |
+| `mini` | 2.1 | 1 | 100 | wanders |
+
+### Example: the co-op keys of an adventure snapshot (level 2, two players)
+
+```json
+{"k":420,"m":[[1,"puff",13.5,3.414,0,0,1],[2,"puff",7.5,10.586,2,0,1],[3,"puff",13.414,7.5,3,0,1],[4,"zippy",9.5,11.373,2,0,1]],"lv":4,"sc":1200,"rp":[]}
+```
 
 ## Enumerations and tables
 
@@ -428,8 +489,9 @@ An event is `[code, ...args]`. Ids are integers, `tx`/`ty` integers, `x`/`y` flo
 | themes | `meadow` `frost` `lava` `candy` `night` |
 | bot levels | `easy` `normal` `hard` |
 | phases | `lobby` `match` `results` |
-| round reasons | `last` `wipe` `timeout` |
-| match reasons | `wins` `cap` `not_enough_players` |
+| round reasons | `last` `wipe` `timeout`; co-op: `clear` `wipe` `timeout` |
+| match reasons | `wins` `cap` `not_enough_players`; co-op: `victory` `gameover` `not_enough_players` |
+| monster kinds | `puff` `zippy` `ghost` `tank` `jelly` `mini` |
 | player colors | 0 Red (antenna), 1 Blue (propeller), 2 Green (sprout), 3 Yellow (crown), 4 Purple (horns), 5 Orange (flame), 6 Pink (bow), 7 Cyan (headphones) |
 | emotes | 0 😀 1 😂 2 😡 3 😱 4 👍 5 🎉 6 💣 7 💀 |
 
@@ -440,7 +502,8 @@ An event is `[code, ...args]`. Ids are integers, `tx`/`ty` integers, `x`/`y` flo
 | `rounds` | `1` `2` `3` `5` `7` | `3` |
 | `roundTime` | `0` `60` `90` `120` `180` `240` | `120` |
 | `suddenDeath` | `true` `false` | `true` |
-| `mode` | `"ffa"` `"teams"` | `"ffa"` |
+| `mode` | `"ffa"` `"teams"` `"coop"` `"adventure"` | `"ffa"` |
+| `difficulty` | `"easy"` `"normal"` `"hard"` | `"normal"` |
 | `theme` | `"random"` `"meadow"` `"frost"` `"lava"` `"candy"` `"night"` | `"random"` |
 | `layout` | `"classic"` `"open"` | `"classic"` |
 | `blocks` | `"few"` `"normal"` `"many"` | `"normal"` |
@@ -476,7 +539,7 @@ Within one Room step the message order is always `snap`, `roundEnd`, `lobby`, th
 | reconnect | client `join { code, token, name }`; the old connection is closed with code 4001 `replaced`; `joined { seq: entry.lastSeq }`, `lobby`, and in a match `round` (live), full `snap`, and the stored `roundEnd` if the outcome is locked; in results the stored `matchEnd`. |
 | socket drop | the entry keeps its slot for the grace period (120 s in lobby/results, 30 s in a match), then it is removed. |
 | leave / kick | `leave` removes the entry at once; a kick sends `kicked`, closes the connection and bans the token. Others get `lobby` and `sys`. |
-| start | host `start`; errors in this order: `not_host`, `bad_phase`, `need_players`, `need_teams`. Then `lobby`, `round`, full `snap` to everyone. |
+| start | host `start`; errors in this order: `not_host`, `bad_phase`, `need_players` (`need_seat` in coop), `need_teams`. Then `lobby`, `round`, full `snap` to everyone. |
 | round end | outcome lock: `snap` (flush), `roundEnd { matchOver }`, `lobby` (wins). After the World reaches `over` and the hold passed: `matchEnd` and phase results, or the next `round` plus full `snap`. |
 | back to lobby | host `lobby` in phase results (or automatically after 30 s), or during a match to abort it (`sys` "Host ended the match"). |
 | sync | client `sync` (at most 1/s); the Room answers with a unicast full snapshot during a match, otherwise ignores it. |

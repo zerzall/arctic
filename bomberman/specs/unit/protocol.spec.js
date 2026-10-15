@@ -138,8 +138,8 @@ test('constants: wire version and type names', () => {
   assert.deepEqual(Object.values(CLIENT_MSG).sort(), ['addBot', 'chat', 'create', 'emote', 'in', 'join', 'kick', 'leave', 'lobby', 'ping', 'profile', 'removeBot', 'settings', 'start', 'sync']);
   assert.deepEqual(Object.values(SERVER_MSG).sort(), ['chat', 'emote', 'error', 'joined', 'kicked', 'lobby', 'matchEnd', 'pong', 'round', 'roundEnd', 'snap', 'sys']);
   assert.deepEqual(Object.values(ERR).sort(), [
-    'bad_msg', 'bad_phase', 'busy', 'closed', 'full', 'kicked', 'locked', 'need_players', 'need_teams', 'no_room', 'not_host', 'rate_limited', 'version',
-  ]);
+    'bad_msg', 'bad_phase', 'busy', 'closed', 'full', 'kicked', 'locked', 'need_players', 'need_seat', 'need_teams', 'no_room', 'not_host', 'rate_limited', 'version',
+  ]);   // need_seat: co-op vs bots with no seat left for an enemy (SPEC Appendix C)
 });
 
 test('create: valid, optional colour, sanitised name', () => {
@@ -446,11 +446,14 @@ test('decodePlayer / decodeBomb decode the canonical fixture rows', () => {
   assert.deepEqual(decodeBomb([9, -1, 3, 4, 5, 4, 100, 3, 0, [1.5, 4.5, 5.5, 4.5, 10, 26], []]).fly, { fx: 1.5, fy: 4.5, tx: 5.5, ty: 4.5, left: 10, total: 26 });
 });
 
-test('EVENT_ARGS is the closed event list of Appendix A.3', () => {
+test('EVENT_ARGS is the closed event list of Appendix A.3 plus the co-op events of Appendix C', () => {
   assert.deepEqual(Object.keys(EVENT_ARGS).sort(), [
     'block', 'bomb', 'bombgone', 'boom', 'curse', 'death', 'go', 'itemgone', 'itemspawn', 'kick', 'land', 'left', 'pickup',
     'sdland', 'sdstart', 'shieldhit', 'showdown', 'throw',
-  ]);
+    'door', 'exit', 'hurry', 'life', 'mdeath', 'mhit', 'mspawn', 'respawn',
+  ].sort());
+  assert.deepEqual(EVENT_ARGS.mdeath, ['monsterId', 'kind', 'x', 'y', 'ownerId', 'points']);
+  assert.deepEqual(EVENT_ARGS.door, ['tx', 'ty', 'open']);
   assert.deepEqual(EVENT_ARGS.boom, ['bombId', 'ownerId', 'tx', 'ty', 'range', 'tiles']);
   assert.deepEqual(EVENT_ARGS.throw, ['playerId', 'bombId', 'fromTx', 'fromTy', 'toTx', 'toTy']);
   assert.ok(Object.isFrozen(EVENT_ARGS) && Object.isFrozen(EVENT_ARGS.boom));

@@ -14,8 +14,10 @@ import { buildSingle, cspFor, sha256Base64, inertScript, DEFAULT_OUT } from '../
 // never fetches, and an example address in the localhost hint that ui.js prints (also a plain string).
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const SIZE_CEILING = 520 * 1024;
-const GZIP_CEILING = 175 * 1024;
+// The co-op modes (SPEC Appendix C: monsters, their art and sounds, the co-op HUD and results) added about 57 KB raw / 13 KB gzipped
+// on top of the ~482 KB the battle game needed; the ceilings keep the same headroom over that.
+const SIZE_CEILING = 580 * 1024;
+const GZIP_CEILING = 190 * 1024;
 const INERT_URLS = new Set([
   'http://www.w3.org/2000/svg', 'http://www.w3.org/1999/xlink', 'http://www.w3.org/2000/xmlns/', 'http://www.w3.org/1999/xhtml',
 ]);

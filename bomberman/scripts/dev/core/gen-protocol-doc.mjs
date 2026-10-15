@@ -6,7 +6,7 @@
 // Every table of indexes, enums, limits and events is read from shared/*.js, every client message example is run
 // through parseClientMessage (and the generator throws if one is rejected), and the snapshot / event examples are
 // produced by a real World. Only the prose (flows, message field lists of the Room, which does not live in the
-// shared modules the generator can call) is written here, and it is a transcription of docs/SPEC.md.
+// shared modules the generator can call) is written here, and it is a transcription of docs/SPEC.md (the co-op section: Appendix C).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import * as C from '../../../shared/constants.js';
 import * as PR from '../../../shared/protocol.js';
 import { World } from '../../../shared/world.js';
 import { makeRng } from '../../../shared/rng.js';
+import { BotBrain } from '../../../shared/bots.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const OUT = `${ROOT}docs/PROTOCOL.md`;
@@ -76,11 +77,15 @@ for (const [label, raw, want] of REJECTED_EXAMPLES) {
 
 const fighter = (id, name, over = {}) => ({ id, name, color: id, team: id % 2, isBot: false, lastSeq: 0, ...over });
 
+/** Events that only the co-op modes emit (Appendix C); battle rounds never produce them. */
+const COOP_EVENTS = new Set(['mspawn', 'mhit', 'mdeath', 'door', 'exit', 'life', 'respawn', 'hurry']);
+
 /** Plays random rounds until every event code has occurred; returns the first occurrence of each. */
 function collectEventExamples() {
   const found = new Map();
+  const battle = Object.keys(PR.EVENT_ARGS).filter((c) => !COOP_EVENTS.has(c));
   const rng = makeRng(2024);
-  for (let seed = 1; seed <= 60 && found.size < Object.keys(PR.EVENT_ARGS).length; seed++) {
+  for (let seed = 1; seed <= 60 && !battle.every((c) => found.has(c)); seed++) {
     const n = 2 + (seed % 7);
     const w = new World({
       seed, fighters: Array.from({ length: n }, (_, i) => fighter(i, `P${i}`, { isBot: i % 2 === 1 })), roundTime: 60, blocks: 'many', items: 'many',
@@ -101,8 +106,43 @@ function collectEventExamples() {
       w.trimEvents(cursor);
     }
   }
+  collectCoopEvents(found);
   for (const code of Object.keys(PR.EVENT_ARGS)) if (!found.has(code)) throw new Error(`no example of the ${code} event turned up`);
   return found;
+}
+
+/**
+ * Adventure levels: bots play one (monsters hit and popped, the door found, opened and taken), a team that stands still loses
+ * lives and respawns, and a shielded one that stands still sees the hurry-up and the monsters it brings.
+ */
+function collectCoopEvents(found) {
+  for (let seed = 1; seed <= 12 && ![...COOP_EVENTS].every((c) => found.has(c)); seed++) {
+    const idle = seed % 3 !== 1;
+    const shielded = seed % 3 === 0;                 // nobody can be caught, so the level clock runs out
+    const w = new World({
+      seed, fighters: [fighter(0, 'Mom', { team: 0 }), fighter(1, 'Dad', { team: 0 })], mode: 'adventure', coop: { level: 5, difficulty: 'normal', lives: 9, score: 0 },
+    });
+    const brains = w.players.map((p) => new BotBrain({ level: 'hard', seed: seed * 31 + p.id }));
+    let cursor = 0;
+    for (let t = 0; t < 14000 && w.state !== C.STATE.OVER; t++) {
+      if (shielded) for (const p of w.players) p.shield = C.SHIELD_FOREVER;
+      if (!idle && w.state === C.STATE.PLAYING) {
+        w.players.forEach((p, i) => { if (p.alive) { const c = brains[i].think(w, p.id); w.applyCmd(p.id, { s: t + 1, d: c.d, b: c.b, x: c.x }); } });
+      }
+      w.tick();
+      for (const ev of w.eventsSince(cursor)) if (COOP_EVENTS.has(ev[0]) && !found.has(ev[0])) found.set(ev[0], ev);
+      cursor = w.evCount;
+      w.trimEvents(cursor);
+    }
+  }
+}
+
+/** The co-op keys of an adventure snapshot a few seconds into level 2. */
+function coopSnapshotExample() {
+  const w = new World({ seed: 11, fighters: [fighter(0, 'Mom', { team: 0 }), fighter(1, 'Dad', { team: 0 })], mode: 'adventure', coop: { level: 2, difficulty: 'normal', lives: 4, score: 1200 } });
+  for (let i = 0; i < C.COUNTDOWN_TICKS + 240; i++) w.tick();
+  const snap = w.snapshot({ grid: false, evFrom: w.evCount });
+  return Object.fromEntries(['k', 'm', 'lv', 'sc', 'rp'].map((k) => [k, snap[k]]));
 }
 
 /** A small deterministic scene: one bomb placed, then exploding next to a soft block. */
@@ -132,7 +172,7 @@ const EVENT_DOC = {
   pickup: '`kind` is an item kind; a `skull` additionally emits `curse`.',
   itemgone: 'An item was destroyed by an explosion or a sudden-death tile.',
   bombgone: 'A bomb was removed WITHOUT exploding (a sudden-death tile landed on it).',
-  death: '`killerId` >= 0 is the flame owner (equal to `playerId` for an own goal); -1 = sudden death or an orphaned bomb.',
+  death: '`killerId` >= 0 is the flame owner (equal to `playerId` for an own goal); -1 = sudden death or an orphaned bomb; -3 = a monster (adventure).',
   left: 'A fighter was removed (leave, kick, grace expiry). No `death` event is emitted for it.',
   shieldhit: 'A flame was absorbed by a shield or spawn shield (at most one per fighter per 12 ticks).',
   kick: 'A bomb started sliding; `dir` is 1..4.',
@@ -142,6 +182,14 @@ const EVENT_DOC = {
   sdstart: 'Sudden death began.',
   sdland: 'A falling tile landed; the cell is now `X`.',
   showdown: 'The last human died with a fight left: the round clock was cut to 15 s.',
+  mspawn: 'Co-op (adventure): a monster appeared mid-level (a jelly split in two, or a hurry-up). Monsters placed at the start of a level have no event.',
+  mhit: 'Adventure: a monster with hit points left took a flame (it flashes, invulnerable, for a moment). `ownerId` is the flame owner, -1 orphaned.',
+  mdeath: 'Adventure: a monster was popped by `ownerId`\'s flame (-1 orphaned); `points` were added to the team score.',
+  door: 'Adventure: the exit door was uncovered (`open` 0, or 1 if every monster is already gone) or opened (`open` 1).',
+  exit: 'Adventure: a team member stepped on the open door; the level is cleared (same tick as the outcome lock).',
+  life: 'Adventure: a human team member went down and spent a shared life; `livesLeft` is the pool after it (0: this was the last).',
+  respawn: 'Adventure: a downed human came back (shielded) at `x`, `y` after the respawn delay.',
+  hurry: 'Adventure: the level clock ran out; two angry monsters join and the clock shows "hurry" (`r` is -1 from now on).',
 };
 for (const code of Object.keys(PR.EVENT_ARGS)) if (!EVENT_DOC[code]) throw new Error(`document the ${code} event`);
 for (const code of Object.keys(EVENT_DOC)) if (!PR.EVENT_ARGS[code]) throw new Error(`${code} is documented but not an event`);
@@ -180,6 +228,7 @@ const ERROR_DOC = {
   rate_limited: 'Too many messages of that type, too many rooms, or too many failed joins.',
   kicked: 'A banned token tried to rejoin.',
   closed: 'The room or the server is closing.',
+  need_seat: '`start` in Co-op vs bots with all 8 seats taken: the enemy bots need at least one.',
 };
 for (const c of Object.values(PR.ERR)) if (!ERROR_DOC[c]) throw new Error(`document error ${c}`);
 
@@ -288,13 +337,43 @@ function render() {
     })),
   );
 
+  // ---- co-op
+  const coopSnap = coopSnapshotExample();
+  const monsterNames = { ID: 'monster id (ascending, never reused in a round)', K: 'kind (below)', X: 'centre x (3 decimals)', Y: 'centre y', F: 'facing 0..3', FL: 'flags (below)', HP: 'hit points left' };
+  add(
+    '## Co-op modes (`mode` `coop` and `adventure`)',
+    'SPEC Appendix C. Battle matches (`ffa`, `teams`) never carry any of the fields below, and their snapshots are byte-identical to a build without co-op. Every lobby entry is team 0 (`profile.team` is ignored); `difficulty` (settings) applies only here.',
+    table(['message', 'co-op additions'], [
+      ['`lobby`', '`round.winsNeeded` is the number of waves (`rounds`) or levels (' + C.ADVENTURE_LEVELS + '). In coop, the enemy bots are not lobby entries.'],
+      ['`round`', '`coop: { mode, level, of, difficulty }` (`level` is the wave or level number, `of` how many there are). In coop, `players` also lists the wave\'s enemy bots (`team` 1, `isBot` true, ids beyond the lobby\'s). In adventure, `roundTime` is the level clock (' + C.ADVENTURE_TIME + ' s) and `suddenDeath` is false.'],
+      ['`snap`', 'adventure: `m`, `lv`, `rp` always, `dr` once the door was uncovered; both modes: `sc` (see below).'],
+      ['`roundEnd`', '`reason` is `clear` (wave beaten / door taken), `wipe` (no team member left) or `timeout`; `winnerTeam` 0 and `draw` false on `clear`, else `null` / true; `coop: { mode, level, of, cleared, lives, score }` (the run so far). Anything but `clear` ends the run (`matchOver: true`).'],
+      ['`matchEnd`', '`reason` is `victory` (all waves / levels cleared), `gameover` or `not_enough_players`; `winnerTeam` 0 on victory; standings rows add `monsters` (popped), ranked by monsters + kills, then fewer deaths; `coop: { mode, difficulty, of, cleared, reached, score, lives, victory }`.'],
+      ['`death` event', '`killerId` -3: caught by a monster.'],
+      ['`error`', '`need_seat` (coop with no seat left for an enemy).'],
+    ]),
+    table(['snapshot key', 'meaning'], [
+      ['`m`', 'monsters `[[id, kind, x, y, facing, flags, hp], ...]`, ascending id'], ['`dr`', 'exit door `[tx, ty, open]` (`open` 0|1); absent while it is still under its crate'],
+      ['`lv`', 'shared lives left'], ['`sc`', 'team score'], ['`rp`', 'humans waiting to respawn `[[id, ticksLeft], ...]` (fighter order); `[]` when none'],
+    ]),
+    '### Monster row `m[n]`',
+    table(['index', 'name', 'meaning'], Object.entries(PR.M).map(([n, i]) => [i, code(`M.${n}`), monsterNames[n]])),
+    '**Flags** `m[n][M.FL]`: ' + Object.entries(PR.MF).map(([n, v]) => `${code(v)} ${n.toLowerCase()}`).join(', ') + '. `decodeMonster(row)` in `shared/protocol.js` turns a row into a named object.',
+    table(['kind', 'speed (tiles/s)', 'hit points', 'points', 'behaviour'], C.MONSTER_KINDS.map((k) => {
+      const d = C.MONSTER_DEFS[k];
+      const how = [d.chase ? `chases within ${d.chase} tiles` : 'wanders', d.ghost ? 'floats through crates' : null, d.split ? `splits into two \`${d.split}\`` : null, d.hp > 1 ? 'angry and faster after the first hit' : null].filter(Boolean).join(', ');
+      return [code(k), d.speed, d.hp, d.points, how];
+    })),
+    '### Example: the co-op keys of an adventure snapshot (level 2, two players)', line(coopSnap),
+  );
+
   // ---- enums
   add(
     '## Enumerations and tables',
     table(['name', 'values'], [
       ['item kinds', C.ITEM_KINDS.map(code).join(' ')], ['curse kinds', C.CURSE_KINDS.map(code).join(' ')], ['themes', C.THEMES.map(code).join(' ')],
-      ['bot levels', C.BOT_LEVELS.map(code).join(' ')], ['phases', C.PHASES.map(code).join(' ')], ['round reasons', '`last` `wipe` `timeout`'],
-      ['match reasons', '`wins` `cap` `not_enough_players`'], ['player colors', C.PLAYER_COLORS.map((c, i) => `${i} ${c.name} (${c.accessory})`).join(', ')],
+      ['bot levels', C.BOT_LEVELS.map(code).join(' ')], ['phases', C.PHASES.map(code).join(' ')], ['round reasons', '`last` `wipe` `timeout`; co-op: `clear` `wipe` `timeout`'],
+      ['match reasons', '`wins` `cap` `not_enough_players`; co-op: `victory` `gameover` `not_enough_players`'], ['monster kinds', C.MONSTER_KINDS.map(code).join(' ')], ['player colors', C.PLAYER_COLORS.map((c, i) => `${i} ${c.name} (${c.accessory})`).join(', ')],
       ['emotes', C.EMOTES.map((e, i) => `${i} ${e}`).join(' ')],
     ]),
     '### Settings (`lobby.settings`, `settings.patch`)',
@@ -321,7 +400,7 @@ function render() {
       ['reconnect', 'client `join { code, token, name }`; the old connection is closed with code 4001 `replaced`; `joined { seq: entry.lastSeq }`, `lobby`, and in a match `round` (live), full `snap`, and the stored `roundEnd` if the outcome is locked; in results the stored `matchEnd`.'],
       ['socket drop', 'the entry keeps its slot for the grace period (120 s in lobby/results, 30 s in a match), then it is removed.'],
       ['leave / kick', '`leave` removes the entry at once; a kick sends `kicked`, closes the connection and bans the token. Others get `lobby` and `sys`.'],
-      ['start', 'host `start`; errors in this order: `not_host`, `bad_phase`, `need_players`, `need_teams`. Then `lobby`, `round`, full `snap` to everyone.'],
+      ['start', 'host `start`; errors in this order: `not_host`, `bad_phase`, `need_players` (`need_seat` in coop), `need_teams`. Then `lobby`, `round`, full `snap` to everyone.'],
       ['round end', 'outcome lock: `snap` (flush), `roundEnd { matchOver }`, `lobby` (wins). After the World reaches `over` and the hold passed: `matchEnd` and phase results, or the next `round` plus full `snap`.'],
       ['back to lobby', 'host `lobby` in phase results (or automatically after 30 s), or during a match to abort it (`sys` "Host ended the match").'],
       ['sync', 'client `sync` (at most 1/s); the Room answers with a unicast full snapshot during a match, otherwise ignores it.'],

@@ -6,6 +6,7 @@
 // No DOM, no globals, no clock: every input is an argument.
 
 import { isRoomCode } from './ui.js';
+import { COOP_MODES } from '../../shared/constants.js';
 
 // ---- Room code and stored session ------------------------------------------------------------------
 
@@ -79,6 +80,7 @@ export const ERROR_COPY = Object.freeze({
   bad_phase: 'You cannot do that right now.',
   need_players: 'Add a bot or wait for a friend: you need at least 2 players.',
   need_teams: 'Each team needs at least one player.',
+  need_seat: 'Co-op vs bots needs a free seat for the enemy bots: remove a bot or a player first.',
   kicked: 'You were removed from that room.',
 });
 
@@ -110,6 +112,38 @@ export function closeOutcome(info, ctx) {
   }
 }
 
+// ---- Co-op modes (docs/SPEC.md Appendix C) -----------------------------------------------------------
+
+/** killerId of a `death` event caused by a monster (shared/coop.js MONSTER_KILLER). */
+export const MONSTER_KILLER_ID = -3;
+
+export const isCoopMode = (mode) => COOP_MODES.includes(mode);
+
+/** Friendly names of the monster kinds, for the level intro and the HUD. */
+export const MONSTER_NAMES = Object.freeze({ puff: 'Puffball', zippy: 'Zippy', ghost: 'Boo', tank: 'Shellby', jelly: 'Wobble', mini: 'Mini Wobble' });
+
+/** One line about each monster kind: what it does, in words a child understands. */
+export const MONSTER_TIPS = Object.freeze({
+  puff: 'floats around slowly',
+  zippy: 'is fast and runs at you when you are close',
+  ghost: 'floats right through crates',
+  tank: 'needs two blasts, then gets angry',
+  jelly: 'pops into two little ones',
+});
+
+/** "Level 3" / "Wave 2": what a co-op round is called. */
+export const stageName = (mode, n) => `${mode === 'adventure' ? 'Level' : 'Wave'} ${n}`;
+
+/**
+ * The kinds a level brings, and the ones a team meets there for the first time (the intro explains those). `plan` is
+ * adventureLevel(level).monsters of shared/coop.js; `before` the kinds of every earlier level.
+ */
+export function monsterIntro(plan, before) {
+  const kinds = [...new Set(plan.filter((k) => k !== 'mini'))];
+  const seen = new Set(before);
+  return { kinds, fresh: kinds.filter((k) => !seen.has(k)) };
+}
+
 // ---- Kill feed -------------------------------------------------------------------------------------
 
 /**
@@ -121,6 +155,7 @@ export function deathText(ev, ctx) {
   const victim = ev[1];
   const killer = ev[2];
   const v = ctx.name(victim);
+  if (killer === MONSTER_KILLER_ID) return `A monster caught ${v}`;
   if (killer === victim) return `${v} blew themselves up`;
   if (killer >= 0) {
     const k = ctx.name(killer);
@@ -131,6 +166,7 @@ export function deathText(ev, ctx) {
 
 /** What a screen reader hears when the local player dies. */
 export function deathAnnouncement(ev, name) {
+  if (ev[2] === MONSTER_KILLER_ID) return 'A monster caught you.';
   if (ev[2] === ev[1]) return 'You blew yourself up.';
   return ev[2] >= 0 ? `You were blasted by ${name(ev[2])}.` : 'You were crushed by the walls.';
 }
@@ -155,6 +191,7 @@ export function panOf(x, width = 15) {
 /** Whether the local player is among the winners of a match (a joint win counts; a match nobody could finish does not). */
 export function wonMatch(msg, me) {
   if (!msg || msg.reason === 'not_enough_players') return false;
+  if (msg.coop) return msg.coop.victory === true;                          // co-op: the whole team wins or nobody does
   const standings = Array.isArray(msg.standings) ? msg.standings : [];
   const mine = standings.find((s) => s.id === me);
   if (msg.winnerTeam !== null && msg.winnerTeam !== undefined) return !!mine && mine.team === msg.winnerTeam;

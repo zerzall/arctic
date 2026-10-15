@@ -1359,10 +1359,10 @@ test('hudModel: fills the object of SPEC 8.6 from the View, the round and the lo
   const lobby = [{ id: 0, wins: 2, connected: true, waiting: false }, { id: 1, wins: 1, connected: false, waiting: true }];
   const hud = u.game.hudModel(u.game.getView(u.t), lobby);
   assert.deepEqual(hud, {
-    roundNo: 1, winsNeeded: 3, timeLeftSec: 61, suddenDeath: false, state: 'playing', mode: 'ffa',
+    roundNo: 1, winsNeeded: 3, timeLeftSec: 61, suddenDeath: false, state: 'playing', mode: 'ffa', coop: null,
     players: [
-      { id: 0, name: 'Ann', color: 0, team: 0, alive: true, wins: 2, bombsMax: 3, range: 4, speedLv: 2, kick: true, glove: true, shield: 100, curse: 'slow', isBot: false, isMe: true, connected: true, waiting: false },
-      { id: 1, name: 'Bob', color: 1, team: 1, alive: false, wins: 1, bombsMax: 1, range: 2, speedLv: 0, kick: false, glove: false, shield: 0, curse: null, isBot: true, isMe: false, connected: false, waiting: true },
+      { id: 0, name: 'Ann', color: 0, team: 0, alive: true, wins: 2, bombsMax: 3, range: 4, speedLv: 2, kick: true, glove: true, shield: 100, curse: 'slow', isBot: false, isMe: true, connected: true, waiting: false, foe: false, respawnSec: 0 },
+      { id: 1, name: 'Bob', color: 1, team: 1, alive: false, wins: 1, bombsMax: 1, range: 2, speedLv: 0, kick: false, glove: false, shield: 0, curse: null, isBot: true, isMe: false, connected: false, waiting: true, foe: false, respawnSec: 0 },
     ],
   });
   u.snap(30, { st: 2, r: -1, sd: 1 }, u.t);

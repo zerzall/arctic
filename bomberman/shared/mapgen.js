@@ -125,10 +125,11 @@ function guaranteeFirstBombEscape(cells, drops) {
 
 /**
  * @param {{ layout: 'classic'|'open', blocks: 'few'|'normal'|'many', items: 'none'|'few'|'normal'|'many',
- *           numFighters: number, rng: ReturnType<import('./rng.js').makeRng> }} opts
+ *           numFighters: number, rng: ReturnType<import('./rng.js').makeRng>, dropScale?: number }} opts
+ *   dropScale: factor on the chance that a block hides a prize (adventure levels give less as they go on, Appendix C); 1 elsewhere
  * @returns {{ grid: string, spawns: {tx:number,ty:number}[], drops: (string|null)[] }}
  */
-export function generateMap({ layout, blocks, items, numFighters, rng }) {
+export function generateMap({ layout, blocks, items, numFighters, rng, dropScale = 1 }) {
   const cells = new Array(CELLS);
   const drops = new Array(CELLS).fill(null);
   for (let ty = 0; ty < H; ty++) {
@@ -139,7 +140,8 @@ export function generateMap({ layout, blocks, items, numFighters, rng }) {
   }
 
   const density = BLOCK_DENSITY[blocks];
-  const pDrop = Math.min(0.85, DROP_CHANCE[items] * Math.max(1, numFighters / 4));   // bigger rooms get more items
+  let pDrop = Math.min(0.85, DROP_CHANCE[items] * Math.max(1, numFighters / 4));     // bigger rooms get more items
+  if (dropScale !== 1) pDrop *= dropScale;                                           // (skipped at 1: the battle modes stay bit-exact)
   // Normative draw order: top-left quadrant, row-major; one prize roll per planted block, shared by its 4 images.
   for (let ty = 1; ty <= 6; ty++) {
     for (let tx = 1; tx <= 7; tx++) {

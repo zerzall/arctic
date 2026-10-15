@@ -95,7 +95,10 @@
 //
 // EXPORTS: buildSpriteSet, startSpriteBuild, drawSprite, tileHash, iconDataURL, avatarDataURL, THEME_PALETTES,
 //   COLOR_NAMES, ACCESSORIES, ICON_NAMES, EMOTE_ICONS, EXTRA_EMOTE_ICONS, walkFrame, WALK_FRAMES, WALK_TILES_PER_CYCLE,
-//   FLAME_FRAMES, SOFT_POP_FRAMES, SHIELD_FRAMES, CURSE_AURA_FRAMES, BOMB_PULSE, BOMB_FUSE_TIP, BACKDROP_TILES.
+//   FLAME_FRAMES, SOFT_POP_FRAMES, SHIELD_FRAMES, CURSE_AURA_FRAMES, BOMB_PULSE, BOMB_FUSE_TIP, BACKDROP_TILES, MONSTER_FRAMES, DOOR_FRAMES.
+//
+// CO-OP (startSpriteBuild({ ..., coop: true })): set.monster(kind, angry) { walk[4][MONSTER_FRAMES], flash[4], dead }, set.door(open, frame),
+//   set.doorGlow; icons 'monster-<kind>', 'door-closed', 'door-open'. A set built without `coop` returns null for these.
 //
 // ----------------------------------------------------------------------------------------------------------
 // NOTES FOR MAINTAINERS
@@ -1446,6 +1449,9 @@ const ICONS = {
   crown: iconCrown, star: iconStar, ghost: iconGhost, bot: iconBot, heart: iconHeart,
   'emote-grin': iconGrin, 'emote-laugh': iconLaugh, 'emote-angry': iconAngry, 'emote-scream': iconScream, 'emote-thumbsup': iconThumbsUp,
   'emote-party': iconParty, 'emote-bomb': iconBomb, 'emote-skull': iconSkull, 'emote-gg': iconGG, 'emote-heart': iconHeart, 'emote-cry': iconCry, 'emote-cool': iconCool,
+  // co-op (the drawing functions are hoisted from the monster section below)
+  'monster-puff': iconMonster('puff'), 'monster-zippy': iconMonster('zippy'), 'monster-ghost': iconMonster('ghost'), 'monster-tank': iconMonster('tank'),
+  'monster-jelly': iconMonster('jelly'), 'door-closed': iconDoor(false), 'door-open': iconDoor(true),
 };
 
 /** Token colour behind each badge-style icon. Items and curses get a rounded tile; the rest are drawn bare. */
@@ -2551,6 +2557,296 @@ function drawEmoteBubble(g, icon) {
 }
 
 // ================================================================================================
+// Co-op: monsters and the exit door (docs/SPEC.md Appendix C)
+// ================================================================================================
+//
+// Five monster kinds, each with its own silhouette and colour so a child can tell them apart at a glance: a pink balloon (puff), a
+// yellow spiky spark (zippy, orange and frowning when angry), a mint sheet ghost that drifts through crates, a green armoured tortoise
+// (tank, its shell cracked and eyes red after the first hit) and a violet jelly dome that pops into two small lilac minis. They share
+// the blasties' finish: hue-shifted shading, a glossy highlight from the top left, deep outlines, big friendly eyes that look where
+// they are going. Frames: per facing a three-step bob/wobble cycle, a white silhouette for the hurt flash, and an x-eyed pose for
+// the pop. Anchor = the monster's centre (its tile centre when it stands still), like a fighter.
+//
+// The exit door is flat floor art (a stone ring on the tile, anchor = the tile's top-left): closed it is an iron-banded hatch with a
+// padlock, open it is a swirling golden portal (four frames). Everything here is built only for co-op matches (startSpriteBuild's
+// `coop` option), so battle matches pay nothing for it.
+
+export const MONSTER_FRAMES = 3;
+export const DOOR_FRAMES = 4;
+const MON_W = 124, MON_H = 140, MON_AY = 80;          // monster cell (design units) and its anchor row
+const MON_BOB = [[1, 1, 0], [1.06, 0.94, 2.5], [0.95, 1.06, -3]];   // sx, sy, dy of the bob cycle frames
+const LOOK = [[0, -1], [1, 0], [0, 1], [-1, 0]];       // facing 0 up, 1 right, 2 down, 3 left
+const MONSTER_COLORS = {
+  puff: '#ff8fc4', zippy: '#ffc93d', zippyAngry: '#ff7f2a', ghost: '#7ef2d2', tank: '#4cb86a', tankAngry: '#3f9b58', jelly: '#8d79ff', mini: '#c0b2ff',
+};
+
+/** Two big monster eyes looking along `look`; mood 'happy' | 'grumpy' | 'angry' | 'x'. */
+function monsterEyes(g, x, y, rx, ry, gap, look, mood, iris = EYE_INK) {
+  const [lx, ly] = look;
+  for (const side of [-1, 1]) {
+    const ex = x + side * gap;
+    if (mood === 'x') { eyeCross(g, ex, y, rx * 0.75); continue; }
+    g.beginPath(); ellipse(g, ex, y, rx, ry);
+    fillLine(g, '#ffffff', INK, 2.6);
+    g.beginPath(); ellipse(g, ex + lx * rx * 0.38, y + ly * ry * 0.34 + 1, rx * 0.56, ry * 0.6);
+    g.fillStyle = mood === 'angry' ? '#c3172f' : iris; g.fill();
+    g.beginPath(); circle(g, ex + lx * rx * 0.38 - rx * 0.2, y + ly * ry * 0.34 - ry * 0.2, rx * 0.22);
+    g.fillStyle = '#fff'; g.fill();
+    if (mood === 'grumpy' || mood === 'angry') {        // brows slanting down towards the middle
+      g.beginPath(); g.moveTo(ex - side * rx * 1.15, y - ry * 1.15); g.lineTo(ex + side * rx * 0.75, y - ry * 0.62);
+      g.lineWidth = mood === 'angry' ? 4.4 : 3.6; g.strokeStyle = INK; g.lineCap = 'round'; g.stroke();
+    }
+  }
+}
+
+/** A glossy body fill along the current path: highlight top left, shade bottom right, outline. */
+function monsterFill(g, r, cx, cy, size, line = true) {
+  g.fillStyle = rad(g, cx - size * 0.38 * LX, cy - size * 0.45, 2, cx, cy, size * 1.3, [[0, r.glint], [0.25, r.hi], [0.62, r.base], [1, r.lo]]);
+  g.fill();
+  if (line) { g.lineWidth = LINE_W; g.strokeStyle = r.line; g.lineJoin = 'round'; g.stroke(); }
+}
+
+function gloss(g, x, y, rx, ry, rot = -0.55) {
+  g.beginPath(); ellipse(g, x * LX, y, rx, ry, rot * LX);
+  g.fillStyle = 'rgba(255,255,255,0.78)'; g.fill();
+}
+
+/** The balloon: round, floating on its string, a small surprised "o" mouth. */
+function drawPuff(g, look, mood, bob) {
+  const r = ramp(MONSTER_COLORS.puff);
+  g.beginPath(); g.moveTo(0, 26); g.bezierCurveTo(-8, 36, 8, 42, -3, 52);
+  g.lineWidth = 2.6; g.strokeStyle = '#7a4a86'; g.lineCap = 'round'; g.stroke();
+  g.save(); g.translate(0, bob);
+  g.beginPath(); g.moveTo(-6, 27); g.lineTo(6, 27); g.lineTo(0, 19); g.closePath(); fillLine(g, r.lo, r.line, 2.4);
+  g.beginPath(); ellipse(g, 0, -6, 31, 33);
+  monsterFill(g, r, 0, -6, 33);
+  gloss(g, -14, -24, 9, 5);
+  g.beginPath(); circle(g, -22, -10, 2.4); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fill();
+  if (look[1] < 0) {                                    // seen from behind: a seam and the knot of the string
+    g.beginPath(); g.moveTo(0, -38); g.quadraticCurveTo(8, -6, 0, 24); g.lineWidth = 2.4; g.strokeStyle = r.lo; g.stroke();
+  } else {
+    const fx = look[0] * 6;
+    monsterEyes(g, fx, -10, 7.5, 9.5, 11, look, mood);
+    drawBlush(g, fx - 20, 4, 5.5, 3.4); drawBlush(g, fx + 20, 4, 5.5, 3.4);
+    if (mood === 'x') { g.beginPath(); g.moveTo(fx - 6, 9); g.quadraticCurveTo(fx, 4, fx + 6, 9); g.lineWidth = 2.6; g.strokeStyle = '#6b2340'; g.stroke(); }
+    else { g.beginPath(); ellipse(g, fx, 9, 3.6, 4.4); fillLine(g, '#6b2340', null, 0); }
+  }
+  g.restore();
+}
+
+/** The spark: a spiky ball that spins as it runs, a toothy grin (a frown and red eyes when angry). */
+function drawZippy(g, look, mood, frame, angry) {
+  const r = ramp(angry ? MONSTER_COLORS.zippyAngry : MONSTER_COLORS.zippy);
+  const spin = frame * 0.24;
+  g.beginPath();
+  const n = 9;
+  for (let i = 0; i < n * 2; i++) {
+    const a = spin + (i / (n * 2)) * TAU, rr = i % 2 ? 24 : 37;
+    if (i) g.lineTo(Math.cos(a) * rr, 2 + Math.sin(a) * rr); else g.moveTo(Math.cos(a) * rr, 2 + Math.sin(a) * rr);
+  }
+  g.closePath();
+  monsterFill(g, r, 0, 2, 34);
+  g.beginPath(); circle(g, 0, 2, 22); g.fillStyle = rad(g, -6, -6, 1, 0, 2, 24, [[0, 'rgba(255,255,240,0.85)'], [1, 'rgba(255,255,240,0)']]); g.fill();
+  gloss(g, -12, -14, 7, 4);
+  if (look[1] < 0) return;
+  const fx = look[0] * 6;
+  monsterEyes(g, fx, -3, 6.6, 8, 9.5, look, mood === 'x' ? 'x' : angry ? 'angry' : 'grumpy');
+  g.beginPath();
+  if (mood === 'x') { g.moveTo(fx - 7, 14); g.quadraticCurveTo(fx, 9, fx + 7, 14); g.lineWidth = 2.6; g.strokeStyle = '#6b2340'; g.stroke(); return; }
+  g.moveTo(fx - 10, 10); g.quadraticCurveTo(fx, angry ? 13 : 19, fx + 10, 10); g.closePath();
+  fillLine(g, '#6b2340', '#6b2340', 1.6);
+  g.beginPath(); g.moveTo(fx - 5, 10.5); g.lineTo(fx - 2.5, 15); g.lineTo(fx, 11); g.closePath(); g.fillStyle = '#fff'; g.fill();   // the one little fang
+}
+
+/** The ghost: a mint sheet with a wavy hem, a little translucent, tongue out. */
+function drawGhostMonster(g, look, mood, frame) {
+  const r = ramp(MONSTER_COLORS.ghost);
+  const wave = (frame / MONSTER_FRAMES) * TAU;
+  g.save(); g.globalAlpha = 0.9;
+  g.beginPath();
+  g.moveTo(-31, 26);
+  g.bezierCurveTo(-36, -22, -18, -44, 0, -44);
+  g.bezierCurveTo(18, -44, 36, -22, 31, 26);
+  for (let x = 31; x >= -31; x -= 7.75) g.lineTo(x, 26 + Math.sin(wave + x * 0.12) * 4 + (Math.round((x + 31) / 7.75) % 2 ? 7 : 0));
+  g.closePath();
+  g.fillStyle = lin(g, 0, -44, 0, 34, [[0, r.glint], [0.45, r.hi], [1, rgbaOf(r.base, 0.75)]]);
+  g.fill();
+  g.lineWidth = LINE_W; g.strokeStyle = r.line; g.lineJoin = 'round'; g.stroke();
+  g.restore();
+  gloss(g, -13, -28, 8, 4.5);
+  if (look[1] < 0) return;
+  const fx = look[0] * 7;
+  monsterEyes(g, fx, -12, 7, 9.5, 10.5, look, mood, '#1d5c66');
+  if (mood === 'x') return;
+  g.beginPath(); g.moveTo(fx - 7, 6); g.quadraticCurveTo(fx, 12, fx + 7, 6); g.lineWidth = 2.6; g.strokeStyle = '#1d4a52'; g.lineCap = 'round'; g.stroke();
+  g.beginPath(); ellipse(g, fx + 2, 11, 4, 4.6); fillLine(g, '#ff7a9a', '#1d4a52', 1.8);   // tongue out
+}
+
+/** The tortoise: a domed, plated shell on stubby legs, a head peeking out the way it walks. Cracked and red-eyed when angry. */
+function drawTank(g, look, mood, frame, angry) {
+  const r = ramp(angry ? MONSTER_COLORS.tankAngry : MONSTER_COLORS.tank);
+  const skin = ramp('#b7d97a');
+  const step = frame === 1 ? 3 : frame === 2 ? -3 : 0;
+  for (const [x, y, s] of [[-24, 26, step], [24, 26, -step]]) { g.beginPath(); ellipse(g, x, y + s * 0.4, 10, 8); fillLine(g, skin.base, skin.line, 3); }
+  const [lx, ly] = look;
+  const head = ly < 0 ? null : [lx * 36, ly > 0 ? 16 : 8];
+  g.beginPath(); g.moveTo(-40, 18); g.bezierCurveTo(-42, -30, 42, -30, 40, 18); g.quadraticCurveTo(0, 26, -40, 18); g.closePath();
+  monsterFill(g, r, 0, -4, 40);
+  g.save(); g.clip();
+  g.lineWidth = 2.6; g.strokeStyle = rgbaOf(r.line, 0.55);
+  for (const [x, y] of [[0, -14], [-22, -2], [22, -2], [-11, 10], [11, 10]]) {   // hexagonal plates
+    g.beginPath();
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; const px = x + Math.cos(a) * 11, py = y + Math.sin(a) * 9; if (i) g.lineTo(px, py); else g.moveTo(px, py); }
+    g.closePath(); g.stroke();
+  }
+  if (angry) {
+    g.beginPath(); g.moveTo(-6, -24); g.lineTo(2, -12); g.lineTo(-4, -4); g.lineTo(6, 8);
+    g.moveTo(16, -18); g.lineTo(10, -8); g.lineTo(18, 0);
+    g.lineWidth = 3.4; g.strokeStyle = '#2a1a10'; g.lineJoin = 'miter'; g.stroke();
+  }
+  g.restore();
+  g.beginPath(); g.moveTo(-40, 18); g.quadraticCurveTo(0, 26, 40, 18);
+  g.lineWidth = 5; g.strokeStyle = r.hi; g.stroke();
+  gloss(g, -16, -16, 10, 5);
+  if (head) {                                           // the head pokes out of the shell the way it walks
+    g.beginPath(); ellipse(g, head[0], head[1], lx === 0 ? 17 : 15, 14); monsterFill(g, skin, head[0], head[1], 16);
+  }
+  if (head) {
+    const ex = head[0] + lx * 4;
+    monsterEyes(g, ex, head[1] - 3, 5.2, 6.4, lx === 0 ? 7 : 5.5, look, mood === 'x' ? 'x' : angry ? 'angry' : 'happy', '#2a3a10');
+    if (mood !== 'x') { g.beginPath(); g.moveTo(ex - 4, head[1] + 6); g.quadraticCurveTo(ex, head[1] + (angry ? 5 : 9), ex + 4, head[1] + 6); g.lineWidth = 2.2; g.strokeStyle = '#2a3a10'; g.lineCap = 'round'; g.stroke(); }
+  }
+}
+
+/** The jelly: a wobbly dome with bubbles inside; `small` draws the mini it splits into. */
+function drawJelly(g, look, mood, frame, small) {
+  const r = ramp(small ? MONSTER_COLORS.mini : MONSTER_COLORS.jelly);
+  g.save();
+  if (small) g.scale(0.66, 0.66);
+  const w = frame === 1 ? 3 : frame === 2 ? -2 : 0;
+  g.beginPath();
+  g.moveTo(-36 - w, 26);
+  g.bezierCurveTo(-40 - w, -16, -20, -36 + w, 0, -36 + w);
+  g.bezierCurveTo(20, -36 + w, 40 + w, -16, 36 + w, 26);
+  g.quadraticCurveTo(24, 31, 12, 26); g.quadraticCurveTo(0, 31, -12, 26); g.quadraticCurveTo(-24, 31, -36 - w, 26);
+  g.closePath();
+  g.save(); g.globalAlpha = 0.93; monsterFill(g, r, 0, -4, 38); g.restore();
+  g.save(); g.clip();
+  for (const [x, y, rr] of [[18, 6, 4.2], [24, -6, 2.6], [-22, 12, 3]]) { g.beginPath(); circle(g, x, y + w, rr); g.lineWidth = 1.8; g.strokeStyle = 'rgba(255,255,255,0.7)'; g.stroke(); }
+  g.restore();
+  gloss(g, -16, -22, 11, 5.5);
+  if (look[1] >= 0) {
+    const fx = look[0] * 7;
+    monsterEyes(g, fx, -7, 7, 9, 11, look, mood, '#2b1a6a');
+    drawBlush(g, fx - 22, 6, 5, 3); drawBlush(g, fx + 22, 6, 5, 3);
+    if (mood !== 'x') { g.beginPath(); g.moveTo(fx - 6, 8); g.quadraticCurveTo(fx, 14, fx + 6, 8); g.lineWidth = 2.6; g.strokeStyle = '#3a1a60'; g.lineCap = 'round'; g.stroke(); }
+  }
+  g.restore();
+}
+
+/** One monster frame. `variant` is a kind, or 'zippyAngry' / 'tankAngry'. */
+function drawMonster(g, variant, facing, frame, mood) {
+  const look = LOOK[facing & 3];
+  const [sx, sy, dy] = MON_BOB[frame % MONSTER_FRAMES];
+  const kind = variant.replace('Angry', '');
+  const angry = variant !== kind;
+  const floats = kind === 'puff' || kind === 'ghost';
+  g.save();
+  g.translate(0, 30); g.scale(sx, sy); g.translate(0, -30 + (floats ? dy * 1.4 - 6 : dy * 0.5));
+  if (look[0] < 0) g.scale(-1, 1);                      // left is right mirrored (the light flips back: LX)
+  LX = look[0] < 0 ? -1 : 1;
+  const l = look[0] < 0 ? [1, 0] : look;
+  try {
+    if (kind === 'puff') drawPuff(g, l, mood, 0);
+    else if (kind === 'zippy') drawZippy(g, l, mood, frame, angry);
+    else if (kind === 'ghost') drawGhostMonster(g, l, mood, frame);
+    else if (kind === 'tank') drawTank(g, l, mood, frame, angry);
+    else drawJelly(g, l, mood, frame, kind === 'mini');
+  } finally {
+    LX = 1;
+    g.restore();
+  }
+}
+
+/** The exit door on its floor tile (origin = the tile's top-left): closed hatch with a padlock, or the open swirling portal. */
+function drawDoor(g, open, frame) {
+  const cx = 50, cy = 52;
+  g.beginPath(); ellipse(g, cx, cy + 4, 44, 40); g.fillStyle = rgba(SHADOW_INK, 0.35); g.fill();
+  g.beginPath(); ellipse(g, cx, cy, 43, 39);
+  fillLine(g, lin(g, 0, cy - 39, 0, cy + 39, [[0, '#d9cfc0'], [0.5, '#a8998a'], [1, '#6f6356']]), '#3a2c3e', 4.4);
+  for (let i = 0; i < 10; i++) {                        // stones of the ring
+    const a = (i / 10) * TAU;
+    g.beginPath(); g.moveTo(cx + Math.cos(a) * 31, cy + Math.sin(a) * 28); g.lineTo(cx + Math.cos(a) * 42, cy + Math.sin(a) * 38);
+    g.lineWidth = 2; g.strokeStyle = 'rgba(58,44,62,0.55)'; g.stroke();
+  }
+  g.beginPath(); ellipse(g, cx, cy, 31, 28);
+  if (!open) {
+    fillLine(g, lin(g, 0, cy - 28, 0, cy + 28, [[0, '#a8683a'], [1, '#6a3a1e']]), '#3a1e10', 3.6);
+    g.save(); g.clip();
+    for (const x of [-16, 0, 16]) { g.beginPath(); g.moveTo(cx + x, cy - 30); g.lineTo(cx + x, cy + 30); g.lineWidth = 2; g.strokeStyle = 'rgba(58,30,16,0.6)'; g.stroke(); }
+    for (const y of [-12, 12]) { g.beginPath(); rrect(g, cx - 34, cy + y - 4, 68, 8, 3); fillLine(g, '#8a8fa8', '#2c2a40', 2); }
+    g.restore();
+    g.beginPath(); rrect(g, cx - 10, cy - 4, 20, 16, 4); fillLine(g, lin(g, 0, cy - 4, 0, cy + 12, [[0, '#ffe07a'], [1, '#d38d10']]), INK, 3);   // padlock
+    g.beginPath(); g.arc(cx, cy - 4, 6.5, Math.PI, 0); g.lineWidth = 3.6; g.strokeStyle = INK; g.stroke();
+    g.beginPath(); circle(g, cx, cy + 3, 2.2); g.fillStyle = INK; g.fill();
+    return;
+  }
+  const ph = (frame / DOOR_FRAMES) * TAU;
+  g.fillStyle = rad(g, cx, cy, 2, cx, cy, 31, [[0, '#ffffff'], [0.25, '#fff3a8'], [0.6, '#ffb42c'], [1, '#7a3cff']]);
+  g.fill();
+  g.save(); g.clip();
+  for (let arm = 0; arm < 4; arm++) {                   // a turning swirl
+    g.beginPath();
+    for (let k = 0; k <= 16; k++) {
+      const t = k / 16, a = ph + arm * (TAU / 4) + t * 3.4, rr = 3 + t * 30;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * 0.9;
+      if (k) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.lineWidth = 4; g.strokeStyle = arm % 2 ? 'rgba(255,255,255,0.75)' : 'rgba(150,90,255,0.6)'; g.lineCap = 'round'; g.stroke();
+  }
+  g.restore();
+  g.beginPath(); ellipse(g, cx, cy, 31, 28); g.lineWidth = 3; g.strokeStyle = '#ffe36a'; g.stroke();
+  for (let i = 0; i < 3; i++) { const a = ph * 0.5 + i * 2.1; glint(g, cx + Math.cos(a) * 36, cy + Math.sin(a) * 33, 5, '#fff7c2'); }
+}
+
+/** Monster and door sprites in an atlas of their own (built only for co-op matches). */
+function buildCoopActors(env) {
+  const atlas = new Atlas(env);
+  const out = { atlas, refs: 0, monsters: {}, door: { closed: null, open: [] } };
+  for (const variant of Object.keys(MONSTER_COLORS)) {
+    const m = { walk: [[], [], [], []], flash: [], dead: null };
+    for (let f = 0; f < 4; f++) {
+      for (let i = 0; i < MONSTER_FRAMES; i++) m.walk[f].push(atlas.add(MON_W, MON_H, MON_W / 2, MON_AY, (g) => drawMonster(g, variant, f, i, 'happy')));
+      m.flash.push(atlas.add(MON_W, MON_H, MON_W / 2, MON_AY, (g) => {
+        drawMonster(g, variant, f, 0, 'happy');
+        g.globalCompositeOperation = 'source-atop';
+        g.fillStyle = '#fff';
+        g.fillRect(-MON_W, -MON_H, MON_W * 2, MON_H * 2);
+      }));
+    }
+    m.dead = atlas.add(MON_W, MON_H, MON_W / 2, MON_AY, (g) => drawMonster(g, variant, 2, 0, 'x'));
+    out.monsters[variant] = m;
+  }
+  out.door.closed = atlas.add(110, 110, 5, 5, (g) => { g.translate(5, 5); drawDoor(g, false, 0); g.translate(-5, -5); });
+  for (let f = 0; f < DOOR_FRAMES; f++) out.door.open.push(atlas.add(110, 110, 5, 5, (g) => { g.translate(5, 5); drawDoor(g, true, f); g.translate(-5, -5); }));
+  out.doorGlow = atlas.add(220, 220, 110, 110, (g) => {
+    g.beginPath(); circle(g, 0, 0, 110);
+    g.fillStyle = rad(g, 0, 0, 0, 0, 0, 110, [[0, 'rgba(255,236,140,0.85)'], [0.4, 'rgba(255,170,60,0.35)'], [1, 'rgba(160,90,255,0)']]); g.fill();
+  });
+  atlas.queueCompaction();
+  atlas.seal();
+  return out;
+}
+
+// HUD and lobby icons of the co-op modes (iconDataURL): one per monster kind, the door closed and open.
+function iconMonster(kind) {
+  return (g) => { g.save(); g.translate(0, -2); g.scale(0.92, 0.92); drawMonster(g, kind, 2, 0, 'happy'); g.restore(); };
+}
+function iconDoor(open) {
+  return (g) => { g.save(); g.scale(0.92, 0.92); g.translate(-50, -52); drawDoor(g, open, 1); g.restore(); };
+}
+
+// ================================================================================================
 // Build orchestration
 // ================================================================================================
 
@@ -2633,6 +2929,7 @@ function clampIndex(n, m) {
 const FLOOR_PICK = [0, 0, 1, 2];   // plain floor half of the time, each decorated variant a quarter; a constant so drawing allocates nothing
 
 const actorCache = new Map();   // "tile|dpr" -> shared actor sprites, reference counted by the sets using them
+const coopCache = new Map();    // "tile|dpr" -> shared monster and door sprites (co-op matches only), reference counted the same way
 
 /** Deterministic hash of a tile, for picking decoration variants. */
 export function tileHash(tx, ty) {
@@ -2648,7 +2945,7 @@ export function tileHash(tx, ty) {
  * Start building a sprite set without blocking: call `pump(ms)` from a few frames (e.g. during the countdown)
  * until it returns true, then use `.set`. `buildSpriteSet` is the blocking version.
  */
-export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas } = {}) {
+export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas, coop = false } = {}) {
   if (!Number.isFinite(tile) || tile < 8 || tile > TILE_MAX) throw new RangeError(`sprites: tile must be a device-pixel size from 8 to ${TILE_MAX}`);
   tile = Math.round(tile);   // tile-sized sprites must be exactly one tile wide or the floor shows seams
   if (!THEMES.includes(theme)) throw new RangeError(`sprites: unknown theme "${theme}"`);   // (a plain THEME_ART[theme] lookup would accept "constructor")
@@ -2662,6 +2959,22 @@ export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas
   actors.refs++;
   let terrain;
   try { terrain = buildTerrain(env, theme); } catch (err) { releaseActors(); throw err; }   // a failed build must not pin the shared sprites
+  // Co-op extras: monsters and the door, shared and cached like the actors, built only when a co-op match asks for them.
+  let extras = null;
+  if (coop) {
+    try {
+      extras = createCanvas ? null : coopCache.get(key);
+      if (!extras) { extras = buildCoopActors(env); if (!createCanvas) coopCache.set(key, extras); }
+      extras.refs++;
+    } catch (err) {
+      releaseActors();
+      terrain.atlas.dispose();
+      throw err;
+    }
+  }
+  const releaseExtras = () => {
+    if (extras && --extras.refs === 0) { extras.atlas.dispose(); if (coopCache.get(key) === extras) coopCache.delete(key); }
+  };
   let disposed = false;
 
   const set = {
@@ -2670,15 +2983,16 @@ export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas
     suddenWall: terrain.suddenWall, blockShadow: terrain.blockShadow, debris: terrain.debris, backdrop: terrain.backdrop,
     dust: terrain.dust, softPop: terrain.softPop,
     shield: actors.shield, spawnShield: actors.spawnShield, curseAura: actors.curseAura, teamRing: actors.teamRing, fx: actors.fx,
-    get ready() { return actors.atlas.done && terrain.atlas.done; },
+    coop: !!extras,
+    get ready() { return actors.atlas.done && terrain.atlas.done && (!extras || extras.atlas.done); },
     /** Every canvas the sprites are drawn from (atlas pages, the backdrop pattern): the first draw from one uploads it to the GPU, so warm them before use. */
     get pages() {
-      const out = [...actors.atlas.pages, ...terrain.atlas.pages].map((p) => p.canvas).filter(Boolean);
+      const out = [...actors.atlas.pages, ...terrain.atlas.pages, ...(extras ? extras.atlas.pages : [])].map((p) => p.canvas).filter(Boolean);
       if (terrain.backdrop.canvas) out.push(terrain.backdrop.canvas);
       return out;
     },
     /** Approximate canvas memory of this set in pixels (shared actor pages included). */
-    get pixels() { return actors.atlas.pixels + terrain.atlas.pixels + (terrain.backdrop.canvas ? terrain.backdrop.size ** 2 : 0); },
+    get pixels() { return actors.atlas.pixels + terrain.atlas.pixels + (extras ? extras.atlas.pixels : 0) + (terrain.backdrop.canvas ? terrain.backdrop.size ** 2 : 0); },
     floorAt(tx, ty) { return terrain.floor[(tx + ty) & 1][FLOOR_PICK[tileHash(tx, ty) & 3]]; },
     hardWallAt(tx, ty) { return terrain.hardWall[tileHash(tx, ty) % PILLAR_VARIANTS]; },
     softBlockAt(tx, ty) { return terrain.softBlock[tileHash(tx, ty) % SOFT_VARIANTS]; },
@@ -2698,12 +3012,29 @@ export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas
     character(colorIndex) { return actors.characters[colorIndex]; },
     /** Speech bubble for emote index 0..7 (EMOTES order) or 8..11 (GG, heart, cry, cool). */
     emote(index) { return actors.emotes[index]; },
+    /**
+     * Co-op only (null in a set built without `coop`): { walk[4][MONSTER_FRAMES], flash[4], dead } of a monster kind (MONSTER_KINDS), the
+     * angry look when `angry` (zippy, tank). Indexed by facing like a character; anchor = the monster's centre.
+     */
+    monster(kind, angry = false) {
+      if (!extras) return null;
+      const m = extras.monsters;
+      return (angry && m[`${kind}Angry`]) || m[kind] || null;
+    },
+    /** Co-op only: the exit door (anchor = the tile's top-left), closed, or open in frame 0..DOOR_FRAMES-1. */
+    door(open, frame = 0) {
+      if (!extras) return null;
+      return open ? extras.door.open[wrapIndex(frame, DOOR_FRAMES)] : extras.door.closed;
+    },
+    /** Co-op only: the warm light around an open door (centre anchored, add it with 'lighter'). */
+    get doorGlow() { return extras ? extras.doorGlow : null; },
     dispose() {
       if (disposed) return;
       disposed = true;
       terrain.atlas.dispose();
       if (terrain.backdrop.canvas) { releaseCanvas(terrain.backdrop.canvas); terrain.backdrop.canvas = null; }
       releaseActors();
+      releaseExtras();
     },
   };
 
@@ -2715,6 +3046,7 @@ export function startSpriteBuild({ tile, theme = 'meadow', dpr = 1, createCanvas
       const deadline = performance.now() + budgetMs;
       actors.atlas.pump(deadline);
       if (actors.atlas.done) terrain.atlas.pump(deadline);
+      if (extras && terrain.atlas.done) extras.atlas.pump(deadline);
       return set.ready;
     },
   };

@@ -115,7 +115,7 @@ The `Dockerfile` here runs the game anywhere that runs containers: `docker build
 
 ## Just want one file?
 
-If installing Node.js is more than you want to do tonight, there is a **single file** that contains the whole game: [`download/blast-party.html`](download/blast-party.html) (about 480 KB). Save it anywhere, **double-click it**, and it opens in your browser. There is no server, no account and no internet needed to play against bots. (The file is rebuilt from the sources with `npm run build:single`; you only need that if you change the game.)
+If installing Node.js is more than you want to do tonight, there is a **single file** that contains the whole game: [`download/blast-party.html`](download/blast-party.html) (about 540 KB). Save it anywhere, **double-click it**, and it opens in your browser. There is no server, no account and no internet needed to play against bots. (The file is rebuilt from the sources with `npm run build:single`; you only need that if you change the game.)
 
 **On your own: Practice vs bots.** Works completely offline, exactly like Practice on the server version.
 
@@ -211,6 +211,15 @@ Items are more common the more players there are. The **Items** setting can turn
 - The host is the first person in the room. If the host is gone for a minute, another connected player becomes host.
 - A room holds up to **8 players** (people plus bots). If a person joins a full lobby, the most recently added bot steps aside.
 
+**Playing together (co-op)**
+
+Two modes put the whole family on **one team**. Your friends' bombs cannot hurt you (your own still can), and one person is enough to start.
+
+- **Co-op vs bots**: the team against waves of enemy bots. The "Rounds" setting becomes **Waves** (1, 2, 3, 5 or 7). Every wave brings more and smarter enemies who start with power-ups; beat them all to win. Anyone blasted in a wave is back for the next one. One of the 8 seats is always kept for an enemy.
+- **Adventure**: 8 levels full of monsters. Pop every monster, then find the **exit door** hidden under one of the crates: it opens once the last monster is gone, and stepping on it clears the level. New monsters arrive level by level: **Puffball** (slow), **Zippy** (fast, chases you), **Boo** (floats through crates), **Shellby** (needs two hits, then gets angry) and **Wobble** (splits into two Mini Wobbles). The team **shares lives** (5 on easy, 3 on normal, 2 on hard, plus one per extra player, plus one per cleared level); a blasted player comes back after 2.5 seconds while lives last. Power-ups carry over to the next level. After 3 minutes on a level two angry Zippies join in ("Hurry up!").
+- **Difficulty** (Easy, Normal, Hard) sets how many and how clever the enemy bots are, or how fast the monsters are and how many lives you get. On Easy a small child can clear Adventure alone with patience; bots added in the lobby become **helpers** on your team.
+- Results show the levels or waves cleared, the team score and who popped the most monsters. **Practice vs bots** offers both modes too.
+
 ## Room settings
 
 The host changes these in the lobby (and again on the results screen); everybody else can see them.
@@ -220,7 +229,8 @@ The host changes these in the lobby (and again on the results screen); everybody
 | Rounds (wins needed) | 1, 2, 3, 5, 7 | 3 |
 | Round time | Unlimited, 60, 90, 120, 180, 240 seconds | 120 |
 | Sudden death | On, Off | On |
-| Mode | Free-for-all, Teams | Free-for-all |
+| Mode | Free-for-all, Teams, Co-op vs bots, Adventure | Free-for-all |
+| Difficulty (co-op modes only) | Easy, Normal, Hard | Normal |
 | Theme | Random, Meadow, Frost, Lava, Candy, Night | Random (changes every round) |
 | Layout | Classic (more pillars), Open (fewer pillars, wide-open brawl) | Classic |
 | Blocks | Few, Normal, Many | Normal |
@@ -373,6 +383,7 @@ bomberman/
   shared/             runs in Node AND in the browser
     constants.js      every rule number and table (the single source)
     world.js          one round of the game (movement, bombs, flames, items, sudden death)
+    coop.js           the co-op modes: monsters, the exit door, shared lives, wave and level plans
     mapgen.js  rng.js seeded, symmetric map generation
     room.js           lobby, settings, teams, rounds, scoring, reconnects
     protocol.js       message validation and text sanitising
@@ -382,7 +393,7 @@ bomberman/
     share.js          `npm run share`: server plus a public tunnel
     build-single.mjs  `npm run build:single`: bundles everything into download/blast-party.html
     make-icons.mjs    regenerates client/icons/*.png
-    dev/              developer tooling (art sheets, bot and audio checks, the PROTOCOL.md generator)
+    dev/              developer tooling (art sheets, bot and audio checks, the PROTOCOL.md generator, coop/sim.mjs difficulty runner)
   download/           blast-party.html, the whole game as one file (generated; commit it after rebuilding)
   specs/              unit/ integration/ e2e/ helpers/ fixtures/
   docs/               SPEC.md (the design contract), PROTOCOL.md (wire protocol)

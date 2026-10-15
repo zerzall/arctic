@@ -15,8 +15,14 @@
 // sees the position after j cmds. A bomb read with `fuse = f` explodes on tick T+f; its flame is lethal on ticks T+f .. T+f+35.
 //
 // Clarifications where the spec leaves room:
-//  * think() also reads `world.mode` ('ffa' | 'teams'), which the §6.1 read list omits: without it a bot cannot tell allies from
-//    enemies. Teammates are never hunted and a bomb that would catch one is worth less.
+//  * think() also reads `world.mode` ('ffa' | 'teams' | 'coop' | 'adventure'), which the §6.1 read list omits: without it a bot cannot tell
+//    allies from enemies. Teammates are never hunted and a bomb that would catch one is worth less.
+//  * Co-op (docs/SPEC.md Appendix C): in 'coop' the enemy team is simply the other team. In 'adventure' think() also reads
+//    `world.monsters` and `world.door`. Monsters are danger: the tiles a monster can reach soon are lethal in the DangerMap (its own
+//    tile and the next one for the whole horizon, tiles two or three steps away from about when it could get there), so every plan
+//    keeps clear of them exactly as it keeps clear of flames. They are also prey: a bomb whose blast lies across a monster's path is
+//    worth something, bots hunt them (from a safe distance), and once the exit door is open and found they walk to it. In every
+//    other mode `world.monsters` is empty and nothing of this runs.
 //  * Besides BotBrain the module exports DangerMap (the danger model) and hypothetical (a bomb that is not on the board yet), for specs
 //    and the developer tooling under scripts/dev/bots.
 //  * BotBrain takes { level, seed }; the levels differ in a frozen profile of twenty parameters (PROFILES below), not in separate code.
@@ -29,6 +35,7 @@ import {
   MAX_BOMBS, MAX_RANGE, MAX_SPEED_LV,
 } from './constants.js';
 import { makeRng } from './rng.js';
+import { MONSTER_DEFS } from './constants.js';
 import { computeBlast, effectiveDir, effectiveSpeed, makeEnv, movePlayer, overlapsTile } from './world.js';
 
 const W = GRID_W;
@@ -66,7 +73,7 @@ const ITEM_VALUE = Object.freeze({ bomb: 3.0, flame: 2.6, speed: 2.4, kick: 2.2,
 const BLOCK_VALUE = 1.0;         // per soft block a bomb opens (capped, see BLOCK_CAP)
 const BLOCK_CAP = 3;
 const ENEMY_HIT_VALUE = 1.6;     // a bomb whose flames cover an enemy: it has to run, and a slow one dies
-const ALLY_HIT_PENALTY = 2.5;
+const ALLY_HIT_PENALTY = 2.5;   // (battle modes: friendly fire is on; co-op modes have none, see allyPenalty)
 const HOLD_TICKS = 20;           // ticks a rival must stand still on a tile before it counts as holding it
 const SEAL_WINDOW = 138;         // ticks before the last tile lands in which a bomb on it cannot explode first (the fuse is 150)
 const RESCUE_VALUE = 12;         // a kick or throw that frees a bot with no way out beats any attack
@@ -82,6 +89,12 @@ const HUNT_SLACK = 4;            // cost units by which the old hunting spot may
 const POCKET = 4;                // a dead end of at most this many tiles counts as a pocket
 const POCKET_RIVAL = 6;          // tiles: how close a rival must be to the mouth of a pocket for it to be a risk
 const STICK = 1.35;              // score bonus of the goal already being pursued: no dithering between equal goals
+const MONSTER_NEAR = 2;          // co-op: tiles around a monster (path steps) that are never a place to stand, chasers one more
+const MONSTER_HIT_VALUE = 1.4;   // co-op: a bomb whose blast covers a monster's tile or the tiles next to it
+const MONSTER_HUNT = 0.7;        // co-op: how keen even a bot that never hunts rivals is on monsters
+const EXIT_VALUE = 80;           // co-op: the open exit door beats every other goal
+const HEAT_REACH = 5;            // co-op: monsters warm the tiles within this many steps (straight-line), for picking where to go
+const HEAT_WEIGHT = 0.35;        // co-op: how much a warm tile loses as a goal; it keeps bots out of corridors between two monsters
 
 // ------------------------------------------------------------------------------------------------
 // Board geometry
@@ -136,10 +149,25 @@ function spiralOrder(grid) {
 }
 
 /** A bomb as the danger model sees it: `at` = the tick it explodes, `land` = the tick it starts to exist on its tile (thrown bombs). */
-function virtualBomb(b, T) {
+function virtualBomb(b, T, harmless = false) {
   const flying = b.fly !== null && b.fly !== undefined && b.fly !== 0;
   const left = flying ? b.fly.left : 0;
-  return { id: b.id, tx: b.tx, ty: b.ty, range: b.range, at: T + left + b.fuse, land: flying ? T + left : -INF, fly: null, done: false, dir: flying ? 0 : b.dir, step: b.step };
+  return {
+    id: b.id, tx: b.tx, ty: b.ty, range: b.range, at: T + left + b.fuse, land: flying ? T + left : -INF, fly: null, done: false, dir: flying ? 0 : b.dir, step: b.step,
+    harmless,
+  };
+}
+
+/**
+ * Co-op modes have no friendly fire (Appendix C): flames of a team-mate's bomb (or of an orphaned one) cannot hurt `viewer`, only its
+ * own and the other team's can. Such bombs still go off, open crates and set off other bombs, so the map simulates them, it just
+ * does not mark their fire. Null `viewer`, or a battle mode: every bomb is dangerous.
+ */
+function harmlessTo(world, viewer, ownerId) {
+  if (!viewer || (world.mode !== 'coop' && world.mode !== 'adventure') || ownerId === viewer.id) return false;
+  if (ownerId < 0) return true;
+  const owner = world.player(ownerId);
+  return owner !== undefined && owner.team === viewer.team;
 }
 
 export class DangerMap {
@@ -158,6 +186,7 @@ export class DangerMap {
     this._batch = [];
     this._present = [];
     this._opened = [];
+    this.viewer = null;                           // co-op: whose map this is (team-mates' fire is harmless to it), set by the brain
   }
 
   /**
@@ -177,15 +206,21 @@ export class DangerMap {
 
     const bombs = this._bombs;
     bombs.length = 0;
-    for (const b of world.bombs) if (b.id !== without) bombs.push(virtualBomb(b, T));
+    const viewer = this.viewer;
+    for (const b of world.bombs) if (b.id !== without) bombs.push(virtualBomb(b, T, harmlessTo(world, viewer, b.owner)));
     if (extra) for (const e of extra) bombs.push(e);
-    for (const f of world.flames) this._add(f.ty * W + f.tx, T + 1, T + f.ticks);
+    for (const f of world.flames) {
+      if (viewer && f.owners.every((o) => harmlessTo(world, viewer, o))) continue;   // (co-op: a team-mate's lingering fire)
+      this._add(f.ty * W + f.tx, T + 1, T + f.ticks);
+    }
     if (bombs.length > 0) this._explode(grid, bombs);
     for (const b of bombs) {
       const i = b.ty * W + b.tx;
       if (b.dir !== 0 || b.land > T) this.solid[i] = 1;                      // sliding and flying bombs are not where they will be
       else this.hold[i] = Math.min(b.at, this.land[i]);
     }
+    const monsters = world.monsters;
+    if (monsters && monsters.length > 0) this._monsters(grid, monsters, T);
     for (let i = 0; i < N; i++) {
       let r = 0;
       const base = i * SLOTS;
@@ -211,6 +246,48 @@ export class DangerMap {
       const start = T + world.timeLeft;
       const order = spiralOrder(grid);
       for (let k = 0; k < order.length; k++) this.land[order[k]] = start + k * SD_INTERVAL + SD_WARN_TICKS;
+    }
+  }
+
+  /**
+   * Co-op: a monster's tile and the tile it is heading into are lethal for the whole horizon; tiles further along the paths it can take
+   * become lethal from about when it could get there (at 60 % of its travel time, it may turn towards you), up to MONSTER_NEAR steps
+   * (chasers one more). Bombs stop monsters, so the search does not cross them; ghosts drift through crates.
+   */
+  _monsters(grid, monsters, T) {
+    const seen = this._mSeen ?? (this._mSeen = new Int32Array(N));
+    const queue = this._mQueue ?? (this._mQueue = new Int16Array(N));
+    const dist = this._mDist ?? (this._mDist = new Int8Array(N));
+    for (const m of monsters) {
+      const def = MONSTER_DEFS[m.kind];
+      if (!def) continue;
+      const gen = (this._mGen = (this._mGen ?? 0) + 1);
+      const start = Math.floor(m.y) * W + Math.floor(m.x);
+      const ahead = m.ty * W + m.tx;
+      const reach = MONSTER_NEAR + (def.chase > 0 || m.angry ? 1 : 0);
+      const tpt = 60 / Math.max(0.5, def.speed * (m.angry ? 1.7 : 1));        // ticks it needs per tile
+      this._add(start, T, T + HORIZON);
+      if (ahead >= 0 && ahead < N) this._add(ahead, T, T + HORIZON);
+      seen[start] = gen;
+      dist[start] = 0;
+      queue[0] = start;
+      let tail = 1;
+      for (let head = 0; head < tail; head++) {
+        const t = queue[head];
+        if (dist[t] >= reach) continue;
+        for (let d = 0; d < 4; d++) {
+          const n = NB[t * 4 + d];
+          if (n < 0 || seen[n] === gen) continue;
+          const c = grid[n];
+          if (c !== '.' && !(c === '+' && def.ghost)) continue;
+          if (this.hold[n] > 0) continue;                                       // (a bomb turns it round)
+          seen[n] = gen;
+          dist[n] = dist[t] + 1;
+          queue[tail++] = n;
+          const from = dist[n] <= 1 ? T : T + Math.floor((dist[n] - 1) * tpt * 0.6);
+          this._add(n, from, T + HORIZON);
+        }
+      }
     }
   }
 
@@ -259,7 +336,7 @@ export class DangerMap {
         const b = batch[qi];
         if (this.land[b.ty * W + b.tx] <= e) continue;                             // ... which then never goes off
         const blast = computeBlast(g, present, b);
-        for (const t of blast.tiles) this._add(t[1] * W + t[0], e, e + FLAME_TICKS - 1);
+        if (!b.harmless) for (const t of blast.tiles) this._add(t[1] * W + t[0], e, e + FLAME_TICKS - 1);
         for (const t of blast.blocks) opened.push(t[1] * W + t[0]);
         for (const id of blast.hitBombs) {
           const h = bombs.find((o) => o.id === id);
@@ -281,7 +358,7 @@ export class DangerMap {
   /** A kicked bomb may be anywhere along its line when it goes off: every tile it could still reach gets its blast, unchained. */
   _slidingBombs(g, bombs) {
     for (const b of bombs) {
-      if (b.dir === 0) continue;
+      if (b.dir === 0 || b.harmless) continue;
       const reachable = b.at >= this.T + b.step ? Math.floor((b.at - this.T - b.step) / KICK_STEP_TICKS) + 1 : 0;
       let tx = b.tx;
       let ty = b.ty;
@@ -585,6 +662,9 @@ export class BotBrain {
     this._bombList = [];
     this._verdict = { safe: false, kill: false };
     this._victims = [];                           // enemies the bomb under evaluation would trap
+    this.allyPenalty = ALLY_HIT_PENALTY;          // what catching a team-mate in a blast costs (0 in co-op: no friendly fire)
+    this.heat = new Int16Array(N);                // co-op: how close the monsters are to each tile (0 = none near), rebuilt every plan
+    this.hot = false;                             // ... and whether any tile is warm at all
   }
 
   /**
@@ -600,6 +680,7 @@ export class BotBrain {
       this.envWorld = world;
       this.env = makeEnv(world.grid, world.bombs, W, H);
     }
+    this.dz.viewer = this.dzH.viewer = me;
     this._observe(world, T);
     if (this._needsPlan(T)) this._plan(world, me, T);
     return this._act(world, me, T);
@@ -616,6 +697,8 @@ export class BotBrain {
       h = (Math.imul(h, 31) + b.id) | 0;
       h = (Math.imul(h, 31) + b.tx + b.ty * 32 + b.dir * 1024 + (b.fly ? 8192 : 0)) | 0;
     }
+    const monsters = world.monsters;
+    if (monsters) for (const m of monsters) h = (Math.imul(h, 31) + m.id * 4099 + m.tx + m.ty * 32 + (m.angry ? 8192 : 0)) | 0;   // co-op: a monster changed tiles
     this.changed = h !== this.sig;
     if (this.changed || T - this.dzTick >= (world.suddenDeath ? 3 : REBUILD_EVERY)) {
       this.sig = h;
@@ -640,7 +723,7 @@ export class BotBrain {
     const allies = this.allies;
     foes.length = 0;
     allies.length = 0;
-    const teams = world.mode === 'teams';
+    const teams = world.mode === 'teams' || world.mode === 'coop' || world.mode === 'adventure';
     const T = world.tickNo;
     for (const o of world.players) {
       if (o === me || !o.alive || o.removed) continue;
@@ -651,6 +734,20 @@ export class BotBrain {
       if (!rec) this._track.set(o.id, { tile, since: T });
       else if (rec.tile !== tile) { rec.tile = tile; rec.since = T; }
     }
+    // Co-op: monsters are prey (and keep their distance, see DangerMap._monsters). They join the foes as plain positions; the checks
+    // that model a rival who flees or bombs back (traps) skip them.
+    const monsters = world.monsters;
+    if (monsters && monsters.length > 0) {
+      const pool = this._monsterFoes ?? (this._monsterFoes = []);
+      for (let i = 0; i < monsters.length; i++) {
+        const m = monsters[i];
+        const f = pool[i] ?? (pool[i] = { id: -1, x: 0, y: 0, alive: true, removed: false, curse: null, curseCooldown: 0, speedLv: 0, shield: 0, spawnShield: 0, isMonster: true });
+        f.id = -1000 - m.id;
+        f.x = m.x;
+        f.y = m.y;
+        foes.push(f);
+      }
+    }
   }
 
   // ---- Planning -------------------------------------------------------------------------------
@@ -660,6 +757,9 @@ export class BotBrain {
     const c = tileOf(me);
     const threatened = !this._safeHere(c, T);
     this.sr.run(this.dz, T, me.x, me.y, effectiveSpeed(me), prof.margin, threatened ? 0 : prof.near + 10);
+    // Co-op: a monster's zone is lethal from about when it could arrive until the end of the horizon, so the calm walk (which keeps
+    // `near` ticks clear of everything to come) cannot cross it at all. Boxed in like that, walk the way a fleeing bot does.
+    if (!threatened && world.monsters?.length && !this._anyRest(prof.margin)) this.sr.run(this.dz, T, me.x, me.y, effectiveSpeed(me), prof.margin, 0);
     this.planned = true;
     this.planAt = T + prof.interval;
     this.pathLen = 0;
@@ -671,6 +771,8 @@ export class BotBrain {
       this.tileSince = T;
     }
     this._sortPlayers(world, me);
+    this.allyPenalty = world.mode === 'coop' || world.mode === 'adventure' ? 0 : ALLY_HIT_PENALTY;   // co-op: no friendly fire
+    this._warm(world);
     this._markHeld(world, me, T);
     this._trackProgress(world, T, c);
 
@@ -695,6 +797,35 @@ export class BotBrain {
     if (prof.shun && this._shunCursed(me, T, c)) return;
     if (this._planOffence(world, me, T, c)) return;
     this._planGoal(world, me, T, c);
+  }
+
+  /**
+   * Co-op: the monster heat map. Every monster adds HEAT_REACH - distance to the tiles around it (straight-line steps, cheap), so two
+   * monsters at both ends of a corridor make its middle hot even where neither of their danger zones reaches. Goals, wandering and
+   * fleeing all prefer cool tiles; a bot that ignored this walked between two balloons and got caught as they closed in.
+   */
+  _warm(world) {
+    const monsters = world.monsters;
+    if (!monsters || monsters.length === 0) {
+      if (this.hot) { this.heat.fill(0); this.hot = false; }
+      return;
+    }
+    const heat = this.heat;
+    heat.fill(0);
+    this.hot = true;
+    for (const m of monsters) {
+      const mx = Math.floor(m.x);
+      const my = Math.floor(m.y);
+      for (let dy = -HEAT_REACH + 1; dy < HEAT_REACH; dy++) {
+        const y = my + dy;
+        if (y < 0 || y >= H) continue;
+        const span = HEAT_REACH - 1 - Math.abs(dy);
+        for (let dx = -span; dx <= span; dx++) {
+          const x = mx + dx;
+          if (x >= 0 && x < W) heat[y * W + x] += HEAT_REACH - Math.abs(dx) - Math.abs(dy);
+        }
+      }
+    }
   }
 
   /**
@@ -723,6 +854,13 @@ export class BotBrain {
     return this.dz.nextFlame(c, T + 1) - T > this.prof.near && this.dz.land[c] - T > this.prof.sdNear;
   }
 
+  /** Does the reach on `sr` hold a tile, other than the start, where a walker could stay? */
+  _anyRest(margin) {
+    const { dz, sr } = this;
+    for (let k = 1; k < sr.n; k++) if (sr.restOK(dz, sr.list[k], margin)) return true;
+    return false;
+  }
+
   /** Stall breaker: standing around in one corner of the board for too long asks for a risk-free action. */
   _trackProgress(world, T, c) {
     if (this.anchor < 0 || manhattan(c, this.anchor) > 2) {
@@ -747,7 +885,7 @@ export class BotBrain {
       const i = sr.list[k];
       if (!sr.restOK(dz, i, prof.margin) || this._held[i]) continue;
       const steps = (sr.arr[i] - T) * sp;
-      let s = -steps + 0.4 * dz.openCount(i) - 0.5 * dz.hazardCount(i);
+      let s = -steps + 0.4 * dz.openCount(i) - 0.5 * dz.hazardCount(i) - (this.hot ? 0.8 * this.heat[i] : 0);
       if (prof.careful > 0) {
         s -= 1.5 * Math.max(0, steps + 2 - this._foeDistance(i));                  // a rival who gets there first can seal the way out
         if (this._inPocket(i, sr.par[i])) s -= 3;
@@ -913,6 +1051,7 @@ export class BotBrain {
     const prof = this.prof;
     if (T < this.bombNext || !this._canBomb(world, me, c)) return false;
     if (this.dz.hits(c, T + 1, T + FLAME_TICKS)) return false;
+    if (this._fireOn(world, c)) return false;     // co-op: a team-mate's fire is harmless, but it sets a bomb dropped into it off at once
 
     const blast = this._blastAt(world, c % W, Math.floor(c / W), me.range, -1);
 
@@ -921,12 +1060,16 @@ export class BotBrain {
     for (const e of this.foes) {
       const ei = tileOf(e);
       const dist = manhattan(ei, c);
+      if (e.isMonster) {                          // co-op: it will have moved by then, so a blast across its path counts too
+        if (blast.tiles.some((t) => manhattan(t[1] * W + t[0], ei) <= 1)) value += MONSTER_HIT_VALUE;
+        continue;
+      }
       if (dist <= prof.sight && blast.tiles.some((t) => t[1] * W + t[0] === ei)) value += ENEMY_HIT_VALUE;
       if (dist <= TRAP_RANGE) near = true;
     }
     for (const a of this.allies) {
       const ai = tileOf(a);
-      if (blast.tiles.some((t) => t[1] * W + t[0] === ai)) value -= ALLY_HIT_PENALTY;
+      if (blast.tiles.some((t) => t[1] * W + t[0] === ai)) value -= this.allyPenalty;
     }
     const wantKill = prof.trap && near;
     const need = this.urge ? 0 : 1;
@@ -973,6 +1116,7 @@ export class BotBrain {
     let exits = 0;
     for (let k = 1; k < sr.n; k++) if (sr.restOK(dz, sr.list[k], prof.margin)) exits++;
     if (exits === 0) return verdict;
+    if (this.allyPenalty === 0 && this._walledIn(dz, T + delay, tile)) return verdict;
     const victims = this._victims;
     victims.length = 0;
     if (wantKill) this._trapped(dz, T, victims);
@@ -1009,9 +1153,28 @@ export class BotBrain {
     return true;
   }
 
+  /**
+   * Co-op: would this bomb (on the hypothetical board `dz`) leave a nearby team-mate with nowhere safe to go? Its fire cannot hurt
+   * them, but a bomb is a wall, and a team-mate penned in between it and a monster or their own bomb is lost. (Being made to step out
+   * of harmless fire is a small price; the check is cautious on purpose.)
+   */
+  _walledIn(dz, T, tile) {
+    for (const a of this.allies) {
+      const ai = tileOf(a);
+      if (manhattan(ai, tile) > 4) continue;
+      const sr = this.srE;
+      sr.run(dz, T, a.x, a.y, effectiveSpeed(a), 1);
+      let out = false;
+      for (let k = 0; k < sr.n && !out; k++) out = sr.restOK(dz, sr.list[k], 1);
+      if (!out) return true;
+    }
+    return false;
+  }
+
   /** With `dz` (the hypothetical board): collects the enemies that stand in the flames with no safe tile in reach. */
   _trapped(dz, T, out) {
     for (const e of this.foes) {
+      if (e.isMonster) continue;
       const ei = tileOf(e);
       if (Math.max(e.shield, e.spawnShield) > 100) continue;                                // a shield outlives the bomb
       if (dz.rest[ei] <= T - 1 && dz.land[ei] - T >= SD_NEAR) continue;            // it is not even threatened
@@ -1072,7 +1235,7 @@ export class BotBrain {
     }
     for (const a of this.allies) {
       const ai = tileOf(a);
-      if (blast.tiles.some((t) => t[1] * W + t[0] === ai)) value -= ALLY_HIT_PENALTY;
+      if (blast.tiles.some((t) => t[1] * W + t[0] === ai)) value -= this.allyPenalty;
     }
     return value;
   }
@@ -1182,6 +1345,7 @@ export class BotBrain {
     let bestKind = '';
     const consider = (tile, kind, score) => {
       if (this.goal.tile === tile && this.goal.kind === kind) score *= STICK;
+      if (this.hot && kind !== 'exit') score /= 1 + HEAT_WEIGHT * this.heat[tile];   // co-op: keep away from the monsters
       if (score > bestScore) { bestScore = score; bestTile = tile; bestKind = kind; }
     };
 
@@ -1208,9 +1372,13 @@ export class BotBrain {
       }
     }
 
-    if (prof.hunt > 0 && me.curse !== 'nobomb') {
-      const keen = prof.hunt * Math.min(1, Math.max(0.25, (30 - blocksLeft) / 30));      // the emptier the board, the more the rivals matter
+    // Co-op: the team's bots (helpers in coop) go after the enemy bots from the start, whatever their level: clearing the wave is
+    // the whole point there, and a helper that farmed crates for two minutes let the wave run into sudden death.
+    const helper = world.mode === 'coop' && me.team === 0;
+    if ((prof.hunt > 0 || helper || (world.monsters?.length ?? 0) > 0) && me.curse !== 'nobomb') {
+      const keen = helper ? Math.max(prof.hunt, 1) : prof.hunt * Math.min(1, Math.max(0.25, (30 - blocksLeft) / 30));   // the emptier the board, the more the rivals matter
       for (const e of this.foes) {
+        if (!e.isMonster && keen <= 0) continue;
         const ei = tileOf(e);
         if (manhattan(ei, c) > prof.sight + 8) continue;
         let near = -1;
@@ -1225,8 +1393,21 @@ export class BotBrain {
           if (this.goal.kind === 'hunt' && i === this.goal.tile) { keep = i; keepCost = cost; }
         }
         if (keep >= 0 && keepCost <= nearCost + HUNT_SLACK) near = keep;          // the rival moved a little: do not swerve after it
-        if (near >= 0 && near !== c) consider(near, 'hunt', keen / (1 + 0.15 * stepsTo(near)));
+        const want = e.isMonster ? Math.max(keen, MONSTER_HUNT) : keen;
+        if (near >= 0 && near !== c) consider(near, 'hunt', want / (1 + 0.15 * stepsTo(near)));
       }
+    }
+
+    const door = world.door;                      // co-op: the open exit ends the level for the whole team
+    if (door && door.open && door.revealed) {
+      const di = door.ty * W + door.tx;
+      if (di === c) {
+        this.goal.kind = 'exit';
+        this.goal.tile = c;
+        this.status = 'exit';
+        return;
+      }
+      if (sr.arr[di] < INF) consider(di, 'exit', EXIT_VALUE / (1 + 0.05 * stepsTo(di)));
     }
 
     if (prof.trap && T >= this.trapNext) {
@@ -1406,6 +1587,7 @@ export class BotBrain {
     const sp = effectiveSpeed(me) * DT;
     let tried = 0;
     for (const e of this.foes) {
+      if (e.isMonster) continue;
       const ei = tileOf(e);
       if (manhattan(ei, c) > TRAP_RANGE + 3) continue;
       const er = this.srE;
@@ -1425,8 +1607,16 @@ export class BotBrain {
     return -1;
   }
 
+  /** Does any fire burn on tile i right now (whoever lit it)? */
+  _fireOn(world, i) {
+    const tx = i % W;
+    const ty = (i - tx) / W;
+    for (const f of world.flames) if (f.tx === tx && f.ty === ty) return true;
+    return false;
+  }
+
   _canBombTile(world, i) {
-    if (world.grid[i] !== '.') return false;
+    if (world.grid[i] !== '.' || this._fireOn(world, i)) return false;
     const tx = i % W;
     const ty = (i - tx) / W;
     for (const b of world.bombs) if (b.tx === tx && b.ty === ty) return false;
@@ -1449,6 +1639,13 @@ export class BotBrain {
     if (pool.length === 0) {
       this.goal.tile = -1;
       return;
+    }
+    if (this.hot) {                               // co-op: wander towards the cooler half of the choices
+      let coolest = INF;
+      for (const i of pool) if (this.heat[i] < coolest) coolest = this.heat[i];
+      let kept = 0;
+      for (const i of pool) if (this.heat[i] <= coolest + 2) pool[kept++] = i;
+      pool.length = kept;
     }
     this.goal.tile = pool[this.rng.int(pool.length)];
     this._setPath(this.goal.tile);

@@ -29,6 +29,9 @@
 //   * A snapshot with the same `k` as the newest one is ignored, except that its `g` is applied: the reply to `sync` can carry the
 //     tick we already have, and its grid is exactly the grid we were missing.
 //   * `takeEvents()` returns a shared frozen empty array when nothing happened, so an idle frame allocates nothing.
+//   * Co-op modes (docs/SPEC.md Appendix C): the View also carries `monsters` (interpolated like the other fighters), `door` ({tx, ty, open}
+//     once found, else null) and `coop` ({ mode, lives, score, respawn } or null in the battle modes), all from the optional snapshot keys
+//     m / dr / lv / sc / rp. A fighter who comes back from a respawn is drawn at the newest position at once (never lerped from where they fell).
 //   * Rebasing on the wire's rounded copy of my position would be lossy in one place: movePlayer's corner slide tests
 //     `Math.floor(pp) === lane`, which flips at an integer, and the server can stand at 10.999999 (an EPS-lattice position after a
 //     wall-flush run) that the wire shows as 11.000. So every cmd remembers the position the predictor reached after it; when the
@@ -46,7 +49,7 @@ import {
   TICK_RATE, GRID_W, GRID_H, INTERP_TICKS, COUNTDOWN_TICKS, COUNTDOWN_HOLD_TICKS, ENDING_TICKS, IN_MAX_CMDS, STATE, START_BOMBS, START_RANGE,
 } from '../../shared/constants.js';
 import { movePlayer, effectiveDir, overlapsTile, makeEnv } from '../../shared/world.js';
-import { P, PF, B } from '../../shared/protocol.js';
+import { P, PF, B, M, MF } from '../../shared/protocol.js';
 
 const TICK_MS = 1000 / TICK_RATE;
 const TICKS_PER_MS = TICK_RATE / 1000;
@@ -59,7 +62,7 @@ const ERR_DECAY = Math.exp(-TICK_MS / 80);   // per tick: the visual error offse
 const ERR_SNAP_DIST2 = 2 * 2;          // a misprediction of 2 tiles or more is a teleport: snap
 const TELEPORT_DIST2 = 3 * 3;          // remote entities that jump farther than this between snapshots are not interpolated
 const STALE_GAP_MS = 500;              // a snapshot this late after its predecessor only delivers the important events
-const STALE_KEEP = new Set(['go', 'death', 'left', 'curse', 'sdstart', 'sdland', 'showdown']);
+const STALE_KEEP = new Set(['go', 'death', 'left', 'curse', 'sdstart', 'sdland', 'showdown', 'door', 'exit', 'life', 'respawn', 'hurry']);
 const ENDING_MS = ENDING_TICKS * TICK_MS;   // the server sends no snapshot once a round is OVER, so the client counts the ENDING out itself
 const EVENTS_MAX = 200;
 const GHOST_SOUND_MS = 30 * TICK_MS;   // a server `bomb` event this soon after its ghost went away is the same bomb
@@ -82,6 +85,7 @@ export function createView() {
   return {
     w: GRID_W, h: GRID_H, grid: '', state: STATE.COUNTDOWN, countdown: 0, timeLeft: -1, suddenDeath: false, me: -1, theme: 'meadow', mode: 'ffa',
     players: [], bombs: [], flames: [], items: [], falling: [], ghostBombs: [], local: null,
+    monsters: [], door: null, coop: null,
   };
 }
 
@@ -95,9 +99,11 @@ const newFlameView = () => ({ x: 0, y: 0, mask: 0, ticksLeft: 0 });
 const newItemView = () => ({ id: 0, x: 0, y: 0, kind: '', born: 0 });
 const newFallingView = () => ({ tx: 0, ty: 0, ticksLeft: 0 });
 const newGhostView = () => ({ x: 0, y: 0 });
+const newMonsterView = () => ({ id: 0, kind: '', x: 0, y: 0, facing: 2, hurt: false, angry: false, hp: 1 });
+const newCoopView = () => ({ mode: 'coop', lives: -1, score: 0, respawn: new Map() });
 const newHudPlayer = () => ({
   id: 0, name: '', color: 0, team: 0, alive: true, wins: 0, bombsMax: 1, range: 2, speedLv: 0, kick: false, glove: false, shield: 0,
-  curse: null, isBot: false, isMe: false, connected: true, waiting: false,
+  curse: null, isBot: false, isMe: false, connected: true, waiting: false, foe: false, respawnSec: 0,
 });
 const NO_INFO = Object.freeze({ name: '', color: 0, team: 0, isBot: false, x: 0, y: 0 });
 
@@ -115,6 +121,15 @@ function playerRow(snap, hint, id) {
   const r = rows[hint];
   if (r !== undefined && r[P.ID] === id) return r;
   for (let i = 0; i < rows.length; i++) if (rows[i][P.ID] === id) return rows[i];
+  return null;
+}
+
+function monsterRow(snap, hint, id) {
+  const rows = snap.m;
+  if (!Array.isArray(rows)) return null;
+  const r = rows[hint];
+  if (r !== undefined && r[M.ID] === id) return r;
+  for (let i = 0; i < rows.length; i++) if (rows[i][M.ID] === id) return rows[i];
   return null;
 }
 
@@ -181,8 +196,11 @@ export class ClientGame {
 
     // View and pools
     this.view = createView();
-    this._pool = { players: [], bombs: [], fly: [], flames: [], items: [], falling: [], ghosts: [] };
-    this._hud = { roundNo: 0, winsNeeded: 0, timeLeftSec: null, suddenDeath: false, state: 'countdown', mode: 'ffa', players: [] };
+    this._pool = { players: [], bombs: [], fly: [], flames: [], items: [], falling: [], ghosts: [], monsters: [] };
+    this._door = { tx: 0, ty: 0, open: false };
+    this._coop = newCoopView();
+    this._hud = { roundNo: 0, winsNeeded: 0, timeLeftSec: null, suddenDeath: false, state: 'countdown', mode: 'ffa', players: [], coop: null };
+    this._hudCoop = { mode: 'coop', level: 0, of: 0, lives: -1, score: 0, monsters: 0, foes: 0, door: 'hidden', respawnSec: 0, hurry: false };
     this._hudPool = [];
   }
 
@@ -646,7 +664,64 @@ export class ClientGame {
     this._fillItems(v, snap);
     this._fillFalling(v, snap, elapsed);
     this._fillGhosts(v);
+    this._fillCoop(v, snap, from.snap, to.snap, t, elapsed);
     return v;
+  }
+
+  /** Co-op keys of the newest snapshot (Appendix C); monsters are interpolated like remote fighters. */
+  _fillCoop(v, snap, a, b, t, elapsed) {
+    const rows = Array.isArray(snap.m) ? snap.m : null;
+    const list = v.monsters;
+    const n = rows ? rows.length : 0;
+    for (let i = 0; i < n; i++) {
+      const row = rows[i];
+      const o = take(this._pool.monsters, list, i, newMonsterView);
+      const id = row[M.ID];
+      let x = row[M.X];
+      let y = row[M.Y];
+      if (a !== b) {
+        const ra = monsterRow(a, i, id);
+        const rb = monsterRow(b, i, id);
+        if (ra !== null && rb !== null) {
+          const dx = rb[M.X] - ra[M.X];
+          const dy = rb[M.Y] - ra[M.Y];
+          if (dx * dx + dy * dy <= TELEPORT_DIST2) {
+            x = ra[M.X] + dx * t;
+            y = ra[M.Y] + dy * t;
+          }
+        }
+      }
+      o.id = id;
+      o.kind = row[M.K];
+      o.x = x;
+      o.y = y;
+      o.facing = row[M.F];
+      o.hurt = (row[M.FL] & MF.HURT) !== 0;
+      o.angry = (row[M.FL] & MF.ANGRY) !== 0;
+      o.hp = row[M.HP];
+    }
+    list.length = n;
+    const dr = snap.dr;
+    if (Array.isArray(dr)) {
+      const d = this._door;
+      d.tx = dr[0];
+      d.ty = dr[1];
+      d.open = dr[2] === 1;
+      v.door = d;
+    } else {
+      v.door = null;
+    }
+    if (typeof snap.sc !== 'number') {
+      v.coop = null;
+      return;
+    }
+    const c = this._coop;
+    c.mode = v.mode;
+    c.lives = typeof snap.lv === 'number' ? snap.lv : -1;
+    c.score = snap.sc;
+    c.respawn.clear();
+    if (Array.isArray(snap.rp)) for (const r of snap.rp) c.respawn.set(r[0], Math.max(0, r[1] - elapsed));
+    v.coop = c;
   }
 
   _fillPlayers(v, snap, a, b, t) {
@@ -675,7 +750,7 @@ export class ClientGame {
         if (ra !== null && rb !== null) {
           const dx = rb[P.X] - ra[P.X];
           const dy = rb[P.Y] - ra[P.Y];
-          if (dx * dx + dy * dy > TELEPORT_DIST2) {
+          if (dx * dx + dy * dy > TELEPORT_DIST2 || (ra[P.FL] & PF.ALIVE) === 0) {   // (back from a co-op respawn: no glide from where they fell)
             x = rb[P.X];
             y = rb[P.Y];
           } else {
@@ -849,7 +924,9 @@ export class ClientGame {
       if (o.isMe) v.local = o;
     }
     list.length = fighters.length;
-    v.bombs.length = v.flames.length = v.items.length = v.falling.length = v.ghostBombs.length = 0;
+    v.bombs.length = v.flames.length = v.items.length = v.falling.length = v.ghostBombs.length = v.monsters.length = 0;
+    v.door = null;
+    v.coop = null;
     return v;
   }
 
@@ -868,6 +945,7 @@ export class ClientGame {
     hud.suddenDeath = view.suddenDeath;
     hud.state = HUD_STATES[view.state] ?? 'ending';
     hud.mode = view.mode;
+    hud.coop = view.coop ? this._hudCoopModel(view, hud) : null;
     const players = view.players;
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
@@ -893,9 +971,30 @@ export class ClientGame {
       h.isMe = p.isMe;
       h.connected = entry ? entry.connected : true;
       h.waiting = entry ? entry.waiting : false;
+      h.foe = view.mode === 'coop' && p.team === 1;
+      h.respawnSec = view.coop && !p.alive && view.coop.respawn.has(p.id) ? Math.ceil(view.coop.respawn.get(p.id) / TICK_RATE) : 0;
       hud.players[i] = h;
     }
     hud.players.length = players.length;
     return hud;
+  }
+
+  /** The co-op part of the hudModel: level or wave, lives, score, monsters or enemies left, the door, my comeback countdown. */
+  _hudCoopModel(view, hud) {
+    const c = this._hudCoop;
+    const coop = view.coop;
+    c.mode = view.mode;
+    c.level = hud.roundNo;
+    c.of = hud.winsNeeded;
+    c.lives = coop.lives;
+    c.score = coop.score;
+    c.monsters = view.monsters.length;
+    let foes = 0;
+    for (const p of view.players) if (p.team === 1 && p.alive) foes++;
+    c.foes = foes;
+    c.door = view.door === null ? 'hidden' : view.door.open ? 'open' : 'closed';
+    c.respawnSec = coop.respawn.has(this.me) ? Math.ceil(coop.respawn.get(this.me) / TICK_RATE) : 0;
+    c.hurry = view.mode === 'adventure' && view.timeLeft < 0 && view.state === STATE.PLAYING;
+    return c;
   }
 }

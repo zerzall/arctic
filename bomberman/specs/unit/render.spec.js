@@ -332,6 +332,8 @@ test('every event of Appendix A.3 is handled, and malformed ones are ignored wit
     ['go'], ['bomb', 3, 0, 2, 2], boom(4, 4, 3), ['block', 3, 3, 0], ['itemspawn', 9, 3, 3, 'flame'], ['pickup', 9, 0, 'flame', 3, 3], ['pickup', 10, 0, 'skull', 3, 3],
     ['itemgone', 9, 3, 3, 'skull'], ['bombgone', 3, 2, 2], ['death', 1, 0, 4.5, 3.5], ['left', 2], ['shieldhit', 0, 1.5, 1.5], ['kick', 0, 3, 2], ['throw', 0, 3, 2, 2, 5, 2],
     ['land', 3, 5, 2], ['curse', 0, 'reverse', 1], ['curse', 0, 'spam', -1], ['curse', 0, 0, -1], ['sdstart'], ['sdland', 4, 4], ['showdown'],
+    ['mspawn', 3, 'mini', 6.5, 5.5], ['mhit', 2, 'tank', 4.5, 3.5, 0], ['mdeath', 3, 'mini', 6.5, 5.5, 0, 100], ['door', 5, 7, 0], ['door', 5, 7, 1],
+    ['exit', 0, 5, 7], ['life', 1, 2], ['respawn', 1, 1.5, 1.5], ['hurry'],
   ];
   assert.deepEqual([...new Set(good.map((e) => e[0]))].sort(), Object.keys(EVENT_ARGS).sort(), 'the test covers the whole closed list');
   renderer.handleEvents(good, m.view, now);

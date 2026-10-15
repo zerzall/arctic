@@ -215,7 +215,8 @@ const engineOn = (opts) => { const ctx = new FakeContext(); return { ctx, engine
 // ---- Public surface ------------------------------------------------------------------------------
 
 test('every sound and music name of SPEC 8.5 exists, and only those', () => {
-  const sounds = 'place explode block pickup pickup_bad kick throw land death shield curse countdown go win_round win_match lose_match sudden_death warning click join leave emote chat error';
+  const sounds = 'place explode block pickup pickup_bad kick throw land death shield curse countdown go win_round win_match lose_match sudden_death warning click join leave emote chat error'
+    + ' monster_pop monster_hit door_found door_open level_clear life_lost respawn hurry game_over victory';   // co-op (SPEC Appendix C)
   assert.deepEqual([...SOUND_NAMES].sort(), sounds.split(' ').sort());
   assert.deepEqual([...MUSIC_NAMES], ['menu', 'battle', 'battle_fast', 'victory']);
 });

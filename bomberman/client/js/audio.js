@@ -54,6 +54,8 @@ const NOISE_SECONDS = 1.5;
 export const SOUND_NAMES = Object.freeze([
   'place', 'explode', 'block', 'pickup', 'pickup_bad', 'kick', 'throw', 'land', 'death', 'shield', 'curse', 'countdown', 'go',
   'win_round', 'win_match', 'lose_match', 'sudden_death', 'warning', 'click', 'join', 'leave', 'emote', 'chat', 'error',
+  // co-op modes (docs/SPEC.md Appendix C)
+  'monster_pop', 'monster_hit', 'door_found', 'door_open', 'level_clear', 'life_lost', 'respawn', 'hurry', 'game_over', 'victory',
 ]);
 export const MUSIC_NAMES = Object.freeze(['menu', 'battle', 'battle_fast', 'victory']);
 
@@ -525,6 +527,113 @@ const SFX = {
     pri: 1, vol: 1.25, gap: 0.08, jitter: 0.03,
     build(v, t) {
       phrase(v, t, [['C6', 0, 0.07], ['E6', 0.06, 0.1]], { wave: 'triangle', vol: 0.4, atk: 0.003, filter: lp(4000) });
+    },
+  },
+
+  // ---- Co-op (Appendix C): cartoonish and friendly, in the same chiptune voice as the rest
+
+  monster_pop: {
+    pri: 3, vol: 1.1, gap: 0.05, spread: 0.12, window: 0.3, falloff: 0.8, jitter: 0.06, wet: 0.2,
+    // A balloon "poing" that pops: a rubbery upward boing, a burst of air and a tiny sparkle.
+    build(v, t) {
+      tone(v, t, { wave: 'sine', f: 260, to: 760, glide: 0.09, dur: 0.14, vol: 0.55, atk: 0.003, vib: { rate: 22, depth: 30 } });
+      noise(v, t + 0.08, { dur: 0.08, vol: 0.55, atk: 0.001, filter: bp(2400, 900, 1.1) });
+      phrase(v, t + 0.12, [['E6', 0, 0.06], ['B6', 0.05, 0.12]], { wave: 'pulse25', vol: 0.18, atk: 0.002, filter: lp(6000) });
+    },
+  },
+
+  monster_hit: {
+    pri: 3, vol: 1.1, gap: 0.1, jitter: 0.04,
+    // "Bonk": a hollow wooden knock and a short dazed wobble.
+    build(v, t) {
+      tone(v, t, { wave: 'triangle', f: 520, to: 300, glide: 0.06, dur: 0.12, vol: 0.6, atk: 0.001 });
+      noise(v, t, { dur: 0.03, vol: 0.4, atk: 0.001, filter: bp(1800, undefined, 2) });
+      tone(v, t + 0.1, { wave: 'sine', f: 700, dur: 0.35, vol: 0.18, shape: 'flat', atk: 0.01, rel: 0.12, vib: { rate: 9, depth: 90 } });
+    },
+  },
+
+  door_found: {
+    pri: 3, vol: 0.9, gap: 0.4, wet: 0.4,
+    // A little "ta-da" of discovery.
+    build(v, t) {
+      phrase(v, t, [['G5', 0, 0.08], ['D6', 0.08, 0.28]], { wave: 'pulse25', vol: 0.3, atk: 0.003, filter: lp(4800) });
+      tone(v, t + 0.08, { wave: 'triangle', f: hz('G4'), dur: 0.3, vol: 0.3, atk: 0.004 });
+    },
+  },
+
+  door_open: {
+    pri: 4, vol: 0.8, gap: 0.5, wet: 0.55, duck: [0.45, 1],
+    // A magical shimmer: a rising arpeggio over a swelling chord and a soft chime.
+    build(v, t) {
+      phrase(v, t, [['C5', 0, 0.12], ['E5', 0.07, 0.12], ['G5', 0.14, 0.12], ['C6', 0.21, 0.12], ['E6', 0.28, 0.12], ['G6', 0.35, 0.4]],
+        { wave: 'triangle', vol: 0.3, atk: 0.003 });
+      phrase(v, t, [['C4', 0, 0.9], ['G4', 0, 0.9], ['E5', 0, 0.9]], { wave: 'sine', vol: 0.1, shape: 'flat', atk: 0.3, rel: 0.4, trem: { rate: 7, depth: 0.4 } });
+      noise(v, t, { dur: 0.8, vol: 0.08, shape: 'flat', atk: 0.4, rel: 0.3, filter: hp(6000) });
+    },
+  },
+
+  level_clear: {
+    pri: 4, vol: 0.62, gap: 0.8, wet: 0.4, duck: [0.25, 2],
+    // The bright "stage clear" jingle: a quick run up and a bouncy cadence.
+    build(v, t) {
+      phrase(v, t, [['C5', 0, 0.08], ['D5', 0.07, 0.08], ['E5', 0.14, 0.08], ['G5', 0.21, 0.08], ['C6', 0.3, 0.18], ['G5', 0.5, 0.1], ['C6', 0.62, 0.5]],
+        { wave: 'pulse25', vol: 0.36, shape: 'flat', atk: 0.003, rel: 0.05, filter: lp(5000) });
+      phrase(v, t, [['E5', 0.3, 0.18], ['D5', 0.5, 0.1], ['E5', 0.62, 0.5]], { wave: 'square', vol: 0.12, shape: 'flat', atk: 0.003, rel: 0.05, filter: lp(2600) });
+      phrase(v, t, [['C3', 0.3, 0.18], ['G2', 0.5, 0.1], ['C3', 0.62, 0.5]], { wave: 'triangle', vol: 0.5, shape: 'flat', atk: 0.004, rel: 0.1 });
+      noise(v, t + 0.62, { dur: 0.5, vol: 0.12, atk: 0.002, filter: hp(5000) });
+    },
+  },
+
+  life_lost: {
+    pri: 4, vol: 0.8, gap: 0.3, wet: 0.3,
+    // Not the trombone of a battle knock-out: a soft falling "aww" (you will be back).
+    build(v, t) {
+      phrase(v, t, [['E5', 0, 0.16], ['C5', 0.16, 0.16], ['A4', 0.32, 0.34]], { wave: 'triangle', vol: 0.36, shape: 'flat', atk: 0.01, rel: 0.08, vib: { rate: 5, depth: 12, delay: 0.1 } });
+    },
+  },
+
+  respawn: {
+    pri: 3, vol: 0.9, gap: 0.3, wet: 0.45,
+    // A sparkly whoosh up: back in the game.
+    build(v, t) {
+      tone(v, t, { wave: 'sine', f: 300, to: 1200, glide: 0.25, dur: 0.3, vol: 0.3, shape: 'flat', atk: 0.05, rel: 0.1 });
+      phrase(v, t + 0.22, [['G5', 0, 0.08], ['C6', 0.06, 0.08], ['E6', 0.12, 0.22]], { wave: 'pulse25', vol: 0.22, atk: 0.002, filter: lp(5000) });
+    },
+  },
+
+  hurry: {
+    pri: 4, vol: 0.7, gap: 1, duck: [0.4, 1],
+    // A cartoon alarm: two quick klaxon toots.
+    build(v, t) {
+      for (const at of [0, 0.32]) {
+        tone(v, t + at, { wave: 'square', f: hz('A4'), to: hz('C5'), glide: 0.2, dur: 0.24, vol: 0.3, shape: 'flat', atk: 0.01, rel: 0.05, filter: lp(2200) });
+        tone(v, t + at, { wave: 'sawtooth', f: hz('A3'), to: hz('C4'), glide: 0.2, dur: 0.24, vol: 0.14, shape: 'flat', atk: 0.01, rel: 0.05, filter: lp(1400) });
+      }
+    },
+  },
+
+  game_over: {
+    pri: 4, vol: 0.62, gap: 1, wet: 0.35, duck: [0.3, 2.2],
+    // Gentle and a little funny, never harsh: a slow chromatic slide down and a soft "bwomp".
+    build(v, t) {
+      phrase(v, t, [['G4', 0, 0.28], ['F#4', 0.3, 0.28], ['F4', 0.6, 0.28]], { wave: 'triangle', vol: 0.42, shape: 'flat', atk: 0.01, rel: 0.08 });
+      phrase(v, t, [['G4', 0, 0.28], ['F#4', 0.3, 0.28], ['F4', 0.6, 0.28]], { wave: 'square', vol: 0.08, shape: 'flat', atk: 0.01, rel: 0.08, filter: lp(1500) });
+      tone(v, t + 0.9, { wave: 'triangle', f: hz('E4'), to: hz('E4') * 0.75, glide: 0.9, dur: 1, vol: 0.42, shape: 'flat', atk: 0.02, rel: 0.4, vib: { rate: 5, depth: 25, delay: 0.2 } });
+      tone(v, t + 0.9, { wave: 'sine', f: 110, to: 60, glide: 0.5, dur: 0.6, vol: 0.4, atk: 0.01 });
+    },
+  },
+
+  victory: {
+    pri: 4, vol: 0.6, gap: 1, wet: 0.45, duck: [0.2, 3.2],
+    // The big one: fanfare, a triumphant held chord, and sparkles.
+    build(v, t) {
+      for (let i = 0; i < 8; i++) noise(v, t + i * 0.05, { dur: 0.06, vol: 0.12 + i * 0.03, atk: 0.002, filter: bp(300, undefined, 1) });
+      phrase(v, t, [['G4', 0.4, 0.12], ['C5', 0.52, 0.12], ['E5', 0.64, 0.12], ['G5', 0.76, 0.3], ['E5', 1.08, 0.12], ['G5', 1.2, 0.12]],
+        { wave: 'pulse25', vol: 0.36, shape: 'flat', atk: 0.003, rel: 0.04, filter: lp(4800) });
+      phrase(v, t + 1.34, [['C6', 0, 1.2], ['G5', 0, 1.2], ['E5', 0, 1.2]], { wave: 'pulse25', vol: 0.2, shape: 'flat', atk: 0.004, rel: 0.5, filter: lp(4800), vib: { rate: 5.5, depth: 14, delay: 0.25 } });
+      phrase(v, t, [['C3', 0.4, 0.36], ['G2', 0.76, 0.3], ['C3', 1.08, 0.24], ['C3', 1.34, 1.2]], { wave: 'triangle', vol: 0.5, shape: 'flat', atk: 0.004, rel: 0.1 });
+      for (let i = 0; i < 6; i++) tone(v, t + 1.4 + i * 0.12, { wave: 'sine', f: hz(['C7', 'G6', 'E7', 'C7', 'G7', 'E7'][i]), dur: 0.2, vol: 0.08, atk: 0.003 });
+      noise(v, t + 1.34, { dur: 1.2, vol: 0.14, atk: 0.002, filter: hp(4500) });
     },
   },
 

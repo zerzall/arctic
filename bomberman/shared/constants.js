@@ -109,17 +109,45 @@ export const STATE = deepFreeze({ COUNTDOWN: 0, PLAYING: 1, ENDING: 2, OVER: 3 }
 export const PHASES = deepFreeze(['lobby', 'match', 'results']);
 
 // protocol.js validates against it, Room takes defaults from it, ui.js builds the panel from it.
+// `mode` 'coop' (everybody against waves of bots) and 'adventure' (levels of monsters and a hidden exit door) are the co-op
+// modes of Appendix C; `difficulty` only matters to them (enemy bots in coop, monsters and lives in adventure).
 export const SETTINGS_DEFS = deepFreeze({
   rounds: { values: [1, 2, 3, 5, 7], def: 3 },
   roundTime: { values: [0, 60, 90, 120, 180, 240], def: 120 },
   suddenDeath: { values: [true, false], def: true },
-  mode: { values: ['ffa', 'teams'], def: 'ffa' },
+  mode: { values: ['ffa', 'teams', 'coop', 'adventure'], def: 'ffa' },
+  difficulty: { values: ['easy', 'normal', 'hard'], def: 'normal' },
   theme: { values: ['random', ...THEMES], def: 'random' },
   layout: { values: ['classic', 'open'], def: 'classic' },
   blocks: { values: ['few', 'normal', 'many'], def: 'normal' },
   items: { values: ['none', 'few', 'normal', 'many'], def: 'normal' },
   locked: { values: [true, false], def: false },
 });
+
+// ---- Co-op modes (docs/SPEC.md Appendix C) ------------------------------------------------------
+// Everything that differs from the battle modes is gated on these modes, so 'ffa' and 'teams' run exactly as before.
+export const COOP_MODES = deepFreeze(['coop', 'adventure']);
+export const ADVENTURE_LEVELS = 8;          // levels of an adventure (the `rounds` setting is the number of waves in coop)
+export const ADVENTURE_TIME = 180;          // seconds of a level before the hurry-up monsters come out
+export const ADVENTURE_LIVES = deepFreeze({ easy: 5, normal: 3, hard: 2 });   // shared lives, plus one per extra human
+export const RESPAWN_TICKS = 150;           // a downed human with lives left is back after 2.5 s, with a spawn shield
+export const CLEAR_POINTS = 500;            // team score per level (or wave) number for clearing it
+export const ENEMY_POINTS = 250;            // team score for every enemy bot a team-mate blasts in coop
+export const MONSTER_TOUCH = 0.6;           // tiles: a monster catches a fighter whose centre is closer than this on BOTH axes
+export const MONSTER_KINDS = deepFreeze(['puff', 'zippy', 'ghost', 'tank', 'jelly', 'mini']);
+/**
+ * speed: tiles/s at level 1 (normal difficulty). hp: flame hits it takes. points: team score. chase: tiles within which it heads
+ * for the nearest fighter (0 = never). ghost: drifts through soft blocks. split: kind it bursts into (two of them) when it pops.
+ */
+export const MONSTER_DEFS = deepFreeze({
+  puff: { speed: 1.25, hp: 1, points: 100, chase: 0, ghost: false, split: null },     // balloon: slow, wanders at random
+  zippy: { speed: 2.2, hp: 1, points: 200, chase: 6, ghost: false, split: null },     // quick little spark: runs at you when near
+  ghost: { speed: 1.5, hp: 1, points: 300, chase: 8, ghost: true, split: null },      // floats through crates, drifts your way
+  tank: { speed: 1.05, hp: 2, points: 400, chase: 0, ghost: false, split: null },     // armoured: two hits, angry (and chasing) after the first
+  jelly: { speed: 1.6, hp: 1, points: 300, chase: 0, ghost: false, split: 'mini' },   // wobbly: pops into two minis
+  mini: { speed: 2.1, hp: 1, points: 100, chase: 0, ghost: false, split: null },
+});
+export const ENEMY_NAMES = deepFreeze(['Grumble', 'Snoot', 'Rascal', 'Mischief', 'Prankster', 'Sneaky', 'Boomzilla', 'Wobbles']);
 
 export const TIMEOUTS = deepFreeze({
   GRACE_LOBBY_MS: 120000, GRACE_MATCH_MS: 30000, HOST_MIGRATE_MS: 60000, EMPTY_CLOSE_MS: 30000, RESULTS_AUTO_MS: 30000,

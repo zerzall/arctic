@@ -21,14 +21,22 @@
 //  * Team-mode standings rank teams first (team wins, team kills, fewer team deaths), then individuals; teammates share a place.
 //  * Extra constructor option `tickMeter = {now(), record(ms)}` lets the server time each match tick (/api/stats). It is
 //    optional and unused by Practice.
+//  * Co-op modes (Appendix C). Every entry (humans and lobby bots, who become helpers) is team 0. A match is a run of waves ('coop',
+//    `rounds` of them) or of ADVENTURE_LEVELS levels ('adventure'); each wave/level is one World round, and losing one ends the run.
+//    The enemy bots of a coop wave are not lobby entries: the Room makes them per wave (`_foes`, fresh ids from the entry counter, so
+//    ids stay unique and ascending) and drops them at the end of the wave. Lives, score and the power-ups a fighter carries into
+//    the next level live here between rounds (`_run`, `entry.carry`). A lone human can start a co-op match; coop needs one seat
+//    free for an enemy (`need_seat`).
 
 import {
   TICK_RATE, SNAP_EVERY, MAX_PLAYERS, MIN_TO_START, MAX_NAME, GRID_W, GRID_H,
   COUNTDOWN_HOLD_TICKS, OVER_HOLD_TICKS, INPUT_QUEUE_MAX, INPUT_CATCHUP_AT, CATCHUP_CREDIT_MAX,
   IN_FLOOD_RATE, IN_FLOOD_BURST, STATE, SPAWN_SLOTS, BOT_NAMES, THEMES, SETTINGS_DEFS, TIMEOUTS,
+  COOP_MODES, ADVENTURE_LEVELS, ENEMY_NAMES, PLAYER_COLORS,
 } from './constants.js';
 import { makeRng } from './rng.js';
 import { World } from './world.js';
+import { startingLives, coopWavePlan, coopWaveItems, coopTeamStart } from './coop.js';
 import { BotBrain } from './bots.js';
 import { parseClientMessage, sanitizeText, ERR } from './protocol.js';
 
@@ -47,7 +55,8 @@ export const ERROR_TEXT = Object.freeze({
   [ERR.NO_ROOM]: 'That room does not exist.', [ERR.FULL]: 'That room is full.', [ERR.LOCKED]: 'That room is locked.',
   [ERR.BUSY]: 'Server is busy, try again in a minute.', [ERR.NOT_HOST]: 'Only the host can do that.',
   [ERR.BAD_PHASE]: 'You cannot do that right now.', [ERR.NEED_PLAYERS]: 'You need at least two fighters to start.',
-  [ERR.NEED_TEAMS]: 'Each team needs at least one fighter.', [ERR.RATE_LIMITED]: 'Slow down a little.',
+  [ERR.NEED_TEAMS]: 'Each team needs at least one fighter.', [ERR.NEED_SEAT]: 'Co-op vs bots needs a free seat for the enemy bots.',
+  [ERR.RATE_LIMITED]: 'Slow down a little.',
   [ERR.KICKED]: 'You were removed from that room.', [ERR.CLOSED]: 'Room closed.',
 });
 
@@ -81,9 +90,13 @@ function randomToken() {
   return s;
 }
 
-function emptyStats() {
-  return { kills: 0, deaths: 0, selfKills: 0, blocks: 0, items: 0 };
+function emptyStats(mode) {
+  const stats = { kills: 0, deaths: 0, selfKills: 0, blocks: 0, items: 0 };
+  if (COOP_MODES.includes(mode)) stats.monsters = 0;     // co-op standings also count monsters (battle standings keep their shape)
+  return stats;
 }
+
+const isCoop = (mode) => COOP_MODES.includes(mode);
 
 export class Room {
   /**
@@ -137,6 +150,8 @@ export class Room {
     this.roundNo = 0;                           // last built round of the current match
     this.roundsPlayed = 0;
     this.world = null;
+    this._foes = [];                            // coop: this wave's enemy bots (not lobby entries)
+    this._run = null;                           // co-op: { cleared, lives, score } of the current run
 
     this._lastRoundEnd = null;                  // JSON strings kept for replays (A.4 F4)
     this._lastMatchEnd = null;
@@ -368,7 +383,7 @@ export class Room {
   _makeEntry({ id, name, color, isBot, level = null }) {
     return {
       id, name, color: this._freeColor(color, -1), team: this._pickTeam(), isBot, level: isBot ? level : null, token: null,
-      conn: null, connected: isBot, disconnectedAt: null, waiting: false, wins: 0, matchStats: emptyStats(),
+      conn: null, connected: isBot, disconnectedAt: null, waiting: false, wins: 0, matchStats: emptyStats(this.settings.mode), carry: null,
       lastSeq: 0, appliedSeq: 0, botSeq: 0, credit: 0, q: [], brain: null, brainFailed: false,
       hits: new Map(), floodTokens: IN_FLOOD_BURST, floodAt: this.now(), lastChat: null,
     };
@@ -498,7 +513,7 @@ export class Room {
         target.color = msg.color;
         changed = true;
       }
-      if (msg.team !== undefined && msg.team !== target.team) { target.team = msg.team; changed = true; }
+      if (msg.team !== undefined && msg.team !== target.team && !isCoop(this.settings.mode)) { target.team = msg.team; changed = true; }   // co-op: one team
     }
     if (changed) this._sendLobbyAll();
   }
@@ -511,6 +526,7 @@ export class Room {
       this.settings[key] = value;
       changed = true;
       if (key === 'mode' && value === 'teams') this.entries.forEach((en, i) => { en.team = i % 2; });
+      if (key === 'mode' && isCoop(value)) this.entries.forEach((en) => { en.team = 0; });
     }
     if (changed) this._sendLobbyAll();
   }
@@ -552,16 +568,18 @@ export class Room {
     }
     const verdict = this._readiness();
     if (verdict !== 'ok') {
-      this._error(e, verdict === 'players' ? ERR.NEED_PLAYERS : ERR.NEED_TEAMS);
+      this._error(e, verdict === 'players' ? ERR.NEED_PLAYERS : verdict === 'seat' ? ERR.NEED_SEAT : ERR.NEED_TEAMS);
       return;
     }
     this.teamWins = [0, 0];
     this.roundsPlayed = 0;
     this._lastMatchEnd = null;
+    this._run = isCoop(this.settings.mode) ? { cleared: 0, lives: null, score: 0 } : null;
     for (const en of this.entries) {
       en.wins = 0;
-      en.matchStats = emptyStats();
+      en.matchStats = emptyStats(this.settings.mode);
       en.waiting = false;
+      en.carry = null;
     }
     this._setPhase('match');
     this._beginRound(1);
@@ -661,6 +679,10 @@ export class Room {
   /** Who can fight if a round were built now: connected humans and bots. */
   _readiness() {
     const fighters = this.entries.filter((e) => e.isBot || e.connected);
+    if (isCoop(this.settings.mode)) {                    // co-op: one human is a team; coop keeps a seat for the enemy
+      if (fighters.length < 1) return 'players';
+      return this.settings.mode === 'coop' && fighters.length >= MAX_PLAYERS ? 'seat' : 'ok';
+    }
     if (fighters.length < MIN_TO_START) return 'players';
     if (this.settings.mode === 'teams' && (!fighters.some((e) => e.team === 0) || !fighters.some((e) => e.team === 1))) return 'teams';
     return 'ok';
@@ -669,14 +691,18 @@ export class Room {
   /** Builds round `n`, or ends the match when its preconditions no longer hold (4.3a). */
   _beginRound(n) {
     for (const e of this.entries) if (!e.isBot) e.waiting = !e.connected;   // absent humans sit this round out
-    const fighters = this.entries.filter((e) => e.isBot || e.connected);
+    if (this.settings.mode === 'coop') {
+      for (const e of this.entries) if (e.isBot) e.waiting = false;   // a helper benched for one wave is back when there is room again
+      this._keepEnemySeat();
+    }
+    const fighters = this.entries.filter((e) => !e.waiting && (e.isBot || e.connected));
     if (!fighters.some((e) => !e.isBot)) {
       this._enterLobby();
       this._sysAll('Waiting for players');
       this._sendLobbyAll();
       return;
     }
-    if (this._readiness() !== 'ok') {
+    if (!isCoop(this.settings.mode) && this._readiness() !== 'ok') {   // (co-op: any connected human is a team, and the seat was kept above)
       this._sysAll('Not enough players - match ended');
       this._finishMatch('not_enough_players');
       return;
@@ -684,19 +710,31 @@ export class Room {
 
     const rSeed = roundSeed(this.seed, n);
     const theme = this.settings.theme !== 'random' ? this.settings.theme : makeRng((rSeed ^ 0xA5A5A5A5) >>> 0).pick(THEMES);
-    for (const e of fighters) {
+    const coop = isCoop(this.settings.mode);
+    this._foes = this.settings.mode === 'coop' ? this._waveFoes(n, fighters) : [];
+    for (const e of [...fighters, ...this._foes]) {
       e.q.length = 0;
       e.appliedSeq = e.lastSeq;
       e.credit = 0;
       e.brainFailed = false;
       e.brain = e.isBot ? this._makeBrain(e, rSeed) : null;
     }
+    const start = (e) => (this.settings.mode === 'coop' ? coopTeamStart(this.settings.difficulty, e.carry) : e.carry);
+    const roster = fighters.map((e) => {
+      const f = { id: e.id, name: e.name, color: e.color, team: coop ? 0 : e.team, isBot: e.isBot, lastSeq: e.appliedSeq };
+      if (coop && start(e)) f.start = start(e);
+      return f;
+    });
+    for (const f of this._foes) roster.push({ id: f.id, name: f.name, color: f.color, team: 1, isBot: true, lastSeq: 0, start: f.start });
+    if (coop && this._run.lives === null) this._run.lives = startingLives(this.settings.difficulty, fighters.filter((e) => !e.isBot).length);
     try {
       this.world = new World({
         seed: rSeed,
-        fighters: fighters.map((e) => ({ id: e.id, name: e.name, color: e.color, team: e.team, isBot: e.isBot, lastSeq: e.appliedSeq })),
-        mode: this.settings.mode, layout: this.settings.layout, blocks: this.settings.blocks, items: this.settings.items,
+        fighters: roster,
+        mode: this.settings.mode, layout: this.settings.layout, blocks: this.settings.blocks,
+        items: this.settings.mode === 'coop' ? coopWaveItems(n, this.settings.items) : this.settings.items,
         theme, roundTime: this.settings.roundTime, suddenDeath: this.settings.suddenDeath,
+        ...(coop ? { coop: { level: n, difficulty: this.settings.difficulty, lives: this._run.lives, score: this._run.score } } : {}),
       });
     } catch (err) {
       this._fault('newRound', err);
@@ -716,6 +754,31 @@ export class Room {
     this._sendLiveAll();
   }
 
+  /** Coop keeps one seat for an enemy: helper bots, then the newest humans, sit a wave out when the team would fill all eight. */
+  _keepEnemySeat() {
+    let side = this.entries.filter((e) => !e.waiting && (e.isBot || e.connected));
+    for (let i = this.entries.length - 1; i >= 0 && side.length >= MAX_PLAYERS; i--) {
+      const e = this.entries[i];
+      if (e.isBot && !e.waiting) { e.waiting = true; side = side.filter((x) => x !== e); }
+    }
+    for (let i = this.entries.length - 1; i >= 0 && side.length >= MAX_PLAYERS; i--) {
+      const e = this.entries[i];
+      if (!e.isBot && !e.waiting && e.id !== this.hostId) { e.waiting = true; side = side.filter((x) => x !== e); }
+    }
+  }
+
+  /** The enemy bots of coop wave `n` (coopWavePlan), with free colours and villain names nobody in the room uses. */
+  _waveFoes(n, side) {
+    const used = new Set(side.map((e) => e.color));
+    const colors = PLAYER_COLORS.map((_, i) => i).filter((c) => !used.has(c));
+    const taken = new Set(this.entries.map((e) => nameKey(e.name)));
+    const names = ENEMY_NAMES.filter((name) => !taken.has(nameKey(name)));
+    return coopWavePlan(n, this.settings.difficulty, side.length).map((plan, i) => ({
+      id: this._nextId++, name: names[i] ?? `${ENEMY_NAMES[i % ENEMY_NAMES.length]} ${i + 1}`, color: colors[i] ?? 0, team: 1, isBot: true,
+      level: plan.level, start: plan.start, q: [], lastSeq: 0, appliedSeq: 0, credit: 0, botSeq: 0, brain: null, brainFailed: false,
+    }));
+  }
+
   _makeBrain(e, rSeed) {
     try {
       return this._botFactory({ level: e.level, seed: (rSeed ^ Math.imul(e.id + 1, 0x85EBCA6B)) >>> 0 });
@@ -733,6 +796,7 @@ export class Room {
         if (!e.isBot) this._consumeInput(e, w);
         else if (w.state === STATE.PLAYING) this._thinkFor(e, w);
       }
+      if (w.state === STATE.PLAYING) for (const f of this._foes) this._thinkFor(f, w);   // coop enemies (their ids come after every entry's)
       w.tick();
     }
     let sent = false;
@@ -768,6 +832,10 @@ export class Room {
 
   /** Outcome lock: score the round, decide whether the match is over, send roundEnd then lobby. */
   _scoreRound(o) {
+    if (isCoop(this.settings.mode)) {
+      this._scoreCoop(o);
+      return;
+    }
     if (o.winnerId !== null) {
       const winner = this._byId.get(o.winnerId);
       if (winner) winner.wins++;
@@ -786,13 +854,48 @@ export class Room {
     this._sendLobbyAll();
   }
 
+  /**
+   * Co-op round end: a cleared wave/level counts for the whole team (teamWins[0] is the number cleared), anything else ends the run.
+   * `roundEnd` carries the run so far in `coop`.
+   */
+  _scoreCoop(o) {
+    const run = this._run;
+    const sum = this.world.coop.summary();
+    const cleared = o.reason === 'clear';
+    if (cleared) run.cleared++;
+    run.lives = sum.lives;
+    run.score = sum.score;
+    this.teamWins[0] = run.cleared;
+    this.roundsPlayed++;
+    const of = this._coopLength();
+    this._matchOver = !cleared || run.cleared >= of;
+    this._matchReason = cleared ? 'victory' : 'gameover';
+    this._lastRoundEnd = JSON.stringify({
+      t: 'roundEnd', n: this.roundNo, winnerId: null, winnerTeam: cleared ? 0 : null, draw: !cleared, reason: o.reason,
+      scores: this.entries.map((e) => ({ id: e.id, wins: this._winsOf(e), team: e.team })), matchOver: this._matchOver,
+      coop: { mode: this.settings.mode, level: this.roundNo, of, cleared: run.cleared, lives: run.lives, score: run.score },
+    });
+    this._sendHumans(this._lastRoundEnd);
+    this._sendLobbyAll();
+  }
+
+  /** Waves of a coop run, levels of an adventure. */
+  _coopLength() {
+    return this.settings.mode === 'adventure' ? ADVENTURE_LEVELS : this.settings.rounds;
+  }
+
   _collectStats(w) {
+    const coop = isCoop(this.settings.mode);
     for (const e of this.entries) {
       const p = w.player(e.id);
       if (!p) continue;
-      for (const key of Object.keys(e.matchStats)) e.matchStats[key] += p.stats[key];
+      for (const key of Object.keys(e.matchStats)) e.matchStats[key] += p.stats[key] ?? 0;
       e.brain = null;                                                   // no bot state survives a round
+      // Co-op: power-ups go with you into the next level (adventure always; coop only if you made it to the end of the wave).
+      if (coop && (p.alive || this.settings.mode === 'adventure')) e.carry = { bombsMax: p.bombsMax, range: p.range, speedLv: p.speedLv, kick: p.kick, glove: p.glove };
+      else if (coop) e.carry = null;
     }
+    for (const f of this._foes) f.brain = null;
   }
 
   _endRound() {
@@ -801,6 +904,10 @@ export class Room {
   }
 
   _finishMatch(reason) {
+    if (isCoop(this.settings.mode)) {
+      this._finishCoop(reason);
+      return;
+    }
     const standings = this._standings();
     const top = standings.filter((s) => s.place === 1);
     const teams = this.settings.mode === 'teams';
@@ -812,6 +919,33 @@ export class Room {
       reason, standings,
     });
     this.world = null;
+    this._setPhase('results');
+    this._sendLobbyAll();
+    this._sendHumans(this._lastMatchEnd);
+  }
+
+  /**
+   * The end of a co-op run: victory (every wave or level cleared) or game over. Standings are the team's members ranked by what they
+   * did (monsters and enemies blasted, then fewer knock-outs); `coop` says how far the team got.
+   */
+  _finishCoop(reason) {
+    const run = this._run ?? { cleared: 0, lives: 0, score: 0 };
+    const of = this._coopLength();
+    const victory = reason === 'victory' && run.cleared >= of;
+    const rows = this.entries.map((e) => ({ id: e.id, name: e.name, color: e.color, team: 0, wins: run.cleared, ...e.matchStats, place: 0 }));
+    const pts = (r) => (r.monsters ?? 0) + r.kills;
+    rows.sort((a, b) => pts(b) - pts(a) || a.deaths - b.deaths);
+    for (const r of rows) r.place = 1 + rows.filter((o) => pts(o) > pts(r) || (pts(o) === pts(r) && o.deaths < r.deaths)).length;
+    this._lastMatchEnd = JSON.stringify({
+      t: 'matchEnd', winnerId: null, winnerTeam: victory ? 0 : null, reason: reason === 'not_enough_players' ? reason : victory ? 'victory' : 'gameover',
+      standings: rows,
+      coop: {
+        mode: this.settings.mode, difficulty: this.settings.difficulty, of, cleared: run.cleared, reached: Math.min(of, run.cleared + (victory ? 0 : 1)),
+        score: run.score, lives: Math.max(0, run.lives ?? 0), victory,
+      },
+    });
+    this.world = null;
+    this._foes = [];
     this._setPhase('results');
     this._sendLobbyAll();
     this._sendHumans(this._lastMatchEnd);
@@ -846,12 +980,15 @@ export class Room {
   }
 
   _winsOf(e) {
+    if (isCoop(this.settings.mode)) return this.teamWins[0];          // co-op: the waves or levels the team cleared
     return this.settings.mode === 'teams' ? this.teamWins[e.team] : e.wins;
   }
 
   /** Drops the World and returns to the lobby with a clean scoreboard (F11, no humans left, crash). */
   _enterLobby() {
     this.world = null;
+    this._foes = [];
+    this._run = null;
     this.teamWins = [0, 0];
     this.roundNo = 0;
     this.roundsPlayed = 0;
@@ -860,7 +997,8 @@ export class Room {
     for (const e of this.entries) {
       e.wins = 0;
       e.waiting = false;
-      e.matchStats = emptyStats();
+      e.matchStats = emptyStats(this.settings.mode);
+      e.carry = null;
       e.q.length = 0;
       e.brain = null;
     }
@@ -1008,8 +1146,9 @@ export class Room {
     return 0;
   }
 
-  /** The team with fewer entries; ties go to the team with fewer wins, then team 0 (3.8). */
+  /** The team with fewer entries; ties go to the team with fewer wins, then team 0 (3.8). Co-op: always team 0. */
   _pickTeam() {
+    if (isCoop(this.settings.mode)) return 0;
     const count = [0, 0];
     for (const e of this.entries) count[e.team]++;
     if (count[0] !== count[1]) return count[0] < count[1] ? 0 : 1;
@@ -1040,7 +1179,7 @@ export class Room {
         id: e.id, name: e.name, color: e.color, team: e.team, isBot: e.isBot, level: e.level, connected: e.connected,
         isHost: e.id === this.hostId, wins: this._winsOf(e), waiting: e.waiting,
       })),
-      round: { n: this.phase === 'lobby' ? 0 : this.roundNo, winsNeeded: this.settings.rounds },
+      round: { n: this.phase === 'lobby' ? 0 : this.roundNo, winsNeeded: isCoop(this.settings.mode) ? this._coopLength() : this.settings.rounds },
     });
   }
 
@@ -1087,7 +1226,8 @@ export class Room {
         id: p.id, name: p.name, color: p.color, team: p.team, slot: p.slot, isBot: p.isBot,
         x: SPAWN_SLOTS[p.slot][0] + 0.5, y: SPAWN_SLOTS[p.slot][1] + 0.5,
       })),
-      winsNeeded: this.settings.rounds, roundTime: this.settings.roundTime, suddenDeath: w.sdEnabled, serverTick: w.tickNo,
+      winsNeeded: w.coop ? this._coopLength() : this.settings.rounds, roundTime: w.roundTime, suddenDeath: w.sdEnabled, serverTick: w.tickNo,
+      ...(w.coop ? { coop: { mode: w.mode, level: this.roundNo, of: this._coopLength(), difficulty: this.settings.difficulty } } : {}),
     });
   }
 

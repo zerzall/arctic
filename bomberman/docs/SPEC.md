@@ -1488,3 +1488,45 @@ Four reviews (netcode `N1–N15`, gameplay `G1–G18`, architecture `A1–A25`, 
 * [A7] A `wantHost` join option — dropped: the first human in the room is host.
 * [A13] The regex-based `sanitizeName` variant — replaced by the tested `sanitizeText` (zalgo/invisible-name/grapheme handling).
 * [N3] Continuous bomb sliding at `KICK_SPEED` 9 tiles/s — the reservation idea was kept, but movement is discrete (`KICK_STEP_TICKS` 7), which removes partial-overlap cases.
+
+## Appendix C: Co-op modes
+
+Two more values of the `mode` setting put every person in the room on one side. `ffa` and `teams` are untouched: the World builds a `CoopState` (`shared/coop.js`) only for `coop` and `adventure`, every co-op rule runs from that object, and a battle round's state, rng draws, events and snapshots are byte-identical to a build without this appendix (the determinism fixture of §10 proves it). The wire additions are listed in `docs/PROTOCOL.md`, "Co-op modes".
+
+### C.1 Settings and lobby
+
+* `mode`: `ffa` | `teams` | `coop` ("Co-op vs bots") | `adventure`. New setting `difficulty`: `easy` | `normal` (default) | `hard`, used only by the co-op modes.
+* Every entry is team 0 in a co-op mode (switching to one moves everybody; `profile.team` is ignored). Lobby bots are **helpers** on the team.
+* `rounds` is the number of **waves** in `coop`; an adventure always has `ADVENTURE_LEVELS` = 8 levels (`round.winsNeeded` says which). `adventure` ignores `rounds`, `roundTime`, `suddenDeath`, `layout` and `blocks` (the level table sets them); the client hides those rows.
+* Start: one connected human is enough (`need_players` otherwise). `coop` needs a seat for at least one enemy: with 8 entries `start` answers `need_seat`; if 8 team members would fight when a wave is built, helper bots (newest first), then the newest non-host humans, sit that wave out.
+
+### C.2 Shared rules (both modes)
+
+* **No friendly fire.** A flame tile hurts a fighter if any owner is the fighter itself or belongs to the other team; a team-mate's flame and an orphaned flame (owner -1) do not. Shields, sudden-death tiles and the showdown rule are unchanged; there is no showdown in co-op.
+* **Spawns** (`assignSidedSlots`): team 0 fills the left spawn slots (0, 3, 6), then the middle (4, 5), then the right (1, 2, 7); team 1 fills from the right. Order inside a side is a World-rng shuffle.
+* **Starting power-ups**: a roster entry may carry `start: { bombsMax, range, speedLv, kick, glove }`, clamped to the normal limits (`startStats`). The Room fills it from what a fighter carried out of the previous level or wave.
+* **Score** (`sc`): +250 (`ENEMY_POINTS`) per enemy bot blasted by a team member, + a monster's points when it pops, +500 x level/wave number (`CLEAR_POINTS`) on a clear.
+* **Results**: `roundEnd.reason` is `clear`, `wipe` or `timeout`; anything but `clear` ends the run. `matchEnd.reason` is `victory` (all cleared), `gameover` or `not_enough_players`. Standings rank the team by monsters popped + enemies blasted, then fewer knock-outs; `matchEnd.coop` reports `{ mode, difficulty, of, cleared, reached, score, lives, victory }`. Per-fighter stats gain `monsters`.
+
+### C.3 Co-op vs bots (`coop`)
+
+* Each wave is one round: the team against enemy bots (team 1) that the Room creates for that wave only. They are not lobby entries: fresh ids from the entry counter, unused colours, names from `ENEMY_NAMES`.
+* `coopWavePlan(n, difficulty, side)`: count = clamp(side + floor((n-1)/2) + (hard ? 1 : 0), 1, 8 - side). Their bot level rises with the wave and the difficulty (easy starts with `easy` bots and never goes beyond `normal`; hard starts with a mix of `normal` and `hard`), and from wave 2 they start with power-ups (bombs 1 + floor((n-1)/3), range 2 + floor((n-1)/2), speed floor((n-1)/2) up to 3, kick from wave 4).
+* Items drop less as waves go on (`coopWaveItems`: one step down every third wave, never below `few` unless `none`/`few` was chosen). On `easy` every team member starts a wave with at least 2 bombs, range 3 and speed 1.
+* A wave is cleared when no enemy stands (also by sudden death); lost when no team member stands (both at once: lost) or, with sudden death off, when the clock runs out. Team members who fell in a wave are back for the next one, without their power-ups; survivors keep theirs.
+
+### C.4 Adventure (`adventure`)
+
+* **Levels** (`ADVENTURE_TABLE`, levels 1..8): layout, crate density, a drop-chance factor (1 down to 0.65) and the monsters. Kinds come in one by one: L1 3 puff; L2 +zippy; L3 ghosts (open arena); L4 a tank; L5 jellies (many crates); L6-L8 mixes of zippy, ghost, tank and jelly. Bigger teams meet one more of the level's toughest kind per two fighters beyond the first; easy removes one of the most numerous kind, hard adds a zippy. Monster speed: x0.85 easy, x1.12 hard, +3.5 % per level.
+* **Monsters** are not fighters. They live in `CoopState.monsters` (ascending ids), move tile to tile (they commit to the next tile and choose only on tile centres), never enter walls, crates (except ghosts) or bomb tiles, and turn back when a bomb appears ahead. Kinds (`MONSTER_DEFS`): `puff` slow wanderer (100 points), `zippy` fast, chases within 6 tiles (200), `ghost` passes crates, chases within 8 (300), `tank` 2 hit points, angry (x1.7 and chasing) after the first (400), `jelly` splits into two fast `mini` (300 / 100). Chasers take the BFS first step towards the nearest alive fighter with probability 0.55 / 0.8 / 0.95 by difficulty. All decisions use the World rng.
+* **Placement** (constructor, fixed rng order): the door first, under a crate at least 6 (then 4, then any) tiles from every spawn in use, its crate's prize removed; then the monsters on non-wall tiles at least 5 (4, 3) tiles from every slot of each used spawn side, spread apart, their crates (and one neighbour when boxed in) cleared.
+* **Tick hooks** (§3.2a, PLAYING only): 3m after movement monsters move; 4m after explosions monsters on a lethal flame tile lose a hit point (then 50 ticks invulnerable; a tank is stunned 30 ticks), pop at 0 (`mdeath`, points, a jelly's minis appear with `mspawn`); a crate opened over the door reveals it (`door`). The door opens (`door` with `open` 1) as soon as no monster is left. 8m after kills a monster within 0.6 tiles on both axes of an alive fighter catches them (`death` with killer -3) unless a shield holds (`shieldhit`). 8r due comebacks. 9 monster timers age. A kicked bomb stops in front of a monster.
+* **Lives**: `ADVENTURE_LIVES` easy 5 / normal 3 / hard 2, + 1 per human beyond the first, shared by the team (max 9). A human who goes down with lives left spends one (`life`) and stands up 150 ticks later (`respawn`, spawn shield) at their own spawn, or at the spawn farthest from every monster when one is within 4 tiles. Helper bots never spend lives and do not come back within the level. Clearing a level gives +1 life. Power-ups carry over from level to level for everyone.
+* **Outcome** (step 10): `clear` when an alive team member stands on the open, revealed door (`exit`); `wipe` when no team member is up and nobody is waiting to come back; `timeout` only at `MAX_ROUND_TICKS`. The level clock is `ADVENTURE_TIME` = 180 s: when it runs out two angry zippies appear far from everyone (`hurry`, `r` = -1). No sudden death.
+
+### C.5 Snapshot and client
+
+* Optional snapshot keys: adventure `m` (monster rows `[id, kind, x, y, facing, flags, hp]`, flags `1` hurt, `2` angry), `dr` (door `[tx, ty, open]`, only once revealed), `lv` (lives), `rp` (`[[id, ticksLeft]]` comebacks); both co-op modes `sc` (score). `round` carries `coop: { mode, level, of, difficulty }`.
+* `View` gains `monsters` (interpolated), `door` and `coop`; `hudModel()` gains `coop: { mode, level, of, lives, score, monsters, foes, door: 'hidden'|'closed'|'open', respawnSec, hurry }` and per player `foe` and `respawnSec`.
+* Bots (§6): monsters are lethal zones in the danger map (their tile and the tiles they can reach shortly), team-mates' flames are harmless to them, helpers hunt monsters and enemy bots, never bomb into an existing fire, and head for the open door. Enemy bots play the battle brain against the team.
+* The client shows the level/wave intro card (new monster kinds introduced), HUD pills (lives, score, monsters or enemies left, door state), banners for the door, the clear and the hurry-up, a co-op round-end card and a team results card. Sounds: monster pop / hit, door found / open, level clear, life lost, respawn, hurry, game over, victory. Practice offers both modes.

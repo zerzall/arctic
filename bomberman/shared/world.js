@@ -17,6 +17,9 @@
 //  * removeFighter always sets killer = -2 and always emits `left`, even for an already-dead fighter.
 //  * `computeBlast().hitBombs` are the OTHER non-flying bombs on the flame tiles (a bomb never lists itself).
 //  * Player objects carry one private field, `_ran`, which the World uses to clear `moving` for idle fighters.
+//  * Co-op modes ('coop', 'adventure', Appendix C) hand their extra rules to a CoopState (shared/coop.js) that is called from fixed points
+//    of tick() (marked "co-op" below). In 'ffa' and 'teams' `this.coop` is null and none of those points does anything, so the battle modes
+//    and their RNG draw order are exactly what they were.
 //  * movePlayer is SPEC 3.5 verbatim (minus its per-call closures). Its EPS tolerance band means an UNROUNDED position can sit up to
 //    EPS (1e-6 tile) inside a wall for one tick when a step happens to end there; the next step clamps it back. Positions rounded
 //    to 3 decimals, which is all the wire carries, never overlap (asserted by the fuzz specs; the spec's "< 1e-9" holds only there).
@@ -27,9 +30,11 @@ import {
   SHIELD_TICKS, SPAWN_SHIELD_TICKS, SHIELD_FOREVER, SHIELDHIT_GAP_TICKS, CURSE_TICKS, CURSE_TOUCH_RADIUS,
   CURSE_XFER_COOLDOWN, CURSE_SLOW_SPEED, CURSE_RUSH_SPEED, SPAM_INTERVAL, COUNTDOWN_TICKS, ENDING_TICKS,
   SD_INTERVAL, SD_WARN_TICKS, MAX_ROUND_TICKS, SHOWDOWN_TICKS, CURSE_KINDS, STATE, DIR_DX, DIR_DY, SPAWN_SLOTS,
+  COOP_MODES, ADVENTURE_TIME,
 } from './constants.js';
 import { makeRng } from './rng.js';
 import { generateMap } from './mapgen.js';
+import { CoopState, adventureLevel, assignSidedSlots, startStats } from './coop.js';
 import { P, B, PF } from './protocol.js';
 
 const W = GRID_W;
@@ -43,6 +48,7 @@ const CURSE_TOUCH_R2 = CURSE_TOUCH_RADIUS * CURSE_TOUCH_RADIUS;
 const DIR_BIT = [0, 1, 2, 4, 8];
 const DIR_BACK_BIT = [0, 4, 8, 1, 2];
 
+const NO_MONSTERS = Object.freeze([]);
 const round3 = (v) => Math.round(v * 1000) / 1000;
 const byTyTx = (a, b) => a.ty - b.ty || a.tx - b.tx;
 const inBoard = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H;
@@ -215,13 +221,28 @@ function assignSlots(fighters, mode, rng) {
 
 export class World {
   /**
-   * @param {{ seed: number, fighters: {id:number,name:string,color:number,team:number,isBot:boolean,lastSeq?:number}[],
-   *           mode?: 'ffa'|'teams', layout?: string, blocks?: string, items?: string, theme?: string,
-   *           roundTime?: number, suddenDeath?: boolean }} opts
+   * @param {{ seed: number, fighters: {id:number,name:string,color:number,team:number,isBot:boolean,lastSeq?:number,start?:object}[],
+   *           mode?: 'ffa'|'teams'|'coop'|'adventure', layout?: string, blocks?: string, items?: string, theme?: string,
+   *           roundTime?: number, suddenDeath?: boolean, coop?: { level?: number, difficulty?: string, lives?: number, score?: number } }} opts
+   *   Co-op modes only (Appendix C): `coop` is the level or wave and what the team brings into it, `fighters[].start` the power-ups a
+   *   fighter starts with. An adventure level picks its own layout and crates, runs on ADVENTURE_TIME and never has sudden death.
    */
-  constructor({ seed, fighters, mode = 'ffa', layout = 'classic', blocks = 'normal', items = 'normal', theme = 'meadow', roundTime = 120, suddenDeath = true }) {
+  constructor({
+    seed, fighters, mode = 'ffa', layout = 'classic', blocks = 'normal', items = 'normal', theme = 'meadow', roundTime = 120, suddenDeath = true,
+    coop = null,
+  }) {
     if (!Array.isArray(fighters) || fighters.length < 1 || fighters.length > MAX_PLAYERS) {
       throw new RangeError(`World needs 1..${MAX_PLAYERS} fighters`);
+    }
+    const coopMode = COOP_MODES.includes(mode);
+    let dropScale = 1;
+    if (mode === 'adventure') {
+      const plan = adventureLevel(coop?.level ?? 1, coop?.difficulty, fighters.length);
+      layout = plan.layout;
+      blocks = plan.blocks;
+      dropScale = plan.drops;
+      roundTime = ADVENTURE_TIME;
+      suddenDeath = false;
     }
     this.W = W;
     this.H = H;
@@ -234,8 +255,8 @@ export class World {
 
     // RNG draw order is normative: map first, then slots; later only skull curses draw.
     this._rng = makeRng(seed);
-    const map = generateMap({ layout, blocks, items, numFighters: fighters.length, rng: this._rng });
-    const slots = assignSlots(fighters, mode, this._rng);
+    const map = generateMap({ layout, blocks, items, numFighters: fighters.length, rng: this._rng, dropScale });
+    const slots = coopMode ? assignSidedSlots(fighters, this._rng) : assignSlots(fighters, mode, this._rng);
     this.grid = map.grid.split('');
     this._drops = map.drops;
     this.gridVer = 0;
@@ -274,6 +295,18 @@ export class World {
     this._showdownDone = false;
     this._aliveDirty = false;
     this._aliveTeam = [0, 0];                          // scratch for the outcome check, reused every tick
+
+    // co-op: power-ups carried into this level or wave, the monster stat, then the mode's own state (adventure: door and monsters,
+    // drawn from the rng right after the slots).
+    this.coop = null;
+    if (coopMode) {
+      fighters.forEach((f, i) => {
+        if (mode === 'adventure') this.players[i].team = 0;   // one team against the monsters, whatever the lobby said
+        Object.assign(this.players[i], startStats(f.start));
+        this.players[i].stats.monsters = 0;
+      });
+      this.coop = new CoopState(this, coop ?? {}, this._drops);
+    }
   }
 
   _makePlayer(f, slot) {
@@ -292,6 +325,16 @@ export class World {
 
   player(id) {
     return this._byId.get(id);
+  }
+
+  /** Co-op (Appendix C), read-only: the adventure's monsters, ascending id ([] in every other mode). Bots read this. */
+  get monsters() {
+    return this.coop ? this.coop.monsters : NO_MONSTERS;
+  }
+
+  /** Co-op, read-only: the exit door { tx, ty, revealed, open } of an adventure level, else null. Bots read this. */
+  get door() {
+    return this.coop ? this.coop.door : null;
   }
 
   // ---- Events -------------------------------------------------------------------------------------
@@ -352,6 +395,7 @@ export class World {
     p.curseTicks = 0;
     for (const b of this.bombs) if (b.owner === id) b.owner = -1;
     this._aliveDirty = true;
+    this.coop?.onRemoved(p);
     this._emit('left', id);
   }
 
@@ -369,12 +413,15 @@ export class World {
       return;
     }
     const playing = this.state === STATE.PLAYING;
+    const coop = this.coop;
     if (playing) {
       this._autoActions();
       this._advanceClock();
     }
     this._stepBombs();
+    if (playing && coop) coop.moveMonsters();          // co-op 3m
     this._resolveExplosions();
+    if (playing && coop) coop.burnMonsters();          // co-op 4m
     if (playing) this._landFallingTiles();
     this._pickups();
     if (playing) {
@@ -401,7 +448,8 @@ export class World {
   _advanceClock() {
     this._playTicks++;
     if (this.timeLeft > 0 && --this.timeLeft === 0) {
-      if (this.sdEnabled) this._startSuddenDeath();
+      if (this.mode === 'adventure') this.coop.hurry();   // co-op: an adventure level never times out, it sends in the hurry-ups
+      else if (this.sdEnabled) this._startSuddenDeath();
       else this._timeUp = true;
     }
     if (this.roundTime === 0 && this._playTicks >= MAX_ROUND_TICKS) this._timeUp = true;
@@ -486,7 +534,7 @@ export class World {
   _enterable(tx, ty) {
     if (!inBoard(tx, ty) || this.grid[ty * W + tx] !== '.' || this._bombAtTile(tx, ty)) return false;
     for (const p of this._order) if (p.alive && overlapsTile(p, tx, ty)) return false;
-    return true;
+    return !(this.coop && this.coop.monsterOn(tx, ty));   // co-op: a kicked bomb stops in front of a monster too
   }
 
   /** Step 3: four full passes in ascending bomb id. */
@@ -719,6 +767,7 @@ export class World {
       const credited = this._byId.get(owner);
       if (credited) credited.stats.blocks++;
       this._emit('block', tx, ty, owner);
+      if (this.coop) this.coop.onBlockOpened(idx);       // co-op: the exit door may be under it
       const kind = this._drops[idx];
       if (kind) {
         this._drops[idx] = null;
@@ -885,6 +934,7 @@ export class World {
       }
       const flame = this._flameGrid[idx];
       if (!flame) continue;
+      if (this.coop && !this.coop.hurts(p, flame.owners)) continue;   // co-op: team-mates' flames are harmless, your own are not
       if (p.shield > 0 || p.spawnShield > 0) {
         if (this.tickNo - p.lastShieldHit >= SHIELDHIT_GAP_TICKS) {
           p.lastShieldHit = this.tickNo;
@@ -894,12 +944,17 @@ export class World {
       }
       this._killPlayer(p, this._flameCredit(p, flame.owners));
     }
+    if (this.coop) {
+      this.coop.touchFighters();                         // co-op 8m: monsters catch fighters
+      this.coop.respawns();                              // co-op 8r: comebacks that are due
+      return;                                            // (no showdown: a co-op round ends when one side is gone)
+    }
     this._checkShowdown();
   }
 
   _isEnemy(victim, ownerId) {
     const owner = this._byId.get(ownerId);
-    return owner !== undefined && ownerId !== victim.id && (this.mode !== 'teams' || owner.team !== victim.team);
+    return owner !== undefined && ownerId !== victim.id && (this.mode === 'ffa' || owner.team !== victim.team);
   }
 
   /** Killer = first enemy owner of the flame tile; else the victim (own goal); else owners[0] (a teammate, or -1 for an orphan). */
@@ -926,6 +981,7 @@ export class World {
     this._aliveDirty = true;
     this._emit('death', p.id, killer, round3(p.x), round3(p.y));
     this._clearCurse(p);
+    if (this.coop) this.coop.onDeath(p, killer);       // co-op: score, lives, a comeback
   }
 
   /** When the last alive human is gone but a fight remains, shorten the clock so bot-only endgames stay short. */
@@ -961,6 +1017,7 @@ export class World {
       else this._flameGrid[f.ty * W + f.tx] = null;
     }
     flames.length = kept;
+    if (playing && this.coop) this.coop.age();
 
     for (const p of this._order) {
       if (playing && p.alive) {
@@ -978,6 +1035,11 @@ export class World {
   _finishTick(playing) {
     if (!playing) {
       if (this.state === STATE.ENDING && --this._endingLeft === 0) this.state = STATE.OVER;
+      return;
+    }
+    if (this.coop) {                                     // co-op: the outcome rules of Appendix C
+      const lock = this.coop.outcome(this._timeUp, this._playTicks);
+      if (lock) this._lock(lock[0], lock[1], lock[2]);
       return;
     }
     let alive = 0;
@@ -1082,6 +1144,7 @@ export class World {
       i: this.items.map((it) => [it.id, it.tx, it.ty, it.kind, k - it.born]),
       fall: this.falling.map((f) => [f.tx, f.ty, f.ticksLeft]),
     };
+    if (this.coop) this.coop.addToSnapshot(snap);      // co-op: optional keys m, dr, lv, sc, rp (Appendix C)
     if (grid === true) snap.g = this.grid.join('');
     snap.e = typeof evFrom === 'number' ? this.eventsSince(evFrom) : [];
     return snap;

@@ -21,6 +21,10 @@
 //   * The "Showdown" banner is the renderer's canvas banner; the HUD only announces it to screen readers (two banners would overlap).
 //   * The connecting overlay has a Cancel button (a free host can take a minute; the only other way out was a reload).
 //   * `version` errors reload the page once; a second one within a minute asks the player to refresh by hand.
+//   * Co-op modes (docs/SPEC.md Appendix C): a `round` with `coop` opens with an intro card ("Level 3" and the monsters that live there,
+//     with a tip for every kind the team meets for the first time); the co-op events get their sounds and banners here ("You found the
+//     door!", "Door is open!", "Level clear!", "Hurry up!" is the renderer's); a lost life, a comeback, the end of the run (game over or
+//     victory) have sounds of their own instead of the battle jingles.
 //
 // THE SINGLE-FILE DOWNLOAD (window.__BP_SINGLE__, set by an inline script before the bundle; see scripts/build-single.mjs)
 //   There is no server. Practice is unchanged. "Host a game" runs a Room in this page (p2p.js HostSession, lazily imported) and the host's own
@@ -37,9 +41,10 @@ import { Input } from './input.js';
 import { WebSocketConnection, LoopbackConnection } from './net.js';
 import {
   roomCodeFromLocation, parseSession, sessionRecord, mayRejoin, helloFor, closeOutcome, errorToast, deathText, deathAnnouncement,
-  worthToasting, countdownBand, secondsLeft, panOf, wonMatch, lobbyChanges,
+  worthToasting, countdownBand, secondsLeft, panOf, wonMatch, lobbyChanges, MONSTER_NAMES, MONSTER_TIPS, stageName, monsterIntro,
 } from './glue.js';
 import { WIRE_VERSION, STATE } from '../../shared/constants.js';
+import { adventureLevel } from '../../shared/coop.js';
 
 const DEBUG = /[?&]debug=1(?:&|$)/.test(location.search);
 const SINGLE = window.__BP_SINGLE__ === true;
@@ -103,6 +108,7 @@ const T = {
   debugAt: 0,
   glove: false,
   emoteAt: -Infinity,
+  monstersLeft: -1,                            // co-op: monsters on the board at the last frame (all popped -> a banner)
   errorAt: Object.create(null),
   build: '',
   buildToast: false,
@@ -769,14 +775,41 @@ function onRound(msg) {
   T.warnSec = 0;
   T.hudAt = 0;                                   // the new round's chips get their first update at once
   T.glove = false;
+  T.monstersLeft = -1;
   input.setHasGlove(false);
   setMusic('battle');                            // the previous round may have ended in sudden death's faster tune
   ui.showGame(msg);
+  if (msg.coop && msg.serverTick === 0) ui.showIntro(coopIntro(msg));
   requestWakeLock();
+}
+
+/** The intro card of a co-op round: the stage, what to do, and (adventure) the monsters, explaining the new ones. */
+function coopIntro(msg) {
+  const c = msg.coop;
+  const title = stageName(c.mode, c.level);
+  if (c.mode !== 'adventure') {
+    const foes = (msg.players ?? []).filter((p) => p.team === 1).length;
+    return { title, sub: c.level === 1 ? `Blast all ${foes} enemy bots together! Your friends' bombs can't hurt you.` : `${foes} enemy bots, and they get smarter every wave!` };
+  }
+  const team = (msg.players ?? []).length;
+  const before = [];
+  for (let l = 1; l < c.level; l++) before.push(...adventureLevel(l, c.difficulty, team).monsters);
+  const { kinds, fresh } = monsterIntro(adventureLevel(c.level, c.difficulty, team).monsters, before);
+  return {
+    title,
+    sub: c.level === 1 ? 'Pop every monster, then find the exit door hidden under a crate!' : c.level === c.of ? 'The last level. You can do it!' : 'Pop every monster and find the door!',
+    monsters: kinds.map((kind) => ({ kind, name: MONSTER_NAMES[kind], tip: MONSTER_TIPS[kind], fresh: fresh.includes(kind) })),
+    ms: fresh.length ? 3600 : 3000,
+  };
 }
 
 function onRoundEnd(msg) {
   ui.showRoundEnd(msg, S.lobby?.players);
+  if (msg.coop) {                                // co-op: the exit already played the adventure jingle; a lost run sighs at once
+    if (msg.reason !== 'clear') sfx('game_over');
+    else if (msg.coop.mode !== 'adventure') { sfx('level_clear'); ui.banner('Wave cleared!', 'good', 2000); }
+    return;
+  }
   if (!msg.draw) sfx('win_round');
 }
 
@@ -785,7 +818,9 @@ function onMatchEnd(msg) {
   const won = wonMatch(msg, S.me);
   T.resultMusic = won ? 'victory' : 'menu';
   ui.showResults(msg);
-  if (first && msg.reason !== 'not_enough_players') sfx(won ? 'win_match' : 'lose_match');
+  if (!first || msg.reason === 'not_enough_players') return;
+  if (msg.coop) { if (won) sfx('victory'); }       // (a game over already sighed at its round end)
+  else sfx(won ? 'win_match' : 'lose_match');
 }
 
 function onError(msg) {
@@ -836,6 +871,7 @@ function handleEvents(events, view) {
     if (T.counts) T.counts[ev[0]] = (T.counts[ev[0]] ?? 0) + 1;
     switch (ev[0]) {
       case 'go':
+        ui.showIntro(null);
         ui.showCountdown('GO!');
         sfx('go');
         break;
@@ -881,10 +917,45 @@ function handleEvents(events, view) {
       case 'showdown':
         ui.announce('Showdown: fifteen seconds left.');
         break;
+      // ---- co-op (Appendix C)
+      case 'mdeath':                             // ['mdeath', id, kind, x, y, ownerId, points]
+        sfx('monster_pop', { pan: panOf(ev[3]) });
+        break;
+      case 'mhit':
+        sfx('monster_hit', { pan: panOf(ev[3]) });
+        break;
+      case 'door':                               // ['door', tx, ty, open]
+        if (ev[3] === 1) { sfx('door_open'); ui.banner('Door is open!', 'good', 2200); }
+        else { sfx('door_found', { pan: panOf(ev[1] + 0.5) }); ui.banner('You found the door!', 'info', 2000); }
+        break;
+      case 'exit':
+        sfx('level_clear');
+        ui.banner('Level clear!', 'good', 2400);
+        break;
+      case 'life':                               // ['life', playerId, livesLeft]
+        if (ev[1] === S.me) sfx('life_lost');
+        ui.killfeed(`${nameOf(ev[1])} lost a life (${ev[2]} left)`);
+        break;
+      case 'respawn':
+        sfx('respawn', { pan: panOf(ev[2]), vol: ev[1] === S.me ? 1 : 0.6 });
+        if (ev[1] === S.me) ui.announce('You are back in the game.');
+        break;
+      case 'hurry':
+        sfx('hurry');
+        ui.announce('Hurry up! More monsters are coming.');
+        break;
       default:
         break;
     }
   }
+}
+
+/** Co-op: the moment the last monster pops while the door is still hidden, say what is next. */
+function watchMonsters(view) {
+  if (view.mode !== 'adventure' || view.state !== STATE.PLAYING) return;
+  const n = view.monsters.length;
+  if (T.monstersLeft > 0 && n === 0 && view.door === null) ui.banner('All monsters popped! Find the door!', 'good', 2600);
+  T.monstersLeft = n;
 }
 
 function playerX(view, id) {
@@ -958,7 +1029,7 @@ function step(t, dt) {
   S.view = view;
   const events = game.takeEvents();
   if (events.length > 0) handleEvents(events, view);
-  if (game.renderTick !== null) watchClock(view);   // (before the first snapshot the View is a placeholder)
+  if (game.renderTick !== null) { watchClock(view); watchMonsters(view); }   // (before the first snapshot the View is a placeholder)
   const glove = view.local !== null && view.local.glove;
   if (glove !== T.glove) {
     T.glove = glove;
@@ -1055,10 +1126,11 @@ function probe() {
       phase: S.lobby.phase, hostId: S.lobby.hostId, local: !!S.lobby.local, settings: S.lobby.settings,
       players: S.lobby.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot, isHost: p.isHost, connected: p.connected, wins: p.wins, waiting: p.waiting })),
     },
-    round: round && { n: round.n, theme: round.theme, mode: round.mode, fighters: round.players.length },
+    round: round && { n: round.n, theme: round.theme, mode: round.mode, fighters: round.players.length, coop: round.coop ?? null },
     view: v && round ? {
       state: v.state, countdown: v.countdown, timeLeft: v.timeLeft, suddenDeath: v.suddenDeath,
       bombs: v.bombs.length, ghosts: v.ghostBombs.length, flames: v.flames.length, items: v.items.length, falling: v.falling.length,
+      monsters: v.monsters.length, door: v.door && { tx: v.door.tx, ty: v.door.ty, open: v.door.open }, coop: v.coop && { lives: v.coop.lives, score: v.coop.score },
       players: v.players.map((p) => ({ id: p.id, x: p.x, y: p.y, alive: p.alive, isMe: p.isMe, name: p.name })),
       me: local && { x: local.x, y: local.y, alive: local.alive, facing: local.facing, moving: local.moving, bombsMax: local.bombsMax, range: local.range, speedLv: local.speedLv, glove: local.glove, kick: local.kick },
     } : null,
@@ -1077,6 +1149,15 @@ if (DEBUG) {
     probe,
     /** e2e only: cuts this guest's link without telling the host, like a network that went away. */
     dropLink: () => S.conn?.dropLink?.(),
+    /** e2e only: runs `ticks` Practice Room steps at once (a level played by the helper bots in a second), then delivers the output. */
+    fastForward: (ticks) => {
+      const conn = S.conn;
+      if (!S.practice || !conn?.room) return 0;
+      let n = 0;
+      for (; n < ticks && !conn.room.closed; n++) { conn.virtualMs += 1000 / 60; conn.room.step(); }
+      conn.drain();
+      return n;
+    },
     host: () => S.host,
   };
 }

@@ -49,8 +49,10 @@ test('table contents follow the spec', () => {
   assert.deepEqual(C.DIR_DY, [0, -1, 0, 1, 0]);
 });
 
-test('SETTINGS_DEFS lists exactly the nine host settings with their defaults', () => {
-  assert.deepEqual(Object.keys(C.SETTINGS_DEFS), ['rounds', 'roundTime', 'suddenDeath', 'mode', 'theme', 'layout', 'blocks', 'items', 'locked']);
+test('SETTINGS_DEFS lists exactly the ten host settings with their defaults', () => {
+  assert.deepEqual(Object.keys(C.SETTINGS_DEFS), ['rounds', 'roundTime', 'suddenDeath', 'mode', 'difficulty', 'theme', 'layout', 'blocks', 'items', 'locked']);
+  assert.deepEqual(C.SETTINGS_DEFS.mode, { values: ['ffa', 'teams', 'coop', 'adventure'], def: 'ffa' });   // co-op modes: SPEC Appendix C
+  assert.deepEqual(C.SETTINGS_DEFS.difficulty, { values: ['easy', 'normal', 'hard'], def: 'normal' });
   assert.deepEqual(C.SETTINGS_DEFS.rounds, { values: [1, 2, 3, 5, 7], def: 3 });
   assert.deepEqual(C.SETTINGS_DEFS.roundTime, { values: [0, 60, 90, 120, 180, 240], def: 120 });
   assert.deepEqual(C.SETTINGS_DEFS.theme.values, ['random', ...C.THEMES]);

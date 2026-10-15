@@ -40,6 +40,7 @@
 // EXTRAS (not in the spec list; all optional for main.js)
 //   showDialog({ title, text?, tone?: 'info'|'error'|'good', dismissible?, actions?: [{ label, kind?: 'primary'|'glass'|'danger', onClick?, keepOpen? }] })
 //                                        for "That party has ended", "Can't reach the server", kicked, paused ...   hideDialog()
+//   showIntro({ title, sub?, monsters?, ms? } | null)   co-op: the stage card over the arena during the countdown (Appendix C)
 //   banner(text, kind = 'info'|'danger'|'good', ms)   big banner over the arena (e.g. banner('Showdown in 15', 'danger') on the
 //                                        `showdown` event). Sudden death gets its banner automatically when hudModel.suddenDeath turns true.
 //   toggleEmoteBar(force?)               opens/closes the emote picker (what the T key and the touch emote button should call).
@@ -71,7 +72,9 @@
 //   * Optional modules (sprites.js for portraits and icons, shared/qr.js for the QR code) are loaded with dynamic import() inside
 //     try/catch; without them CSS/SVG stand-ins are drawn.
 
-import { PLAYER_COLORS, EMOTES, SETTINGS_DEFS, MAX_PLAYERS, MIN_TO_START, TIMEOUTS, SHIELD_FOREVER } from '../../shared/constants.js';
+import { PLAYER_COLORS, EMOTES, SETTINGS_DEFS, MAX_PLAYERS, MIN_TO_START, TIMEOUTS, SHIELD_FOREVER, COOP_MODES, ADVENTURE_LEVELS } from '../../shared/constants.js';
+
+const isCoopMode = (mode) => COOP_MODES.includes(mode);
 
 // ================================================================================================
 // Pure helpers (no DOM; exported so they can be tested in Node)
@@ -145,6 +148,10 @@ export function pingQuality(ms) {
  */
 export function startBlocker(lobby) {
   const players = records(lobby?.players);
+  if (isCoopMode(lobby?.settings?.mode)) {                 // co-op: one player is a team; coop keeps a seat for an enemy bot
+    if (lobby.settings.mode === 'coop' && players.length >= MAX_PLAYERS) return 'Co-op vs bots needs a free seat for the enemy bots: remove a bot or a player.';
+    return null;
+  }
   if (players.length < MIN_TO_START) return 'Add a bot or wait for a friend: you need at least 2 players.';
   if (lobby.settings?.mode === 'teams') {
     const sizes = [0, 0];
@@ -175,6 +182,7 @@ export function podiumGroups(standings, { byTeam = false } = {}) {
 }
 
 const AWARDS = [
+  { stat: 'monsters', best: 'max', title: 'Monster Popper', hint: 'Most monsters popped', icon: 'monster-puff', noun: ['monster', 'monsters'] },
   { stat: 'blocks', best: 'max', title: 'Demolition Expert', hint: 'Most blocks destroyed', icon: 'bomb', noun: ['block', 'blocks'] },
   { stat: 'kills', best: 'max', title: 'Terminator', hint: 'Most rivals blasted', icon: 'skull', noun: ['blast', 'blasts'] },
   { stat: 'items', best: 'max', title: 'Collector', hint: 'Most power-ups grabbed', icon: 'star', noun: ['power-up', 'power-ups'] },
@@ -885,7 +893,8 @@ class TitleScreen {
 // ================================================================================================
 
 const SETTING_LABELS = {
-  mode: { ffa: 'Free-for-all', teams: 'Teams' },
+  mode: { ffa: 'Free-for-all', teams: 'Teams', coop: 'Co-op vs bots', adventure: 'Adventure' },
+  difficulty: { easy: 'Easy', normal: 'Normal', hard: 'Hard' },
   layout: { classic: 'Classic', open: 'Open' },
   blocks: { few: 'Few', normal: 'Normal', many: 'Many' },
   items: { none: 'None', few: 'Few', normal: 'Normal', many: 'Many' },
@@ -894,6 +903,17 @@ const SETTING_LABELS = {
 const roundTimeLabel = (s) => (s === 0 ? '\u221e' : formatClock(s));
 const roundTimeName = (s) => (s === 0 ? 'Unlimited' : s < 120 ? `${s} seconds` : `${s / 60} minutes`);
 const BOT_LEVEL_HELP = { easy: 'Wanders around and bombs blocks', normal: 'Hunts power-ups and rivals', hard: 'Sets traps and dodges everything' };
+/** What each mode is, in a sentence a family can read out loud (shown under the mode picker). */
+const MODE_HELP = {
+  ffa: 'Everyone for themselves. The last one standing wins the round.',
+  teams: 'Team A against Team B. Careful: your bombs can hurt your own team too.',
+  coop: 'Everyone on one team against waves of enemy bots. Your friends\' bombs can\'t hurt you (your own still can!). Beat every wave to win.',
+  adventure: `Team up and pop the monsters on ${ADVENTURE_LEVELS} levels. An exit door hides under a crate: it opens when every monster is gone. You share your lives.`,
+};
+const DIFFICULTY_HELP = {
+  coop: 'How clever and how many the enemy bots are',
+  adventure: 'How fast the monsters are and how many lives you get',
+};
 const TEAM_NAMES = ['Team A', 'Team B'];
 
 class LobbyScreen {
@@ -955,7 +975,8 @@ class LobbyScreen {
     // ---- Players
     this.count = el('span', { class: 'count-chip' });
     this.list = el('ul', { class: 'players', 'aria-label': 'Players' });
-    this.addBotRow = el('div', { class: 'addbot', role: 'group', 'aria-label': 'Add a bot' }, el('span', { class: 'addbot-label' }, icon('bot'), 'Add a bot'),
+    this.addBotLabel = el('span', { text: 'Add a bot' });
+    this.addBotRow = el('div', { class: 'addbot', role: 'group', 'aria-label': 'Add a bot' }, el('span', { class: 'addbot-label' }, icon('bot'), this.addBotLabel),
       ['easy', 'normal', 'hard'].map((level) => el('button', { class: `btn btn-glass btn-sm bot-${level}`, type: 'button', title: BOT_LEVEL_HELP[level], 'aria-label': `Add ${level} bot. ${BOT_LEVEL_HELP[level]}`, dataset: { level }, on: { click: () => this.addBot(level) } }, level[0].toUpperCase() + level.slice(1))));
     this.playersCard = el('section', { class: 'card players-card', 'aria-labelledby': 'players-h' },
       el('h2', { id: 'players-h', class: 'card-title' }, icon('users'), 'Players', this.count), this.list, this.addBotRow);
@@ -1014,7 +1035,10 @@ class LobbyScreen {
       this.settingsBody.appendChild(node);
       this.rows[key] = { control, node };
     };
-    row('mode', 'Mode', seg('mode', 'Mode', (v) => SETTING_LABELS.mode[v]));
+    row('mode', 'Mode', seg('mode', 'Mode', (v) => SETTING_LABELS.mode[v], 'seg-modes'));
+    this.modeHelp = el('p', { class: 'mode-help', 'aria-live': 'polite' });
+    this.rows.mode.node.appendChild(this.modeHelp);
+    row('difficulty', 'Difficulty', seg('difficulty', 'Difficulty', (v) => SETTING_LABELS.difficulty[v]), 'How hard the co-op game is');
     row('rounds', 'Wins needed', seg('rounds', 'Wins needed to take the match', String), 'First to this many round wins');
     row('roundTime', 'Round time', seg('roundTime', 'Round time', (v) => el('span', { title: roundTimeName(v), text: roundTimeLabel(v) })), 'Minutes per round (\u221E = no limit)');
     const sd = switchControl({ label: 'Sudden death', hint: 'Walls close in when time runs out', onToggle: patch('suddenDeath') });
@@ -1218,7 +1242,7 @@ class LobbyScreen {
         card = { li: el('li', { class: 'player-card' }), sig: '' };
         this.cards.set(p.id, card);
       }
-      const sig = JSON.stringify([p.name, p.color, p.team, p.isBot, p.level, p.connected, p.isHost, p.wins, p.waiting, isHost, teams, p.id === msg.you, this.kickConfirm === p.id]);
+      const sig = JSON.stringify([p.name, p.color, p.team, p.isBot, p.level, p.connected, p.isHost, p.wins, p.waiting, isHost, teams, p.id === msg.you, this.kickConfirm === p.id, msg.settings?.mode]);
       if (sig !== card.sig) {
         card.sig = sig;
         this.fillCard(card.li, p, { isHost, teams, you: msg.you });
@@ -1254,7 +1278,8 @@ class LobbyScreen {
     clear(li);
     const tags = [];
     if (p.isHost) tags.push(el('span', { class: 'tag tag-host' }, icon('crown'), 'Host'));
-    if (p.isBot) tags.push(el('span', { class: `tag tag-bot tag-${p.level ?? 'normal'}` }, icon('bot'), `Bot \u00b7 ${p.level ? p.level[0].toUpperCase() + p.level.slice(1) : 'Normal'}`));
+    const helper = isCoopMode(this.msg?.settings?.mode);
+    if (p.isBot) tags.push(el('span', { class: `tag tag-bot tag-${p.level ?? 'normal'}` }, icon('bot'), `${helper ? 'Helper' : 'Bot'} \u00b7 ${p.level ? p.level[0].toUpperCase() + p.level.slice(1) : 'Normal'}`));
     if (teams) tags.push(el('span', { class: 'tag tag-team', dataset: { team: String(p.team === 1 ? 1 : 0) }, text: TEAM_NAMES[p.team === 1 ? 1 : 0] }));
     if (p.waiting) tags.push(el('span', { class: 'tag tag-wait' }, icon('eye'), 'Watching'));
     if (p.connected === false) tags.push(el('span', { class: 'tag tag-away' }, 'Reconnecting'));
@@ -1309,6 +1334,22 @@ class LobbyScreen {
       control.setReadOnly(!isHost);
       node.classList.toggle('is-readonly', !isHost);
     }
+    // Co-op modes (Appendix C) hide what does not apply: an adventure picks its own arenas, clock and number of levels; the
+    // number of rounds is the number of waves in coop.
+    const mode = s.mode ?? 'ffa';
+    const coop = isCoopMode(mode);
+    const hide = { difficulty: !coop, rounds: mode === 'adventure', roundTime: mode === 'adventure', suddenDeath: mode === 'adventure', layout: mode === 'adventure', blocks: mode === 'adventure' };
+    for (const [key, hidden] of Object.entries(hide)) this.rows[key].node.hidden = hidden;
+    const roundsName = mode === 'coop' ? ['Waves', 'Beat this many waves of bots', 'Waves to beat'] : ['Wins needed', 'First to this many round wins', 'Wins needed to take the match'];
+    const roundsRow = this.rows.rounds.node;
+    if (roundsRow.querySelector('.setting-name').textContent !== roundsName[0]) {
+      roundsRow.querySelector('.setting-name').textContent = roundsName[0];
+      roundsRow.querySelector('.setting-hint').textContent = roundsName[1];
+      roundsRow.querySelector('[role="radiogroup"]')?.setAttribute('aria-label', roundsName[2]);
+    }
+    this.rows.difficulty.node.querySelector('.setting-hint').textContent = DIFFICULTY_HELP[mode] ?? '';
+    if (this.modeHelp.textContent !== MODE_HELP[mode]) this.modeHelp.textContent = MODE_HELP[mode] ?? '';
+    this.addBotLabel.textContent = coop ? 'Add a helper bot' : 'Add a bot';
     // No timer, no sudden death (SPEC 4.1): show it off and let nobody flip it.
     const sdRow = this.rows.suddenDeath;
     const noTimer = s.roundTime === 0;
@@ -1318,7 +1359,9 @@ class LobbyScreen {
     sdRow.node.querySelector('.switch-hint').textContent = noTimer ? 'Needs a round timer' : 'Walls close in when time runs out';
     this.rows.locked.node.querySelector('.switch-hint').textContent = s.locked ? 'Nobody new can join' : this.ui.p2p ? 'You can still add friends' : 'Anyone with the code can join';
 
-    const summary = [`First to ${s.rounds ?? '?'}`, roundTimeLabel(s.roundTime), SETTING_LABELS.mode[s.mode] ?? ''].filter(Boolean).join(' \u00b7 ');
+    const summary = (mode === 'adventure' ? [SETTING_LABELS.mode.adventure, `${ADVENTURE_LEVELS} levels`, SETTING_LABELS.difficulty[s.difficulty]]
+      : mode === 'coop' ? [SETTING_LABELS.mode.coop, `${s.rounds} ${s.rounds === 1 ? 'wave' : 'waves'}`, SETTING_LABELS.difficulty[s.difficulty]]
+        : [`First to ${s.rounds ?? '?'}`, roundTimeLabel(s.roundTime), SETTING_LABELS.mode[s.mode] ?? '']).filter(Boolean).join(' \u00b7 ');
     this.settingsSummary.textContent = summary;
     this.hostNote.textContent = isHost ? '' : 'Only the host can change the rules.';
     this.hostNote.hidden = isHost;
@@ -1386,7 +1429,20 @@ class GameScreen {
     this.timerText = el('span', { class: 'hud-time', text: '--' });
     this.timer = el('div', { class: 'hud-timer', 'aria-hidden': 'true' }, icon('clock'), this.timerText);
     this.sdChip = el('div', { class: 'hud-sd', hidden: true, 'aria-hidden': 'true' }, icon('bomb'), el('span', { text: 'Sudden death' }));
-    this.center = el('div', { class: 'hud-center' }, this.roundText, this.timer, this.sdChip);
+    // Co-op (Appendix C): the team's lives, score, what is left to beat, and the exit door.
+    const pill = (cls, iconName, title) => {
+      const value = el('b', { text: '0' });
+      const node = el('span', { class: `coop-pill ${cls}`, title }, gameIcon(iconName, 1.15), value);
+      return { node, value };
+    };
+    this.coopPills = {
+      lives: pill('pill-lives', 'heart', 'Lives the team has left'),
+      score: pill('pill-score', 'star', 'Team score'),
+      left: pill('pill-left', 'monster-puff', 'Monsters left'),
+      door: pill('pill-door', 'door-closed', 'The exit door'),
+    };
+    this.coopBar = el('div', { class: 'hud-coop', hidden: true, role: 'status', 'aria-live': 'off' }, Object.values(this.coopPills).map((p) => p.node));
+    this.center = el('div', { class: 'hud-center' }, this.roundText, this.timer, this.sdChip, this.coopBar);
     this.chipList = el('ul', { class: 'hud-chips', 'aria-label': 'Fighters' });
     this.top = el('div', { class: 'hud-top' },
       el('div', { class: 'hud-tl' }, this.menuBtn, this.ping.node), this.center,
@@ -1399,10 +1455,11 @@ class GameScreen {
     this.count = el('div', { class: 'hud-count', 'aria-hidden': 'true' });
     this.banner = el('div', { class: 'hud-banner', 'aria-hidden': 'true' });
     this.roundEnd = el('div', { class: 'roundend', hidden: true });   // overlays the arena and everything below it
+    this.intro = el('div', { class: 'stage-intro', hidden: true, 'aria-hidden': 'true' });   // co-op: "Level 3" and who lives there, during the countdown
     this.emoteBar = el('div', { class: 'emote-bar', role: 'toolbar', 'aria-label': 'Emotes', hidden: true },
       EMOTES.map((glyph, i) => el('button', { class: 'emote-btn-item', type: 'button', 'aria-label': `${EMOTE_LABELS[i]} emote`, title: EMOTE_LABELS[i], on: { click: () => this.sendEmote(i) } },
         gameIcon(EMOTE_NAMES[i], 2.4), i < 6 ? el('kbd', { class: 'emote-key', 'aria-hidden': 'true', text: String(i + 1) }) : null)));
-    this.layer = el('div', { class: 'hud-layer' }, this.count, this.banner);
+    this.layer = el('div', { class: 'hud-layer' }, this.intro, this.count, this.banner);
     this.hud.append(this.top, this.layer, this.strip, this.emoteBar, this.roundEnd);
 
     document.addEventListener('pointerdown', (e) => {
@@ -1415,6 +1472,9 @@ class GameScreen {
 
   begin(players) {
     this.showRoundEnd(null);
+    this.showIntro(null);
+    this.coopSig = '';
+    this.coopBar.hidden = true;
     this.showCountdown(null);
     this.toggleEmotes(false);
     clear(this.banner).className = 'hud-banner';
@@ -1463,7 +1523,7 @@ class GameScreen {
     const stats = { bomb: stat('bomb', 'Bombs at once'), flame: stat('flame', 'Blast range'), speed: stat('speed', 'Speed level') };
     const kick = el('span', { class: 'stat stat-kick', title: 'Can kick bombs', hidden: true }, gameIcon('kick', 1.1));
     const glove = el('span', { class: 'stat stat-glove', title: 'Can throw bombs', hidden: true }, gameIcon('glove', 1.1));
-    const li = el('li', { class: 'chip', style: { '--c': colorInfo(p.color).hex }, dataset: { id: String(p.id) } },
+    const li = el('li', { class: `chip${p.foe ? ' is-foe' : ''}`, style: { '--c': colorInfo(p.color).hex }, dataset: { id: String(p.id) } },
       el('span', { class: 'chip-av' }, avatar(p.color, 2.1), teamBadge, status),
       el('span', { class: 'chip-body' },
         bdi(p.name, 'chip-name'),
@@ -1484,9 +1544,10 @@ class GameScreen {
       const words = { out: 'out of the round', cursed: `cursed: ${CURSE_NAMES[p.curse] ?? p.curse}`, shield: 'shielded', ok: '' };
       chip.li.title = `${chip.name}${words[state] ? `, ${words[state]}` : ''}`;
     }
-    const label = `${chip.name}, ${plural(p.wins | 0, 'win')}${teams ? `, team ${teamLetter(p.team)}` : ''}${p.isMe ? ', you' : ''}${p.alive ? '' : ', out of the round'}${p.curse ? `, cursed: ${CURSE_NAMES[p.curse] ?? p.curse}` : shield > 0 ? ', shielded' : ''}`;
+    const label = `${chip.name}${p.foe ? ', enemy bot' : `, ${plural(p.wins | 0, 'win')}`}${teams ? `, team ${teamLetter(p.team)}` : ''}${p.isMe ? ', you' : ''}${p.alive ? '' : p.respawnSec > 0 ? ', coming back' : ', out of the round'}${p.curse ? `, cursed: ${CURSE_NAMES[p.curse] ?? p.curse}` : shield > 0 ? ', shielded' : ''}`;
     if (last.label !== label) chip.li.setAttribute('aria-label', label);
     if (last.isMe !== !!p.isMe) chip.li.classList.toggle('is-me', !!p.isMe);
+    if (last.foe !== !!p.foe) chip.li.classList.toggle('is-foe', !!p.foe);
     if (last.teams !== teams) chip.teamBadge.hidden = !teams;
     if (last.wins !== p.wins) chip.winsText.textContent = String(p.wins | 0);
     if (last.bombsMax !== p.bombsMax) chip.stats.bomb.value.textContent = String(p.bombsMax);
@@ -1496,7 +1557,7 @@ class GameScreen {
     if (last.glove !== !!p.glove) chip.glove.hidden = !p.glove;
     const away = p.connected === false || p.waiting;
     if (last.away !== away) chip.li.classList.toggle('is-away', away);
-    Object.assign(last, { state, curse: p.curse, label, isMe: !!p.isMe, teams, wins: p.wins, bombsMax: p.bombsMax, range: p.range, speedLv: p.speedLv, kick: !!p.kick, glove: !!p.glove, away });
+    Object.assign(last, { state, curse: p.curse, label, isMe: !!p.isMe, foe: !!p.foe, teams, wins: p.wins, bombsMax: p.bombsMax, range: p.range, speedLv: p.speedLv, kick: !!p.kick, glove: !!p.glove, away });
   }
 
   update(m) {
@@ -1506,6 +1567,7 @@ class GameScreen {
       this.meSig = '';
     }
     const teams = m.mode === 'teams';
+    this.lastCoopMode = m.coop ? m.coop.mode : null;
     this.chipList.classList.toggle('is-teams', teams);
     let mine = null;
     for (const p of m.players) {
@@ -1519,11 +1581,13 @@ class GameScreen {
     if (this.timerText.textContent !== timeText) this.timerText.textContent = timeText;
     const low = m.state === 'playing' && m.timeLeftSec != null && m.timeLeftSec <= 10 && !m.suddenDeath;
     this.timer.classList.toggle('is-low', low);
-    const roundNo = `Round ${m.roundNo}`;
+    const coop = m.coop;
+    const roundNo = coop ? `${coop.mode === 'adventure' ? 'Level' : 'Wave'} ${coop.level}` : `Round ${m.roundNo}`;
     if (this.roundNo.textContent !== roundNo) this.roundNo.textContent = roundNo;
-    const goal = m.winsNeeded ? ` \u00b7 First to ${m.winsNeeded}` : '';
+    const goal = coop ? ` of ${coop.of}` : m.winsNeeded ? ` \u00b7 First to ${m.winsNeeded}` : '';
     if (this.roundGoal.textContent !== goal) this.roundGoal.textContent = goal;
     this.winsNeeded = m.winsNeeded;
+    this.updateCoop(coop);
     if (!!m.suddenDeath !== this.sd) {
       this.setSuddenDeath(!!m.suddenDeath);
       if (m.suddenDeath) {
@@ -1532,6 +1596,63 @@ class GameScreen {
       }
     }
     this.state = m.state;
+  }
+
+  /** The co-op pills: lives (adventure), score, monsters or enemy bots left, the door (adventure). Written only when something changed. */
+  updateCoop(c) {
+    if (!c) {
+      if (!this.coopBar.hidden) this.coopBar.hidden = true;
+      return;
+    }
+    const sig = [c.mode, c.lives, c.score, c.monsters, c.foes, c.door, c.hurry].join();
+    if (sig === this.coopSig) return;
+    this.coopSig = sig;
+    const adventure = c.mode === 'adventure';
+    const P = this.coopPills;
+    this.coopBar.hidden = false;
+    P.lives.node.hidden = !adventure;
+    P.door.node.hidden = !adventure;
+    P.lives.value.textContent = String(Math.max(0, c.lives));
+    P.lives.node.classList.toggle('is-low', adventure && c.lives <= 1);
+    P.score.value.textContent = c.score.toLocaleString('en-US');
+    const left = adventure ? c.monsters : c.foes;
+    P.left.value.textContent = String(left);
+    P.left.node.title = adventure ? 'Monsters left' : 'Enemy bots left';
+    const leftIcon = adventure ? 'monster-puff' : 'bot';
+    const leftArt = P.left.node.querySelector('[data-art]');
+    if (leftArt && leftArt.dataset.icon !== leftIcon) { leftArt.dataset.icon = leftIcon; paintArt(leftArt); }
+    P.left.node.classList.toggle('is-done', left === 0);
+    const doorText = { hidden: '?', closed: 'Locked', open: 'Open!' }[c.door];
+    P.door.value.textContent = doorText;
+    P.door.node.dataset.door = c.door;
+    P.door.node.title = c.door === 'hidden' ? 'The exit door is hidden under a crate' : c.door === 'closed' ? 'Found! It opens when every monster is gone' : 'The door is open: step on it!';
+    const doorArt = P.door.node.querySelector('[data-art]');
+    const doorIcon = c.door === 'open' ? 'door-open' : 'door-closed';
+    if (doorArt && doorArt.dataset.icon !== doorIcon) { doorArt.dataset.icon = doorIcon; paintArt(doorArt); }
+    this.coopBar.setAttribute('aria-label', `${adventure ? `${plural(Math.max(0, c.lives), 'life', 'lives')} left, ` : ''}score ${c.score}, ${left} ${adventure ? 'monsters' : 'enemy bots'} left${adventure ? `, door ${doorText}` : ''}`);
+    this.timer.classList.toggle('is-hurry', !!c.hurry);
+    if (c.hurry && this.timerText.textContent !== 'Hurry!') this.timerText.textContent = 'Hurry!';
+  }
+
+  /**
+   * Co-op: a card over the arena during the countdown, "Level 3" with the monsters that live there and a tip for every kind the team
+   * has not met yet. `info` = { title, sub, monsters: [{ kind, name, tip?, fresh }] }; null hides it.
+   */
+  showIntro(info) {
+    clearTimeout(this.timers.intro);
+    const box = this.intro;
+    if (!info) { box.hidden = true; clear(box); return; }
+    clear(box);
+    box.hidden = false;
+    const mons = info.monsters ?? [];
+    append(box, [el('div', { class: 'intro-card' },
+      el('p', { class: 'intro-title', text: info.title }),
+      info.sub ? el('p', { class: 'intro-sub', text: info.sub }) : null,
+      mons.length ? el('ul', { class: 'intro-monsters' }, mons.map((m) => el('li', { class: `intro-monster${m.fresh ? ' is-new' : ''}` },
+        gameIcon(`monster-${m.kind}`, m.fresh ? 3 : 2.2), el('span', { class: 'intro-name', text: m.name }),
+        m.fresh && m.tip ? el('span', { class: 'intro-tip', text: m.tip }) : null, m.fresh ? el('span', { class: 'intro-new', text: 'New!' }) : null))) : null)]);
+    this.ui.announce(`${info.title}. ${info.sub ?? ''}`);
+    this.timers.intro = setTimeout(() => this.showIntro(null), info.ms ?? 3200);
   }
 
   setSuddenDeath(on) {
@@ -1550,12 +1671,16 @@ class GameScreen {
     }
     const shield = Math.max(0, p.shield | 0);
     const shieldSec = shield >= SHIELD_FOREVER ? 0 : Math.ceil(shield / 60);
-    const sig = [p.alive, p.bombsMax, p.range, p.speedLv, p.kick, p.glove, shield > 0, shieldSec, p.curse].join();
+    const coop = this.lastCoopMode;
+    const sig = [p.alive, p.bombsMax, p.range, p.speedLv, p.kick, p.glove, shield > 0, shieldSec, p.curse, p.respawnSec, coop].join();
     if (sig === this.meSig) return;
     this.meSig = sig;
     clear(this.me);
     if (!p.alive) {
-      append(this.me, [el('span', { class: 'me-item me-out' }, gameIcon('ghost', 1.4), el('span', { text: 'You are out. Watch the rest of the round!' }))]);
+      const text = p.respawnSec > 0 ? `You are back in ${p.respawnSec}... (that cost one life)`
+        : coop === 'adventure' ? 'No lives left for now. Cheer your team on: everyone is back on the next level!'
+          : coop === 'coop' ? 'You are out for this wave. You are back for the next one!' : 'You are out. Watch the rest of the round!';
+      append(this.me, [el('span', { class: `me-item me-out${p.respawnSec > 0 ? ' me-back' : ''}` }, gameIcon(p.respawnSec > 0 ? 'heart' : 'ghost', 1.4), el('span', { text }))]);
       return;
     }
     const item = (name, text, title, cls = '') => el('span', { class: `me-item ${cls}`.trim(), title }, gameIcon(name, 1.35), text ? el('b', { text }) : null);
@@ -1638,6 +1763,10 @@ class GameScreen {
       clear(box);
       return;
     }
+    if (msg.coop) {
+      this.showCoopRoundEnd(msg, players);
+      return;
+    }
     const byId = new Map(records(players ?? this.ui.lobbyMsg?.players).map((p) => [p.id, p]));
     // Somebody who left since the lobby message was sent is still on the scoreboard: the round's own roster remembers them.
     for (const [id, chip] of this.chips) if (!byId.has(id)) byId.set(id, { id, name: chip.name, color: chip.color, team: chip.team });
@@ -1698,6 +1827,40 @@ class GameScreen {
     const who = draw ? 'Draw' : winner ? winner.name : TEAM_NAMES[msg.winnerTeam === 1 ? 1 : 0];
     this.ui.announce(draw ? 'Round over: a draw.' : `Round over: ${who} wins.`);
   }
+
+  /** Co-op round end (Appendix C): a cleared level or wave, or the end of the run, with the team's score, lives and progress. */
+  showCoopRoundEnd(msg, players) {
+    const box = this.roundEnd;
+    const c = msg.coop;
+    const adventure = c.mode === 'adventure';
+    const stage = `${adventure ? 'Level' : 'Wave'} ${c.level}`;
+    const cleared = msg.reason === 'clear';
+    const team = records(players ?? this.ui.lobbyMsg?.players);
+    let title;
+    if (cleared) title = c.cleared >= c.of ? (adventure ? 'You beat the last level!' : 'You beat every wave!') : `${stage} ${adventure ? 'clear' : 'cleared'}!`;
+    else title = msg.reason === 'timeout' ? 'Out of time!' : 'Game over';
+    const stats = [
+      el('span', { class: 're-stat' }, gameIcon('star', 1.3), el('b', { text: c.score.toLocaleString('en-US') }), ' points'),
+      adventure ? el('span', { class: 're-stat' }, gameIcon('heart', 1.3), el('b', { text: String(Math.max(0, c.lives)) }), ` ${Math.max(0, c.lives) === 1 ? 'life' : 'lives'} left`) : null,
+      el('span', { class: 're-stat' }, gameIcon('crown', 1.3), el('b', { text: `${c.cleared}/${c.of}` }), adventure ? ' levels' : ' waves'),
+    ];
+    const next = !msg.matchOver ? `Get ready for ${adventure ? 'level' : 'wave'} ${c.level + 1}...` : cleared ? 'Victory! Final results next...' : 'Final results next...';
+    const art = cleared
+      ? el('div', { class: 're-team re-coop' }, team.slice(0, 6).map((p) => avatar(p.color, 3.6, 're-avatar')))
+      : el('div', { class: 're-draw' }, gameIcon('ghost', 3.6), gameIcon(adventure ? 'monster-puff' : 'bot', 3.6));
+    clear(box);
+    box.hidden = false;
+    box.dataset.kind = cleared ? 'you' : 'over';
+    append(box, [el('div', { class: 're-card' },
+      el('p', { class: 're-round', text: stage }),
+      art,
+      el('h2', { class: 're-title', text: title }),
+      cleared ? null : el('p', { class: 're-reason', text: adventure ? `You reached level ${c.level}.` : `You made it to wave ${c.level}.` }),
+      el('p', { class: 're-stats' }, stats),
+      el('p', { class: 're-next', text: next }))]);
+    if (cleared) this.ui.confetti(box, 46);
+    this.ui.announce(`${title} ${c.score} points.`);
+  }
 }
 
 // ================================================================================================
@@ -1719,16 +1882,13 @@ class ResultsScreen {
     this.awardList = el('ul', { class: 'awards' });
     this.awards.appendChild(this.awardList);
     this.tbody = el('tbody');
+    this.headRow = el('tr');
     this.table = el('table', { class: 'standings' },
       el('caption', { class: 'sr-only', text: 'Final standings' }),
-      el('thead', null, el('tr', null,
-        el('th', { scope: 'col', class: 'col-place', title: 'Place', 'aria-label': 'Place', text: '#' }), el('th', { scope: 'col', class: 'col-name', text: 'Player' }),
-        el('th', { scope: 'col', class: 'col-num', title: 'Round wins', text: 'Wins' }), el('th', { scope: 'col', class: 'col-num', title: 'Rivals blasted', text: 'Kills' }),
-        el('th', { scope: 'col', class: 'col-num hide-xs', title: 'Times blasted', text: 'Deaths' }),
-        el('th', { scope: 'col', class: 'col-num hide-sm', title: 'Own goals: blasted by their own bomb', text: 'Oops' }),
-        el('th', { scope: 'col', class: 'col-num hide-sm', title: 'Blocks destroyed', text: 'Blocks' }),
-        el('th', { scope: 'col', class: 'col-num hide-sm', title: 'Power-ups collected', text: 'Items' }))),
+      el('thead', null, this.headRow),
       this.tbody);
+    // Co-op (Appendix C): one card for the whole team instead of a podium.
+    this.teamCard = el('section', { class: 'card team-card', hidden: true, 'aria-label': 'Your team' });
     this.chat = new ChatPanel(ui, 'results-chat-h');
     ui.chatPanels.push(this.chat);
     this.note = el('p', { class: 'start-note', 'aria-live': 'polite' });
@@ -1746,15 +1906,39 @@ class ResultsScreen {
           el('div', { class: 'lobby-bar-end' }, this.ping.node)),
         el('div', { class: 'results-head' }, this.title, this.sub),
         el('div', { class: 'results-grid' },
-          el('div', { class: 'lobby-col' }, this.podium, this.awards),
+          el('div', { class: 'lobby-col' }, this.podium, this.teamCard, this.awards),
           el('div', { class: 'lobby-col' }, el('section', { class: 'card standings-card', 'aria-labelledby': 'standings-h' }, el('h2', { id: 'standings-h', class: 'card-title' }, icon('users'), 'Standings'), this.table), this.chat.root)),
         this.actionbar));
+  }
+
+  /**
+   * Standings columns: [stat, header, title, class]. Battle matches count round wins and rivals blasted; co-op runs count monsters
+   * popped (adventure) or enemy bots blasted (coop), and nobody's "wins" (the team's progress is on the team card).
+   */
+  columns(coop) {
+    const head = coop?.mode === 'adventure' ? [['monsters', 'Popped', 'Monsters popped', 'col-num col-wide']]
+      : coop ? [['kills', 'Blasted', 'Enemy bots blasted', 'col-num col-wide'], ['monsters', 'Popped', 'Monsters popped', 'col-num col-wide hide-xs hide-sm']]
+        : [['wins', 'Wins', 'Round wins', 'col-num'], ['kills', 'Kills', 'Rivals blasted', 'col-num']];
+    return [...head,
+      ['deaths', coop ? 'Ouch' : 'Deaths', 'Times blasted or caught', 'col-num hide-xs'], ['selfKills', 'Oops', 'Own goals: blasted by their own bomb', 'col-num hide-sm'],
+      ['blocks', 'Blocks', 'Blocks destroyed', 'col-num hide-sm'], ['items', 'Items', 'Power-ups collected', 'col-num hide-sm']];
   }
 
   render(msg) {
     this.msg = msg;
     const ui = this.ui;
     const standings = records(msg.standings);
+    const coop = msg.coop && typeof msg.coop === 'object' ? msg.coop : null;
+    const cols = this.columns(coop);
+    clear(this.headRow);
+    append(this.headRow, [el('th', { scope: 'col', class: 'col-place', title: 'Place', 'aria-label': 'Place', text: '#' }), el('th', { scope: 'col', class: 'col-name', text: 'Player' }),
+      cols.map(([, text, title, cls]) => el('th', { scope: 'col', class: cls, title, text }))]);
+    this.teamCard.hidden = !coop;
+    this.podium.hidden = !!coop;
+    if (coop) {
+      this.renderCoop(msg, coop, standings, cols);
+      return;
+    }
     const teams = msg.winnerTeam != null;
     const teamMatch = teams || ui.lobbyMsg?.settings?.mode === 'teams';
     const me = ui.you;
@@ -1809,8 +1993,7 @@ class ResultsScreen {
         el('td', { class: 'col-place' }, el('span', { class: `medal medal-${Math.min(s.place, 4)}`, title: MEDALS[s.place] ?? '', text: String(s.place) })),
         el('td', { class: 'col-name' }, el('span', { class: 'std-name' }, avatar(s.color, 2), bdi(s.name), s.id === me ? el('span', { class: 'you-tag', text: 'YOU' }) : null,
           teamMatch ? el('span', { class: 'team-badge', dataset: { team: String(s.team === 1 ? 1 : 0) }, text: teamLetter(s.team) }) : null)),
-        el('td', { class: 'col-num' }, el('b', { text: String(s.wins) })), el('td', { class: 'col-num', text: String(s.kills) }), el('td', { class: 'col-num hide-xs', text: String(s.deaths) }),
-        el('td', { class: 'col-num hide-sm', text: String(s.selfKills) }), el('td', { class: 'col-num hide-sm', text: String(s.blocks) }), el('td', { class: 'col-num hide-sm', text: String(s.items) })));
+        cols.map(([stat, , , cls], i) => el('td', { class: cls }, i === 0 ? el('b', { text: String(s[stat] ?? 0) }) : String(s[stat] ?? 0)))));
     }
 
     this.deadline = performance.now() + TIMEOUTS.RESULTS_AUTO_MS;
@@ -1818,6 +2001,53 @@ class ResultsScreen {
     clear(this.confettiHost);
     if (!notEnough) ui.confetti(this.confettiHost, meWon ? 90 : 50);
     ui.announce(notEnough ? 'Not enough players. Match ended.' : title ?? `${champion?.name ?? 'Nobody'} wins the match.`);
+  }
+
+  /** Co-op results: victory or game over, how far the team got, its score, then the usual awards and a stats table. */
+  renderCoop(msg, coop, standings, cols) {
+    const ui = this.ui;
+    const me = ui.you;
+    const adventure = coop.mode === 'adventure';
+    const notEnough = msg.reason === 'not_enough_players';
+    const victory = coop.victory === true;
+    this.title.textContent = notEnough ? 'Match ended' : victory ? 'Victory!' : 'Game over';
+    this.title.dataset.tone = victory ? 'win' : 'neutral';
+    const progress = adventure ? (victory ? `You beat all ${coop.of} levels` : `You reached level ${coop.reached} of ${coop.of}`)
+      : `${coop.cleared} of ${coop.of} ${coop.of === 1 ? 'wave' : 'waves'} beaten`;
+    this.sub.textContent = notEnough ? 'Not enough players - match ended' : `${progress} \u00b7 ${coop.score.toLocaleString('en-US')} points`;
+
+    clear(this.teamCard);
+    const level = SETTING_LABELS.difficulty[coop.difficulty] ?? '';
+    append(this.teamCard, [
+      el('div', { class: 'team-people' }, standings.slice(0, 8).map((s) => el('div', { class: `team-person${s.id === me ? ' is-me' : ''}`, style: { '--c': colorInfo(s.color).hex } },
+        victory ? gameIcon('crown', 1.6, 'team-crown') : null, avatar(s.color, 3.4, 'team-avatar'), bdi(s.name, 'team-name')))),
+      el('div', { class: 'team-stats' },
+        el('span', { class: 'team-stat' }, gameIcon(adventure ? 'door-open' : 'bot', 2), el('b', { text: `${coop.cleared}/${coop.of}` }), el('span', { text: adventure ? 'levels' : 'waves' })),
+        el('span', { class: 'team-stat' }, gameIcon('star', 2), el('b', { text: coop.score.toLocaleString('en-US') }), el('span', { text: 'points' })),
+        adventure ? el('span', { class: 'team-stat' }, gameIcon('heart', 2), el('b', { text: String(coop.lives) }), el('span', { text: coop.lives === 1 ? 'life left' : 'lives left' })) : null,
+        level ? el('span', { class: 'team-stat' }, gameIcon(adventure ? 'monster-tank' : 'skull', 2), el('b', { text: level }), el('span', { text: 'difficulty' })) : null),
+    ]);
+
+    const awards = computeAwards(standings);
+    this.awards.hidden = awards.length === 0;
+    clear(this.awardList);
+    for (const a of awards) {
+      this.awardList.appendChild(el('li', { class: 'award', title: a.hint, style: { '--c': colorInfo(a.player.color).hex } },
+        el('span', { class: 'award-icon' }, gameIcon(a.icon, 2.2)),
+        el('span', { class: 'award-text' }, el('b', { class: 'award-title', text: a.title }), el('span', { class: 'award-who' }, bdi(a.player.name), ` \u00b7 ${a.label}`))));
+    }
+    clear(this.tbody);
+    for (const s of standings) {
+      this.tbody.appendChild(el('tr', { class: s.id === me ? 'is-me' : '', style: { '--c': colorInfo(s.color).hex } },
+        el('td', { class: 'col-place' }, el('span', { class: `medal medal-${Math.min(s.place, 4)}`, text: String(s.place) })),
+        el('td', { class: 'col-name' }, el('span', { class: 'std-name' }, avatar(s.color, 2), bdi(s.name), s.id === me ? el('span', { class: 'you-tag', text: 'YOU' }) : null)),
+        cols.map(([stat, , , cls], i) => el('td', { class: cls }, i === 0 ? el('b', { text: String(s[stat] ?? 0) }) : String(s[stat] ?? 0)))));
+    }
+    this.deadline = performance.now() + TIMEOUTS.RESULTS_AUTO_MS;
+    this.renderActions();
+    clear(this.confettiHost);
+    if (victory) ui.confetti(this.confettiHost, 90);
+    ui.announce(`${this.title.textContent}. ${this.sub.textContent}`);
   }
 
   /** Buttons depend on who is host, which can change while the results are up. */
@@ -2184,6 +2414,11 @@ export class UI {
   banner(text, kind = 'info', ms) {
     this.game.showBanner(String(text), kind, ms);
     this.announce(String(text));
+  }
+
+  /** Co-op: the "Level 3" card over the arena during the countdown ({ title, sub, monsters, ms }); null hides it (GO does). */
+  showIntro(info) {
+    this.game.showIntro(info);
   }
 
   /** Card at the end of a round; showRoundEnd(null) hides it (showGame() does too). */

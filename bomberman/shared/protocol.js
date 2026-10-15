@@ -34,7 +34,7 @@ export const SERVER_MSG = Object.freeze({
 
 export const ERR = Object.freeze({
   BAD_MSG: 'bad_msg', VERSION: 'version', NO_ROOM: 'no_room', FULL: 'full', LOCKED: 'locked', BUSY: 'busy',
-  NOT_HOST: 'not_host', BAD_PHASE: 'bad_phase', NEED_PLAYERS: 'need_players', NEED_TEAMS: 'need_teams',
+  NOT_HOST: 'not_host', BAD_PHASE: 'bad_phase', NEED_PLAYERS: 'need_players', NEED_TEAMS: 'need_teams', NEED_SEAT: 'need_seat',
   RATE_LIMITED: 'rate_limited', KICKED: 'kicked', CLOSED: 'closed',
 });
 
@@ -48,6 +48,10 @@ export const P = Object.freeze({ ID: 0, X: 1, Y: 2, F: 3, FL: 4, SH: 5, SS: 6, C
 export const PF = Object.freeze({ MOVING: 1, ALIVE: 2, KICK: 4, GLOVE: 8 });
 /** Bomb row `b[n]`. `ID` is an alias of `I` because the table calls index 0 both "i" and "bomb id". */
 export const B = Object.freeze({ I: 0, ID: 0, O: 1, X: 2, Y: 3, TX: 4, TY: 5, FU: 6, RG: 7, D: 8, FL: 9, PS: 10 });
+/** Monster row `m[n]` of an adventure snapshot (Appendix C): id, kind (MONSTER_KINDS), centre, facing 0..3, flags, hits left. */
+export const M = Object.freeze({ ID: 0, K: 1, X: 2, Y: 3, F: 4, FL: 5, HP: 6 });
+/** Bits of the monster flags `m[n][M.FL]`: just hit (invulnerable, flashing), angry (a tank after its first hit, a hurry-up). */
+export const MF = Object.freeze({ HURT: 1, ANGRY: 2 });
 
 /**
  * Closed list of event codes with the names of their arguments (Appendix A.3).
@@ -72,6 +76,15 @@ export const EVENT_ARGS = Object.freeze({
   sdstart: Object.freeze([]),
   sdland: Object.freeze(['tx', 'ty']),
   showdown: Object.freeze([]),
+  // Co-op modes only (Appendix C). killerId -3 in `death` means "caught by a monster".
+  mspawn: Object.freeze(['monsterId', 'kind', 'x', 'y']),
+  mhit: Object.freeze(['monsterId', 'kind', 'x', 'y', 'ownerId']),
+  mdeath: Object.freeze(['monsterId', 'kind', 'x', 'y', 'ownerId', 'points']),
+  door: Object.freeze(['tx', 'ty', 'open']),
+  exit: Object.freeze(['playerId', 'tx', 'ty']),
+  life: Object.freeze(['playerId', 'livesLeft']),
+  respawn: Object.freeze(['playerId', 'x', 'y']),
+  hurry: Object.freeze([]),
 });
 
 /** `[id,x,y,f,fl,sh,ss,cu,ct,bm,rg,sp,dt]` -> named object (allocates). */
@@ -82,6 +95,15 @@ export function decodePlayer(row) {
     moving: (flags & PF.MOVING) !== 0, alive: (flags & PF.ALIVE) !== 0, kick: (flags & PF.KICK) !== 0, glove: (flags & PF.GLOVE) !== 0,
     shield: row[P.SH], spawnShield: row[P.SS], curse: row[P.CU] || null, curseTicks: row[P.CT],
     bombsMax: row[P.BM], range: row[P.RG], speedLv: row[P.SP], deadT: row[P.DT],
+  };
+}
+
+/** `[id,kind,x,y,f,fl,hp]` -> named object (allocates). */
+export function decodeMonster(row) {
+  const flags = row[M.FL];
+  return {
+    id: row[M.ID], kind: row[M.K], x: row[M.X], y: row[M.Y], facing: row[M.F],
+    hurt: (flags & MF.HURT) !== 0, angry: (flags & MF.ANGRY) !== 0, hp: row[M.HP],
   };
 }
 
