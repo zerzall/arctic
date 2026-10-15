@@ -105,10 +105,18 @@ stick without installing anything.
 
 ## Install on macOS
 
-Download `Arctic PDF Editor-1.0.0-arm64.dmg` (Apple Silicon) or
-`-x64.dmg` (Intel Macs) from the
-[releases page](https://github.com/zerzall/arctic/releases), open it, and drag
-the app to Applications.
+There is one download per kind of Mac, so you only fetch the build your chip
+can run:
+
+| Your Mac | Download |
+| --- | --- |
+| Apple Silicon (M1, M2, M3, M4 — any Mac from late 2020 on) | `Arctic PDF Editor-<version>-arm64.dmg` |
+| Intel | `Arctic PDF Editor-<version>-x64.dmg` |
+
+Not sure which you have? Apple menu → **About This Mac**: it lists either a
+*Chip* (Apple Silicon) or a *Processor* (Intel).
+
+Open the `.dmg` and drag the app to Applications.
 
 > **The app is not signed with an Apple Developer ID**, so the first launch is
 > blocked: macOS says it "cannot be opened because the developer cannot be
@@ -130,9 +138,9 @@ git clone https://github.com/zerzall/arctic.git
 cd arctic
 npm install          # also copies pdf.js/pdf-lib into src/renderer/vendor
 npm start            # run the app from source
-npm test             # 113 tests over the geometry, text, OCR, pictures and PDF writing
+npm test             # 114 tests over the geometry, text, OCR, pictures and PDF writing
 npm run dist:win     # on Windows -> dist/Arctic PDF Editor-1.0.0-x64.exe (+ portable)
-npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg (+ x64, + zips)
+npm run dist:mac     # on macOS   -> dist/Arctic PDF Editor-1.0.0-arm64.dmg and -x64.dmg
 ```
 
 `npm run icon` regenerates `build/icon.ico` (needs Python 3; the icon is drawn
@@ -140,7 +148,17 @@ by `scripts/make-icon.py` rather than committed as an opaque binary).
 
 Pushing to this repository builds both, on a Windows runner and a macOS runner — see
 [`.github/workflows/build.yml`](.github/workflows/build.yml).
-Tagging a commit `v1.0.0` attaches the installer to a GitHub release.
+
+**To publish a downloadable release**, create one on the repository's
+*Releases* page — any tag name works. The workflow builds every installer and
+attaches it to that release automatically, which gives you a permanent link to
+share, unlike the build artifacts, which expire after 90 days.
+
+The installers carry nothing the app does not load. The renderer's libraries —
+pdf.js, pdf-lib, Tesseract — are copied into `src/renderer/vendor` at build
+time, so they are *dev* dependencies: listing them as runtime dependencies once
+packaged a second, unused copy of all of them — 114 MB of it — into every
+download. A test now fails if that happens again.
 
 ## Keyboard shortcuts
 

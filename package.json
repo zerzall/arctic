@@ -2,7 +2,7 @@
   "name": "arctic-pdf-editor",
   "productName": "Arctic PDF Editor",
   "version": "1.0.0",
-  "description": "A desktop PDF editor for Windows: annotate, add text, reorder and rotate pages, merge, split, fill forms and export.",
+  "description": "A desktop PDF editor for Windows and macOS: annotate, edit text, OCR scans, reorder and rotate pages, merge, split, fill forms and export.",
   "main": "src/main/main.js",
   "author": "Arctic PDF Editor contributors",
   "license": "MIT",
@@ -21,16 +21,15 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "dependencies": {
-    "@tesseract.js-data/eng": "^1.0.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "electron": "^43.2.0",
+    "electron-builder": "26.15.3",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.2.108",
-    "tesseract.js": "^7.0.0",
-    "tesseract.js-core": "^7.0.0"
-  },
-  "devDependencies": {
-    "electron": "^43.2.0",
-    "electron-builder": "26.15.3"
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0"
   },
   "build": {
     "appId": "com.arctic.pdfeditor",
@@ -72,13 +71,6 @@
             "arm64",
             "x64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
         }
       ],
       "icon": "build/icon.icns",
@@ -109,7 +101,6 @@
         "ext": "pdf",
         "name": "PDF Document",
         "description": "Portable Document Format",
-        "icon": "build/icon.ico",
         "role": "Editor"
       }
     ]

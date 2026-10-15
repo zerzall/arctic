@@ -16,6 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { builtinModules } from 'node:module';
 
 import { ASSET_URLS, WORKER_URL, documentOptions } from '../src/renderer/js/pdfjsopts.js';
 
@@ -91,4 +92,38 @@ test('the packaged build includes the vendored assets', () => {
 test('the app serves .wasm with the MIME type WebAssembly requires', () => {
   const main = readFileSync(new URL('../src/main/main.js', import.meta.url), 'utf8');
   assert.match(main, /'\.wasm':\s*'application\/wasm'/);
+});
+
+/* ------------------------------ download size ----------------------------- */
+
+/**
+ * Everything in package.json's `dependencies` is copied into the installer.
+ * The renderer loads its libraries from the vendored copies, and the main
+ * process needs nothing beyond Electron and Node itself - so a library listed
+ * there is shipped twice and never loaded. That mistake once added 114 MB to
+ * every installer (the app archive went from 142 MB to 28 MB when fixed).
+ */
+test('the installer bundles no node_modules the app never loads', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const requiredByMain = new Set();
+  for (const file of ['main.js', 'preload.js', 'menu.js']) {
+    const src = readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8');
+    for (const [, name] of src.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+      if (name.startsWith('.') || name === 'electron') continue;
+      const bare = name.replace(/^node:/, '').split('/')[0];
+      if (builtinModules.includes(bare)) continue;
+      requiredByMain.add(name.startsWith('@') ? name.split('/').slice(0, 2).join('/') : bare);
+    }
+  }
+  const declared = Object.keys(pkg.dependencies || {});
+  for (const dep of declared) {
+    assert.ok(
+      requiredByMain.has(dep),
+      `"${dep}" is a runtime dependency but the main process never requires it, ` +
+        'so it would be packaged into the installer for nothing - move it to devDependencies'
+    );
+  }
+  for (const dep of requiredByMain) {
+    assert.ok(declared.includes(dep), `the main process requires "${dep}" but it is not a dependency`);
+  }
 });
