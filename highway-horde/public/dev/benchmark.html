@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Highway Horde Benchmark</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>
+  :root { color-scheme: dark; --bg: #050608; --panel: rgba(12,14,18,0.9); --text: #d8dee6; --muted: #8a96a3; --accent: #ffc400; --ok: #7bd88f; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #panel { position: fixed; top: 16px; left: 16px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid #2a323c; border-radius: 8px; padding: 16px 18px; z-index: 10; }
+  #panel.running { pointer-events: none; opacity: 0.0; }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  p { margin: 6px 0; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  label { color: var(--muted); font-size: 13px; }
+  button, select { font: inherit; background: #10151b; color: var(--text); border: 1px solid #364150; border-radius: 5px; padding: 6px 12px; cursor: pointer; }
+  button.go { background: var(--accent); color: #17130a; border-color: var(--accent); font-weight: 700; padding: 8px 20px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  pre { margin: 10px 0 0; padding: 10px 12px; background: #080b0f; border: 1px solid #222a33; border-radius: 6px; font: 12.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; color: var(--ok); user-select: all; }
+  #hud { position: fixed; right: 16px; top: 12px; font: 600 13px ui-monospace, monospace; color: var(--accent); text-shadow: 0 1px 2px #000; z-index: 11; white-space: pre; text-align: right; }
+  #bar { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--accent); width: 0; z-index: 12; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"></div>
+<div id="bar"></div>
+<div id="panel">
+  <h1>Highway Horde — benchmark</h1>
+  <p>A 20-second fly-through of Highway 9 Pileup at night: a fixed camera path past the wrecks, the overpass and the fighting around the bus, with three bots and the horde. It runs with the graphics settings you use in the game (Settings → Graphics) unless you change them below. Send the result block back.</p>
+  <div class="row">
+    <label>Quality <select id="q"><option value="">as in game</option><option>cinematic</option><option>ultra</option><option>high</option><option>low</option></select></label>
+    <label>Resolution <select id="scale"><option value="">as in game</option><option value="auto">Auto</option><option value="0.5">50%</option><option value="0.85">85%</option><option value="1">100%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+    <label>MSAA <select id="msaa"><option value="">as in game</option><option value="0">off</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
+    <label>Seconds <select id="secs"><option>20</option><option>10</option><option>40</option><option>60</option></select></label>
+  </div>
+  <div class="row"><button class="go" id="go">Start benchmark</button><button id="fs">Fullscreen</button><button id="copy" disabled>Copy result</button></div>
+  <p id="info">Loading…</p>
+  <pre id="out" hidden></pre>
+</div>
+<script type="module" src="./benchmark.js"></script>
+</body>
+</html>

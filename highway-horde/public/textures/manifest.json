@@ -1,0 +1,1672 @@
+{
+ "version": 1,
+ "seed": 1,
+ "render": 2048,
+ "bytes": 170652430,
+ "sets": {
+  "brick_red": {
+   "about": "red clay brick in running bond: fired-colour variety, burnt headers, chipped corners, spalled faces, recessed sandy mortar, salt bloom, soot",
+   "det": "brick",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.44,
+   "files": {
+    "albedo": "brick_red/albedo.png",
+    "normal": "brick_red/normal.png",
+    "rah": "brick_red/rah.png",
+    "mask": "brick_red/mask.png"
+   },
+   "bytes": 3821013,
+   "mean": [
+    0.2227,
+    0.053,
+    0.0307
+   ],
+   "meanAll": [
+    0.2067,
+    0.059,
+    0.0373
+   ],
+   "rough": 0.833,
+   "height": 0.8173,
+   "metal": 0,
+   "tint": 0.7416,
+   "cells": [
+    5,
+    16,
+    0.5,
+    0.12
+   ]
+  },
+  "brick_yellow": {
+   "about": "old yellow stock brick: buff and sulphur tones with dark cinder specks, heavy soot, worn lime mortar standing back",
+   "det": "brickyellow",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.44,
+   "files": {
+    "albedo": "brick_yellow/albedo.png",
+    "normal": "brick_yellow/normal.png",
+    "rah": "brick_yellow/rah.png",
+    "mask": "brick_yellow/mask.png"
+   },
+   "bytes": 4231701,
+   "mean": [
+    0.3834,
+    0.2639,
+    0.107
+   ],
+   "meanAll": [
+    0.3357,
+    0.2342,
+    0.1009
+   ],
+   "rough": 0.8486,
+   "height": 0.7976,
+   "metal": 0,
+   "tint": 0.7213,
+   "cells": [
+    5,
+    16,
+    0.5,
+    0.14
+   ]
+  },
+  "cinder_block": {
+   "about": "concrete masonry units: coarse porous faces, concave tooled joints, nibbled edges, efflorescence and grime",
+   "det": "cinder",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.4,
+   "files": {
+    "albedo": "cinder_block/albedo.png",
+    "normal": "cinder_block/normal.png",
+    "rah": "cinder_block/rah.png",
+    "mask": "cinder_block/mask.png"
+   },
+   "bytes": 3318761,
+   "mean": [
+    0.2438,
+    0.2292,
+    0.2017
+   ],
+   "meanAll": [
+    0.2358,
+    0.2215,
+    0.1948
+   ],
+   "rough": 0.9321,
+   "height": 0.815,
+   "metal": 0,
+   "tint": 0.8402,
+   "cells": [
+    6,
+    12,
+    0.5,
+    0.1
+   ]
+  },
+  "concrete": {
+   "about": "poured concrete wall: bug holes, cement mottle, faint board-form grain, worn patches of aggregate, cracks, rebar rust runs, water streaks",
+   "det": "concrete",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.88,
+   "files": {
+    "albedo": "concrete/albedo.png",
+    "normal": "concrete/normal.png",
+    "rah": "concrete/rah.png",
+    "mask": "concrete/mask.png"
+   },
+   "bytes": 2996150,
+   "mean": [
+    0.267,
+    0.2579,
+    0.2337
+   ],
+   "meanAll": [
+    0.2679,
+    0.2586,
+    0.2342
+   ],
+   "rough": 0.8246,
+   "height": 0.5981,
+   "metal": 0,
+   "tint": 0.8301
+  },
+  "concrete_dam": {
+   "about": "dam concrete: heavy water staining, calcite runs, dark algae low down, form-tie holes in a grid with rust halos, lift lines",
+   "det": "concretedam",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.88,
+   "files": {
+    "albedo": "concrete_dam/albedo.png",
+    "normal": "concrete_dam/normal.png",
+    "rah": "concrete_dam/rah.png",
+    "mask": "concrete_dam/mask.png"
+   },
+   "bytes": 3043132,
+   "mean": [
+    0.2243,
+    0.2145,
+    0.188
+   ],
+   "meanAll": [
+    0.2208,
+    0.2113,
+    0.1844
+   ],
+   "rough": 0.8238,
+   "height": 0.5976,
+   "metal": 0,
+   "tint": 0.782,
+   "shift": [
+    0.5,
+    0.5
+   ]
+  },
+  "concrete_slab": {
+   "about": "poured concrete slab: tooled joints full of dirt, broom finish, spalls, a crack or two, oil and rust stains",
+   "det": "slab",
+   "size": 1024,
+   "render": 2048,
+   "tile": 3.84,
+   "files": {
+    "albedo": "concrete_slab/albedo.png",
+    "normal": "concrete_slab/normal.png",
+    "rah": "concrete_slab/rah.png",
+    "mask": "concrete_slab/mask.png"
+   },
+   "bytes": 2694894,
+   "mean": [
+    0.2875,
+    0.2737,
+    0.2446
+   ],
+   "meanAll": [
+    0.2846,
+    0.2708,
+    0.2419
+   ],
+   "rough": 0.8196,
+   "height": 0.5943,
+   "metal": 0,
+   "tint": 0.8058,
+   "cells": [
+    1,
+    1,
+    0,
+    0.1
+   ]
+  },
+  "runway": {
+   "about": "airfield concrete panel: sealed joints, transverse grooving, black tyre-rubber smears along the direction of travel, paint flecks, oil",
+   "det": "runway",
+   "size": 1024,
+   "render": 2048,
+   "tile": 3.84,
+   "files": {
+    "albedo": "runway/albedo.png",
+    "normal": "runway/normal.png",
+    "rah": "runway/rah.png",
+    "mask": "runway/mask.png"
+   },
+   "bytes": 2604860,
+   "mean": [
+    0.2905,
+    0.2771,
+    0.2451
+   ],
+   "meanAll": [
+    0.2725,
+    0.2599,
+    0.2299
+   ],
+   "rough": 0.8185,
+   "height": 0.5818,
+   "metal": 0,
+   "tint": 0.7197,
+   "cells": [
+    1,
+    1,
+    0,
+    0.08
+   ]
+  },
+  "sidewalk": {
+   "about": "sidewalk slabs (4 × 4): each heaved out of true, chipped corners, cracked slabs, gum spots, moss and grit in the joints",
+   "det": "paver",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.92,
+   "files": {
+    "albedo": "sidewalk/albedo.png",
+    "normal": "sidewalk/normal.png",
+    "rah": "sidewalk/rah.png",
+    "mask": "sidewalk/mask.png"
+   },
+   "bytes": 3347415,
+   "mean": [
+    0.3183,
+    0.3045,
+    0.2705
+   ],
+   "meanAll": [
+    0.3068,
+    0.2934,
+    0.2602
+   ],
+   "rough": 0.8295,
+   "height": 0.5766,
+   "metal": 0,
+   "tint": 0.7906,
+   "cells": [
+    4,
+    4,
+    0,
+    0.1
+   ]
+  },
+  "stucco": {
+   "about": "knock-down stucco render: trowelled-flat lumps of thrown mortar, hairline cracks, dirt in the hollows, water streaks",
+   "det": "stucco",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "stucco/albedo.png",
+    "normal": "stucco/normal.png",
+    "rah": "stucco/rah.png",
+    "mask": "stucco/mask.png"
+   },
+   "bytes": 5366911,
+   "mean": [
+    0.488,
+    0.4342,
+    0.3512
+   ],
+   "meanAll": [
+    0.4878,
+    0.4341,
+    0.3511
+   ],
+   "rough": 0.8683,
+   "height": 0.4896,
+   "metal": 0,
+   "tint": 0.9496
+  },
+  "plaster": {
+   "about": "painted plaster: trowelled undulation, hairline cracks, paint peeled back to the grey skim and an older green coat, lifted rims, tide-marked damp stains",
+   "det": "plaster",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.92,
+   "files": {
+    "albedo": "plaster/albedo.png",
+    "normal": "plaster/normal.png",
+    "rah": "plaster/rah.png",
+    "mask": "plaster/mask.png"
+   },
+   "bytes": 1847818,
+   "mean": [
+    0.6213,
+    0.5882,
+    0.5144
+   ],
+   "meanAll": [
+    0.601,
+    0.5691,
+    0.4966
+   ],
+   "rough": 0.7422,
+   "height": 0.7613,
+   "metal": 0,
+   "tint": 0.9042
+  },
+  "plaster_bleached": {
+   "about": "sun-bleached limewash over old plaster: chalky, brushed in uneven coats, older ochre and rose coats showing through, eroded back to the stone in places",
+   "det": "plasterbleach",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.92,
+   "files": {
+    "albedo": "plaster_bleached/albedo.png",
+    "normal": "plaster_bleached/normal.png",
+    "rah": "plaster_bleached/rah.png",
+    "mask": "plaster_bleached/mask.png"
+   },
+   "bytes": 1137916,
+   "mean": [
+    0.7568,
+    0.6807,
+    0.5618
+   ],
+   "meanAll": [
+    0.7436,
+    0.6638,
+    0.5417
+   ],
+   "rough": 0.9308,
+   "height": 0.5464,
+   "metal": 0,
+   "tint": 0.7873
+  },
+  "adobe": {
+   "about": "adobe: sun-dried mud bricks under a cracked mud render with straw, the render washed off in patches, rain-eroded joints",
+   "det": "adobe",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.16,
+   "files": {
+    "albedo": "adobe/albedo.png",
+    "normal": "adobe/normal.png",
+    "rah": "adobe/rah.png",
+    "mask": "adobe/mask.png"
+   },
+   "bytes": 3631687,
+   "mean": [
+    0.4142,
+    0.2265,
+    0.1058
+   ],
+   "meanAll": [
+    0.4077,
+    0.222,
+    0.103
+   ],
+   "rough": 0.9524,
+   "height": 0.6808,
+   "metal": 0,
+   "tint": 0.501
+  },
+  "asphalt": {
+   "about": "asphalt concrete: angular aggregate of several rocks set in the binder, worn flat and polished by tyres, sand in the voids, pull-outs and tar bleeding",
+   "det": "asphalt",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.9,
+   "files": {
+    "albedo": "asphalt/albedo.png",
+    "normal": "asphalt/normal.png",
+    "rah": "asphalt/rah.png",
+    "mask": "asphalt/mask.png"
+   },
+   "bytes": 6867974,
+   "mean": [
+    0.0876,
+    0.0811,
+    0.0736
+   ],
+   "meanAll": [
+    0.1012,
+    0.0936,
+    0.0847
+   ],
+   "rough": 0.6738,
+   "height": 0.4696,
+   "metal": 0,
+   "tint": 0.5571
+  },
+  "road_wear": {
+   "about": "old road at the large scale: block and alligator cracking with ravelled rims, black crack sealant, patches of newer and older asphalt, oil drips",
+   "det": "crackmacro",
+   "size": 1024,
+   "render": 2048,
+   "tile": 7.2,
+   "files": {
+    "albedo": "road_wear/albedo.png",
+    "normal": "road_wear/normal.png",
+    "rah": "road_wear/rah.png",
+    "mask": "road_wear/mask.png"
+   },
+   "bytes": 3461047,
+   "mean": [
+    0.0431,
+    0.0419,
+    0.0408
+   ],
+   "meanAll": [
+    0.0409,
+    0.0398,
+    0.0387
+   ],
+   "rough": 0.8227,
+   "height": 0.5365,
+   "metal": 0,
+   "tint": 0.6423
+  },
+  "road_paint": {
+   "about": "thermoplastic road paint: a thick, slightly lumpy line with glass beads, cracked into plates and worn through to the asphalt by the tyres",
+   "det": "roadpaint",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.6,
+   "files": {
+    "albedo": "road_paint/albedo.png",
+    "normal": "road_paint/normal.png",
+    "rah": "road_paint/rah.png",
+    "mask": "road_paint/mask.png"
+   },
+   "bytes": 3520186,
+   "mean": [
+    0.5754,
+    0.5754,
+    0.5315
+   ],
+   "meanAll": [
+    0.4652,
+    0.4652,
+    0.43
+   ],
+   "rough": 0.6192,
+   "height": 0.5968,
+   "metal": 0,
+   "tint": 0.7981
+  },
+  "grass": {
+   "about": "grass seen from above: thousands of blades of many greens in clumps, dry straw among them, soil and old leaves in the gaps",
+   "det": "grass",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "grass/albedo.png",
+    "normal": "grass/normal.png",
+    "rah": "grass/rah.png",
+    "mask": "grass/mask.png"
+   },
+   "bytes": 8723730,
+   "mean": [
+    0.1227,
+    0.1696,
+    0.0399
+   ],
+   "meanAll": [
+    0.1425,
+    0.1747,
+    0.0464
+   ],
+   "rough": 0.6987,
+   "height": 0.6103,
+   "metal": 0,
+   "tint": 0.6963
+  },
+  "dirt": {
+   "about": "packed earth: soil tones from umber to grey, clods, crumbs, small stones, twigs and dead leaves, damp darker patches",
+   "det": "dirt",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "dirt/albedo.png",
+    "normal": "dirt/normal.png",
+    "rah": "dirt/rah.png",
+    "mask": "dirt/mask.png"
+   },
+   "bytes": 5841583,
+   "mean": [
+    0.0985,
+    0.064,
+    0.0362
+   ],
+   "meanAll": [
+    0.1031,
+    0.0666,
+    0.0369
+   ],
+   "rough": 0.9106,
+   "height": 0.4763,
+   "metal": 0,
+   "tint": 0.5357
+  },
+  "mud": {
+   "about": "wet mud: churned, boot and tyre marks, glossy water standing in the low spots, drier crusted ridges, bits of straw and grit",
+   "det": "mud",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "mud/albedo.png",
+    "normal": "mud/normal.png",
+    "rah": "mud/rah.png",
+    "mask": "mud/mask.png"
+   },
+   "bytes": 5475374,
+   "mean": [
+    0.0421,
+    0.0274,
+    0.0163
+   ],
+   "meanAll": [
+    0.0421,
+    0.0274,
+    0.0163
+   ],
+   "rough": 0.3674,
+   "height": 0.3615,
+   "metal": 0,
+   "tint": 0.55
+  },
+  "gravel": {
+   "about": "loose gravel: rounded pebbles of three sizes, each its own rock, larger ones lying on top, grit and fines between",
+   "det": "gravel",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.78,
+   "files": {
+    "albedo": "gravel/albedo.png",
+    "normal": "gravel/normal.png",
+    "rah": "gravel/rah.png",
+    "mask": "gravel/mask.png"
+   },
+   "bytes": 7425338,
+   "mean": [
+    0.2514,
+    0.2147,
+    0.1693
+   ],
+   "meanAll": [
+    0.2651,
+    0.2265,
+    0.1787
+   ],
+   "rough": 0.7697,
+   "height": 0.5432,
+   "metal": 0,
+   "tint": 0.3746
+  },
+  "ballast": {
+   "about": "rail ballast: angular crushed granite, grey and pink-grey, black oil soaked into the stones, rust-brown brake dust over everything",
+   "det": "ballast",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "ballast/albedo.png",
+    "normal": "ballast/normal.png",
+    "rah": "ballast/rah.png",
+    "mask": "ballast/mask.png"
+   },
+   "bytes": 5723455,
+   "mean": [
+    0.1834,
+    0.1555,
+    0.1369
+   ],
+   "meanAll": [
+    0.169,
+    0.143,
+    0.1257
+   ],
+   "rough": 0.7563,
+   "height": 0.6932,
+   "metal": 0,
+   "tint": 0.3564
+  },
+  "sand": {
+   "about": "wind-blown sand: ripples wandering across the tile, grains of mixed minerals, the odd pebble and shell, darker heavy minerals in the troughs",
+   "det": "sand",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "sand/albedo.png",
+    "normal": "sand/normal.png",
+    "rah": "sand/rah.png",
+    "mask": "sand/mask.png"
+   },
+   "bytes": 4689965,
+   "mean": [
+    0.3961,
+    0.2762,
+    0.1322
+   ],
+   "meanAll": [
+    0.3956,
+    0.2761,
+    0.1327
+   ],
+   "rough": 0.92,
+   "height": 0.4045,
+   "metal": 0,
+   "tint": 0.6937
+  },
+  "rock": {
+   "about": "weathered granite rock face: fractured blocks, rounded by erosion, quartz and feldspar speckle, lichen crusts, dark water stains down the joints",
+   "det": "rock",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.8,
+   "files": {
+    "albedo": "rock/albedo.png",
+    "normal": "rock/normal.png",
+    "rah": "rock/rah.png",
+    "mask": "rock/mask.png"
+   },
+   "bytes": 5422142,
+   "mean": [
+    0.2014,
+    0.1849,
+    0.1609
+   ],
+   "meanAll": [
+    0.2007,
+    0.1852,
+    0.1589
+   ],
+   "rough": 0.8294,
+   "height": 0.4555,
+   "metal": 0,
+   "tint": 0.5067
+  },
+  "sandstone": {
+   "about": "sandstone cliff: beds of different hardness and colour, cross-bedding, soft beds weathered back into honeycomb, vertical joints, iron staining and desert varnish",
+   "det": "strata",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.1,
+   "files": {
+    "albedo": "sandstone/albedo.png",
+    "normal": "sandstone/normal.png",
+    "rah": "sandstone/rah.png",
+    "mask": "sandstone/mask.png"
+   },
+   "bytes": 4571536,
+   "mean": [
+    0.3915,
+    0.2258,
+    0.1074
+   ],
+   "meanAll": [
+    0.3845,
+    0.2212,
+    0.1051
+   ],
+   "rough": 0.9017,
+   "height": 0.6111,
+   "metal": 0,
+   "tint": 0.4736
+  },
+  "cracked_earth": {
+   "about": "dry lake-bed mud: polygonal plates curling up at their rims, deep shadowed cracks, a skin of pale dust, finer cracks inside the plates",
+   "det": "cracked",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.7,
+   "files": {
+    "albedo": "cracked_earth/albedo.png",
+    "normal": "cracked_earth/normal.png",
+    "rah": "cracked_earth/rah.png",
+    "mask": "cracked_earth/mask.png"
+   },
+   "bytes": 5147587,
+   "mean": [
+    0.3246,
+    0.2329,
+    0.1426
+   ],
+   "meanAll": [
+    0.3024,
+    0.2168,
+    0.1328
+   ],
+   "rough": 0.9528,
+   "height": 0.5847,
+   "metal": 0,
+   "tint": 0.5852
+  },
+  "metal_painted": {
+   "about": "painted sheet steel (vehicles, machines, posts, signs): orange-peel enamel, chips to the red primer and bare steel, scratches, smudged gloss, dust, soft dents",
+   "det": "panel",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.44,
+   "files": {
+    "albedo": "metal_painted/albedo.png",
+    "normal": "metal_painted/normal.png",
+    "rah": "metal_painted/rah.png",
+    "mask": "metal_painted/mask.png"
+   },
+   "bytes": 1609357,
+   "mean": [
+    0.2919,
+    0.2962,
+    0.2831
+   ],
+   "meanAll": [
+    0.2911,
+    0.2948,
+    0.2816
+   ],
+   "rough": 0.489,
+   "height": 0.5678,
+   "metal": 0.0018,
+   "tint": 0.9929
+  },
+  "corrugated": {
+   "about": "painted corrugated steel: 14 ribs per tile, chalky faded paint, white oxidation, rust blooms at the fasteners and the lower edge, runs down the valleys",
+   "det": "corrugated",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.08,
+   "files": {
+    "albedo": "corrugated/albedo.png",
+    "normal": "corrugated/normal.png",
+    "rah": "corrugated/rah.png",
+    "mask": "corrugated/mask.png"
+   },
+   "bytes": 2850925,
+   "mean": [
+    0.2534,
+    0.2675,
+    0.244
+   ],
+   "meanAll": [
+    0.2445,
+    0.2415,
+    0.2165
+   ],
+   "rough": 0.6163,
+   "height": 0.476,
+   "metal": 0.0019,
+   "tint": 0.8629
+  },
+  "corrugated_rust": {
+   "about": "old corrugated iron: the galvanising gone grey and spangled in patches, rust over most of it, holes rusted through in the valleys, heavy dark runs",
+   "det": "corrugatedrust",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.08,
+   "files": {
+    "albedo": "corrugated_rust/albedo.png",
+    "normal": "corrugated_rust/normal.png",
+    "rah": "corrugated_rust/rah.png",
+    "mask": "corrugated_rust/mask.png"
+   },
+   "bytes": 2189205,
+   "mean": [
+    0.208,
+    0.2025,
+    0.1888
+   ],
+   "meanAll": [
+    0.1667,
+    0.1216,
+    0.1044
+   ],
+   "rough": 0.7215,
+   "height": 0.4816,
+   "metal": 0.436,
+   "tint": 0.1007
+  },
+  "metal_roof": {
+   "about": "standing-seam roofing: four pans per tile with raised seams, a slight oil-canning in each pan, chalky sun fade, rust blooms at the clips and runs down the pans",
+   "det": "metalroof",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.92,
+   "files": {
+    "albedo": "metal_roof/albedo.png",
+    "normal": "metal_roof/normal.png",
+    "rah": "metal_roof/rah.png",
+    "mask": "metal_roof/mask.png"
+   },
+   "bytes": 2554044,
+   "mean": [
+    0.2254,
+    0.2525,
+    0.2323
+   ],
+   "meanAll": [
+    0.2215,
+    0.2355,
+    0.2138
+   ],
+   "rough": 0.6022,
+   "height": 0.3768,
+   "metal": 0.0016,
+   "tint": 0.8946,
+   "cells": [
+    4,
+    1,
+    0,
+    0.06
+   ]
+  },
+  "steel_rusted": {
+   "about": "rusted steel plate: layered scale flaking off, pits, the last of the paint in islands with lifted edges, a weld seam, bolts, dark wet runs",
+   "det": "rust",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "steel_rusted/albedo.png",
+    "normal": "steel_rusted/normal.png",
+    "rah": "steel_rusted/rah.png",
+    "mask": "steel_rusted/mask.png"
+   },
+   "bytes": 2985524,
+   "mean": [
+    0.1407,
+    0.166,
+    0.1422
+   ],
+   "meanAll": [
+    0.1398,
+    0.0995,
+    0.0756
+   ],
+   "rough": 0.7485,
+   "height": 0.6173,
+   "metal": 0.0009,
+   "tint": 0.4928
+  },
+  "rail_rust": {
+   "about": "rusted rail and structural steel: brown-orange rust over dark mill scale, black oil and brake-dust grime, bright scuffs along the running direction",
+   "det": "railrust",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "rail_rust/albedo.png",
+    "normal": "rail_rust/normal.png",
+    "rah": "rail_rust/rah.png",
+    "mask": "rail_rust/mask.png"
+   },
+   "bytes": 1480896,
+   "mean": [
+    0.0411,
+    0.0295,
+    0.0249
+   ],
+   "meanAll": [
+    0.0486,
+    0.0268,
+    0.0199
+   ],
+   "rough": 0.6633,
+   "height": 0.5134,
+   "metal": 0.3533,
+   "tint": 0.0508
+  },
+  "diamond_plate": {
+   "about": "aluminium-steel tread plate: raised lugs in alternating directions, their tops worn bright, grime and grit packed between, scratches, a few rust specks",
+   "det": "diamond",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "diamond_plate/albedo.png",
+    "normal": "diamond_plate/normal.png",
+    "rah": "diamond_plate/rah.png",
+    "mask": "diamond_plate/mask.png"
+   },
+   "bytes": 2515781,
+   "mean": [
+    0.1834,
+    0.1885,
+    0.1938
+   ],
+   "meanAll": [
+    0.1593,
+    0.1614,
+    0.1646
+   ],
+   "rough": 0.5681,
+   "height": 0.3414,
+   "metal": 0.799,
+   "tint": 0.1878,
+   "shift": [
+    0.25,
+    0.25
+   ]
+  },
+  "metal_camo": {
+   "about": "camouflage-painted airframe and vehicle skin: hard-edged green, brown and black disruptive pattern, panel lines with rivet rows, chipped and faded paint, exhaust soot, dust",
+   "det": "camo",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.88,
+   "files": {
+    "albedo": "metal_camo/albedo.png",
+    "normal": "metal_camo/normal.png",
+    "rah": "metal_camo/rah.png",
+    "mask": "metal_camo/mask.png"
+   },
+   "bytes": 1258840,
+   "mean": [
+    0.071,
+    0.0669,
+    0.0326
+   ],
+   "meanAll": [
+    0.0714,
+    0.0671,
+    0.0329
+   ],
+   "rough": 0.7684,
+   "height": 0.5983,
+   "metal": 0.0022,
+   "tint": 0.2982
+  },
+  "planks": {
+   "about": "raw wooden boards (crates, pallets, fences, floors): six boards per tile with flat-sawn grain and knots, weathered silver in places, checks along the grain, nails with rust bleed, gaps",
+   "det": "wood",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "planks/albedo.png",
+    "normal": "planks/normal.png",
+    "rah": "planks/rah.png",
+    "mask": "planks/mask.png"
+   },
+   "bytes": 1195915,
+   "mean": [
+    0.2473,
+    0.1729,
+    0.1091
+   ],
+   "meanAll": [
+    0.2399,
+    0.1689,
+    0.1075
+   ],
+   "rough": 0.7993,
+   "height": 0.8403,
+   "metal": 0.0001,
+   "tint": 0.7963
+  },
+  "siding": {
+   "about": "painted lap siding: twelve boards per tile, each lapping the one below, paint cracked along the grain and peeled to silver wood, nail rows, butt joints, dirt under the laps",
+   "det": "siding",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.92,
+   "files": {
+    "albedo": "siding/albedo.png",
+    "normal": "siding/normal.png",
+    "rah": "siding/rah.png",
+    "mask": "siding/mask.png"
+   },
+   "bytes": 862570,
+   "mean": [
+    0.5747,
+    0.5447,
+    0.4666
+   ],
+   "meanAll": [
+    0.5064,
+    0.4777,
+    0.4073
+   ],
+   "rough": 0.7227,
+   "height": 0.6938,
+   "metal": 0.0002,
+   "tint": 0.8035
+  },
+  "shutter_blue": {
+   "about": "painted louvred shutter: eight slats per tile, sun-faded blue enamel cracked and peeled to grey wood and an older green coat, dust along each slat",
+   "det": "shutter",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "shutter_blue/albedo.png",
+    "normal": "shutter_blue/normal.png",
+    "rah": "shutter_blue/rah.png",
+    "mask": "shutter_blue/mask.png"
+   },
+   "bytes": 1224587,
+   "mean": [
+    0.0606,
+    0.1432,
+    0.2548
+   ],
+   "meanAll": [
+    0.0878,
+    0.1544,
+    0.217
+   ],
+   "rough": 0.7342,
+   "height": 0.6339,
+   "metal": 0,
+   "tint": 0.6768,
+   "shift": [
+    0.37,
+    0.25
+   ]
+  },
+  "bark": {
+   "about": "tree bark: deep vertical fissures between corky ridges plated by cross-cracks, grey weathered tops, brown in the furrows, moss and lichen patches",
+   "det": "bark",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.08,
+   "files": {
+    "albedo": "bark/albedo.png",
+    "normal": "bark/normal.png",
+    "rah": "bark/rah.png",
+    "mask": "bark/mask.png"
+   },
+   "bytes": 1818744,
+   "mean": [
+    0.085,
+    0.0666,
+    0.0441
+   ],
+   "meanAll": [
+    0.085,
+    0.0666,
+    0.0441
+   ],
+   "rough": 0.9222,
+   "height": 0.5351,
+   "metal": 0,
+   "tint": 0.6
+  },
+  "shingles": {
+   "about": "asphalt roof shingles: ten courses of three-tab shingles, mineral granules, granule loss going black, algae streaks, curled and missing tabs",
+   "det": "shingle",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.68,
+   "files": {
+    "albedo": "shingles/albedo.png",
+    "normal": "shingles/normal.png",
+    "rah": "shingles/rah.png",
+    "mask": "shingles/mask.png"
+   },
+   "bytes": 4315033,
+   "mean": [
+    0.0743,
+    0.0704,
+    0.0664
+   ],
+   "meanAll": [
+    0.0711,
+    0.0675,
+    0.0637
+   ],
+   "rough": 0.8936,
+   "height": 0.6982,
+   "metal": 0,
+   "tint": 0.7484,
+   "cells": [
+    8,
+    10,
+    0.5,
+    0.12
+   ]
+  },
+  "char": {
+   "about": "charred timber: alligator checking into glossy black blocks, deep cracks, silver ash in drifts, brown half-burnt wood showing where it flaked",
+   "det": "char",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "char/albedo.png",
+    "normal": "char/normal.png",
+    "rah": "char/rah.png",
+    "mask": "char/mask.png"
+   },
+   "bytes": 3699844,
+   "mean": [
+    0.008,
+    0.0071,
+    0.0062
+   ],
+   "meanAll": [
+    0.0227,
+    0.0169,
+    0.0135
+   ],
+   "rough": 0.6535,
+   "height": 0.4721,
+   "metal": 0,
+   "tint": 0.1774
+  },
+  "linoleum": {
+   "about": "sheet vinyl: a marbled chip in two tones, a heat-welded seam, heel scuffs, the polish worn dull along the walking lanes, a slight wave in the floor",
+   "det": "linoleum",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.4,
+   "files": {
+    "albedo": "linoleum/albedo.png",
+    "normal": "linoleum/normal.png",
+    "rah": "linoleum/rah.png",
+    "mask": "linoleum/mask.png"
+   },
+   "bytes": 707792,
+   "mean": [
+    0.2858,
+    0.3064,
+    0.266
+   ],
+   "meanAll": [
+    0.2851,
+    0.3056,
+    0.2654
+   ],
+   "rough": 0.3868,
+   "height": 0.5958,
+   "metal": 0,
+   "tint": 0.8454
+  },
+  "linoleum_hospital": {
+   "about": "hospital vinyl: speckled sea-green sheet, fresh-ish but scuffed, long curved scrapes from beds and trolleys, a dull lane down the middle, dirt at the edges",
+   "det": "linohosp",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.4,
+   "files": {
+    "albedo": "linoleum_hospital/albedo.png",
+    "normal": "linoleum_hospital/normal.png",
+    "rah": "linoleum_hospital/rah.png",
+    "mask": "linoleum_hospital/mask.png"
+   },
+   "bytes": 649359,
+   "mean": [
+    0.2847,
+    0.351,
+    0.3168
+   ],
+   "meanAll": [
+    0.2845,
+    0.3507,
+    0.3166
+   ],
+   "rough": 0.2802,
+   "height": 0.5973,
+   "metal": 0,
+   "tint": 0.8985
+  },
+  "carpet": {
+   "about": "commercial carpet tiles (3 × 3), laid quarter-turned: a striated loop pile catching the light differently tile to tile, tweed flecks, seams, a worn lane, stains",
+   "det": "carpet",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.5,
+   "files": {
+    "albedo": "carpet/albedo.png",
+    "normal": "carpet/normal.png",
+    "rah": "carpet/rah.png",
+    "mask": "carpet/mask.png"
+   },
+   "bytes": 5096329,
+   "mean": [
+    0.0682,
+    0.0743,
+    0.0926
+   ],
+   "meanAll": [
+    0.0675,
+    0.0732,
+    0.0907
+   ],
+   "rough": 0.97,
+   "height": 0.4552,
+   "metal": 0,
+   "tint": 0.7655,
+   "cells": [
+    3,
+    3,
+    0,
+    0.06
+   ]
+  },
+  "drywall": {
+   "about": "painted drywall: roller stipple, taped joints every 1.2 m feathered smooth, screw pops in rows, dings, a patched spot with a different sheen, scuffs along the bottom",
+   "det": "drywall",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.4,
+   "files": {
+    "albedo": "drywall/albedo.png",
+    "normal": "drywall/normal.png",
+    "rah": "drywall/rah.png",
+    "mask": "drywall/mask.png"
+   },
+   "bytes": 1364482,
+   "mean": [
+    0.6755,
+    0.6561,
+    0.6029
+   ],
+   "meanAll": [
+    0.6755,
+    0.6561,
+    0.6029
+   ],
+   "rough": 0.7876,
+   "height": 0.5082,
+   "metal": 0,
+   "tint": 1
+  },
+  "ceiling_tile": {
+   "about": "acoustic ceiling: 2 × 2 fissured mineral-fibre tiles in a white T-bar grid, pinholes everywhere, a brown water stain with a tide mark on the odd tile, a sagging tile",
+   "det": "ceiltile",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "ceiling_tile/albedo.png",
+    "normal": "ceiling_tile/normal.png",
+    "rah": "ceiling_tile/rah.png",
+    "mask": "ceiling_tile/mask.png"
+   },
+   "bytes": 3356834,
+   "mean": [
+    0.6055,
+    0.5904,
+    0.5314
+   ],
+   "meanAll": [
+    0.6216,
+    0.6072,
+    0.5503
+   ],
+   "rough": 0.9276,
+   "height": 0.5119,
+   "metal": 0.0163,
+   "tint": 0.8511,
+   "cells": [
+    2,
+    2,
+    0,
+    0.04
+   ]
+  },
+  "wallpaper": {
+   "about": "three strips of faded patterned paper: a stripe and a damask lozenge with a flower in a second tone, seams a little open, sun-faded patches, water stains, torn to the grey plaster in places",
+   "det": "wallpaper",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.44,
+   "files": {
+    "albedo": "wallpaper/albedo.png",
+    "normal": "wallpaper/normal.png",
+    "rah": "wallpaper/rah.png",
+    "mask": "wallpaper/mask.png"
+   },
+   "bytes": 2835397,
+   "mean": [
+    0.5187,
+    0.4539,
+    0.2967
+   ],
+   "meanAll": [
+    0.4711,
+    0.4162,
+    0.2862
+   ],
+   "rough": 0.8038,
+   "height": 0.5453,
+   "metal": 0,
+   "tint": 0.4435,
+   "shift": [
+    0.3333333333333333,
+    0.16666666666666666
+   ]
+  },
+  "terrazzo": {
+   "about": "mall terrazzo: crushed marble chips of several stones in a cement matrix, ground and polished, brass divider strips at the panel edges, dull scuffed lanes, a hairline crack",
+   "det": "terrazzo",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "terrazzo/albedo.png",
+    "normal": "terrazzo/normal.png",
+    "rah": "terrazzo/rah.png",
+    "mask": "terrazzo/mask.png"
+   },
+   "bytes": 1609381,
+   "mean": [
+    0.3991,
+    0.3567,
+    0.2876
+   ],
+   "meanAll": [
+    0.3994,
+    0.3561,
+    0.2863
+   ],
+   "rough": 0.2192,
+   "height": 0.6001,
+   "metal": 0.0067,
+   "tint": 0.3476,
+   "cells": [
+    1,
+    1,
+    0,
+    0.04
+   ]
+  },
+  "marble": {
+   "about": "polished marble slabs (2 × 2): white Carrara-like stone with grey veins branching through it, book-matched slab to slab, fine joints, dull traffic lanes",
+   "det": "marble",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2.4,
+   "files": {
+    "albedo": "marble/albedo.png",
+    "normal": "marble/normal.png",
+    "rah": "marble/rah.png",
+    "mask": "marble/mask.png"
+   },
+   "bytes": 650076,
+   "mean": [
+    0.6312,
+    0.6165,
+    0.5877
+   ],
+   "meanAll": [
+    0.6312,
+    0.6165,
+    0.5877
+   ],
+   "rough": 0.1722,
+   "height": 0.5993,
+   "metal": 0,
+   "tint": 0.3,
+   "cells": [
+    2,
+    2,
+    0,
+    0.06
+   ]
+  },
+  "tile_hospital": {
+   "about": "hospital wall tile: 15 cm glazed ceramic squares, pale and clean-ish, grey grout darkening near the floor, crazed glaze, a cracked or chipped tile here and there, scuffs",
+   "det": "tilehosp",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "tile_hospital/albedo.png",
+    "normal": "tile_hospital/normal.png",
+    "rah": "tile_hospital/rah.png",
+    "mask": "tile_hospital/mask.png"
+   },
+   "bytes": 738865,
+   "mean": [
+    0.7085,
+    0.7376,
+    0.7241
+   ],
+   "meanAll": [
+    0.6914,
+    0.7198,
+    0.7062
+   ],
+   "rough": 0.1394,
+   "height": 0.8653,
+   "metal": 0,
+   "tint": 0.8632,
+   "cells": [
+    8,
+    8,
+    0,
+    0.04
+   ]
+  },
+  "tile_metro": {
+   "about": "metro subway tile: bevelled white tiles in running bond, black grime-filled grout, soot and seepage streaks, crazed glaze, cracked and missing tiles showing the mortar bed",
+   "det": "tilemetro",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "tile_metro/albedo.png",
+    "normal": "tile_metro/normal.png",
+    "rah": "tile_metro/rah.png",
+    "mask": "tile_metro/mask.png"
+   },
+   "bytes": 965213,
+   "mean": [
+    0.6361,
+    0.6103,
+    0.5382
+   ],
+   "meanAll": [
+    0.5801,
+    0.5562,
+    0.4903
+   ],
+   "rough": 0.2552,
+   "height": 0.8183,
+   "metal": 0,
+   "tint": 0.763,
+   "cells": [
+    8,
+    16,
+    0.5,
+    0.05
+   ]
+  },
+  "tile_ceramic": {
+   "about": "mall floor tile: matte beige porcelain squares with a granite-like speckle, light grout gone grey in the traffic lanes, scuffs, dull wear",
+   "det": "tileceramic",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "tile_ceramic/albedo.png",
+    "normal": "tile_ceramic/normal.png",
+    "rah": "tile_ceramic/rah.png",
+    "mask": "tile_ceramic/mask.png"
+   },
+   "bytes": 1360674,
+   "mean": [
+    0.565,
+    0.4885,
+    0.3593
+   ],
+   "meanAll": [
+    0.5517,
+    0.4774,
+    0.3517
+   ],
+   "rough": 0.3804,
+   "height": 0.8653,
+   "metal": 0,
+   "tint": 0.8157,
+   "cells": [
+    8,
+    8,
+    0,
+    0.06
+   ]
+  },
+  "terracotta": {
+   "about": "barrel clay roof tiles in eight columns, each row lying over the top of the row below: fired-orange variety, dark under the overlaps, lichen, the odd cracked tile",
+   "det": "tile",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.2,
+   "files": {
+    "albedo": "terracotta/albedo.png",
+    "normal": "terracotta/normal.png",
+    "rah": "terracotta/rah.png",
+    "mask": "terracotta/mask.png"
+   },
+   "bytes": 2663378,
+   "mean": [
+    0.379,
+    0.0898,
+    0.0323
+   ],
+   "meanAll": [
+    0.3736,
+    0.0943,
+    0.0352
+   ],
+   "rough": 0.7915,
+   "height": 0.473,
+   "metal": 0,
+   "tint": 0.6753,
+   "cells": [
+    8,
+    8,
+    0,
+    0.14
+   ]
+  },
+  "canvas": {
+   "about": "heavy cotton canvas: a coarse plain weave with slubbed yarns and fuzz, faded and dirty in patches, a few stains and water marks",
+   "det": "fabric",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.42,
+   "files": {
+    "albedo": "canvas/albedo.png",
+    "normal": "canvas/normal.png",
+    "rah": "canvas/rah.png",
+    "mask": "canvas/mask.png"
+   },
+   "bytes": 3726889,
+   "mean": [
+    0.2441,
+    0.2174,
+    0.1633
+   ],
+   "meanAll": [
+    0.2441,
+    0.2174,
+    0.1633
+   ],
+   "rough": 0.9259,
+   "height": 0.518,
+   "metal": 0,
+   "tint": 0.95,
+   "shift": [
+    0.20833333333333334,
+    0.2916666666666667
+   ]
+  },
+  "tarp": {
+   "about": "woven polyethylene tarp and sheeting: a fine tape weave under a laminated skin, soft folds and creases with pale stress whitening on the ridges, dust in the hollows, a sheen",
+   "det": "plastic",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.6,
+   "files": {
+    "albedo": "tarp/albedo.png",
+    "normal": "tarp/normal.png",
+    "rah": "tarp/rah.png",
+    "mask": "tarp/mask.png"
+   },
+   "bytes": 1918803,
+   "mean": [
+    0.2255,
+    0.2343,
+    0.2526
+   ],
+   "meanAll": [
+    0.2255,
+    0.2343,
+    0.2526
+   ],
+   "rough": 0.4214,
+   "height": 0.5443,
+   "metal": 0,
+   "tint": 0.95
+  },
+  "rubber": {
+   "about": "tyre tread: 24 blocks around (u), four ribs across (v) with circumferential grooves, sipes cut in the blocks, worn shoulders, dust and grit packed in the grooves",
+   "det": "rubber",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.54,
+   "files": {
+    "albedo": "rubber/albedo.png",
+    "normal": "rubber/normal.png",
+    "rah": "rubber/rah.png",
+    "mask": "rubber/mask.png"
+   },
+   "bytes": 2870661,
+   "mean": [
+    0.0108,
+    0.0102,
+    0.0093
+   ],
+   "meanAll": [
+    0.0108,
+    0.0102,
+    0.0093
+   ],
+   "rough": 0.7328,
+   "height": 0.6702,
+   "metal": 0,
+   "tint": 0.3,
+   "shift": [
+    0.2916666666666667,
+    0
+   ]
+  },
+  "glass_cracked": {
+   "about": "cracked glass: a shatter star of radial cracks and rings round an impact, shards each tilted a little, a film of grime and water spots",
+   "det": "glass",
+   "size": 1024,
+   "render": 2048,
+   "tile": 1.32,
+   "files": {
+    "albedo": "glass_cracked/albedo.png",
+    "normal": "glass_cracked/normal.png",
+    "rah": "glass_cracked/rah.png",
+    "mask": "glass_cracked/mask.png"
+   },
+   "bytes": 647409,
+   "mean": [
+    0.1005,
+    0.1205,
+    0.1228
+   ],
+   "meanAll": [
+    0.1291,
+    0.1508,
+    0.1527
+   ],
+   "rough": 0.1858,
+   "height": 0.5866,
+   "metal": 0,
+   "tint": 0.7813
+  },
+  "hesco": {
+   "about": "HESCO barrier: a welded steel wire mesh (10 × 10 per tile) over non-woven geotextile bulging out between the wires, dusty with the fill, stained and torn here and there",
+   "det": "hesco",
+   "size": 1024,
+   "render": 2048,
+   "tile": 0.9,
+   "files": {
+    "albedo": "hesco/albedo.png",
+    "normal": "hesco/normal.png",
+    "rah": "hesco/rah.png",
+    "mask": "hesco/mask.png"
+   },
+   "bytes": 4017448,
+   "mean": [
+    0.2309,
+    0.1924,
+    0.1179
+   ],
+   "meanAll": [
+    0.2338,
+    0.1992,
+    0.1304
+   ],
+   "rough": 0.9226,
+   "height": 0.5549,
+   "metal": 0.0918,
+   "tint": 0.6771,
+   "shift": [
+    0.3,
+    0.4
+   ]
+  }
+ }
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gun Materials Lab</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #05070a; color: #d8dee6; font: 12px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #hud { position: fixed; top: 8px; left: 8px; background: rgba(16,19,24,0.86); border-radius: 6px; padding: 6px 9px; font: 11px ui-monospace, monospace; white-space: pre; }
+  .tag { position: fixed; font: 600 12px system-ui, sans-serif; color: #e8edf2; text-shadow: 0 1px 2px #000; transform: translateX(-50%); pointer-events: none; }
+  body.clean #hud { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<script type="module" src="./guns-lab.js"></script>
+</body>
+</html>
