@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blast Party</title>
+<meta name="description" content="Blast Party: a bomb-dropping battle for 2 to 8 players. Play in the browser on any phone, tablet or TV and join friends with a 4-letter room code.">
+<meta name="theme-color" content="#14102a"><meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blast Party">
+<meta property="og:type" content="website"><meta property="og:title" content="Blast Party"><meta property="og:description" content="Join my bomb-dropping party game. No download, no sign-up: just open the link.">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" type="image/svg+xml" href="/icons/icon.svg"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<!-- ui.js fills #app (title, lobby and results screens, dialogs, toasts) and adopts the static game container below;
+     input.js builds its own controls inside #touch, render.js draws into #arena. -->
+<div id="app" class="app">
+  <section id="game" class="screen screen-game" hidden aria-labelledby="game-title">
+    <h1 id="game-title" class="sr-only" tabindex="-1">Match in progress</h1>
+    <div id="stage"><canvas id="arena" role="img" aria-label="Game arena"></canvas></div>
+    <div id="hud"></div>
+    <div id="touch"></div>
+  </section>
+  <div id="overlays"></div>
+  <div id="sr-live" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<div id="boot" role="status">Loading Blast Party...</div>
+<noscript><style>#boot{display:none}</style><p class="noscript">Blast Party needs JavaScript. Please turn it on and reload the page.</p></noscript>
+<script src="/js/boot.js"></script>
+<script type="module" src="/js/main.js"></script>
+<script nomodule src="/js/legacy.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blast Party UI gallery</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  /* Stand-in for input.js's touch controls, so the HUD can be judged next to them (not part of the game). */
+  .fake-touch { position: absolute; inset: 0; pointer-events: none; }
+  .fake-bomb { position: absolute; right: 1rem; bottom: 1rem; display: grid; place-items: center; width: clamp(88px, 22vmin, 128px); height: clamp(88px, 22vmin, 128px); border-radius: 50%; font: 900 1.1rem system-ui; color: #fff; background: radial-gradient(circle at 35% 30%, #ff8a8a, #d92b45); box-shadow: 0 .3rem 0 #6e0b1c; opacity: .85; }
+  .fake-joy { position: absolute; left: 1.5rem; bottom: 1.5rem; width: clamp(88px, 22vmin, 128px); height: clamp(88px, 22vmin, 128px); border-radius: 50%; border: .3rem solid rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .12); }
+</style>
+</head>
+<body>
+<div id="app" class="app"></div>
+<script type="module" src="/__ui/gallery.js"></script>
+</body>
+</html>

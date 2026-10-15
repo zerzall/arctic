@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="title">
+  <title id="title">Blast Party: a glossy black bomb with a lit fuse</title>
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="512" y2="512"><stop offset="0" stop-color="#5b6cff"/><stop offset="0.5" stop-color="#a24df0"/><stop offset="1" stop-color="#ff5fa2"/></linearGradient>
+    <radialGradient id="light" gradientUnits="userSpaceOnUse" cx="140" cy="90" r="400"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="depth" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="620"><stop offset="0" stop-color="#1a0540" stop-opacity="0"/><stop offset="1" stop-color="#1a0540" stop-opacity=".28"/></linearGradient>
+    <radialGradient id="body" gradientUnits="userSpaceOnUse" cx="169.8" cy="239.8" r="239.8"><stop offset="0" stop-color="#6a63a8"/><stop offset="0.3" stop-color="#332d5e"/><stop offset="0.7" stop-color="#15112e"/><stop offset="1" stop-color="#07050f"/></radialGradient>
+    <radialGradient id="rim" gradientUnits="userSpaceOnUse" cx="226" cy="302" r="148"><stop offset=".88" stop-color="#ff8fd0" stop-opacity="0"/><stop offset="1" stop-color="#ff8fd0" stop-opacity=".8"/></radialGradient>
+    <linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="144.6" y1="179.2" x2="307.4" y2="424.8"><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset=".86" stop-color="#fff"/></linearGradient>
+    <mask id="rimMask"><circle cx="226" cy="302" r="148" fill="url(#lit)"/></mask>
+    <radialGradient id="sheen"><stop offset="0" stop-color="#fff" stop-opacity=".14"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b2650"/><stop offset="0.3" stop-color="#524b86"/><stop offset="0.5" stop-color="#b9b2ea"/><stop offset="0.62" stop-color="#6c64a6"/><stop offset="1" stop-color="#231e46"/></linearGradient>
+    <radialGradient id="halo" gradientUnits="userSpaceOnUse" cx="412" cy="106" r="110"><stop offset="0" stop-color="#ffcf4a" stop-opacity=".55"/><stop offset="1" stop-color="#ffcf4a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="flare" gradientUnits="userSpaceOnUse" cx="412" cy="106" r="62"><stop offset="0" stop-color="#ffffff"/><stop offset="0.35" stop-color="#fff3a8"/><stop offset="0.7" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff8a1f"/></radialGradient>
+    <filter id="soft" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="9"/></filter>
+    <clipPath id="ball"><circle cx="226" cy="302" r="148"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#light)"/>
+  <rect width="512" height="512" rx="112" fill="url(#depth)"/>
+  <rect x="2.5" y="2.5" width="507" height="507" rx="109.5" fill="none" stroke="#fff" stroke-opacity=".32" stroke-width="3"/>
+  <rect x="-13" y="-5.5" width="26" height="11" rx="4.4" fill="#ffd23f" opacity=".85" transform="translate(66 96) rotate(32)"/>
+  <rect x="-11" y="-5" width="22" height="10" rx="4" fill="#2ed9e6" opacity=".85" transform="translate(132 50) rotate(-24)"/>
+  <rect x="-12" y="-5.5" width="24" height="11" rx="4.4" fill="#ffffff" opacity=".85" transform="translate(452 244) rotate(62)"/>
+  <rect x="-13" y="-5.5" width="26" height="11" rx="4.4" fill="#ffd23f" opacity=".85" transform="translate(470 356) rotate(-35)"/>
+  <rect x="-11" y="-5" width="22" height="10" rx="4" fill="#2ed9e6" opacity=".85" transform="translate(438 452) rotate(18)"/>
+  <rect x="-12" y="-5.5" width="24" height="11" rx="4.4" fill="#38c85a" opacity=".85" transform="translate(54 388) rotate(-50)"/>
+  <rect x="-10" y="-4.5" width="20" height="9" rx="3.6" fill="#ffffff" opacity=".85" transform="translate(76 470) rotate(40)"/>
+  <ellipse cx="226" cy="468" rx="138" ry="17" fill="#1b0b3d" opacity=".5" filter="url(#soft)"/>
+  <path d="M330.4 152.9 C316 98 366 52 412 106" fill="none" stroke="#2c1650" stroke-opacity=".85" stroke-width="30" stroke-linecap="round"/>
+  <path d="M330.4 152.9 C316 98 366 52 412 106" fill="none" stroke="#ffe9b3" stroke-width="21" stroke-linecap="round"/>
+  <path d="M330.4 152.9 C316 98 366 52 412 106" fill="none" stroke="#c98a45" stroke-opacity=".6" stroke-width="21" stroke-dasharray="5.7 5.7"/>
+  <circle cx="226" cy="302" r="148" fill="url(#body)"/>
+  <circle cx="226" cy="302" r="148" fill="url(#rim)" mask="url(#rimMask)"/>
+  <g clip-path="url(#ball)" fill="#fff">
+    <ellipse cx="156.4" cy="248.7" rx="53.3" ry="22.2" transform="rotate(-49 156.4 248.7)" opacity=".92"/>
+    <ellipse cx="181.6" cy="265" rx="88.8" ry="62.2" transform="rotate(-49 181.6 265)" fill="url(#sheen)"/>
+    <circle cx="202.3" cy="210.2" r="7.4" opacity=".9"/>
+  </g>
+  <g transform="translate(226 302) rotate(-55)">
+    <rect x="154" y="-31" width="34" height="62" rx="9" fill="url(#metal)"/>
+    <rect x="132" y="-44" width="30" height="88" rx="10" fill="url(#metal)"/>
+    <rect x="161" y="-40" width="3" height="80" fill="#120d2b" opacity=".45"/>
+  </g>
+  <circle cx="412" cy="106" r="110" fill="url(#halo)"/>
+  <polygon fill="#ff7a1a" opacity=".9" stroke="#ff7a1a" stroke-width="6" stroke-linejoin="round" points="424.3,45.2 424.8,86.9 463.7,71.7 434.6,101.6 472.8,118.3 431.1,118.8 446.3,157.7 416.4,128.6 399.7,166.8 399.2,125.1 360.3,140.3 389.4,110.4 351.2,93.7 392.9,93.2 377.7,54.3 407.6,83.4"/>
+  <polygon fill="url(#flare)" points="424.3,45.2 424.8,86.9 463.7,71.7 434.6,101.6 472.8,118.3 431.1,118.8 446.3,157.7 416.4,128.6 399.7,166.8 399.2,125.1 360.3,140.3 389.4,110.4 351.2,93.7 392.9,93.2 377.7,54.3 407.6,83.4"/>
+  <circle cx="412" cy="106" r="13" fill="#fff"/>
+  <polygon fill="#fff6c2" points="470,42 472.8,53.2 484,56 472.8,58.8 470,70 467.2,58.8 456,56 467.2,53.2"/>
+  <polygon fill="#fff6c2" points="484,140 486.4,149.6 496,152 486.4,154.4 484,164 481.6,154.4 472,152 481.6,149.6"/>
+  <polygon fill="#fff6c2" points="408,14 410,22 418,24 410,26 408,34 406,26 398,24 406,22"/>
+</svg>

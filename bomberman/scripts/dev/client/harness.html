@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>input harness</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<!-- Developer harness for client/js/input.js: the real game-screen skeleton and stylesheet, a fake arena, a live readout. -->
+<div id="app" class="app">
+  <section id="game" class="screen screen-game" data-touch="1">
+    <div id="stage"><canvas id="arena"></canvas></div>
+    <div id="hud"></div>
+    <div id="touch"></div>
+  </section>
+</div>
+<pre id="readout"></pre>
+<script type="module" src="/harness.js"></script>
+</body>
+</html>
