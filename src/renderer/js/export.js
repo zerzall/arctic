@@ -16,6 +16,15 @@ import {
   PDFDropdown,
   PDFOptionList,
   PDFRadioGroup,
+  TextRenderingMode,
+  pushGraphicsState,
+  popGraphicsState,
+  beginText,
+  endText,
+  showText,
+  setFontAndSize,
+  setTextRenderingMode,
+  setTextMatrix,
 } from '../vendor/pdf-lib.esm.min.js';
 import {
   normRotation,
@@ -25,6 +34,8 @@ import {
   hexToRgb01,
 } from './geometry.js';
 import { layoutTextAnnot, alignedX, sanitizeForStandardFont } from './textlayout.js';
+import { readPageContent, writePageContent, imageXObjectNames } from './pagestream.js';
+import { applyDeletion, applyImageTransforms } from './contentstream.js';
 
 const FONT_TABLE = {
   Helvetica: {
@@ -129,7 +140,8 @@ async function drawAnnotation(page, spec, annot, ctx) {
 
     case 'rect':
     case 'whiteout':
-    case 'blackout': {
+    case 'blackout':
+    case 'cover': {
       const anchor = boxAnchor(spec, annot);
       const opts = {
         x: anchor.x,
@@ -359,6 +371,184 @@ function applyMetadata(doc, meta) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Removing the document's own text                                    *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Delete the original wording behind every replaced line on a page.
+ *
+ * All of a page's removals go through one call: each deletion shifts the byte
+ * offsets of everything after it, so the ordinals from a second pass would be
+ * meaningless. When it works, the words are gone from the file; when it does
+ * not, the patch that was drawn over them stays and the caller is told why.
+ *
+ * @returns {{removed:Set<string>, warning?:string}} pairIds whose original went
+ */
+function removeOriginalText(doc, page, annots) {
+  const removed = new Set();
+  const plans = annots.filter((a) => a.removeOriginal && a.removeOriginal.ordinals);
+  if (!plans.length) return { removed };
+
+  const content = readPageContent(doc, page);
+  if (!content) {
+    return { removed, warning: "a page's drawing instructions could not be read" };
+  }
+
+  const ordinals = [];
+  for (const annot of plans) ordinals.push(...annot.removeOriginal.ordinals);
+  const expected = plans[0].removeOriginal.fingerprint;
+
+  const result = applyDeletion(content, ordinals, expected);
+  if (!result.ok) return { removed, warning: result.reason };
+
+  writePageContent(doc, page, result.bytes);
+  for (const annot of plans) if (annot.pairId) removed.add(annot.pairId);
+  return { removed };
+}
+
+/**
+ * Write recognised words onto a page as invisible text.
+ *
+ * This is what turns a scan into a searchable document: the glyphs are drawn in
+ * text rendering mode 3, so nothing appears on the page, but every reader can
+ * find, select and copy the words - and they line up with the picture of the
+ * text underneath, because each word is scaled to the box it was recognised in.
+ *
+ * @returns {{written:number, dropped:number}}
+ */
+async function writeOcrLayer(doc, page, spec, fonts) {
+  const words = (spec.ocr && spec.ocr.words) || [];
+  if (!words.length) return { written: 0, dropped: 0 };
+
+  const font = await fonts.get('Helvetica', false, false);
+  page.setFont(font);
+  const fontKey = page.fontKey;
+  if (!fontKey) return { written: 0, dropped: words.length };
+
+  const angle = pdfAngle(spec);
+  const radians = (angle * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
+  let written = 0;
+  let dropped = 0;
+
+  for (const word of words) {
+    const { text, dropped: lost } = sanitizeForStandardFont(word.text);
+    // A word the built-in font cannot spell would go in as "??", which is worse
+    // than leaving it out: the page would then match a search for something it
+    // does not say.
+    if (!text.trim() || lost >= [...word.text].length) {
+      dropped += 1;
+      continue;
+    }
+
+    // Size the glyphs so the invisible word covers the same width as the
+    // picture of it; otherwise selecting text on screen highlights the wrong
+    // span. Height is a poor guide on its own - capitals and descenders vary.
+    const probe = 100;
+    let natural;
+    try {
+      natural = font.widthOfTextAtSize(text, probe);
+    } catch {
+      dropped += 1;
+      continue;
+    }
+    if (!(natural > 0)) {
+      dropped += 1;
+      continue;
+    }
+    const size = Math.max(1, (word.w / natural) * probe);
+
+    // The baseline sits a little above the bottom of the recognised box.
+    const baseline = word.y + word.h * 0.82;
+    const p = toPdfPoint(spec, word.x, baseline);
+
+    ops.push(
+      setFontAndSize(fontKey, size),
+      setTextMatrix(cos, sin, -sin, cos, p.x, p.y),
+      showText(font.encodeText(text))
+    );
+    written += 1;
+  }
+
+  ops.push(endText(), popGraphicsState());
+  if (written) page.pushOperators(...ops);
+  return { written, dropped };
+}
+
+/**
+ * Move the page's own pictures to wherever they were dragged.
+ *
+ * The editor works in view space, so the box the user dragged has to be turned
+ * back into a transform in the page's own space. Both corners go through the
+ * same mapping the annotations use, which is what keeps this correct on rotated
+ * pages.
+ */
+function movePagePictures(doc, page, spec) {
+  const edits = (spec.annots || []).filter((a) => a.type === 'imgedit' && a.origin);
+  if (!edits.length) return {};
+
+  const content = readPageContent(doc, page);
+  if (!content) return { warning: "a page's drawing instructions could not be read" };
+
+  const names = imageXObjectNames(doc, page);
+  const transforms = [];
+
+  for (const annot of edits) {
+    const o = annot.origin;
+    if (Math.abs(annot.x - o.x) < 0.01 && Math.abs(annot.y - o.y) < 0.01 &&
+        Math.abs(annot.w - o.w) < 0.01 && Math.abs(annot.h - o.h) < 0.01) {
+      continue; // untouched
+    }
+
+    // View-space boxes -> page space. Using two opposite corners covers both
+    // the move and the resize, and survives page rotation.
+    const from0 = toPdfPoint(spec, o.x, o.y + o.h);
+    const from1 = toPdfPoint(spec, o.x + o.w, o.y);
+    const to0 = toPdfPoint(spec, annot.x, annot.y + annot.h);
+    const to1 = toPdfPoint(spec, annot.x + annot.w, annot.y);
+
+    const fromW = from1.x - from0.x;
+    const fromH = from1.y - from0.y;
+    const toW = to1.x - to0.x;
+    const toH = to1.y - to0.y;
+
+    // A rotated or skewed picture is only moved: scaling it along the page axes
+    // would shear it into something the user did not ask for.
+    const sx = annot.axisAligned === false || Math.abs(fromW) < 1e-6 ? 1 : toW / fromW;
+    const sy = annot.axisAligned === false || Math.abs(fromH) < 1e-6 ? 1 : toH / fromH;
+
+    // Scale about the original lower-left corner, then translate it into place.
+    transforms.push({
+      ordinal: annot.ordinal,
+      transform: [
+        sx,
+        0,
+        0,
+        sy,
+        to0.x - from0.x * sx,
+        to0.y - from0.y * sy,
+      ],
+    });
+  }
+
+  if (!transforms.length) return {};
+
+  const result = applyImageTransforms(
+    content,
+    transforms,
+    (name) => names.has(name),
+    edits[0].fingerprint
+  );
+  if (!result.ok) return { warning: result.reason };
+
+  writePageContent(doc, page, result.bytes);
+  return { moved: transforms.length };
+}
+
+/* ------------------------------------------------------------------ *
  * Model helpers                                                       *
  * ------------------------------------------------------------------ */
 
@@ -492,8 +682,41 @@ export async function buildPdf(model) {
 
     page.setRotation(degrees(normRotation(spec.rotate)));
 
+    // Take the replaced wording out of the page before drawing anything on it.
+    const { removed, warning } = removeOriginalText(doc, page, spec.annots || []);
+    if (warning) {
+      warnings.push(
+        `The original text on page ${i + 1} could not be removed (${warning}), ` +
+          'so it is covered instead and stays in the file.'
+      );
+    }
+
+    // Recognised text goes down before the annotations, so a highlight drawn
+    // over it still sits on top.
+    // eslint-disable-next-line no-await-in-loop
+    const ocr = await writeOcrLayer(doc, page, spec, ctx.fonts);
+    if (ocr.dropped) {
+      warnings.push(
+        `${ocr.dropped} recognised word(s) on page ${i + 1} could not be written into the text layer.`
+      );
+    }
+
+    const pictures = movePagePictures(doc, page, spec);
+    if (pictures.warning) {
+      warnings.push(
+        `A picture on page ${i + 1} could not be moved (${pictures.warning}), ` +
+          'so it stays where it was.'
+      );
+    }
+
     for (const annot of spec.annots || []) {
       if (annot.hidden) continue;
+      // The patch exists to hide text that is now gone; drawing it would only
+      // risk covering something else that was underneath.
+      if (annot.type === 'cover' && annot.pairId && removed.has(annot.pairId)) continue;
+      // A moved picture is drawn by the page itself, from its rewritten
+      // placement - there is nothing for the annotation layer to add.
+      if (annot.type === 'imgedit') continue;
       if (annot.type === 'text') {
         droppedChars += sanitizeForStandardFont(annot.text || '').dropped;
       }

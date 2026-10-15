@@ -10,6 +10,7 @@ const { Menu, app, shell } = require('electron');
  * @returns {Menu}
  */
 function buildMenu(send) {
+  const isMac = process.platform === 'darwin';
   const cmd = (label, command, accelerator, extra = {}) => ({
     label,
     accelerator,
@@ -17,7 +18,29 @@ function buildMenu(send) {
     ...extra,
   });
 
+  // macOS expects the application's own menu first, and puts Quit, Preferences
+  // and About there rather than under File.
+  const appMenu = isMac
+    ? [
+        {
+          label: 'Arctic PDF Editor',
+          submenu: [
+            cmd('About Arctic PDF Editor', 'help:about'),
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        },
+      ]
+    : [];
+
   const template = [
+    ...appMenu,
     {
       label: '&File',
       submenu: [
@@ -35,15 +58,14 @@ function buildMenu(send) {
         { type: 'separator' },
         cmd('Export Page as PNG...', 'file:export-png'),
         cmd('Print...', 'file:print', 'CmdOrCtrl+P'),
-        { type: 'separator' },
-        { role: 'quit', label: 'Exit' },
+        ...(isMac ? [] : [{ type: 'separator' }, { role: 'quit', label: 'Exit' }]),
       ],
     },
     {
       label: '&Edit',
       submenu: [
         cmd('Undo', 'edit:undo', 'CmdOrCtrl+Z'),
-        cmd('Redo', 'edit:redo', 'CmdOrCtrl+Y'),
+        cmd('Redo', 'edit:redo', isMac ? 'Cmd+Shift+Z' : 'CmdOrCtrl+Y'),
         { type: 'separator' },
         // Stock roles so cut/copy/paste keep working inside text fields.
         { role: 'cut' },
@@ -70,6 +92,8 @@ function buildMenu(send) {
         cmd('Duplicate', 'page:duplicate'),
         cmd('Insert Blank Page', 'page:insert-blank'),
         cmd('Delete Page', 'page:delete'),
+        { type: 'separator' },
+        cmd('Flatten Page to Image...', 'page:rasterize'),
       ],
     },
     {
@@ -78,6 +102,8 @@ function buildMenu(send) {
         // Single-letter shortcuts live in the renderer (see app.js) so they do
         // not fire while the user is typing into a text box or the find bar.
         cmd('Select  (V)', 'tool:select'),
+        cmd('Edit Existing Text  (X)', 'tool:edittext'),
+        cmd('Move Pictures  (I)', 'tool:editimage'),
         cmd('Text Box  (T)', 'tool:text'),
         cmd('Freehand Draw  (D)', 'tool:draw'),
         cmd('Highlight  (H)', 'tool:highlight'),
@@ -90,6 +116,10 @@ function buildMenu(send) {
         cmd('Signature...', 'tool:signature'),
         cmd('White-out Box', 'tool:whiteout'),
         cmd('Black-out Box', 'tool:blackout'),
+        { type: 'separator' },
+        cmd('Recognise Text on This Page (OCR)', 'ocr:page'),
+        cmd('Recognise Text on Selected Pages', 'ocr:selected'),
+        cmd('Recognise Text in Whole Document', 'ocr:document'),
         { type: 'separator' },
         cmd('Flatten Form Fields', 'tool:flatten-forms'),
       ],
@@ -111,6 +141,14 @@ function buildMenu(send) {
         { role: 'toggleDevTools', accelerator: 'F12' },
       ],
     },
+    ...(isMac
+      ? [
+          {
+            label: 'Window',
+            submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }],
+          },
+        ]
+      : []),
     {
       label: '&Help',
       submenu: [

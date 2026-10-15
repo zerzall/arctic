@@ -14,7 +14,7 @@ export function clearCache() {
 }
 
 async function pageText(spec) {
-  const key = `${spec.src}:${spec.index}:${spec.rotate}`;
+  const key = `${spec.src}:${spec.index}:${spec.rotate}:${(spec.ocr && spec.ocr.words.length) || 0}`;
   if (cache.has(key)) return cache.get(key);
 
   const empty = { text: '', boxes: [] };
@@ -46,6 +46,22 @@ async function pageText(spec) {
       text += item.str;
     }
     if (item.hasEOL) text += '\n';
+  }
+
+  // Recognised words are searchable straight away, without waiting for the file
+  // to be saved and reopened.
+  for (const word of (spec.ocr && spec.ocr.words) || []) {
+    if (text && !/\s$/.test(text)) text += ' ';
+    boxes.push({
+      start: text.length,
+      length: word.text.length,
+      x: word.x,
+      y: word.y + word.h, // boxes are anchored on the baseline
+      width: word.w,
+      height: word.h,
+      angle: 0,
+    });
+    text += word.text;
   }
 
   const entry = { text, boxes };

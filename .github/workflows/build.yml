@@ -1,0 +1,125 @@
+name: Build installers
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  # Publishing a release - under any tag name - builds the installers and
+  # attaches them to it. This used to require a tag starting with "v", so a
+  # release tagged anything else silently ended up with no files.
+  release:
+    types: [published]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    # Needed by the release step below; the default token is read-only on
+    # repositories created under the current GitHub defaults.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Produces dist/Arctic PDF Editor-<version>-x64.exe (NSIS installer)
+      # and dist/Arctic PDF Editor-<version>-portable.exe.
+      - name: Build installer
+        run: npm run dist:win
+        env:
+          # No code-signing certificate is configured; skip signing rather than
+          # failing the build. Installs will show a SmartScreen warning.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: arctic-pdf-editor-windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+
+  build-mac:
+    needs: test
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # One .dmg per chip. A single universal app would carry both copies of
+      # Electron - twice the download for everyone - so each Mac gets only the
+      # build it can run.
+      - name: Build app
+        run: npm run dist:mac
+        env:
+          # No Apple Developer ID is configured, so the app is ad-hoc signed
+          # (mac.identity "-"): macOS asks the user to allow it on first launch.
+          # It must not be left unsigned - electron-builder modifies Electron's
+          # bundle, so the original signature no longer matches, and Apple
+          # Silicon Macs report an app like that as "damaged" with no way to
+          # open it.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Ad-hoc signing uses no secrets, so it is safe on pull requests too;
+          # without this electron-builder skips signing there.
+          CSC_FOR_PULL_REQUEST: "true"
+
+      # Fail the build rather than ship an app macOS calls "damaged".
+      - name: Verify signatures
+        run: |
+          for app in "dist/mac-arm64/Arctic PDF Editor.app" "dist/mac/Arctic PDF Editor.app"; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | grep -E "Signature=adhoc|Authority"
+          done
+
+      # Separate artifacts, so downloading one does not drag in the other.
+      - name: Upload Apple Silicon app
+        uses: actions/upload-artifact@v4
+        with:
+          name: arctic-pdf-editor-mac-apple-silicon
+          path: dist/*-arm64.dmg
+          if-no-files-found: error
+
+      - name: Upload Intel app
+        uses: actions/upload-artifact@v4
+        with:
+          name: arctic-pdf-editor-mac-intel
+          path: dist/*-x64.dmg
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg

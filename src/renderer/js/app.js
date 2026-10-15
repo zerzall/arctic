@@ -25,6 +25,8 @@ import {
   setZoom,
   select,
   selectPages,
+  pushHistory,
+  afterStructuralChange,
   markDirty,
   undo,
   redo,
@@ -48,26 +50,19 @@ import { initPanels, syncStylePanel, syncPagePanel, syncMetaPanel, syncFormPanel
 import { toast, initModals, openModal, closeModal, signaturePad, setBusy, isModalOpen } from './ui.js';
 import { buildPdf, extractPages } from './export.js';
 import { initFonts } from './fonts.js';
+import * as ocr from './ocr.js';
 import { viewSize } from './geometry.js';
+import { WORKER_URL, documentOptions } from './pdfjsopts.js';
 
 const $ = (id) => document.getElementById(id);
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
-const CMAP_URL = new URL('../vendor/cmaps/', import.meta.url).href;
-const STANDARD_FONT_URL = new URL('../vendor/standard_fonts/', import.meta.url).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
 
 /* ------------------------------ document IO ----------------------------- */
 
 /** pdf.js takes ownership of the buffer it is handed, so it always gets a copy. */
 function loadingTask(bytes, password) {
-  return pdfjsLib.getDocument({
-    data: new Uint8Array(bytes).slice(),
-    cMapUrl: CMAP_URL,
-    cMapPacked: true,
-    standardFontDataUrl: STANDARD_FONT_URL,
-    password,
-    isEvalSupported: false,
-  });
+  return pdfjsLib.getDocument(documentOptions(new Uint8Array(bytes).slice(), password));
 }
 
 async function openPdfjs(bytes) {
@@ -393,6 +388,146 @@ async function insertSignature() {
   toast('Click on the page to place your signature', 'info');
 }
 
+/* ---------------------------------- OCR ----------------------------------- */
+
+/** Rendering resolution for recognition. Below ~200 dpi accuracy falls away. */
+const OCR_DPI = 300;
+
+/**
+ * Recognise the text on some pages and keep the result with them.
+ *
+ * The words are held in view space on the page they came from, so they survive
+ * page moves and rotation, feed the editor's own Find and Edit Text tools right
+ * away, and are written into the file as invisible text when it is saved.
+ */
+async function runOcr(slots) {
+  if (!state.doc || !slots.length) return;
+
+  setBusy(true, 'Starting the recogniser...');
+  let totalWords = 0;
+  try {
+    for (let n = 0; n < slots.length; n += 1) {
+      const slot = slots[n];
+      const label = slots.length > 1 ? `page ${slot + 1} (${n + 1} of ${slots.length})` : `page ${slot + 1}`;
+      setBusy(true, `Rendering ${label}...`);
+
+      // eslint-disable-next-line no-await-in-loop
+      const img = await viewer.renderPageImage(slot, OCR_DPI / 72);
+      if (!img) continue;
+
+      // eslint-disable-next-line no-await-in-loop
+      const result = await ocr.recognizePage(img.dataUrl, OCR_DPI / 72, (fraction, status) => {
+        const pct = Math.round((fraction || 0) * 100);
+        setBusy(true, `Reading ${label}: ${status || 'working'} ${pct}%`);
+      });
+
+      const spec = pageAt(slot);
+      if (!spec) continue;
+      if (n === 0) pushHistory();
+      spec.ocr = { words: result.words, lines: result.lines, dpi: OCR_DPI };
+      totalWords += result.words.length;
+      viewer.clearRunCache();
+      search.clearCache();
+      markDirty();
+      emit('annots', slot);
+    }
+
+    if (totalWords) {
+      toast(
+        `Recognised ${totalWords} word(s). The text is searchable now, and is ` +
+          'written into the file when you save.',
+        'ok',
+        6000
+      );
+    } else {
+      toast('No text was recognised on those pages.', 'warn', 5000);
+    }
+  } catch (err) {
+    await window.api.errorBox('Could not run OCR', err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/** True when a page has no text of its own - the case OCR exists for. */
+async function pageLooksScanned(slot) {
+  try {
+    const runs = await viewer.runsForPage(slot);
+    return runs.filter((r) => !r.fromOcr).length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/* ------------------------------- rasterise -------------------------------- */
+
+/**
+ * Replace the selected pages with a picture of themselves.
+ *
+ * This is the one operation that genuinely destroys the text layer, so it is
+ * how you make a black-out box or a text replacement permanent: afterwards
+ * there is nothing underneath to extract. The cost is that the page stops being
+ * searchable or selectable, which the confirmation spells out.
+ */
+async function rasterizePages() {
+  if (!state.doc) return;
+  const slots = selectedSlots();
+  if (!slots.length) return;
+
+  const choice = await window.api.messageBox({
+    type: 'warning',
+    buttons: ['Flatten to image', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `Flatten ${slots.length} page(s) to an image?`,
+    detail:
+      'Everything on the page becomes a picture at 200 dpi. Any text hidden ' +
+      'under a black-out box or a replaced line is removed from the file for ' +
+      'good - and so is all selectable, searchable text on those pages.',
+  });
+  if (choice !== 0) return;
+
+  setBusy(true, 'Flattening...');
+  try {
+    const replacements = [];
+    for (const slot of slots) {
+      setBusy(true, `Flattening page ${slot + 1}...`);
+      // eslint-disable-next-line no-await-in-loop
+      const img = await viewer.renderPageImage(slot, 200 / 72);
+      if (!img) continue;
+      const bin = atob(img.dataUrl.split(',')[1]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      const imgId = registerImage(bytes.buffer, 'image/png');
+      replacements.push({ slot, imgId, w: img.width, h: img.height });
+    }
+
+    pushHistory();
+    for (const rep of replacements) {
+      const spec = state.doc.pages[rep.slot];
+      // A blank page of the *viewed* size, with the picture filling it, so any
+      // rotation is already baked in.
+      spec.src = null;
+      spec.index = -1;
+      spec.rotate = 0;
+      spec.baseW = rep.w;
+      spec.baseH = rep.h;
+      spec.cropX = 0;
+      spec.cropY = 0;
+      spec.annots = [
+        { id: uid(), type: 'image', imgId: rep.imgId, x: 0, y: 0, w: rep.w, h: rep.h, opacity: 1 },
+      ];
+    }
+    await viewer.ensureAllBitmaps();
+    afterStructuralChange();
+    toast(`Flattened ${replacements.length} page(s) to images`, 'ok');
+  } catch (err) {
+    await window.api.errorBox('Could not flatten', err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
 /* --------------------------------- print --------------------------------- */
 
 async function printDocument() {
@@ -444,6 +579,9 @@ async function exportPagePng() {
 
 let findResults = [];
 let findIndex = -1;
+/** The "this covers rather than deletes" notice is shown once per session. */
+let sawTextEditNotice = false;
+let sawImageEditNotice = false;
 
 async function runFind() {
   const query = $('find-input').value;
@@ -557,6 +695,10 @@ const commands = {
     deletePages(selectedSlots());
   },
 
+  'ocr:page': () => runOcr([state.currentPage]),
+  'ocr:selected': () => runOcr(selectedSlots()),
+  'ocr:document': () => runOcr(pages().map((_p, i) => i)),
+
   'tool:image': insertImage,
   'tool:signature': insertSignature,
   'tool:flatten-forms': () => {
@@ -590,9 +732,11 @@ const commands = {
   'help:about': showAbout,
 };
 
-for (const tool of ['select', 'text', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
+for (const tool of ['select', 'text', 'edittext', 'editimage', 'draw', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'whiteout', 'blackout']) {
   commands[`tool:${tool}`] = () => setTool(tool);
 }
+
+commands['page:rasterize'] = rasterizePages;
 
 function duplicateAnnot() {
   const { page: slot, id } = state.selection;
@@ -765,6 +909,8 @@ function debounce(fn, ms) {
 const TOOL_KEYS = {
   v: 'select',
   t: 'text',
+  x: 'edittext',
+  i: 'editimage',
   d: 'draw',
   h: 'highlight',
   r: 'rect',
@@ -897,7 +1043,47 @@ function wireModel() {
     syncToolbar();
     syncStylePanel();
     document.body.dataset.tool = tool;
+    if (tool === 'edittext') {
+      viewer.primeVisibleRuns();
+      if (!sawTextEditNotice) {
+        sawTextEditNotice = true;
+        toast('Click any highlighted line to retype it.', 'info', 4000);
+      }
+    }
+    if (tool === 'editimage') {
+      viewer.primeVisibleImages();
+      if (!sawImageEditNotice) {
+        sawImageEditNotice = true;
+        toast(
+          'Drag any outlined picture to move it, or use its handles to resize it.',
+          'info',
+          5000
+        );
+      }
+    }
+    viewer.refreshAll();
   });
+
+  on('editimage-miss', () =>
+    toast('No movable picture there - only outlined ones can be moved.', 'info', 2200)
+  );
+
+  // Whether the original wording will actually leave the file is the one thing
+  // worth reporting per edit, because it is the difference between editing and
+  // merely covering.
+  on('text-replaced', ({ removed, reason }) => {
+    if (removed) return;
+    toast(
+      `This line can only be covered, not removed: ${reason}. ` +
+        'Flatten the page to an image if the original must not remain in the file.',
+      'warn',
+      7000
+    );
+  });
+
+  on('edittext-miss', () =>
+    toast('No editable text there - only recognised lines are highlighted.', 'info', 2200)
+  );
 
   on('dirty', () => {
     window.api.setDirty(state.dirty);

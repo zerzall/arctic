@@ -18,13 +18,36 @@ const FILES = [
   ['pdfjs-dist/build/pdf.min.mjs', 'pdf.min.mjs'],
   ['pdfjs-dist/build/pdf.worker.min.mjs', 'pdf.worker.min.mjs'],
   ['pdf-lib/dist/pdf-lib.esm.min.js', 'pdf-lib.esm.min.js'],
+
+  // OCR. Tesseract normally fetches its engine and language data from a CDN;
+  // everything it needs is vendored instead so recognition works with no
+  // network at all, which is the whole point of a desktop editor.
+  ['tesseract.js/dist/tesseract.esm.min.js', 'tesseract/tesseract.esm.min.js'],
+  ['tesseract.js/dist/worker.min.js', 'tesseract/worker.min.js'],
+  // Only the LSTM engines: that is the one the app asks for, and each of the
+  // full builds is another 4.7MB.
+  ['tesseract.js-core/tesseract-core-lstm.wasm.js', 'tesseract/tesseract-core-lstm.wasm.js'],
+  [
+    'tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
+    'tesseract/tesseract-core-simd-lstm.wasm.js',
+  ],
+  [
+    'tesseract.js-core/tesseract-core-relaxedsimd-lstm.wasm.js',
+    'tesseract/tesseract-core-relaxedsimd-lstm.wasm.js',
+  ],
+  ['@tesseract.js-data/eng/4.0.0/eng.traineddata.gz', 'tessdata/eng.traineddata.gz'],
 ];
 
-// Directories pdf.js needs at runtime for CJK documents and for PDFs that rely
-// on the 14 standard fonts without embedding them.
+// Directories pdf.js needs at runtime:
+//   cmaps          - CJK documents
+//   standard_fonts - PDFs relying on the 14 standard fonts without embedding
+//   wasm           - image codecs. Scanned documents are usually CCITT fax or
+//                    JBIG2, and pdf.js decodes both in WebAssembly; without
+//                    these files every scan renders as a blank page.
 const DIRS = [
   ['pdfjs-dist/cmaps', 'cmaps'],
   ['pdfjs-dist/standard_fonts', 'standard_fonts'],
+  ['pdfjs-dist/wasm', 'wasm'],
 ];
 
 function resolveDep(rel) {
@@ -46,7 +69,9 @@ function main() {
   fs.mkdirSync(vendor, { recursive: true });
 
   for (const [src, dest] of FILES) {
-    fs.copyFileSync(resolveDep(src), path.join(vendor, dest));
+    const target = path.join(vendor, dest);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(resolveDep(src), target);
   }
   for (const [src, dest] of DIRS) {
     copyDir(resolveDep(src), path.join(vendor, dest));
@@ -63,7 +88,15 @@ function main() {
 
   fs.writeFileSync(
     path.join(vendor, 'versions.json'),
-    JSON.stringify({ 'pdfjs-dist': pkg('pdfjs-dist'), 'pdf-lib': pkg('pdf-lib') }, null, 2)
+    JSON.stringify(
+      {
+        'pdfjs-dist': pkg('pdfjs-dist'),
+        'pdf-lib': pkg('pdf-lib'),
+        'tesseract.js': pkg('tesseract.js'),
+      },
+      null,
+      2
+    )
   );
 
   console.log('vendor: refreshed src/renderer/vendor');

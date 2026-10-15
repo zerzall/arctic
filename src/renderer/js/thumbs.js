@@ -4,7 +4,7 @@
 import { state, pages, page as pageAt, selectPages, reorderPages, on, emit } from './model.js';
 import { viewSize } from './geometry.js';
 import { drawAnnot } from './overlay.js';
-import { scrollToPage } from './viewer.js';
+import { scrollToPage, hasMoved } from './viewer.js';
 
 const THUMB_WIDTH = 148;
 
@@ -139,7 +139,29 @@ async function paint(slot) {
   }
 
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
-  for (const annot of spec.annots) drawAnnot(ctx, annot);
+
+  // A moved picture has to be lifted from where the page draws it and put back
+  // down elsewhere. Copy the page first: the source region and the destination
+  // can overlap, and patching the original away would erase what we are about
+  // to draw.
+  const moved = spec.annots.filter((a) => a.type === 'imgedit' && hasMoved(a));
+  let pageCopy = null;
+  if (moved.length) {
+    pageCopy = document.createElement('canvas');
+    pageCopy.width = canvas.width;
+    pageCopy.height = canvas.height;
+    pageCopy.getContext('2d').drawImage(canvas, 0, 0);
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    for (const a of moved) {
+      ctx.fillRect(a.origin.x - 1, a.origin.y - 1, a.origin.w + 2, a.origin.h + 2);
+    }
+    ctx.restore();
+  }
+
+  for (const annot of spec.annots) {
+    drawAnnot(ctx, annot, { pageCanvas: pageCopy, pageScale: scale * dpr });
+  }
 }
 
 /** Force a repaint of one thumbnail (after an edit). */
