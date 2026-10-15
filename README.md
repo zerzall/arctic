@@ -131,6 +131,15 @@ Open the `.dmg` and drag the app to Applications.
 > never appears, this Terminal command clears the block:
 > `xattr -dr com.apple.quarantine "/Applications/Arctic PDF Editor.app"`
 >
+> If macOS says the app **"is damaged and can't be opened"**, you have a copy
+> built before October 2026, when the Mac app was not signed at all. Download
+> the current build, or repair the copy you have in Terminal:
+>
+> ```sh
+> xattr -cr "/Applications/Arctic PDF Editor.app"
+> codesign --force --deep --sign - "/Applications/Arctic PDF Editor.app"
+> ```
+>
 > Removing the prompt entirely requires a paid Apple Developer account.
 
 ## Build it yourself

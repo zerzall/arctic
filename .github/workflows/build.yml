@@ -84,10 +84,24 @@ jobs:
       - name: Build app
         run: npm run dist:mac
         env:
-          # No Apple Developer ID is configured, so the app is unsigned: it runs
-          # after the user allows it in System Settings, but macOS will complain
-          # on first launch. Signing here would fail the build, not fix that.
+          # No Apple Developer ID is configured, so the app is ad-hoc signed
+          # (mac.identity "-"): macOS asks the user to allow it on first launch.
+          # It must not be left unsigned - electron-builder modifies Electron's
+          # bundle, so the original signature no longer matches, and Apple
+          # Silicon Macs report an app like that as "damaged" with no way to
+          # open it.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Ad-hoc signing uses no secrets, so it is safe on pull requests too;
+          # without this electron-builder skips signing there.
+          CSC_FOR_PULL_REQUEST: "true"
+
+      # Fail the build rather than ship an app macOS calls "damaged".
+      - name: Verify signatures
+        run: |
+          for app in "dist/mac-arm64/Arctic PDF Editor.app" "dist/mac/Arctic PDF Editor.app"; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | grep -E "Signature=adhoc|Authority"
+          done
 
       # Separate artifacts, so downloading one does not drag in the other.
       - name: Upload Apple Silicon app
