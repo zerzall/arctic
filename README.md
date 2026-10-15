@@ -118,14 +118,20 @@ Not sure which you have? Apple menu → **About This Mac**: it lists either a
 
 Open the `.dmg` and drag the app to Applications.
 
-> **The app is not signed with an Apple Developer ID**, so the first launch is
-> blocked: macOS says it "cannot be opened because the developer cannot be
-> verified". Right-click the app and choose **Open**, then **Open** again in the
-> dialog — after that it launches normally. If macOS still refuses, run
-> `xattr -dr com.apple.quarantine "/Applications/Arctic PDF Editor.app"`.
+> **The app is not signed with an Apple Developer ID**, so macOS blocks the
+> first launch with a message that it "cannot verify" the app. To allow it:
 >
-> This is stricter than the Windows SmartScreen prompt, and clearing it properly
-> requires a paid Apple Developer account.
+> 1. Double-click the app once, and click **Done** on the warning (not *Move to Trash*).
+> 2. Open **System Settings → Privacy & Security** and scroll to the bottom.
+> 3. Next to *"Arctic PDF Editor" was blocked*, click **Open Anyway**, enter your
+>    password, then click **Open**.
+>
+> You only do this once. (On macOS 14 and earlier, right-clicking the app and
+> choosing **Open** also works; macOS 15 removed that shortcut.) If the button
+> never appears, this Terminal command clears the block:
+> `xattr -dr com.apple.quarantine "/Applications/Arctic PDF Editor.app"`
+>
+> Removing the prompt entirely requires a paid Apple Developer account.
 
 ## Build it yourself
 
