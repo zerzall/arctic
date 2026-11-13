@@ -1,0 +1,159 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Rainbow Rails module sandbox</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Lilita+One&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1340; overflow: hidden; }
+  #c { display: block; width: 100%; height: 100%; }
+  #log { position: fixed; left: 8px; bottom: 8px; color: #fff; font: 12px/1.3 monospace; background: rgba(0,0,0,.45); padding: 4px 6px; white-space: pre; }
+</style>
+<canvas id="c"></canvas>
+<div id="log"></div>
+<!--
+  Dev sandbox: renders any subset of the scene modules without game.js.
+  URL: sandbox.html?mods=sky,track,worlds,director,obstacles,player,fx&dist=0&cam=follow&quality=high&live=0
+  Automation: window.SB = { ready, step(seconds, fps), warp(metres), cam(name), setQuality(name), pose(obj), info(), render() }
+  Camera presets: follow, side, high, title, front, low.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="../js/core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const params = new URLSearchParams(location.search);
+  const mods = (params.get('mods') || 'sky,track,worlds,director,obstacles,player,fx').split(',').filter(Boolean);
+  const logEl = document.getElementById('log');
+  const log = (s) => { logEl.textContent = s; };
+  const SB = (window.SB = { ready: false, errors: [] });
+  window.addEventListener('error', (e) => SB.errors.push(String(e.message)));
+
+  function loadNext(i) {
+    if (i >= mods.length) return boot();
+    const s = document.createElement('script');
+    s.src = '../js/' + mods[i] + '.js';
+    s.onload = () => loadNext(i + 1);
+    s.onerror = () => { SB.errors.push('missing module file: ' + mods[i]); loadNext(i + 1); };
+    document.head.appendChild(s);
+  }
+
+  function boot() {
+    const RR = window.RR, C = RR.C;
+    const qName = params.get('quality') || 'high';
+    let quality = RR.QUALITY[qName] || RR.QUALITY.high;
+    RR.quality = quality;
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: !quality.post, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatio));
+    renderer.shadowMap.enabled = quality.shadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    RR.maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    RR.getMats();
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xffffff, 60, C.FOG_FAR);
+    const camera = new THREE.PerspectiveCamera(60, 1, C.CAMERA_NEAR, C.CAMERA_FAR);
+    const ctx = { renderer, scene, camera, quality };
+    RR.atmoSet(0);
+
+    // Fallbacks so a single module can be looked at alone.
+    if (!RR.sky) {
+      scene.background = new THREE.Color(0x9fd3ff);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x886688, 0.6));
+      const d = new THREE.DirectionalLight(0xffffff, 0.6); d.position.set(10, 20, 10); scene.add(d);
+    }
+    if (!RR.track) {
+      const g = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({ color: 0xc9b7d6 }));
+      g.rotation.x = -Math.PI / 2; scene.add(g); SB.fallbackGround = g;
+    }
+
+    const order = RR.MODULE_ORDER.filter((n) => RR[n]);
+    const call = (fn, ...a) => order.forEach((n) => { const m = RR[n]; if (m && typeof m[fn] === 'function') { try { m[fn](...a); } catch (e) { SB.errors.push(n + '.' + fn + ': ' + e.message); console.error(e); } } });
+    call('init', ctx);
+
+    const pose = { x: 0, y: 0, z: 0, laneVel: 0, grounded: true, vy: 0, rolling: false, rollT: 0, jetpack: false, jetpackY01: 0, board: false, sneakers: false, magnet: false, invulnerable: false, speed: 22, state: 'run', deathT: 0, stumbleT: 0, landT: 0, celebrate: false };
+    const frame = { t: 0, dt: 0, state: 'run', pz: 0, px: 0, py: 0, speed: 22, dist: 0, world: 0, worldCount: 0, inTunnel: false, camera, player: { lane: 1, grounded: true, rolling: false, jetpack: false, board: false, sneakers: false, magnet: false, double: false, invulnerable: false } };
+    let camMode = params.get('cam') || 'follow';
+    let t = 0;
+
+    function setDist(d) {
+      frame.pz = -d; frame.dist = d; pose.z = -d;
+      frame.world = RR.worldIndexAt(frame.pz); frame.worldCount = Math.floor(d / C.WORLD_LEN);
+      RR.atmoSet(frame.world);
+      call('reset', frame.pz);
+    }
+    function placeCamera() {
+      const px = frame.px, py = frame.py, pz = frame.pz;
+      const a = t * 0.2;
+      switch (camMode) {
+        case 'side': camera.position.set(px + 13, py + 3, pz - 2); camera.lookAt(px, py + 1.4, pz - 2); break;
+        case 'high': camera.position.set(px, py + 45, pz + 45); camera.lookAt(px, 0, pz - 60); break;
+        case 'title': camera.position.set(Math.sin(a) * 6.5, 3.0, pz - 7.5 + Math.cos(a)); camera.lookAt(px, 1.4, pz); break;
+        case 'front': camera.position.set(px + 1.5, py + 2.2, pz - 7); camera.lookAt(px, py + 1.2, pz); break;
+        case 'low': camera.position.set(px + 1.2, 1.2, pz + 6); camera.lookAt(px, 2.5, pz - 30); break;
+        default: camera.position.set(px * 0.55, py * 0.6 + 5.3, pz + 9); camera.lookAt(px * 0.6, py * 0.55 + 1.0, pz - 8);
+      }
+      camera.updateMatrixWorld();
+    }
+    function tick(dt) {
+      t += dt;
+      const speed = RR.speedAt(frame.dist);
+      frame.t = t; frame.dt = dt; frame.speed = speed; pose.speed = speed;
+      frame.pz -= speed * dt; frame.dist = -frame.pz;
+      pose.z = frame.pz; pose.x = frame.px; pose.y = frame.py;
+      frame.world = RR.worldIndexAt(frame.pz); frame.worldCount = Math.floor(frame.dist / C.WORLD_LEN);
+      frame.inTunnel = RR.inTunnel(frame.pz);
+      RR.atmoUpdate(dt, frame.world, 2.5);
+      placeCamera();
+      if (SB.fallbackGround) SB.fallbackGround.position.z = frame.pz;
+      order.forEach((n) => {
+        const m = RR[n]; if (!m || typeof m.update !== 'function') return;
+        try { if (n === 'player') m.update(dt, pose); else if (n === 'audio' || n === 'ui') return; else m.update(dt, frame); }
+        catch (e) { SB.errors.push(n + '.update: ' + e.message); console.error(e); }
+      });
+    }
+    function render() {
+      if (RR.fx && RR.fx.render) RR.fx.render(); else renderer.render(scene, camera);
+    }
+    function resize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      if (RR.fx && RR.fx.resize) RR.fx.resize(w, h, renderer.getPixelRatio());
+    }
+    window.addEventListener('resize', resize);
+    resize();
+    setDist(parseFloat(params.get('dist') || '0'));
+    tick(1 / 60);
+    render();
+
+    Object.assign(SB, {
+      ready: true, RR, ctx, frame, pose,
+      step(seconds, fps) { const f = fps || 60, n = Math.max(1, Math.round(seconds * f)); for (let i = 0; i < n; i++) tick(1 / f); render(); return SB.info(); },
+      warp(d) { setDist(d); tick(1 / 60); render(); return SB.info(); },
+      cam(name) { camMode = name; placeCamera(); render(); },
+      setQuality(name) { quality = RR.QUALITY[name]; RR.quality = quality; ctx.quality = quality; renderer.shadowMap.enabled = quality.shadows; call('setQuality', quality); resize(); render(); },
+      pose(o) { Object.assign(pose, o); if ('x' in o) frame.px = o.x; if ('y' in o) frame.py = o.y; render(); },
+      render,
+      info() {
+        const i = renderer.info;
+        return { dist: Math.round(frame.dist), world: frame.world, inTunnel: frame.inTunnel, drawCalls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs ? i.programs.length : 0, sceneObjects: scene.children.length, errors: SB.errors.slice(0, 20) };
+      }
+    });
+    log('mods: ' + order.join(', ') + (SB.errors.length ? '\nerrors: ' + SB.errors.join(' | ') : ''));
+    if (params.get('live') === '1') {
+      let last = performance.now();
+      const loop = (now) => { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000); last = now; tick(dt); render(); };
+      requestAnimationFrame(loop);
+    }
+  }
+  loadNext(0);
+})();
+</script>
