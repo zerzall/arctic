@@ -3,3 +3,4 @@ test-results/
 e2e-output/
 *.log
 dist/
+.cache/
