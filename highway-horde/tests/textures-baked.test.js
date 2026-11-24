@@ -132,6 +132,54 @@ test('the committed library: a manifest entry and four valid PNGs per set', { sk
   assert.equal(one.width, manifest.sets.brick_red.size);
 });
 
+// (the photo packer decodes JPEGs with jpeg-js, a dev dependency of highway-horde)
+let jpegOk = true;
+try { createRequire(import.meta.url).resolve('jpeg-js'); } catch { jpegOk = false; }
+
+test('photo sets: CC0 sources recorded in the manifest and credited; the packer keeps the format and the old set\'s brightness', { skip: (!manifest && 'no library baked') || (!jpegOk && 'jpeg-js is not installed') }, async () => {
+  const photo = await import('../scripts/fetch-photo-textures.js');
+  const credits = existsSync(path.join(LIB, 'CREDITS.md')) ? readFileSync(path.join(LIB, 'CREDITS.md'), 'utf8') : '';
+  let n = 0;
+  for (const [name, e] of Object.entries(manifest.sets)) {
+    if (!e.source) continue;
+    n++;
+    const s = e.source;
+    assert.ok(photo.PHOTO[name] && photo.PHOTO[name].id === s.id, `${name}: configured as ${s.id}`);
+    assert.equal(s.license, 'CC0 1.0', `${name}: CC0`);
+    assert.match(s.url, /^https:\/\/polyhaven\.com\/a\//);
+    for (const f of Object.values(s.files)) { assert.match(f.url, /^https:\/\/dl\.polyhaven\.org\//); assert.match(f.md5, /^[0-9a-f]{32}$/); }
+    assert.ok(credits.includes(`\`${name}\``) && credits.includes(s.url), `${name} credited`);
+    assert.ok(Array.isArray(e.shift) && e.shift.length === 2, `${name}: explicit tile-breaking shift`);
+    // (the art direction: the photo's brightness is the baked set's it replaced)
+    const Y = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    assert.ok(Math.abs(Y(e.meanAll) / Y(s.baked.meanAll) - 1) < 0.08, `${name}: luminance ${Y(e.meanAll)} vs ${Y(s.baked.meanAll)}`);
+  }
+  assert.ok(n >= 30, `${n} photo sets`);
+  // the packer on synthetic 64² "photos": 1024² maps of the library's layout, normals of unit length
+  const W = 64, img = (f) => { const d = new Uint8Array(W * W * 3); for (let i = 0; i < W * W; i++) { const v = f(i % W, (i / W) | 0); d.set(v, i * 3); } return { w: W, h: W, ch: 3, data: d }; };
+  const imgs = {
+    diff: img((x, y) => [120 + (x % 7) * 5, 80 + (y % 5) * 4, 60]),
+    nor: img((x) => [128 + Math.round(40 * Math.sin(x)), 128, 230]),
+    arm: img((x, y) => [200, 150 + (y % 3) * 10, 0]),
+    disp: img((x, y) => [(x * 4 + y) & 255, 0, 0]),
+  };
+  const old = { meanAll: [0.2, 0.1, 0.05], tint: 0.7 };
+  const a = photo.packSet('t', { chroma: 0.5, tintH: 1 }, old, imgs, false, 16);
+  const b = photo.packSet('t', { chroma: 0.5, tintH: 1 }, old, imgs, false, 16);
+  for (const k of ['albedo', 'normal', 'rah', 'mask']) {
+    assert.equal(a.maps[k].length, 1024 * 1024 * 3);
+    assert.ok(Buffer.from(a.maps[k]).equals(Buffer.from(b.maps[k])), `${k} deterministic`);
+  }
+  const nm = a.maps.normal;
+  for (let i = 0; i < nm.length; i += 3 * 997) {
+    const l = Math.hypot(nm[i] / 127.5 - 1, nm[i + 1] / 127.5 - 1, nm[i + 2] / 127.5 - 1);
+    assert.ok(Math.abs(l - 1) < 0.05, `normal length ${l}`);
+  }
+  const Y = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  assert.ok(Math.abs(Y(a.stats.meanAll) / Y(old.meanAll) - 1) < 0.08, 'luminance matched');
+  assert.ok(a.stats.tint > 0.5 && a.stats.tint < 0.9, `tint ${a.stats.tint}`);
+});
+
 test('surface mapping: every surface id has a set on every map; the themes swap in the hero sets', () => {
   const ids = [...maps.MAP_LIST.map((m) => m.id), ...levels.LEVEL_IDS, ...hideouts.HIDEOUT_IDS];
   for (const k of Object.keys(sets.THEMES)) assert.ok(ids.includes(k), `theme for a real map: ${k}`);
