@@ -307,6 +307,13 @@ export function createWalkins(ctx, deps = {}) {
     // (the frame stands at ground 0: the terrain under the wing's centre is the terrace)
     B.obj(cx, cy, 0, 7900 + rec.i, (s.base || 0) - gy(cx, cy));
     B.setJitter(0.02);
+    // (the fake ground occlusion measures from the terrain under the frame, the terrace: off for the wing)
+    B.setAO(0, 1);
+    try { wing(B, rec, s); } finally { B.setAO(34, 0.42); }
+  }
+
+  function wing(B, rec, s) {
+    const cx = (s.x0 + s.x1) / 2, cy = (s.y0 + s.y1) / 2;
     const t = rec.t, rise = s.rise;
     const L = s.x1 - s.x0, W = s.y1 - s.y0;
     const wo = { noJitter: true, surf: [DET.concrete, 0.88, 0] };
