@@ -36,7 +36,7 @@ const FLOORS = {
 };
 /** Wall finishes inside: [colour, detail layer, roughness]. */
 const WALLS = {
-  plaster: ['#d8d0c0', DET.plaster, 0.9], drywall: ['#cfcbc0', DET.drywall, 0.9], wallpaper: ['#b9a98a', DET.wallpaper, 0.9],
+  plaster: ['#d8d0c0', DET.plaster, 0.9], drywall: ['#d2cec4', DET.plaster, 0.9], wallpaper: ['#b9a98a', DET.wallpaper, 0.9],
   block: ['#a9a69e', DET.cinder, 0.9], brick: ['#8a5a44', DET.brick, 0.9],
 };
 
@@ -242,9 +242,13 @@ export function createWalkins(ctx, deps = {}) {
         const [ax, az] = at(g0), [bx, bz] = at(g1);
         for (const [x, z] of [[ax, az], [bx, bz]]) B.block('std', x, 0, z, along ? 4 : WALKIN_TI + 3, DOOR_H, along ? WALKIN_TI + 3 : 4, frame, null, FS);
         const gw = g1 - g0, sd = hash01(rec.i * 7 + Math.round(g0)) < 0.5 ? 1 : -1;
-        const [hx, hz] = at(g0 + 2);
-        if (along) B.block('std', hx + dir * (gw / 2), 0, hz + sd * (WALKIN_TI / 2 + 2.5), gw - 6, DOOR_H - 3, 3, shadeHex(rec.trim, -0.3), null, { noJitter: true, surf: [DET.wood, 0.75, 0] });
-        else B.block('std', hx + sd * (WALKIN_TI / 2 + 2.5), 0, hz + dir * (gw / 2), 3, DOOR_H - 3, gw - 6, shadeHex(rec.trim, -0.3), null, { noJitter: true, surf: [DET.wood, 0.75, 0] });
+        // (double leaves, each folded back flat against the partition beside the opening)
+        const lw = gw / 2 - 3, lc = shadeHex(rec.trim, -0.3), LS = { noJitter: true, surf: [DET.wood, 0.75, 0] };
+        for (const [s0, s1] of [[g0 - lw - 1, g0 - 1], [g1 + 1, g1 + lw + 1]]) {
+          const [qx, qz] = at((s0 + s1) / 2);
+          if (along) B.block('std', qx, 0, qz + sd * (WALKIN_TI / 2 + 2), lw, DOOR_H - 3, 2.5, lc, null, LS);
+          else B.block('std', qx + sd * (WALKIN_TI / 2 + 2), 0, qz, 2.5, DOOR_H - 3, lw, lc, null, LS);
+        }
         cur = g1;
       }
       if (len > cur + 0.5) piece(cur, len, 0, ceil);

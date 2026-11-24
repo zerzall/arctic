@@ -296,15 +296,18 @@ export function layoutOf(type, w, h, o = {}) {
       // a store: shelving aisles front to back, a counter, an office at the back
       // (a deep shop has an office behind a partition; a shallow one keeps its desk in a back corner)
       const deep = iy1 - iy0 >= 200;
-      const by = deep ? iy0 + Math.max(92, Math.min(120, (iy1 - iy0) * 0.4)) : iy0 + 50;
+      const by = deep ? iy0 + Math.max(84, Math.min(110, (iy1 - iy0) * 0.34)) : iy0 + 50;
       if (deep) parts.push({ x1: ix0, y1: by, x2: ix1, y2: by, gaps: [[(ix1 - ix0) * 0.3, 90]] });
-      const aisles = Math.max(1, Math.floor((ix1 - ix0 - 120) / 95));
-      for (let k = 0; k < aisles; k++) {
-        const x = aisles === 1 ? ix0 + (ix1 - ix0) * 0.3 : ix0 + 80 + k * ((ix1 - ix0 - 160) / (aisles - 1));
-        if (Math.abs(x - door) < 70) continue;
-        P('counter', x, (by + iy1) / 2 - 10, 26, Math.max(60, (iy1 - by) * 0.48), 'shelf');
+      // the counter along the side wall away from the door; gondolas front to back, clear of the door's lane
+      const tillLeft = door > 0;
+      P('counter', tillLeft ? ix0 + 30 : ix1 - 30, iy1 - 62, 30, 76, 'till');
+      const sy0 = by + 26, sy1 = iy1 - 44;
+      if (sy1 - sy0 >= 44) {
+        for (let x = ix0 + 62; x <= ix1 - 62; x += 74) {
+          if (Math.abs(x - door) < 96) continue;
+          P('counter', x, (sy0 + sy1) / 2, 24, sy1 - sy0, 'shelf');
+        }
       }
-      P('counter', ix1 - 90, iy1 - 66, 84, 30, 'till');
       P('desk', ix0 + 70, (iy0 + by) / 2, 70, 40, 'desk');
       P('cabinet', ix1 - 30, (iy0 + by) / 2, 30, 60, 'filing');
       P('counter', ix0 + (ix1 - ix0) * 0.62, iy0 + 30, 44, 34, 'crate');
