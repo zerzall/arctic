@@ -101,7 +101,6 @@ export const PHOTO = {
   tile_hospital: { id: 'interior_tiles', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'white glazed wall tiles, photo-scanned' },
   tile_metro: { id: 'long_white_tiles', shift: NONE, cells: FLAT_CELLS, chroma: 0.5, about: 'long white glazed subway tiles, photo-scanned' },
   tile_ceramic: { id: 'floor_tiles_08', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'unglazed square floor tiles, photo-scanned' },
-  canvas: { id: 'hessian_230', shift: ANY, chroma: 0.5, about: 'coarse hessian / canvas weave, photo-scanned' },
 };
 
 // ---- helpers -----------------------------------------------------------------------------------
@@ -371,9 +370,9 @@ async function main() {
     const imgs = {};
     for (const [k, f] of Object.entries(files)) imgs[k] = decodeJpg(await download(a.cache, cfg.id, k, f));
     const sizeM = Math.round((info.dimensions ? info.dimensions[0] : 2000) / 10) / 100;
-    // repeats across the tile: the whole number closest (in log scale) to tile / photo size
-    const k = Math.max(1, Math.min(8, Math.round(old.tile / sizeM)));
-    const kPow = 2 ** Math.round(Math.log2(k));            // (powers of two divide the 2K photo)
+    // repeats across the tile: the power of two (they divide the 2K photo) closest in log scale to
+    // tile / photo size, so the scale stays within √2 of real where it can
+    const kPow = 2 ** Math.max(0, Math.min(3, Math.round(Math.log2(old.tile / sizeM))));
     const res = packSet(name, cfg, ref, imgs, dx, kPow);
     const dir = join(LIB, name);
     mkdirSync(dir, { recursive: true });
