@@ -103,7 +103,8 @@ export function buildCampaign(B, id) {
   B.resize(W, H);
   map.time = 'day';
 
-  const terrain = { hills: [], plateaus: [] };
+  // (a map with terrain of its own keeps it: a walk-in building's roof terrace, shared/maps-walkin.js)
+  const terrain = { hills: (map.terrain && map.terrain.hills || []).slice(), plateaus: (map.terrain && map.terrain.plateaus || []).slice() };
   const camp = { v: 1, site: id, hill: null, route: site.route.map(([x, y]) => [x, y]), floors: [], roof: null, landing: null, skyline: [] };
   camp.routeLen = round1(pathLength(camp.route));
   map.terrain = terrain;

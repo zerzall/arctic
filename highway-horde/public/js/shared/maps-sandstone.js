@@ -31,6 +31,19 @@
 
 import { createRng, hashString } from './rng.js';
 import { sandstoneDecals } from './maps-decals.js';
+import { walkIn, layoutOf, roofTerrace, WALKIN_T } from './maps-walkin.js';
+
+/**
+ * The houses the crew can walk into (shared/maps-walkin.js), by their block rectangle: one door each onto
+ * the street they stand on (a room off it, never a new way through the town), and the B site house's
+ * wing with a stair up onto its roof terrace over B.
+ */
+export const SANDSTONE_WALKINS = Object.freeze([
+  Object.freeze({ id: 'ss-cthouse', name: 'CT House', x0: 1100, y0: 300, x1: 1400, y1: 600, door: 'e' }),
+  Object.freeze({ id: 'ss-longhouse', name: 'Long House', x0: 2400, y0: 1742, x1: 2700, y1: 1964, door: 'e' }),
+  Object.freeze({ id: 'ss-corner', name: 'Corner House', x0: 2980, y0: 1000, x1: 3300, y1: 1284, door: 'w', at: 76 }),   // (past the corner car)
+  Object.freeze({ id: 'ss-bhouse', name: 'B House', x0: 610, y0: 0, x1: 902, y1: 200, door: 's', wing: 142 }),
+]);
 
 /** World size and mood (maps.js MAP_DEFS). */
 export const SANDSTONE_DEF = { width: 3300, height: 3200, darkness: 0.6, tint: '#9a6a3a', ground: '#c7a77a' };
@@ -286,7 +299,22 @@ export function buildSandstone(B) {
     const street = around({ x0, y0, x1, y1 }, 40);
     const k = fh(x0, y0, x1, y1);
     const storeys = Math.floor(fh(y0, x1, 3) * 3);
-    const top = Math.max(0, street - g) + 104 + storeys * 36 + Math.round(fh(x1, y0, 5) * 8);
+    // (two to four storeys of sandstone over the street: a skyline of flat roofs and parapets)
+    const top = Math.max(0, street - g) + 120 + storeys * 62 + Math.round(fh(x1, y0, 5) * 24);
+    const wi = SANDSTONE_WALKINS.find((q) => q.x0 === x0 && q.y0 === y0 && q.x1 === x1 && q.y1 === y1);
+    if (wi) {
+      const color = WALLS[Math.floor(k * WALLS.length)], roof = ROOFS[Math.floor(fh(x1, y1) * ROOFS.length)];
+      // (a wing on the house's west side: its stair runs up against the house, from the street to the south)
+      const hx0 = wi.wing ? x0 + wi.wing : x0, hw = x1 - hx0;
+      const L = layoutOf('sandhouse', hw, h);
+      const rec = walkIn(B, {
+        ...L, id: wi.id, type: 'sandhouse', name: wi.name, x: (hx0 + x1) / 2, y: cy, w: hw, h, a: 0, look: 'adobe',
+        color, roof, height: Math.max(150, top), storeys: 1, doors: [{ side: wi.door, at: wi.at || 0, w: 92 }], noWindows: ['n', 's', 'e', 'w'].filter((q) => q !== wi.door),
+      });
+      if (wi.wing) roofTerrace(B, rec, { x0, y0, x1: hx0, y1, rise: 76, run: 104, lane: 90, side: 'e', base: g });
+      void WALKIN_T;
+      return;
+    }
     if (Math.min(w, h) < 70) {
       B.ob('wall', cx, cy, w, h, 0, { color: WALLS[Math.floor(k * WALLS.length)], style: 'courtwall', top: r1(top - 30) });
       return;

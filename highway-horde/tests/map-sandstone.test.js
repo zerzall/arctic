@@ -94,8 +94,11 @@ describe('Sandstone: the map', () => {
     assert.ok(m.obstacles.filter((o) => o.kind === 'tree').length >= 10, 'palms');
     assert.deepEqual(m.look.trees, ['palm']);
     for (const t2 of ['arch', 'tarp', 'stairs', 'ramp', 'doorway', 'window', 'tunnel', 'sitemark', 'lantern', 'gatearch', 'step', 'awning']) assert.ok(m.sandArt.some((a) => a.t === t2), `art piece ${t2}`);
-    assert.equal(m.roofs.length, 4, 'the tunnels are roofed (dark inside)');
-    for (const r of m.roofs) assert.ok(r.dark >= 0.8 && r.style === 'tunnel');
+    // (the other roofs are the walk-in houses' ceilings, shared/maps-walkin.js: tests/walkin.test.js)
+    const tunnels = m.roofs.filter((r) => r.shell === undefined);
+    assert.equal(tunnels.length, 4, 'the tunnels are roofed (dark inside)');
+    for (const r of tunnels) assert.ok(r.dark >= 0.8 && r.style === 'tunnel');
+    assert.equal(m.roofs.length - tunnels.length, m.walkins.length, 'a ceiling over every walk-in house');
     assert.ok(m.lights.length >= 15 && m.fires.length >= 2, 'lanterns and braziers for the night');
   });
 
@@ -401,7 +404,7 @@ async function buildArt(map, tier, day) {
       if (art.obstacle(B, o)) drawn++;
     }
     let roofs = 0;
-    for (const r of map.roofs) if (art.roof(B, r)) roofs++;
+    for (const r of map.roofs) if (r.shell === undefined && art.roof(B, r)) roofs++;
     art.props(B);
     const parts = B.finish();
     let tris = 0;
@@ -448,7 +451,8 @@ describe('Sandstone: the art', () => {
       }
     }
     for (const [k, r] of Object.entries(out)) t.diagnostic(`${k}: ${Math.round(r.tris)} tris in ${r.meshes} meshes, ${r.drawn} obstacles drawn, ${r.halos} halos`);
-    const styled = m.obstacles.filter((o) => o.style).length;
+    // (a walk-in house's walls and furniture are drawn by render3d/world-walkin.js: tests/walkin.test.js)
+    const styled = m.obstacles.filter((o) => o.style && o.walkin === undefined).length;
     assert.equal(out['ultra-day'].drawn, styled, 'every styled obstacle has a model');
     assert.ok(out['ultra-day'].tris < 1500000, `ultra: ${out['ultra-day'].tris} triangles`);
     assert.ok(out['low-day'].tris < out['high-day'].tris && out['high-day'].tris <= out['ultra-day'].tris, 'detail grows with the tier');
