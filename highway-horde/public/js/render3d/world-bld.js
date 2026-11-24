@@ -456,6 +456,23 @@ function gableRoof(B, ctx, opts) {
   return { rise, span, len, axis, map, rotY };
 }
 
+/**
+ * The top of a walk-in building (shared/maps-walkin.js, render3d/world-walkin.js) over walls `wallH` high:
+ * 'flat' (a parapet, coping, roof plant: a shop or apartment block's), 'gable' (a shingle or tile house
+ * roof with its gables) or 'metal' (a low ribbed metal roof: a warehouse, a garage). `o` gives the id
+ * (the hashes), `color` (gables, parapets) and `roof`. Returns the gable's frame or null.
+ */
+export function walkinTop(B, o, L, W, wallH, style, floors = 1) {
+  const arch = style === 'gable' ? 'house' : style === 'metal' ? 'industrial' : 'shops';
+  const ctx = makeCtx(B, o, L, W, { arch, floors, wallH, H: wallH, K: REAL_K });
+  if (o.surf) ctx.surf = o.surf;
+  if (style === 'gable') return gableRoof(B, ctx, { layer: hash01(o.id * 3 + 1) < 0.3 ? DET.tile : DET.shingle, overhang: 10 });
+  if (style === 'metal') return gableRoof(B, ctx, { rise: 34, overhang: 4, gableOverhang: 3, layer: DET.metalroof });
+  flatRoof(B, o, ctx, null, { parapet: o.parapet });
+  if (o.cornice !== false) for (let fi = 0; fi < 4; fi++) cornice(new Face(B, fi, L, W), wallH, shadeHex(o.color, 0.14), 4.2, 1.2);
+  return null;
+}
+
 // ---- archetypes ----------------------------------------------------------------------------------------------------
 
 function shopsOrApartment(B, o, ctx, sign) {

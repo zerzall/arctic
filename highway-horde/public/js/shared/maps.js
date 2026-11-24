@@ -19,6 +19,7 @@ import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
 import { LEVEL_LIST, LEVEL_DEFS, LEVEL_BUILDERS } from './levels/index.js';
 import { placeholderLevel, placeholderSize } from './levels/kit.js';
+import { walkInOf, roofTerrace } from './maps-walkin.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -370,6 +371,35 @@ function createBuilder(meta, seed, defOverride = null) {
       }
     }
     return false;
+  };
+
+  /**
+   * Clearing ground (the campaign's hill and tower plaza) takes a walk-in building (shared/maps-walkin.js)
+   * away whole when any piece of it would go: its walls, furniture, roof, lamps and record (the rest
+   * renumbered). Its floor area and a terrace's terrain stay (bare ground).
+   */
+  const dropWalkins = (hit) => {
+    if (!map.walkins || !map.walkins.length) return;
+    const gone = new Set();
+    for (const o of map.obstacles) if (o.walkin !== undefined && hit(o)) gone.add(o.walkin);
+    if (!gone.size) return;
+    const recs = map.walkins;
+    for (const i of gone) {
+      const rec = recs[i];
+      const c = Math.cos(rec.a), s = Math.sin(rec.a);
+      const inRec = (x, y) => {
+        const dx = x - rec.x, dy = y - rec.y;
+        return Math.abs(dx * c + dy * s) <= rec.w / 2 && Math.abs(-dx * s + dy * c) <= rec.h / 2;
+      };
+      map.lights = map.lights.filter((l) => !inRec(l.x, l.y));
+    }
+    map.obstacles = map.obstacles.filter((o) => o.walkin === undefined || !gone.has(o.walkin));
+    if (map.roofs) map.roofs = map.roofs.filter((r) => r.shell === undefined || !gone.has(r.shell));
+    const remap = new Map();
+    map.walkins = recs.filter((rec) => !gone.has(rec.i));
+    map.walkins.forEach((rec, k) => { remap.set(rec.i, k); rec.i = k; });
+    for (const o of map.obstacles) if (o.walkin !== undefined) o.walkin = remap.get(o.walkin);
+    if (map.roofs) for (const r of map.roofs) if (r.shell !== undefined) r.shell = remap.get(r.shell);
   };
 
   const B = {
@@ -836,7 +866,9 @@ function createBuilder(meta, seed, defOverride = null) {
      */
     clearCircle(cx, cy, r) {
       const inside = (x, y, pad = 0) => Math.hypot(x - cx, y - cy) < r + pad;
-      map.obstacles = map.obstacles.filter((o) => o.kind === 'pier' || o.kind === 'ramp' || !inside(o.x, o.y, Math.max(o.w, o.h) * 0.35));
+      const hit = (o) => o.kind !== 'pier' && o.kind !== 'ramp' && inside(o.x, o.y, Math.max(o.w, o.h) * 0.35);
+      dropWalkins(hit);
+      map.obstacles = map.obstacles.filter((o) => !hit(o));
       map.obstacles.forEach((o, i) => { o.id = i; });
       grid.clear();
       for (const o of map.obstacles) gridAdd(o);
@@ -862,7 +894,9 @@ function createBuilder(meta, seed, defOverride = null) {
     clearRect(x, y, w, h, a = 0, pad = 0) {
       const rect = { x, y, w, h, a };
       const inside = (px, py, p2 = 0) => pointInRect(px, py, rect, pad + p2);
-      map.obstacles = map.obstacles.filter((o) => o.kind === 'pier' || o.kind === 'ramp' || !inside(o.x, o.y, Math.max(o.w, o.h) * 0.25));
+      const hit = (o) => o.kind !== 'pier' && o.kind !== 'ramp' && inside(o.x, o.y, Math.max(o.w, o.h) * 0.25);
+      dropWalkins(hit);
+      map.obstacles = map.obstacles.filter((o) => !hit(o));
       map.obstacles.forEach((o, i) => { o.id = i; });
       grid.clear();
       for (const o of map.obstacles) gridAdd(o);
@@ -1099,8 +1133,9 @@ function buildHighway(B) {
   B.overpass().signs.push({ x: DX0, y: 965, a: WEST, w: 170 }, { x: DX1, y: 1235, a: EAST, w: 170 });
 
   // ---- Mill Road corner: gas station (canopy over the pumps, store, dumpster)
-  B.ob('building', 830, 540, 230, 110, 0, { color: '#b8ad98', roof: '#5b6770' });
-  B.ob('container', 700, 650, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
+  // (walk-in: the store, a counter, shelves, coolers and the stock room; shared/maps-walkin.js)
+  walkInOf(B, 'kiosk', 835, 545, 270, 170, 0, { id: 'hw-gas', name: 'Mill Road Gas', sign: 'GENERAL STORE', color: '#b8ad98', roof: '#5b6770', storeys: 1, back: true, backAt: -60 });
+  B.ob('container', 655, 655, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
   for (const [x, y] of [[800, 670], [960, 670], [800, 760], [960, 760]]) B.ob('pillar', x, y, 18, 18, 0);
   for (const x of [850, 910]) B.ob('pump', x, 715, 24, 46, 0, { color: rng.pick(['#b53a2e', '#c9c4b6', '#2f5f8a']) });
   B.vehicle('car', 880, 655, 0.05, { jitter: 0.5, wrecked: rng.chance(0.3) });
@@ -1113,19 +1148,27 @@ function buildHighway(B) {
 
   // ---- County Road 12 corner: motel (the neon sign), diner, parked cars
   B.ob('building', 6180, 1640, 420, 110, 0, { color: '#a58f73', roof: '#6d5a4a' });
-  B.ob('building', 6000, 640, 200, 100, 0, { color: '#b9b2a4', roof: '#7a3b2e' });
-  B.ob('container', 6150, 600, 64, 36, 0, { color: '#2e5d3a', roof: '#294f33' });
+  // (walk-in: a corner deli with three storeys of flats over it)
+  walkInOf(B, 'shop', 6000, 600, 300, 200, 0, { id: 'hw-deli', name: 'County Deli', sign: 'DELI & GROCERY', color: '#b9b2a4', roof: '#7a3b2e', storeys: 3, door: -60, back: true });
+  B.ob('container', 6235, 640, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
   for (const [kind, x, a] of [['car', 6029, Math.PI / 2], ['van', 6145, Math.PI / 2 - 0.05], ['car', 6319, Math.PI / 2 + 0.08]]) {
     B.vehicle(kind, x, 1465, a, { wrecked: rng.chance(0.3) });
   }
-  B.vehicle('car', 5880, 738, 0.1, { wrecked: rng.chance(0.4) });
+  B.vehicle('car', 5890, 772, 0.1, { wrecked: rng.chance(0.4) });
 
   // ---- farms
-  B.ob('building', 4600, 300, 200, 140, 0, { color: '#9a8f7e', roof: '#6e3b2f' });   // farmhouse
+  walkInOf(B, 'house', 4600, 300, 260, 190, 0, { id: 'hw-farmhouse', name: 'Farmhouse', color: '#9a8f7e', roof: '#6e3b2f', storeys: 2, top: 'gable', door: -40, back: true });   // farmhouse (walk-in)
   B.ob('building', 4785, 250, 90, 70, 0.05, { color: '#7a6a55', roof: '#5b5048' }); // shed
-  B.ob('building', 4700, 1900, 200, 150, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // barn
+  // the red barn (walk-in: a high hall, a roll-up door to the highway, racks and a tack room)
+  walkInOf(B, 'warehouse', 4700, 1900, 280, 200, 0, {
+    id: 'hw-barn', name: 'Red Barn', color: '#7d3a2c', roof: '#5a2b22', storeys: 1, top: 'metal', height: 200,
+    doors: [{ side: 'n', at: 20, w: 130, shutter: true }, { side: 'e', at: 30, w: 90 }],
+  });
   B.ob('building', 6600, 1900, 170, 120, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // second barn
-  B.ob('pickup', 4700, 390, 100, 46, 1.4, { color: '#6d4c3a' });
+  B.ob('pickup', 4800, 410, 100, 46, 1.4, { color: '#6d4c3a' });
+  // an apartment block south of Mill Road, a stair up the side wing onto its roof terrace (walk-in)
+  const apts = walkInOf(B, 'apartment', 1480, 1800, 300, 260, 0, { id: 'hw-apts', name: 'Mill Road Apartments', color: '#8a5a44', roof: '#4a4644', storeys: 4, door: 40 });
+  roofTerrace(B, apts, { x0: 1630, y0: 1670, x1: 1830, y1: 1930, rise: 110, run: 140, lane: 96, side: 'w' });
   B.runX('wall', 640, 4150, 4300, [], 6, { color: '#6b5433', solid: false, maxLen: 280 });
   B.runX('wall', 640, 4900, 5300, [], 6, { color: '#6b5433', solid: false, maxLen: 280 });
   B.runX('wall', 1580, 4400, 5100, [[4640, 4760]], 6, { color: '#6b5433', solid: false, maxLen: 280 });
@@ -1156,8 +1199,8 @@ function buildHighway(B) {
   B.light(880, 702, 220, '#f4efcf', 0.15);
   B.light(6180, 1560, 200, '#ff7aa2', 0.25);
   B.light(6000, 710, 150, '#ffd9a0', 0.1);
-  B.light(4600, 390, 150, '#ffcf80', 0.15);
-  B.light(4700, 1990, 130, '#ffcf80', 0.1);
+  B.light(4560, 420, 150, '#ffcf80', 0.15);
+  B.light(4540, 1990, 130, '#ffcf80', 0.1);
   B.light(900, 1790, 130, '#ffcf80', 0.2);
 
   // ---- traffic signals at both junctions (broken or flickering: see the renderers)
