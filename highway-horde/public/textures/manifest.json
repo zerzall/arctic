@@ -2,7 +2,7 @@
  "version": 1,
  "seed": 1,
  "render": 2048,
- "bytes": 232021076,
+ "bytes": 231361819,
  "sets": {
   "brick_red": {
    "about": "red clay brick wall in running bond, photo-scanned",
@@ -679,7 +679,7 @@
     "rah": "stucco/rah.png",
     "mask": "stucco/mask.png"
    },
-   "bytes": 5958658,
+   "bytes": 5894326,
    "mean": [
     0.4699,
     0.4395,
@@ -758,16 +758,16 @@
     "rah": "plaster/rah.png",
     "mask": "plaster/mask.png"
    },
-   "bytes": 4326371,
+   "bytes": 4310817,
    "mean": [
-    0.6332,
+    0.6328,
     0.5668,
-    0.451
+    0.4511
    ],
    "meanAll": [
-    0.6332,
+    0.6327,
     0.5667,
-    0.451
+    0.4511
    ],
    "rough": 0.9699,
    "height": 0.1314,
@@ -1846,16 +1846,16 @@
     "rah": "metal_painted/rah.png",
     "mask": "metal_painted/mask.png"
    },
-   "bytes": 2295008,
+   "bytes": 2030876,
    "mean": [
-    0.2565,
-    0.3035,
-    0.3175
+    0.2578,
+    0.3033,
+    0.3172
    ],
    "meanAll": [
-    0.2566,
-    0.3035,
-    0.3175
+    0.2579,
+    0.3034,
+    0.3173
    ],
    "rough": 0.2836,
    "height": 0.1798,
@@ -1925,16 +1925,16 @@
     "rah": "corrugated/rah.png",
     "mask": "corrugated/mask.png"
    },
-   "bytes": 3844640,
+   "bytes": 3765459,
    "mean": [
-    0.236,
+    0.2362,
     0.245,
-    0.2244
+    0.2243
    ],
    "meanAll": [
-    0.236,
+    0.2362,
     0.245,
-    0.2244
+    0.2243
    ],
    "rough": 0.7023,
    "height": 0.5047,
@@ -2084,16 +2084,16 @@
     "rah": "metal_roof/rah.png",
     "mask": "metal_roof/mask.png"
    },
-   "bytes": 3154407,
+   "bytes": 3020620,
    "mean": [
-    0.4125,
-    0.1857,
-    0.1275
+    0.412,
+    0.1863,
+    0.1279
    ],
    "meanAll": [
-    0.4125,
-    0.1857,
-    0.1275
+    0.412,
+    0.1863,
+    0.1279
    ],
    "rough": 0.4436,
    "height": 0.3512,
@@ -2515,16 +2515,16 @@
     "rah": "siding/rah.png",
     "mask": "siding/mask.png"
    },
-   "bytes": 2049311,
+   "bytes": 2037419,
    "mean": [
-    0.5341,
-    0.4732,
-    0.3808
+    0.5335,
+    0.4733,
+    0.3812
    ],
    "meanAll": [
-    0.5341,
-    0.4732,
-    0.3808
+    0.5335,
+    0.4733,
+    0.3812
    ],
    "rough": 0.9771,
    "height": 0.4719,
@@ -3057,16 +3057,16 @@
     "rah": "drywall/rah.png",
     "mask": "drywall/mask.png"
    },
-   "bytes": 5817542,
+   "bytes": 5727163,
    "mean": [
-    0.725,
+    0.7249,
     0.6495,
-    0.5713
+    0.5712
    ],
    "meanAll": [
-    0.725,
+    0.7249,
     0.6495,
-    0.5713
+    0.5712
    ],
    "rough": 0.7576,
    "height": 0.2615,

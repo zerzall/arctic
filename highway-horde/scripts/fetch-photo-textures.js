@@ -52,6 +52,8 @@ const FLAT_CELLS = [0, 0, 0, -0.3];
  *              — bricks, boards, ribs, tiles — would not line up with a shifted copy)
  *   cells      element grid override (FLAT_CELLS for element photos; omitted → the surface's default)
  *   chroma     how far the chroma is pulled to the replaced set's (0 = the photo's own, 1 = the old)
+ *   desat      how much of the photo's hue variation is flattened to its mean hue (sets that mostly
+ *              take the object's own colour: the paint's blotches must not tint a yellow bus green)
  *   tintH      the tint follows the height by this gain (brick faces vs mortar)
  *   metal      [max, saturation below which a texel counts as bare metal] (galvanising, tread plate)
  *   about      what the set now is
@@ -65,8 +67,8 @@ export const PHOTO = {
   concrete_slab: { id: 'concrete_floor_worn_001', shift: ANY, chroma: 0.5, about: 'worn concrete floor slab, photo-scanned' },
   runway: { id: 'hangar_concrete_floor', shift: ANY, chroma: 0.5, about: 'stained hangar / apron concrete, photo-scanned' },
   sidewalk: { id: 'concrete_pavement', shift: NONE, cells: FLAT_CELLS, chroma: 0.5, about: 'concrete sidewalk slabs, photo-scanned' },
-  stucco: { id: 'white_stucco_02', shift: ANY, chroma: 0.5, about: 'rough stucco render, photo-scanned' },
-  plaster: { id: 'worn_plaster_wall', shift: ANY, chroma: 0.5, about: 'worn plaster wall with flaked patches, photo-scanned' },
+  stucco: { id: 'white_stucco_02', desat: 0.5, shift: ANY, chroma: 0.5, about: 'rough stucco render, photo-scanned' },
+  plaster: { id: 'worn_plaster_wall', desat: 0.4, shift: ANY, chroma: 0.5, about: 'worn plaster wall with flaked patches, photo-scanned' },
   plaster_bleached: { id: 'coral_fort_wall_01', shift: ANY, chroma: 0.5, about: 'sun-bleached lime plaster on an old fort wall, photo-scanned' },
   adobe: { id: 'rough_plaster_broken', shift: ANY, chroma: 0.4, about: 'broken mud / lime render over stone, photo-scanned' },
   asphalt: { id: 'worn_asphalt', shift: ANY, chroma: 0.6, about: 'worn asphalt road surface, photo-scanned' },
@@ -79,22 +81,22 @@ export const PHOTO = {
   rock: { id: 'rock_boulder_dry', shift: ANY, chroma: 0.4, about: 'dry weathered boulder rock face, photo-scanned' },
   sandstone: { id: 'cliff_side', shift: ANY, chroma: 0.3, about: 'layered sandstone cliff face, photo-scanned' },
   cracked_earth: { id: 'mud_cracked_dry_03', shift: ANY, chroma: 0.4, about: 'dry cracked mud plates, photo-scanned' },
-  metal_painted: { id: 'blue_metal_plate', shift: ANY, chroma: 0.8, about: 'painted sheet steel with wear and streaks, photo-scanned' },
-  corrugated: { id: 'corrugated_iron', shift: NONE, chroma: 0.6, about: 'corrugated iron sheet, photo-scanned' },
+  metal_painted: { id: 'blue_metal_plate', desat: 0.85, shift: ANY, chroma: 0.8, about: 'painted sheet steel with wear and streaks, photo-scanned' },
+  corrugated: { id: 'corrugated_iron', desat: 0.6, shift: NONE, chroma: 0.6, about: 'corrugated iron sheet, photo-scanned' },
   corrugated_rust: { id: 'rusty_corrugated_iron', shift: NONE, chroma: 0.3, metal: [0.75, 0.12], about: 'galvanised corrugated iron rusting through, photo-scanned' },
-  metal_roof: { id: 'box_profile_metal_sheet', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'box-profile metal roof sheet, photo-scanned' },
+  metal_roof: { id: 'box_profile_metal_sheet', desat: 0.5, shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'box-profile metal roof sheet, photo-scanned' },
   steel_rusted: { id: 'rusty_metal_05', shift: ANY, chroma: 0.3, about: 'rusted steel plate, photo-scanned' },
   rail_rust: { id: 'rust_coarse_01', shift: ANY, chroma: 0.3, about: 'coarse rust on steel, photo-scanned' },
   diamond_plate: { id: 'metal_plate', shift: NONE, chroma: 0.5, metal: [0.85, 0.14], about: 'worn steel diamond tread plate, photo-scanned' },
   planks: { id: 'weathered_planks', shift: NONE, chroma: 0.5, about: 'weathered wooden boards, photo-scanned' },
-  siding: { id: 'brown_planks_07', shift: NONE, chroma: 0.6, about: 'weathered lap siding boards, photo-scanned' },
+  siding: { id: 'brown_planks_07', desat: 0.4, shift: NONE, chroma: 0.6, about: 'weathered lap siding boards, photo-scanned' },
   shutter_blue: { id: 'blue_painted_planks', shift: NONE, chroma: 0.3, about: 'sun-faded blue painted boards (shutters), photo-scanned' },
   bark: { id: 'bark_brown_02', shift: ANY, chroma: 0.4, about: 'tree bark, photo-scanned' },
   shingles: { id: 'grey_roof_tiles_02', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, tintH: 1, about: 'grey slate roof tiles, photo-scanned' },
   terracotta: { id: 'roof_tiles_14', shift: NONE, cells: FLAT_CELLS, chroma: 0.3, tintH: 1, about: 'clay barrel roof tiles, photo-scanned' },
   linoleum: { id: 'old_linoleum_flooring_01', shift: NONE, chroma: 0.7, about: 'old patterned linoleum flooring, photo-scanned' },
   carpet: { id: 'dirty_carpet', shift: ANY, cells: FLAT_CELLS, chroma: 0.6, about: 'dirty commercial carpet, photo-scanned' },
-  drywall: { id: 'ceiling_interior', shift: ANY, chroma: 0.6, about: 'painted interior wall / ceiling stipple, photo-scanned' },
+  drywall: { id: 'ceiling_interior', desat: 0.6, shift: ANY, chroma: 0.6, about: 'painted interior wall / ceiling stipple, photo-scanned' },
   wallpaper: { id: 'decrepit_wallpaper', shift: NONE, chroma: 0.4, about: 'decrepit peeling patterned wallpaper, photo-scanned' },
   terrazzo: { id: 'terrazzo_tiles', shift: NONE, cells: FLAT_CELLS, chroma: 0.5, about: 'terrazzo floor tiles, photo-scanned' },
   marble: { id: 'marble_01', shift: NONE, cells: FLAT_CELLS, chroma: 0.5, about: 'polished stone floor slabs, photo-scanned' },
@@ -259,9 +261,15 @@ export function packSet(name, cfg, old, imgs, dx, k) {
   for (let i = 0; i < NN; i++) hMean += h[i];
   hMean /= NN;
   const baseTint = old.tint ?? 0.7;
+  const ds = cfg.desat || 0;
+  const cm = [mr * gain[0], mg * gain[1], mb * gain[2]].map((v) => v / yOld);   // mean chroma
   for (let i = 0; i < NN; i++) {
     const p = i * 3;
-    const lr = alb[p] * gain[0], lg = alb[p + 1] * gain[1], lb = alb[p + 2] * gain[2];
+    let lr = alb[p] * gain[0], lg = alb[p + 1] * gain[1], lb = alb[p + 2] * gain[2];
+    if (ds) {
+      const y = Y(lr, lg, lb);
+      lr += (y * cm[0] - lr) * ds; lg += (y * cm[1] - lg) * ds; lb += (y * cm[2] - lb) * ds;
+    }
     albedo[p] = q8(toSrgb(clamp01(lr))); albedo[p + 1] = q8(toSrgb(clamp01(lg))); albedo[p + 2] = q8(toSrgb(clamp01(lb)));
     let nx = nor[p], ny = nor[p + 1], nz = Math.max(1e-3, nor[p + 2]);
     const l = Math.hypot(nx, ny, nz);
