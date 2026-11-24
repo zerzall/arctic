@@ -585,7 +585,7 @@ function skylineTexture() {
  * tiled window texture (repeats scaled to each block's size), vertex-shaded darker toward
  * the ground. No collision; the fog swallows them in the distance.
  */
-export function makeSkyline(list) {
+export function makeSkyline(list, tile = 64) {
   const pos = [], nor = [], uv = [], col = [], idx = [];
   const base = new THREE.Color();
   let vi = 0;
@@ -600,7 +600,8 @@ export function makeSkyline(list) {
     const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, z0 = s.y - s.d / 2, z1 = s.y + s.d / 2, h = s.h;
     const tone = 0.75 + hash01(s.s) * 0.5;
     base.setHSL(0.58 + (hash01(s.s + 3) - 0.5) * 0.05, 0.12, 0.42 * tone);
-    const uw = s.w / 64, ud = s.d / 64, vh = h / 64;
+    // (`tile` units of facade per repeat of the 4 x 4 window texture: 64 for the campaign's, a storey of 90 for real scale)
+    const uw = s.w / tile, ud = s.d / tile, vh = h / tile;
     const k = tone;
     quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1], uw, vh, k);
     quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1], uw, vh, k * 0.9);

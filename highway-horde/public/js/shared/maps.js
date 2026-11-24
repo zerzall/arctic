@@ -19,7 +19,7 @@ import { CAMPAIGN_SITES, buildCampaign } from './maps-campaign.js';
 import { HIDEOUT_LIST, HIDEOUT_DEFS, HIDEOUT_BUILDERS, checkHub } from './maps-hideouts.js';
 import { LEVEL_LIST, LEVEL_DEFS, LEVEL_BUILDERS } from './levels/index.js';
 import { placeholderLevel, placeholderSize } from './levels/kit.js';
-import { walkInOf, roofTerrace } from './maps-walkin.js';
+import { walkIn, walkInOf, roofTerrace } from './maps-walkin.js';
 
 /** Maps in lobby order. */
 export const MAP_LIST = [
@@ -1149,7 +1149,7 @@ function buildHighway(B) {
   // ---- County Road 12 corner: motel (the neon sign), diner, parked cars
   B.ob('building', 6180, 1640, 420, 110, 0, { color: '#a58f73', roof: '#6d5a4a' });
   // (walk-in: a corner deli with three storeys of flats over it)
-  walkInOf(B, 'shop', 6000, 600, 300, 200, 0, { id: 'hw-deli', name: 'County Deli', sign: 'DELI & GROCERY', color: '#b9b2a4', roof: '#7a3b2e', storeys: 3, door: -60, back: true });
+  walkInOf(B, 'shop', 6000, 600, 300, 240, 0, { id: 'hw-deli', name: 'County Deli', sign: 'DELI & GROCERY', color: '#b9b2a4', roof: '#7a3b2e', storeys: 3, door: -60, back: true });
   B.ob('container', 6235, 640, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
   for (const [kind, x, a] of [['car', 6029, Math.PI / 2], ['van', 6145, Math.PI / 2 - 0.05], ['car', 6319, Math.PI / 2 + 0.08]]) {
     B.vehicle(kind, x, 1465, a, { wrecked: rng.chance(0.3) });
@@ -1160,9 +1160,10 @@ function buildHighway(B) {
   walkInOf(B, 'house', 4600, 300, 260, 190, 0, { id: 'hw-farmhouse', name: 'Farmhouse', color: '#9a8f7e', roof: '#6e3b2f', storeys: 2, top: 'gable', door: -40, back: true });   // farmhouse (walk-in)
   B.ob('building', 4785, 250, 90, 70, 0.05, { color: '#7a6a55', roof: '#5b5048' }); // shed
   // the red barn (walk-in: a high hall, a roll-up door to the highway, racks and a tack room)
-  walkInOf(B, 'warehouse', 4700, 1900, 280, 200, 0, {
+  // (turned round: its front, the roll-up door, faces the highway; a side door to the west)
+  walkInOf(B, 'warehouse', 4700, 1900, 280, 200, Math.PI, {
     id: 'hw-barn', name: 'Red Barn', color: '#7d3a2c', roof: '#5a2b22', storeys: 1, top: 'metal', height: 200,
-    doors: [{ side: 'n', at: 20, w: 130, shutter: true }, { side: 'e', at: 30, w: 90 }],
+    doors: [{ side: 's', at: -20, w: 130, shutter: true }, { side: 'e', at: 30, w: 90 }],
   });
   B.ob('building', 6600, 1900, 170, 120, 0, { color: '#7d3a2c', roof: '#5a2b22' }); // second barn
   B.ob('pickup', 4800, 410, 100, 46, 1.4, { color: '#6d4c3a' });
@@ -1313,7 +1314,8 @@ function buildTruckStop(B) {
   B.line('stop', 1630, 2066, 1770, 2066, 6);
 
   // ---- fuel station: store, pump islands, canopy pillars, the fuel delivery
-  B.ob('building', 880, 1040, 380, 170, 0, { color: '#b8ad98', roof: '#5b6770' });
+  // (walk-in: the fuel store, its counter, aisles, coolers and stock room; shared/maps-walkin.js)
+  walkInOf(B, 'kiosk', 880, 1040, 380, 180, 0, { id: 'ts-store', name: 'Last Chance Fuel', sign: 'GENERAL STORE', color: '#b8ad98', roof: '#5b6770', storeys: 2, back: true });
   B.ob('container', 1130, 1060, 60, 34, Math.PI / 2, { color: '#d9d9d0', roof: '#c9c9c0' }); // propane cage
   B.ob('container', 620, 1080, 64, 36, 0, { color: '#2e5d3a', roof: '#294f33' });            // dumpster
   for (const x of [760, 900, 1040]) {
@@ -1368,11 +1370,21 @@ function buildTruckStop(B) {
 
   // ---- motel, garage and junkyard to the north
   B.ob('building', 700, 440, 460, 120, 0, { color: '#a58f73', roof: '#6d5a4a' });
-  B.ob('building', 1010, 400, 120, 200, 0, { color: '#a58f73', roof: '#6d5a4a' });
+  // the motel office (walk-in: the front desk, the keys, a sofa)
+  walkIn(B, {
+    id: 'ts-office', type: 'office', name: 'Motel Office', sign: 'MOTEL OFFICE', x: 1015, y: 400, w: 150, h: 220, a: 0, storeys: 2,
+    color: '#a58f73', roof: '#6d5a4a', kind: 'house', floor: 'carpet', wall: 'wallpaper', ceil: 116,
+    doors: [{ side: 's', at: 0, w: 90 }],
+    props: [{ k: 'counter', x: -20, y: 30, w: 70, h: 26, style: 'reception' }, { k: 'cabinet', x: -45, y: -78, w: 26, h: 40, style: 'filing' }, { k: 'desk', x: 40, y: -62, w: 34, h: 56, style: 'sofa', a: 0 }],
+    lights: [{ x: 0, y: -20, r: 200, color: '#ffd49a', flicker: 0.2 }],
+  });
   B.vehicle('car', 540, 578, Math.PI / 2, { wrecked: true });
   B.vehicle('van', 770, 580, Math.PI / 2 - 0.05);
   B.vehicle('car', 950, 575, Math.PI / 2 + 0.1, { wrecked: rng.chance(0.5) });
-  B.ob('building', 2400, 470, 240, 150, 0, { color: '#8d8a82', roof: '#4f5a60' });   // garage
+  // the garage (walk-in: a roll-up door, workbench, tool wall, tyres)
+  walkInOf(B, 'garage', 2400, 470, 280, 190, 0, { id: 'ts-garage', name: 'Garage', sign: 'AUTO PARTS', color: '#8d8a82', roof: '#4f5a60', top: 'metal', storeys: 1, height: 170, doors: [{ side: 's', at: -30, w: 150, shutter: true }] });
+  // a house on the west lot, its door to the forecourt (walk-in)
+  walkInOf(B, 'house', 300, 1150, 220, 170, -Math.PI / 2, { id: 'ts-house', color: '#c9c0a8', roof: '#4a4038', storeys: 2, top: 'gable', door: 30 });
   B.vehicle('car', 2330, 600, 0.05, { wrecked: true });
   for (const [x, y, a] of [[2720, 420, 0.4], [2850, 480, -0.9], [2980, 400, 2.3], [2780, 590, 1.2], [3000, 570, 0.1]]) {
     B.vehicle(rng.pick(['car', 'car', 'suv', 'pickup']), x, y, a, { wrecked: true });
@@ -1397,7 +1409,6 @@ function buildTruckStop(B) {
 
   // ---- lights: canopy floods, sodium lot lamps, neon, barrel fires
   for (const x of [760, 1040]) B.light(x, 1410, 230, '#f4efcf', 0);
-  B.light(900, 1060, 170, '#bfe4ff', 0.1);
   B.light(DINER.x, DINER.y + 110, 200, '#ff7aa2', 0.25);  // neon sign
   B.light(DINER.x, DINER.y, 150, '#ffd9a0', 0.05);
   for (const [x, y] of [[1400, 1300], [2000, 1300], [2400, 1245], [2800, 1245], [1700, 1650], [900, 1760], [2660, 1800], [760, 700]]) {
@@ -1407,7 +1418,7 @@ function buildTruckStop(B) {
   B.fire(2470, 1245, 12);
   B.fire(2600, 620, 12);
   B.light(2120, 1600, 140, '#ffe2a0', 0.1);
-  B.light(2400, 560, 130, '#cfe6ff', 0.3);
+  B.light(2400, 590, 130, '#cfe6ff', 0.3);
 
   // ---- decor
   B.skids(14, 400, 2090, 3200, 2210, 0);
@@ -1531,7 +1542,9 @@ function buildBridge(B) {
   B.vehicle('suv', 620, 1085, 0.1);
   B.vehicle('car', 380, 910, Math.PI + 0.3, { wrecked: true });
   B.vehicle('pickup', 1350, 1500, Math.PI / 2 + 0.2, { wrecked: true });
-  B.ob('building', 1210, 400, 150, 110, 0.03, { color: '#6b5a44', roof: '#4a3f33' });     // shack
+  walkInOf(B, 'house', 1200, 410, 200, 150, 0.03, { id: 'br-cabin', name: 'Fishing Cabin', color: '#6b5a44', roof: '#4a3f33', storeys: 1, top: 'gable' });   // the shack (walk-in)
+  // flats over the river road (walk-in, the door to the road)
+  walkInOf(B, 'apartment', 980, 1330, 300, 220, Math.PI, { id: 'br-flats', name: 'River Flats', color: '#8a5a44', roof: '#4a4644', storeys: 4 });
   B.vehicle('pickup', 1420, 520, 0.05, { color: '#3b4a3a' });
   B.ob('wall', 1170, 560, 220, 6, 0, { color: '#6b5433', solid: false });                  // shack fence
   B.forest(600, 420, 380, 220, 10);
@@ -1545,7 +1558,8 @@ function buildBridge(B) {
   B.vehicle('car', 3450, 1090, Math.PI - 0.2);
   B.vehicle('car', 3700, 920, Math.PI + 0.35, { wrecked: true });
   B.vehicle('suv', 2700, 1760, -Math.PI / 2 + 0.1, { wrecked: true });
-  B.ob('building', 2960, 1440, 200, 120, 0, { color: '#7a6a55', roof: '#3f4a52' });       // bait shop
+  walkInOf(B, 'shop', 2960, 1440, 260, 170, 0, { id: 'br-bait', name: 'Bait & Tackle', sign: 'GENERAL STORE', color: '#7a6a55', roof: '#3f4a52', storeys: 2, door: -40 });   // bait shop (walk-in)
+  walkInOf(B, 'house', 3150, 560, 240, 180, 0, { id: 'br-house', color: '#c9c0a8', roof: '#4a3f33', storeys: 2, top: 'gable', door: 30 });
   B.vehicle('car', 3000, 1560, 0.05);
   B.forest(3450, 420, 380, 230, 10);
   B.forest(3450, 1560, 380, 230, 10);
@@ -1561,8 +1575,8 @@ function buildBridge(B) {
   }
   for (const x of [400, 1000, 3000, 3600]) B.lamp(x, 1170, { color: SODIUM_COLOR, r: 230 });
   B.light(APC.x, APC.y, 180, '#a8d8ff', 0);
-  B.light(1210, 480, 140, '#ffcf80', 0.2);
-  B.light(2960, 1520, 150, '#ffcf80', 0.1);
+  B.light(1210, 505, 140, '#ffcf80', 0.2);
+  B.light(2960, 1545, 150, '#ffcf80', 0.1);
   B.fire(1290, 330, 12);    // campfire by the shack
   B.fire(3120, 980, 14);    // barrel at the roadblock
 
@@ -1728,15 +1742,15 @@ function buildCheckpoint(B) {
   B.vehicle('truck', C - 1100, C - 90, Math.PI + 0.2, { wrecked: true });
 
   // ---- corners: farm NE, gas station ruin SW, houses SE, woods
-  B.ob('building', C + 1050, C - 1040, 220, 150, 0, { color: '#9a8f7e', roof: '#6e3b2f' });
+  walkInOf(B, 'house', C + 1050, C - 1040, 260, 180, 0, { id: 'cp-farmhouse', name: 'Farmhouse', color: '#9a8f7e', roof: '#6e3b2f', storeys: 2, top: 'gable', door: -50 });
   B.ob('building', C + 1280, C - 880, 150, 110, 0.05, { color: '#7d3a2c', roof: '#5a2b22' });
-  B.ob('building', C - 1040, C + 840, 260, 110, 0, { color: '#b8ad98', roof: '#5b6770' });
+  walkInOf(B, 'kiosk', C - 1040, C + 840, 280, 160, 0, { id: 'cp-gas', name: 'Gas Station', sign: 'GENERAL STORE', color: '#b8ad98', roof: '#5b6770', storeys: 1, back: true });
   B.ob('pump', C - 1100, C + 1000, 24, 46, 0, { color: '#b53a2e' });
   B.ob('pump', C - 940, C + 1000, 24, 46, 0, { color: '#b53a2e' });
   B.vehicle('car', C - 880, C + 1060, 0.4, { wrecked: true });
-  B.ob('building', C + 900, C + 880, 180, 140, 0.03, { color: '#8c7b6a', roof: '#4f4a52' });
+  walkInOf(B, 'house', C + 900, C + 880, 220, 170, 0.03, { id: 'cp-house', color: '#8c7b6a', roof: '#4f4a52', storeys: 2, top: 'gable' });
   B.ob('building', C + 1200, C + 850, 160, 140, -0.02, { color: '#9a917f', roof: '#5a3f35' });
-  B.ob('building', C + 960, C + 1200, 170, 130, 0, { color: '#7f8a7a', roof: '#4a3f33' });
+  walkInOf(B, 'shop', C + 960, C + 1200, 240, 170, Math.PI, { id: 'cp-store', name: 'Corner Store', sign: 'LIQUOR', color: '#7f8a7a', roof: '#4a3f33', storeys: 3, door: 30 });
   B.forest(C - 850, C - 950, 380, 330, 9);
   B.forest(C + 1000, C - 600, 300, 150, 3);
   B.forest(C - 950, C + 550, 300, 200, 5);
@@ -1759,7 +1773,7 @@ function buildCheckpoint(B) {
   }
   B.fire(C - 190, C - 330, 12);
   B.fire(C + 330, C + 440, 12);
-  B.light(C + 1050, C - 950, 140, '#ffcf80', 0.15);
+  B.light(C + 1050, C - 925, 140, '#ffcf80', 0.15);
 
   // ---- decor
   B.skids(12, R0, 200, R1, K0 - 100, Math.PI / 2);

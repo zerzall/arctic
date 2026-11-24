@@ -301,7 +301,7 @@ export function createWalkins(ctx, deps = {}) {
     const s = rec.stair;
     const cx = (s.x0 + s.x1) / 2, cy = (s.y0 + s.y1) / 2;
     // (the frame stands at ground 0: the terrain under the wing's centre is the terrace)
-    B.obj(cx, cy, 0, 7900 + rec.i, -gy(cx, cy));
+    B.obj(cx, cy, 0, 7900 + rec.i, (s.base || 0) - gy(cx, cy));
     B.setJitter(0.02);
     const t = rec.t, rise = s.rise;
     const L = s.x1 - s.x0, W = s.y1 - s.y0;

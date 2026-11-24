@@ -36,6 +36,7 @@ import { createLevelArt, levelBuckets } from './levels/index.js';
 import { createGates } from './gates3d.js';
 import { createRoofs } from './roofs3d.js';
 import { createWalkins } from './world-walkin.js';
+import { skylineOf } from './world-skyline.js';
 import { createIndoor, patchIndoor, patchIndoorTree } from './indoor.js';
 import { createDecals } from './decals.js';
 import { nearestSection } from '../shared/level.js';
@@ -561,6 +562,19 @@ export function createWorld(ctx, deps) {
       root.add(sky2);
       disposables.push(sky2.geometry, sky2.material, sky2.material.map);
     }
+  }
+
+  // ---- the open maps' (and the town levels') distant skyline past the tree line: one mesh ----
+  let skyline = null;
+  try {
+    const list = skylineOf(map);
+    if (list.length) {
+      skyline = makeSkyline(list, 360);
+      root.add(skyline);
+      disposables.push(skyline.geometry, skyline.material, skyline.material.map);
+    }
+  } catch (err) {
+    console.warn('world: skyline failed', err);
   }
 
   // ---- fx meshes ----

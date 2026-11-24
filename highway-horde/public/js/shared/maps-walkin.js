@@ -73,7 +73,7 @@ export function walkIn(B, spec) {
     ceil, storeys, H: round1(H), top: spec.top || 'flat',
     color: spec.color || '#a89a84', trim: spec.trim || '#d9d2bf', roof: spec.roof || '#4e4a45',
     floor: spec.floor || 'linoleum', wall: spec.wall || 'plaster', kind: spec.kind || 'plain',
-    sign: spec.sign || null,
+    sign: spec.sign || null, look: spec.look || null,
     doors: [], windows: [], parts: [], props: [], lights: [], stair: null,
   };
   map.walkins.push(rec);
@@ -152,8 +152,28 @@ export function walkIn(B, spec) {
     rec.parts.push({ x1: round1(p.x1), y1: round1(p.y1), x2: round1(p.x2), y2: round1(p.y2), gaps: gaps.map(([g0, g1]) => [round1(g0), round1(g1)]), look: p.look || null });
   }
 
-  // ---- furniture: obstacles the art draws by style
+  // ---- furniture: obstacles the art draws by style (never in front of a doorway: the way in stays clear)
+  const clearZones = [];
+  for (const d of rec.doors) {
+    const L = d.side === 'n' || d.side === 's';
+    const sg = d.side === 's' || d.side === 'e' ? 1 : -1;
+    const edge = (L ? h : w) / 2 - t;
+    // [cx, cy, half x, half y] in the local frame: the doorway's width plus a margin, 64 deep inside
+    if (L) clearZones.push([d.at, sg * (edge - 32), d.w / 2 + 8, 34]);
+    else clearZones.push([sg * (edge - 32), d.at, 34, d.w / 2 + 8]);
+  }
+  for (const p of rec.parts) {
+    const along = Math.abs(p.y2 - p.y1) < 0.5;
+    for (const [g0, g1] of p.gaps) {
+      const m = (g0 + g1) / 2, hw2 = (g1 - g0) / 2 + 6;
+      if (along) clearZones.push([p.x1 + Math.sign(p.x2 - p.x1) * m, p.y1, hw2, 40]);
+      else clearZones.push([p.x1, p.y1 + Math.sign(p.y2 - p.y1) * m, 40, hw2]);
+    }
+  }
   for (const q of spec.props || []) {
+    const qa = q.a || 0, qc = Math.abs(Math.cos(qa)), qs = Math.abs(Math.sin(qa));
+    const ex = (q.w * qc + q.h * qs) / 2, ey = (q.w * qs + q.h * qc) / 2;
+    if (clearZones.some(([cx, cy, hx, hy]) => Math.abs(q.x - cx) < ex + hx && Math.abs(q.y - cy) < ey + hy)) continue;
     const [px, py] = P(q.x, q.y);
     const opts = { color: q.color };
     if (q.solid !== undefined) opts.solid = q.solid;
@@ -185,12 +205,13 @@ export function walkIn(B, spec) {
  * terrace's parapet) and the stair's inner wall; the building's own wall closes the x0 side.
  * @param {object} B map builder
  * @param {object} rec the building's record (walkIn's result)
- * @param {{ x0, y0, x1, y1, rise, lane, run, side ('w'|'e': which side of the wing the stair runs on) }} o world rect
+ * @param {{ x0, y0, x1, y1, rise, lane, run, side ('w'|'e': which side of the wing the stair runs on), base (the ground's height) }} o world rect
  */
 export function roofTerrace(B, rec, o) {
   const map = B.map;
   const t = WALKIN_T;
   const rise = o.rise || 120;
+  const base = o.base || 0;
   const lane = o.lane || 96;
   const run = o.run || Math.round(rise * 1.4);
   const west = (o.side || 'w') === 'w';
@@ -201,12 +222,12 @@ export function roofTerrace(B, rec, o) {
   // terrain: the terrace plateau over the wing (but the flight), the flight of fine steps
   const terrain = map.terrain || (map.terrain = { hills: [], plateaus: [] });
   const plat = (a0, b0, a1, b1, hh) => terrain.plateaus.push({ x0: round1(a0), y0: round1(b0), x1: round1(a1), y1: round1(b1), h: r3(hh), edge: 0 });
-  plat(x0, y0, x1, top, rise);                                     // the terrace and the landing
-  plat(west ? sx1 : x0, top, west ? x1 : sx0, y1, rise);           // the wing beside the flight
+  plat(x0, y0, x1, top, base + rise);                              // the terrace and the landing
+  plat(west ? sx1 : x0, top, west ? x1 : sx0, y1, base + rise);    // the wing beside the flight
   const n = 40;
-  for (let j = 1; j < n; j++) plat(sx0, top, sx1, top + (run * (n - j)) / n, (rise * j) / n);
+  for (let j = 1; j < n; j++) plat(sx0, top, sx1, top + (run * (n - j)) / n, base + (rise * j) / n);
   // ground guides just outside the raised block (the ground mesh climbs at the walls, inside them)
-  plat(x0 - 1, y0 - 1, x1 + 1, y1 + 1, 0);
+  plat(x0 - 1, y0 - 1, x1 + 1, y1 + 1, base);
   // walls: north and the far side full height; the front beside the lane; the lane's inner wall
   const wallOb = (cx, cy, ww, hh, style) => {
     const ob = B.ob('wall', cx, cy, ww, hh, 0, { color: rec.color });
@@ -228,7 +249,7 @@ export function roofTerrace(B, rec, o) {
   inner.style = 'wi:stairwall';
   B.area('concrete', (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, 0);
   B.keep((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0 + 90, y1 - y0 + 90);
-  rec.stair = { x0: round1(x0), y0: round1(y0), x1: round1(x1), y1: round1(y1), sx0: round1(sx0), sx1: round1(sx1), top: round1(top), rise, run, side: west ? 'w' : 'e' };
+  rec.stair = { x0: round1(x0), y0: round1(y0), x1: round1(x1), y1: round1(y1), sx0: round1(sx0), sx1: round1(sx1), top: round1(top), rise, run, base, side: west ? 'w' : 'e' };
   return rec.stair;
 }
 
@@ -246,7 +267,8 @@ export function roofTerrace(B, rec, o) {
 export function layoutOf(type, w, h, o = {}) {
   const t = WALKIN_T;
   const ix0 = -w / 2 + t, ix1 = w / 2 - t, iy0 = -h / 2 + t, iy1 = h / 2 - t;
-  const door = o.door || 0;
+  // (a kiosk's door sits off-centre, its stock room at the far end)
+  const door = o.door ?? (type === 'kiosk' ? -Math.round(w * 0.18) : 0);
   const doors = [{ side: 's', at: door, w: o.doorW || 100 }];
   if (o.back) doors.push({ side: 'n', at: o.backAt ?? (door > 0 ? -w * 0.25 : w * 0.25), w: 88 });
   const parts = [], props = [], lights = [];
@@ -254,27 +276,35 @@ export function layoutOf(type, w, h, o = {}) {
   switch (type) {
     case 'kiosk': {
       // a gas station store: a counter by the door, aisles of shelves, coolers on the back wall, a stock room
-      const sx = ix1 - 110;   // the stock room's wall
+      const stock = Math.min(110, (ix1 - ix0) * 0.32);
+      const right = door <= 0;                          // the stock room at the end away from the door
+      const sx = right ? ix1 - stock : ix0 + stock;     // its wall
+      const s0 = right ? ix0 : sx, s1 = right ? sx : ix1; // the shop floor
+      const sc = right ? sx + stock / 2 : sx - stock / 2; // the stock room's middle
       parts.push({ x1: sx, y1: iy0, x2: sx, y2: iy1, gaps: [[(iy1 - iy0) * 0.62, 88]] });
-      P('counter', door - 90 < ix0 + 60 ? door + 100 : door - 90, iy1 - 52, 110, 34, 'till');
-      for (let k = 0; k < 2; k++) P('counter', ix0 + 70 + k * 92, -6, 26, Math.min(130, (iy1 - iy0) * 0.5), 'shelf');
-      for (let x = ix0 + 40; x < sx - 40; x += 46) P('cabinet', x, iy0 + 13, 42, 24, 'cooler');
-      P('cabinet', sx + 55, iy0 + 30, 80, 34, 'rack');
-      P('counter', sx + 50, iy1 - 34, 44, 34, 'crate');
-      lights.push({ x: (ix0 + sx) / 2, y: 0, r: 280, color: '#eaf2ff' }, { x: sx + 55, y: iy0 + 50, r: 160, color: '#ffd9a0', flicker: 0.25 });
+      // (the back door opens into the stock room, or onto the shop floor when the room is too narrow for it)
+      if (o.back && o.backAt === undefined) doors[1].at = stock >= 100 ? sc : (s0 + s1) / 2;
+      P('counter', right ? door + 100 : door - 100, iy1 - 52, 110, 34, 'till');
+      for (let k = 0; k < 2; k++) P('counter', (right ? s0 + 60 : s1 - 60) + (right ? 1 : -1) * k * 92, -6, 26, Math.min(130, (iy1 - iy0) * 0.5), 'shelf');
+      for (let x = s0 + 40; x < s1 - 40; x += 46) P('cabinet', x, iy0 + 13, 42, 24, 'cooler');
+      P('cabinet', sc, iy0 + 30, Math.min(80, stock - 24), 34, 'rack');
+      P('counter', sc, iy1 - 34, 44, 34, 'crate');
+      lights.push({ x: (s0 + s1) / 2, y: 0, r: 280, color: '#eaf2ff' }, { x: sc, y: iy0 + 50, r: 160, color: '#ffd9a0', flicker: 0.25 });
       return { doors, parts, props, lights, kind: 'office', floor: 'linoleum', wall: 'drywall' };
     }
     case 'shop': {
       // a store: shelving aisles front to back, a counter, an office at the back
-      const by = iy0 + Math.min(110, (iy1 - iy0) * 0.38);
-      parts.push({ x1: ix0, y1: by, x2: ix1, y2: by, gaps: [[(ix1 - ix0) * 0.3, 90]] });
-      const aisles = Math.max(2, Math.floor((ix1 - ix0 - 120) / 95));
+      // (a deep shop has an office behind a partition; a shallow one keeps its desk in a back corner)
+      const deep = iy1 - iy0 >= 200;
+      const by = deep ? iy0 + Math.max(92, Math.min(120, (iy1 - iy0) * 0.4)) : iy0 + 50;
+      if (deep) parts.push({ x1: ix0, y1: by, x2: ix1, y2: by, gaps: [[(ix1 - ix0) * 0.3, 90]] });
+      const aisles = Math.max(1, Math.floor((ix1 - ix0 - 120) / 95));
       for (let k = 0; k < aisles; k++) {
-        const x = ix0 + 80 + k * ((ix1 - ix0 - 160) / Math.max(1, aisles - 1));
+        const x = aisles === 1 ? ix0 + (ix1 - ix0) * 0.3 : ix0 + 80 + k * ((ix1 - ix0 - 160) / (aisles - 1));
         if (Math.abs(x - door) < 70) continue;
         P('counter', x, (by + iy1) / 2 - 10, 26, Math.max(60, (iy1 - by) * 0.48), 'shelf');
       }
-      P('counter', ix1 - 70, iy1 - 50, 34, 110, 'till');
+      P('counter', ix1 - 90, iy1 - 66, 84, 30, 'till');
       P('desk', ix0 + 70, (iy0 + by) / 2, 70, 40, 'desk');
       P('cabinet', ix1 - 30, (iy0 + by) / 2, 30, 60, 'filing');
       P('counter', ix0 + (ix1 - ix0) * 0.62, iy0 + 30, 44, 34, 'crate');
@@ -283,12 +313,15 @@ export function layoutOf(type, w, h, o = {}) {
     }
     case 'house': {
       // a hall in the middle of the front, the living room to one side, the kitchen behind, a bedroom
-      const mx = ix0 + (ix1 - ix0) * 0.5, my = iy0 + (iy1 - iy0) * 0.46;
-      parts.push({ x1: ix0, y1: my, x2: ix1, y2: my, gaps: [[(mx - ix0) * 0.5, 88], [(ix1 - ix0) * 0.75, 88]] });
-      parts.push({ x1: mx, y1: iy0, x2: mx, y2: my - WALKIN_TI / 2, gaps: [[(my - iy0) * 0.5, 86]] });
-      P('desk', ix0 + 70, iy1 - 50, 100, 40, 'sofa');
-      P('desk', ix0 + 70, iy1 - 120, 54, 32, 'table');
-      P('cabinet', ix1 - 26, iy1 - 70, 26, 70, 'shelf');
+      // (a small house: the living room at the front, the kitchen and a bedroom behind one partition)
+      const iw = ix1 - ix0, small = iw < 230;
+      const mx = ix0 + iw * (small ? 0.62 : 0.5), my = iy0 + (iy1 - iy0) * 0.46;
+      // (a cabin too shallow for two rooms deep is one room)
+      if (iy1 - iy0 >= 150) parts.push({ x1: ix0, y1: my, x2: ix1, y2: my, gaps: small ? [[iw * 0.3, 88]] : [[(mx - ix0) * 0.5, 88], [iw * 0.75, 88]] });
+      if (!small) parts.push({ x1: mx, y1: iy0, x2: mx, y2: my - WALKIN_TI / 2, gaps: [[(my - iy0) * 0.5, 86]] });
+      P('desk', door > 0 ? ix0 + 64 : ix1 - 64, iy1 - 30, 100, 36, 'sofa');
+      if (iy1 - 110 > my + 40) P('desk', door > 0 ? ix0 + 64 : ix1 - 64, iy1 - 100, 54, 32, 'table');
+      P('cabinet', door > 0 ? ix1 - 18 : ix0 + 18, (my + iy1) / 2, 22, 60, 'shelf');
       P('counter', ix0 + 26, (iy0 + my) / 2, 30, Math.max(60, my - iy0 - 50), 'kitchen');
       P('desk', (ix0 + mx) / 2 + 20, (iy0 + my) / 2, 60, 44, 'table');
       P('desk', (mx + ix1) / 2 + 10, iy0 + 50, 80, 60, 'bed');
