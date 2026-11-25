@@ -78,9 +78,9 @@ export const CATEGORY_HANDLING = {
     secondary: { type: 'scope', levels: [40, 15], speed: 0.55, inacc: { stand: 0.0012, crouch: 0.0009, move: 0.2 } },
   },
   heavy: {
-    inacc: { stand: 0.012, crouch: 0.008, move: 0.15, air: 0.3, land: 0.1, fire: 0.004, fireMax: 0.075, recover: 0.6 },
+    inacc: { stand: 0.012, crouch: 0.008, move: 0.15, air: 0.3, land: 0.1, fire: 0.003, fireMax: 0.05, recover: 0.6 },
     spread: 0.0025,
-    spray: { up: 0.07, climb: 12, tail: 0.0012, side: 0.048, sway: 8, lean: 0.35, first: 1, jit: 0.003, seed: 67 },
+    spray: { up: 0.055, climb: 12, tail: 0.001, side: 0.034, sway: 8, lean: 0.35, first: 1, jit: 0.003, seed: 67 },
     recovery: 0.5, viewKick: 0.4, deploy: 1.0, pen: 2.2, tracer: 3, sprint: 1.35,
   },
   melee: {
@@ -162,7 +162,7 @@ export const WEAPON_HANDLING = {
   harpoon: { deploy: 0.8 },
   cryo: { deploy: 0.85 },
   lmg: {
-    spray: { up: 0.075, climb: 12, tail: 0.0012, side: 0.05, sway: 9, lean: 0.3, first: 1, jit: 0.003, seed: 97 },
+    spray: { up: 0.06, climb: 12, tail: 0.001, side: 0.036, sway: 9, lean: 0.3, first: 1, jit: 0.003, seed: 97 },
     deploy: 1.1,
   },
   grenade_launcher: { deploy: 0.85 },
@@ -175,14 +175,15 @@ export const WEAPON_HANDLING = {
     recovery: 0.55, deploy: 1.2, pen: 1.6,
   },
   // (its beam pierces every zombie but stops at the first wall, like before)
-  railgun: { inacc: { stand: 0, crouch: 0, fire: 0, fireMax: 0 }, deploy: 1.0, pen: 0, tracer: 1 },
+  // (a beam, not a bullet: `beam` px thick, so a line of zombies goes down like it did in 2D)
+  railgun: { inacc: { stand: 0, crouch: 0, fire: 0, fireMax: 0 }, deploy: 1.0, pen: 0, tracer: 1, beam: 9 },
   amr: {
     spray: { up: 0.09, climb: 1, tail: 0.09, side: 0.012, sway: 2, lean: 0.2, first: 1, jit: 0.005, seed: 103 },
     recovery: 0.55, deploy: 1.15, pen: 5,
     secondary: { type: 'scope', levels: [36, 12], speed: 0.5, inacc: { stand: 0.001, crouch: 0.0008, move: 0.22 } },
   },
   hmg: {
-    spray: { up: 0.065, climb: 12, tail: 0.0012, side: 0.05, sway: 8, lean: -0.3, first: -1, jit: 0.003, seed: 107 },
+    spray: { up: 0.055, climb: 12, tail: 0.001, side: 0.036, sway: 8, lean: -0.3, first: -1, jit: 0.003, seed: 107 },
     deploy: 1.15, pen: 2.4,
   },
 };
@@ -264,6 +265,8 @@ export function handlingOf(id) {
     pen: Number(merged.pen) >= 0 ? Number(merged.pen) : 1,
     zones: Object.freeze(zones),
     tracer: Math.max(1, Math.round(Number(merged.tracer) || 1)),
+    // a beam's thickness (px) on top of the hit volumes (the railgun), 0 for bullets
+    beam: Number(merged.beam) > 0 ? Number(merged.beam) : 0,
     sprint: Number(merged.sprint) > 0 ? Number(merged.sprint) : 1.2,
     secondary: normSecondary(sec),
     // pellet guns spread their pellets around one shared inaccuracy offset

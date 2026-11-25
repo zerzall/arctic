@@ -429,6 +429,35 @@ function rayBox(ox, oy, oz, vx, vy, vz, vols, o) {
   return t0 >= 0 ? t0 : 0;
 }
 
+const _bh = { f: 0, side: 0, h: 0 }, _bl = { f: 0, side: 0, h: 0 };
+/**
+ * rayZombie for a beam `beam` px thick (the railgun): the thin test first, else the ray
+ * passing within the body's half-width + beam of the zombie's centre, between its feet and the
+ * top of its head, hits the part at that height.
+ */
+export function rayZombieBeam(type, id, flags, zx, zy, zz, za, ox, oy, oz, dx, dy, k, maxS, beam, out = _hit) {
+  rayZombie(type, id, flags, zx, zy, zz, za, ox, oy, oz, dx, dy, k, maxS, out);
+  if (out.s >= 0 || !(beam > 0)) return out;
+  const px = zx - ox, py = zy - oy;
+  const t = px * dx + py * dy;
+  if (t < 0 || t > maxS) return out;
+  const cx = px - dx * t, cy = py - dy * t;
+  const sc = (ZOMBIE_SCALE[type] || 1) * ((flags & 16) !== 0 ? ELITE_SCALE : 1);
+  const r = 7 * sc + beam;
+  const d2 = cx * cx + cy * cy;
+  if (d2 > r * r) return out;
+  const s = Math.max(0, t - Math.sqrt(r * r - d2));
+  aimPoint(type, id, flags, 'head', _bh);
+  aimPoint(type, id, flags, 'legs', _bl);
+  const hz = oz + k * s - zz;
+  const top = _bh.h + 5 * sc;
+  if (hz < 0 || hz > top) return out;
+  out.s = s;
+  const f = hz / top;
+  out.zone = hz >= _bh.h - 3 * sc ? ZONE.HEAD : hz <= _bl.h + 6 * sc ? ZONE.LEGS : f < 0.56 ? ZONE.STOMACH : ZONE.CHEST;
+  return out;
+}
+
 /**
  * Where to aim at a zombie: the centre of its head or chest (or stomach / legs) in world
  * terms relative to its feet: { f (forward of its position along its facing), side, h (height

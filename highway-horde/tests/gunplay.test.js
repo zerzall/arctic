@@ -9,7 +9,7 @@ import {
   handlingOf, secondaryOf, sprayOffset, createAim, aimTick, aimKick, inaccuracyOf, zoneMult, discOffset, fireSpec,
   resetHandling, scopeFov, secondaryLabel, ZONE, MODE_BURST, MODE_SIL, ACCURATE_SPEED, CATEGORY_HANDLING,
 } from '../public/js/shared/handling.js';
-import { rayZombie, aimPoint, zombieBody, zombieVolumes, worldVolumes, TYPE_ZONES, ZOMBIE_SCALE } from '../public/js/shared/hitbox.js';
+import { rayZombie, rayZombieBeam, aimPoint, zombieBody, zombieVolumes, worldVolumes, TYPE_ZONES, ZOMBIE_SCALE } from '../public/js/shared/hitbox.js';
 import { createTrace, traceShot, penDamage, shotTop, penCost } from '../public/js/shared/ballistics.js';
 import { createCollisionWorld } from '../public/js/shared/movement.js';
 import { WEAPONS } from '../public/js/shared/weapons.js';
@@ -117,6 +117,14 @@ test('hit volumes: rays resolve to the zone they cross; above the head and besid
   const k = (ap.h - 140) / (400 - ap.f);
   const r = rayZombie('walker', 3, 0, 400, 0, 0, Math.PI, 0, 0, 140, 1, 0, k, 2000);
   assert.equal(r.zone, ZONE.HEAD, 'from up high');
+  // the railgun's beam is thick: a line passing beside the body still catches it (bullets miss)
+  assert.equal(handlingOf('rifle').beam, 0);
+  const beam = handlingOf('railgun').beam;
+  assert.ok(beam > 0);
+  assert.equal(rayZombie('walker', 3, 0, 400, 12, 0, Math.PI, 0, 0, 40, 1, 0, 0, 2000).s, -1, 'a bullet 12 px beside misses');
+  const bz = rayZombieBeam('walker', 3, 0, 400, 12, 0, Math.PI, 0, 0, 40, 1, 0, 0, 2000, beam, { s: -1, zone: 0 });
+  assert.ok(bz.s > 0 && bz.zone === ZONE.CHEST, 'the beam catches it');
+  assert.equal(rayZombieBeam('walker', 3, 0, 400, 40, 0, Math.PI, 0, 0, 40, 1, 0, 0, 2000, beam, { s: -1, zone: 0 }).s, -1, 'not from far beside');
   // the same zombie standing on a car roof (z 40): a level shot at its old head height hits lower
   const up = rayZombie('walker', 3, 0, 400, 0, 40, Math.PI, 0, 0, ap.h + 40, 1, 0, 0, 2000);
   assert.equal(up.zone, ZONE.HEAD, 'feet at z: the volumes ride with them');

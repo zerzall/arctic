@@ -492,7 +492,11 @@ addEventListener('mousemove', (e) => {
   yaw += e.movementX * 0.0022;
   pitch = Math.max(-1.35, Math.min(1.35, pitch - e.movementY * 0.0022));
 });
-addEventListener('mousedown', (e) => { mouse |= 1 << e.button; });
+addEventListener('mousedown', (e) => {
+  mouse |= 1 << e.button;
+  // right click: the gun's secondary mode (scope, burst, suppressor), as in the game
+  if (e.button === 2) edge.alt = true;
+});
 addEventListener('mouseup', (e) => { mouse &= ~(1 << e.button); });
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('keydown', (e) => {
@@ -545,10 +549,14 @@ function step(dt, nowS) {
     if (l > 1) { wx /= l; wy /= l; }
     const live = !opt.tour && !fixedView;
     game.setInput(1, {
-      ...idle, ...edge, ...forced, seq: ++seq,
+      // (first person: the shot resolves in 3D with the camera's pitch, as in the game, §3.4)
+      ...idle, pitch, aim3d: true, crouch: keys.has('KeyZ'), walk: keys.has('KeyX'), alt: !!edge.alt,
+      ...edge,
       moveX: live ? wx : 0, moveY: live ? wy : 0, angle: yaw,
       fire: live && !!(mouse & 1), melee: live && !!(mouse & 4), sprint: keys.has('ShiftLeft'), interact: keys.has('KeyE'),
       slot: edge.slot ?? -1,
+      // (__fps.hold: scripted input wins over the idle keys and mouse)
+      ...forced, seq: ++seq,
     });
     edge = {};
     if (game.map.kind === 'hideout') { game.step(); if (game.phase === 'prep') game.timer = 999; } else if (opt.zombies || game.phase === 'prep') game.step();

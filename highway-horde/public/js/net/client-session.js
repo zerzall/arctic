@@ -29,7 +29,7 @@ import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound, roofReach, SHOT_SIL, SHOT_3D, S
 import {
   handlingOf, createAim, resetAim, aimTick, aimKick, inaccuracyOf, fireSpec, discOffset, MODE_BURST, MODE_SIL,
 } from '../shared/handling.js';
-import { rayZombie } from '../shared/hitbox.js';
+import { rayZombieBeam } from '../shared/hitbox.js';
 import { traceShot, createTrace, wallsBefore } from '../shared/ballistics.js';
 import { PLAYER_SPEED, DUCK_TICKS } from '../shared/constants.js';
 import { Emitter } from './emitter.js';
@@ -991,7 +991,7 @@ export class ClientSession extends Emitter {
     if (zs) {
       for (let i = 0; i < zs.length; i++) {
         const z = zs[i];
-        const r = rayZombie(z.type, z.id, z.flags | 0, z.x, z.y, z.z || 0, z.angle, x, y, z0, dx, dy, k, stopT, rz);
+        const r = rayZombieBeam(z.type, z.id, z.flags | 0, z.x, z.y, z.z || 0, z.angle, x, y, z0, dx, dy, k, stopT, h.beam, rz);
         const t = r.s;
         if (t < 0 || (hits.length >= pierce && t >= hits[hits.length - 1])) continue;
         let j = hits.length < pierce ? hits.length : hits.length - 1;

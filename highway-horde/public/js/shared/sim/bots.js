@@ -1529,7 +1529,7 @@ function aimAndFire(game, b, cmd) {
   }
   // (on target: within the aimed-at part, the head being the small one)
   const partR = z.radius * (b.aimPart === 'head' ? 0.3 : 0.6);
-  const tol = (Math.atan2(partR, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0) + 0.008) * pr.trigger;
+  const tol = (Math.atan2(partR, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0) + (d > STOP_RANGE && !(w.pellets > 1) ? 0.003 : 0.008)) * pr.trigger;
   if (Math.abs(angleDiff(b.aim, trueA)) > tol) return;
   if (Math.hypot(z.x - p.x, z.y - p.y) > w.range * 0.95) return;
   if (!safeToFire(game, b, w, trueA, d, tx, ty)) return;
@@ -1537,18 +1537,23 @@ function aimAndFire(game, b, cmd) {
   if (w.reloadOne && p.reloadT > 0 && b.nearestAdj > 220) return;
   // A scope settles before the shot.
   if (wantScope && (p.scope === 0 || p.scopeT < sec.settle)) return;
+  // Stop first (a counter-strafe), then shoot: a skilled bot waits until it is accurate.
+  if (!stopToShoot(game, b, cmd, aw.id, w, d)) return;
   // Pace the shots at range: wait for the cone (movement, the last shots) to close to about
   // the size of what it aims at, as a good player taps instead of spamming; an average one
   // waits less. Up close, and with pellet guns, it just fires.
-  if (d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail')) {
+  // (heavy guns and spin-up guns just hold the trigger: a belt-fed gun is a hose, not a rifle)
+  const hh = handlingOf(aw.id);
+  if (d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail') && !w.spinup && hh.category !== 'heavy') {
     aimNow(p, aw.id, w, _an);
     const room = Math.atan2(partR, d) * (pr.level >= 0.5 ? 1.3 : 2.6) + 0.004;
     if (_an.inacc > room && (b.burstT <= 0 || _an.inacc > room * 2)) return;
   }
-  // Bursts with automatic guns at range, shorter the farther (taps), with pauses that let the
-  // spray recover; hold the trigger up close (and on spin-up guns).
+  // Bursts with automatic guns at range, shorter the smaller the target looks (taps at a far
+  // walker, long bursts into a brute), with pauses that let the spray recover; hold the trigger
+  // up close (and on spin-up guns).
   if (w.rate >= 8 && !w.spinup && !w.burst && d > 260) {
-    const far = Math.min(1, (d - 260) / 500);
+    const far = Math.max(0, Math.min(1, (0.035 - Math.atan2(partR, d)) / 0.025));
     if (b.burstT > 0) {
       b.burstT -= DT;
       if (b.burstT <= 0) b.pauseT = game.rng.range(0.08, 0.22) + handlingOf(aw.id).recovery * 0.6 * far;
@@ -1560,7 +1565,6 @@ function aimAndFire(game, b, cmd) {
       b.burstT = game.rng.range(0.25, 0.6) * (1 - 0.6 * far);
     }
   }
-  if (!stopToShoot(b, cmd, aw.id, w, d)) return;
   cmd.fire = true;
 }
 
@@ -1581,9 +1585,11 @@ function toggleScope(game, b, cmd) {
  * and with shotguns it just fires. Returns false while a skilled bot is still too fast to be
  * accurate (an average one shoots anyway).
  */
-function stopToShoot(b, cmd, id, w, d) {
+function stopToShoot(game, b, cmd, id, w, d) {
   const p = b.p;
   if (p.state !== 'alive' || p.reloadT > 0 || b.kiting || d < STOP_RANGE || !STOP_MODES.has(b.mode) || w.pellets > 1) return true;
+  // (never stand still in fire or acid)
+  if (hazardAt(game, p.x, p.y)) return true;
   const h = handlingOf(id);
   if (!(h.inacc.move > 2.5 * h.inacc.stand)) return true;
   const vx = p.mvx || 0, vy = p.mvy || 0, v = Math.hypot(vx, vy);

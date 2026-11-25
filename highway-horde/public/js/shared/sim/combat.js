@@ -10,7 +10,7 @@ import { DROP_CHANCE, CRATE_DROP_CHANCE } from '../items.js';
 import { angleDiff, turnTowards } from '../math.js';
 import { rayCircle, MASK_SOLID, MASK_OBJECTIVE } from '../geom.js';
 import { handlingOf, discOffset, zoneMult, ZONE, MODE_SIL } from '../handling.js';
-import { rayZombie, TYPE_ZONES } from '../hitbox.js';
+import { rayZombieBeam, TYPE_ZONES } from '../hitbox.js';
 import { traceShot, createTrace, multAt, wallsBefore as wallsBefore3 } from '../ballistics.js';
 import { eyeHeight } from '../movement.js';
 import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS, aimNow, kickAfterShot, activeWeapon } from './players.js';
@@ -598,7 +598,7 @@ function shoot3D(game, p, w, h, ev, z0, dx, dy, k, dmgMult, back) {
       if (!lagPose(z, tick)) continue;
       zx = _pose.x; zy = _pose.y; zz = _pose.z; za = _pose.a;
     }
-    const r = rayZombie(z.type, z.id, poseFlags(z), zx, zy, zz, za, x, y, z0, dx, dy, k, stopT, _rz);
+    const r = rayZombieBeam(z.type, z.id, poseFlags(z), zx, zy, zz, za, x, y, z0, dx, dy, k, stopT, h.beam, _rz);
     if (r.s < 0) continue;
     nh = insertHitZ(nh, pierce, r.s, z, r.zone);
   }
