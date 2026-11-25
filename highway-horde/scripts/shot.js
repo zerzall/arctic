@@ -60,6 +60,8 @@ try {
   await page.waitForFunction(() => window.__fps && window.__fps.renderer, null, { timeout: limit });
   // (the baked texture library loads after the world is built: wait for it, or for its failure)
   await page.waitForFunction(() => !window.__hhTextures || window.__hhTextures.state !== 'loading', null, { timeout: limit });
+  // (and the decals, zombie and gun sets that stream in after it: renderer3d's __hhTexLoad)
+  await page.waitForFunction(() => !window.__hhTexLoad || window.__hhTexLoad().done, null, { timeout: limit });
   const tex = await page.evaluate(() => window.__hhTextures || null);
   if (tex) console.log('textures:', tex.state, tex.info ? `${tex.info.layers} sets at ${tex.info.size}², ${(tex.info.bytes / 1e6).toFixed(0)} MB, ${tex.ms} ms` : tex.error || '');
   for (const v of views.length ? views : [null]) {

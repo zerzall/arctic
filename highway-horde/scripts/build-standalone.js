@@ -101,34 +101,33 @@ function texturePlan() {
 const texPlan = texOn ? texturePlan() : null;
 const MIME_OF = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif' };
 export const TEX_STORE = `window.__HH_TEX = (function () {
-  var cache = {};
+  var cache = {}, text = {};
   function ready() {
     return document.readyState !== 'loading' ? Promise.resolve() : new Promise(function (r) { document.addEventListener('DOMContentLoaded', r, { once: true }); });
   }
   function json(id) {
     return ready().then(function () { var e = document.getElementById(id); return e ? JSON.parse(e.textContent) : null; });
   }
+  // a file's base64 text, moved out of its element (the element's copy is dropped) and kept here
+  function take(p) {
+    if (text[p]) return text[p];
+    if (document.readyState === 'loading') return null;
+    var e = document.querySelector('script[data-hh-tex="' + p + '"]');
+    if (!e || !e.textContent) return null;
+    text[p] = { b64: e.textContent, type: e.getAttribute('data-type') };
+    e.textContent = '';
+    return text[p];
+  }
   return {
     manifest: function () { return json('hh-tex-manifest'); },
     index: function () { return json('hh-tex-index'); },
-    take: function (p) {
-      if (document.readyState === 'loading') return null;
-      var e = document.querySelector('script[data-hh-tex="' + p + '"]');
-      if (!e || !e.textContent) return null;
-      var t = { b64: e.textContent, type: e.getAttribute('data-type') };
-      if (!cache[p]) {
-        cache[p] = fetch('data:' + t.type + ';base64,' + t.b64).then(function (r) { return r.blob(); });
-        cache[p].catch(function () { delete cache[p]; });
-      }
-      e.textContent = '';
-      return t;
-    },
+    take: take,
     blob: function (p) {
       if (cache[p]) return cache[p];
       cache[p] = ready().then(function () {
-        var e = document.querySelector('script[data-hh-tex="' + p + '"]');
-        if (!e) throw new Error('textures: ' + p + ' is not in this file');
-        return fetch('data:' + e.getAttribute('data-type') + ';base64,' + e.textContent).then(function (r) { return r.blob(); }).then(function (b) { e.textContent = ''; return b; });
+        var t = take(p);
+        if (!t) throw new Error('textures: ' + p + ' is not in this file');
+        return fetch('data:' + t.type + ';base64,' + t.b64).then(function (r) { return r.blob(); });
       });
       cache[p].catch(function () { delete cache[p]; });
       return cache[p];

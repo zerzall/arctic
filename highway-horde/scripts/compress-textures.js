@@ -14,6 +14,9 @@
 //   grey + alpha (the zombies' two-channel normals)  as RGB (grey, alpha, 0), then by its role; the
 //                                                    entry says `la: true` (actor-ztex.js reads it)
 //
+// A map larger than 1024² also gets halved copies (2 × 2 box per channel) down to 1024²,
+// `<name>@<size>.<ext>`, listed as the entry's `variants`: a tier that samples it at 1024 (guns and
+// zombies on Ultra, the decals' normal sheets) downloads and decodes a quarter of it.
 // A copy is used only when it is at least 10 % smaller than its PNG. Every lossy copy is decoded
 // again and compared with the PNG (PSNR over all channels; the entry records it), and one that falls
 // below the floor of its role is dropped for the PNG. Each entry carries the SHA-1 of its PNG:

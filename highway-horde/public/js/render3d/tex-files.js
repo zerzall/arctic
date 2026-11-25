@@ -98,7 +98,13 @@ async function fetchBlob(file) {
 export async function textureSource(path, size = 0) {
   const pick = pickFile(await textureIndex(), path, size);
   const emb = embeddedStore();
-  const src = async (file) => (emb ? { blob: await emb.blob(file) } : { url: BASE + file, type: mimeOf(file) });
+  // (from the one-file build's store: the base64 text itself, decoded by the worker, no turn of the
+  // main thread per file)
+  const src = async (file) => {
+    if (!emb) return { url: BASE + file, type: mimeOf(file) };
+    const t = typeof emb.take === 'function' ? emb.take(file) : null;
+    return t ? { b64: t.b64, type: t.type } : { blob: await emb.blob(file) };
+  };
   const out = { ...pick, ...(await src(pick.file)) };
   if (!pick.png && !emb) out.fallback = { file: path, png: true, la: false, url: BASE + path, type: 'image/png' };
   return out;

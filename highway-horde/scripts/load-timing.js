@@ -80,8 +80,9 @@ async function openPage(ctx) {
   await cdp.send('Network.enable');
   await cdp.send('Performance.enable');
   const m = { bytes: 0, errors: [] };
-  cdp.on('Network.loadingFinished', (e) => { m.bytes += e.encodedDataLength || 0; });
-  // (data: URLs and blob reads are not network traffic: the one-file build counts its file size)
+  // (every response the page and its workers received; data: URLs and blob reads are not network
+  // traffic: the one-file build counts its file size)
+  page.on('requestfinished', (r) => { if (/^https?:/.test(r.url())) r.sizes().then((s) => { m.bytes += (s.responseBodySize || 0) + (s.responseHeadersSize || 0); }, () => {}); });
   page.on('pageerror', (e) => m.errors.push(e.message));
   page.on('console', (c) => { if (c.type() === 'error') m.errors.push(c.text()); });
   const heap = async () => {
@@ -145,11 +146,17 @@ async function timeGame(browser, url, lobby, { warm = false } = {}) {
       }, null, { timeout: LIMIT, polling: 50 });
       const game = (Date.now() - t1) / 1000;
       if (process.env.TIMING_DEBUG) console.log('  in game after', game, 's');
-      await page.waitForFunction(() => {
-        const s = window.__hhTexLoad ? window.__hhTexLoad() : null;
-        return s && s.done;
-      }, null, { timeout: LIMIT, polling: 100 });
-      const tex = (Date.now() - t1) / 1000;
+      // (a load still going after TIMING_LIMIT counts as that long: its column shows ">")
+      let tex;
+      try {
+        await page.waitForFunction(() => {
+          const s = window.__hhTexLoad ? window.__hhTexLoad() : null;
+          return s && s.done;
+        }, null, { timeout: Math.max(1000, LIMIT - (Date.now() - t1)), polling: 100 });
+        tex = (Date.now() - t1) / 1000;
+      } catch {
+        tex = Infinity;
+      }
       if (dbg) clearInterval(dbg);
       const state = await page.evaluate(() => window.__hhTexLoad());
       return { title, game, tex, state, mb: m.bytes / 1e6, heap: await heap() };
@@ -166,7 +173,7 @@ async function timeGame(browser, url, lobby, { warm = false } = {}) {
   }
 }
 
-const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : NaN; };
+const median = (xs) => { const s = xs.filter((x) => typeof x === 'number' && !Number.isNaN(x)).sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : NaN; };
 function combine(rows) {
   const out = { ...rows[rows.length - 1] };
   for (const k of ['title', 'game', 'tex', 'mb', 'heap', 'warmTitle', 'warmGame', 'warmTex', 'warmMb']) {
@@ -181,7 +188,7 @@ const browser = await chromium.launch({
 });
 const server = await startServer();
 const results = {};
-const f = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d) : '—');
+const f = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d) : x === Infinity ? `>${LIMIT / 1000}` : '—');
 try {
   const jobs = [];
   if (ONLY.includes('title')) jobs.push(['served title', () => timeTitle(browser, server.url, { warm: WARM })]);

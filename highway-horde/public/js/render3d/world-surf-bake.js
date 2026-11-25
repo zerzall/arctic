@@ -14,8 +14,11 @@
 // procedural array stays bound as uDetailP for the weathering's noise fields (layer 23).
 //
 // Each set's four maps (their download copies, tex-files.js: JPEG / lossless WebP, else the PNGs) are
-// decoded off the main thread (createImageBitmap, resized to the tier's size by the browser), uploaded to scratch textures and packed into the arrays' layers by a tiny
-// shader pass; then the arrays get their mips and anisotropy. Memory policy: one array layer per set
+// fetched, decoded and packed into the set's two layers by a decode worker (packWorldSet below,
+// tex-worker.js); the jobs are queued while the world is still being built, so the main thread only
+// uploads the finished layers. Without a worker (or for a test's own source) they are decoded with
+// createImageBitmap, uploaded to scratch textures and packed into the arrays' layers by a tiny
+// shader pass. Then the arrays get their mips and anisotropy. Memory policy: one array layer per set
 // the map uses, at the tier's size (high 512², ultra and cinematic up to the library's 1024²; each
 // tier has a byte budget the size halves to fit). Anything failing — no WebGL 2, a missing file, a
 // decode error, too slow — leaves the procedural layers in place, silently.
