@@ -204,7 +204,7 @@ export function createWalkins(ctx, deps = {}) {
           }
         } else if (state === 'boarded') {
           const woods = ['#5a4632', '#6b5a44', '#4a3a2a', '#75604a'];
-          for (let p = 0; p < 4; p++) F.box('std', tc + (hash01(roll + p) - 0.5) * 3, WIN_SILL + 6 + p * 15, 0.2, ww + 10, 11, 1.4, woods[p], { noJitter: true, surf: [DET.wood, 0.85, 0] });
+          for (let p = 0; p < 4; p++) F.box('std', tc + (hash01(roll + p) - 0.5) * 3, WIN_SILL + 6 + p * 15, 0.2, ww + 10, 11, 1.4, woods[p], { noJitter: true, surf: [DET.crate, 0.88, 0] });
         } else if (state === 'shutter') {
           // wooden shutters swung open against the outside wall
           for (const sd of [-1, 1]) F.box('std', tc + sd * (ww * 0.75 + 1), yc, 0.2, ww / 2, wh, 1.4, '#3e6a7a', { noJitter: true, surf: [DET.wood, 0.85, 0] });
@@ -361,8 +361,8 @@ export function createWalkins(ctx, deps = {}) {
       const ang = Math.atan2(rise, run);
       B.add('std', T.box(), [lx(hx), rise / 2 + 36, lz(s.y1 - run / 2)], [2, 2, Math.hypot(run, rise)], [ang, 0, 0], '#3a3d40', { noJitter: true, surf: [DET.rust, 0.5, 0.7] });
       // terrace furniture: an old plastic chair, a water tank, an antenna
-      B.cyl('std', lx(west ? s.x1 - 50 : s.x0 + 50), rise, lz(s.y0 + 50), 20, 40, '#3a5a6a', 12, 1, null, { surf: [DET.plastic, 0.6, 0] });
-      B.box('std', lx(cx), rise + 12, lz(s.y0 + 90), 20, 2, 20, '#d8d4c8', null, { surf: [DET.plastic, 0.5, 0] });
+      B.cyl('std', lx(west ? s.x1 - 50 : s.x0 + 50), rise, lz(s.y0 + 50), 20, 40, '#3a5a6a', 12, 1, null, { surf: [DET.plasticworn, 0.6, 0] });
+      B.box('std', lx(cx), rise + 12, lz(s.y0 + 90), 20, 2, 20, '#d8d4c8', null, { surf: [DET.plasticworn, 0.5, 0] });
     }
   }
 
@@ -370,9 +370,12 @@ export function createWalkins(ctx, deps = {}) {
 
   function prop(B, st, o) {
     const L = o.w, W = o.h;
-    const wood = (c) => ({ noJitter: false, surf: [DET.wood, 0.8, 0] });
-    const panel = { surf: [DET.panel, 0.5, 0.35] };
-    const fab = { surf: [DET.fabric, 0.95, 0] };
+    // furniture: wood veneer, painted steel, upholstery (leather sofas, linen beds); crates and pallets rough lumber
+    const wood = (c) => ({ noJitter: false, surf: [DET.veneer, 0.7, 0] });
+    const lumber = { noJitter: false, surf: [DET.crate, 0.88, 0] };
+    const panel = { surf: [DET.paintmetal, 0.5, 0.35] };
+    const fab = { surf: [DET.linen, 0.95, 0] };
+    const hide = { surf: [DET.leather, 0.65, 0] };
     const metal = { surf: [DET.rust, 0.55, 0.6] };
     const long = L >= W;
     const len = long ? L : W, dep = long ? W : L;
@@ -411,8 +414,8 @@ export function createWalkins(ctx, deps = {}) {
         for (const y of [4, 54, 104]) {
           for (const sd of [-1, 1]) BX(0, y + 8, sd * (dep / 2 - 2), len, 4, 2.5, '#1d4a8a', metal);
           for (const x of [-len / 4, len / 4]) {
-            BX(x, y + 12, 0, len / 2 - 8, 4, dep - 6, '#8a6a42', wood());
-            if (hash01(o.id * 7 + y + x) < 0.8) BX(x, y + 16, 0, len / 2 - 12, 26 + hash01(o.id + y) * 10, dep - 10, ['#a8885a', '#9a7a4a', '#b89a6a'][Math.floor(hash01(o.id * 3 + y + x) * 3)], { surf: [DET.panel, 0.9, 0] });
+            BX(x, y + 12, 0, len / 2 - 8, 4, dep - 6, '#8a6a42', lumber);
+            if (hash01(o.id * 7 + y + x) < 0.8) BX(x, y + 16, 0, len / 2 - 12, 26 + hash01(o.id + y) * 10, dep - 10, ['#a8885a', '#9a7a4a', '#b89a6a'][Math.floor(hash01(o.id * 3 + y + x) * 3)], { surf: [DET.cardboard, 0.92, 0] });
           }
         }
         break;
@@ -426,16 +429,16 @@ export function createWalkins(ctx, deps = {}) {
           for (let k = 0; k < 5; k++) B.cyl('std', (hash01(o.id + k) - 0.5) * L * 0.7, 0, (hash01(o.id * 3 + k) - 0.5) * W * 0.7, 5 + hash01(k) * 3, 16 + hash01(o.id + k * 5) * 10, ['#a8643a', '#8a5a36', '#c8a070'][k % 3], 10, 0.6, null, { surf: [DET.stucco, 0.8, 0] });
           break;
         }
-        BX(0, 0, 0, len, 5, dep, '#7a5a32', wood());
-        BX(-len * 0.2, 5, 0, len * 0.55, 28, dep * 0.8, '#8a6a3a', wood());
-        BX(len * 0.25, 5, 0, len * 0.42, 22, dep * 0.7, st === 'pallet' ? '#d8cfb8' : '#7a5a32', st === 'pallet' ? fab : wood());
-        if (st === 'crate') BX(-len * 0.2, 33, 0, len * 0.4, 18, dep * 0.6, '#6a4a2a', wood(), [0, 0.3, 0]);
+        BX(0, 0, 0, len, 5, dep, '#7a5a32', lumber);
+        BX(-len * 0.2, 5, 0, len * 0.55, 28, dep * 0.8, '#8a6a3a', lumber);
+        BX(len * 0.25, 5, 0, len * 0.42, 22, dep * 0.7, st === 'pallet' ? '#d8cfb8' : '#7a5a32', st === 'pallet' ? { surf: [DET.burlap, 0.95, 0] } : lumber);
+        if (st === 'crate') BX(-len * 0.2, 33, 0, len * 0.4, 18, dep * 0.6, '#6a4a2a', lumber, [0, 0.3, 0]);
         break;
       }
       case 'sofa': {
-        BX(0, 0, 0, len, 18, dep, '#5a3a3a', fab);
-        BX(0, 18, -dep / 2 + 5, len, 18, 10, '#4e3232', fab);
-        for (const sd of [-1, 1]) BX(sd * (len / 2 - 5), 18, 0, 10, 8, dep, '#4e3232', fab);
+        BX(0, 0, 0, len, 18, dep, '#5a3a3a', hide);
+        BX(0, 18, -dep / 2 + 5, len, 18, 10, '#4e3232', hide);
+        for (const sd of [-1, 1]) BX(sd * (len / 2 - 5), 18, 0, 10, 8, dep, '#4e3232', hide);
         break;
       }
       case 'table': case 'lowtable': {

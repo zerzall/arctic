@@ -59,7 +59,7 @@ function bicycle(P) {
     D.add('std', T.box(), tl.p(x, R, 0), [R * 1.7, 0.25, 0.25], [tl.t, 0, -0.6], '#a0a4a8', M);
   }
   const B = 'std';
-  const tube = (a, b) => rod(D, B, p(...a), p(...b), 0.6, col, S(DET.panel, 0.35, 0.5), 6);
+  const tube = (a, b) => rod(D, B, p(...a), p(...b), 0.6, col, S(DET.paintmetal, 0.35, 0.5), 6);
   tube([-14, R, 0], [-2, 12, 0]);          // chain stay to bottom bracket
   tube([-2, 12, 0], [-8, 22, 0]);          // seat tube
   tube([-14, R, 0], [-8, 22, 0]);          // seat stay
@@ -98,12 +98,12 @@ function cart(P) {
   for (let x = -bw / 2; x <= bw / 2; x += 4) rod(D, 'std', p(x, y0, -bd / 2), p(x, y0, bd / 2), 0.3, CHROME, F, 4);
   rod(D, 'std', p(-bw / 2, y1 + 1, -bd / 2), p(-bw / 2 - 6, y1 + 4, -bd / 2), 0.5, CHROME, F, 5);
   rod(D, 'std', p(-bw / 2, y1 + 1, bd / 2), p(-bw / 2 - 6, y1 + 4, bd / 2), 0.5, CHROME, F, 5);
-  rod(D, 'std', p(-bw / 2 - 6, y1 + 4, -bd / 2), p(-bw / 2 - 6, y1 + 4, bd / 2), 0.6, '#c8281e', S(DET.plastic, 0.5, 0), 5);
+  rod(D, 'std', p(-bw / 2 - 6, y1 + 4, -bd / 2), p(-bw / 2 - 6, y1 + 4, bd / 2), 0.6, '#c8281e', S(DET.plasticworn, 0.5, 0), 5);
   for (const [x, z] of [[-bw / 2 + 2, -bd / 2 + 1], [-bw / 2 + 2, bd / 2 - 1], [bw / 2 - 1, -bd / 2 + 1], [bw / 2 - 1, bd / 2 - 1]]) {
     rod(D, 'std', p(x, y0, z), p(x, 4, z), 0.4, CHROME, F, 4);
     D.add('std', T.cyl(8), p(x, 2.4, z), [2.2, 1.4, 2.2], [tl.t + Math.PI / 2, 0, 0], '#161616', { ...RUB, map: 'cyl' });
   }
-  if (r.chance(0.35)) D.add('std', T.pillow(8, 5, 0.5), p(0, 17, 0), [5, 3, 4], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0']), S(DET.plastic, 0.3, 0));
+  if (r.chance(0.35)) D.add('std', T.pillow(8, 5, 0.5), p(0, 17, 0), [5, 3, 4], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0']), S(DET.plasticworn, 0.3, 0));
 }
 
 function picnic(P) {
@@ -127,7 +127,7 @@ function picnic(P) {
   if (r.chance(0.7)) {
     D.add('sign', T.plane(), [0, 17.3, 0], [W * 0.7, Dd * 0.9, 1], [-Math.PI / 2, 0, 0.1], '#ffffff', { uv: dressUV('checker'), noAO: true, noJitter: true });
   }
-  for (let i = 0; i < 3; i++) D.cyl('std', r.range(-16, 16), 17.1, r.range(-7, 7), 3, 0.5, '#e8e6e0', 10, 1, null, S(DET.plastic, 0.3, 0));
+  for (let i = 0; i < 3; i++) D.cyl('std', r.range(-16, 16), 17.1, r.range(-7, 7), 3, 0.5, '#e8e6e0', 10, 1, null, S(DET.plasticworn, 0.3, 0));
   D.add('std', T.cyl(10, 0.9), [10, 21, 4], [4.4, 7, 4.4], null, '#8a6a3a', { ...S(DET.wood, 0.9, 0), map: 'cyl' });
   D.add('std', T.torus(10, 0.18, 4), [10, 26.4, 4], [4, 4, 1], [0, 0, 0], '#6a4a2a', WOODS);
   D.add('std', T.pillow(8, 5, 0.5), [-8, 18.4, -5], [3.4, 1.6, 2.6], [0, 0.4, 0], '#e8d8a8', CLOTH);
@@ -182,7 +182,7 @@ function cooler(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#c8281e', '#1c4fa8', '#2f8a4a', '#e0a020']);
-  const F = S(DET.plastic, 0.4, 0);
+  const F = S(DET.plasticworn, 0.4, 0);
   D.rblock('std', 0, 0, 0, 18, 10, 11, 1.4, col, null, F);
   D.rblock('std', r.chance(0.3) ? -3 : 0, 10, 0, 18.6, 2.4, 11.6, 0.8, '#ecece4', r.chance(0.3) ? [0, 0, 0.12] : null, F);
   D.add('std', T.torus(10, 0.16, 4), [0, 8, 6], [2.8, 1.6, 1], null, '#2a2a2c', RUB);
@@ -194,7 +194,7 @@ function grill(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#1a1a1c', '#a01818', '#2a2a2e']);
-  const F = S(DET.panel, 0.4, 0.5);
+  const F = S(DET.paintmetal, 0.4, 0.5);
   D.add('std', T.sphere(14, 6), [0, 20, 0], [10, 6.5, 10], [0, 0, 0], col, F);                          // bowl
   D.add('std', T.sphere(14, 6), [0, 21.6, 0], [10.4, 7.5, 10.4], [Math.PI, 0, 0], shadeHex(col, 0.06), F);   // lid resting a bit off
   D.cyl('std', 0, 26, 0, 1.4, 1.4, '#1a1a1c', 8, 1, null, F);
@@ -212,7 +212,7 @@ function gnome(P) {
   const { D, s } = P;
   const r = D.rng;
   const coat = r.pick(['#1c4fa8', '#2f8a4a', '#8a3a9a', '#c8781c']);
-  const F = S(DET.plastic, 0.4, 0);
+  const F = S(DET.plasticworn, 0.4, 0);
   D.cyl('std', 0, 0, 0, 2.2 * s, 5 * s, coat, 10, 0.85, null, F);
   D.cyl('std', 0, 4.6 * s, 0, 2.4 * s, 0.7, '#1a1a1c', 10, 1, null, F);                       // belt
   D.add('std', T.sphere(8, 5), [0.4, 6.4 * s, 0], [1.7 * s, 1.7 * s, 1.7 * s], null, '#e8b898', F);   // face
@@ -274,7 +274,7 @@ function CONC() { return S(DET.concrete, 0.88, 0); }
 
 function wheelchair(P) {
   const { D, s } = P;
-  const F = S(DET.panel, 0.4, 0.6);
+  const F = S(DET.paintmetal, 0.4, 0.6);
   const tl = tilter(D.rng.chance(0.2) ? 1.5 : 0);
   for (const z of [-7.6, 7.6]) {
     wheel(D, -3, 9, z, 9, 1.4, tl);
@@ -297,7 +297,7 @@ function wheelchair(P) {
 function gurney(P) {
   const { D } = P;
   const r = D.rng;
-  const F = S(DET.panel, 0.4, 0.6);
+  const F = S(DET.paintmetal, 0.4, 0.6);
   D.add('std', T.rbox(38, 3, 12.6, 0.8), [0, 16, 0], [1, 1, 1], null, '#e8e8e2', CLOTH);
   D.add('std', T.rbox(38.4, 1.4, 13, 0.5), [0, 14, 0], [1, 1, 1], null, '#8a8e92', F);
   for (const x of [-15, 15]) for (const z of [-5, 5]) {
@@ -310,13 +310,13 @@ function gurney(P) {
     D.add('flat', T.plane(), [1, 20.4, 0.5], [9, 6, 1], [-Math.PI / 2, 0, 0.2], '#4a0c0a', { uv: dressUV('f_blood'), noAO: true, noJitter: true });
   }
   rod(D, 'std', [-10, 14, 7], [-10, 44, 7], 0.35, '#9aa0a4', F, 5);
-  D.add('std', T.pillow(8, 5, 0.5), [-10, 40, 7], [1.6, 3, 1.2], null, '#cfe0e8', S(DET.plastic, 0.3, 0));
+  D.add('std', T.pillow(8, 5, 0.5), [-10, 40, 7], [1.6, 3, 1.2], null, '#cfe0e8', S(DET.plasticworn, 0.3, 0));
 }
 
 function beachball(P) {
   const { D } = P;
-  D.add('std', T.sphere(12, 8), [0, 6.4, 0], [6.4, 6.4, 6.4], null, D.rng.pick(['#e0a020', '#c8281e', '#20a0b0']), S(DET.plastic, 0.35, 0));
-  for (let k = 0; k < 3; k++) D.add('std', T.torus(16, 0.06, 4), [0, 6.4, 0], [6.5, 6.5, 6.5], [k * 1.05, k * 0.7, 0], '#f0f0ea', S(DET.plastic, 0.35, 0));
+  D.add('std', T.sphere(12, 8), [0, 6.4, 0], [6.4, 6.4, 6.4], null, D.rng.pick(['#e0a020', '#c8281e', '#20a0b0']), S(DET.plasticworn, 0.35, 0));
+  for (let k = 0; k < 3; k++) D.add('std', T.torus(16, 0.06, 4), [0, 6.4, 0], [6.5, 6.5, 6.5], [k * 1.05, k * 0.7, 0], '#f0f0ea', S(DET.plasticworn, 0.35, 0));
 }
 
 function scarecrow(P) {

@@ -193,7 +193,9 @@ export function trunk(B, size, o) {
   const topK = sp === 'dead' ? 0.62 : 0.55;
   const cin = DETAIL.level >= 3;
   const tseg = cin ? 16 : sp === 'birch' ? 8 : 9;
-  B.cyl('std', 0, 0, 0, rad, tall, col, tseg, topK, null, { wobble: { amp: cin ? 0.05 : 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : DET.bark, 0.85, 0] });
+  const conifer = sp === 'pine' || sp === 'spruce';
+  if (conifer) col = '#6a5a4c';   // (plated pine bark carries its own red-brown)
+  B.cyl('std', 0, 0, 0, rad, tall, col, tseg, topK, null, { wobble: { amp: cin ? 0.05 : 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : conifer ? DET.pinebark : DET.bark, 0.85, 0] });
   B.cyl('std', 0, 0, 0, rad * 1.45, 9, shadeHex(col, -0.15), cin ? 16 : 9, 0.68, null, { surf: [DET.bark, 0.9, 0] });
   if (cin && sp !== 'palm') {
     // bark in bands: a second, slightly wider skin in short sleeves with a darker seam between them

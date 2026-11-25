@@ -9,8 +9,8 @@ import { shadeHex, mixHex } from './world-geo.js';
 
 const RUBBER = '#1b1b1c';
 const TYRE_PROFILE = [[0.6, -0.5], [0.86, -0.5], [0.96, -0.44], [1.0, -0.3], [1.0, 0.3], [0.96, 0.44], [0.86, 0.5], [0.6, 0.5]];
-const PLASTIC = S(DET.plastic, 0.5, 0);
-const CLOTH = S(DET.fabric, 0.9, 0);
+const PLASTIC = S(DET.plasticworn, 0.5, 0);
+const CLOTH = S(DET.linen, 0.9, 0);
 const CARDBOARD = ['#a98552', '#b08a56', '#9c7a4a', '#b6935e'];
 
 // ---- flat marks -------------------------------------------------------------------------
@@ -41,7 +41,7 @@ function suitcase(P) {
   const dark = shadeHex(col, -0.4);
   const open = r.chance(0.22);
   const sw = 22 * s, sh = 7 * s, sd = 15 * s;
-  const HARD = S(DET.plastic, 0.35, 0.05);
+  const HARD = S(DET.plasticworn, 0.4, 0.05);
   if (open) {
     // open on the ground: shell + lid propped at ~100 degrees, clothes spilling out
     D.rblock('std', 0, 0, 0, sw, sh * 0.9, sd, 1.2, col, [0, 0, 0], HARD);
@@ -65,7 +65,7 @@ function suitcase(P) {
     for (const z of [-sd * 0.3, sd * 0.3]) D.box('std', sw * 0.5 + 0.3, sh * 0.5, z, 0.6, 1.4, 2.2, '#c8b060', null, S(0, 0.3, 0.9));   // latches
     for (const x of [-sw * 0.38, sw * 0.38]) for (const z of [-sd / 2 + 1, sd / 2 - 1]) D.cyl('std', x, -0.2, z, 0.9, 1.2, '#161616', 6);   // wheels
     D.box('std', -sw / 2 - 0.4, sh * 0.65, 0, 0.8, 0.8, 6, '#a0a4a8', null, S(0, 0.3, 0.9));      // telescoping handle stub
-    D.box('std', sw / 2 + 0.6, sh * 0.35, sd * 0.2, 0.3, 3.4, 2.2, r.pick(['#e8d020', '#d83020', '#f0f0f0']), [0, 0, 0.3], S(DET.plastic, 0.5, 0));   // luggage tag
+    D.box('std', sw / 2 + 0.6, sh * 0.35, sd * 0.2, 0.3, 3.4, 2.2, r.pick(['#e8d020', '#d83020', '#f0f0f0']), [0, 0, 0.3], S(DET.plasticworn, 0.5, 0));   // luggage tag
   } else {
     D.box('std', 0, sw + 0.4, 0, 5, 0.9, 5, '#1e1e20', null, S(0, 0.5, 0.3));
   }
@@ -129,7 +129,7 @@ function carDoor(P) {
   const { D, s } = P;
   const r = D.rng;
   const col = r.pick(MUTED.concat(['#d8d8d0', '#2a2a2e']));
-  const paint = { surf: [DET.panel, 0.4, 0.35] };
+  const paint = { surf: [DET.paintmetal, 0.4, 0.35] };
   const L = 34 * s, Hh = 21 * s;
   // lying face-up, one edge propped on a kerb of dirt
   const tilt = [0.06, r.range(0, 6), 0.05];
@@ -137,14 +137,14 @@ function carDoor(P) {
   D.add('glass', T.box(), [L * 0.06, 2.9, 0], [L * 0.62, 0.3, Hh * 0.3], tilt, '#1a242e');
   D.add('std', T.box(), [L * 0.06, 2.85, 0], [L * 0.66, 0.5, Hh * 0.36], tilt, '#101214', S(DET.rubber, 0.8, 0));
   D.add('std', T.rbox(5, 0.9, 1, 0.3), [-L * 0.3, 3.1, Hh * 0.28], [1, 1, 1], tilt, '#c9ced3', S(0, 0.2, 1));
-  D.add('std', T.box(), [L * 0.4, 1.3, -Hh * 0.2], [2.4, 1.4, 4], tilt, '#20221f', S(DET.plastic, 0.6, 0));   // hinge stubs
+  D.add('std', T.box(), [L * 0.4, 1.3, -Hh * 0.2], [2.4, 1.4, 4], tilt, '#20221f', S(DET.plasticworn, 0.6, 0));   // hinge stubs
 }
 
 function bumper(P) {
   const { D, s } = P;
   const chrome = D.rng.chance(0.4);
   const col = chrome ? '#c9ced3' : '#1e1f21';
-  const F = chrome ? S(0, 0.18, 1) : S(DET.plastic, 0.6, 0);
+  const F = chrome ? S(0, 0.18, 1) : S(DET.plasticworn, 0.6, 0);
   D.add('std', T.rbox(26 * s, 4.4, 5, 1.6), [0, 2.2, 0], [1, 1, 1], [0, 0, 0.08], col, F);
   D.add('std', T.rbox(9 * s, 4.4, 5, 1.6), [17 * s, 2, 4 * s], [1, 1, 1], [0, 0.5, 0], col, F);
   D.add('std', T.rbox(9 * s, 4.4, 5, 1.6), [-17 * s, 2, 4 * s], [1, 1, 1], [0, -0.5, 0], col, F);
@@ -155,7 +155,7 @@ function panel(P) {
   const { D, s } = P;
   const r = D.rng;
   const col = r.pick(MUTED.concat(['#d8d8d0']));
-  D.add('paint', T.box(), [0, 1, 0], [22 * s, 0.6, 15 * s], [0.12, r.range(0, 6), 0.1], col, { surf: [DET.panel, 0.45, 0.35] });
+  D.add('paint', T.box(), [0, 1, 0], [22 * s, 0.6, 15 * s], [0.12, r.range(0, 6), 0.1], col, { surf: [DET.paintmetal, 0.45, 0.35] });
   D.add('paint', T.box(), [7 * s, 1.6, 3], [9 * s, 0.6, 7 * s], [-0.2, r.range(0, 6), 0.3], shadeHex(col, -0.15), { surf: [DET.rust, 0.6, 0.4] });
   D.add('std', T.box(), [-3, 0.4, -2], [6, 0.3, 8], [0, 0.4, 0], '#4a4a4c', S(DET.rust, 0.7, 0.6));
 }
@@ -164,7 +164,7 @@ function hubcap(P) {
   const { D, s } = P;
   const up = D.rng.chance(0.5);
   const A = up ? [0.2, 0, 0.1] : [1.2, D.rng.range(0, 6), 0];
-  D.add('std', T.cyl(12, 0.82), [0, up ? 0.7 : 4.2, 0], [5.8 * s, 1.3, 5.8 * s], A, '#b8bcc0', S(DET.panel, 0.3, 0.9));
+  D.add('std', T.cyl(12, 0.82), [0, up ? 0.7 : 4.2, 0], [5.8 * s, 1.3, 5.8 * s], A, '#b8bcc0', S(DET.paintmetal, 0.3, 0.9));
   D.add('std', T.cyl(8, 0.6), [0, up ? 1.5 : 4.8, 0], [2, 0.8, 2], A, '#8a8e92', S(0, 0.3, 0.9));
 }
 
@@ -175,10 +175,10 @@ function wheelLoose(P) {
   const lay = r.chance(0.55);
   if (lay) {
     D.add('std', T.lathe('tyre', TYRE_PROFILE, 16), [0, 2.4, 0], [8.4 * s, 4.6, 8.4 * s], [0.06, ang, 0.05], RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
-    D.add('std', T.cyl(14, 0.98), [0, 2.9, 0], [4.9 * s, 0.7, 4.9 * s], [0.06, ang, 0.05], '#9aa0a6', S(DET.panel, 0.32, 0.85));
+    D.add('std', T.cyl(14, 0.98), [0, 2.9, 0], [4.9 * s, 0.7, 4.9 * s], [0.06, ang, 0.05], '#9aa0a6', S(DET.paintmetal, 0.32, 0.85));
   } else {
     D.add('std', T.lathe('tyre', TYRE_PROFILE, 16), [0, 8.2, 0], [8.2 * s, 4.6, 8.2 * s], [Math.PI / 2 - 0.05, ang, 0], RUBBER, { surf: [DET.rubber, 0.85, 0], map: 'cyl' });
-    D.add('std', T.cyl(14, 0.98), [0, 8.2, 2.7], [4.9 * s, 0.7, 4.9 * s], [Math.PI / 2 - 0.05, ang, 0], '#9aa0a6', S(DET.panel, 0.32, 0.85));
+    D.add('std', T.cyl(14, 0.98), [0, 8.2, 2.7], [4.9 * s, 0.7, 4.9 * s], [Math.PI / 2 - 0.05, ang, 0], '#9aa0a6', S(DET.paintmetal, 0.32, 0.85));
   }
 }
 
@@ -186,8 +186,8 @@ function wheelLoose(P) {
 
 function cardboardBox(D, x, y0, z, w, h, d, rot, label) {
   const col = pick(D, CARDBOARD);
-  D.add('std', T.rbox(w, h, d, 0.5), [x, y0 + h / 2, z], [1, 1, 1], [0, rot, 0], col, { surf: [DET.wood, 0.9, 0], noJitter: false });
-  D.add('std', T.box(), [x, y0 + h + 0.05, z], [w * 0.16, 0.2, d + 0.2], [0, rot, 0], '#d6c292', S(0, 0.5, 0));   // tape
+  D.add('std', T.rbox(w, h, d, 0.5), [x, y0 + h / 2, z], [1, 1, 1], [0, rot, 0], col, { surf: [DET.cardboard, 0.92, 0], noJitter: false });
+  D.add('std', T.box(), [x, y0 + h + 0.05, z], [w * 0.16, 0.2, d + 0.2], [0, rot, 0], '#c9b07a', S(DET.plasticworn, 0.35, 0));   // tape
   if (label) {
     const c = Math.cos(rot), s2 = Math.sin(rot);
     D.add('sign', T.plane(), [x + c * (w / 2 + 0.15), y0 + h * 0.5, z - s2 * (w / 2 + 0.15)], [Math.min(d, h) * 0.85, Math.min(d, h) * 0.85, 1], [0, Math.PI / 2 + rot, 0], '#ffffff', { uv: dressUV(label), noAO: true, noJitter: true });
@@ -217,7 +217,7 @@ function boxOpen(P) {
   const w = 13 * s, h = 10 * s, d = 11 * s;
   const rot = r.range(0, 6);
   const col = r.pick(CARDBOARD);
-  const F = { surf: [DET.wood, 0.9, 0] };
+  const F = { surf: [DET.cardboard, 0.92, 0] };
   D.add('std', T.rbox(w, h, d, 0.4), [0, h / 2, 0], [1, 1, 1], [0, rot, 0], col, F);
   D.add('std', T.box(), [0, h + 0.05, 0], [w - 1.6, 0.3, d - 1.6], [0, rot, 0], '#1a140e', F);
   const flap = (x, z, rx, rz) => D.add('std', T.box(), [x, h + 2.4, z], [w * 0.5, 0.35, d * 0.48], [rx, rot, rz], shadeHex(col, -0.08), F);
@@ -244,7 +244,7 @@ function newsp(P) {
 
 // ---- traffic and roadside safety -----------------------------------------------------------------
 
-const CONE_S = S(DET.plastic, 0.5, 0);
+const CONE_S = S(DET.plasticworn, 0.55, 0);
 function coneDown(P) {
   const { D, s } = P;
   const R = 6 * s;
@@ -257,17 +257,17 @@ function coneUp(P) {
   const R = 6 * s;
   D.rblock('std', 0, 0, 0, R * 2.1, 1.5, R * 2.1, 0.4, '#1c1c1c', null, S(DET.rubber, 0.8, 0));
   D.cyl('std', 0, 1.5, 0, R * 0.95, R * 3, '#e8641c', 12, 0.18, null, CONE_S);
-  D.cyl('std', 0, R * 1.2, 0, R * 0.7, R * 0.45, '#e8e8e0', 12, 0.8, null, S(DET.plastic, 0.3, 0));
-  D.cyl('std', 0, R * 2.0, 0, R * 0.46, R * 0.3, '#e8e8e0', 12, 0.75, null, S(DET.plastic, 0.3, 0));
+  D.cyl('std', 0, R * 1.2, 0, R * 0.7, R * 0.45, '#e8e8e0', 12, 0.8, null, S(DET.plasticworn, 0.3, 0));
+  D.cyl('std', 0, R * 2.0, 0, R * 0.46, R * 0.3, '#e8e8e0', 12, 0.75, null, S(DET.plasticworn, 0.3, 0));
 }
 function triangle(P) {
   const { D, s } = P;
   const h = 16 * s, half = 9.5 * s;
   const lean = D.rng.range(-0.15, 0.15);
   const P0 = [0, 5, -half], P1 = [0, 5, half], P2 = [lean, 5 + h, 0];
-  for (const [a, b] of [[P0, P1], [P1, P2], [P2, P0]]) plank(D, 'std', a, b, 1.5, 1.2, '#c8281e', S(DET.plastic, 0.4, 0));
+  for (const [a, b] of [[P0, P1], [P1, P2], [P2, P0]]) plank(D, 'std', a, b, 1.5, 1.2, '#c8281e', S(DET.plasticworn, 0.4, 0));
   const q0 = [0.15, 6.4, -half * 0.68], q1 = [0.15, 6.4, half * 0.68], q2 = [lean + 0.15, 5 + h * 0.72, 0];
-  for (const [a, b] of [[q0, q1], [q1, q2], [q2, q0]]) plank(D, 'std', a, b, 1.9, 0.6, '#f2f0e6', S(DET.plastic, 0.25, 0));
+  for (const [a, b] of [[q0, q1], [q1, q2], [q2, q0]]) plank(D, 'std', a, b, 1.9, 0.6, '#f2f0e6', S(DET.plasticworn, 0.25, 0));
   // stand legs
   rod(D, 'std', [0, 5, -half * 0.6], [-4, 0, -half * 0.9], 0.5, '#2a2a2c');
   rod(D, 'std', [0, 5, half * 0.6], [-4, 0, half * 0.9], 0.5, '#2a2a2c');
@@ -277,7 +277,7 @@ function flare(P) {
   const { D, halos, it } = P;
   const r = D.rng;
   const ang = r.range(0, 6);
-  D.add('std', T.cyl(8), [0, 0.9, 0], [0.9, 10, 0.9], [0, ang, Math.PI / 2], '#b81c1c', { ...S(DET.plastic, 0.6, 0), map: 'cyl' });
+  D.add('std', T.cyl(8), [0, 0.9, 0], [0.9, 10, 0.9], [0, ang, Math.PI / 2], '#b81c1c', { ...S(DET.plasticworn, 0.6, 0), map: 'cyl' });
   D.add('std', T.cyl(8), [-3, 0.9, 0], [0.95, 2, 0.95], [0, ang, Math.PI / 2], '#e8d020', { ...S(0, 0.6, 0), map: 'cyl' });
   const tip = [Math.cos(ang) * 5.4, 1.2, -Math.sin(ang) * 5.4];
   D.add('glow', T.sphere(6, 4), tip, [1.4, 1.2, 1.4], null, '#ff5a3a', { emissive: 5, uv: atlasUV('white') });
@@ -296,11 +296,11 @@ function litter(P) {
   for (let i = 0; i < n; i++) {
     const x = r.range(-8, 8), z = r.range(-8, 8), t = r.next();
     if (t < 0.32) {
-      D.add('std', T.cyl(6), [x, 1.6, z], [1.6, 4.2, 1.6], [0, r.range(0, 6), Math.PI / 2 + r.range(-0.3, 0.3)], r.pick(['#c0c4c8', '#b81c1c', '#1c4fa8', '#2a8a4a', '#c0c4c8']), { surf: [DET.panel, 0.3, 0.85], map: 'cyl' });
+      D.add('std', T.cyl(6), [x, 1.6, z], [1.6, 4.2, 1.6], [0, r.range(0, 6), Math.PI / 2 + r.range(-0.3, 0.3)], r.pick(['#c0c4c8', '#b81c1c', '#1c4fa8', '#2a8a4a', '#c0c4c8']), { surf: [DET.paintmetal, 0.3, 0.85], map: 'cyl' });
     } else if (t < 0.5) {
       D.add('std', T.cyl(6), [x, 1.5, z], [1.5, 6, 1.5], [0, r.range(0, 6), Math.PI / 2], r.pick(['#2a6a3a', '#4a2a1a', '#cfe0e8']), { surf: [DET.glass, 0.15, 0.1], map: 'cyl' });
     } else if (t < 0.7) {
-      D.add('std', T.cyl(6, 0.7), [x, 1.8, z], [1.7, 3.6, 1.7], [0.2, 0, Math.PI / 2 + r.range(-0.6, 0.6)], r.pick(['#f0f0ea', '#c8281e']), { surf: [DET.plastic, 0.4, 0], map: 'cyl' });
+      D.add('std', T.cyl(6, 0.7), [x, 1.8, z], [1.7, 3.6, 1.7], [0.2, 0, Math.PI / 2 + r.range(-0.6, 0.6)], r.pick(['#f0f0ea', '#c8281e']), { surf: [DET.plasticworn, 0.4, 0], map: 'cyl' });
     } else if (t < 0.9) {
       D.add('std', T.box(), [x, 0.6, z], [2.6, 0.7, 1.8], [0, r.range(0, 6), 0], r.pick(BRIGHT), CLOTH);
     } else {
@@ -314,7 +314,7 @@ function fuelCan(P) {
   const lay = D.rng.chance(0.25);
   const A = lay ? [0, D.rng.range(0, 6), 1.5] : [0, D.rng.range(0, 6), 0];
   const y = lay ? 2.2 : 0;
-  const f = S(DET.panel, 0.42, 0.5);
+  const f = S(DET.paintmetal, 0.42, 0.5);
   D.add('std', T.rbox(8 * s, 11 * s, 3.6 * s, 0.7), [0, y + 5.5 * s, 0], [1, 1, 1], A, col, f);
   D.add('std', T.cyl(8, 0.8), [2.4 * s, y + 12 * s, 0], [1.1, 2.4, 1.1], A, '#2a2a2c', f);
   D.add('std', T.torus(8, 0.12, 4), [-2 * s, y + 11.6 * s, 0], [1.9, 1.9, 1], A, shadeHex(col, -0.3), f);
@@ -363,8 +363,8 @@ function toy(P) {
     D.rblock('std', -0.6, 4, 0, 4.4, 1.8, 3.4, 0.6, shadeHex(col, 0.2), [0, 0, 0], PLASTIC);
     for (const x of [-2.6, 2.6]) for (const z of [-2.2, 2.2]) D.cylZ('std', x, 1.1, z, 1.1, 0.8, '#161616', 8);
   } else if (t < 0.7) {
-    D.add('std', T.sphere(10, 7), [0, 3.6, 0], [3.6, 3.6, 3.6], null, r.pick(BRIGHT), S(DET.plastic, 0.35, 0));
-    D.add('std', T.torus(12, 0.06, 4), [0, 3.6, 0], [3.65, 3.65, 3.65], [1.5, 0.4, 0], '#f0f0ea', S(DET.plastic, 0.35, 0));
+    D.add('std', T.sphere(10, 7), [0, 3.6, 0], [3.6, 3.6, 3.6], null, r.pick(BRIGHT), S(DET.plasticworn, 0.35, 0));
+    D.add('std', T.torus(12, 0.06, 4), [0, 3.6, 0], [3.65, 3.65, 3.65], [1.5, 0.4, 0], '#f0f0ea', S(DET.plasticworn, 0.35, 0));
   } else {
     for (let i = 0; i < 4; i++) D.rblock('std', r.range(-4, 4), i > 2 ? 3 : 0, r.range(-3, 3), 3, 3, 3, 0.4, r.pick(BRIGHT), [0, r.range(0, 6), 0], S(DET.wood, 0.6, 0));
   }
@@ -376,12 +376,12 @@ function spill(P) {
   const n = 10 + Math.floor(r.next() * 8);
   D.add('flat', T.plane(), [0, 0.24, 0], [46 * s, 34 * s, 1], [-Math.PI / 2, 0, r.range(0, 6)], '#0c0a08', { uv: dressUV('f_stain'), noAO: true, noJitter: true });
   cardboardBox(D, -8, 0, -6, 15, 10, 12, r.range(-0.6, 0.6), 'box_plain');
-  D.add('std', T.rbox(15, 10, 12, 0.5), [10, 5, 8], [1, 1, 1], [0.5, r.range(0, 6), 0.2], '#a98552', { surf: [DET.wood, 0.9, 0] });   // a crushed carton
+  D.add('std', T.rbox(15, 10, 12, 0.5), [10, 5, 8], [1, 1, 1], [0.5, r.range(0, 6), 0.2], '#a98552', { surf: [DET.cardboard, 0.92, 0] });   // a crushed carton
   for (let i = 0; i < n; i++) {
     const x = r.range(-22, 22) * s, z = r.range(-16, 16) * s;
-    if (kind === 'oranges') D.add('std', T.sphere(7, 5), [x, 1.9, z], [1.9, 1.9, 1.9], null, r.pick(['#e8801c', '#d8701c', '#f09a2a']), S(DET.plastic, 0.5, 0));
-    else if (kind === 'cans') D.add('std', T.cyl(8), [x, 1.7, z], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c', '#2a8a4a']), { surf: [DET.panel, 0.3, 0.85], map: 'cyl' });
-    else if (kind === 'boxes') D.add('std', T.rbox(6, 4, 5, 0.4), [x, 2, z], [1, 1, 1], [0, r.range(0, 6), 0], r.pick(CARDBOARD), { surf: [DET.wood, 0.9, 0] });
+    if (kind === 'oranges') D.add('std', T.sphere(7, 5), [x, 1.9, z], [1.9, 1.9, 1.9], null, r.pick(['#e8801c', '#d8701c', '#f09a2a']), S(DET.plasticworn, 0.5, 0));
+    else if (kind === 'cans') D.add('std', T.cyl(8), [x, 1.7, z], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c', '#2a8a4a']), { surf: [DET.paintmetal, 0.3, 0.85], map: 'cyl' });
+    else if (kind === 'boxes') D.add('std', T.rbox(6, 4, 5, 0.4), [x, 2, z], [1, 1, 1], [0, r.range(0, 6), 0], r.pick(CARDBOARD), { surf: [DET.cardboard, 0.92, 0] });
     else D.add('std', T.cyl(10), [x, 2.6, z], [2.6, 5, 2.6], [r.range(0, 1.3), 0, r.range(0, 1.3)], '#e8e6dc', { surf: [DET.fabric, 0.9, 0], map: 'cyl' });
   }
 }

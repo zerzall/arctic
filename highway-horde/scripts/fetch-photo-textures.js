@@ -105,6 +105,32 @@ export const PHOTO = {
   tile_ceramic: { id: 'floor_tiles_08', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'unglazed square floor tiles, photo-scanned' },
 };
 
+/**
+ * New sets (no baked set before them): the surfaces of props, vehicles, furniture and trees that used to
+ * borrow a building material (a crate drawn with the siding's planks, a cone with the tarp's weave, a car
+ * with a blue steel plate). Each draws its own surface id (world-surf-gen.js DET, a library-only id) and
+ * keeps the photo's own colour and luminance; the fields are the ones above plus
+ *   det        the surface name it draws
+ *   tile       metres one tile of the set covers (= DET_TILE / 32)
+ *   tint       how much of the object's own colour replaces the photo's (0..1; the mask's mean)
+ *   lum        optional linear luminance the photo's mean is scaled to (else its own)
+ */
+export const PHOTO_NEW = {
+  crate_wood: { id: 'rough_wood', det: 'crate', tile: 1.0, tint: 0.75, desat: 0.3, shift: ANY, about: 'rough-sawn lumber (crates, pallets, sawhorses), photo-scanned' },
+  plywood: { id: 'plywood', det: 'plywood', tile: 1.0, tint: 0.55, shift: ANY, about: 'plywood sheet face (boarded windows, barricades), photo-scanned' },
+  osb: { id: 'oriented_strand_board', det: 'osb', tile: 2.5, tint: 0.4, shift: ANY, about: 'oriented strand board (boarded doors, site hoarding), photo-scanned' },
+  paint_metal: { id: 'green_metal_rust', det: 'paintmetal', tile: 1.0, tint: 0.92, desat: 0.92, shift: ANY, about: 'painted steel with scratches, chips and rust spots (drums, bins, cylinders, machines), photo-scanned' },
+  paint_rust: { id: 'rusty_painted_metal', det: 'paintrust', tile: 2.2, tint: 0.55, desat: 0.75, shift: ANY, about: 'paint flaking off rusting steel (old drums, dumpsters, wrecks), photo-scanned' },
+  car_paint: { id: 'container_side', det: 'carpaint', tile: 2.0, tint: 0.97, desat: 0.97, shift: ANY, about: 'painted body steel with road dust and streaks (car bodies), photo-scanned' },
+  burlap: { id: 'hessian_230', det: 'burlap', tile: 0.27, tint: 0.7, desat: 0.4, shift: ANY, about: 'coarse hessian / burlap weave (sandbags, sacks), photo-scanned' },
+  kraft: { id: 'hessian_380', det: 'cardboard', tile: 0.54, tint: 0.85, desat: 0.5, shift: ANY, lum: 0.3, about: 'fine kraft-paper fibre (cardboard boxes; a fine hessian scan read at paper scale), photo-scanned' },
+  leather: { id: 'fabric_leather_01', det: 'leather', tile: 0.4, tint: 0.9, desat: 0.6, shift: ANY, about: 'worn leather with a seam (seats, sofas, bags), photo-scanned' },
+  linen: { id: 'rough_linen', det: 'linen', tile: 0.27, tint: 0.95, desat: 0.9, shift: ANY, about: 'rough linen / upholstery weave (mattresses, cushions, clothes), photo-scanned' },
+  veneer: { id: 'kitchen_wood', det: 'veneer', tile: 0.6, tint: 0.6, shift: ANY, about: 'worn wood veneer (furniture, counters, shelves, doors), photo-scanned' },
+  bark_pine: { id: 'pine_bark', det: 'pinebark', tile: 2.0, tint: 0.5, shift: ANY, about: 'plated pine bark (pines and spruces), photo-scanned' },
+  plastic_worn: { id: 'weathered_pvc_tank', det: 'plasticworn', tile: 1.0, tint: 0.95, desat: 0.95, shift: ANY, about: 'weathered moulded plastic with streaks and grime (cones, bins, tanks, coolers), photo-scanned' },
+};
+
 // ---- helpers -----------------------------------------------------------------------------------
 
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
@@ -159,11 +185,23 @@ function decodeJpg(buf) {
 }
 
 /**
+ * A photo a few texels off square (the fabric scans): its top-left power-of-two square. (A woven or
+ * fibrous surface loses only the seam's few texels of continuity.)
+ */
+function squareOf(img) {
+  let n = 1;
+  while (n * 2 <= Math.min(img.w, img.h)) n *= 2;
+  const data = new Uint8Array(n * n * img.ch);
+  for (let y = 0; y < n; y++) data.set(img.data.subarray(y * img.w * img.ch, (y * img.w + n) * img.ch), y * n * img.ch);
+  return { w: n, h: n, ch: img.ch, data };
+}
+
+/**
  * Box-filter a square image down by the integer factor f with `fn(acc, src, p)` channel handling,
  * then repeat the result k × k times into an n² tile. (f divides the size, so the result tiles.)
  */
 function packTile(img, n, k, comps, per) {
-  if (img.w !== img.h) throw new Error('not square');
+  if (img.w !== img.h) img = squareOf(img);
   const m = n / k;                 // texels of one repeat
   const f = img.w / m;
   if (!Number.isInteger(f) || f < 1) throw new Error(`size ${img.w} does not reduce to ${m}`);
@@ -244,7 +282,9 @@ export function packSet(name, cfg, old, imgs, dx, k) {
   let mr = 0, mg = 0, mb = 0;
   for (let i = 0; i < NN; i++) { mr += alb[i * 3]; mg += alb[i * 3 + 1]; mb += alb[i * 3 + 2]; }
   mr /= NN; mg /= NN; mb /= NN;
-  const oldM = old.meanAll || old.mean;
+  // (a new set has no baked look to match: its own colour, at `lum` when given)
+  const own = [mr, mg, mb].map((v) => (cfg.lum ? v * cfg.lum / Y(mr, mg, mb) : v));
+  const oldM = old.meanAll || old.mean || own;
   const yNew = Y(mr, mg, mb), yOld = Y(...oldM);
   const t = cfg.chroma ?? 0.5;
   const gain = [0, 1, 2].map((c) => {
@@ -357,16 +397,20 @@ async function main() {
   const a = parseArgs(process.argv.slice(2));
   const mPath = join(LIB, 'manifest.json');
   const man = JSON.parse(readFileSync(mPath, 'utf8'));
-  const names = a.only || Object.keys(PHOTO);
-  if (a.list) { for (const n of Object.keys(PHOTO)) console.log(`${n.padEnd(20)} ${PHOTO[n].id}`); return; }
+  const ALL = { ...PHOTO, ...PHOTO_NEW };
+  const names = a.only || Object.keys(ALL);
+  if (a.list) { for (const n of Object.keys(ALL)) console.log(`${n.padEnd(20)} ${ALL[n].id}${PHOTO_NEW[n] ? '  (new)' : ''}`); return; }
   const t0 = Date.now();
   for (const name of names) {
-    const cfg = PHOTO[name];
+    const cfg = ALL[name];
     if (!cfg) throw new Error(`no photo material configured for ${name}`);
-    const old = man.sets[name];
+    const fresh = !!PHOTO_NEW[name];
+    const old = man.sets[name] || (fresh ? { det: cfg.det, tile: cfg.tile } : null);
     if (!old) throw new Error(`the manifest has no set ${name}`);
-    // the replaced set's baked look, kept for the colour match (the first run records it)
-    const ref = (old.source && old.source.baked) || { meanAll: old.meanAll, mean: old.mean, tint: old.tint, rough: old.rough, about: old.about };
+    if (fresh) { old.det = cfg.det; old.tile = cfg.tile; }
+    // the replaced set's baked look, kept for the colour match (the first run records it); a new set
+    // matches nothing: its own colour, the configured tint
+    const ref = fresh ? { tint: cfg.tint, about: cfg.about } : (old.source && old.source.baked) || { meanAll: old.meanAll, mean: old.mean, tint: old.tint, rough: old.rough, about: old.about };
     const info = await fetchRetry(`${API}/info/${cfg.id}`, 'json');
     const { files, dx } = await resolveFiles(cfg.id);
     if (old.source && old.source.id === cfg.id && !a.update) {
@@ -405,7 +449,7 @@ async function main() {
         library: 'Poly Haven', id: cfg.id, name: info.name, url: `https://polyhaven.com/a/${cfg.id}`,
         license: 'CC0 1.0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
         authors: info.authors || {}, sizeM, repeat: kPow, normal: dx ? 'directx→opengl' : 'opengl',
-        files, baked: ref,
+        files, ...(fresh ? null : { baked: ref }),
       },
     };
     man.sets[name] = e;

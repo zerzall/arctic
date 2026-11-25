@@ -101,7 +101,7 @@ export function buildTreeLine(B, map, waters) {
     }
     const col = rng.pick(PINE);
     const top = rng.range(220, 330) * s;
-    B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#2a2118', 5, 0.7, null, { surf: [DET.bark, 0.9, 0] });
+    B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#5a4a3e', 5, 0.7, null, { surf: [DET.pinebark, 0.9, 0] });
     const cinL = DETAIL.level >= 3;
     B.cyl('std', 0, 40 * s, 0, (cinL ? 26 : 44) * s, top - 40 * s, shadeHex(col, -0.35), cinL ? 9 : 7, 0.04, null, { surf: [DET.grass, 0.95, 0], noAO: true });
     // two rings of drooping bough cards over the cone: a ragged, needled silhouette

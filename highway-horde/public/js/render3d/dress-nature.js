@@ -82,7 +82,7 @@ function shrub(P) {
   }
   D.add('leaves', cardGeo(L), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });
   for (let k = 0; k < 4; k++) rod(D, 'std', [0, 0, 0], [r.range(-R, R) * 0.6, R * 0.7, r.range(-R, R) * 0.6], 0.5, '#3a2c1c', BARK, 4, 0.5);
-  if (kind < 0.35 && r.chance(0.5)) for (let k = 0; k < 8; k++) D.add('std', T.sphere(5, 3), [r.range(-R, R) * 0.7, R * r.range(0.4, 1.0), r.range(-R, R) * 0.7], [0.7, 0.7, 0.7], null, r.pick(['#c8181c', '#3a1a5a', '#e8a020']), S(DET.plastic, 0.4, 0));
+  if (kind < 0.35 && r.chance(0.5)) for (let k = 0; k < 8; k++) D.add('std', T.sphere(5, 3), [r.range(-R, R) * 0.7, R * r.range(0.4, 1.0), r.range(-R, R) * 0.7], [0.7, 0.7, 0.7], null, r.pick(['#c8181c', '#3a1a5a', '#e8a020']), S(DET.plasticworn, 0.4, 0));
 }
 
 function fern(P) {
@@ -137,7 +137,7 @@ function mushrooms(P) {
     const h = r.range(2.5, 5.5) * s, R = r.range(1.6, 3) * s;
     const x = r.range(-5, 5), z = r.range(-5, 5);
     D.cyl('std', x, 0, z, 0.55 * s, h, '#e8e2cc', 5, 0.8, null, S(DET.fabric, 0.8, 0));
-    D.add('std', T.sphere(6, 3), [x, h, z], [R, R * 0.55, R], [0, 0, 0], cap, S(DET.plastic, 0.6, 0));
+    D.add('std', T.sphere(6, 3), [x, h, z], [R, R * 0.55, R], [0, 0, 0], cap, S(DET.plasticworn, 0.6, 0));
     if (cap === '#c8281e' && i === 0) for (let k = 0; k < 3; k++) D.add('std', T.sphere(4, 3), [x + r.range(-R, R) * 0.5, h + R * 0.45, z + r.range(-R, R) * 0.5], [0.4, 0.2, 0.4], null, '#f4f0e0', S(0, 0.7, 0));
   }
 }

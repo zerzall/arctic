@@ -7,9 +7,9 @@ import { T, S, DET, atlasUV, dressUV, rod, mark, BRIGHT, MUTED, pick } from './d
 import { shadeHex } from './world-geo.js';
 
 const TYRE = [[0.6, -0.5], [0.86, -0.5], [0.96, -0.44], [1.0, -0.3], [1.0, 0.3], [0.96, 0.44], [0.86, 0.5], [0.6, 0.5]];
-const WOODS = S(DET.wood, 0.88, 0);
+const WOODS = S(DET.crate, 0.88, 0);
 const RUB = S(DET.rubber, 0.85, 0);
-const PANEL = S(DET.panel, 0.45, 0.5);
+const PANEL = S(DET.paintmetal, 0.45, 0.5);
 const RUST = S(DET.rust, 0.7, 0.6);
 
 function palletAt(D, x, y0, z, rot = 0, broken = false) {
@@ -52,7 +52,7 @@ function palletsLoaded(P) {
     for (let k = 0; k < 2; k++) {
       const c = Math.cos(rot), s = Math.sin(rot);
       const lx = (k - 0.5) * 16, lz = 0;
-      D.add('std', T.rbox(15, 9, 22, 0.6), [lx * c - lz * s, 5 + l * 9.2 + 4.5, lx * s + lz * c], [1, 1, 1], [0, -rot, 0], shadeHex(col, r.range(-0.1, 0.06)), S(DET.wood, 0.9, 0));
+      D.add('std', T.rbox(15, 9, 22, 0.6), [lx * c - lz * s, 5 + l * 9.2 + 4.5, lx * s + lz * c], [1, 1, 1], [0, -rot, 0], shadeHex(col, r.range(-0.1, 0.06)), S(DET.cardboard, 0.92, 0));
     }
   }
   // stretch wrap: a translucent-looking pale sleeve on the top layers
@@ -101,7 +101,8 @@ function crates(P) {
 
 function drumAt(D, x, z, lying, col, rot = 0) {
   const R = 8.5, H = 26;
-  const F = S(DET.rust, 0.55, 0.65);
+  // painted steel, scratched and spotted with rust; one in four is an old drum the paint is coming off
+  const F = D.rng.chance(0.25) ? S(DET.paintrust, 0.62, 0.55) : S(DET.paintmetal, 0.48, 0.45);
   if (!lying) {
     D.cyl('std', x, 0, z, R, H, col, 10, 1, null, F);
     for (const y of [5, 13, 21]) D.cyl('std', x, y, z, R + 0.35, 1, shadeHex(col, -0.25), 10, 1, null, F);
@@ -179,8 +180,8 @@ function forklift(P) {
   D.rbox('std', -6, 13, 0, 34, 12, 22, 2.2, col, null, F);
   D.rbox('std', -20, 19, 0, 12, 18, 22, 2.4, shadeHex(col, -0.1), null, F);
   D.rbox('std', 8, 21, 0, 12, 6, 20, 1.4, '#2a2c30', null, F);
-  D.rbox('std', -6, 24, 0, 8, 3, 9, 0.8, '#1a1a1c', null, S(DET.fabric, 0.9, 0));
-  D.rbox('std', -10, 30, 0, 2, 9, 8, 0.8, '#1a1a1c', [0, 0, 0.15], S(DET.fabric, 0.9, 0));
+  D.rbox('std', -6, 24, 0, 8, 3, 9, 0.8, '#1a1a1c', null, S(DET.leather, 0.7, 0));
+  D.rbox('std', -10, 30, 0, 2, 9, 8, 0.8, '#1a1a1c', [0, 0, 0.15], S(DET.leather, 0.7, 0));
   for (const [x, z] of [[2, -9], [2, 9], [-14, -9], [-14, 9]]) rod(D, 'std', [x, 20, z], [x, 52, z], 0.9, '#2a2c30', F, 6);
   for (let z = -9; z <= 9; z += 3) D.box('std', -6, 52.4, z, 20, 0.6, 1.2, '#2a2c30', null, F);
   D.box('std', -6, 52.9, 0, 20, 0.5, 20, '#2a2c30', null, F);
@@ -196,7 +197,7 @@ function forklift(P) {
     D.add('std', T.cyl(10), [x, R, z + (z > 0 ? 3.2 : -3.2)], [R * 0.55, 0.6, R * 0.55], [Math.PI / 2, 0, 0], '#8a8e92', PANEL);
   }
   D.box('blink', -26.6, 27, 0, 0.8, 3, 3, '#ff9a1a', null, { emissive: 3 });
-  D.box('std', -26.6, 15, 0, 0.6, 3, 8, '#e8e8e0', null, S(DET.plastic, 0.4, 0));
+  D.box('std', -26.6, 15, 0, 0.6, 3, 8, '#e8e8e0', null, S(DET.plasticworn, 0.4, 0));
   if (r.chance(0.5)) palletAt(D, 27, fy + 2.6, 0, 0, false);
 }
 
@@ -247,8 +248,8 @@ function tractor(P) {
   D.rbox('std', -7, 63, 0, 30, 2.4, 22, 1, col, null, F);
   for (const z of [-9, 9]) D.box('glass', -7, 46, z * 1.0, 22, 24, 0.5, '#1a242e', null);
   D.box('glass', -19, 46, 0, 0.5, 24, 18, '#1a242e', null);
-  D.rbox('std', -8, 36, 0, 7, 3, 8, 1, '#1a1a1c', null, S(DET.fabric, 0.9, 0));
-  D.rbox('std', -11, 41, 0, 2, 9, 8, 0.8, '#1a1a1c', [0, 0, 0.12], S(DET.fabric, 0.9, 0));
+  D.rbox('std', -8, 36, 0, 7, 3, 8, 1, '#1a1a1c', null, S(DET.leather, 0.7, 0));
+  D.rbox('std', -11, 41, 0, 2, 9, 8, 0.8, '#1a1a1c', [0, 0, 0.12], S(DET.leather, 0.7, 0));
   // wheels: big rear, small front
   for (const z of [-15, 15]) {
     D.add('std', T.lathe('tyre', TYRE, 18), [-10, 15, z], [15, 9, 15], [Math.PI / 2, 0, 0], '#171717', { ...RUB, map: 'cyl' });
@@ -292,7 +293,7 @@ function watertower(P) {
   D.box('blink', 0, H + 77, 0, 3, 3, 3, '#ff2a1a', null, { emissive: 3.2 });
   rod(D, 'std', [40, H + 4, 0], [40, 0, 0], 0.5, '#8a8e92', F, 4);
   // spray-painted town name on the tank would need the atlas; a dark band does the job
-  D.cyl('std', 0, H + 24, 0, 40.4, 10, '#2a2f34', 20, 1, null, S(DET.panel, 0.6, 0.2));
+  D.cyl('std', 0, H + 24, 0, 40.4, 10, '#2a2f34', 20, 1, null, S(DET.paintmetal, 0.6, 0.2));
 }
 
 function reel(P) {
@@ -345,7 +346,7 @@ function gascyl(P) {
   const { D } = P;
   const col = D.rng.pick(['#c8ccc8', '#2a5ac4', '#c8281e', '#2f8a4a']);
   const lay = D.rng.chance(0.2);
-  const F = S(DET.panel, 0.35, 0.6);
+  const F = S(DET.paintmetal, 0.35, 0.6);
   const A = lay ? [0, D.rng.range(0, 6), Math.PI / 2] : null;
   if (!lay) {
     D.cyl('std', 0, 0, 0, 5, 16, col, 12, 1, null, F);
@@ -372,8 +373,8 @@ function ibc(P) {
     D.box('std', -14.4, y + 4, 0, 0.7, 0.7, 25, '#9aa0a4', null, F);
   }
   for (const x of [-14, -7, 0, 7, 14]) { D.box('std', x, 19, 12.2, 0.7, 31, 0.7, '#9aa0a4', null, F); D.box('std', x, 19, -12.2, 0.7, 31, 0.7, '#9aa0a4', null, F); }
-  D.cyl('std', 0, 34.4, 0, 3, 1.4, '#2a2c30', 10, 1, null, S(DET.plastic, 0.5, 0));
-  D.cyl('std', 14.4, 9, 6, 1.6, 4, '#c8281e', 8, 1, [0, 0, Math.PI / 2], S(DET.plastic, 0.4, 0));
+  D.cyl('std', 0, 34.4, 0, 3, 1.4, '#2a2c30', 10, 1, null, S(DET.plasticworn, 0.5, 0));
+  D.cyl('std', 14.4, 9, 6, 1.6, 4, '#c8281e', 8, 1, [0, 0, Math.PI / 2], S(DET.plasticworn, 0.4, 0));
 }
 
 function trough(P) {

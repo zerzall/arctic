@@ -11,6 +11,8 @@ import {
 } from './sandstone-kit.js';
 
 const CRATE = '#a07a4c', CRATE_D = '#6e4f2c';
+/** Rough-sawn lumber (crates, barrels' staves): its own photo set, not the town's painted shutter boards. */
+const LUMBER = S(DET.crate, 0.86, 0);
 
 // ---- cover ---------------------------------------------------------------------------------------------
 
@@ -18,23 +20,23 @@ const CRATE = '#a07a4c', CRATE_D = '#6e4f2c';
 export function woodCrate(P, x, y0, z, w, h, d, rot = 0, tone = 0) {
   const { B, lod } = P;
   const c = shadeHex(CRATE, tone), e = shadeHex(CRATE_D, tone);
-  B.add('std', T.box(), [x, y0 + h / 2, z], [w - 1, h - 1, d - 1], [0, rot, 0], c, { ...WOOD, noJitter: true });
+  B.add('std', T.box(), [x, y0 + h / 2, z], [w - 1, h - 1, d - 1], [0, rot, 0], c, { ...LUMBER, noJitter: true });
   if (lod >= 1) {
     const cr = Math.cos(rot), sr = Math.sin(rot);
     const L = (lx, lz) => [x + lx * cr + lz * sr, z - lx * sr + lz * cr];
     // the frame: four uprights and two rings of rails
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       const [px, pz] = L(sx * (w / 2 - 2), sz * (d / 2 - 2));
-      B.add('std', T.box(), [px, y0 + h / 2, pz], [4.2, h, 4.2], [0, rot, 0], e, { ...WOOD, noJitter: true });
+      B.add('std', T.box(), [px, y0 + h / 2, pz], [4.2, h, 4.2], [0, rot, 0], e, { ...LUMBER, noJitter: true });
     }
     for (const y of [y0 + 2, y0 + h - 2]) {
-      for (const sz of [-1, 1]) { const [px, pz] = L(0, sz * (d / 2 - 2)); B.add('std', T.box(), [px, y, pz], [w, 4, 4.2], [0, rot, 0], e, { ...WOOD, noJitter: true }); }
-      for (const sx of [-1, 1]) { const [px, pz] = L(sx * (w / 2 - 2), 0); B.add('std', T.box(), [px, y, pz], [4.2, 4, d], [0, rot, 0], e, { ...WOOD, noJitter: true }); }
+      for (const sz of [-1, 1]) { const [px, pz] = L(0, sz * (d / 2 - 2)); B.add('std', T.box(), [px, y, pz], [w, 4, 4.2], [0, rot, 0], e, { ...LUMBER, noJitter: true }); }
+      for (const sx of [-1, 1]) { const [px, pz] = L(sx * (w / 2 - 2), 0); B.add('std', T.box(), [px, y, pz], [4.2, 4, d], [0, rot, 0], e, { ...LUMBER, noJitter: true }); }
     }
     // a diagonal brace on the two broad faces
     for (const sz of [-1, 1]) {
       const [px, pz] = L(0, sz * (d / 2 - 0.4));
-      B.add('std', T.box(), [px, y0 + h / 2, pz], [Math.hypot(w, h) * 0.86, 3.4, 1.2], [0, rot, Math.atan2(h, w)], e, { ...WOOD, noJitter: true });
+      B.add('std', T.box(), [px, y0 + h / 2, pz], [Math.hypot(w, h) * 0.86, 3.4, 1.2], [0, rot, Math.atan2(h, w)], e, { ...LUMBER, noJitter: true });
     }
     if (lod >= 2) {
       const [px, pz] = L(w / 2 + 0.3, 0);
@@ -46,7 +48,7 @@ export function woodCrate(P, x, y0, z, w, h, d, rot = 0, tone = 0) {
 /** An oil drum (blue, red or rusted). */
 export function drum(P, x, y0, z, color, h = 34, rad = 11) {
   const { B, lod } = P;
-  B.cyl('std', x, y0, z, rad, h, color, lod >= 1 ? 14 : 8, 1, null, S(DET.rust, 0.55, 0.6));
+  B.cyl('std', x, y0, z, rad, h, color, lod >= 1 ? 14 : 8, 1, null, hash01(Math.round(x * 7 + z)) < 0.3 ? S(DET.paintrust, 0.6, 0.5) : S(DET.paintmetal, 0.5, 0.45));
   if (lod >= 1) for (const y of [h * 0.33, h * 0.66]) B.cyl('std', x, y0 + y, z, rad + 0.5, 1.2, shadeHex(color, -0.3), 14, 1, null, S(DET.rust, 0.6, 0.6));
   B.cyl('std', x, y0 + h - 0.3, z, rad + 0.6, 1.2, shadeHex(color, -0.4), 14, 1, null, S(DET.rust, 0.6, 0.6));
 }
@@ -55,7 +57,7 @@ export function drum(P, x, y0, z, color, h = 34, rad = 11) {
 export function barrel(P, x, y0, z, h = 36) {
   const { B, lod } = P;
   const pts = [[9, 0], [11, h * 0.25], [11.8, h * 0.5], [11, h * 0.75], [9, h]];
-  B.add('std', T.lathe('ssbarrel:' + h, pts, lod >= 1 ? 14 : 8), [x, y0, z], [1, 1, 1], null, '#7a5432', { ...WOOD, map: 'cyl' });
+  B.add('std', T.lathe('ssbarrel:' + h, pts, lod >= 1 ? 14 : 8), [x, y0, z], [1, 1, 1], null, '#7a5432', { ...LUMBER, map: 'cyl' });
   if (lod >= 1) for (const y of [h * 0.15, h * 0.85]) B.cyl('std', x, y0 + y - 1, z, 10.4, 2, '#2a2622', 14, 1, null, IRON);
   B.cyl('std', x, y0 + h - 0.4, z, 8.8, 0.8, '#5a3a20', 12, 1, null, WOOD);
 }
@@ -97,10 +99,10 @@ export const MODELS = {
     const ry = long ? 0 : HALF;
     const L = Math.max(o.w, o.h), D = Math.min(o.w, o.h);
     const R = (lx, lz) => (long ? [lx, lz] : [lz, -lx]);
-    B.add('std', T.box(), [0, 20, 0], [L - 18, 4, D - 6], [0, ry, 0], '#7a5432', { ...WOOD, noJitter: true });
+    B.add('std', T.box(), [0, 20, 0], [L - 18, 4, D - 6], [0, ry, 0], '#7a5432', { ...LUMBER, noJitter: true });
     for (const s of [-1, 1]) {
       const [sx, sz] = R(0, s * (D / 2 - 4));
-      B.add('std', T.box(), [sx, 27, sz], [L - 18, 10, 2], [0, ry, 0], '#6a4a2c', { ...WOOD, noJitter: true });
+      B.add('std', T.box(), [sx, 27, sz], [L - 18, 10, 2], [0, ry, 0], '#6a4a2c', { ...LUMBER, noJitter: true });
       const [wx, wz] = R(-L * 0.08, s * (D / 2 - 1));
       B.add('std', T.torus(lod >= 1 ? 16 : 8, 0.16, 4), [wx, 16, wz], [15, 15, 15], [0, ry, 0], '#4a3420', WOOD);
       if (lod >= 1) for (let k = 0; k < 4; k++) B.add('std', T.box(), [wx, 16, wz], [28, 1.6, 1.6], [0, ry, (k / 4) * PI], '#4a3420', WOOD);
@@ -177,16 +179,16 @@ export const MODELS = {
     const L = o.w, D = o.h;
     const cell = { '#b8452f': 'st_red', '#2e6a8f': 'st_blue', '#d7a43a': 'st_ochre', '#3f7d4d': 'st_green', '#e2d7c0': 'st_plain', '#8a3a5c': 'st_red' }[o.roof] || 'st_red';
     // the counter (front, +z) and the back board (−z)
-    B.add('std', T.box(), [0, 20, D / 2 - 8], [L - 4, 40, 14], null, '#7a5432', { ...WOOD, noJitter: true });
-    B.add('std', T.box(), [0, 41, D / 2 - 6], [L + 2, 3, 20], null, '#5a3a20', { ...WOOD, noJitter: true });
-    B.add('std', T.box(), [0, 45, -D / 2 + 3], [L - 4, 90, 4], null, '#6a4a2c', { ...WOOD, noJitter: true });
+    B.add('std', T.box(), [0, 20, D / 2 - 8], [L - 4, 40, 14], null, '#7a5432', { ...LUMBER, noJitter: true });
+    B.add('std', T.box(), [0, 41, D / 2 - 6], [L + 2, 3, 20], null, '#5a3a20', { ...LUMBER, noJitter: true });
+    B.add('std', T.box(), [0, 45, -D / 2 + 3], [L - 4, 90, 4], null, '#6a4a2c', { ...LUMBER, noJitter: true });
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) B.add('std', T.box(), [sx * (L / 2 - 2), 55, sz * (D / 2 - 2)], [3.4, 110, 3.4], null, '#4a3018', WOOD);
     // the goods on the counter
     const goods = ['fruit', 'spice', 'baskets'];
     const n = Math.max(2, Math.round(L / 34));
     for (let i = 0; i < n; i++) {
       const x = -L / 2 + 8 + (i + 0.5) * ((L - 16) / n);
-      B.add('std', T.box(), [x, 46, D / 2 - 6], [(L - 16) / n - 3, 6, 15], null, '#8a6440', { ...WOOD, noJitter: true });
+      B.add('std', T.box(), [x, 46, D / 2 - 6], [(L - 16) / n - 3, 6, 15], null, '#8a6440', { ...LUMBER, noJitter: true });
       pic(B, goods[(o.id + i) % 3], x, 49.2, D / 2 - 6, (L - 16) / n - 4, 14, 0, { rx: -HALF });
     }
     if (lod >= 1) {

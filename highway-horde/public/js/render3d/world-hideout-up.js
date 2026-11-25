@@ -99,7 +99,7 @@ function lattice(B, y0, y1, r0, r1, seg = 34, color = '#9a9ea2') {
 /** A parabolic dish facing local +x (radius r) with its feed horn, centre c. */
 function dishAt(B, c, r, tilt = 0.1, color = '#d8dad6') {
   const pts = [[0, 0], [r * 0.25, r * 0.03], [r * 0.5, r * 0.12], [r * 0.75, r * 0.27], [r, r * 0.48], [r, r * 0.5], [r * 0.96, r * 0.5], [r * 0.7, r * 0.26], [r * 0.45, r * 0.1], [0, -0.4]];
-  B.add('std', T.lathe('dish' + r, pts, 14), c, [1, 1, 1], [0, 0, -HALF + tilt], color, S(DET.panel, 0.4, 0.5));
+  B.add('std', T.lathe('dish' + r, pts, 14), c, [1, 1, 1], [0, 0, -HALF + tilt], color, S(DET.paintmetal, 0.4, 0.5));
   const fx = c[0] + r * 0.62, fy = c[1] + r * 0.12;
   rod(B, 'std', [c[0] + 1, c[1], c[2]], [fx, fy, c[2]], 0.55, '#3a3c40', METAL, 4);
   B.box('std', fx + 0.6, fy, c[2], 2.4, 2.4, 2.4, '#2a2c30', null, METAL);
@@ -337,7 +337,7 @@ function up_infirmary(P) {
     pic(B, 'cross', -L / 2 + 22.2, 8, 0, 9, 9, HALF);
     rod(B, 'std', [8, 0, -32], [8, 44, -32], 0.7, '#c8ccd0', METAL, 5);
     rod(B, 'std', [8, 44, -32], [14, 44, -32], 0.6, '#c8ccd0', METAL, 5);
-    B.add('std', T.pillow(8, 5, 0.5), [14, 40, -32], [2.2, 3.4, 1.4], null, '#e8e2c8', S(DET.plastic, 0.4, 0));
+    B.add('std', T.pillow(8, 5, 0.5), [14, 40, -32], [2.2, 3.4, 1.4], null, '#e8e2c8', S(DET.plasticworn, 0.4, 0));
     rod(B, 'std', [14, 37, -32], [14, 24, -30], 0.18, '#d8d8d0', S(0, 0.5, 0), 3);
     return;
   }
@@ -351,7 +351,7 @@ function up_infirmary(P) {
     for (let i = 0; i < 11; i++) {
       const z = -26 + (i % 6) * 10.4, y = i < 6 ? 35 : 47;
       B.cyl('glass', -L / 2 + 8, y, z, 2 + rnd.next(), 5 + rnd.next() * 3, ['#9fc8a0', '#c8a870', '#a0b8d8', '#d8d0c0'][i % 4], 8, 1, null, S(0, 0.15, 0.1));
-      B.cyl('std', -L / 2 + 8, y + 6, z, 1.4, 1.2, '#e8e2d0', 6, 1, null, S(DET.plastic, 0.4, 0));
+      B.cyl('std', -L / 2 + 8, y + 6, z, 1.4, 1.2, '#e8e2d0', 6, 1, null, S(DET.plasticworn, 0.4, 0));
     }
     B.rblock('std', 20, 0, 34, 14, 10, 12, 0.8, '#3a3e42', null, METAL);
     B.cyl('std', 20, 10, 34, 4.8, 8, '#a8acb0', 10, 1, null, METAL);
@@ -558,13 +558,13 @@ function plant(B, kind, x, z, r) {
   } else if (kind === 'tomato') {
     rod(B, 'std', [x, 0, z], [x, 24, z], 0.5, C.woodL, WOOD, 4);
     for (let i = 0; i < 5; i++) B.add('std', T.dodeca(), [x + r.range(-3, 3), 6 + i * 4, z + r.range(-3, 3)], [3, 2.4, 3], [r.range(0, 6), 0, 0], '#3f7a3a', S(DET.fabric, 0.9, 0));
-    for (let i = 0; i < 3; i++) B.add('std', T.sphere(6, 4), [x + r.range(-3, 3), 7 + i * 5, z + r.range(-3, 3)], [1.7, 1.7, 1.7], null, '#d0361f', S(DET.plastic, 0.4, 0));
+    for (let i = 0; i < 3; i++) B.add('std', T.sphere(6, 4), [x + r.range(-3, 3), 7 + i * 5, z + r.range(-3, 3)], [1.7, 1.7, 1.7], null, '#d0361f', S(DET.plasticworn, 0.4, 0));
   } else if (kind === 'corn') {
     rod(B, 'std', [x, 0, z], [x + r.range(-1, 1), 36 + r.range(0, 8), z], 0.9, '#7aa040', S(DET.fabric, 0.85, 0), 5);
     for (let i = 0; i < 3; i++) B.add('std', T.box(), [x + (i - 1) * 3.4, 22 + i * 4, z], [8, 0.3, 1.6], [0, r.range(0, 6), (i - 1) * 0.5 + 0.3], '#8ab04a', S(DET.fabric, 0.85, 0));
     B.add('std', T.sphere(6, 4), [x + 1.4, 24, z], [1.2, 3.4, 1.2], null, '#e8c04a', S(DET.fabric, 0.85, 0));
   } else if (kind === 'pumpkin') {
-    B.add('std', T.sphere(9, 6), [x, 3.6, z], [5, 3.8, 5], null, '#e0782a', S(DET.plastic, 0.6, 0));
+    B.add('std', T.sphere(9, 6), [x, 3.6, z], [5, 3.8, 5], null, '#e0782a', S(DET.plasticworn, 0.6, 0));
     B.cyl('std', x, 7, z, 0.7, 2.4, '#5a7a2a', 5, 1, null, S(DET.fabric, 0.9, 0));
   } else if (kind === 'sunflower') {
     rod(B, 'std', [x, 0, z], [x, 44 + r.range(0, 8), z], 0.9, '#4a7a2a', S(DET.fabric, 0.85, 0), 5);
