@@ -25,6 +25,8 @@ import { APOCALYPSE } from './dress-apoc.js';
 import { createLife } from './dress-life.js';
 import { cinDressExtras } from './dress-cin.js';
 import { normTier, tierRow } from './tier.js';
+import { createPropModels, loadPropModels, propModelsEnabled } from './props3d.js';
+import { MODEL_KINDS, UNITS } from './dress-models.js';
 
 const BUILDERS = { ...FLATS, ...DEBRIS, ...STREET, ...INDUSTRIAL, ...LIFE_PROPS, ...NATURE, ...APOCALYPSE };
 
@@ -125,6 +127,15 @@ export function createDress(ctx, deps) {
   let built = false;
   const halos = [];
   const missing = new Set();
+  // the photo-scanned models (props3d.js): placed instead of the procedural props of MODEL_KINDS once their
+  // library is in (the dressing rebuilds then); never on 'low'
+  const props = createPropModels(ctx, { root, tier: full });
+  let disposed = false;
+  let modelled = 0;
+  const wantModels = () => {
+    if (!propModelsEnabled(full)) return;
+    loadPropModels(full, deps.maxAniso || 16).then((ok) => { if (ok && !disposed && props.ready) { clear(); build(); } });
+  };
 
   /** One geo builder: `cells` gives the bucket cell sizes (the near set is cut fine, the far set is one lump per bucket). */
   function makeBuilder(cells) {
@@ -161,6 +172,20 @@ export function createDress(ctx, deps) {
     const hl = built ? [] : halos;
     const cinFinish = tierAtLeast(full, 'cinematic');
     const budget = tierRow(TRI_BUDGET, cinFinish ? 'cinematic' : tier);
+    props.clear();
+    modelled = 0;
+    const useModels = props.ready && tier !== 'low';
+    // a model instance in the current item's frame (see dress-models.js)
+    let cur = null;
+    const put = (name, lx, ly, lz, rotY, k, o = {}) => {
+      if (!props.has(name)) return;
+      const a = cur.a || 0, c = Math.cos(a), s = Math.sin(a);
+      const wx = cur.x + lx * c - lz * s, wz = cur.y + lx * s + lz * c;
+      const g = hasTerrain && gy ? gy(wx, wz) : 0;
+      const t = o.tilt || [0, 0];
+      const u = UNITS * k;
+      props.add(name, wx, g + ly, wz, [t[0], -a + rotY, t[1]], o.sx || o.sz ? [u * (o.sx || 1), u, u * (o.sz || 1)] : u, o.tint);
+    };
     for (let i = 0; i < ranked.length; i++) {
       const it = ranked[i];
       if (it.q >= density) break;
@@ -174,6 +199,11 @@ export function createDress(ctx, deps) {
       const D = FAR.has(it.k) ? Dfar : Dnear;
       D.obj(it.x, it.y, it.a, it.v * 31 + it.k.length + i);
       try {
+        const mk = useModels && FAR.has(it.k) === false ? MODEL_KINDS[it.k] : null;
+        if (mk) {
+          cur = it;
+          if (mk({ D, it, s: it.s, halos: hl, map }, put)) { shown++; modelled++; continue; }
+        }
         fn({ D, it, s: it.s, halos: hl, map });
         if (cinFinish) cinDressExtras(D, it);
         shown++;
@@ -197,6 +227,7 @@ export function createDress(ctx, deps) {
         triangles += geometry.attributes.position.count / 3;
       }
     }
+    props.finish();
     buildMs = performance.now() - t0;
     if (!built) {
       for (const h of halos) if (deps.halos) deps.halos.push(h);
@@ -208,6 +239,7 @@ export function createDress(ctx, deps) {
     meshes = [];
   }
   build();
+  wantModels();
 
   const life = createLife(ctx, deps, items, () => full);
 
@@ -219,6 +251,7 @@ export function createDress(ctx, deps) {
     life,
     /** Frustum-independent fog culling of the dress cells (the world's cullFar does the same for its meshes). */
     cull(cam) {
+      props.update(cam);
       const cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
       for (const m of meshes) {
         const s = m.geometry.boundingSphere;
@@ -234,15 +267,22 @@ export function createDress(ctx, deps) {
       const nt = baseTier(nf);
       const dOld = dressDensity(tier), dNew = dressDensity(nt);
       const geo = tierAtLeast(full, 'cinematic') !== tierAtLeast(nf, 'cinematic');
+      const lowSwap = (tier === 'low') !== (nt === 'low');
       full = nf;
       tier = nt;
-      if (dOld !== dNew || geo) { clear(); build(); } else for (const m of meshes) m.material = matFor(m.userData.bucket);
+      props.setQuality(nf);
+      if (dOld !== dNew || geo || lowSwap) { clear(); build(); } else for (const m of meshes) m.material = matFor(m.userData.bucket);
+      wantModels();
       life.setQuality(nf);
     },
-    get stats() { return { items: items.length, shown, triangles: Math.round(triangles), meshes: meshes.length, buildMs: Math.round(buildMs), unmodelled: [...missing].filter((k) => k[0] !== '!') }; },
+    /** The photo-scanned prop models (props3d.js). */
+    props,
+    get stats() { return { items: items.length, shown, modelled, models: props.stats, triangles: Math.round(triangles), meshes: meshes.length, buildMs: Math.round(buildMs), unmodelled: [...missing].filter((k) => k[0] !== '!') }; },
     items,
     dispose() {
+      disposed = true;
       clear();
+      props.dispose();
       life.dispose();
       for (const set of [own.hi, own.low]) for (const m of Object.values(set)) m.dispose();
       tex.dispose();
