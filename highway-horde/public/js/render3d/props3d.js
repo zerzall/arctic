@@ -23,7 +23,7 @@ import { makeTexWorker, decodeRGBA } from './tex-worker.js';
 /** Texture layer size per tier (null: no models on that tier). */
 export const PROP_TEX_TIERS = Object.freeze({ low: null, high: 512, ultra: 512, cinematic: 512 });
 /** Distances (world units): LOD 0 inside NEAR, LOD 1 inside FAR, nothing past it. */
-export const PROP_LOD = Object.freeze({ low: [0, 0], high: [420, 2200], ultra: [620, 2800], cinematic: [900, 3200] });
+export const PROP_LOD = Object.freeze({ low: [0, 0], high: [420, 1600], ultra: [620, 2800], cinematic: [900, 3200] });
 /** World units per metre (1 unit ≈ 3 cm). */
 export const UNITS_PER_M = 1 / 0.03;
 

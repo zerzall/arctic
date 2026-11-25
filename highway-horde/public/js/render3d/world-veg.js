@@ -107,8 +107,9 @@ export function buildTreeLine(B, map, waters) {
     B.cyl('std', 0, 40 * s, 0, (cinL ? 20 : 26) * s, top - 60 * s, shadeHex(col, -0.62), cinL ? 9 : 6, 0.04, null, { surf: [0, 0.95, 0], noAO: true });
     // whorls of drooping bough cards (photo needles, world-tex.js): a ragged, needled silhouette
     const cards = cardList();
-    const rings = cinL ? 7 : 5;
-    const per = cinL ? 7 : 6;
+    // (cards by detail level: 'high' keeps close to the old count of alpha-tested quads, ultra adds a whorl)
+    const rings = cinL ? 7 : DETAIL.level >= 2 ? 5 : 4;
+    const per = cinL ? 7 : DETAIL.level >= 2 ? 6 : 5;
     for (let k = 0; k < rings; k++) {
       const t = k / rings;
       const y = 46 * s + t * (top - 84 * s);

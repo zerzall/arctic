@@ -299,7 +299,7 @@ function pineCrown(B, R, r, layers, k) {
     const t = m / (layers - 1);
     const y = 70 + t * (top - 95);
     const rad = R * (k - t * 0.9);
-    const n = Math.max(6, Math.round(14 - t * 7));
+    const n = DETAIL.level >= 2 ? Math.max(6, Math.round(14 - t * 7)) : Math.max(5, Math.round(12 - t * 6));
     for (let q = 0; q < n; q++) {
       const a = (q / n) * Math.PI * 2 + r.range(-0.25, 0.25) + m * 0.7;
       const out = rad * r.range(0.45, 0.7);

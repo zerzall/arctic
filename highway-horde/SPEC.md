@@ -2132,7 +2132,7 @@ propane cylinder, a jerrycan, two trash cans, a hydrant, a bench, a generator, a
 table, a garden chair, a stump, a fallen trunk, a boulder, a wheelchair) replace the procedural models of
 those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles), every instance of every
 model in ONE BatchedMesh (one draw call with WEBGL_multi_draw; each instance shows LOD 0 within 420 / 620 /
-900 units on high / ultra / cinematic, LOD 1 to 2200 / 2800 / 3200, nothing past it, switched from the
+900 units on high / ultra / cinematic, LOD 1 to 1600 / 2800 / 3200, nothing past it, switched from the
 camera's position every 24 units or 30 frames; no per-instance frustum walk), one patched
 MeshStandardMaterial for all (layer per vertex, tangent-free normal mapping from the uv derivatives, AO /
 roughness / metalness maps), a per-instance tint (± 14 % brightness, a little warmth) and random turns so
