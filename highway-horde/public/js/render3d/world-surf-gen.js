@@ -17,12 +17,15 @@ export const DET = Object.freeze({
   brickyellow: 38, cinder: 39, adobe: 40, diamond: 41, tilehosp: 42, tilemetro: 43, marble: 44, mud: 45,
   runway: 46, ballast: 47, railrust: 48, camo: 49, shutter: 50, plasterbleach: 51, concretedam: 52,
   linohosp: 53, roadpaint: 54, tileceramic: 55, corrugatedrust: 56,
+  // props, vehicles, furniture and trees (photo sets of their own, scripts/fetch-photo-textures.js PHOTO_NEW)
+  crate: 57, plywood: 58, osb: 59, paintmetal: 60, paintrust: 61, carpaint: 62, burlap: 63, cardboard: 64,
+  leather: 65, linen: 66, veneer: 67, pinebark: 68, plasticworn: 69,
 });
 const LAYERS = 38;
 /** Number of procedural surface layers; the colour / height slice of layer L is L + DET_LAYERS. */
 export const DET_LAYERS = LAYERS;
 /** Number of surface ids (procedural layers + the baked-only ones). */
-export const DET_COUNT = 57;
+export const DET_COUNT = 70;
 const NAMES = [];
 for (const [k, v] of Object.entries(DET)) if (NAMES[v] === undefined) NAMES[v] = k;
 /** Surface id → name. */
@@ -51,6 +54,19 @@ const EXTRA = {
   roadpaint: ['asphalt', 20, [0.05, 0.6, 5], null, ANY_],
   tileceramic: ['tile', 40, [0.06, 0.3, 6], [8, 8, 0, 0.06], [3 / 8, 3 / 8]],
   corrugatedrust: ['corrugated', 36, [0.45, 0.4, 2], null, [5 / 14, 1 / 2]],
+  crate: ['wood', 33, [0.25, 0.6, 3], [0, 0, 0, -0.4], ANY_],
+  plywood: ['wood', 33, [0.05, 0.4, 3], [0, 0, 0, -0.3], ANY_],
+  osb: ['wood', 83, [0.15, 0.6, 3], [0, 0, 0, -0.3], ANY_],
+  paintmetal: ['panel', 33, [0.03, 0.3, 2], [0, 0, 0, -0.5], ANY_],
+  paintrust: ['rust', 73, [0.08, 0.6, 2], [0, 0, 0, -0.5], ANY_],
+  carpaint: ['panel', 67, [0, 0.15, 2], [0, 0, 0, -0.4], ANY_],
+  burlap: ['fabric', 9, [0.06, 0.3, 5], null, ANY_],
+  cardboard: ['fabric', 18, [0.02, 0.3, 5], [0, 0, 0, -0.4], ANY_],
+  leather: ['fabric', 13, [0.03, 0.3, 5], [0, 0, 0, -0.4], ANY_],
+  linen: ['fabric', 9, [0.02, 0.3, 5], null, ANY_],
+  veneer: ['wood', 20, [0.02, 0.3, 6], [0, 0, 0, -0.3], ANY_],
+  pinebark: ['bark', 67, [1.1, 0.7, 5], [0, 0, 0, -0.4], ANY_],
+  plasticworn: ['plastic', 33, [0.02, 0.2, 0], [0, 0, 0, -0.4], ANY_],
 };
 
 /**

@@ -62,7 +62,8 @@ test('every set the game maps a surface to has a recipe, and every recipe is use
   const names = recipes.RECIPES.map((r) => r.name);
   assert.equal(new Set(names).size, names.length, 'unique names');
   const need = sets.allSets();
-  for (const n of need) assert.ok(names.includes(n), `recipe for ${n}`);
+  for (const n of need) assert.ok(names.includes(n) || sets.PHOTO_ONLY.includes(n), `recipe for ${n}`);
+  for (const n of sets.PHOTO_ONLY) assert.ok(!names.includes(n), `${n}: photo-only, no recipe`);
   for (const n of names) assert.ok(need.includes(n), `${n} is drawn by some surface`);
   assert.ok(names.length >= 50, `${names.length} materials`);
   for (const r of recipes.RECIPES) {
@@ -144,7 +145,9 @@ test('photo sets: CC0 sources recorded in the manifest and credited; the packer 
     if (!e.source) continue;
     n++;
     const s = e.source;
-    assert.ok(photo.PHOTO[name] && photo.PHOTO[name].id === s.id, `${name}: configured as ${s.id}`);
+    const cfg = photo.PHOTO[name] || photo.PHOTO_NEW[name];
+    assert.ok(cfg && cfg.id === s.id, `${name}: configured as ${s.id}`);
+    assert.equal(!!photo.PHOTO_NEW[name], sets.PHOTO_ONLY.includes(name), `${name}: photo-only iff a new set`);
     assert.equal(s.license, 'CC0 1.0', `${name}: CC0`);
     assert.match(s.url, /^https:\/\/polyhaven\.com\/a\//);
     for (const f of Object.values(s.files)) { assert.match(f.url, /^https:\/\/dl\.polyhaven\.org\//); assert.match(f.md5, /^[0-9a-f]{32}$/); }
@@ -152,7 +155,9 @@ test('photo sets: CC0 sources recorded in the manifest and credited; the packer 
     assert.ok(Array.isArray(e.shift) && e.shift.length === 2, `${name}: explicit tile-breaking shift`);
     // (the art direction: the photo's brightness is the baked set's it replaced)
     const Y = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    assert.ok(Math.abs(Y(e.meanAll) / Y(s.baked.meanAll) - 1) < 0.08, `${name}: luminance ${Y(e.meanAll)} vs ${Y(s.baked.meanAll)}`);
+    // (a new set keeps its own: it replaced nothing)
+    if (s.baked) assert.ok(Math.abs(Y(e.meanAll) / Y(s.baked.meanAll) - 1) < 0.08, `${name}: luminance ${Y(e.meanAll)} vs ${Y(s.baked.meanAll)}`);
+    else assert.equal(gen.DET[e.det] != null && sets.SET_OF[e.det], name, `${name}: drawn by its own surface ${e.det}`);
   }
   assert.ok(n >= 30, `${n} photo sets`);
   // the packer on synthetic 64² "photos": 1024² maps of the library's layout, normals of unit length
@@ -194,7 +199,7 @@ test('surface mapping: every surface id has a set on every map; the themes swap 
     assert.equal(s.length, gen.DET_COUNT);
     for (const [name, det] of Object.entries(gen.DET)) {
       if (sets.NO_SET.includes(name)) assert.equal(s[det], null, `${id}: ${name} has no set`);
-      else assert.ok(typeof s[det] === 'string' && recipes.RECIPES.some((r) => r.name === s[det]), `${id}: ${name} → ${s[det]}`);
+      else assert.ok(typeof s[det] === 'string' && (recipes.RECIPES.some((r) => r.name === s[det]) || sets.PHOTO_ONLY.includes(s[det])), `${id}: ${name} → ${s[det]}`);
     }
   }
   // the hero sets: the hospital's tile, the metro's, Sandstone's plaster, shutters and adobe

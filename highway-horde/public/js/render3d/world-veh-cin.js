@@ -294,8 +294,8 @@ export function cinInterior(B, id, c, lit = false) {
   const seat = SEAT_COLS[Math.floor(hash01(id * 5 + 2) * SEAT_COLS.length)];
   const dash = DASH_COLS[Math.floor(hash01(id * 7 + 3) * DASH_COLS.length)];
   const cw = c.hw * 2;
-  const S = { surf: [DET.fabric, 0.9, 0], noAO: true };
-  const P = { surf: [DET.plastic, 0.55, 0], noAO: true };
+  const S = { surf: [hash01(id * 3 + 1) < 0.4 ? DET.leather : DET.linen, 0.8, 0], noAO: true };
+  const P = { surf: [DET.plasticworn, 0.55, 0], noAO: true };
   // the room: floor, ceiling and the far walls seen through the glass
   const cx = (c.x0 + c.x1) / 2, cl = c.x1 - c.x0, ch = c.roof - c.floor;
   B.add('std', roomGeo(), [cx, c.floor + ch / 2, 0], [cl, ch, cw], null, shadeHex(dash, 0.08), { surf: [DET.fabric, 0.92, 0], noAO: true, noJitter: true });

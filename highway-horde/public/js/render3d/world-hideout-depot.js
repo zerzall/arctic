@@ -147,7 +147,7 @@ function locomotive(P) {
   B.cyl('std', 158, 46, 0, 26, 18, '#2a2a2c', 22, 1, [0, 0, HALF], RUSTY);
   B.cyl('std', 150, 66, 0, 6.4, 34, '#1e1e20', 12, 1.7, null, RUSTY);
   B.cyl('std', 150, 98, 0, 10.6, 4, '#2a2a2c', 12, 1, null, RUSTY);
-  B.add('std', T.sphere(12, 8), [30, 72, 0], [11, 8, 11], null, '#8a6a30', S(DET.panel, 0.4, 0.7));
+  B.add('std', T.sphere(12, 8), [30, 72, 0], [11, 8, 11], null, '#8a6a30', S(DET.paintmetal, 0.4, 0.7));
   B.add('std', T.sphere(10, 6), [90, 70, 0], [7, 5, 7], null, '#3a3630', RUSTY);
   // cow-catcher and the buffer beam
   for (let i = -3; i <= 3; i++) rod(B, 'std', [L / 2 - 6, 14, i * 5], [L / 2 + 16, 5, i * 12], 1, '#3a3630', RUSTY, 4);
@@ -158,7 +158,7 @@ function locomotive(P) {
   B.box('std', 168, 34, 0, 1, 10, 16, '#c9a02a', null, METAL);
   // the cab: walls, roof, dark broken windows; the tender behind it with a heap of coal
   const cabX = -72;
-  B.block('std', cabX, 16, 0, 64, 68, 40, green, null, S(DET.panel, 0.7, 0.3));
+  B.block('std', cabX, 16, 0, 64, 68, 40, green, null, S(DET.paintmetal, 0.7, 0.3));
   B.block('std', cabX, 84, 0, 74, 5, 46, '#2a2a2c', null, RUSTY);
   for (const s of [-1, 1]) {
     B.box('std', cabX + 6, 60, s * 20.4, 26, 22, 1, '#0c0e10', null, S(DET.glass, 0.1, 0.5));
@@ -204,7 +204,7 @@ function messtent(P) {
     for (const x of [-L * 0.28, L * 0.05, L * 0.26]) { post(B, x - 10, 0, z - 6, 1.3, 22, C.woodD, WOOD, 4); post(B, x - 10, 0, z + 6, 1.3, 22, C.woodD, WOOD, 4); }
     for (const s of [-1, 1]) B.rblock('std', -10, 12, z + s * 15, L * 0.58, 2, 8, 0.4, '#6a4a2c', null, WOOD);
     for (let i = 0; i < 6; i++) {
-      B.cyl('std', -70 + i * 22, 24.6, z - 3, 3, 0.6, '#e8e2d0', 10, 1, null, S(DET.plastic, 0.4, 0));
+      B.cyl('std', -70 + i * 22, 24.6, z - 3, 3, 0.6, '#e8e2d0', 10, 1, null, S(DET.plasticworn, 0.4, 0));
       mug(B, -66 + i * 22, 24.6, z + 4, ['#c8b078', '#7a9ab0', '#b6543a'][i % 3]);
     }
   }
@@ -240,7 +240,7 @@ function departures(P) {
   pic(B, 'map', 2.4, 58, w * 0.16, 56, 42, HALF);
   // an old station clock above
   B.cyl('std', 1, 104, 0, 9, 3, '#3a3630', 16, 1, [0, 0, HALF], RUSTY);
-  B.cyl('std', 2.6, 104, 0, 8, 0.6, '#f0ece0', 16, 1, [0, 0, HALF], S(DET.plastic, 0.4, 0));
+  B.cyl('std', 2.6, 104, 0, 8, 0.6, '#f0ece0', 16, 1, [0, 0, HALF], S(DET.plasticworn, 0.4, 0));
   rod(B, 'std', [3, 104, 0], [3.2, 104, -4], 0.4, '#1c1c1e', METAL, 4);
   rod(B, 'std', [3, 104, 0], [3.2, 108, 1], 0.4, '#1c1c1e', METAL, 4);
   // a signal lantern on a bracket

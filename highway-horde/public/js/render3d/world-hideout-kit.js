@@ -21,7 +21,7 @@ export const S = (layer = 0, rough = 0.8, metal = 0) => ({ surf: [layer, rough, 
 export const WOOD = S(DET.wood, 0.86, 0);
 export const RUSTY = S(DET.rust, 0.55, 0.7);
 export const CANVAS = S(DET.fabric, 0.95, 0);
-export const METAL = S(DET.panel, 0.45, 0.6);
+export const METAL = S(DET.paintmetal, 0.45, 0.6);
 export const CORR = S(DET.corrugated, 0.5, 0.55);
 
 export const C = {
@@ -79,8 +79,8 @@ export function jerrycan(B, x, y0, z, rot = 0, color = '#a8382a') {
 
 /** A mug (a cylinder and a handle). */
 export function mug(B, x, y0, z, color = '#e8e2d0') {
-  B.cyl('std', x, y0, z, 1.9, 3.6, color, 8, 0.95, null, S(DET.plastic, 0.4, 0));
-  B.box('std', x + 2.1, y0 + 1.9, z, 0.7, 2.2, 0.8, color, null, S(DET.plastic, 0.4, 0));
+  B.cyl('std', x, y0, z, 1.9, 3.6, color, 8, 0.95, null, S(DET.plasticworn, 0.4, 0));
+  B.box('std', x + 2.1, y0 + 1.9, z, 0.7, 2.2, 0.8, color, null, S(DET.plasticworn, 0.4, 0));
 }
 
 /** A stump / round log seat. */

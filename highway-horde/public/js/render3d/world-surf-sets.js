@@ -22,7 +22,17 @@ export const SET_OF = Object.freeze({
   ballast: 'ballast', railrust: 'rail_rust', camo: 'metal_camo', shutter: 'shutter_blue',
   plasterbleach: 'plaster_bleached', concretedam: 'concrete_dam', linohosp: 'linoleum_hospital',
   roadpaint: 'road_paint', tileceramic: 'tile_ceramic', corrugatedrust: 'corrugated_rust',
+  crate: 'crate_wood', plywood: 'plywood', osb: 'osb', paintmetal: 'paint_metal', paintrust: 'paint_rust',
+  carpaint: 'car_paint', burlap: 'burlap', cardboard: 'kraft', leather: 'leather', linen: 'linen',
+  veneer: 'veneer', pinebark: 'bark_pine', plasticworn: 'plastic_worn',
 });
+
+/**
+ * Sets that exist only as photo scans (scripts/fetch-photo-textures.js PHOTO_NEW): no procedural recipe in
+ * scripts/bake/materials stands behind them; without the library their surfaces draw their base layer.
+ */
+export const PHOTO_ONLY = Object.freeze(['crate_wood', 'plywood', 'osb', 'paint_metal', 'paint_rust', 'car_paint', 'burlap', 'kraft',
+  'leather', 'linen', 'veneer', 'bark_pine', 'plastic_worn']);
 
 /** Surface names that are not drawn by a set (no detail; the weathering's raw noise fields). */
 export const NO_SET = Object.freeze(['none', 'macro']);

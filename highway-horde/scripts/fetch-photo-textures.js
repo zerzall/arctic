@@ -22,7 +22,8 @@
 // each file's URL and md5; a later run refuses files whose md5 differs (pass --update to accept new
 // versions). Sets not listed here are left untouched; so is everything a set does not own.
 //
-//   node scripts/fetch-photo-textures.js [--only a,b] [--cache dir] [--update] [--list] [--fast]
+//   node scripts/fetch-photo-textures.js [--only a,b] [--cache dir] [--update] [--list] [--fast] [--credits]
+//   (--credits: only rewrite CREDITS.md, e.g. after scripts/bake-foliage.js)
 //
 // The cache defaults to .cache/photo-textures/ under highway-horde/ (ignored by git).
 // Licence and credits: public/textures/CREDITS.md (written by this script).
@@ -105,6 +106,34 @@ export const PHOTO = {
   tile_ceramic: { id: 'floor_tiles_08', shift: NONE, cells: FLAT_CELLS, chroma: 0.6, about: 'unglazed square floor tiles, photo-scanned' },
 };
 
+/**
+ * New sets (no baked set before them): the surfaces of props, vehicles, furniture and trees that used to
+ * borrow a building material (a crate drawn with the siding's planks, a cone with the tarp's weave, a car
+ * with a blue steel plate). Each draws its own surface id (world-surf-gen.js DET, a library-only id) and
+ * keeps the photo's own colour and luminance; the fields are the ones above plus
+ *   det        the surface name it draws
+ *   tile       metres one tile of the set covers (= DET_TILE / 32)
+ *   tint       how much of the object's own colour replaces the photo's (0..1; the mask's mean)
+ *   lum        optional linear luminance the photo's mean is scaled to (else its own)
+ *   store      stored size (default 512: a prop's tile is 0.3–2.5 m, 512 texels are 200–1900 a metre;
+ *              the loader resamples a set to the array's size, so the download is a quarter)
+ */
+export const PHOTO_NEW = {
+  crate_wood: { store: 512, id: 'rough_wood', det: 'crate', tile: 1.0, tint: 0.75, desat: 0.3, shift: ANY, about: 'rough-sawn lumber (crates, pallets, sawhorses), photo-scanned' },
+  plywood: { store: 512, id: 'plywood', det: 'plywood', tile: 1.0, tint: 0.55, shift: ANY, about: 'plywood sheet face (boarded windows, barricades), photo-scanned' },
+  osb: { store: 512, id: 'oriented_strand_board', det: 'osb', tile: 2.5, tint: 0.4, shift: ANY, about: 'oriented strand board (boarded doors, site hoarding), photo-scanned' },
+  paint_metal: { store: 512, id: 'green_metal_rust', det: 'paintmetal', tile: 1.0, tint: 0.92, desat: 0.92, shift: ANY, about: 'painted steel with scratches, chips and rust spots (drums, bins, cylinders, machines), photo-scanned' },
+  paint_rust: { store: 512, id: 'rusty_painted_metal', det: 'paintrust', tile: 2.2, tint: 0.55, desat: 0.75, shift: ANY, about: 'paint flaking off rusting steel (old drums, dumpsters, wrecks), photo-scanned' },
+  car_paint: { store: 1024, id: 'container_side', det: 'carpaint', tile: 2.0, tint: 0.97, desat: 0.97, shift: ANY, about: 'painted body steel with road dust and streaks (car bodies), photo-scanned' },
+  burlap: { store: 512, id: 'hessian_230', det: 'burlap', tile: 0.27, tint: 0.7, desat: 0.4, shift: ANY, about: 'coarse hessian / burlap weave (sandbags, sacks), photo-scanned' },
+  kraft: { store: 512, id: 'hessian_380', det: 'cardboard', tile: 0.54, tint: 0.85, desat: 0.5, shift: ANY, lum: 0.3, about: 'fine kraft-paper fibre (cardboard boxes; a fine hessian scan read at paper scale), photo-scanned' },
+  leather: { store: 512, id: 'fabric_leather_01', det: 'leather', tile: 0.4, tint: 0.9, desat: 0.6, shift: ANY, about: 'worn leather with a seam (seats, sofas, bags), photo-scanned' },
+  linen: { store: 512, id: 'rough_linen', det: 'linen', tile: 0.27, tint: 0.95, desat: 0.9, shift: ANY, about: 'rough linen / upholstery weave (mattresses, cushions, clothes), photo-scanned' },
+  veneer: { store: 512, id: 'kitchen_wood', det: 'veneer', tile: 0.6, tint: 0.6, shift: ANY, about: 'worn wood veneer (furniture, counters, shelves, doors), photo-scanned' },
+  bark_pine: { store: 512, id: 'pine_bark', det: 'pinebark', tile: 2.0, tint: 0.5, shift: ANY, about: 'plated pine bark (pines and spruces), photo-scanned' },
+  plastic_worn: { store: 512, id: 'weathered_pvc_tank', det: 'plasticworn', tile: 1.0, tint: 0.95, desat: 0.95, shift: ANY, about: 'weathered moulded plastic with streaks and grime (cones, bins, tanks, coolers), photo-scanned' },
+};
+
 // ---- helpers -----------------------------------------------------------------------------------
 
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
@@ -159,11 +188,23 @@ function decodeJpg(buf) {
 }
 
 /**
+ * A photo a few texels off square (the fabric scans): its top-left power-of-two square. (A woven or
+ * fibrous surface loses only the seam's few texels of continuity.)
+ */
+function squareOf(img) {
+  let n = 1;
+  while (n * 2 <= Math.min(img.w, img.h)) n *= 2;
+  const data = new Uint8Array(n * n * img.ch);
+  for (let y = 0; y < n; y++) data.set(img.data.subarray(y * img.w * img.ch, (y * img.w + n) * img.ch), y * n * img.ch);
+  return { w: n, h: n, ch: img.ch, data };
+}
+
+/**
  * Box-filter a square image down by the integer factor f with `fn(acc, src, p)` channel handling,
  * then repeat the result k × k times into an n² tile. (f divides the size, so the result tiles.)
  */
 function packTile(img, n, k, comps, per) {
-  if (img.w !== img.h) throw new Error('not square');
+  if (img.w !== img.h) img = squareOf(img);
   const m = n / k;                 // texels of one repeat
   const f = img.w / m;
   if (!Number.isInteger(f) || f < 1) throw new Error(`size ${img.w} does not reduce to ${m}`);
@@ -211,7 +252,7 @@ function aoFromHeight(h, n) {
 
 /** Build one set's four maps and its stats. */
 export function packSet(name, cfg, old, imgs, dx, k) {
-  const n = STORE, NN = n * n;
+  const n = cfg.store || STORE, NN = n * n;
   // albedo, averaged in linear light
   const alb = packTile(imgs.diff, n, k, 3, (a, s, p) => { a[0] += LIN[s[p]]; a[1] += LIN[s[p + 1]]; a[2] += LIN[s[p + 2]]; });
   // normal, as vectors (renormalised below)
@@ -244,7 +285,9 @@ export function packSet(name, cfg, old, imgs, dx, k) {
   let mr = 0, mg = 0, mb = 0;
   for (let i = 0; i < NN; i++) { mr += alb[i * 3]; mg += alb[i * 3 + 1]; mb += alb[i * 3 + 2]; }
   mr /= NN; mg /= NN; mb /= NN;
-  const oldM = old.meanAll || old.mean;
+  // (a new set has no baked look to match: its own colour, at `lum` when given)
+  const own = [mr, mg, mb].map((v) => (cfg.lum ? v * cfg.lum / Y(mr, mg, mb) : v));
+  const oldM = old.meanAll || old.mean || own;
   const yNew = Y(mr, mg, mb), yOld = Y(...oldM);
   const t = cfg.chroma ?? 0.5;
   const gain = [0, 1, 2].map((c) => {
@@ -314,6 +357,7 @@ function parseArgs(argv) {
     else if (v === '--update') a.update = true;
     else if (v === '--list') a.list = true;
     else if (v === '--fast') a.level = 4;
+    else if (v === '--credits') a.credits = true;
     else throw new Error(`unknown argument ${v}`);
   }
   return a;
@@ -322,8 +366,10 @@ function parseArgs(argv) {
 function credits(man) {
   const rows = Object.entries(man.sets).filter(([, e]) => e.source).map(([n, e]) => {
     const s = e.source;
-    return `| \`${n}\` | [${s.name}](${s.url}) (\`${s.id}\`) | ${Object.keys(s.authors || {}).join(', ')} | ${s.license} | ${s.repeat}×${s.repeat} over ${e.tile} m (photo ${s.sizeM} m) |`;
+    return `| \`${n}\`${PHOTO_NEW[n] ? ' (new)' : ''} | [${s.name}](${s.url}) (\`${s.id}\`) | ${Object.keys(s.authors || {}).join(', ')} | ${s.license} | ${s.repeat}×${s.repeat} over ${e.tile} m (photo ${s.sizeM} m) |`;
   });
+  const fp = join(LIB, 'foliage', 'foliage.json');
+  const fol = existsSync(fp) ? Object.entries(JSON.parse(readFileSync(fp, 'utf8')).cells).map(([n, c]) => `  * \`${n}\`: [${c.source.name}](${c.source.url}) (\`${c.source.id}\`), ${Object.keys(c.source.authors || {}).join(', ')}, ${c.source.license} — ${c.about}`) : [];
   const kept = Object.entries(man.sets).filter(([, e]) => !e.source).map(([n]) => `\`${n}\``);
   return `# Texture credits
 
@@ -345,6 +391,20 @@ The world's surface sets in this folder come from two places:
 | --- | --- | --- | --- | --- |
 ${rows.join('\n')}
 
+Sets marked *new* are not replacements of a baked set: the props, vehicles, furniture and trees draw them
+through surface ids of their own (\`PHOTO_NEW\` in the script); they keep the photo's own colour.
+
+## Prop models and foliage cards (CC0 1.0)
+
+* \`models/\` holds the texture layers (512² albedo, normal, AO / roughness / metalness) of the
+  photo-scanned prop models in \`../models/\` (barrels, crates, cardboard boxes, cylinders, jerrycans, trash
+  cans, a hydrant, a generator, tyres, trash bags, a picnic table, a chair, a stump, a log, a
+  boulder, a wheelchair): Poly Haven models, CC0 1.0, converted by \`scripts/fetch-models.js\`; the
+  credits per model are in \`../models/CREDITS.md\`.
+* \`foliage/leaves.png\` holds the photo foliage cards of the leaf atlas, rendered by
+  \`scripts/bake-foliage.js\` from Poly Haven plant models (CC0 1.0):
+${fol.join('\n')}
+
 ## Procedurally baked (this repository)
 
 ${kept.join(', ')}
@@ -357,16 +417,21 @@ async function main() {
   const a = parseArgs(process.argv.slice(2));
   const mPath = join(LIB, 'manifest.json');
   const man = JSON.parse(readFileSync(mPath, 'utf8'));
-  const names = a.only || Object.keys(PHOTO);
-  if (a.list) { for (const n of Object.keys(PHOTO)) console.log(`${n.padEnd(20)} ${PHOTO[n].id}`); return; }
+  const ALL = { ...PHOTO, ...PHOTO_NEW };
+  const names = a.only || Object.keys(ALL);
+  if (a.credits) { writeFileSync(join(LIB, 'CREDITS.md'), credits(man)); console.log('wrote CREDITS.md'); return; }
+  if (a.list) { for (const n of Object.keys(ALL)) console.log(`${n.padEnd(20)} ${ALL[n].id}${PHOTO_NEW[n] ? '  (new)' : ''}`); return; }
   const t0 = Date.now();
   for (const name of names) {
-    const cfg = PHOTO[name];
+    const cfg = ALL[name];
     if (!cfg) throw new Error(`no photo material configured for ${name}`);
-    const old = man.sets[name];
+    const fresh = !!PHOTO_NEW[name];
+    const old = man.sets[name] || (fresh ? { det: cfg.det, tile: cfg.tile } : null);
     if (!old) throw new Error(`the manifest has no set ${name}`);
-    // the replaced set's baked look, kept for the colour match (the first run records it)
-    const ref = (old.source && old.source.baked) || { meanAll: old.meanAll, mean: old.mean, tint: old.tint, rough: old.rough, about: old.about };
+    if (fresh) { old.det = cfg.det; old.tile = cfg.tile; }
+    // the replaced set's baked look, kept for the colour match (the first run records it); a new set
+    // matches nothing: its own colour, the configured tint
+    const ref = fresh ? { tint: cfg.tint, about: cfg.about } : (old.source && old.source.baked) || { meanAll: old.meanAll, mean: old.mean, tint: old.tint, rough: old.rough, about: old.about };
     const info = await fetchRetry(`${API}/info/${cfg.id}`, 'json');
     const { files, dx } = await resolveFiles(cfg.id);
     if (old.source && old.source.id === cfg.id && !a.update) {
@@ -386,14 +451,14 @@ async function main() {
     mkdirSync(dir, { recursive: true });
     const sizes = {};
     for (const [kind, px] of Object.entries(res.maps)) {
-      const buf = encodePNG(px, STORE, STORE, 3, { level: a.level });
+      const buf = encodePNG(px, cfg.store || STORE, cfg.store || STORE, 3, { level: a.level });
       writeFileSync(join(dir, `${kind}.png`), buf);
       sizes[kind] = buf.length;
     }
     const e = {
       about: cfg.about,
       det: old.det,
-      size: STORE,
+      size: cfg.store || STORE,
       render: imgs.diff.w,
       tile: old.tile,
       files: { albedo: `${name}/albedo.png`, normal: `${name}/normal.png`, rah: `${name}/rah.png`, mask: `${name}/mask.png` },
@@ -405,7 +470,7 @@ async function main() {
         library: 'Poly Haven', id: cfg.id, name: info.name, url: `https://polyhaven.com/a/${cfg.id}`,
         license: 'CC0 1.0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
         authors: info.authors || {}, sizeM, repeat: kPow, normal: dx ? 'directx→opengl' : 'opengl',
-        files, baked: ref,
+        files, ...(fresh ? null : { baked: ref }),
       },
     };
     man.sets[name] = e;

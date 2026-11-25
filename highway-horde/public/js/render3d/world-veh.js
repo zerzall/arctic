@@ -507,7 +507,8 @@ function vehicleLook(B, o) {
     wrecked,
     color,
     paintBucket: wrecked ? 'std' : 'paint',
-    paintSurf: wrecked ? [DET.char, 0.92, 0.25] : [DET.panel, -1, -1],
+    // (a burnt-out wreck: blistered, rusting paint; a car on the road: painted body steel with road dust)
+    paintSurf: wrecked ? [DET.paintrust, 0.9, 0.25] : [DET.carpaint, -1, -1],
     lightsOn: !wrecked && hash01(o.id * 3 + 11) < 0.22,
     hazards: !wrecked && hash01(o.id * 7 + 5) < 0.35,
     doorOpen: !wrecked && hash01(o.id * 13 + 1) < 0.2,
@@ -571,7 +572,7 @@ function militaryTruck(B, o, v, L, W, sag) {
   const r = B.rng;
   const olive = v.wrecked ? v.color : o.color;
   const bb = v.paintBucket;
-  const ps = v.wrecked ? v.paintSurf : [DET.panel, 0.7, 0.2];
+  const ps = v.wrecked ? v.paintSurf : [DET.paintmetal, 0.7, 0.2];
   // chassis rails and bumper
   B.block('std', 0, 13 + sag, 0, L * 0.98, 5, W * 0.62, '#1a1b16', null, { surf: [DET.rust, 0.8, 0.5] });
   B.rbox('std', L / 2 - 1, 18 + sag, 0, 3, 6, W, 0.8, '#23241e', null, { surf: [DET.rust, 0.7, 0.4] });
@@ -681,7 +682,7 @@ export function buildTrailer(B, o) {
   const v = vehicleLook(B, o);
   const sag = o.wrecked ? -3 : 0;
   const body = v.wrecked ? v.color : o.color;
-  const surf = v.wrecked ? [DET.char, 0.9, 0.3] : [DET.panel, 0.45, 0.55];
+  const surf = v.wrecked ? [DET.paintrust, 0.9, 0.3] : [DET.paintmetal, 0.45, 0.55];
   B.block('std', 0, 14 + sag, 0, L, 8, W * 0.8, '#161616', null, { surf: [DET.rust, 0.85, 0.5] });
   B.rblock('std', 0, 22 + sag, 0, L, 102, W, 1.6, body, null, { surf });
   // vertical posts along the sides, top and bottom rails
@@ -738,7 +739,7 @@ export function buildTanker(B, o) {
   const R = W * 0.47;
   const cy = 112 - R + sag;
   const tankC = v.wrecked ? v.color : o.color;
-  const surf = v.wrecked ? [DET.char, 0.9, 0.4] : [DET.panel, 0.38, 0.85];
+  const surf = v.wrecked ? [DET.paintrust, 0.9, 0.4] : [DET.panel, 0.38, 0.85];
   B.block('std', 0, 16 + sag, 0, L, 10, W * 0.7, '#1c1c1c', null, { surf: [DET.rust, 0.85, 0.5] });
   B.add('std', T.cyl(28), [0, cy, 0], [R, L * 0.9, R], [0, 0, Math.PI / 2], tankC, { surf, map: 'cyl' });
   for (const s of [-1, 1]) B.add('std', T.sphere(20, 10), [s * L * 0.45, cy, 0], [R * 0.3, R, R], null, tankC, { surf });
@@ -857,7 +858,7 @@ export function buildBus(B, o, objective) {
 export function buildApc(B, L, W) {
   const olive = '#46502a';
   const dark = shadeHex(olive, -0.25);
-  const S = [DET.panel, 0.62, 0.35];
+  const S = [DET.paintmetal, 0.62, 0.35];
   const R = 14.5;
   // lower hull: narrow, between the wheels
   B.rblock('std', 0, 12, 0, L * 0.94, 20, W * 0.56, 2, shadeHex(olive, -0.12), null, { surf: [DET.rust, 0.75, 0.3] });

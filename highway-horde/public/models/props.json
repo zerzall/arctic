@@ -1,0 +1,1738 @@
+{
+ "version": 1,
+ "store": 512,
+ "models": {
+  "drum_a": {
+   "about": "steel 200-litre drum, painted",
+   "size": [
+    0.563,
+    0.88,
+    0.563
+   ],
+   "layer0": 0,
+   "layers": 1,
+   "srcTris": 2682,
+   "source": {
+    "library": "Poly Haven",
+    "id": "Barrel_01",
+    "name": "Barrel_01",
+    "url": "https://polyhaven.com/a/Barrel_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Jorge Camacho": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Barrel_01/Barrel_01_1k.gltf",
+      "md5": "45c109401126ea3e5df2fe2c6b6f6d39"
+     },
+     "Barrel_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/Barrel_01/Barrel_01.bin",
+      "md5": "e9f1036a183a1747aea6d40c556d7410"
+     },
+     "textures/Barrel_01_explosive_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_diff_1k.jpg",
+      "md5": "a36cd738a17cab52dc4c264a03b2848b"
+     },
+     "textures/Barrel_01_explosive_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_nor_gl_1k.jpg",
+      "md5": "f49be8d1ab465c944380b9d565c6ab47"
+     },
+     "textures/Barrel_01_explosive_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_arm_1k.jpg",
+      "md5": "ccfe5da162b909fe98f4780e41cc1233"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 901,
+     "tris": 900,
+     "index32": false,
+     "pos": 0,
+     "nor": 10812,
+     "uv": 13516,
+     "layer": 20724,
+     "idx": 21628
+    },
+    {
+     "verts": 59,
+     "tris": 122,
+     "index32": false,
+     "pos": 27028,
+     "nor": 27736,
+     "uv": 27916,
+     "layer": 28388,
+     "idx": 28448
+    }
+   ]
+  },
+  "drum_b": {
+   "about": "steel 200-litre drum, rusted",
+   "size": [
+    0.4882,
+    0.88,
+    0.4846
+   ],
+   "layer0": 1,
+   "layers": 1,
+   "srcTris": 2688,
+   "source": {
+    "library": "Poly Haven",
+    "id": "Barrel_02",
+    "name": "Barrel 02",
+    "url": "https://polyhaven.com/a/Barrel_02",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Jorge Camacho": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Barrel_02/Barrel_02_1k.gltf",
+      "md5": "f95584ab7cc325d8be4884ca2935e019"
+     },
+     "Barrel_02.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/Barrel_02/Barrel_02.bin",
+      "md5": "7340fa43610b7a983a1b352574427b64"
+     },
+     "textures/Barrel_02_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_02/Barrel_02_diff_1k.jpg",
+      "md5": "7d879597fa5cae9ef9095b259ccaf9fb"
+     },
+     "textures/Barrel_02_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_02/Barrel_02_nor_gl_1k.jpg",
+      "md5": "fa1022a8d9206af8c1997db0a9597170"
+     },
+     "textures/Barrel_02_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_02/Barrel_02_arm_1k.jpg",
+      "md5": "2c4ab82215e0bc4d0b173c79bc18f15a"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 850,
+     "tris": 900,
+     "index32": false,
+     "pos": 29180,
+     "nor": 39380,
+     "uv": 41932,
+     "layer": 48732,
+     "idx": 49584
+    },
+    {
+     "verts": 102,
+     "tris": 210,
+     "index32": false,
+     "pos": 54984,
+     "nor": 56208,
+     "uv": 56516,
+     "layer": 57332,
+     "idx": 57436
+    }
+   ]
+  },
+  "drum_c": {
+   "about": "steel drum with a dented body",
+   "size": [
+    0.6339,
+    0.9305,
+    0.6386
+   ],
+   "layer0": 2,
+   "layers": 1,
+   "srcTris": 1473,
+   "source": {
+    "library": "Poly Haven",
+    "id": "barrel_03",
+    "name": "Barrel 03",
+    "url": "https://polyhaven.com/a/barrel_03",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Serhii Khromov": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/barrel_03/barrel_03_1k.gltf",
+      "md5": "204eec2159a38a1dc4b826ef255f9468"
+     },
+     "barrel_03.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/barrel_03/barrel_03.bin",
+      "md5": "6993587e3ef8e0603334e615ab292288"
+     },
+     "textures/barrel_03_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_diff_1k.jpg",
+      "md5": "6e77dc1af60c48787fd80dbbcf125040"
+     },
+     "textures/barrel_03_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_nor_gl_1k.jpg",
+      "md5": "fd181365eb7397d55773987d145f0420"
+     },
+     "textures/barrel_03_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_arm_1k.jpg",
+      "md5": "3520338e30b4d257745db34848098688"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 784,
+     "tris": 899,
+     "index32": false,
+     "pos": 58696,
+     "nor": 68104,
+     "uv": 70456,
+     "layer": 76728,
+     "idx": 77512
+    },
+    {
+     "verts": 256,
+     "tris": 236,
+     "index32": false,
+     "pos": 82908,
+     "nor": 85980,
+     "uv": 86748,
+     "layer": 88796,
+     "idx": 89052
+    }
+   ]
+  },
+  "crate_a": {
+   "about": "long wooden crate",
+   "size": [
+    0.8253,
+    0.3496,
+    0.409
+   ],
+   "layer0": 3,
+   "layers": 1,
+   "srcTris": 6576,
+   "source": {
+    "library": "Poly Haven",
+    "id": "wooden_crate_01",
+    "name": "Wooden Crate 01",
+    "url": "https://polyhaven.com/a/wooden_crate_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "James Ray Cock": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_crate_01/wooden_crate_01_1k.gltf",
+      "md5": "33df4d2ae00186d4b64e878466c9e22e"
+     },
+     "wooden_crate_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_crate_01/wooden_crate_01.bin",
+      "md5": "8318f76b0c24b5538ce23051dbcb79a0"
+     },
+     "textures/wooden_crate_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_diff_1k.jpg",
+      "md5": "266e0462d06e77c5745f66e89820544f"
+     },
+     "textures/wooden_crate_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_nor_gl_1k.jpg",
+      "md5": "e31626a1fcf6f7062c2ffd9fc982b942"
+     },
+     "textures/wooden_crate_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_arm_1k.jpg",
+      "md5": "67c4aeb1154af98f95516b21ef62291c"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1355,
+     "tris": 1362,
+     "index32": false,
+     "pos": 90468,
+     "nor": 106728,
+     "uv": 110796,
+     "layer": 121636,
+     "idx": 122992
+    },
+    {
+     "verts": 58,
+     "tris": 172,
+     "index32": false,
+     "pos": 131164,
+     "nor": 131860,
+     "uv": 132036,
+     "layer": 132500,
+     "idx": 132560
+    }
+   ]
+  },
+  "crate_b": {
+   "about": "tall wooden crate",
+   "size": [
+    0.5291,
+    0.464,
+    1.1663
+   ],
+   "layer0": 4,
+   "layers": 1,
+   "srcTris": 5176,
+   "source": {
+    "library": "Poly Haven",
+    "id": "wooden_crate_02",
+    "name": "Wooden Crate 02",
+    "url": "https://polyhaven.com/a/wooden_crate_02",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "James Ray Cock": "modeling",
+     "Jurita Burger": "graphic design"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_crate_02/wooden_crate_02_1k.gltf",
+      "md5": "a69eb62fd20e6badb6bb56f052930e06"
+     },
+     "wooden_crate_02.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_crate_02/wooden_crate_02.bin",
+      "md5": "08d98507231cdeda1070d1a2d0646254"
+     },
+     "textures/wooden_crate_02_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_diff_1k.jpg",
+      "md5": "45bca8f49da9d541e06bc926ab001c81"
+     },
+     "textures/wooden_crate_02_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_nor_gl_1k.jpg",
+      "md5": "314226b31765168cd8070898f8a7e18e"
+     },
+     "textures/wooden_crate_02_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_arm_1k.jpg",
+      "md5": "a7537612dbfb7fd25e756074eec5624e"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1041,
+     "tris": 960,
+     "index32": false,
+     "pos": 133592,
+     "nor": 146084,
+     "uv": 149208,
+     "layer": 157536,
+     "idx": 158580
+    },
+    {
+     "verts": 48,
+     "tris": 132,
+     "index32": false,
+     "pos": 164340,
+     "nor": 164916,
+     "uv": 165060,
+     "layer": 165444,
+     "idx": 165492
+    }
+   ]
+  },
+  "milcrate": {
+   "about": "olive military crate with latches",
+   "size": [
+    0.8154,
+    0.3009,
+    0.5376
+   ],
+   "layer0": 5,
+   "layers": 1,
+   "srcTris": 10476,
+   "source": {
+    "library": "Poly Haven",
+    "id": "old_military_crate",
+    "name": "Old Military Crate",
+    "url": "https://polyhaven.com/a/old_military_crate",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Jack Mava": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/old_military_crate/old_military_crate_1k.gltf",
+      "md5": "4c83b9887a0db6ecd5af18293012c3f0"
+     },
+     "old_military_crate.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/old_military_crate/old_military_crate.bin",
+      "md5": "4aa204ebcc401c38206677a808aebea6"
+     },
+     "textures/old_military_crate_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_diff_1k.jpg",
+      "md5": "a679925cb14dbb3ffc39a5d152d23114"
+     },
+     "textures/old_military_crate_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_nor_gl_1k.jpg",
+      "md5": "4403c6773bcc7c0182fac32e750c7231"
+     },
+     "textures/old_military_crate_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_arm_1k.jpg",
+      "md5": "5e877bd1644fe490e9450794aadc3dd7"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 696,
+     "tris": 1534,
+     "index32": false,
+     "pos": 166284,
+     "nor": 174636,
+     "uv": 176724,
+     "layer": 182292,
+     "idx": 182988
+    },
+    {
+     "verts": 118,
+     "tris": 293,
+     "index32": false,
+     "pos": 192192,
+     "nor": 193608,
+     "uv": 193964,
+     "layer": 194908,
+     "idx": 195028
+    }
+   ]
+  },
+  "cardboard": {
+   "about": "taped cardboard box",
+   "size": [
+    0.387,
+    0.3418,
+    0.5159
+   ],
+   "layer0": 6,
+   "layers": 1,
+   "srcTris": 16952,
+   "source": {
+    "library": "Poly Haven",
+    "id": "cardboard_box_01",
+    "name": "Cardboard Box 01",
+    "url": "https://polyhaven.com/a/cardboard_box_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rahul Chaudhary": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/cardboard_box_01/cardboard_box_01_1k.gltf",
+      "md5": "84572b118cc3640acdd9e978869bb3ee"
+     },
+     "cardboard_box_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/cardboard_box_01/cardboard_box_01.bin",
+      "md5": "64bea3a77434981017b8a06da4ccb0df"
+     },
+     "textures/cardboard_box_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/cardboard_box_01/cardboard_box_01_diff_1k.jpg",
+      "md5": "a306e586325d1759ba3225d2b6ad5121"
+     },
+     "textures/cardboard_box_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/cardboard_box_01/cardboard_box_01_nor_gl_1k.jpg",
+      "md5": "24768abd73f71cfdd7f5be92b18634a7"
+     },
+     "textures/cardboard_box_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/cardboard_box_01/cardboard_box_01_arm_1k.jpg",
+      "md5": "39ea452f95d71ec1362e47dff453c706"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 518,
+     "tris": 900,
+     "index32": false,
+     "pos": 196788,
+     "nor": 203004,
+     "uv": 204560,
+     "layer": 208704,
+     "idx": 209224
+    },
+    {
+     "verts": 126,
+     "tris": 186,
+     "index32": false,
+     "pos": 214624,
+     "nor": 216136,
+     "uv": 216516,
+     "layer": 217524,
+     "idx": 217652
+    }
+   ]
+  },
+  "propane": {
+   "about": "propane cylinder",
+   "size": [
+    0.3374,
+    0.5538,
+    0.3374
+   ],
+   "layer0": 7,
+   "layers": 1,
+   "srcTris": 5238,
+   "source": {
+    "library": "Poly Haven",
+    "id": "propane_tank",
+    "name": "Propane Tank",
+    "url": "https://polyhaven.com/a/propane_tank",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Slinc": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/propane_tank/propane_tank_1k.gltf",
+      "md5": "4579fb704d4d97e1aca048c126f6d921"
+     },
+     "propane_tank.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/propane_tank/propane_tank.bin",
+      "md5": "bb8e4a72c3f655bfa3dec7456a343451"
+     },
+     "textures/propane_tank_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/propane_tank/propane_tank_diff_1k.jpg",
+      "md5": "935d42c466adae18710e1f0fc79b306b"
+     },
+     "textures/propane_tank_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/propane_tank/propane_tank_nor_gl_1k.jpg",
+      "md5": "d6f11926f096f3373f091bb35f83ddd3"
+     },
+     "textures/propane_tank_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/propane_tank/propane_tank_arm_1k.jpg",
+      "md5": "23773169952447a34c90944eb17563a0"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1169,
+     "tris": 1129,
+     "index32": false,
+     "pos": 218768,
+     "nor": 232796,
+     "uv": 236304,
+     "layer": 245656,
+     "idx": 246828
+    },
+    {
+     "verts": 94,
+     "tris": 230,
+     "index32": false,
+     "pos": 253604,
+     "nor": 254732,
+     "uv": 255016,
+     "layer": 255768,
+     "idx": 255864
+    }
+   ]
+  },
+  "jerrycan": {
+   "about": "steel jerrycan",
+   "size": [
+    0.3503,
+    0.4552,
+    0.1717
+   ],
+   "layer0": 8,
+   "layers": 1,
+   "srcTris": 20022,
+   "source": {
+    "library": "Poly Haven",
+    "id": "metal_jerrycan",
+    "name": "Metal Jerrycan",
+    "url": "https://polyhaven.com/a/metal_jerrycan",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Sean Buckley": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/metal_jerrycan/metal_jerrycan_1k.gltf",
+      "md5": "bd328cec77ebf1c6889abba620abc4b6"
+     },
+     "metal_jerrycan.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/metal_jerrycan/metal_jerrycan.bin",
+      "md5": "10b2255555debf5e8e0effb5735b2a39"
+     },
+     "textures/metal_jerrycan_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_jerrycan/metal_jerrycan_diff_1k.jpg",
+      "md5": "d265ad6d7ae3583dbd1212743092ecc7"
+     },
+     "textures/metal_jerrycan_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_jerrycan/metal_jerrycan_nor_gl_1k.jpg",
+      "md5": "659b660e67aafc748364fa9d8a23059e"
+     },
+     "textures/metal_jerrycan_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_jerrycan/metal_jerrycan_arm_1k.jpg",
+      "md5": "b1aa1ec8f9944e784b64ef64e3b0f7f1"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1102,
+     "tris": 1512,
+     "index32": false,
+     "pos": 257244,
+     "nor": 270468,
+     "uv": 273776,
+     "layer": 282592,
+     "idx": 283696
+    },
+    {
+     "verts": 121,
+     "tris": 264,
+     "index32": false,
+     "pos": 292768,
+     "nor": 294220,
+     "uv": 294584,
+     "layer": 295552,
+     "idx": 295676
+    }
+   ]
+  },
+  "trashcan": {
+   "about": "galvanised trash can",
+   "size": [
+    0.651,
+    0.9062,
+    0.5524
+   ],
+   "layer0": 9,
+   "layers": 1,
+   "srcTris": 4880,
+   "source": {
+    "library": "Poly Haven",
+    "id": "metal_trash_can",
+    "name": "Metal Trash Can",
+    "url": "https://polyhaven.com/a/metal_trash_can",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "GurJas Studios": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/metal_trash_can/metal_trash_can_1k.gltf",
+      "md5": "c322802832a61ad7b17711dfbbc52e6b"
+     },
+     "metal_trash_can.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/metal_trash_can/metal_trash_can.bin",
+      "md5": "fbde1679a66ea644223b97ebc8336a77"
+     },
+     "textures/metal_trash_can_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_diff_1k.jpg",
+      "md5": "55d375d8d51b268b6ed8a4308155959c"
+     },
+     "textures/metal_trash_can_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_nor_gl_1k.jpg",
+      "md5": "fa6db04e021f6335ae2d9ad501120cae"
+     },
+     "textures/metal_trash_can_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_arm_1k.jpg",
+      "md5": "af676572c13fae2bb584538f03175efc"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 945,
+     "tris": 1198,
+     "index32": false,
+     "pos": 297260,
+     "nor": 308600,
+     "uv": 311436,
+     "layer": 318996,
+     "idx": 319944
+    },
+    {
+     "verts": 89,
+     "tris": 218,
+     "index32": false,
+     "pos": 327132,
+     "nor": 328200,
+     "uv": 328468,
+     "layer": 329180,
+     "idx": 329272
+    }
+   ]
+  },
+  "trashcan_rust": {
+   "about": "rusting galvanised trash can",
+   "size": [
+    0.6454,
+    0.9062,
+    0.5486
+   ],
+   "layer0": 10,
+   "layers": 1,
+   "srcTris": 5824,
+   "source": {
+    "library": "Poly Haven",
+    "id": "metal_trash_can",
+    "name": "Metal Trash Can",
+    "url": "https://polyhaven.com/a/metal_trash_can",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "GurJas Studios": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/metal_trash_can/metal_trash_can_1k.gltf",
+      "md5": "c322802832a61ad7b17711dfbbc52e6b"
+     },
+     "metal_trash_can.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/metal_trash_can/metal_trash_can.bin",
+      "md5": "fbde1679a66ea644223b97ebc8336a77"
+     },
+     "textures/metal_trash_can_rust_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_diff_1k.jpg",
+      "md5": "8b90447d250cb790ca537748a2b16691"
+     },
+     "textures/metal_trash_can_rust_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_nor_gl_1k.jpg",
+      "md5": "25187818d1236815d4a34fd743cadc29"
+     },
+     "textures/metal_trash_can_rust_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_trash_can/metal_trash_can_rust_arm_1k.jpg",
+      "md5": "ed9f635917cde411f235d4585c90b310"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 941,
+     "tris": 1198,
+     "index32": false,
+     "pos": 330580,
+     "nor": 341872,
+     "uv": 344696,
+     "layer": 352224,
+     "idx": 353168
+    },
+    {
+     "verts": 143,
+     "tris": 458,
+     "index32": false,
+     "pos": 360356,
+     "nor": 362072,
+     "uv": 362504,
+     "layer": 363648,
+     "idx": 363792
+    }
+   ]
+  },
+  "hydrant": {
+   "about": "cast-iron fire hydrant",
+   "size": [
+    0.2746,
+    0.7995,
+    0.3177
+   ],
+   "layer0": 11,
+   "layers": 1,
+   "srcTris": 43158,
+   "source": {
+    "library": "Poly Haven",
+    "id": "fire_hydrant",
+    "name": "Fire Hydrant",
+    "url": "https://polyhaven.com/a/fire_hydrant",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Gonçalo Felício": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fire_hydrant/fire_hydrant_1k.gltf",
+      "md5": "85c3205fe0cdb2b23390ee1205d035c3"
+     },
+     "fire_hydrant.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fire_hydrant/fire_hydrant.bin",
+      "md5": "636cd237cd1c9a793e3fc3edbf7f6a15"
+     },
+     "textures/fire_hydrant_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fire_hydrant/fire_hydrant_diff_1k.jpg",
+      "md5": "ecd42c8726c77692c8ff2d5a236896b2"
+     },
+     "textures/fire_hydrant_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fire_hydrant/fire_hydrant_nor_gl_1k.jpg",
+      "md5": "62f1bb906fddb58f26bf8b2513b972bc"
+     },
+     "textures/fire_hydrant_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fire_hydrant/fire_hydrant_arm_1k.jpg",
+      "md5": "22a64a6b558956476a5e1140a510704f"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 624,
+     "tris": 1931,
+     "index32": false,
+     "pos": 366540,
+     "nor": 374028,
+     "uv": 375900,
+     "layer": 380892,
+     "idx": 381516
+    },
+    {
+     "verts": 54,
+     "tris": 161,
+     "index32": false,
+     "pos": 393104,
+     "nor": 393752,
+     "uv": 393916,
+     "layer": 394348,
+     "idx": 394404
+    }
+   ]
+  },
+  "generator": {
+   "about": "portable petrol generator in its frame",
+   "size": [
+    0.8183,
+    0.5769,
+    0.564
+   ],
+   "layer0": 12,
+   "layers": 1,
+   "srcTris": 26419,
+   "source": {
+    "library": "Poly Haven",
+    "id": "portable_generator",
+    "name": "Portable Generator",
+    "url": "https://polyhaven.com/a/portable_generator",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "James Ray Cock": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/portable_generator/portable_generator_1k.gltf",
+      "md5": "13c2380487daae6726443b9f38dd7e53"
+     },
+     "portable_generator.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/portable_generator/portable_generator.bin",
+      "md5": "81b2f4c4c6d0b0d7388ae9aa1123563a"
+     },
+     "textures/portable_generator_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/portable_generator/portable_generator_diff_1k.jpg",
+      "md5": "3d572e1716148ca5d641d8a199fe9192"
+     },
+     "textures/portable_generator_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/portable_generator/portable_generator_nor_gl_1k.jpg",
+      "md5": "89a51a982488c21eddec2c6e02249591"
+     },
+     "textures/portable_generator_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/portable_generator/portable_generator_arm_1k.jpg",
+      "md5": "7dbb8b9f0aa4e9d3ce6ad37e0326299f"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1738,
+     "tris": 3955,
+     "index32": false,
+     "pos": 395372,
+     "nor": 416228,
+     "uv": 421444,
+     "layer": 435348,
+     "idx": 437088
+    },
+    {
+     "verts": 210,
+     "tris": 618,
+     "index32": false,
+     "pos": 460820,
+     "nor": 463340,
+     "uv": 463972,
+     "layer": 465652,
+     "idx": 465864
+    }
+   ]
+  },
+  "tyre": {
+   "about": "worn car tyre",
+   "size": [
+    0.6,
+    0.6,
+    0.165
+   ],
+   "layer0": 13,
+   "layers": 1,
+   "srcTris": 2880,
+   "source": {
+    "library": "Poly Haven",
+    "id": "old_tyre",
+    "name": "Old Tyre",
+    "url": "https://polyhaven.com/a/old_tyre",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "MP": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/old_tyre/old_tyre_1k.gltf",
+      "md5": "e29d7aee130a850f2224ac0dd103617b"
+     },
+     "old_tyre.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/old_tyre/old_tyre.bin",
+      "md5": "e29bd9703ad64da8883d8389b0cfb797"
+     },
+     "textures/old_tyre_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_tyre/old_tyre_diff_1k.jpg",
+      "md5": "f52b712b8373b1d1a7c46702613f76cb"
+     },
+     "textures/old_tyre_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_tyre/old_tyre_nor_gl_1k.jpg",
+      "md5": "e5eb6dd2cf7a8e80813bbc1bc21a6d3d"
+     },
+     "textures/old_tyre_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_tyre/old_tyre_arm_1k.jpg",
+      "md5": "c9256d0d7cac005512cba4744ab29ab4"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 799,
+     "tris": 1000,
+     "index32": false,
+     "pos": 469572,
+     "nor": 479160,
+     "uv": 481560,
+     "layer": 487952,
+     "idx": 488752
+    },
+    {
+     "verts": 270,
+     "tris": 246,
+     "index32": false,
+     "pos": 494752,
+     "nor": 497992,
+     "uv": 498804,
+     "layer": 500964,
+     "idx": 501236
+    }
+   ]
+  },
+  "trashbag": {
+   "about": "tied black trash bag",
+   "size": [
+    0.5281,
+    0.575,
+    0.4629
+   ],
+   "layer0": 14,
+   "layers": 1,
+   "srcTris": 4482,
+   "source": {
+    "library": "Poly Haven",
+    "id": "trashbag",
+    "name": "Trashbag",
+    "url": "https://polyhaven.com/a/trashbag",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Benny Weimer": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/trashbag/trashbag_1k.gltf",
+      "md5": "c29158e170beeeb6bb518fe8d4407fe5"
+     },
+     "trashbag.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/trashbag/trashbag.bin",
+      "md5": "ad6ebbf5b9aa0179feeea87a4bd289a3"
+     },
+     "textures/trashbag_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_diff_1k.jpg",
+      "md5": "255360a490bf3838f55e7f21c7ab57ab"
+     },
+     "textures/trashbag_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_nor_gl_1k.jpg",
+      "md5": "e576356779a07ac478126012544ab7b7"
+     },
+     "textures/trashbag_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/trashbag/trashbag_arm_1k.jpg",
+      "md5": "1efc021580dd12ef73a27b5d974056aa"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1187,
+     "tris": 2468,
+     "index32": false,
+     "pos": 502712,
+     "nor": 516956,
+     "uv": 520520,
+     "layer": 530016,
+     "idx": 531204
+    },
+    {
+     "verts": 161,
+     "tris": 355,
+     "index32": false,
+     "pos": 546012,
+     "nor": 547944,
+     "uv": 548428,
+     "layer": 549716,
+     "idx": 549880
+    }
+   ]
+  },
+  "picnic": {
+   "about": "wooden picnic table with benches",
+   "size": [
+    2.241,
+    0.746,
+    3.0223
+   ],
+   "layer0": 15,
+   "layers": 2,
+   "srcTris": 10210,
+   "source": {
+    "library": "Poly Haven",
+    "id": "wooden_picnic_table",
+    "name": "Wooden Picnic Table",
+    "url": "https://polyhaven.com/a/wooden_picnic_table",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Ulan Cabanilla": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_picnic_table/wooden_picnic_table_1k.gltf",
+      "md5": "6da01f8a75e559f356b494059f7b0eda"
+     },
+     "wooden_picnic_table.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/wooden_picnic_table/wooden_picnic_table.bin",
+      "md5": "5d52db76187b9990c328f79612eafe5b"
+     },
+     "textures/wooden_picnic_table_bottom_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_bottom_diff_1k.jpg",
+      "md5": "496b544a3dded845915431cef92e2f7d"
+     },
+     "textures/wooden_picnic_table_bottom_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_bottom_nor_gl_1k.jpg",
+      "md5": "6b9ad57ca60a3dc5bc5e6e57acfd6cc9"
+     },
+     "textures/wooden_picnic_table_bottom_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_bottom_arm_1k.jpg",
+      "md5": "11af6815971a16983c1e70103cd8300e"
+     },
+     "textures/wooden_picnic_table_top_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_top_diff_1k.jpg",
+      "md5": "5ad2a2cb0ff9f55602ea0ad23096116f"
+     },
+     "textures/wooden_picnic_table_top_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_top_nor_gl_1k.jpg",
+      "md5": "cab70a224d5b87bcb6c0595e14565626"
+     },
+     "textures/wooden_picnic_table_top_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_picnic_table/wooden_picnic_table_top_arm_1k.jpg",
+      "md5": "7455dbd1d31d365961ff55b7a2a67186"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1649,
+     "tris": 1599,
+     "index32": false,
+     "pos": 552012,
+     "nor": 571800,
+     "uv": 576748,
+     "layer": 589940,
+     "idx": 591592
+    },
+    {
+     "verts": 103,
+     "tris": 258,
+     "index32": false,
+     "pos": 601188,
+     "nor": 602424,
+     "uv": 602736,
+     "layer": 603560,
+     "idx": 603664
+    }
+   ]
+  },
+  "chair": {
+   "about": "white plastic garden chair",
+   "size": [
+    0.6419,
+    0.8798,
+    0.6276
+   ],
+   "layer0": 17,
+   "layers": 1,
+   "srcTris": 3356,
+   "source": {
+    "library": "Poly Haven",
+    "id": "plastic_monobloc_chair_01",
+    "name": "Plastic Monobloc Chair 01",
+    "url": "https://polyhaven.com/a/plastic_monobloc_chair_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Kuutti Siitonen": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/plastic_monobloc_chair_01/plastic_monobloc_chair_01_1k.gltf",
+      "md5": "b0ac94e52b406e1815af47d9d84eadb4"
+     },
+     "plastic_monobloc_chair_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/plastic_monobloc_chair_01/plastic_monobloc_chair_01.bin",
+      "md5": "cff97136a9c4bb57c62937cbb7d33a79"
+     },
+     "textures/plastic_monobloc_chair_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/plastic_monobloc_chair_01/plastic_monobloc_chair_01_diff_1k.jpg",
+      "md5": "c36dfe0f38d6ca1632ba426c598e6764"
+     },
+     "textures/plastic_monobloc_chair_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/plastic_monobloc_chair_01/plastic_monobloc_chair_01_nor_gl_1k.jpg",
+      "md5": "387f81f09c0754416298398277fb2a6d"
+     },
+     "textures/plastic_monobloc_chair_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/plastic_monobloc_chair_01/plastic_monobloc_chair_01_arm_1k.jpg",
+      "md5": "ce9271797fd8893a6c84f639f952d0b9"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1300,
+     "tris": 1000,
+     "index32": false,
+     "pos": 605212,
+     "nor": 620812,
+     "uv": 624712,
+     "layer": 635112,
+     "idx": 636412
+    },
+    {
+     "verts": 94,
+     "tris": 239,
+     "index32": false,
+     "pos": 642412,
+     "nor": 643540,
+     "uv": 643824,
+     "layer": 644576,
+     "idx": 644672
+    }
+   ]
+  },
+  "stump": {
+   "about": "sawn tree stump with roots",
+   "size": [
+    1.4256,
+    0.5727,
+    1.5903
+   ],
+   "layer0": 18,
+   "layers": 1,
+   "srcTris": 41046,
+   "source": {
+    "library": "Poly Haven",
+    "id": "tree_stump_01",
+    "name": "Tree Stump 01",
+    "url": "https://polyhaven.com/a/tree_stump_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_stump_01/tree_stump_01_1k.gltf",
+      "md5": "fedfc620634a8dbaf6345413b13abe1a"
+     },
+     "tree_stump_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/tree_stump_01/tree_stump_01.bin",
+      "md5": "acb292727949126b92e58217fd50fca9"
+     },
+     "textures/tree_stump_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_diff_1k.jpg",
+      "md5": "c71fe60400276a37b8847048cbec3720"
+     },
+     "textures/tree_stump_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_nor_gl_1k.jpg",
+      "md5": "cc2a3c6e4682a521b15cccc61a416bbf"
+     },
+     "textures/tree_stump_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_arm_1k.jpg",
+      "md5": "09b7aa228dccb93f5cf4188ba5530578"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 993,
+     "tris": 2134,
+     "index32": false,
+     "pos": 646108,
+     "nor": 658024,
+     "uv": 661004,
+     "layer": 668948,
+     "idx": 669944
+    },
+    {
+     "verts": 86,
+     "tris": 167,
+     "index32": false,
+     "pos": 682748,
+     "nor": 683780,
+     "uv": 684040,
+     "layer": 684728,
+     "idx": 684816
+    }
+   ]
+  },
+  "log": {
+   "about": "fallen dead trunk",
+   "size": [
+    3.051,
+    0.2904,
+    0.2775
+   ],
+   "layer0": 19,
+   "layers": 1,
+   "srcTris": 101802,
+   "source": {
+    "library": "Poly Haven",
+    "id": "dead_tree_trunk",
+    "name": "Dead Tree Trunk",
+    "url": "https://polyhaven.com/a/dead_tree_trunk",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dead_tree_trunk/dead_tree_trunk_1k.gltf",
+      "md5": "7bbf9fc9fdf61b50ed0495a29c03ecab"
+     },
+     "dead_tree_trunk.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dead_tree_trunk/dead_tree_trunk.bin",
+      "md5": "2a2b05e67a5c51fba5fc7591a7857957"
+     },
+     "textures/dead_tree_trunk_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dead_tree_trunk/dead_tree_trunk_diff_1k.jpg",
+      "md5": "fe92c64532d4684d3239f6edc7733192"
+     },
+     "textures/dead_tree_trunk_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dead_tree_trunk/dead_tree_trunk_nor_gl_1k.jpg",
+      "md5": "28992c1123371ae1899e49360953c846"
+     },
+     "textures/dead_tree_trunk_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dead_tree_trunk/dead_tree_trunk_arm_1k.jpg",
+      "md5": "548a72849ce709a9f38fa06776732a07"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 939,
+     "tris": 1400,
+     "index32": false,
+     "pos": 685820,
+     "nor": 697088,
+     "uv": 699908,
+     "layer": 707420,
+     "idx": 708360
+    },
+    {
+     "verts": 218,
+     "tris": 238,
+     "index32": false,
+     "pos": 716760,
+     "nor": 719376,
+     "uv": 720032,
+     "layer": 721776,
+     "idx": 721996
+    }
+   ]
+  },
+  "boulder": {
+   "about": "weathered boulder",
+   "size": [
+    1.2721,
+    1.0038,
+    1.8303
+   ],
+   "layer0": 20,
+   "layers": 1,
+   "srcTris": 66122,
+   "source": {
+    "library": "Poly Haven",
+    "id": "boulder_01",
+    "name": "Boulder 01",
+    "url": "https://polyhaven.com/a/boulder_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rico Cilliers": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf",
+      "md5": "26e2eef4a1f68c9557c65cd375b21d6c"
+     },
+     "boulder_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin",
+      "md5": "27a19fa031d8b4c3a09261f19c444dc5"
+     },
+     "textures/boulder_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_diff_1k.jpg",
+      "md5": "25f8a843f13369d56d37f49db05ea8c3"
+     },
+     "textures/boulder_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg",
+      "md5": "0c4da644d901144b53e4fe2446f3c389"
+     },
+     "textures/boulder_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_arm_1k.jpg",
+      "md5": "d632159982cc3121ed3d69b89a122146"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 1359,
+     "tris": 3127,
+     "index32": false,
+     "pos": 723424,
+     "nor": 739732,
+     "uv": 743812,
+     "layer": 754684,
+     "idx": 756044
+    },
+    {
+     "verts": 126,
+     "tris": 308,
+     "index32": false,
+     "pos": 774808,
+     "nor": 776320,
+     "uv": 776700,
+     "layer": 777708,
+     "idx": 777836
+    }
+   ]
+  },
+  "wheelchair": {
+   "about": "hospital wheelchair",
+   "size": [
+    0.8241,
+    1.1035,
+    1.0909
+   ],
+   "layer0": 21,
+   "layers": 1,
+   "srcTris": 40252,
+   "source": {
+    "library": "Poly Haven",
+    "id": "wheelchair_01",
+    "name": "Wheelchair 01",
+    "url": "https://polyhaven.com/a/wheelchair_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Garreth Dean": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wheelchair_01/wheelchair_01_1k.gltf",
+      "md5": "53901a369849ad929d030279a3d1f719"
+     },
+     "wheelchair_01.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/wheelchair_01/wheelchair_01.bin",
+      "md5": "419414082dc40cae13c9141d8922a218"
+     },
+     "textures/wheelchair_01_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wheelchair_01/wheelchair_01_diff_1k.jpg",
+      "md5": "8f3f7ef28ebe675f20fefb8fbafb8ac3"
+     },
+     "textures/wheelchair_01_nor_gl_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wheelchair_01/wheelchair_01_nor_gl_1k.jpg",
+      "md5": "256c08e1dcf3a937b7d66a845bd21f04"
+     },
+     "textures/wheelchair_01_arm_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wheelchair_01/wheelchair_01_arm_1k.jpg",
+      "md5": "4c4d70458a7848b9d4f60d0b2ec84d2c"
+     }
+    }
+   },
+   "lods": [
+    {
+     "verts": 968,
+     "tris": 2664,
+     "index32": false,
+     "pos": 779684,
+     "nor": 791300,
+     "uv": 794204,
+     "layer": 801948,
+     "idx": 802916
+    },
+    {
+     "verts": 89,
+     "tris": 183,
+     "index32": false,
+     "pos": 818900,
+     "nor": 819968,
+     "uv": 820236,
+     "layer": 820948,
+     "idx": 821040
+    }
+   ]
+  }
+ },
+ "layers": [
+  {
+   "name": "drum_a",
+   "model": "drum_a",
+   "material": "Barrel_01",
+   "mean": [
+    0.2002,
+    0.0295,
+    0.0226
+   ],
+   "files": {
+    "albedo": "models/drum_a/albedo.png",
+    "normal": "models/drum_a/normal.png",
+    "orm": "models/drum_a/orm.png"
+   }
+  },
+  {
+   "name": "drum_b",
+   "model": "drum_b",
+   "material": "Barrel_02",
+   "mean": [
+    0.0209,
+    0.0853,
+    0.2378
+   ],
+   "files": {
+    "albedo": "models/drum_b/albedo.png",
+    "normal": "models/drum_b/normal.png",
+    "orm": "models/drum_b/orm.png"
+   }
+  },
+  {
+   "name": "drum_c",
+   "model": "drum_c",
+   "material": "barrel_03",
+   "mean": [
+    0.0663,
+    0.0998,
+    0.1542
+   ],
+   "files": {
+    "albedo": "models/drum_c/albedo.png",
+    "normal": "models/drum_c/normal.png",
+    "orm": "models/drum_c/orm.png"
+   }
+  },
+  {
+   "name": "crate_a",
+   "model": "crate_a",
+   "material": "wooden_crate_01",
+   "mean": [
+    0.1685,
+    0.0678,
+    0.0268
+   ],
+   "files": {
+    "albedo": "models/crate_a/albedo.png",
+    "normal": "models/crate_a/normal.png",
+    "orm": "models/crate_a/orm.png"
+   }
+  },
+  {
+   "name": "crate_b",
+   "model": "crate_b",
+   "material": "wooden_crate_02",
+   "mean": [
+    0.1438,
+    0.0627,
+    0.0269
+   ],
+   "files": {
+    "albedo": "models/crate_b/albedo.png",
+    "normal": "models/crate_b/normal.png",
+    "orm": "models/crate_b/orm.png"
+   }
+  },
+  {
+   "name": "milcrate",
+   "model": "milcrate",
+   "material": "military_crate_m_01",
+   "mean": [
+    0.1723,
+    0.1208,
+    0.0623
+   ],
+   "files": {
+    "albedo": "models/milcrate/albedo.png",
+    "normal": "models/milcrate/normal.png",
+    "orm": "models/milcrate/orm.png"
+   }
+  },
+  {
+   "name": "cardboard",
+   "model": "cardboard",
+   "material": "cardboard_box_01",
+   "mean": [
+    0.3487,
+    0.2634,
+    0.1367
+   ],
+   "files": {
+    "albedo": "models/cardboard/albedo.png",
+    "normal": "models/cardboard/normal.png",
+    "orm": "models/cardboard/orm.png"
+   }
+  },
+  {
+   "name": "propane",
+   "model": "propane",
+   "material": "propane_tank",
+   "mean": [
+    0.2302,
+    0.0587,
+    0.0542
+   ],
+   "files": {
+    "albedo": "models/propane/albedo.png",
+    "normal": "models/propane/normal.png",
+    "orm": "models/propane/orm.png"
+   }
+  },
+  {
+   "name": "jerrycan",
+   "model": "jerrycan",
+   "material": "metal_jerrycan",
+   "mean": [
+    0.2065,
+    0.0385,
+    0.0183
+   ],
+   "files": {
+    "albedo": "models/jerrycan/albedo.png",
+    "normal": "models/jerrycan/normal.png",
+    "orm": "models/jerrycan/orm.png"
+   }
+  },
+  {
+   "name": "trashcan",
+   "model": "trashcan",
+   "material": "metal_trash_can",
+   "mean": [
+    0.1509,
+    0.1352,
+    0.1167
+   ],
+   "files": {
+    "albedo": "models/trashcan/albedo.png",
+    "normal": "models/trashcan/normal.png",
+    "orm": "models/trashcan/orm.png"
+   }
+  },
+  {
+   "name": "trashcan_rust",
+   "model": "trashcan_rust",
+   "material": "metal_trash_can_rust",
+   "mean": [
+    0.0982,
+    0.072,
+    0.0533
+   ],
+   "files": {
+    "albedo": "models/trashcan_rust/albedo.png",
+    "normal": "models/trashcan_rust/normal.png",
+    "orm": "models/trashcan_rust/orm.png"
+   }
+  },
+  {
+   "name": "hydrant",
+   "model": "hydrant",
+   "material": "fire_hydrant",
+   "mean": [
+    0.2668,
+    0.0674,
+    0.0449
+   ],
+   "files": {
+    "albedo": "models/hydrant/albedo.png",
+    "normal": "models/hydrant/normal.png",
+    "orm": "models/hydrant/orm.png"
+   }
+  },
+  {
+   "name": "generator",
+   "model": "generator",
+   "material": "portable_generator",
+   "mean": [
+    0.1149,
+    0.0848,
+    0.0511
+   ],
+   "files": {
+    "albedo": "models/generator/albedo.png",
+    "normal": "models/generator/normal.png",
+    "orm": "models/generator/orm.png"
+   }
+  },
+  {
+   "name": "tyre",
+   "model": "tyre",
+   "material": "old_tyre",
+   "mean": [
+    0.014,
+    0.0117,
+    0.0102
+   ],
+   "files": {
+    "albedo": "models/tyre/albedo.png",
+    "normal": "models/tyre/normal.png",
+    "orm": "models/tyre/orm.png"
+   }
+  },
+  {
+   "name": "trashbag",
+   "model": "trashbag",
+   "material": "trashbag",
+   "mean": [
+    0.0049,
+    0.0044,
+    0.0043
+   ],
+   "files": {
+    "albedo": "models/trashbag/albedo.png",
+    "normal": "models/trashbag/normal.png",
+    "orm": "models/trashbag/orm.png"
+   }
+  },
+  {
+   "name": "picnic_0",
+   "model": "picnic",
+   "material": "wooden_picnic_table_bottom",
+   "mean": [
+    0.1263,
+    0.073,
+    0.0405
+   ],
+   "files": {
+    "albedo": "models/picnic_0/albedo.png",
+    "normal": "models/picnic_0/normal.png",
+    "orm": "models/picnic_0/orm.png"
+   }
+  },
+  {
+   "name": "picnic_1",
+   "model": "picnic",
+   "material": "wooden_picnic_table_table",
+   "mean": [
+    0.1063,
+    0.0594,
+    0.0316
+   ],
+   "files": {
+    "albedo": "models/picnic_1/albedo.png",
+    "normal": "models/picnic_1/normal.png",
+    "orm": "models/picnic_1/orm.png"
+   }
+  },
+  {
+   "name": "chair",
+   "model": "chair",
+   "material": "plastic_monobloc_chair_01",
+   "mean": [
+    0.4626,
+    0.4503,
+    0.4362
+   ],
+   "files": {
+    "albedo": "models/chair/albedo.png",
+    "normal": "models/chair/normal.png",
+    "orm": "models/chair/orm.png"
+   }
+  },
+  {
+   "name": "stump",
+   "model": "stump",
+   "material": "tree_stump_01",
+   "mean": [
+    0.1219,
+    0.0833,
+    0.0451
+   ],
+   "files": {
+    "albedo": "models/stump/albedo.png",
+    "normal": "models/stump/normal.png",
+    "orm": "models/stump/orm.png"
+   }
+  },
+  {
+   "name": "log",
+   "model": "log",
+   "material": "dead_tree_trunk",
+   "mean": [
+    0.0457,
+    0.0325,
+    0.0161
+   ],
+   "files": {
+    "albedo": "models/log/albedo.png",
+    "normal": "models/log/normal.png",
+    "orm": "models/log/orm.png"
+   }
+  },
+  {
+   "name": "boulder",
+   "model": "boulder",
+   "material": "boulder_01",
+   "mean": [
+    0.1742,
+    0.1149,
+    0.0743
+   ],
+   "files": {
+    "albedo": "models/boulder/albedo.png",
+    "normal": "models/boulder/normal.png",
+    "orm": "models/boulder/orm.png"
+   }
+  },
+  {
+   "name": "wheelchair",
+   "model": "wheelchair",
+   "material": "lambert1",
+   "mean": [
+    0.1647,
+    0.1688,
+    0.1774
+   ],
+   "files": {
+    "albedo": "models/wheelchair/albedo.png",
+    "normal": "models/wheelchair/normal.png",
+    "orm": "models/wheelchair/orm.png"
+   }
+  }
+ ],
+ "bytes": 822138
+}

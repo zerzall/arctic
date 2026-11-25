@@ -86,7 +86,7 @@ export function buildTreeLine(B, map, waters) {
       const R = 46 * s;
       const cc = [0, 175 * s, 0];
       B.cyl('std', 0, 0, 0, 6 * s, 120 * s, '#3f3226', 6, 0.6, null, { surf: [DET.bark, 0.9, 0] });
-      B.add('std', T.ico(0), cc, [R * 0.5, R * 0.4, R * 0.5], null, shadeHex('#2f4a26', -0.3), { surf: [DET.grass, 0.95, 0], noAO: true });
+      B.add('std', T.ico(0), cc, [R * 0.42, R * 0.34, R * 0.42], null, shadeHex('#2f4a26', -0.55), { surf: [0, 0.95, 0], noAO: true });
       const cinL = DETAIL.level >= 3;
       for (let k = 0; k < (cinL ? 6 : 4); k++) {
         const dir = k === 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(rng.range(-1, 1), rng.range(-0.1, 0.5), rng.range(-1, 1)).normalize();
@@ -101,20 +101,23 @@ export function buildTreeLine(B, map, waters) {
     }
     const col = rng.pick(PINE);
     const top = rng.range(220, 330) * s;
-    B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#2a2118', 5, 0.7, null, { surf: [DET.bark, 0.9, 0] });
+    B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#5a4a3e', 5, 0.7, null, { surf: [DET.pinebark, 0.9, 0] });
     const cinL = DETAIL.level >= 3;
-    B.cyl('std', 0, 40 * s, 0, (cinL ? 26 : 44) * s, top - 40 * s, shadeHex(col, -0.35), cinL ? 9 : 7, 0.04, null, { surf: [DET.grass, 0.95, 0], noAO: true });
-    // two rings of drooping bough cards over the cone: a ragged, needled silhouette
+    // a slender dark core (it only fills the gaps between the boughs: the silhouette is the cards', not a cone's)
+    B.cyl('std', 0, 40 * s, 0, (cinL ? 20 : 26) * s, top - 60 * s, shadeHex(col, -0.62), cinL ? 9 : 6, 0.04, null, { surf: [0, 0.95, 0], noAO: true });
+    // whorls of drooping bough cards (photo needles, world-tex.js): a ragged, needled silhouette
     const cards = cardList();
-    const rings = cinL ? 7 : 3;
+    // (cards by detail level: 'high' keeps close to the old count of alpha-tested quads, ultra adds a whorl)
+    const rings = cinL ? 7 : DETAIL.level >= 2 ? 5 : 4;
+    const per = cinL ? 7 : DETAIL.level >= 2 ? 6 : 5;
     for (let k = 0; k < rings; k++) {
       const t = k / rings;
-      const y = 50 * s + t * (top - 90 * s);
-      const rad = (58 - t * 36) * s;
-      for (let m = 0; m < (cinL ? 7 : 5); m++) {
-        const a = (m / (cinL ? 7 : 5)) * Math.PI * 2 + k + rng.range(-0.3, 0.3);
-        const f = new THREE.Vector3(Math.cos(a) * 0.5, 0.8, Math.sin(a) * 0.5).normalize();
-        card(cards, [Math.cos(a) * rad * 0.55, y, Math.sin(a) * rad * 0.55], f, a + Math.PI / 2, rad * 1.2, rad * 0.9, [0, y + 20, 0], LEAF_CELLS.pine);
+      const y = 46 * s + t * (top - 84 * s);
+      const rad = (64 - t * 36) * s * rng.range(0.85, 1.12);
+      for (let m = 0; m < per; m++) {
+        const a = (m / per) * Math.PI * 2 + k * 0.9 + rng.range(-0.35, 0.35);
+        const f = new THREE.Vector3(Math.cos(a) * 0.55, 0.75, Math.sin(a) * 0.55).normalize();
+        card(cards, [Math.cos(a) * rad * 0.58, y - rad * 0.1, Math.sin(a) * rad * 0.58], f, a + Math.PI / 2 + rng.range(-0.3, 0.3), rad * 1.3, rad * 1.0, [0, y + 20, 0], LEAF_CELLS.pine);
       }
     }
     B.add('leaves', listGeo(cards), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });

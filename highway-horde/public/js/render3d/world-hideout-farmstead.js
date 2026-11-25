@@ -52,7 +52,7 @@ function coop(P) {
   // nesting boxes on the side with an egg or two
   B.rblock('std', 30, 16, -6, 8, 14, 22, 0.5, '#8a6a44', null, WOOD);
   B.add('std', T.box(), [31, 32, -6], [12, 1, 26], [0, 0, -0.3], '#5a4a3a', S(DET.shingle, 0.9, 0));
-  for (const z of [-12, 0]) B.add('std', T.sphere(6, 4), [30.4, 17.6, z], [1.5, 2, 1.5], null, '#f0e8d4', S(DET.plastic, 0.5, 0));
+  for (const z of [-12, 0]) B.add('std', T.sphere(6, 4), [30.4, 17.6, z], [1.5, 2, 1.5], null, '#f0e8d4', S(DET.plasticworn, 0.5, 0));
   pic(B, 'p_eggs', 0, 50, 19, 26, 8, 0, {});
   // the run: low picket fence round the yard, a feeder, a water dish, a perch
   const R = 66, n = 22;
@@ -131,7 +131,7 @@ function pergola2(P) {
     B.add('std', T.dodeca(), [r.range(-w / 2, w / 2), h + 8 + r.range(0, 4), r.range(-d / 2, d / 2)], [r.range(6, 11), r.range(2.6, 4), r.range(6, 11)], [r.range(0, 6), r.range(0, 6), 0], mixHex('#4f7a3a', '#7aa04a', r.range(0, 1)), S(DET.fabric, 0.9, 0));
   }
   // grapes
-  for (let i = 0; i < 8; i++) B.add('std', T.sphere(6, 4), [r.range(-w / 2 + 10, w / 2 - 10), h - 3, r.range(-d / 2 + 10, d / 2 - 10)], [2, 2.6, 2], null, '#5a2a6a', S(DET.plastic, 0.4, 0));
+  for (let i = 0; i < 8; i++) B.add('std', T.sphere(6, 4), [r.range(-w / 2 + 10, w / 2 - 10), h - 3, r.range(-d / 2 + 10, d / 2 - 10)], [2, 2.6, 2], null, '#5a2a6a', S(DET.plasticworn, 0.4, 0));
   // jars with candles hung from the beams
   for (let i = -2; i <= 2; i++) {
     const lx = i * (w / 5), lz = (i % 2) * 16;
@@ -210,15 +210,15 @@ function orchardcrates(P) {
   const r = B.rng;
   for (const [x, z, rot] of [[-14, 0, 0.1], [12, 4, -0.15], [0, -16, 0.3]]) {
     crate(B, x, 0, z, 20, rot, C.wood, { w: 24, d: 18, h: 14 });
-    for (let i = 0; i < 9; i++) B.add('std', T.sphere(6, 4), [x + r.range(-9, 9), 14.4, z + r.range(-6, 6)], [2.7, 2.5, 2.7], null, ['#c0261c', '#d23a26', '#a01e18'][i % 3], S(DET.plastic, 0.35, 0));
+    for (let i = 0; i < 9; i++) B.add('std', T.sphere(6, 4), [x + r.range(-9, 9), 14.4, z + r.range(-6, 6)], [2.7, 2.5, 2.7], null, ['#c0261c', '#d23a26', '#a01e18'][i % 3], S(DET.plasticworn, 0.35, 0));
   }
   B.add('std', T.box(), [12, 20, 4], [3, 2, 60], [0, 0, 0.0], C.woodL, WOOD);
   rod(B, 'std', [30, 0, -20], [22, 60, -10], 0.9, C.woodL, WOOD, 4);
   rod(B, 'std', [36, 0, -14], [28, 60, -4], 0.9, C.woodL, WOOD, 4);
   for (let y = 8; y < 56; y += 9) rod(B, 'std', [30 - (y / 60) * 8 + 2, y, -20 + (y / 60) * 10], [36 - (y / 60) * 8 + 2, y, -14 + (y / 60) * 10], 0.6, C.woodL, WOOD, 4);
   B.cyl('std', -26, 0, 20, 7, 8, '#8a6a44', 10, 1.2, null, S(DET.fabric, 0.95, 0));
-  for (let i = 0; i < 5; i++) B.add('std', T.sphere(6, 4), [-26 + r.range(-4, 4), 9, 20 + r.range(-4, 4)], [2.5, 2.4, 2.5], null, '#c0261c', S(DET.plastic, 0.35, 0));
-  for (let i = 0; i < 8; i++) B.add('std', T.sphere(6, 4), [r.range(-40, 40), 2, r.range(-30, 30)], [2.3, 2.1, 2.3], null, '#b8261c', S(DET.plastic, 0.35, 0));
+  for (let i = 0; i < 5; i++) B.add('std', T.sphere(6, 4), [-26 + r.range(-4, 4), 9, 20 + r.range(-4, 4)], [2.5, 2.4, 2.5], null, '#c0261c', S(DET.plasticworn, 0.35, 0));
+  for (let i = 0; i < 8; i++) B.add('std', T.sphere(6, 4), [r.range(-40, 40), 2, r.range(-30, 30)], [2.3, 2.1, 2.3], null, '#b8261c', S(DET.plasticworn, 0.35, 0));
 }
 
 /** Extras on an orchard tree (the default trunk and crown are drawn after): red apples in the crown. */
@@ -227,9 +227,9 @@ function orchardtree(P) {
   const r = B.rng;
   for (let i = 0; i < 18; i++) {
     const a = r.range(0, 6.28), d = 18 + r.range(0, 24);
-    B.add('std', T.sphere(6, 4), [Math.cos(a) * d, 66 + r.range(0, 56), Math.sin(a) * d], [2.9, 2.7, 2.9], null, ['#c0261c', '#d23a26', '#a01e18'][i % 3], S(DET.plastic, 0.35, 0));
+    B.add('std', T.sphere(6, 4), [Math.cos(a) * d, 66 + r.range(0, 56), Math.sin(a) * d], [2.9, 2.7, 2.9], null, ['#c0261c', '#d23a26', '#a01e18'][i % 3], S(DET.plasticworn, 0.35, 0));
   }
-  for (let i = 0; i < 5; i++) B.add('std', T.sphere(6, 4), [r.range(-30, 30), 2, r.range(-30, 30)], [2.3, 2.1, 2.3], null, '#b8261c', S(DET.plastic, 0.35, 0));
+  for (let i = 0; i < 5; i++) B.add('std', T.sphere(6, 4), [r.range(-30, 30), 2, r.range(-30, 30)], [2.3, 2.1, 2.3], null, '#b8261c', S(DET.plasticworn, 0.35, 0));
 }
 
 export const FARM_MODELS = { haybale, coop, windmill, pergola2, dock, porchswing, scarecrow, orchardcrates, orchardtree };
