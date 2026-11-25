@@ -1,16 +1,16 @@
 // The zombies' baked texture sets (scripts/bake-zombies.js → public/textures/zombies/) on the GPU:
-// skin in three stages of decay, the five specials' skins, six faces, a scalp, eleven fabrics, a
-// wound atlas and a grime / stain set, loaded on high and up and packed into two or three
-// mipmapped texture arrays (one sampler per resolution class, so a whole horde still samples a
-// handful of textures). The corpse material (actor-zmat.js, `#define HH_ZTEX`) maps them onto the
-// models by triplanar projection in rest-pose model space (they stick to the body as it moves),
-// the faces by a front projection on the head's anchors (actor-zmodels.js faceAnchors).
+// the body atlases on the MakeHuman UV layout (three stages of decay and the five specials' own),
+// three tiling skins for growths and gear in skin, eleven photo-scanned fabrics, a wound atlas and a
+// grime / stain set, loaded on high and up and packed into two or three mipmapped texture arrays
+// (one sampler per resolution class, so a whole horde still samples a handful of textures). The
+// corpse material (actor-zmat.js, `#define HH_ZTEX`) samples the body atlases by the body's own UVs
+// (vMH) and maps the rest by triplanar projection in rest-pose model space (they stick to the body
+// as it moves).
 //
 // Every set is three PNGs (albedo, normal, pack); here they become runtime layers:
-//   skin / spec  A: albedo rgb (sRGB) + subsurface thickness · B: normal xy + roughness + AO
-//   face         A: albedo rgb + coverage                    · B: normal xy + roughness + "absolute"
+//   body / skin  A: albedo rgb (sRGB) + hair coverage (body) or subsurface thickness (skin)
+//                B: normal xy + roughness + AO
 //   cloth        one layer: relative brightness, bleach, normal xy
-//   scalp        A: albedo rgb + hair coverage                · B: normal xy + roughness + AO
 //   wound        A: albedo rgb + coverage                     · B: normal xy + roughness + wetness
 //   grime        A: soak, mud, sweat, drips (linear masks)    · B: crust normal xy + roughness + holes
 // The files are the PNGs' download copies at the size the tier uses (tex-files.js), decoded in a
@@ -29,48 +29,44 @@ export { FAB, stageOf };
 
 /** The baked sets, in the baker's order: [name, kind]. */
 export const ZT_SETS = [
+  ['body-fresh', 'body'], ['body-weeks', 'body'], ['body-months', 'body'],
+  ['body-bloater', 'body'], ['body-spitter', 'body'], ['body-brute', 'body'], ['body-screamer', 'body'], ['body-boss', 'body'],
   ['skin-fresh', 'skin'], ['skin-weeks', 'skin'], ['skin-months', 'skin'],
-  ['skin-bloater', 'skin'], ['skin-spitter', 'skin'], ['skin-brute', 'skin'], ['skin-screamer', 'skin'], ['skin-boss', 'skin'],
-  ['face-a', 'face'], ['face-b', 'face'], ['face-c', 'face'], ['face-d', 'face'], ['face-e', 'face'], ['face-f', 'face'],
   ['cloth-denim', 'cloth'], ['cloth-flannel', 'cloth'], ['cloth-tee', 'cloth'], ['cloth-gown', 'cloth'], ['cloth-police', 'cloth'],
   ['cloth-military', 'cloth'], ['cloth-work', 'cloth'], ['cloth-shirt', 'cloth'], ['cloth-suit', 'cloth'], ['cloth-hoodie', 'cloth'], ['cloth-dress', 'cloth'],
-  ['scalp', 'scalp'], ['wounds', 'wound'], ['grime', 'grime'],
+  ['wounds', 'wound'], ['grime', 'grime'],
 ];
 
-/** The special infected with their own skin: type → index into the spec class. */
+/** The special infected with their own body atlas: type → index after the three decay stages. */
 export const SPECIAL = { bloater: 0, spitter: 1, brute: 2, screamer: 3, boss: 4 };
 
 /** Model units per texture tile (1 unit = 3 cm: a skin tile spans 33 cm, a fabric 48 cm). */
-export const SKIN_TILE = 11, CLOTH_TILE = 16, SCALP_TILE = 10, GRIME_TILE = 18;
-/** The face frame (scripts/zbake/face.js FACE / EYE_SPOT): canonical anchors, extent, eye spots. */
-export const FACE_FRAME = { EZ: 0.266, EY: 0.074, MY: -0.325, CY: -0.985, Z0: -1.1, Y0: -1.25, SPAN: 2.2, EYE_RZ: 0.162, EYE_RY: 0.1143, SPOT_L: [0.075, 0.075], SPOT_R: [0.925, 0.075], SPOT_R0: 0.065 };
+export const SKIN_TILE = 11, CLOTH_TILE = 16, GRIME_TILE = 18;
 /** Wound atlas: 4 × 2 cells, a cell spans ±WOUND_Q wound radii. */
 export const WOUND_Q = 2.2;
 
 // the runtime classes: which sets, and how many layers each set takes (2 for A and B, 1 for cloth)
+const BODY = ZT_SETS.filter((s) => s[1] === 'body').map((s) => s[0]);
 const CLASSES = {
+  bodyA: { sets: BODY, part: 'A' },
+  bodyB: { sets: BODY, part: 'B' },
   skinA: { sets: ['skin-fresh', 'skin-weeks', 'skin-months'], part: 'A' },
   skinB: { sets: ['skin-fresh', 'skin-weeks', 'skin-months'], part: 'B' },
-  specA: { sets: ['skin-bloater', 'skin-spitter', 'skin-brute', 'skin-screamer', 'skin-boss'], part: 'A' },
-  specB: { sets: ['skin-bloater', 'skin-spitter', 'skin-brute', 'skin-screamer', 'skin-boss'], part: 'B' },
-  faceA: { sets: ['face-a', 'face-b', 'face-c', 'face-d', 'face-e', 'face-f'], part: 'A' },
-  faceB: { sets: ['face-a', 'face-b', 'face-c', 'face-d', 'face-e', 'face-f'], part: 'B' },
   cloth: { sets: ZT_SETS.filter((s) => s[1] === 'cloth').map((s) => s[0]), part: 'C' },
-  scalpA: { sets: ['scalp'], part: 'A' }, scalpB: { sets: ['scalp'], part: 'B' },
   woundA: { sets: ['wounds'], part: 'A' }, woundB: { sets: ['wounds'], part: 'B' },
   grimeA: { sets: ['grime'], part: 'A' }, grimeB: { sets: ['grime'], part: 'B' },
 };
 export const ZT_CLASSES = Object.keys(CLASSES);
 
 /**
- * Per tier: the texture arrays as [size, classes]. VRAM (RGBA8 + mips): ultra ≈ 294 MB,
- * cinematic ≈ 436 MB, high ≈ 130 MB (ztexBytes). Low keeps the procedural shading.
+ * Per tier: the texture arrays as [size, classes]. VRAM (RGBA8 + mips, ztexBytes): high ≈ 119 MB,
+ * ultra ≈ 307 MB, cinematic ≈ 475 MB. Low keeps the procedural shading.
  */
 export const ZTEX_TIERS = Object.freeze({
   low: null,
-  high: [[1024, ['skinA', 'skinB', 'specA', 'specB']], [512, ['faceA', 'faceB', 'cloth', 'scalpA', 'scalpB', 'woundA', 'woundB', 'grimeA', 'grimeB']]],
-  ultra: [[2048, ['skinA']], [1024, ['skinB', 'specA', 'specB', 'faceA', 'faceB', 'cloth', 'scalpA', 'scalpB', 'woundA', 'woundB']], [512, ['grimeA', 'grimeB']]],
-  cinematic: [[2048, ['skinA', 'skinB', 'specA']], [1024, ['specB', 'faceA', 'faceB', 'cloth', 'scalpA', 'scalpB', 'woundA', 'woundB', 'grimeA', 'grimeB']]],
+  high: [[1024, ['bodyA', 'bodyB']], [512, ['skinA', 'skinB', 'cloth', 'woundA', 'woundB', 'grimeA', 'grimeB']]],
+  ultra: [[2048, ['bodyA']], [1024, ['bodyB', 'cloth', 'woundA', 'woundB']], [512, ['skinA', 'skinB', 'grimeA', 'grimeB']]],
+  cinematic: [[2048, ['bodyA', 'bodyB']], [1024, ['cloth', 'skinA', 'skinB', 'woundA', 'woundB', 'grimeA', 'grimeB']]],
 });
 
 /**
@@ -237,10 +233,10 @@ export function packLayer(out, offset, size, kind, part, maps) {
       if (part === 'C') { r = a.px[ai]; g = p.px[pi + 2]; b = n.px[ni]; w = n.px[ni + 1]; }
       else if (part === 'A') {
         r = a.px[ai]; g = a.px[ai + 1]; b = a.px[ai + 2];
-        w = kind === 'skin' ? p.px[pi + 2] : ac === 4 ? a.px[ai + 3] : 255;
+        w = kind === 'skin' || kind === 'body' ? p.px[pi + 2] : ac === 4 ? a.px[ai + 3] : 255;
       } else {
         r = n.px[ni]; g = n.px[ni + 1]; b = p.px[pi];
-        w = kind === 'skin' || kind === 'scalp' ? p.px[pi + 1] : p.px[pi + 2];
+        w = kind === 'skin' || kind === 'body' ? p.px[pi + 1] : p.px[pi + 2];
       }
       out[o] = r; out[o + 1] = g; out[o + 2] = b; out[o + 3] = w;
     }

@@ -124,6 +124,10 @@ export function subdivideRings(R, n) {
 export class ShapeBuilder {
   constructor() {
     this.P = []; this.N = []; this.UV = []; this.C = []; this.BN = []; this.IN = []; this.EX = []; this.I = [];
+    // zombies (actor-zbody.js): the MakeHuman UV of the body's vertices (−1 elsewhere) and four
+    // instance morphs per vertex (xyz position delta, w a packed normal delta)
+    this.MH = []; this.MO = [];
+    this.morphs = false;
     this.tile = 18;     // world units per texture tile
   }
 
@@ -203,8 +207,37 @@ export class ShapeBuilder {
       const m = o.matFn ? o.matFn(x, y, z) : mat;
       this.IN.push(_bw.w, slot, m, Math.max(0, Math.min(1, paint)));
       this.EX.push(opt, typeof o.partFn === 'function' ? o.partFn(x, y, z) : partCode);
+      if (this.morphs) { this.MH.push(-1, -1); for (let k = 0; k < 16; k++) this.MO.push(0); }
     }
     for (let t = 0; t < idx.length; t++) this.I.push(idx[t] + base);
+    return this;
+  }
+
+  /**
+   * Append a prepared mesh (actor-zbody.js): m = { n, idx, pos, nor, uv (MakeHuman), bones (a, b, w
+   * per vertex), ao, morph (16 per vertex), vid }; spec(i, poolId) → { slot, mat, part, paint, mh,
+   * color?, opt? } per vertex.
+   */
+  raw(m, spec) {
+    const base = this.vertexCount;
+    for (let i = 0; i < m.n; i++) {
+      const s = spec(i, m.vid[i]);
+      const x = m.pos[i * 3], y = m.pos[i * 3 + 1], z = m.pos[i * 3 + 2];
+      this.P.push(x, y, z);
+      this.N.push(m.nor[i * 3], m.nor[i * 3 + 1], m.nor[i * 3 + 2]);
+      this.UV.push((x + z) / this.tile, y / this.tile);
+      const cc = colorOf(s.color || '#ffffff');
+      const k = 0.45 + 0.55 * m.ao[i];
+      this.C.push(cc.r * k, cc.g * k, cc.b * k);
+      this.BN.push(m.bones[i * 3], m.bones[i * 3 + 2] > 0 ? m.bones[i * 3 + 1] : m.bones[i * 3]);
+      this.IN.push(m.bones[i * 3 + 2], s.slot ?? SLOT.FIXED, s.mat ?? MAT.SKIN, Math.max(0, Math.min(1, s.paint || 0)));
+      this.EX.push(s.opt ? optBit(s.opt) + 1 : 0, s.part ?? PART.NONE);
+      if (this.morphs) {
+        if (s.mh) this.MH.push(m.uv[i * 2], m.uv[i * 2 + 1]); else this.MH.push(-1, -1);
+        for (let k2 = 0; k2 < 16; k2++) this.MO.push(m.morph[i * 16 + k2]);
+      }
+    }
+    for (let t = 0; t < m.idx.length; t++) this.I.push(m.idx[t] + base);
     return this;
   }
 
@@ -422,6 +455,7 @@ export class ShapeBuilder {
       position: new Float32Array(this.P), normal: new Float32Array(this.N), uv: new Float32Array(this.UV),
       color: new Float32Array(this.C), aBones: new Float32Array(this.BN), aInfo: new Float32Array(this.IN), aExt: new Float32Array(this.EX),
       index: this.vertexCount > 65535 ? new Uint32Array(this.I) : new Uint16Array(this.I),
+      ...(this.morphs ? { aMH: new Float32Array(this.MH), aMorph: new Float32Array(this.MO) } : {}),
     };
   }
 }
@@ -439,6 +473,12 @@ export function geometryFromArrays(a) {
   g.setAttribute('aBones', new THREE.BufferAttribute(a.aBones, 2));
   g.setAttribute('aInfo', new THREE.BufferAttribute(a.aInfo, 4));
   g.setAttribute('aExt', new THREE.BufferAttribute(a.aExt, 2));
+  if (a.aMH) {
+    // the zombies' MakeHuman UV and their four instance morphs (one interleaved buffer: 16 floats a vertex)
+    g.setAttribute('aMH', new THREE.BufferAttribute(a.aMH, 2));
+    const ib = new THREE.InterleavedBuffer(a.aMorph, 16);
+    for (let k = 0; k < 4; k++) g.setAttribute('aMorph' + k, new THREE.InterleavedBufferAttribute(ib, 4, k * 4));
+  }
   g.setIndex(new THREE.BufferAttribute(a.index, 1));
   g.computeBoundingSphere();
   return g;

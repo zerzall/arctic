@@ -1,26 +1,29 @@
 #!/usr/bin/env node
-// Bakes the zombies' high-resolution texture sets into public/textures/zombies/ (our own art,
-// procedurally painted: no photos, no show assets). Plain node, no dependencies; PNGs are
-// written with node's zlib and the bake is deterministic (same code → same pixels; every map's
-// pixel hash goes into manifest.json, which tests/zombie-textures.test.js checks).
+// Bakes the zombies' texture sets into public/textures/zombies/. PNGs are written with node's zlib and
+// the bake is deterministic (same code and sources → same pixels; every map's pixel hash goes into
+// manifest.json, which tests/zombie-textures.test.js checks).
 //
 //   node scripts/bake-zombies.js                     every set, painted at 2048²
-//   node scripts/bake-zombies.js --size 256 --out /tmp/z --only skin-fresh,face-a
+//   node scripts/bake-zombies.js --size 256 --out /tmp/z --only body-weeks,cloth-denim
 //
-// Sets (scripts/zbake/*): skin in three stages of decay (fresh-turned, weeks, months), the five
-// special infected (bloater, spitter, brute, screamer, boss), six faces, a scalp, eleven
-// fabrics, a wound atlas and a grime / stain set. Each set is three maps:
-//   <set>-albedo.png   sRGB colour (RGBA where the set has a coverage: faces, wounds, scalp, grime)
+// Sets:
+//   body-*    the body atlases on the MakeHuman UV layout (scripts/zbake/body.js): three stages of
+//             decay (fresh-turned, weeks, months) and the five special infected (bloater, spitter,
+//             brute, screamer, boss), painted from the body itself (its anatomy in UV space); the
+//             MakeHuman files are fetched once (scripts/zbody/mh.js, CC0)
+//   skin-*    three tiling skins (scripts/zbake/skin.js) for what is skin but not the body (growths,
+//             the boss's third arm)
+//   cloth-*   eleven fabrics from photographed CC0 scans (scripts/zbake/fabric.js: Poly Haven)
+//   wounds, grime   the wound atlas and the stain / mud / hole masks (scripts/zbake/misc.js)
+// Each set is three maps:
+//   <set>-albedo.png   sRGB colour (RGBA where the set has a coverage: wounds, grime); the fabrics'
+//                      is a linear relative brightness
 //   <set>-normal.png   tangent-space normal x, y (grey + alpha; z = √(1 − x² − y²)), +v up
-//   <set>-pack.png     R roughness · G ambient occlusion · B per kind (skin: subsurface
-//                      thickness; face: "absolute" paint that ignores the skin tone; cloth:
-//                      bleach; wound: wetness; grime: holes)
+//   <set>-pack.png     R roughness · G ambient occlusion · B per kind (body: hair coverage; skin:
+//                      subsurface thickness; cloth: bleach; wound: wetness; grime: holes)
 // Everything is painted at --size (2048); a map is written at the largest size the runtime ever
-// samples it at (actor-ztex.js ZTEX_TIERS, box-filtered down: supersampled), so the download
-// carries no texel that is never shown: the decay-stage skins in full, the specials' colour and
-// pack in full and their normals at half, the faces, scalp, fabrics, wounds and grime at half
-// (a face spans ~600 texels of its 1024² frame, more than a 4K screen shows of a head at arm's
-// length; a 4096² face would not pay off).
+// samples it at (actor-ztex.js ZTEX_TIERS, box-filtered down: supersampled): the body atlases' colour
+// and normal in full and their pack at half, everything else at half.
 // The runtime (public/js/render3d/actor-ztex.js) packs them into two or three texture arrays.
 // Rows are written top-down with +v up, so the files look the right way round.
 
@@ -32,24 +35,29 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encodePNG, normals, toSrgb8, to8 } from './zbake/lib.js';
 import { SKIN_SETS } from './zbake/skin.js';
-import { FACE_SETS } from './zbake/face.js';
-import { CLOTH_SETS } from './zbake/cloth.js';
+import { FABRIC_SETS } from './zbake/fabric.js';
 import { MISC_SETS } from './zbake/misc.js';
+import { BODY_LOOKS, raster, paintBody } from './zbake/body.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const STAGES = new Set(['skin-fresh', 'skin-weeks', 'skin-months']);
+const STAGES = ['skin-fresh', 'skin-weeks', 'skin-months'];
+
 /** Written size of each map as a fraction of the painted size (see the header). */
 function shipScale(name, kind) {
-  if (kind === 'skin') return STAGES.has(name) ? { albedo: 1, normal: 1, pack: 1 } : { albedo: 1, normal: 0.5, pack: 1 };
+  if (kind === 'body') return { albedo: 1, normal: 1, pack: 0.5 };
   return { albedo: 0.5, normal: 0.5, pack: 0.5 };
 }
 
-/** Every set: { name, kind, fn(N), ship }. The order is the manifest's (and the runtime's). */
+// (one UV raster of the body per painted size, shared by the body sets a worker bakes)
+const rasters = new Map();
+const bodyRaster = (N) => { if (!rasters.has(N)) rasters.set(N, raster(N)); return rasters.get(N); };
+
+/** Every set: { name, kind, fn(N) (may be async), ship }. The order is the manifest's (and the runtime's). */
 export const SETS = [
-  ...Object.entries(SKIN_SETS).map(([name, fn]) => ({ name, kind: 'skin', fn })),
-  ...Object.entries(FACE_SETS).map(([name, fn]) => ({ name, kind: 'face', fn })),
-  ...Object.entries(CLOTH_SETS).map(([name, fn]) => ({ name, kind: 'cloth', fn })),
+  ...Object.keys(BODY_LOOKS).map((name) => ({ name, kind: 'body', fn: async (N) => paintBody(name, await bodyRaster(N)) })),
+  ...STAGES.map((name) => ({ name, kind: 'skin', fn: SKIN_SETS[name] })),
+  ...Object.entries(FABRIC_SETS).map(([name, fn]) => ({ name, kind: 'cloth', fn })),
   ...Object.entries(MISC_SETS).map(([name, s]) => ({ name, kind: s.kind, fn: s.fn })),
 ].map((s) => ({ ...s, ship: shipScale(s.name, s.kind) }));
 
@@ -102,8 +110,8 @@ export function halve(px, N, ch) {
 const pixelHash = (px) => createHash('sha256').update(px).digest('hex').slice(0, 16);
 
 /** Bake one set painted at N → { maps: { albedo, normal, pack } as { ch, px, size }, hashes }. */
-export function bakeSet(set, N) {
-  const res = set.fn(N);
+export async function bakeSet(set, N) {
+  const res = await set.fn(N);
   const enc = encodeSet(res, N);
   const maps = {}, hashes = {};
   for (const k of ['albedo', 'normal', 'pack']) {
@@ -117,8 +125,8 @@ export function bakeSet(set, N) {
 }
 
 /** Bake a set and write its three PNGs → its manifest entry. */
-export function writeSet(set, SIZE, OUT) {
-  const { maps, hashes } = bakeSet(set, SIZE);
+export async function writeSet(set, SIZE, OUT) {
+  const { maps, hashes } = await bakeSet(set, SIZE);
   const files = {};
   for (const k of ['albedo', 'normal', 'pack']) {
     const m = maps[k];
@@ -161,9 +169,9 @@ async function main() {
 }
 
 if (!isMainThread && workerData && workerData.OUT) {
-  parentPort.on('message', (name) => {
+  parentPort.on('message', async (name) => {
     const t = Date.now();
-    const entry = writeSet(SETS.find((s) => s.name === name), workerData.SIZE, workerData.OUT);
+    const entry = await writeSet(SETS.find((s) => s.name === name), workerData.SIZE, workerData.OUT);
     parentPort.postMessage({ entry, ms: Date.now() - t });
   });
 } else if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -123,7 +123,7 @@ export function createZombies3D(ctx) {
     const zombie = {
       body: [P.waist, P.chest, P.sY, P.gaunt], body2: [P.headC[0], P.headC[1], P.legGap, P.bulk * P.upper], day: uDay, lite: uZLite,
       // (the baked sets: the special's own skin, the face anchors, the texel size kept the same on the giants)
-      ztex, special: SPECIAL[t] ?? -1, spitter: t === 'spitter', bloater: t === 'bloater', face: [fa.ez, fa.ey, fa.my, fa.cy], head: P.headR, tileK: 1 / (SCALE[t] || 1),
+      ztex, special: SPECIAL[t] ?? -1, spitter: t === 'spitter', bloater: t === 'bloater', face: [fa.ex, fa.ey, fa.ez, fa.my], head: P.headR, tileK: 1 / (SCALE[t] || 1),
     };
     const lods = [];
     for (let L = 0; L < 3; L++) {
@@ -685,7 +685,7 @@ export function createZombies3D(ctx) {
       stats.lod[L]++;
       poseZombie(z, s, T, s.ft);
       const lk = s.look;
-      pose.place(z.x, zh, z.y, s.a, sc * lk.girthD, sc * lk.height, sc * lk.girthW);
+      pose.place(z.x, zh, z.y, s.a, sc * lk.dK, sc * lk.height, sc * lk.wK);
       pool.solve(i, model, pose);
       writeColors(i, z, s, elite);
       const buff = (f & ZFLAG.BUFFED) ? 0.6 + Math.sin(time * 8 + s.seed * 6) * 0.4 : 0;
@@ -911,7 +911,7 @@ export function createZombies3D(ctx) {
       }
       poseCorpse(c, T);
       const lk = c.look;
-      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.girthD, T.scale * lk.height, T.scale * lk.girthW);
+      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.dK, T.scale * lk.height, T.scale * lk.wK);
       pose.scale(B.HEAD, lk.headK, lk.headK, lk.headK);
       if (lk.missing.jaw) pose.scale(B.JAW, 0.02, 0.02, 0.02);
       if (lk.missing.armL) pose.scale(B.FARM_L, 0.02, 0.02, 0.02);

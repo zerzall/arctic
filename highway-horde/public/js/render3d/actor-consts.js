@@ -12,7 +12,7 @@ export const DEFAULT_PARENTS = [-1, 0, 1, 2, 3, 4, 2, 6, 7, 2, 9, 10, 0, 12, 13,
 // Row layout of the rig texture: 3 texels (matrix rows) per bone, then per-instance parameters.
 // Every parameter texel is zero for an instance that sets nothing, and zero means "off"
 // (no garment cuts, no wounds, no hidden options shown) — survivors use them sparingly.
-export const TEX_W = 76;
+export const TEX_W = 77;
 export const T_SKIN = 60;     // rgb skin, w = rot (0 healthy .. 1 rotten)
 export const T_CLOTH = 61;    // rgb shirt/jacket, w = tear (0 intact .. 1 shredded)
 export const T_CLOTH2 = 62;   // rgb trousers, w = blood (0 clean .. 1 soaked)
@@ -29,6 +29,7 @@ export const T_COL3 = 72;     // rgb gear colour (shoes, hats, bags), w = wear
 export const T_COL4 = 73;     // rgb trim colour (shoes, belts), w = spare
 export const T_COL5 = 74;     // rgb glove colour
 export const T_VAR3 = 75;     // x hair strand cut (model y; strands below are cut away), y hair sparseness, z shoe kind (0 dress, 1 sneaker, 2 boot) + 10 if the cap is a visor, w lens darkness
+export const T_MORPH = 76;   // zombies: the instance's body morphs (actor-zbody.js INST_MORPHS): x sex (−0.5 male .. 0.5 female), y fat, z emaciated, w old
 export const T_FX3 = T_VAR1;  // (old name of the first spare texel)
 
 /** Colour source of a vertex (the rig tints it with the instance's colour for the slot). */
