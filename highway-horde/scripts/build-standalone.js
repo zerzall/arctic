@@ -11,7 +11,7 @@
 // file) is unavailable, so the sounds bake on the main thread (bank.js falls back itself).
 //
 // Every texture file goes in too (public/textures/: the world library, the guns, the zombies, the
-// decals), as its download copy (scripts/compress-textures.js: compressed.json lists them; a PNG
+// decals, the prop models' layers and the foliage cards; the models' geometry rides in __HH_MODELS), as its download copy (scripts/compress-textures.js: compressed.json lists them; a PNG
 // whose copy is stale or missing goes in itself) in a script element of its own, placed after the
 // game's code, plus the library's manifest and the copies' index as JSON elements. The browser
 // parses them as raw text (nothing runs, no script heap): the menu is up while the rest of the file
@@ -134,9 +134,17 @@ export const TEX_STORE = `window.__HH_TEX = (function () {
     }
   };
 })();`;
+// the prop models (models/props.json + props.bin, render3d/props3d.js) and the foliage cards' list
+// (textures/foliage/foliage.json, world-tex.js): base64 in window.__HH_MODELS (their texture layers are
+// PNGs under textures/, in the store above)
+const MODEL_FILES = [['props.json', join(PUB, 'models', 'props.json')], ['props.bin', join(PUB, 'models', 'props.bin')], ['foliage.json', join(TEX_DIR, 'foliage', 'foliage.json')]];
+const modelStore = texOn && MODEL_FILES.every(([, f]) => existsSync(f))
+  ? `window.__HH_MODELS = ${JSON.stringify(Object.fromEntries(MODEL_FILES.map(([k, f]) => [k, readFileSync(f).toString('base64')])))};`
+  : null;
 const scripts = [
   'window.__HH_ONEFILE = true;',
   ...(texOn ? [TEX_STORE] : []),
+  ...(modelStore ? [modelStore] : []),
   readFileSync(join(PUB, 'vendor/peerjs.min.js'), 'utf8'),
   readFileSync(join(PUB, 'config.js'), 'utf8'),
   res.outputFiles[0].text,

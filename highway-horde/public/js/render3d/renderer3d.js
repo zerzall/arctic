@@ -42,6 +42,7 @@ import * as hideoutMod from './hideout3d.js';
 import * as npcsMod from './npcs3d.js';
 import * as storyMod from './story3d.js';
 import { releaseSharedGuns, setGunTier, gunTexStats } from './actor-guns.js';
+import { releasePropModels } from './props3d.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
 import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT, PIXEL_BUDGET } from './post.js';
@@ -833,6 +834,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       // its dispose listeners, which otherwise keep the whole renderer reachable)
       try {
         releaseSharedGuns();
+        releasePropModels();
         releaseFxAtlas();
         if (dfgLut) dfgLut.dispose();
       } catch (err) {

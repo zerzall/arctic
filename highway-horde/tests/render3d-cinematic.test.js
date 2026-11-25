@@ -103,7 +103,8 @@ test('zombie heroes: finite, valid, deterministic, denser than ultra; far levels
     const cin = zm.buildZombie(type, 0, -1).arrays();
     const ult = zm.buildZombie(type, 0, 0).arrays();
     checkArrays(cin, type + ' cinematic');
-    assert.ok(cin.index.length > ult.index.length * 1.6, `${type}: ${cin.index.length / 3} vs ${ult.index.length / 3} triangles`);
+    // (the zombies' near body is MakeHuman's at 16 k triangles against ultra's 9 k; the gear is shared)
+    assert.ok(cin.index.length > ult.index.length * 1.4, `${type}: ${cin.index.length / 3} vs ${ult.index.length / 3} triangles`);
     assert.equal(hashArrays(zm.buildZombie(type, 0, -1).arrays()), hashArrays(cin), type + ' is deterministic');
     for (const L of [1, 2]) {
       const a = zm.buildZombie(type, L, -1).arrays(), b = zm.buildZombie(type, L, 0).arrays();
@@ -125,9 +126,9 @@ test('survivor heroes: finite, valid, deterministic, denser than ultra', () => {
 
 test('the ultra and lower actor models are unchanged by the cinematic code (regression sizes)', () => {
   // triangle counts measured before the V2 pass (de88dae): the tiers below cinematic must not move;
-  // the zombies' were re-measured after the corpse pass (human proportions, relief, torn strips,
-  // faces: tests/zombie-models.test.js keeps their budgets per tier)
-  const expect = { walker: [18778, 3136, 612], runner: [14958, 2374, 612], brute: [13478, 2756, 832], boss: [13837, 3000, 776] };
+  // the zombies' were re-measured after the MakeHuman bodies (actor-zbody.js: tests/zombie-models.test.js
+  // keeps their budgets per tier)
+  const expect = { walker: [21249, 5653, 778], runner: [17435, 4888, 778], brute: [15398, 4950, 778], boss: [15101, 5032, 778] };
   for (const [type, e] of Object.entries(expect)) {
     for (let L = 0; L < 3; L++) assert.equal(zm.buildZombie(type, L, 0).I.length / 3, e[L], `${type} L${L}`);
   }

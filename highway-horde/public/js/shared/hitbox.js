@@ -30,21 +30,23 @@ export const TYPE_ZONES = {
 };
 
 const BASE = {
-  hip: 28.2, knee: 15.4, ankle: 2.9, legGap: 2.9, thighR: 2.3, calfR: 1.72,
-  waist: 32.4, chest: 38.4, sY: 45.0, sw: 6.5, uarm: 11.3, farm: 10.3, armR: 1.42,
-  neck: 47.0, headC: [1.25, 52.5], headR: [3.35, 3.85, 2.8], neckR: 1,
-  bulk: 1, depth: 1, upper: 1, rArmK: 1, stumps: false,
+  hip: 29.7, knee: 16.19, ankle: 2.38, legGap: 3.48, thighR: 2.08, calfR: 1.3, waist: 35.01, chest: 37.56, sY: 44.64, sw: 5.49, uarm: 8.18, farm: 7.83, armR: 1.15, neck: 48.33, headC: [1.63, 52.37], headR: [3.05, 4.18, 2.78],
+  neckR: 1, bulk: 1, depth: 1, upper: 1, rArmK: 1, stumps: false,
 };
-/** Per-type proportions (render3d/actor-zmodels.js ZPARAMS: keep the two in step). */
+/**
+ * Per-type proportions: measured from the MakeHuman bodies (render3d/actor-zbody.js zbodyType(type).P,
+ * scale 1, rest pose: keep the two in step when the bodies change), plus the volumes' own shape
+ * factors (bulk, depth, upper, neckR, rArmK, stumps).
+ */
 const PARAMS = {
   walker: {},
-  runner: { bulk: 1.06, depth: 1.08, thighR: 2.6, calfR: 1.95, armR: 1.62, neckR: 1.08 },
-  crawler: { bulk: 0.94, depth: 0.9, armR: 1.38, uarm: 12.2, farm: 11.4, thighR: 2.1, stumps: true },
-  bloater: { bulk: 1.3, depth: 1.32, thighR: 3.9, calfR: 3.0, armR: 2.5, sw: 7.7, headR: [3.45, 3.9, 3.0], headC: [1.5, 52.0], neck: 46.6, neckR: 1.45 },
-  spitter: { bulk: 0.95, depth: 0.95, thighR: 2.25, calfR: 1.7, armR: 1.45, neck: 47.6, headC: [1.8, 53.3], headR: [3.35, 3.9, 2.8], neckR: 1.1 },
-  screamer: { bulk: 0.86, depth: 0.85, armR: 1.25, uarm: 12.2, farm: 11.2, thighR: 1.95, calfR: 1.45, headR: [3.3, 4.05, 2.72], neckR: 0.9 },
-  brute: { bulk: 1.3, depth: 1.45, upper: 1.28, thighR: 4.8, calfR: 3.9, armR: 3.1, sw: 10.2, uarm: 12.4, farm: 11.6, headR: [3.2, 3.55, 2.85], headC: [2.8, 50.9], neck: 45.8, neckR: 1.9, rArmK: 1.45 },
-  boss: { bulk: 1.35, depth: 1.55, upper: 1.3, thighR: 5.4, calfR: 4.4, armR: 3.3, sw: 11.0, uarm: 12.8, farm: 12.2, headR: [3.15, 3.45, 2.8], headC: [3.0, 50.7], neck: 45.4, neckR: 2.0 },
+  runner: { hip: 29.77, knee: 16.14, ankle: 2.37, legGap: 3.45, thighR: 2.6, calfR: 1.56, waist: 35, sY: 44.68, sw: 5.53, farm: 7.86, armR: 1.46, neck: 48.39, headC: [1.62, 52.47], headR: [3.14, 4.16, 2.8], bulk: 1.06, depth: 1.08, neckR: 1.08 },
+  crawler: { hip: 29.74, knee: 16.17, thighR: 1.73, calfR: 1.12, waist: 35.03, chest: 37.59, sY: 44.68, sw: 5.54, farm: 7.85, armR: 0.97, neck: 48.38, headC: [1.58, 52.43], headR: [3.01, 4.19, 2.78], bulk: 0.94, depth: 0.9, stumps: true },
+  bloater: { hip: 29.76, knee: 16.14, ankle: 2.36, legGap: 3.45, thighR: 2.88, calfR: 1.7, waist: 34.99, sY: 44.67, sw: 5.97, uarm: 8.19, farm: 7.86, armR: 1.8, neck: 48.38, headC: [1.71, 52.47], headR: [3.3, 4.16, 3.03], bulk: 1.3, depth: 1.32, neckR: 1.45 },
+  spitter: { hip: 29.78, knee: 16.13, ankle: 2.37, legGap: 3.46, thighR: 1.99, calfR: 1.25, waist: 35.03, chest: 37.59, sY: 44.71, sw: 5.57, farm: 7.87, armR: 1.12, neck: 48.42, headC: [1.55, 52.99], headR: [3.04, 4.67, 2.79], bulk: 0.95, depth: 0.95, neckR: 1.1 },
+  screamer: { hip: 29.75, knee: 16.17, thighR: 1.59, calfR: 1.05, waist: 35.03, chest: 37.59, sY: 44.69, sw: 5.55, uarm: 8.67, farm: 8.9, armR: 0.9, neck: 48.39, headC: [1.56, 52.44], headR: [3, 4.19, 2.78], bulk: 0.86, depth: 0.85, neckR: 0.9 },
+  brute: { hip: 29.76, knee: 16.68, ankle: 3.72, legGap: 3.45, thighR: 3.71, calfR: 2.31, waist: 34.99, sY: 44.5, sw: 6.85, uarm: 8.07, farm: 8.06, armR: 2.52, neck: 48.24, headC: [4.43, 51.37], headR: [3.7, 4.27, 2.71], bulk: 1.3, depth: 1.45, upper: 1.28, neckR: 1.9, rArmK: 1.45 },
+  boss: { hip: 29.76, knee: 16.54, ankle: 3.45, legGap: 3.45, thighR: 3.8, calfR: 2.42, waist: 34.99, sY: 44.48, sw: 7.07, uarm: 8.21, farm: 8.42, armR: 2.81, neck: 48.22, headC: [4.71, 51.2], headR: [3.68, 4.26, 2.66], bulk: 1.35, depth: 1.55, upper: 1.3, neckR: 2.0 },
 };
 const typeParams = new Map();
 function paramsOf(type) {

@@ -181,7 +181,7 @@ function maptable(P) {
   // the map, pinned down; the route in red
   B.add('hub', T.plane(), [-6, topY + 0.35, 0.5], [92, 68, 1], [-HALF, 0, 0], '#ffffff', { uv: hubUV('map'), noAO: true, noJitter: true });
   for (const [x, z, c] of [[-46, 30, '#c62828'], [42, 30, '#c62828'], [-46, -28, '#c62828'], [30, -30, '#1565c0'], [-16, 6, '#2e7d32'], [10, -10, '#f9a825'], [22, 12, '#c62828']]) {
-    B.add('std', T.sphere(6, 4), [x, topY + 2.2, z], [1.4, 1.4, 1.4], null, c, S(DET.plastic, 0.35, 0));
+    B.add('std', T.sphere(6, 4), [x, topY + 2.2, z], [1.4, 1.4, 1.4], null, c, S(DET.plasticworn, 0.35, 0));
     B.cyl('std', x, topY + 0.3, z, 0.25, 1.9, '#d8d8d0', 4, 1, null, METAL);
   }
   // a handheld radio: olive box, a big dial, a speaker grille, a whip antenna, a headset
@@ -396,7 +396,7 @@ function picnic(P) {
   // a checker board with pieces
   B.box('std', -8, 26.6, 0, 22, 0.8, 22, '#e8dcb0', null, WOOD);
   for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) B.box('std', -8 - 8.25 + i * 5.5 + 2.75, 27.1, -8.25 + j * 5.5 + 2.75, 5.5, 0.4, 5.5, '#3a2c1c', null, WOOD);
-  for (const [i, j, c] of [[0, 1, '#b02a2a'], [1, 0, '#b02a2a'], [2, 1, '#b02a2a'], [1, 2, '#e8e0c8'], [3, 2, '#e8e0c8'], [2, 3, '#e8e0c8']]) B.cyl('std', -8 - 8.25 + i * 5.5 + 2.75, 27.4, -8.25 + j * 5.5 + 2.75, 1.9, 1.2, c, 8, 1, null, S(DET.plastic, 0.4, 0));
+  for (const [i, j, c] of [[0, 1, '#b02a2a'], [1, 0, '#b02a2a'], [2, 1, '#b02a2a'], [1, 2, '#e8e0c8'], [3, 2, '#e8e0c8'], [2, 3, '#e8e0c8']]) B.cyl('std', -8 - 8.25 + i * 5.5 + 2.75, 27.4, -8.25 + j * 5.5 + 2.75, 1.9, 1.2, c, 8, 1, null, S(DET.plasticworn, 0.4, 0));
   mug(B, 20, 27.6, -8, '#c8b078');
   mug(B, 14, 27.6, 10, '#7a9ab0');
   // playing cards fanned out
@@ -442,7 +442,7 @@ function photowall(P) {
   for (let i = 0; i < 7; i++) {
     const z = -w / 2 + 10 + i * ((w - 20) / 6);
     const hh = r.range(4, 9);
-    B.cyl('std', 6.4, 27, z, 1.6, hh, ['#efe6c8', '#d8c8a0', '#efe6c8'][i % 3], 6, 1, null, S(DET.plastic, 0.6, 0));
+    B.cyl('std', 6.4, 27, z, 1.6, hh, ['#efe6c8', '#d8c8a0', '#efe6c8'][i % 3], 6, 1, null, S(DET.plasticworn, 0.6, 0));
     B.box('glow', 6.4, 27 + hh + 1, z, 0.9, 1.6, 0.9, '#ffb545', null, { emissive: 5, uv: atlasUV('white'), noAO: true });
     halos.push({ x: it.x + Math.cos(it.a) * 6.4 - Math.sin(it.a) * z, y: it.y + Math.sin(it.a) * 6.4 + Math.cos(it.a) * z, h: 27 + hh + 1, color: '#ffb545', size: 26, strength: 0.6, flicker: 0.8 });
   }
@@ -496,7 +496,7 @@ function roofantenna(P) {
   const y0 = it.z || 128;
   for (const s of [-1, 1]) {
     rod(B, 'std', [0, y0, s * 42], [0, y0 + 34, s * 42], 0.7, '#8a8e92', METAL, 5);
-    B.add('std', T.torus(8, 0.2, 4), [0, y0 + 34, s * 42], [2, 2, 2], [HALF, 0, 0], '#e8e8e0', S(DET.plastic, 0.4, 0));
+    B.add('std', T.torus(8, 0.2, 4), [0, y0 + 34, s * 42], [2, 2, 2], [HALF, 0, 0], '#e8e8e0', S(DET.plasticworn, 0.4, 0));
   }
   rod(B, 'std', [0, y0 + 33, -42], [0, y0 + 33, 42], 0.22, '#c9906a', METAL, 4);
   rod(B, 'std', [0, y0 + 33, 0], [-6, y0 + 8, 0], 0.2, '#222', METAL, 4);

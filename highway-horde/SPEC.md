@@ -58,6 +58,7 @@ highway-horde/
   public/js/net/*.js                                 (net)
   public/js/render/*.js                              (render)
   public/js/render3d/*.js                            (render3d — first-person view, §7.5)
+  public/models/ (props.bin, props.json, CREDITS.md)  (render3d — photo-scanned prop models, scripts/fetch-models.js)
   public/dev/*                                       (sandboxes, incl. fps-sandbox, actors3d-sandbox)
   public/vendor/three/                               (vendored three.js r186, do not edit)
   public/js/audio/*.js                               (audio)
@@ -67,7 +68,7 @@ highway-horde/
 ```
 
 Data tables already written (read them — they are the source of truth):
-`constants.js` (all tuning numbers), `weapons.js` (27 guns + throwables), `zombies.js`
+`constants.js` (all tuning numbers), `weapons.js` (46 guns + throwables; the arsenal, §3.4), `zombies.js`
 (8 zombie types, `ZFLAG` bits), `classes.js` (6 survivor classes + perks), `items.js`
 (shop items, pickups, drop tables).
 
@@ -530,6 +531,29 @@ cone within `range` with line of sight each shot, the magazine is fuel with no r
 lands as a 'flare' hazard (burns like fire, at most 24 alive, lights the area in both
 renderers); `drag`/`pin` (harpoon) carries up to `drag` pierced zombies along, slowed, and
 pins them for `pin` s at the wall or where it stops (bosses are never dragged).
+**The arsenal** (`shared/sim/specials.js`; client prediction mirrors the fire timing). A
+`blade` projectile (the Saw-Blade Launcher) flies at waist height in up to four sub-steps a
+tick, slices every zombie its path crosses (each at most once per leg, `damage` × damageMult,
+knockback, gibs on a kill; heavies cost 3 of the `pierce` cuts and slow it, a boss stops
+it), loses `slow` of its speed per cut and ricochets off solid obstacles and the map edge
+(the velocity mirrored about the surface normal × `keep`, a new leg: the same zombies can be
+cut again) `bounces` times, then embeds in the next wall; it stops when its life or speed
+runs out. Events 'blade' (what: 'wall' | 'cut' | 'stop', at most one 'cut' per blade per tick).
+A `singularity` (the Hollow Star) drifts slowly and sticks at the first wall (its life then
+cut to 0.45 s); every tick it pulls zombies within `pull.radius` that it can see toward it
+(stronger closer in, with a swirl; bosses and range dummies never move; small zombies are
+stunned while pulled) and grinds those in its `core` (`core.dps`, gibbing); when its life
+ends it collapses: 'explosion' kind 'singularity', `explodeDamage` falling to half at
+`explodeRadius` to every zombie in line of sight, an outward shove, never hurting players.
+`charge` (seconds): the trigger is held that long before each shot, building `spin` once
+the cooldown is over; every shot drains it (`effectiveRate()` includes it). `tighten:
+{to, time}` (the Barrage MG): `spin` winds up over `time` s of continuous fire with a round
+loaded and the spread narrows from `spread` to `to` with it, unwinding twice as fast when the
+trigger is let go. A `super` weapon is never in an ordinary crate (`crateWeaponPool()`); a
+boss killed from wave `SUPER_DROP.wave` on drops one in its crate with chance
+`SUPER_DROP.chance` (the crate lasts three times as long); the shop sells it from its
+`unlockWave`. `secondary` declares the right-mouse function for the shooting mechanics
+(`shared/handling.js`): a scope's zoom levels, a burst mode, a screw-on silencer.
 Explosions: damage falls off linearly to 30% at the edge,
 × perks.explosiveMult, hurt players at 35% (unless selfExplosionImmune and own), blocked
 by solid obstacles (ray from centre). Melee: cone MELEE_ARC/MELEE_RANGE, MELEE_DAMAGE and
@@ -1171,7 +1195,7 @@ Snapshot = {
     // host-only (not on the wire; clients predict their own): punchY, punchP (recoil offset), inacc, spray
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/, z /*feet height, 0 on the ground*/ } ],
-  projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
+  projectiles: [ { id, kind /*PROJECTILE_KINDS: … blade, singularity*/, x, y, angle } ],
   pickups: [ { id, kind /*PICKUP_KINDS*/, x, y, weapon /*crate gun id or null*/ } ],
   turrets: [ { id, owner, x, y, angle, hp /*0..1*/, ammo /*0..1*/, firing } ],
   barricades: [ { id, owner, x, y, angle, hp /*0..1*/ } ],
@@ -1199,7 +1223,8 @@ All events carry the fields listed; consumers ignore unknown types.
 | `scream` | id, x, y | screamer buff |
 | `charge` | id, x, y, angle | brute started charging |
 | `slam` | id, x, y, r | boss ground slam landed |
-| `explosion` | x, y, r, kind | kind: 'frag'|'grenade'|'rocket'|'bloater' |
+| `explosion` | x, y, r, kind | kind: 'frag'|'grenade'|'rocket'|'bloater'|'singularity' (the Hollow Star's collapse) |
+| `blade` | what ('wall'\|'cut'\|'stop'), x, y, angle | a saw blade ricocheted off a wall, sliced a zombie (at most one per blade per tick) or bit in and stopped (§3.4) |
 | `ignite` | x, y, r | molotov burst into fire |
 | `freeze` | id, x, y | cryo froze a zombie solid (cosmetic) |
 | `pdamage` | pid, amount, x, y | player took damage (x,y = where from) |
@@ -1253,12 +1278,14 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 14 (first-person gunplay, §3.4: InputCmd button bits crouch 2048, walk 4096, alt 8192,
+u8. PROTOCOL_VERSION 15 (the arsenal, §3.4: nineteen guns appended to the weapon table after the HMG, the
+projectile kinds 'blade' and 'singularity', the explosion kind 'singularity' and the binary `blade` event — what
+u8, position, angle); 14 was first-person gunplay (§3.4: InputCmd button bits crouch 2048, walk 4096, alt 8192,
 aim3d 16384 and, per cmd, the pitch i16 (×1e4) and the view tick u16 (0xffff = none); each snapshot player
 appends mvx, mvy f32, duckT u8, scope u8, pitch i16 and a modes u8 per slot; the `shot` event's height,
 pitch and flags, its rays' height (i16 at 0.5) and one byte of hit | zone << 2 | pen << 5; `zdie`'s hs /
-wb / pop; the binary `alt` event). 13 was the open maps' walk-in buildings, §2: the wire is unchanged, but the maps every peer
-builds from (id, seed) are not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
+wb / pop; the binary `alt` event); 13 was the open maps' walk-in buildings (§2: the wire was unchanged, but the maps every
+peer builds from (id, seed) were not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
 20-byte horde block — total, left, alive u16, surge, surges, tier, stage u8, the breather timer at 0.01 s
 u16, the lane mask u16, the round's clock f32 — and the binary `surge` event; 11 was the story levels'
 `H_LEVEL` block, §3.11; 10 was Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
@@ -1524,6 +1551,22 @@ everything but that button through. A touch button that opens the shop or pause 
 swallows the tap's trailing click (it would land on what just opened, e.g. buy a card).
 The HUD weapon panel shows the weapon actually in hand (`activeWeapon()`: a downed
 survivor's pistol).
+**Buy menu** (`ui/shop.js`, B): sections down the left — 1 Pistols (and the flare pistol),
+2 SMGs, 3 Heavy (shotguns and machine guns), 4 Rifles, 5 Snipers, 6 Specials (launchers,
+energy weapons, the chainsaw, the saw-blade launcher, the super weapon), 7 Equipment (ammo,
+armour, medkit, frag, molotov, barricade, turret, self-revive, repair) — each with the count of
+its items in stock; the chosen section's cards fill a grid on the right (guns cheapest first:
+a side-view picture drawn from the gun's 3D model by `ui/gun-thumbs.js`, the top-down sprite
+where the 3D models can't load; name, category, a trait line, DMG / RATE / MAG bars, the
+price — or 'Wave N' while locked, 'Owned' with the ammo price, 'Full'). Keys work like a classic
+buy menu: a digit picks a section, a second digit buys its n-th item (the number row runs on
+past 9 with 0, - and =) and the menu drops back to the sections; Backspace goes back a level,
+Q / E step through the sections, arrows move between sections and cards. Mouse / touch: tap a
+section, tap a card (on phones the sections become a scrolling row above the grid). Gamepad:
+the d-pad moves, A picks a section or buys, B goes back (and closes from the sections), LB / RB
+step through the sections. `SECTIONS`, `sectionOf(id)`, `sectionItems(section)` and
+`ITEM_KEYS` are exported (`tests/ui.test.js`); `public/dev/shop-lab.html` shows the real menu
+for a made-up player (`scripts/shop-shot.js` takes screenshots of it).
 Lobby: a Mode row (Defend / Evac Run / Campaign, with the mode's description) above difficulty; a
 map card that does not play both standard modes carries a tag ("Evac Run · Campaign only" on
 Harlan County) and picking it switches the mode; maps with the campaign extension carry a
@@ -1726,6 +1769,12 @@ casings3d.js    ejected shell casings (pooled instanced mesh)
 surfaces.js     obstacle faces (normal, top, extent) and ground materials derived from the map data
 ambient3d.js    motes, fireflies, leaves / paper, wind-blown ash, rain splashes, far lightning, birds
 viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
+vm-hands.js     the first-person hands in tactical gloves (fabric back, suede palm and fingers, moulded
+                knuckle guard and finger pads, stitched seams, neoprene cuff and strap) and the fabric
+                sleeves with the player's colour on a patch; the hand material (woven / grained relief)
+vm-arsenal.js   the arsenal's first-person parts: MG belt changes (feed cover, box, belt, charging
+                handle), the top-magazine PDW, the chainsaw's nose links and starter pull, the saw
+                blade, the Hollow Star's coils and core, the screw-on silencer, the rack points
 overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
                 damage-direction arcs, off-screen arrows, low-hp vignette
 zone3d.js       Evac Run (ctx.mode 'zone', built at creation so the warm-up compiles it): the
@@ -1741,7 +1790,11 @@ world-rural.js  Harlan County's kinds: grain silos (300) and headstones (30)
 world-dress.js  set dressing (§7.5.2): the props of shared/dress.js as merged meshes per quality
                 tier, plus dress-life.js (crows, fireflies, butterflies, wind-blown litter);
                 prop models in dress-debris / -street / -life-props / -industrial / -nature /
-                -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js
+                -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js; the kinds drawn by the
+                photo-scanned models in dress-models.js
+props3d.js      the photo-scanned prop models (§7.5.2): models/props.bin + props.json, two LODs per
+                model, every instance in one BatchedMesh, texture layers in two arrays decoded by the
+                texture worker
 world-veh-extras.js  vehicle jobs (taxi, police, ambulance, delivery, news, tow, contractor,
                 fire engine), lettering, damage (open hood, flat tyre, dents)
 campaign3d.js   the Campaign (built whenever the map has `campaign`; ctx.mode 'campaign'): an
@@ -1764,16 +1817,19 @@ world-ridge.js  the campaign's kinds and dressing: the palisade, watchtower, tow
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
 world-tex.js    procedural world textures (window/neon atlas incl. 24 painted shop signs, 8 neon signs and
-                graffiti cells; chain-link mask; leaf-card atlas: oak/pine/scrub/palm/birch/fern/ivy;
-                water normals)
+                graffiti cells; chain-link mask; leaf-card atlas: oak/pine/scrub/palm/birch/fern/ivy, whose
+                broadleaf, pine, scrub and birch cells are replaced by photo foliage cards once
+                textures/foliage/leaves.png has arrived (§7.5.2); water normals)
 world-surf.js   the 32-layer detail texture array (brick ... plaster, roof tile, standing-seam metal,
                 paving, cracked earth, rock strata, a road-wear layer with cracks / tar seams /
                 patches / oil, wind-rippled sand, and layer 23 'macro', four raw noise fields the
                 world-space weathering samples)
 world-surf-bake.js / world-surf-sets.js  the baked texture library at run time (high and up): the
                 sets of public/textures/ (scripts/bake-textures.js renders 55 tileable PBR materials at
-                2048² — albedo, normal, roughness / AO / height, metalness / tint — stored at 1024²)
-                replace the procedural layers. world-surf-sets.js maps every DET id to a set, with
+                2048² — albedo, normal, roughness / AO / height, metalness / tint — stored at 1024²; 44
+                of them since replaced by Poly Haven photo scans and 13 photo-only sets added for props,
+                vehicles, furniture and trees, scripts/fetch-photo-textures.js) replace the procedural
+                layers. world-surf-sets.js maps every DET id to a set, with
                 per-map themes (hospital and metro tile, dam concrete, rail ballast and rusted rail,
                 airbase camouflage and runway, Sandstone plaster / adobe / shutters); ids 38–56 are
                 library-only surfaces drawn by a base layer on the procedural path (DET_BASE). Only the
@@ -1813,6 +1869,11 @@ actor-consts.js rig texel layout (T_*), colour slots, material classes, garment 
 actor-rigmat.js the rig's material: garment cuts, cloth patterns, wounds, skin (veins, sores, wrapped light), accessory culling
 actor-zlook.js  per-zombie look from (type, sim id): archetype (office worker … prisoner), skin/decay, hems, wounds, gear, gait — pure JS, deterministic
 actor-zkit.js   the accessory groups of the zombie models (hats, hair, packs, belts, gore, armour), switched on per instance
+actor-zbody.js  the zombies' human body (MakeHuman, CC0: actor-zbody-data.js, built by scripts/build-zbody.js): per type the
+                macro mix, decay sculpted in, the rest pose fitted on the rig's bones, the proportions P; per model a
+                decimated level, the clothes as offset shells, eyes / teeth / tongue; four instance morphs
+actor-zmodels.js  buildZombie(type, L, tier): the body + shoes + accessories + the types' extras, one model per type × LOD
+actor-ztex.js   the baked zombie texture sets as texture arrays per tier (ZTEX_TIERS), loaded in the texture worker
 actor-sgear.js  class gear of the survivors (helmets, packs, bandoliers, plates) + the gloves shared with the first-person hands
 actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles);
                 every vertex carries its material family (shared/gun-finish.js familyFor); setGunTier(q) (renderer3d)
@@ -1920,14 +1981,41 @@ city skyline (sparse lit windows, orange glow) over the tree line, fog tinted by
 camera; shadows only on 'high'; a hot centre fading softly to the rim, irradiance capped
 inside ~2 m so near walls never wash out — patched into three's light chunk in lights.js), teammates' flashlights as cheap additive cones, map
 lights/fires/muzzle flashes/explosions through the fixed light pool (never add/remove
-lights at runtime — shader recompiles). Everything procedural (no model or texture files):
+lights at runtime — shader recompiles). Mostly procedural (the texture library, the photo-scanned prop models and foliage cards of §7.5.2 aside):
 PBR materials with generated detail textures (wet asphalt with reflective puddles,
 concrete, grass, brick), rounded vehicles with clearcoat paint and glass, buildings with
-lit windows, alpha-tested foliage, instanced grass, sculpted zombies/survivors with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
+lit windows, alpha-tested foliage, instanced grass, sculpted survivors and MakeHuman-bodied zombies with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
 gloved hands in the class outfit colour, idle sway, walk/sprint bob, recoil kick on each
 own `shot` (predicted shots included; `echo` shots ignored), reload dip over
 `reloading`, weapon switch lower/raise, melee swing, throw motion, minigun barrel spin,
 flamethrower pilot light; drawn in its own pass so it never clips into walls.
+Zombie bodies (`actor-zbody.js`, `actor-zmodels.js`, `scripts/build-zbody.js`, `scripts/zbake/*`): the MakeHuman
+base mesh (CC0; `public/textures/CREDITS.md`) posed by its own skeleton and weights from its A-pose into the rig's rest
+pose (arms down, legs straight), its weights folded onto the rig's 20 bones (two per vertex), simplified with
+meshoptimizer into six nested levels over one 9.3 k-vertex pool (16 k / 9 k / 6 k / 3 k / 1.2 k / 0.5 k triangles;
+near models: cinematic 16 k, ultra 9 k, high 6 k, low 3 k; mid 3 k (low 1.2 k); far 0.5 k), and the macro targets it
+mixes stored as posed deltas — everything in one base64 module, decoded synchronously. Per type: a macro mix (the walker
+starved and a little old, the runner fresh with some muscle, the crawler emaciated and legless above the knee, the
+bloater fat with a swollen, sagging gut on X1 so it heaves, the spitter's throat goitre on X1, the screamer emaciated
+with a long jaw and longer arms, the brute and the boss muscled, fat, broad, with bone scales and a hunch; the boss's
+hump), decay sculpted into the surface (sunken eyeballs, sockets, temples and cheeks, receding lips, collarbones and ribs),
+and the type's skeleton pivots and proportions measured from that shape (feet on y = 0, ~56 units tall; heads within
+~2 units of the old procedural ones). Clothes are shells offset from a coarser level of the body and relaxed outward
+over hollows (the top and sleeves, the trousers), cut per instance as before; far models paint them onto the body.
+Four body morphs per instance — sex (−0.5 male .. 0.5 female), fat, emaciation, age — are vertex attributes
+(`aMorph0..3`: xyz position delta, w the normal delta packed 3 × 7 bits) blended in the vertex shader by the weights in
+the rig texel `T_MORPH` (76; `TEX_W` 77) that `zombieLook` decides (`look.morph`, from the person's sex and build);
+accessories, shoes and extras take the nearest skin vertex's deltas. The skin is textured by the MakeHuman UVs (`aMH`):
+eight body atlases (`body-*`, three decay stages and the five specials' own, 2048² colour and normal, 1024² pack: R
+roughness, G occlusion, B hair coverage tinted with the zombie's hair colour) painted by `scripts/zbake/body.js` from the
+body rasterised into UV space (anatomy-aware: pores, creases, veins, marbling, bruises, sockets, lips, nails, scalp,
+slipped skin, scrapes, dried blood; the specials' stretch marks, acid burns, scars, ulcers); the fabrics are Poly Haven
+scans (`scripts/zbake/fabric.js`). The eyes are shaded in the material (clouded white, milky iris) from the eye centres.
+Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
+triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms
+(134 / 0.38 M / 8.6). Zombie texture VRAM on high 119 MB (was 130). Heads at scale 1 (the head frame's centre, x forward):
+walker (1.6, 52.4), runner (1.6, 52.5), bloater (1.7, 52.5), spitter (1.6, 53.0), screamer (1.6, 52.4), brute (4.4, 51.4),
+boss (4.7, 51.2); the renderer's SCALE puts the brute's 2.6 and the boss's 4.5 world units forward of the old ones.
 Zombie variety (`actor-zlook.js`, `actor-rigmat.js`): `zombieLook(type, id)` is a pure function of the
 sim id (same person on every client; `tests/zlook.test.js`): an archetype per type (walkers are commuters,
 executives, police, firefighters, EMTs, soldiers, prisoners, tourists, hikers, farmers, patients in gowns ...;
@@ -1945,9 +2033,25 @@ shader unless the look switches them on — so variety costs no draw calls, only
 big packs; LOD 2 is the plain silhouette. Skin has a wrapped-diffuse "subsurface" term and a warm rim.
 Survivors get class gear and camouflage cloth, a status light in the player colour, a holstered pistol and a
 slung long gun, a draw animation on weapon switches and a kneeling CPR pose (hands on the downed teammate) while
-reviving. First-person hands are gloved per class (nitrile, work leather, fingerless with tape, padded), with
-seams, watch, cuff and sleeve detail; the viewmodel breathes and inspects the gun when idle, and publishes
+reviving. First-person hands (`vm-hands.js`) wear tactical gloves in the class colours (nitrile for the medic,
+fingerless with tape for the heavy): a stretch-fabric back with a woven ripstop relief, a lighter synthetic-suede
+palm running up the jointed, creased fingers to reinforced tips, a moulded knuckle guard and finger pads, stitched
+seams and a neoprene cuff with a strap; the sleeves are woven fabric with a rolled hem, a seam and the player's
+colour on a small hook-and-loop patch. The viewmodel breathes and inspects the gun when idle, and publishes
 each ejected case as `fx.localEject` ({ seq, kind, x, h, y, vx, vh, vy }) for effects3d.
+**The arsenal's guns** (`guns-parts.js`: receivers, rails and M-LOK handguards, muzzle devices, suppressors,
+sights and optics, magazines, stocks, grips, belts and boxes; `guns-long.js` rifles, snipers and shotguns,
+`guns-small.js` pistols and SMGs, `guns-heavy.js` machine guns, the chainsaw, the saw-blade launcher and the
+Hollow Star) are built from separate, bevelled parts with their real proportions. Moving parts the viewmodel
+animates (`vm-arsenal.js`): an MG's feed cover swings up on a belt change while the box and belt come out and a
+fresh one goes in; the PDW's top magazine tips up about its front catch; the chainsaw's chain runs round the
+whole bar (the top and bottom runs slide a link at a time while the nose links turn); the saw launcher's blade
+idles round, leaves on a shot and the next rides up from the cassette; the Hollow Star's coil cage spins up and
+its core swells and glows with the charge, is spent on a shot and grows back; a gun with a silencer shows it
+while the slot's mode bit says it is fitted (the support hand screws it on or off; the muzzle flash moves to the
+bare muzzle without it). In the world: saw blades spin flat at waist height with sparks off the teeth, the
+singularity drags motes in and lights the street violet, its collapse is a violet shockwave; a super weapon's
+crate burns violet.
 Zombies: one InstancedMesh per body part per type (≤ ~60 draw calls for 300 zombies),
 walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 (burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at
@@ -2242,6 +2346,43 @@ listed props in a row (facing +x at x = 1000) on an empty map. `map.dressItems` 
 list (dev only). Top-down: `render/dress2d.js` paints the flat marks and prop glyphs into the
 ground chunks (`prep.dress`).
 
+**Surfaces and models** (the "make it look real" pass). Props, vehicles, interiors and trees draw
+photo-scanned surfaces of their own (surface ids 57–69, `world-surf-gen.js` DET; sets in
+`public/textures/<set>/`, `world-surf-sets.js` PHOTO_ONLY, fetched by `scripts/fetch-photo-textures.js`
+PHOTO_NEW): rough-sawn crate lumber (`crate`: crates, pallets, barricades, sawhorses, boarded windows),
+`plywood` and `osb` sheets, painted steel with scratches and rust spots (`paintmetal`: drums, cylinders,
+jerrycans, generators, street furniture, military crates), paint flaking off rust (`paintrust`: old drums,
+dumpsters, burnt-out wrecks), road-dusted body paint (`carpaint`: every car, van, pickup and the fire
+engine), `burlap` (sandbags, sacks), kraft `cardboard`, `leather` (sofas, car seats, generator seats),
+`linen` (clothes, beds, the field hospital's canvas, cushions), wood `veneer` (furniture, counters,
+shelves), `pinebark` (pines and spruces) and weathered moulded plastic (`plasticworn`: cones, cases, bins,
+coolers, tanks; thin film keeps the tarp weave). Each takes the object's vertex colour as its tint, so
+every prop keeps its palette with the photo's grain, scuffs and grime. Without the library ('low', or a
+failed load) each draws its base procedural layer.
+The photo-scanned **prop models** (`props3d.js`, `dress-models.js`; 21 Poly Haven CC0 models converted
+by `scripts/fetch-models.js`: three steel drums, two wooden crates, a military crate, a cardboard box, a
+propane cylinder, a jerrycan, two trash cans, a hydrant, a generator, a tyre, a trash bag, a picnic
+table, a garden chair, a stump, a fallen trunk, a boulder, a wheelchair) replace the procedural models of
+those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles), every instance of every
+model in ONE BatchedMesh (one draw call with WEBGL_multi_draw; each instance shows LOD 0 within 420 / 620 /
+900 units on high / ultra / cinematic, LOD 1 to 1600 / 2800 / 3200, nothing past it, switched from the
+camera's position every 24 units or 30 frames; no per-instance frustum walk), one patched
+MeshStandardMaterial for all (layer per vertex, tangent-free normal mapping from the uv derivatives, AO /
+roughness / metalness maps), a per-instance tint (± 14 % brightness, a little warmth) and random turns so
+copies never look cloned; a kind's builder may decline a variant the models do not cover (wire baskets,
+wheelie bins, folding chairs stay procedural). The texture layers (512², 22 of them: A = sRGB albedo + AO,
+B = normal xy + roughness + metalness, ≈ 62 MB with mips) load after the world's library through the
+texture worker; until then — and on 'low', with `?props=0` or when anything fails — the procedural props
+stand in, and the dressing rebuilds once when the models arrive. They cast no shadow (like the rest of the
+dressing). `world-dress.js` stats: `modelled`, `models` (instances, draws, triangles).
+**Foliage**: `scripts/bake-foliage.js` renders Poly Haven plant models (pine sapling, two broadleaf tree
+crowns, a shrub, small-leaved bushes; leaves and needles are geometry there) in software into the leaf
+atlas' cells (2048 × 1024 RGBA, `textures/foliage/leaves.png`, grey-normalised so each tree's vertex colour
+still gives its species' green, coverage dilated a texel and faded before the cell's border);
+`world-tex.js` pastes them over the procedural cells when they arrive (`?foliage=0` keeps the procedural
+ones). Pines (the map's and the tree line's) lost their solid cones: a slim dark core under more whorls of
+bough cards, so the silhouette is needles, not a cone.
+
 **Vehicles** (`world-veh-extras.js`): a car may be a taxi or police cruiser, an SUV a police
 cruiser or news vehicle, a van an ambulance / delivery / plumber / news van, a pickup a tow truck
 or contractor's pickup (paint, lettering, light bars on the blinking bucket, ladders, dishes),
@@ -2350,7 +2491,11 @@ refresh rate (for example Auto on a 4070 Ti Super at 1080p, 100-150 % at 4K on U
   `msaa=0|2|4|8`, `dof=0|1`, `mb=0|1`, `shadows=`, `contact=`, `aofull=`, `fxhigh=`, `lens=`,
   `lightshadows=`, `bright= contrast= sat=`, `timing=1`, `hp=<1..100>` (low health: the hurt look and
   depth of field in the ghost view), and the existing `scale=`,
-  `zombies=`, `time=`, `wave=`.
+  `zombies=`, `time=`, `wave=`. `__fps.hold({ fire: true })` holds scripted input for the local
+  player (merged into every tick of `step()` and `advance()`; `hold({})` lets go), so a script can
+  stage a fight: `scripts/arsenal-shots.js <dir> "<query>" gun:<id>[:<pose>] fight:hollowstar|chainsaw|sawblade`
+  places the player at the `objective` view, gives the gun, spawns zombies in front and saves JPEGs
+  of the moments worth seeing (the screenshots in `docs/shots/new-guns/`).
 - `public/dev/benchmark.html`: a 20-second fly-through of the highway map on a fixed
   camera path (`bench-stats.js` `pathAt`), with `q=`, `scale=`, `msaa=`, `secs=`, `auto=1`
   (dynamic resolution on), `fixed=1`, `warm=` and `timing=1` parameters, printing average fps,
@@ -2444,6 +2589,10 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
   and objective rows disabled, three bots; the buy time (the horde block, the surge panel, the wave panel
   counting the horde), the first surge on the streets, the bots bring the count down for an idle human
   (kept alive), then the whole team falls: "Overrun" with the zombies that remained, nobody respawns.
+- `tests/props-models.test.js`: the prop models' library (every level's indices and layers inside
+  props.bin, two LODs, models standing on y = 0, 512² RGB layers, CC0 sources and credits, the model maps
+  under 40 MB of PNG, the dressing places only models the library has) and the foliage cards (atlas size,
+  cells in the leaf atlas' grid, CC0 sources).
 - Graphics-tier tests (all `node --test`, no GPU): `render3d-tiers.test.js` (every per-tier
   table has a `cinematic` key; no tier ternary folds cinematic into high), `gpu.test.js` (GPU
   name cleaning, the classification table, the first-run rule), `display.test.js` (refresh

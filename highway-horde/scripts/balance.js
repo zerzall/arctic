@@ -62,7 +62,7 @@ import { frontGap, STAGE_SHORT, CAMPAIGN } from '../public/js/shared/campaign.js
 const PROFILES = { skilled: BOT_SKILL.SKILLED, average: BOT_SKILL.AVERAGE };
 /** A wave that runs longer than this (sim seconds) is a stall: the run stops there. */
 const WAVE_CAP_S = 480;
-const EXPLOSION_GUN = { grenade: 'grenade_launcher', rocket: 'rocket', frag: 'frag', bloater: 'bloater burst' };
+const EXPLOSION_GUN = { grenade: 'grenade_launcher', rocket: 'rocket', frag: 'frag', bloater: 'bloater burst', singularity: 'hollowstar' };
 
 // -------------------------------------------------------------------------------------
 // One match

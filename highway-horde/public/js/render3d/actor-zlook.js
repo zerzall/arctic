@@ -13,7 +13,7 @@
 // and shifted toward ashen grey-green, sallow or bruised blue-grey (never toy colours), clothes
 // grimed and sun-faded, eyes clouded and only dimly lit.
 
-import { OPTS, optBit, TEX_W, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3, WOUND } from './actor-consts.js';
+import { OPTS, optBit, TEX_W, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3, T_MORPH, WOUND } from './actor-consts.js';
 import { ZOMBIES } from '../shared/zombies.js';
 
 // ---------------------------------------------------------------------------------------
@@ -284,6 +284,21 @@ export function zombieLook(type, id, theme = '') {
   look.armK = range(r, 0.95, 1.1);
   look.female = arch.female || chance(r, T === 'screamer' ? 0.9 : arch.name === 'cheer' || arch.name === 'nurse' ? 0.85 : 0.42);
   if (look.female) { look.girthW *= 0.94; look.girthD *= 0.96; }
+  // the body under it (actor-zbody.js instance morphs, blended in the vertex shader): sex, fat,
+  // wasting and age, from their own generator so the rest of the look is what it always was
+  {
+    const q = rngFor(id, 7919 + T.length);
+    // (the bare-chested archetypes are men's bodies)
+    const sex = (look.female && arch.top !== 'bare' && arch.top !== 'crop' ? 0.5 : -0.5) + (q() - 0.5) * 0.18;
+    const g = look.girthW / (look.female ? 0.94 : 1);
+    const heavy = T === 'bloater' || T === 'brute' || T === 'boss';
+    const fat = heavy ? q() * 0.25 : Math.max(0, (g - 1.02) / 0.14) * (0.6 + q() * 0.5) + (q() < 0.12 ? 0.35 : 0);
+    const thin = heavy ? 0 : Math.max(0, (0.98 - g) / 0.1) * (0.5 + q() * 0.5) + (T === 'runner' ? 0 : q() * 0.3);
+    const old = q() < (T === 'runner' ? 0.12 : 0.35) ? 0.3 + q() * 0.7 : q() * 0.15;
+    look.morph = [sex, Math.min(1, fat), Math.min(1.2, thin), old];
+    // (the build is in the morphs now: the renderer's width and depth scale only nudge it)
+    look.wK = 1 + (look.girthW - 1) * 0.3; look.dK = 1 + (look.girthD - 1) * 0.35;
+  }
 
   // ---- skin: the person's own tone, drained (pallor), then shifted by decay toward an ashen
   // grey-green, sallow yellow-grey or bruised blue-grey (hue, not brightness); runners are fresh ----
@@ -604,6 +619,8 @@ export function packLook(look, stage, base, eliteEye = null) {
   // (w: the lost shoe in bit 0, the baked face and fabrics above it: ztexCode)
   put(T_COL4, tr[0], tr[1], tr[2], (look.shoeLost ? 1 : 0) + 2 * ztexCode(look));
   put(T_COL5, gl[0], gl[1], gl[2], look.neck || 0);
+  const m = look.morph || [0, 0, 0, 0];
+  put(T_MORPH, m[0], m[1], m[2], m[3]);
 }
 const _words = [0, 0, 0];
 

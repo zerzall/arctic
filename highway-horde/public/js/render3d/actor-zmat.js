@@ -19,8 +19,8 @@
 // Per-mesh uniforms: uBody (waist, chest, shoulder y, gaunt), uBody2 (head centre x, y, leg
 // gap, width scale), uDay (1 in daylight: no cold rim outline).
 
-import { T_COL4, T_COL5, T_HAIR } from './actor-consts.js';
-import { FACE_FRAME as FF, SKIN_TILE, CLOTH_TILE, SCALP_TILE, GRIME_TILE, WOUND_Q } from './actor-ztex.js';
+import { T_COL4, T_COL5, T_HAIR, T_ACCENT } from './actor-consts.js';
+import { SKIN_TILE, CLOTH_TILE, GRIME_TILE, WOUND_Q } from './actor-ztex.js';
 
 const f1 = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 
@@ -413,9 +413,12 @@ export const Z_SPEC = /* glsl */`
 /** Declarations and helpers (fragment shader, after Z_HEAD and the layout's samplers). */
 export const Z_TEX_HEAD = /* glsl */`
 uniform vec4 uZTex;    // x the special's skin layer (−1: by decay stage), y 1 on the spitter, z tile scale, w 1 on the bloater
-uniform vec4 uZFace;   // this type's face anchors (unit head coordinates): eye z, eye y, mouth y, chin y
+uniform vec4 uZFace;   // this type's eyes and mouth (model units): eye centre x, y, |z|, the mouth's line y
 uniform vec4 uZHead;   // the head's radii (model units)
 varying vec3 vMN;
+varying vec2 vMH;      // the body's MakeHuman UV (−1 off the body: gear, extras, clothes)
+vec2 zMHx = vec2(0.0), zMHy = vec2(0.0), zNUV = vec2(0.0);
+bool zUV = false;
 vec3 zW = vec3(0.0);
 vec2 zNP[3];
 vec3 zDpx = vec3(0.0), zDpy = vec3(0.0), zDEx = vec3(0.0), zDEy = vec3(0.0);
@@ -462,35 +465,21 @@ vec3 zPerturb2(vec3 N, vec2 st0, vec2 st1, vec2 nxy) {
 }
 // unit head coordinates of a rest-pose point (x forward, y up, z right)
 vec3 zHeadQ(vec3 p) { return vec3((p.x - uBody2.x) / uZHead.x, (p.y - uBody2.y) / uZHead.y, p.z / uZHead.z); }
-// the face frame was painted on the walker's anchors: stretch this type's onto them
-float zFaceYk(float uy) { return uy > uZFace.z ? (${f1(FF.EY)} - (${f1(FF.MY)})) / (uZFace.y - uZFace.z) : (${f1(FF.MY)} - (${f1(FF.CY)})) / (uZFace.z - uZFace.w); }
-float zFaceY(float uy) { return uy > uZFace.z ? ${f1(FF.EY)} + (uy - uZFace.y) * zFaceYk(uy) : ${f1(FF.MY)} + (uy - uZFace.z) * zFaceYk(uy); }
-// the face set at a head point → false outside the frame
-bool zFaceAt(float face, vec3 q, out vec4 A, out vec4 B) {
-  float kz = ${f1(FF.EZ)} / uZFace.x, ky = zFaceYk(q.y);
-  vec2 uv = vec2((q.z * kz - (${f1(FF.Z0)})) / ${f1(FF.SPAN)}, (zFaceY(q.y) - (${f1(FF.Y0)})) / ${f1(FF.SPAN)});
-  A = vec4(0.0); B = vec4(0.5, 0.5, 0.6, 0.0);
-  // (outside the frame, or on the eye spots in its bottom corners)
-  if (uv.x < 0.01 || uv.x > 0.99 || uv.y < 0.01 || uv.y > 0.995 || (uv.y < 0.15 && abs(uv.x - 0.5) > 0.33)) return false;
-  vec2 gx = vec2(zDpx.z / uZHead.z * kz, zDpx.y / uZHead.y * ky) / ${f1(FF.SPAN)};
-  vec2 gy = vec2(zDpy.z / uZHead.z * kz, zDpy.y / uZHead.y * ky) / ${f1(FF.SPAN)};
-  A = textureGrad(ZS_faceA, vec3(uv, ZB_faceA + face), gx, gy);
-  B = textureGrad(ZS_faceB, vec3(uv, ZB_faceB + face), gx, gy);
-  return true;
-}
-// an eye: its painted spot in the face frame, in eye-local coordinates (x outward, y up)
-vec4 zEyeAt(float face, vec3 q) {
-  float sd = q.z < 0.0 ? -1.0 : 1.0;
-  float kz = ${f1(FF.EZ)} / uZFace.x, ky = zFaceYk(q.y);
-  vec2 l = vec2((q.z * kz - sd * ${f1(FF.EZ)}) * sd / ${f1(FF.EYE_RZ)}, (zFaceY(q.y) - ${f1(FF.EY)}) / ${f1(FF.EYE_RY)});
-  float ll = length(l);
-  if (ll > 1.1) l *= 1.1 / ll;
-  vec2 spot = sd < 0.0 ? vec2(${f1(FF.SPOT_L[0])}, ${f1(FF.SPOT_L[1])}) : vec2(${f1(FF.SPOT_R[0])}, ${f1(FF.SPOT_R[1])});
-  vec2 uv = spot + l * ${f1(FF.SPOT_R0)};
-  float g = ${f1(FF.SPOT_R0)} / ${f1(FF.EYE_RZ)};
-  vec2 gx = vec2(zDpx.z / uZHead.z * kz * sd, zDpx.y / uZHead.y * ky) * g;
-  vec2 gy = vec2(zDpy.z / uZHead.z * kz * sd, zDpy.y / uZHead.y * ky) * g;
-  return textureGrad(ZS_faceA, vec3(uv, ZB_faceA + face), gx, gy);
+// a dead eye on the body's eyeball (rest-pose model space): a clouded, veined white, the iris gone
+// milky round a pupil that has spread and greyed (the look's eye colour tints the iris)
+vec3 zEye(vec3 p, vec3 tint) {
+  vec3 c = vec3(uZFace.x, uZFace.y, p.z < 0.0 ? -uZFace.z : uZFace.z);
+  vec3 d = normalize(p - c);
+  float f = d.x;
+  vec3 white = vec3(0.62, 0.58, 0.5) * (0.85 + 0.3 * hhD.r);
+  float vein = smoothstep(0.55, 0.9, hhD2.r + hhD.a * 0.2) * (1.0 - smoothstep(0.75, 0.9, f));
+  white = mix(white, vec3(0.36, 0.06, 0.05), vein * 0.6);
+  float iris = smoothstep(0.86, 0.9, f);
+  vec3 ic = mix(vec3(0.42, 0.44, 0.42), tint * 0.6 + 0.2, 0.35) * (0.8 + 0.3 * hhD.g);
+  vec3 col = mix(white, ic, iris);
+  float pupil = smoothstep(0.965, 0.975, f);
+  col = mix(col, vec3(0.16, 0.17, 0.17), pupil * 0.85);
+  return col;
 }
 // a wound from the atlas, projected along the dominant axis of the rest normal; its normal goes
 // into that plane's accumulator (age = rot dries it)
@@ -528,6 +517,10 @@ void zWoundTex(vec4 W, float stage, float age, inout vec3 col, inout float rough
 /** The setup of the textured shading (top level, before the material branches: the derivatives). */
 const TEX_PRE = /* glsl */`
   zDpx = dFdx(vMP); zDpy = dFdy(vMP);
+  // (the atlas' gradients, clamped where a 2×2 quad straddles a UV seam)
+  zMHx = dFdx(vMH); zMHy = dFdy(vMH);
+  { float gl = max(length(zMHx), length(zMHy)); if (gl > 0.02) { zMHx *= 0.02 / gl; zMHy *= 0.02 / gl; } }
+  zUV = false; zNUV = vec2(0.0);
   zDEx = dFdx(-vViewPosition); zDEy = dFdy(-vViewPosition);
   zNP[0] = vec2(0.0); zNP[1] = vec2(0.0); zNP[2] = vec2(0.0);
   zW = vec3(0.0);
@@ -542,54 +535,46 @@ const TEX_PRE = /* glsl */`
 
 /** Skin: the stage (or the special's) set, the person's tone, the face, the scalp, wounds, lividity, mud. */
 const SKIN_TEX = /* glsl */`
-    zW = zTriW(vMN);
     float kS = 1.0 / (${f1(SKIN_TILE)} * uZTex.z);
     vec4 A, B;
-    if (uZTex.x >= 0.0) {
-      A = zTri(ZS_specA, ZB_specA + uZTex.x, vMP * kS, kS, zOff);
-      B = zTriN(ZS_specB, ZB_specB + uZTex.x, vMP * kS, kS, zOff, 1.0, false, 1.0);
+    zW = zTriW(vMN);
+    if (vMH.x >= 0.0) {
+      // the body: its baked atlas (the stage's, or the special's own) on the MakeHuman UV layout
+      zUV = true;
+      float bl = uZTex.x >= 0.0 ? 3.0 + uZTex.x : zStage;
+      A = textureGrad(ZS_bodyA, vec3(vMH, ZB_bodyA + bl), zMHx, zMHy);
+      B = textureGrad(ZS_bodyB, vec3(vMH, ZB_bodyB + bl), zMHx, zMHy);
+      zNUV = B.xy * 2.0 - 1.0;
     } else {
+      // gear and growths in skin: the stage's tiling skin by triplanar projection
       A = zTri(ZS_skinA, ZB_skinA + zStage, vMP * kS, kS, zOff);
       B = zTriN(ZS_skinB, ZB_skinB + zStage, vMP * kS, kS, zOff, 1.0, false, 1.0);
+      A.a = 0.5;
     }
     // the person's own skin tone: its lightness and a share of its hue (the decay colours stay)
     float tl = max(0.004, dot(tSkin.rgb, ZLUMA));
     vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.15) * clamp(tl / 0.33, 0.3, 1.2);
-    vec3 c = zLin(A.rgb) * toneK * mix(vec3(1.0), baseCol * 1.12, 0.75);
+    // (the atlas carries its own occlusion and features: only a share of the vertex shading)
+    vec3 c = zLin(A.rgb) * toneK * (zUV ? mix(vec3(1.0), baseCol, 0.25) : mix(vec3(1.0), baseCol * 1.12, 0.75));
     // (a mottle at another scale from the procedural detail, so no two tiles of skin match)
     c *= 0.84 + 0.28 * hhD.r;
     // (dead skin is a drained colour: the decay tints stay, but greyed; dark skin goes ashen)
     c = mix(c, vec3(dot(c, ZLUMA)) * (1.0 + 0.5 * smoothstep(0.2, 0.05, tl)), 0.25 + 0.15 * smoothstep(0.2, 0.05, tl));
-    float rough = B.z, wet = 0.0, thick = A.a;
+    float rough = B.z, wet = 0.0, thick = zUV ? 0.5 : A.a;
     float ao = B.w;
+    if (zUV) {
+      // the scalp: matted hair (the atlas' coverage) in the person's hair colour, thinned on some
+      float hk = A.a * (0.35 + 0.65 * fract(zSeed * 0.731 + 0.2));
+      vec3 hc = hhT(${T_HAIR}).rgb * (0.45 + hhD.r * 0.9);
+      c = mix(c, hc, hk * 0.92);
+      rough = mix(rough, 0.62, hk);
+      thick = mix(thick, 0.2, hk);
+    }
     if (hhPart == 17) {
       vec3 q = zHeadQ(vMP);
-      // the face: the head skin in front (and under the chin)
-      float front = smoothstep(0.0, 0.35, vMN.x + max(0.0, -vMN.y) * step(q.y, uZFace.z) * 0.6) * step(-0.25, q.x);
-      vec4 FA, FB;
-      if (front > 0.0 && zFaceAt(zFace, q, FA, FB)) {
-        float fk = FA.a * front;
-        vec3 fc = zLin(FA.rgb);
-        fc = mix(fc * toneK, fc, FB.w);
-        c = mix(c, fc, fk);
-        rough = mix(rough, FB.z, fk);
-        wet = max(wet, smoothstep(0.4, 0.12, FB.z) * fk * FB.w);
-        zNP[0] = mix(zNP[0], FB.xy * 2.0 - 1.0, fk);
-        thick = mix(thick, thick * 0.6, fk);
-      }
       // an ear torn off on the faces that lost one (d, f): the left ear's outer part is gone
       if ((zFace > 2.5 && zFace < 3.5 || zFace > 4.5) && q.z < -0.9 && q.x > -0.5 && q.x < 0.4 && q.y > -0.5 && q.y < 0.6
           && dot(q, q) > 1.02 + (hhD.r - 0.5) * 0.08) discard;
-      // the scalp: thinning, matted hair over grey skin on the top and back of the head
-      float line = mix(0.62, -0.35, smoothstep(0.15, -0.65, q.x));
-      float hm = smoothstep(line - 0.05, line + 0.12, q.y);
-      if (hm > 0.0) {
-        float kH = 1.0 / ${f1(SCALP_TILE)};
-        vec4 SA = zTri(ZS_scalpA, ZB_scalpA, vMP * kH, kH, zOff);
-        vec3 hc = hhT(${T_HAIR}).rgb * (0.4 + SA.r * 1.4);
-        c = mix(c, mix(zLin(SA.rgb) * toneK, hc, SA.a * 0.9), hm);
-        rough = mix(rough, 0.6, hm * SA.a);
-      }
     }
     // wounds from the atlas (the cloth over them is torn away)
     zWoundTex(wA, zStage, rot, c, rough, wet);
@@ -723,23 +708,8 @@ const CLOTH_TEX = /* glsl */`
  */
 const TEX_POST = /* glsl */`
   if ((hhM == 7 || hhM == 13) && hhEyeK > 0.05) {
-    vec4 E = zEyeAt(zFace, zHeadQ(vMP));
-    diffuseColor.rgb = zLin(E.rgb) * (hhM == 13 ? 0.95 : 0.85);
-  } else if (hhM == 6 || hhM == 14) {
-    vec3 q = zHeadQ(vMP);
-    vec4 FA, FB;
-    if (dot(q, q) < 1.7 && q.x > -0.1 && zFaceAt(zFace, q, FA, FB)) {
-      float fk = FA.a * (hhM == 14 ? FB.w : 1.0);
-      diffuseColor.rgb = mix(diffuseColor.rgb, zLin(FA.rgb) * mix(0.9, 1.0, FB.w), fk);
-      hhWet = max(hhWet, smoothstep(0.4, 0.12, FB.z) * fk * FB.w);
-    }
-  } else if (hhM == 5 && hhPart != 9) {
-    zW = zTriW(vMN);
-    float kH = 1.0 / ${f1(SCALP_TILE)};
-    vec4 SA = zTri(ZS_scalpA, ZB_scalpA, vMP * kH, kH, zOff + 0.5);
-    if (SA.a < 0.1 + rot * 0.18) discard;
-    diffuseColor.rgb *= 0.55 + SA.r * 1.1;
-    zW = vec3(0.0);
+    diffuseColor.rgb = zEye(vMP, hhT(${T_ACCENT}).rgb) * (hhEyeK < 0.6 ? 1.15 : 1.0);
+    hhWet = max(hhWet, 0.85);
   }
 `;
 
@@ -748,7 +718,18 @@ export const Z_SHADE_TEX = TEX_PRE + '  if (hhM == 0) {\n' + SKIN_TEX + '  } els
 
 /** Normals with the baked sets: the per-plane accumulators through each plane's frame; else the detail map. */
 export const Z_TEX_NORMAL = /* glsl */`
-  if (zW.x + zW.y + zW.z > 0.0) {
+  if (zUV) {
+    // the atlas' tangent-space normal through the UV's own screen-space frame (+ the wounds' planes)
+    vec3 N0 = normal;
+    normal = zPerturb2(N0, zMHx, zMHy, zNUV);
+    if (zNP[0] != vec2(0.0) || zNP[1] != vec2(0.0) || zNP[2] != vec2(0.0)) {
+      vec3 an = abs(vMN), acc = vec3(0.0);
+      if (an.x >= an.y && an.x >= an.z) acc = zPerturb2(N0, zDpx.zy, zDpy.zy, zNP[0]) - N0;
+      else if (an.y >= an.z) acc = zPerturb2(N0, zDpx.xz, zDpy.xz, zNP[1]) - N0;
+      else acc = zPerturb2(N0, zDpx.xy, zDpy.xy, zNP[2]) - N0;
+      normal = normalize(normal + acc);
+    }
+  } else if (zW.x + zW.y + zW.z > 0.0) {
     vec3 N0 = normal, acc = vec3(0.0);
     if (zW.x > 0.0) acc += zW.x * (zPerturb2(N0, zDpx.zy, zDpy.zy, zNP[0]) - N0);
     if (zW.y > 0.0) acc += zW.y * (zPerturb2(N0, zDpx.xz, zDpy.xz, zNP[1]) - N0);

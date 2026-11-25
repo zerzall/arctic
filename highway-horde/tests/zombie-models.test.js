@@ -60,15 +60,32 @@ test('adult proportions: the head is about a seventh and a half of the body, not
   }
 });
 
-test('wasted bodies: a walker is gaunt (narrow waist, thin limbs), a runner fresher and fuller, the brute a hulk', () => {
+test('real bodies: a walker is gaunt (thin limbs), a runner fresher and fuller, the brute a hulk, the bloater swollen', () => {
   const P = (t) => zm.zombieParams(t);
-  const w = P('walker'), r = P('runner'), b = P('brute'), bl = P('bloater');
+  const w = P('walker'), r = P('runner'), b = P('brute'), bl = P('bloater'), sc = P('screamer');
   assert.ok(w.gaunt >= 1 && r.gaunt < 0.5, 'gaunt walker, fresh runner');
   assert.ok(r.armR > w.armR && r.thighR > w.thighR, 'the runner has more flesh on it');
-  assert.ok(b.armR > w.armR * 1.8 && b.bulk * b.upper > 1.5, 'the brute is huge');
-  assert.ok(bl.thighR > w.thighR * 1.5, 'the bloater is swollen');
-  // a limb is a third of the old doll's thickness per unit height: upper arm at most 11 cm across (1 unit = 3 cm)
-  assert.ok(w.armR * 2 * 3 < 11 && w.thighR * 2 * 3 < 16, `limbs ${w.armR} ${w.thighR}`);
+  assert.ok(sc.armR < w.armR && sc.thighR < w.thighR, 'the screamer is thinner still');
+  assert.ok(b.armR > w.armR * 1.8 && b.thighR > w.thighR * 1.5, 'the brute is huge');
+  assert.ok(bl.thighR > w.thighR * 1.3 && bl.depth > w.depth * 1.3, 'the bloater is swollen');
+  // a starved adult's upper arm: at most 9 cm across (1 unit = 3 cm), a thigh at most 15
+  assert.ok(w.armR * 2 * 3 < 9 && w.thighR * 2 * 3 < 15, `limbs ${w.armR} ${w.thighR}`);
+});
+
+test('the body is MakeHuman\'s: one skinned surface with its UVs, instance morphs on every vertex', () => {
+  for (const type of TYPES) {
+    const a = zm.buildZombie(type, 0, 1).arrays();
+    const n = a.position.length / 3;
+    assert.equal(a.aMH.length, n * 2);
+    assert.equal(a.aMorph.length, n * 16);
+    let uv = 0;
+    for (let i = 0; i < n; i++) if (a.aMH[i * 2] >= 0) { uv++; assert.ok(a.aMH[i * 2] <= 1 && a.aMH[i * 2 + 1] >= 0 && a.aMH[i * 2 + 1] <= 1); }
+    assert.ok(uv > 2000, `${type}: ${uv} body vertices`);
+    // the sex morph moves the chest and the hips, not the feet
+    let moved = 0;
+    for (let i = 0; i < n; i++) if (Math.hypot(a.aMorph[i * 16], a.aMorph[i * 16 + 1], a.aMorph[i * 16 + 2]) > 0.3) moved++;
+    assert.ok(moved > 200, `${type}: the sex morph moves ${moved} vertices`);
+  }
 });
 
 test('the types stay unmistakable in silhouette', () => {
@@ -77,15 +94,16 @@ test('the types stay unmistakable in silhouette', () => {
   assert.ok(bloater[0] > walker[0] * 1.5, 'the bloater\'s belly sticks out');
   assert.ok(brute[2] > walker[2] * 1.4, 'the brute is broad');
   assert.ok(screamer[2] < walker[2], 'the screamer is thin');
-  // the crawler has no shins or feet: nothing under the knee but the bone stump
+  // the crawler has no shins or feet: the legs end in stumps above the knee
   const c = zm.buildZombie('crawler', 0, 0).arrays();
   const B = consts.B;
   assert.equal(extents(c, [B.FOOT_L, B.FOOT_R]).size[1], -Infinity, 'no feet on the crawler');
-  assert.ok(crawler[1] > 40);
+  assert.ok(crawler[1] > 30);
 });
 
 test('budgets: triangles per type and LOD on every tier (dozens on screen at 4K)', () => {
-  const MAX = { '-1': [62000, 4000, 1000], 0: [22000, 4000, 1000], 1: [12000, 4000, 1000], 2: [10000, 3200, 1000] };
+  // (near: the body, its clothes and every accessory group the type can wear, most hidden per instance)
+  const MAX = { '-1': [42000, 6000, 1100], 0: [23000, 6000, 1100], 1: [12500, 6000, 1100], 2: [7500, 3000, 1100] };
   for (const type of TYPES) {
     for (const tier of [-1, 0, 1, 2]) {
       for (let L = 0; L < 3; L++) {
@@ -96,14 +114,14 @@ test('budgets: triangles per type and LOD on every tier (dozens on screen at 4K)
   }
 });
 
-test('near models carry torn strips and relief; the low tier and far models stay plain', () => {
+test('near and mid models carry clothes as shells; far models paint them on; skin regions are tagged', () => {
   const P = consts.PART;
   const count = (a, part) => { let k = 0; for (let i = 0; i < a.aExt.length; i += 2) if (a.aExt[i + 1] === part) k++; return k; };
-  const ultra = zm.buildZombie('walker', 0, 0).arrays(), low = zm.buildZombie('walker', 0, 2).arrays(), mid = zm.buildZombie('walker', 1, 0).arrays();
-  assert.ok(count(ultra, P.TATTER) > 0 && count(ultra, P.LTATTER) > 0 && count(ultra, P.TROUSER) > 0, 'ultra near: strips and a trouser shell');
-  assert.equal(count(low, P.TATTER) + count(low, P.LTATTER) + count(low, P.TROUSER), 0, 'low: none');
-  assert.equal(count(mid, P.TATTER), 0, 'mid range: none');
-  assert.ok(count(ultra, P.TORSO) > 0 && count(ultra, P.HEAD) > 0 && count(ultra, P.LIMB) > 0, 'skin regions tagged for the corpse shading');
+  const ultra = zm.buildZombie('walker', 0, 0).arrays(), low = zm.buildZombie('walker', 0, 2).arrays(), far = zm.buildZombie('walker', 2, 0).arrays();
+  for (const a of [ultra, low]) assert.ok(count(a, P.TOP) > 0 && count(a, P.SLEEVE) > 0 && count(a, P.TROUSER) > 0, 'top, sleeves, trousers');
+  assert.equal(count(far, P.TROUSER) + count(far, P.TOP), 0, 'far: no shells');
+  assert.ok(count(far, P.LEG) > 0, 'far: the trousers painted on the legs');
+  assert.ok(count(ultra, P.TORSO) > 0 && count(ultra, P.HEAD) > 0 && count(ultra, P.LIMB) > 0 && count(ultra, P.HAND) > 0, 'skin regions tagged for the corpse shading');
 });
 
 test('models build the same way every time and stay finite', () => {
@@ -111,7 +129,7 @@ test('models build the same way every time and stay finite', () => {
     const a = zm.buildZombie(type, 0, 0).arrays(), b = zm.buildZombie(type, 0, 0).arrays();
     assert.equal(a.index.length, b.index.length);
     for (let i = 0; i < a.position.length; i += 13) assert.equal(a.position[i], b.position[i]);
-    for (const k of ['position', 'normal', 'aInfo', 'aExt']) for (const v of a[k]) assert.ok(Number.isFinite(v), `${type} ${k}`);
+    for (const k of ['position', 'normal', 'aInfo', 'aExt', 'aMH', 'aMorph']) for (const v of a[k]) assert.ok(Number.isFinite(v), `${type} ${k}`);
   }
 });
 
@@ -174,7 +192,7 @@ test('the corpse material leaves three\'s light loop to it (an indoor light mask
   }
 });
 
-test('looks: dim milky eyes, necklines, a lost shoe now and then, noses on most', () => {
+test('looks: dim milky eyes, necklines, a lost shoe now and then, noses on most, bodies of both sexes', () => {
   let lost = 0, noses = 0, necks = new Set();
   for (let id = 1; id <= 400; id++) {
     const l = look.zombieLook('walker', id);
@@ -187,6 +205,9 @@ test('looks: dim milky eyes, necklines, a lost shoe now and then, noses on most'
   assert.ok(noses > 250 && noses < 380, `noses ${noses}`);
   assert.ok(necks.size >= 4, `necklines ${[...necks]}`);
   assert.ok(look.zombieLook('boss', 1).eyeGlow > 1, 'the boss still burns');
+  let women = 0, heavy = 0, old = 0;
+  for (let id = 1; id <= 400; id++) { const m = look.zombieLook('walker', id).morph; if (m[0] > 0) women++; if (m[1] > 0.3) heavy++; if (m[3] > 0.3) old++; }
+  assert.ok(women > 100 && women < 260 && heavy > 20 && old > 60, `women ${women}, heavy ${heavy}, old ${old}`);
 });
 
 test('the story places change who the dead were (map id seam)', () => {

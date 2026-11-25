@@ -10,9 +10,9 @@ import { LEAF_CELLS } from './world-tex.js';
 import { shadeHex } from './world-geo.js';
 
 const GALV = '#8a9096';
-const PAINT = (rough = 0.5) => S(DET.panel, rough, 0.5);
+const PAINT = (rough = 0.5) => S(DET.paintmetal, rough, 0.5);
 const RUST = S(DET.rust, 0.7, 0.6);
-const WOODS = S(DET.wood, 0.85, 0);
+const WOODS = S(DET.crate, 0.85, 0);
 const CONC = S(DET.concrete, 0.88, 0);
 
 function bench(P) {
@@ -64,7 +64,7 @@ function busStop(P) {
   // sign pole and a bin
   D.cyl('std', 16, 0, wide / 2 + 6, 1.2, 74, GALV, 8, 1, null, S(DET.rust, 0.5, 0.85));
   pic(D, 'busstop', 16.4, 66, wide / 2 + 6, 15, 20, { bucket: 'sign' });
-  D.box('std', 15.5, 66, wide / 2 + 6, 0.6, 21, 16, '#7a7e82', null, S(DET.panel, 0.5, 0.8));
+  D.box('std', 15.5, 66, wide / 2 + 6, 0.6, 21, 16, '#7a7e82', null, S(DET.paintmetal, 0.5, 0.8));
   // litter under the roof
   if (r.chance(0.6)) D.add('std', T.pillow(8, 5, 0.5), [0, 1.4, r.range(-10, 10)], [3.5, 1.2, 2.6], [0, r.range(0, 6), 0], r.pick(BRIGHT), S(DET.fabric, 0.9, 0));
 }
@@ -75,21 +75,21 @@ function mailbox(P) {
   const col = r.pick(['#2a2a2e', '#5b5f63', '#1c4fa8', '#3b4a3a', '#8a8d8f']);
   D.box('std', 0, 16, 0, 2.6, 32, 2.6, '#6b4a2c', null, WOODS);
   D.box('std', 3, 31, 0, 8, 1.4, 1.6, '#6b4a2c', null, WOODS);                 // arm
-  D.add('std', T.cyl(10), [5, 35.4, 0], [3.4, 13, 2.8], [0, 0, Math.PI / 2], col, { ...S(DET.panel, 0.4, 0.5), map: 'cyl' });   // the box: a half-round tunnel
-  D.add('std', T.sphere(8, 4), [11.6, 35.4, 0], [0.6, 2.8, 3.4], null, col, S(DET.panel, 0.4, 0.5));
+  D.add('std', T.cyl(10), [5, 35.4, 0], [3.4, 13, 2.8], [0, 0, Math.PI / 2], col, { ...S(DET.paintmetal, 0.4, 0.5), map: 'cyl' });   // the box: a half-round tunnel
+  D.add('std', T.sphere(8, 4), [11.6, 35.4, 0], [0.6, 2.8, 3.4], null, col, S(DET.paintmetal, 0.4, 0.5));
   const open = r.chance(0.3);
   if (open) {
-    D.box('std', 11.8, 32.6, 0, 0.6, 6.4, 6, col, [0, 0, 1.5], S(DET.panel, 0.4, 0.5));
+    D.box('std', 11.8, 32.6, 0, 0.6, 6.4, 6, col, [0, 0, 1.5], S(DET.paintmetal, 0.4, 0.5));
     D.add('sign', T.plane(), [10, 33.4, 1], [4, 2, 1], [-1.2, 0.3, 0.2], '#f0eee0', { uv: dressUV('f_paper'), noAO: true });
-  } else D.box('std', 11.8, 35.4, 0, 0.6, 6, 6.4, shadeHex(col, -0.15), null, S(DET.panel, 0.4, 0.5));
-  D.box('std', 5, 38.6, 3.6, 0.8, 5.4, 0.6, r.pick(['#c8281e', '#c8281e', '#e0a020']), [0, 0, r.chance(0.5) ? 0 : 1.5], S(DET.panel, 0.5, 0.2));   // flag
+  } else D.box('std', 11.8, 35.4, 0, 0.6, 6, 6.4, shadeHex(col, -0.15), null, S(DET.paintmetal, 0.4, 0.5));
+  D.box('std', 5, 38.6, 3.6, 0.8, 5.4, 0.6, r.pick(['#c8281e', '#c8281e', '#e0a020']), [0, 0, r.chance(0.5) ? 0 : 1.5], S(DET.paintmetal, 0.5, 0.2));   // flag
   pic(D, 'numbers', 4, 35.6, 3.4, 5, 1.7, { ry: -Math.PI / 2 });
 }
 
 function postbox(P) {
   const { D } = P;
   const col = D.rng.pick(['#1c4fa8', '#1c4fa8', '#a01818']);
-  const F = S(DET.panel, 0.4, 0.5);
+  const F = S(DET.paintmetal, 0.4, 0.5);
   D.cyl('std', 0, 0, 0, 5.6, 3, '#2a2c30', 12, 0.9, null, F);
   D.rblock('std', 0, 3, 0, 9, 30, 9, 2.4, col, null, F);
   D.add('std', T.sphere(12, 5), [0, 33, 0], [4.7, 3.4, 4.7], null, col, F);
@@ -116,10 +116,10 @@ function phone(P) {
     D.box('std', x, 40, z, w + 0.2, 0.8, d + 0.2, col, null, F);
   }
   // the phone on the back wall
-  D.rbox('std', -7.6, 44, 0, 3, 11, 8, 0.6, '#202224', null, S(DET.plastic, 0.4, 0.3));
-  D.rbox('std', -6.4, 46, 0, 1.4, 6, 2, 0.5, '#101012', [0, 0, 0.05], S(DET.plastic, 0.5, 0));
+  D.rbox('std', -7.6, 44, 0, 3, 11, 8, 0.6, '#202224', null, S(DET.plasticworn, 0.4, 0.3));
+  D.rbox('std', -6.4, 46, 0, 1.4, 6, 2, 0.5, '#101012', [0, 0, 0.05], S(DET.plasticworn, 0.5, 0));
   rod(D, 'std', [-6, 40, 0.6], [-4.5, 32, 1.2], 0.35, '#202224', null, 5);                  // cord
-  D.rbox('std', -4.2, 30, 1.2, 1.4, 6, 2, 0.5, '#101012', null, S(DET.plastic, 0.5, 0));       // handset hanging
+  D.rbox('std', -4.2, 30, 1.2, 1.4, 6, 2, 0.5, '#101012', null, S(DET.plasticworn, 0.5, 0));       // handset hanging
 }
 
 function bin(P) {
@@ -133,12 +133,12 @@ function bin(P) {
     D.cyl('std', 0, 2, 0, 5.6, 22, col, 10, 0.86, null, S(DET.corrugated, 0.6, 0.6));
     for (const y of [6, 14]) D.cyl('std', 0, y, 0, 5.5 - y * 0.008, 0.8, shadeHex(col, 0.2), 10, 1, null, S(0, 0.5, 0.7));
     D.cyl('std', 0, 23.4, 0, 5.1, 1.2, shadeHex(col, -0.2), 10, 0.96, null, S(0, 0.5, 0.7));
-    if (r.chance(0.7)) for (let i = 0; i < 3; i++) D.add('std', T.pillow(7, 5, 0.5), [r.range(-2, 2), 23 + i, r.range(-2, 2)], [2.6, 1.6, 2.6], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0', '#c8281e']), S(DET.plastic, 0.3, 0));
+    if (r.chance(0.7)) for (let i = 0; i < 3; i++) D.add('std', T.pillow(7, 5, 0.5), [r.range(-2, 2), 23 + i, r.range(-2, 2)], [2.6, 1.6, 2.6], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0', '#c8281e']), S(DET.plasticworn, 0.3, 0));
   } else {
     // wheelie bin: body, sloped lid, wheels, label
     const col = r.pick(['#2f5a3a', '#1c4fa8', '#2a2c30', '#5a5e62']);
-    D.add('std', T.profile('wheelie', [[-4.6, 0], [4.6, 0], [5.2, 26], [-5.2, 26]], 0.8, 8.6), [0, 1.4, 0], [1, 1, 1], null, col, S(DET.plastic, 0.45, 0));
-    D.rbox('std', 0, 28, 0, 11.6, 2.2, 9.4, 0.8, shadeHex(col, -0.12), [0, 0, r.chance(0.5) ? 0 : -0.5], S(DET.plastic, 0.4, 0));
+    D.add('std', T.profile('wheelie', [[-4.6, 0], [4.6, 0], [5.2, 26], [-5.2, 26]], 0.8, 8.6), [0, 1.4, 0], [1, 1, 1], null, col, S(DET.plasticworn, 0.45, 0));
+    D.rbox('std', 0, 28, 0, 11.6, 2.2, 9.4, 0.8, shadeHex(col, -0.12), [0, 0, r.chance(0.5) ? 0 : -0.5], S(DET.plasticworn, 0.4, 0));
     for (const z of [-4.2, 4.2]) D.cylZ('std', -3.8, 2, z, 2, 1.6, '#151515', 8);
     pic(D, 'bin_label', 5.4, 15, 0, 7, 3.5, { bucket: 'sign' });
   }
@@ -154,15 +154,15 @@ function binFall(P) {
   for (let i = 0; i < 7; i++) {
     const t = r.next();
     const x = 11 + r.range(0, 14), z = r.range(-9, 9);
-    if (t < 0.45) D.add('std', T.pillow(8, 5, 0.5), [x, 2, z], [3.2, 2, 3], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0', '#2a3a2a']), { ...S(DET.plastic, 0.3, 0), wobble: { amp: 0.2, seed: i } });
-    else if (t < 0.7) D.add('std', T.cyl(8), [x, 1.7, z], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c']), { ...S(DET.panel, 0.3, 0.85), map: 'cyl' });
+    if (t < 0.45) D.add('std', T.pillow(8, 5, 0.5), [x, 2, z], [3.2, 2, 3], [0, r.range(0, 6), 0], r.pick(['#131416', '#e8e8e0', '#2a3a2a']), { ...S(DET.plasticworn, 0.3, 0), wobble: { amp: 0.2, seed: i } });
+    else if (t < 0.7) D.add('std', T.cyl(8), [x, 1.7, z], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c']), { ...S(DET.paintmetal, 0.3, 0.85), map: 'cyl' });
     else D.add('std', T.box(), [x, 0.7, z], [4, 1.2, 3], [0, r.range(0, 6), 0], r.pick(['#a98552', '#d8d0b8']), S(0, 0.8, 0));
   }
 }
 
 function meter(P) {
   const { D } = P;
-  const F = S(DET.panel, 0.4, 0.6);
+  const F = S(DET.paintmetal, 0.4, 0.6);
   D.cyl('std', 0, 0, 0, 1.1, 30, '#4a4e52', 8, 1, null, F);
   D.rbox('std', 0, 34, 0, 5.4, 9, 3.6, 1.2, '#5a5e62', null, F);
   D.add('glass', T.cyl(12), [0, 36, 1.8], [1.9, 0.5, 1.9], [Math.PI / 2, 0, 0], '#9aa4ac');
@@ -175,7 +175,7 @@ function hydrant(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#c8281e', '#c8281e', '#d8b020', '#a01818']);
-  const F = S(DET.panel, 0.45, 0.6);
+  const F = S(DET.paintmetal, 0.45, 0.6);
   D.cyl('std', 0, 0, 0, 4.4, 2, '#2a2c30', 10, 0.9, null, RUST);
   D.cyl('std', 0, 2, 0, 3.3, 13, col, 8, 0.94, null, F);
   D.add('std', T.sphere(8, 4), [0, 15, 0], [3.4, 2.3, 3.4], null, col, F);
@@ -195,22 +195,22 @@ function vend(P) {
   const r = D.rng;
   const v = Math.floor(r.next() * 3);
   const body = ['#c91d24', '#1c4f9a', '#3a2a20'][v];
-  const F = S(DET.panel, 0.4, 0.4);
+  const F = S(DET.paintmetal, 0.4, 0.4);
   D.rblock('std', 0, 2, 0, 15, 60, 30, 1.6, body, [0, 0, 0], F);
   D.box('std', 0, 1, 0, 14, 2, 28, '#1a1c1e', null, F);
   pic(D, 'vend' + v, 7.7, 34, -2.5, 22, 44, { bucket: 'lit', color: '#ffffff' });
   D.box('std', 7.4, 34, -2.5, 0.5, 45, 23, '#101214', null, F);
   D.box('std', 7.8, 13, -2.5, 0.6, 6, 22, '#050607', null, F);
   D.box('std', 7.8, 33, 11.6, 0.6, 30, 6, '#202226', null, F);
-  for (let i = 0; i < 5; i++) D.box('std', 8.2, 44 - i * 5, 11.6, 0.5, 2.6, 4, '#8a8e92', null, S(DET.plastic, 0.4, 0.4));
+  for (let i = 0; i < 5; i++) D.box('std', 8.2, 44 - i * 5, 11.6, 0.5, 2.6, 4, '#8a8e92', null, S(DET.plasticworn, 0.4, 0.4));
   D.box('glass', 8.1, 51, -2.5, 0.4, 3, 22, '#080a0c', null);
-  if (r.chance(0.25)) D.add('std', T.cyl(8), [11, 1.6, r.range(-10, 6)], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], '#c0c4c8', { ...S(DET.panel, 0.3, 0.85), map: 'cyl' });
+  if (r.chance(0.25)) D.add('std', T.cyl(8), [11, 1.6, r.range(-10, 6)], [1.7, 4.4, 1.7], [0, r.range(0, 6), Math.PI / 2], '#c0c4c8', { ...S(DET.paintmetal, 0.3, 0.85), map: 'cyl' });
 }
 
 function newsbox(P) {
   const { D } = P;
   const col = D.rng.pick(['#c8281e', '#1c4fa8', '#e0a020', '#2f8a4a']);
-  const F = S(DET.panel, 0.4, 0.5);
+  const F = S(DET.paintmetal, 0.4, 0.5);
   for (const z of [-3.6, 3.6]) D.box('std', 0, 6, z, 1.6, 12, 1.4, '#3a3c40', null, F);
   D.rbox('std', 0, 20, 0, 9, 16, 10.4, 1.2, col, null, F);
   D.box('glass', 4.6, 24, 0, 0.4, 8, 7, '#1a242e', null);
@@ -230,7 +230,7 @@ function billboard(P) {
     D.rblock('std', -6, 0, z, 16, 6, 16, 1, '#7a776e', null, CONC);
   }
   // panel: frame, face (lit), catwalk with rail under it, flood lamps on arms over the top
-  D.rbox('std', 0, y0 + H / 2, 0, 7, H + 6, W + 6, 1, '#2c2f33', null, S(DET.panel, 0.55, 0.6));
+  D.rbox('std', 0, y0 + H / 2, 0, 7, H + 6, W + 6, 1, '#2c2f33', null, S(DET.paintmetal, 0.55, 0.6));
   D.box('std', 3.7, y0 + H / 2, 0, 0.6, H, W, '#ffffff', null, { noAO: true });
   pic(D, cell, 4.1, y0 + H / 2, 0, W, H, { bucket: 'lit', color: '#ffffff' });
   D.box('std', 8, y0 - 3, 0, 14, 1.4, W * 0.9, '#5a5e62', null, S(DET.corrugated, 0.6, 0.6));
@@ -238,7 +238,7 @@ function billboard(P) {
   for (let z = -W * 0.45; z <= W * 0.45; z += W * 0.3) rod(D, 'std', [15, y0 - 3, z], [15, y0 + 8, z], 0.5, '#8a8e92');
   for (const z of [-W * 0.3, 0, W * 0.3]) {
     rod(D, 'std', [3, y0 + H + 2, z], [22, y0 + H + 10, z], 0.7, '#5a5e62');
-    D.rbox('std', 22, y0 + H + 10, z, 8, 3, 6, 0.8, '#202224', [0, 0, -0.3], S(DET.panel, 0.5, 0.5));
+    D.rbox('std', 22, y0 + H + 10, z, 8, 3, 6, 0.8, '#202224', [0, 0, -0.3], S(DET.paintmetal, 0.5, 0.5));
   }
   // braces down to the posts
   for (const z of [-W * 0.34, W * 0.34]) rod(D, 'std', [-6, y0 - 6, z], [-6, 30, z * 0.98], 0.6, '#6a6e72', null, 5);
@@ -278,7 +278,7 @@ function rsign(P) {
   const poleX = wide > 45 ? [-wide * 0.33, wide * 0.33] : [0];
   for (const z of poleX) D.cyl('std', -1.6, 0, z, 1.25, cy - hh * 0.35 + 6, GALV, 8, 1, null, F);
   // the sign face on a backing plate, both slightly tilted with the post
-  D.add('std', T.box(), [-1.2, cy, 0], [0.9, hh + 1, ww + 1], A, '#7a7e82', S(DET.panel, 0.5, 0.8));
+  D.add('std', T.box(), [-1.2, cy, 0], [0.9, hh + 1, ww + 1], A, '#7a7e82', S(DET.paintmetal, 0.5, 0.8));
   D.add('sign', T.plane(), [-0.6, cy, 0], [ww, hh, 1], [A[0], Math.PI / 2 + A[1], A[2]], '#ffffff', { uv: dressUV(cell), noAO: true, noJitter: true });
   if (cell === 'stop' && r.chance(0.5)) D.add('sign', T.plane(), [-0.55, cy - hh * 0.62, 0], [ww * 0.7, hh * 0.24, 1], [A[0], Math.PI / 2 + A[1], A[2]], '#ffffff', { uv: dressUV('closed'), noAO: true });
   if (cell === 'speed25' || cell === 'speed45') void 0;
@@ -288,20 +288,20 @@ function barrelT(P) {
   const { D } = P;
   const r = D.rng;
   const down = r.chance(0.2);
-  const F = S(DET.plastic, 0.5, 0);
+  const F = S(DET.plasticworn, 0.5, 0);
   const A = down ? [0, r.range(0, 6), Math.PI / 2] : null;
   const y = down ? 5.2 : 0;
   const base = (b) => (down ? [0, y, 0] : [0, b, 0]);
   void base;
   if (!down) {
     D.cyl('std', 0, 0, 0, 5.4, 26, '#e8641c', 12, 0.72, null, F);
-    D.cyl('std', 0, 9, 0, 4.9, 4.4, '#ecece4', 12, 0.94, null, S(DET.plastic, 0.3, 0));
-    D.cyl('std', 0, 16.4, 0, 4.4, 4.4, '#ecece4', 12, 0.93, null, S(DET.plastic, 0.3, 0));
+    D.cyl('std', 0, 9, 0, 4.9, 4.4, '#ecece4', 12, 0.94, null, S(DET.plasticworn, 0.3, 0));
+    D.cyl('std', 0, 16.4, 0, 4.4, 4.4, '#ecece4', 12, 0.93, null, S(DET.plasticworn, 0.3, 0));
     D.cyl('std', 0, 0, 0, 5.8, 2.2, '#1a1a1a', 12, 0.95, null, S(DET.rubber, 0.8, 0));
     D.add('std', T.torus(12, 0.2, 4), [0, 26, 0], [3.9, 3.9, 1], [Math.PI / 2, 0, 0], '#c8541c', F);
   } else {
     D.add('std', T.cyl(12, 0.72), [0, y, 0], [5.4, 26, 5.4], A, '#e8641c', { ...F, map: 'cyl' });
-    D.add('std', T.cyl(12, 0.94), [-2, y, 0], [4.9, 4.4, 4.9], A, '#ecece4', { ...S(DET.plastic, 0.3, 0), map: 'cyl' });
+    D.add('std', T.cyl(12, 0.94), [-2, y, 0], [4.9, 4.4, 4.9], A, '#ecece4', { ...S(DET.plasticworn, 0.3, 0), map: 'cyl' });
   }
 }
 
@@ -345,11 +345,11 @@ function fencePK(P) {
 
 function bollard(P) {
   const { D } = P;
-  const F = S(DET.panel, 0.45, 0.5);
+  const F = S(DET.paintmetal, 0.45, 0.5);
   D.cyl('std', 0, 0, 0, 2.2, 15, '#3a3e42', 10, 1, null, F);
   D.add('std', T.sphere(10, 4), [0, 15, 0], [2.2, 1.5, 2.2], null, '#3a3e42', F);
-  D.cyl('std', 0, 9, 0, 2.3, 3, '#e8e8e0', 10, 1, null, S(DET.plastic, 0.3, 0));
-  if (D.rng.chance(0.4)) D.cyl('std', 0, 3, 0, 2.3, 2, '#e8c020', 10, 1, null, S(DET.plastic, 0.3, 0));
+  D.cyl('std', 0, 9, 0, 2.3, 3, '#e8e8e0', 10, 1, null, S(DET.plasticworn, 0.3, 0));
+  if (D.rng.chance(0.4)) D.cyl('std', 0, 3, 0, 2.3, 2, '#e8c020', 10, 1, null, S(DET.plasticworn, 0.3, 0));
 }
 
 function bikerack(P) {
@@ -416,8 +416,8 @@ function pole(P) {
   }
   D.cyl('std', 0, 300, 0, 0.5, 8, '#8a8e92', 5, 1, null, S(0, 0.4, 0.8));   // lightning rod
   if (r.chance(0.55)) {
-    D.cyl('std', 6, 236, 0, 7, 22, '#6a6e72', 12, 0.95, null, S(DET.panel, 0.5, 0.6));   // transformer can
-    D.cyl('std', 6, 258, 0, 7.4, 1.6, '#5a5e62', 12, 1, null, S(DET.panel, 0.5, 0.6));
+    D.cyl('std', 6, 236, 0, 7, 22, '#6a6e72', 12, 0.95, null, S(DET.paintmetal, 0.5, 0.6));   // transformer can
+    D.cyl('std', 6, 258, 0, 7.4, 1.6, '#5a5e62', 12, 1, null, S(DET.paintmetal, 0.5, 0.6));
   }
   // steps, a tag plate, ground wire down the side, guy wire
   for (let y = 40; y < 200; y += 24) D.box('std', 0, y, r.chance(0.5) ? 4.6 : -4.6, 2, 0.8, 8, '#8a8e92', null, RUST);
@@ -426,7 +426,7 @@ function pole(P) {
     rod(D, 'std', [0, 268, 0], [-90, 0, 30], 0.35, '#5a5e62', null, 4);
     D.box('std', -90, 3, 30, 5, 5, 5, '#6a6e72', null, CONC);
   }
-  D.box('std', 4.7, 120, 0, 0.5, 6, 4, '#e8e8e0', null, S(DET.plastic, 0.5, 0));
+  D.box('std', 4.7, 120, 0, 0.5, 6, 4, '#e8e8e0', null, S(DET.plasticworn, 0.5, 0));
 }
 
 function wire(P) {
@@ -447,7 +447,7 @@ function wire(P) {
 
 function lampOld(P) {
   const { D } = P;
-  const F = S(DET.panel, 0.5, 0.7);
+  const F = S(DET.paintmetal, 0.5, 0.7);
   const col = '#1e2a26';
   D.cyl('std', 0, 0, 0, 5, 10, col, 10, 0.55, null, F);
   D.cyl('std', 0, 10, 0, 2.6, 92, col, 10, 0.72, null, F);
@@ -461,7 +461,7 @@ function lampOld(P) {
 
 function atm(P) {
   const { D } = P;
-  const F = S(DET.panel, 0.4, 0.5);
+  const F = S(DET.paintmetal, 0.4, 0.5);
   D.rblock('std', 0, 0, 0, 14, 62, 22, 1.4, '#8a8e92', null, F);
   D.box('std', 7.2, 44, 0, 0.6, 14, 15, '#0b1218', null, F);
   pic(D, 'atm', 7.6, 44, 0, 14, 9.4, { bucket: 'lit' });

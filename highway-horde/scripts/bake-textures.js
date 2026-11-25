@@ -32,6 +32,7 @@ import { encodePNG } from './bake/png.js';
 import { Surface, downsampleMaps, quantizeMaps } from './bake/surface.js';
 import { shade, sheet } from './bake/preview.js';
 import { RECIPES, recipeTile } from './bake/materials/index.js';
+import { PHOTO_ONLY } from '../public/js/render3d/world-surf-sets.js';
 import { hash3 } from './bake/noise.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -146,6 +147,8 @@ async function main() {
   // (in recipe order, so the file does not churn)
   const ordered = {};
   for (const r of RECIPES) if (man.sets[r.name]) ordered[r.name] = man.sets[r.name];
+  // (the photo-only sets have no recipe: a re-bake keeps them as they are)
+  for (const n of PHOTO_ONLY) if (man.sets[n]) ordered[n] = man.sets[n];
   man = { version: MANIFEST_VERSION, seed: a.seed, render: a.size, bytes: Object.values(ordered).reduce((s, e) => s + e.bytes, 0), sets: ordered };
   if (a.write) {
     mkdirSync(a.out, { recursive: true });

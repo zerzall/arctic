@@ -380,6 +380,181 @@ export const SOUNDS = {
     for (let i = 0; i < n * 2 && i < b.length; i++) b[i] += i < n ? 0.9 : -0.9;
     return b;
   } },
+  // ---- the arsenal update ----
+  // compact polymer 9mm: snappy and light
+  pistol9c: { ...GUN, v: 4, g: 0.66, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.45, crack: { len: 0.005, hp: 2500, g: 0.85 }, body: { f0: 5400, f1: 720, d: 0.075, g: 0.75 },
+    punch: { f: 1300, q: 1.3, d: 0.045, g: 0.5 }, thump: { f0: 225, f1: 92, d: 0.075, g: 0.72 },
+    mech: [[0.038, 4200, 0.11], [0.055, 3000, 0.08]], tail: { lp: 1900, d: 0.3, g: 0.11 },
+    echo: [[0.09, 0.15, 1500]], drive: 1.6 }) },
+  // .45 ACP: a rounder, deeper report
+  pistol45: { ...GUN, v: 4, g: 0.76, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.6, crack: { len: 0.006, hp: 1900, g: 0.85 }, body: { f0: 4300, f1: 500, d: 0.1, g: 0.85 },
+    punch: { f: 880, q: 1.1, d: 0.06, g: 0.55 }, thump: { f0: 170, f1: 62, d: 0.11, g: 0.95 },
+    mech: [[0.048, 3400, 0.1], [0.066, 2400, 0.08]], tail: { lp: 1600, d: 0.42, g: 0.15 },
+    echo: [[0.1, 0.18, 1400]], drive: 1.9 }) },
+  // the same through the suppressor: a dull thwip, the slide clattering louder than the shot
+  pistol45_sup: { ...GUN, v: 4, g: 0.6, range: 0.45, wet: 0.12, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.3, body: { f0: 1800, f1: 380, d: 0.05, g: 0.65 }, punch: { f: 620, q: 1.5, d: 0.035, g: 0.45 },
+    thump: { f0: 130, f1: 70, d: 0.05, g: 0.55 }, mech: [[0.012, 3300, 0.36], [0.042, 2500, 0.26]],
+    tail: { lp: 900, d: 0.12, g: 0.06 }, drive: 1.2 }) },
+  // .50 hand cannon: a huge slap and a ringing frame
+  handcannon: { ...GUN, v: 3, g: 0.9, range: 1.3, render: (sr, rng) => gun(sr, rng, {
+    dur: 1.2, crack: { len: 0.01, hp: 1700, g: 1.2 }, body: { f0: 7000, f1: 320, d: 0.2, g: 1 },
+    punch: { f: 700, q: 0.9, d: 0.1, g: 0.55 }, thump: { f0: 120, f1: 38, d: 0.26, g: 1.2, tc: 0.035 },
+    ring: { f: 2400, d: 0.22, g: 0.3, list: [[1, 0.09, 0.16], [1.47, 0.05, 0.1]] },
+    tail: { lp: 1300, d: 0.9, g: 0.28 }, echo: [[0.13, 0.3, 1100], [0.34, 0.15, 800]], drive: 2.6 }) },
+  // machine pistol: thin and very fast
+  mpistol: { ...GUN, v: 4, g: 0.55, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.28, crack: { len: 0.004, hp: 3100, g: 0.8 }, body: { f0: 4800, f1: 1000, d: 0.045, g: 0.65 },
+    punch: { f: 1900, q: 1.6, d: 0.03, g: 0.5 }, thump: { f0: 260, f1: 125, d: 0.045, g: 0.5 },
+    mech: [[0.02, 4700, 0.12]], tail: { lp: 2200, d: 0.18, g: 0.08 }, drive: 1.5 }) },
+  // roller-locked 9mm sub-gun: crisp
+  smg9: { ...GUN, v: 4, g: 0.6, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.36, crack: { len: 0.005, hp: 2600, g: 0.85 }, body: { f0: 5000, f1: 800, d: 0.06, g: 0.72 },
+    punch: { f: 1500, q: 1.3, d: 0.04, g: 0.5 }, thump: { f0: 220, f1: 100, d: 0.06, g: 0.65 },
+    mech: [[0.03, 3900, 0.1]], tail: { lp: 1900, d: 0.25, g: 0.11 }, echo: [[0.08, 0.15, 1500]], drive: 1.7 }) },
+  // PDW: small fast rounds, a high zippy crack
+  pdw: { ...GUN, v: 4, g: 0.56, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.32, crack: { len: 0.004, hp: 3400, g: 0.9 }, body: { f0: 6500, f1: 1400, d: 0.05, g: 0.7 },
+    punch: { f: 2300, q: 1.8, d: 0.03, g: 0.45 }, thump: { f0: 280, f1: 140, d: 0.04, g: 0.5 },
+    mech: [[0.022, 5200, 0.1]], tail: { lp: 2600, d: 0.2, g: 0.09 }, drive: 1.6 }) },
+  // .45 SMG: thumpy, a clattering bolt
+  smg45: { ...GUN, v: 4, g: 0.62, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.42, crack: { len: 0.005, hp: 1800, g: 0.7 }, body: { f0: 3800, f1: 450, d: 0.085, g: 0.85 },
+    punch: { f: 700, q: 1, d: 0.06, g: 0.6 }, thump: { f0: 165, f1: 62, d: 0.1, g: 1.05 },
+    mech: [[0.032, 2400, 0.14], [0.05, 3400, 0.08]], tail: { lp: 1400, d: 0.3, g: 0.14 }, drive: 2 }) },
+  // semi-auto shotgun: the blast, then the action cycling itself
+  shotgun_semi: { ...GUN, v: 4, g: 0.82, render: (sr, rng) => gun(sr, rng, {
+    dur: 1.0, crack: { len: 0.011, hp: 1300, g: 1 }, spray: 8, body: { f0: 7000, f1: 260, d: 0.24, g: 1.05 },
+    punch: { f: 620, q: 0.8, d: 0.1, g: 0.55 }, thump: { f0: 105, f1: 38, d: 0.22, g: 1.05, tc: 0.035 },
+    mech: [[0.075, 2800, 0.2], [0.1, 3600, 0.14]], tail: { lp: 1400, d: 0.7, g: 0.25 },
+    echo: [[0.12, 0.22, 1100], [0.3, 0.1, 800]], drive: 2.5 }) },
+  // box-magazine shotgun: punchier mid, a choked bark
+  shotgun_box: { ...GUN, v: 4, g: 0.82, render: (sr, rng) => gun(sr, rng, {
+    dur: 1.0, crack: { len: 0.011, hp: 1400, g: 1 }, spray: 8, body: { f0: 6000, f1: 300, d: 0.22, g: 1 },
+    punch: { f: 720, q: 0.9, d: 0.1, g: 0.62 }, thump: { f0: 112, f1: 40, d: 0.22, g: 1.1, tc: 0.035 },
+    mech: [[0.06, 2600, 0.18]], tail: { lp: 1300, d: 0.7, g: 0.26 }, echo: [[0.12, 0.22, 1100]], drive: 2.6 }) },
+  // AK-pattern 7.62: a lower, rougher bark and a rattle in the action
+  ak: { ...GUN, v: 4, g: 0.66, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.8, crack: { len: 0.007, hp: 1700, g: 1.05 }, body: { f0: 6000, f1: 420, d: 0.14, g: 0.95 },
+    punch: { f: 800, q: 1, d: 0.07, g: 0.58 }, thump: { f0: 140, f1: 48, d: 0.15, g: 1.0 },
+    mech: [[0.045, 2700, 0.12], [0.06, 1800, 0.08]], tail: { lp: 1500, d: 0.55, g: 0.2 },
+    echo: [[0.1, 0.24, 1300]], drive: 2.3 }) },
+  // M4 carbine: crisp 5.56
+  carbine: { ...GUN, v: 4, g: 0.6, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.7, crack: { len: 0.005, hp: 2300, g: 1 }, body: { f0: 7000, f1: 550, d: 0.11, g: 0.85 },
+    punch: { f: 1050, q: 1.1, d: 0.05, g: 0.5 }, thump: { f0: 170, f1: 60, d: 0.11, g: 0.85 },
+    mech: [[0.04, 3700, 0.08]], tail: { lp: 1700, d: 0.45, g: 0.16 }, echo: [[0.09, 0.2, 1500]], drive: 1.9 }) },
+  // suppressed: the bullet's own supersonic crack, a muffled thud, the bolt clattering
+  carbine_sup: { ...GUN, v: 4, g: 0.55, range: 0.6, wet: 0.15, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.35, crack: { len: 0.002, hp: 4200, g: 0.35 }, body: { f0: 2200, f1: 500, d: 0.07, g: 0.7 },
+    punch: { f: 820, q: 1.2, d: 0.04, g: 0.5 }, thump: { f0: 140, f1: 60, d: 0.07, g: 0.6 },
+    mech: [[0.02, 3800, 0.3], [0.04, 2600, 0.2]], tail: { lp: 900, d: 0.15, g: 0.06 }, drive: 1.3 }) },
+  // bullpup: the action right by the cheek, a sharper mid slap
+  bullpup: { ...GUN, v: 4, g: 0.62, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.7, crack: { len: 0.006, hp: 2100, g: 1 }, body: { f0: 6500, f1: 600, d: 0.12, g: 0.9 },
+    punch: { f: 1300, q: 1.3, d: 0.05, g: 0.55 }, thump: { f0: 180, f1: 64, d: 0.11, g: 0.85 },
+    mech: [[0.035, 4100, 0.1]], tail: { lp: 1650, d: 0.5, g: 0.17 }, echo: [[0.1, 0.2, 1400]], drive: 2 }) },
+  // light bolt-action: a sniper's crack without the weight, the bolt worked after it
+  scout: { ...GUN, v: 3, g: 0.86, range: 1.4, wet: 0.42, render: (sr, rng) => {
+    const b = gun(sr, rng, {
+      dur: 1.5, crack: { len: 0.009, hp: 1700, g: 1.1 }, body: { f0: 7500, f1: 330, d: 0.2, g: 1 },
+      thump: { f0: 125, f1: 36, d: 0.26, g: 1.05, tc: 0.035 }, tail: { lp: 1300, d: 0.95, g: 0.26 },
+      echo: [[0.15, 0.28, 1050], [0.36, 0.15, 750]], drive: 2.4 });
+    const n = Math.round(sr * 0.0005);
+    for (let i = 0; i < n * 2 && i < b.length; i++) b[i] += i < n ? 0.7 : -0.7;
+    return b;
+  } },
+  // magnum bolt-action: the heaviest crack short of the .50
+  magsniper: { ...GUN, v: 3, g: 0.98, range: 1.7, wet: 0.48, prio: 68, render: (sr, rng) => {
+    const b = gun(sr, rng, {
+      dur: 2.2, crack: { len: 0.012, hp: 1400, g: 1.25 }, body: { f0: 8500, f1: 260, d: 0.3, g: 1.1 },
+      punch: { f: 520, q: 0.8, d: 0.12, g: 0.6 }, thump: { f0: 95, f1: 28, d: 0.42, g: 1.25, tc: 0.045 },
+      tail: { lp: 1100, d: 1.5, g: 0.34 }, echo: [[0.17, 0.32, 950], [0.42, 0.18, 680], [0.8, 0.1, 480]], drive: 2.8 });
+    const n = Math.round(sr * 0.0007);
+    for (let i = 0; i < n * 2 && i < b.length; i++) b[i] += i < n ? 0.85 : -0.85;
+    return b;
+  } },
+  // semi-auto sniper: heavy, with the action slamming home after each round
+  autosniper: { ...GUN, v: 3, g: 0.9, range: 1.5, wet: 0.45, render: (sr, rng) => {
+    const b = gun(sr, rng, {
+      dur: 1.6, crack: { len: 0.009, hp: 1600, g: 1.1 }, body: { f0: 8000, f1: 300, d: 0.22, g: 1 },
+      punch: { f: 650, q: 0.9, d: 0.09, g: 0.55 }, thump: { f0: 110, f1: 34, d: 0.28, g: 1.1, tc: 0.04 },
+      mech: [[0.06, 3000, 0.14], [0.085, 2200, 0.1]], tail: { lp: 1250, d: 1.0, g: 0.28 },
+      echo: [[0.15, 0.28, 1000], [0.38, 0.14, 700]], drive: 2.6 });
+    const n = Math.round(sr * 0.0006);
+    for (let i = 0; i < n * 2 && i < b.length; i++) b[i] += i < n ? 0.75 : -0.75;
+    return b;
+  } },
+  // M60: a slow, heavy chug
+  m60: { ...GUN, v: 4, g: 0.66, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.75, crack: { len: 0.008, hp: 1500, g: 0.95 }, body: { f0: 5000, f1: 300, d: 0.15, g: 0.95 },
+    punch: { f: 600, q: 1, d: 0.08, g: 0.62 }, thump: { f0: 105, f1: 38, d: 0.17, g: 1.1 },
+    mech: [[0.045, 2300, 0.14], [0.07, 4300, 0.07]], tail: { lp: 1250, d: 0.55, g: 0.22 },
+    echo: [[0.12, 0.22, 1100]], drive: 2.5 }) },
+  // Barrage MG: fast and aggressive
+  barrage: { ...GUN, v: 4, g: 0.58, render: (sr, rng) => gun(sr, rng, {
+    dur: 0.55, crack: { len: 0.005, hp: 2000, g: 0.9 }, body: { f0: 5600, f1: 480, d: 0.09, g: 0.85 },
+    punch: { f: 900, q: 1.1, d: 0.05, g: 0.55 }, thump: { f0: 135, f1: 55, d: 0.09, g: 0.9 },
+    mech: [[0.028, 3500, 0.09]], tail: { lp: 1500, d: 0.35, g: 0.15 }, drive: 2.2 }) },
+  // saw-blade launcher: a pneumatic thunk and the blade's whine screaming away
+  sawlaunch: { ...GUN, v: 3, g: 0.72, wet: 0.22, render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.9);
+    S.mix(out, thud(sr, J(rng, 190, 0.06), 62, 0.12, 0.03, 1.8), sr, 0.95);
+    S.mix(out, burst(sr, rng, 'lowpass', 1200, 0.7, 0.18, 0.002), sr, 0.6);
+    S.mix(out, click(sr, rng, 3600, 0.01), sr, 0.45);
+    const wf = J(rng, 1450, 0.05);
+    const whine = S.osc(sr, 0.85, 'saw', (t) => wf * (1 + 0.6 * Math.min(1, t * 8)) * (1 - 0.25 * t) * (1 + 0.012 * Math.sin(t * 380)));
+    S.mix(out, S.env(S.filter(whine, sr, 'bandpass', 2600, 1.4), sr, 0.01, 0.7), sr, 0.32, 0.01);
+    S.mix(out, S.partials(sr, 0.6, J(rng, 1900, 0.04), [[1, 0.25, 0.4], [2.31, 0.12, 0.25], [3.87, 0.08, 0.15]]), sr, 0.22, 0.004);
+    return S.drive(out, 1.6);
+  } },
+  // a blade glancing off steel and concrete: a bright ting over a grinding scrape
+  blade_ring: { cat: 'impact', v: 4, g: 0.5, prio: 45, wet: 0.3, range: 0.9, lim: [0.04, 4], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.7);
+    S.mix(out, S.partials(sr, 0.65, J(rng, 2300, 0.12), [[1, 0.3, 0.55], [1.71, 0.18, 0.4], [2.93, 0.1, 0.3], [4.1, 0.06, 0.2]]), sr, 0.6);
+    const scrape = gate(S.filter(S.noise(sr, 0.18, rng), sr, 'bandpass', J(rng, 3800, 0.15), 1.4), sr, rng, 0.003, 0.01, 0.75);
+    S.mix(out, S.env(scrape, sr, 0.001, 0.15), sr, 0.7);
+    S.mix(out, burst(sr, rng, 'highpass', 2500, 0.7, 0.02, 0.0002), sr, 0.6);
+    return S.drive(out, 1.5);
+  } },
+  // a spent blade biting into a wall or dropping to the road
+  blade_stop: { cat: 'impact', v: 3, g: 0.45, prio: 40, wet: 0.2, range: 0.8, lim: [0.05, 3], render: (sr, rng) => {
+    const out = S.makeBuf(sr, 0.6);
+    S.mix(out, thud(sr, J(rng, 240, 0.1), 110, 0.06, 0.01, 1.6), sr, 0.8);
+    S.mix(out, S.partials(sr, 0.5, J(rng, 1650, 0.1), [[1, 0.2, 0.4], [2.6, 0.1, 0.2]]), sr, 0.35, 0.005);
+    S.mix(out, S.env(S.filter(S.noise(sr, 0.12, rng), sr, 'bandpass', 2200, 1), sr, 0.001, 0.09), sr, 0.4);
+    return S.drive(out, 1.4);
+  } },
+  // the Hollow Star letting go: a sub drop under a glassy shimmer, the orb tearing away
+  hollowstar: { ...GUN, v: 2, g: 0.95, range: 1.8, wet: 0.55, prio: 75, render: (sr, rng) => {
+    const out = S.makeBuf(sr, 1.8);
+    S.mix(out, thud(sr, 82, 20, 0.7, 0.07, 2.2), sr, 1.2);
+    S.mix(out, S.env(S.osc(sr, 0.6, 'sine', S.expSweep(J(rng, 2600, 0.05), 70, 0.4)), sr, 0.002, 0.5), sr, 0.4);
+    S.mix(out, S.partials(sr, 1.4, J(rng, 330, 0.03), [[1, 0.6, 0.5], [2.76, 0.4, 0.35], [5.4, 0.25, 0.25], [8.93, 0.15, 0.15]]), sr, 0.4, 0.01);
+    S.mix(out, whoosh(sr, rng, 1.2, [[0, 300], [0.15, 2600], [1.1, 500]], 1.6, [[0, 0], [0.05, 1], [1.2, 0]]), sr, 0.5);
+    S.mix(out, S.env(S.filter(S.crackle(sr, 1.0, rng, { rate: (t) => 600 * Math.exp(-t * 3) }), sr, 'highpass', 2800), sr, 0.002, 0.8), sr, 0.4);
+    S.drive(out, 2);
+    return S.echoes(out, sr, [[0.22, 0.25, 800], [0.5, 0.12, 500]]);
+  } },
+  // the singularity collapsing: everything rushes in, a deep crushing boom, the sky ringing
+  expl_singularity: { srate: 0.5, cat: 'explosion', v: 2, g: 1.05, prio: 85, wet: 0.6, range: 2.6, lim: [0.05, 3], group: 'explosion', render: (sr, rng) => {
+    const out = S.makeBuf(sr, 3.2);
+    // the inward rush: rising noise and a pitch climbing into the collapse at 0.32 s
+    const t0 = 0.32;
+    S.mix(out, whoosh(sr, rng, t0 + 0.02, [[0, 200], [t0, 3600]], 1.2, [[0, 0], [t0 * 0.7, 0.6], [t0, 1], [t0 + 0.02, 0]]), sr, 0.9);
+    const rise = S.osc(sr, t0 + 0.01, 'sine', (t) => 60 * Math.pow(18, t / t0));
+    S.mix(out, S.shape(rise, sr, S.curve([[0, 0], [t0 - 0.02, 0.8], [t0 + 0.005, 0]])), sr, 0.5);
+    // the collapse
+    S.mix(out, thud(sr, 70, 16, 1.6, 0.12, 2.6), sr, 1.4, t0);
+    S.mix(out, burst(sr, rng, 'lowpass', 6000, 0.7, 0.05, 0.0002), sr, 0.9, t0);
+    S.mix(out, S.env(S.filter(S.brown(sr, 2.6, rng), sr, 'lowpass', 120, 0.7), sr, 0.05, 2.4), sr, 0.8, t0);
+    S.mix(out, S.partials(sr, 2.2, J(rng, 196, 0.03), [[1, 1.2, 0.5], [2.41, 0.8, 0.35], [3.98, 0.5, 0.25], [6.37, 0.3, 0.2]]), sr, 0.35, t0 + 0.02);
+    const debris = S.crackle(sr, 2.2, rng, { rate: (t) => 260 * Math.exp(-t * 1.6), tickMax: 0.006 });
+    S.mix(out, S.filter(debris, sr, 'bandpass', 2200, 0.5), sr, 0.35, t0 + 0.05);
+    return S.drive(out, 2.2);
+  } },
   saw_cut: { cat: 'impact', v: 3, g: 0.5, prio: 45, wet: 0.08, range: 0.8, lim: [0.08, 2], render: (sr, rng) => {
     // teeth ripping through meat and bone
     const out = S.makeBuf(sr, 0.22);
@@ -1295,6 +1470,39 @@ export const SOUNDS = {
     }
     S.mix(out, S.filter(S.osc(sr, len, 'saw', 38), sr, 'bandpass', 500, 1.5), sr, 0.4);
     return S.drive(out, 1.8);
+  } },
+  // the Hollow Star charging: a rising capacitor whine over a throbbing hum (played at a rate
+  // that climbs with the charge)
+  // (each is rendered 0.1 s long and crossfaded into a seamless 1 s loop: whole-Hz partials
+  // and modulations, filters past their start-up transient)
+  hollow_charge: { cat: 'loop', loop: true, v: 1, g: 0.42, wet: 0.2, peak: 0.8, render: (sr) => {
+    const len = 1.1;
+    const out = S.makeBuf(sr, len);
+    S.mix(out, S.osc(sr, len, 'sine', 880), sr, 0.35);
+    S.mix(out, S.osc(sr, len, 'sine', 1321), sr, 0.18);
+    S.mix(out, S.osc(sr, len, 'saw', 110), sr, 0.12);
+    for (let i = 0; i < out.length; i++) out[i] *= 0.75 + 0.25 * Math.sin(6.2832 * 12 * i / sr);
+    return S.loopify(S.drive(out, 1.6), sr, 0.1);
+  } },
+  // the singularity in flight: a deep, beating drone with a fizz of torn air
+  hollow_orb: { cat: 'loop', loop: true, v: 1, g: 0.5, wet: 0.35, peak: 0.85, render: (sr, rng) => {
+    const len = 1.1;
+    const out = S.makeBuf(sr, len);
+    S.mix(out, S.osc(sr, len, 'sine', 55), sr, 0.8);
+    S.mix(out, S.osc(sr, len, 'sine', 58), sr, 0.6);
+    S.mix(out, S.filter(S.osc(sr, len, 'saw', 110), sr, 'lowpass', 600), sr, 0.25);
+    const fizz = S.filter(S.noise(sr, len, rng), sr, 'bandpass', 3000, 0.8);
+    for (let i = 0; i < out.length; i++) out[i] += fizz[i] * 0.18 * (0.6 + 0.4 * Math.sin(6.2832 * 7 * i / sr));
+    return S.loopify(S.drive(out, 1.8), sr, 0.1);
+  } },
+  // a saw blade in flight: a spinning metallic whine
+  blade_whir: { cat: 'loop', loop: true, v: 1, g: 0.3, wet: 0.15, peak: 0.8, render: (sr, rng) => {
+    const len = 1.1;
+    const out = S.filter(S.osc(sr, len, 'saw', 1800), sr, 'bandpass', 2700, 1.6);
+    S.mix(out, S.osc(sr, len, 'sine', 3600), sr, 0.15);
+    const air = S.filter(S.noise(sr, len, rng), sr, 'bandpass', 5200, 1.1);
+    for (let i = 0; i < out.length; i++) out[i] = out[i] * (0.7 + 0.3 * Math.sin(6.2832 * 40 * i / sr)) + air[i] * 0.2;
+    return S.loopify(S.drive(out, 1.4), sr, 0.1);
   } },
   fire_loop: { srate: 0.5, cat: 'loop', loop: true, v: 1, g: 0.5, wet: 0.2, peak: 0.85, render: (sr, rng) => {
     const len = 4.4;

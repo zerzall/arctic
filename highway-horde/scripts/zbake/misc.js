@@ -281,57 +281,7 @@ function grime(N) {
 // ---------------------------------------------------------------------------------------
 // scalp: thinning, matted hair
 
-function scalp(N) {
-  const n = N * N;
-  const alb = new Rgb(N), hairCov = new Float32Array(n), h = new Float32Array(n), rough = new Float32Array(n).fill(0.72);
-  const r = rng(5301);
-  const hair = new Float32Array(n), clump = new Float32Array(n);
-  // clumps of strands combed down (−v), matted together, with bare scalp between
-  for (let k = 0; k < 420; k++) {
-    const cx = r(), cy = r();
-    const dens = wfbm(cx, cy, 3, 3, 5302, 0.1);
-    if (dens < 0.42) continue;
-    const ns = 10 + Math.floor(r() * 30), L = 0.05 + r() * 0.12, ang = -Math.PI / 2 + (r() - 0.5) * 0.7;
-    for (let j = 0; j < ns; j++) {
-      const ox = cx + (r() - 0.5) * 0.02, oy = cy + (r() - 0.5) * 0.02, w = 0.0005 + r() * 0.0007;
-      const pts = [];
-      let x = ox, y = oy, a = ang + (r() - 0.5) * 0.2;
-      for (let s = 0; s <= 12; s++) {
-        pts.push([x, y, w]);
-        a += (r() - 0.5) * 0.12;
-        x += Math.cos(a) * L / 12; y += Math.sin(a) * L / 12;
-        // strands of a clump drift together toward its end (matted)
-        x += (cx + Math.cos(ang) * L * (s / 12) - x) * 0.08;
-      }
-      stroke(hair, N, pts, (d) => (1 - d) * (0.7 + 0.3 * r()));
-    }
-    stroke(clump, N, [[cx, cy, 0.012], [cx + Math.cos(ang) * L, cy + Math.sin(ang) * L, 0.004]], (d) => 1 - d * d);
-  }
-  const hb2 = blur(hair, N, Math.max(1, N / 2048));
-  const scalpC = lin('#7d6e62'), scalpD = lin('#5a4c42');
-  for (let y = 0; y < N; y++) {
-    const v = (y + 0.5) / N;
-    for (let x = 0; x < N; x++) {
-      const u = (x + 0.5) / N, i = y * N + x;
-      const t = clamp01(hb2[i] * 1.3 + clump[i] * 0.35);
-      const nn = fbm(u, v, 30, 3, 5303) * 0.5 + 0.5;
-      // the colour of the hair is the instance's; here a luminance about it (strand highlights)
-      const lumH = 0.35 + 0.3 * nn + 0.25 * hb2[i];
-      const c = mixc(mixc(scalpC, scalpD, nn), [lumH, lumH, lumH], t);
-      alb.r[i] = c[0]; alb.g[i] = c[1]; alb.b[i] = c[2];
-      hairCov[i] = t;
-      h[i] = t * 0.8 + clump[i] * 0.3 + fbm(u, v, 80, 2, 5304) * 0.1;
-      rough[i] = mix(0.72, 0.55, t);
-    }
-  }
-  const hb = blur(h, N, Math.max(1, N / 800));
-  const ao = new Float32Array(n);
-  for (let i = 0; i < n; i++) { ao[i] = 1 - clamp01((hb[i] - h[i]) * 1.5) * 0.6; }
-  return { alb, alpha: hairCov, h, rough, ao, nStrength: 4 };
-}
-
 export const MISC_SETS = {
-  scalp: { kind: 'scalp', fn: scalp },
   wounds: { kind: 'wound', fn: wounds },
   grime: { kind: 'grime', fn: grime },
 };

@@ -7,8 +7,10 @@ export const GAME_VERSION = '1.0.0';
 // building the old maps from the same (id, seed) would collide with walls the host doesn't have;
 // 14: first-person gunplay — InputCmds carry the aim pitch, crouch / walk / secondary-fire bits and
 // the client's view tick, players their velocity, crouch, scope and weapon modes, shots and kills
-// their heights, hit zones and wallbangs)
-export const PROTOCOL_VERSION = 14;
+// their heights, hit zones and wallbangs;
+// 15: the arsenal update — 19 guns appended to the weapon table, the 'blade' and 'singularity'
+// projectile kinds, the 'singularity' explosion and the binary 'blade' event)
+export const PROTOCOL_VERSION = 15;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second

@@ -153,7 +153,7 @@ export function cinDumpster(B, L, W, color, r) {
   // the split plastic lids: a dark seam, hinge barrel at the back, a pull handle at the front
   B.box('std', 0, 54.2, 0, L + 1, 0.4, 0.8, '#0c0c0c', null, { surf: [0, 0.9, 0], noAO: true });
   B.cylZ('std', -L / 2 - 0.6, 53.4, 0, 1.3, W * 0.9, '#2c2e30', 8, { surf: RUSTY, noAO: true });
-  for (const z of [-W * 0.25, W * 0.25]) B.rbox('std', L / 2 + 0.8, 52.4, z, 2.4, 1.4, 9, 0.5, shadeHex(color, -0.4), null, { surf: [DET.plastic, 0.5, 0], noAO: true });
+  for (const z of [-W * 0.25, W * 0.25]) B.rbox('std', L / 2 + 0.8, 52.4, z, 2.4, 1.4, 9, 0.5, shadeHex(color, -0.4), null, { surf: [DET.plasticworn, 0.5, 0], noAO: true });
   // fork tubes through the base and two small casters
   for (const x of [-0.3, 0.3]) B.cylZ('std', x * L, 9, 0, 1.9, W + 4, '#26282a', 8, { surf: RUSTY, noAO: true });
   for (const sd of [-1, 1]) {
@@ -163,7 +163,7 @@ export function cinDumpster(B, L, W, color, r) {
   for (let k = 0; k < 4; k++) {
     if (!r.chance(0.7)) continue;
     const a = r.range(0, 6.28);
-    B.add('std', lowCyl(8), [L / 2 + 6 + r.range(0, 9), 2.6, r.range(-W / 2, W / 2)], [1.6, 4.6, 1.6], [0, a, Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c', '#2a6ab0', '#c8a020']), { surf: [DET.panel, 0.3, 0.85], noAO: true });
+    B.add('std', lowCyl(8), [L / 2 + 6 + r.range(0, 9), 2.6, r.range(-W / 2, W / 2)], [1.6, 4.6, 1.6], [0, a, Math.PI / 2], r.pick(['#c0c4c8', '#b81c1c', '#2a6ab0', '#c8a020']), { surf: [DET.paintmetal, 0.3, 0.85], noAO: true });
   }
 }
 
@@ -243,11 +243,11 @@ export function cinPump(B, L, W) {
     const x = s * (L * 0.36 + 0.35);
     // the display's frame (the lit plane sits inside it)
     const dw = W * 0.42;
-    for (const dy of [-5.4, 5.4]) B.box('std', x, 37 + dy, 0, 0.8, 0.9, dw + 1.8, dark, null, { surf: [DET.plastic, 0.4, 0.1], noAO: true });
-    for (const dz of [-1, 1]) B.box('std', x, 37, dz * (dw / 2 + 0.45), 0.8, 11.4, 0.9, dark, null, { surf: [DET.plastic, 0.4, 0.1], noAO: true });
+    for (const dy of [-5.4, 5.4]) B.box('std', x, 37 + dy, 0, 0.8, 0.9, dw + 1.8, dark, null, { surf: [DET.plasticworn, 0.4, 0.1], noAO: true });
+    for (const dz of [-1, 1]) B.box('std', x, 37, dz * (dw / 2 + 0.45), 0.8, 11.4, 0.9, dark, null, { surf: [DET.plasticworn, 0.4, 0.1], noAO: true });
     // keypad, grade buttons and the card reader on the left half of the face
-    for (let i = 0; i < 12; i++) B.box('std', s * (L * 0.36 + 0.2), 27 - Math.floor(i / 3) * 2.2, -W * 0.3 + (i % 3) * 2.4, 0.4, 1.5, 2, '#8a8e92', null, { surf: [DET.plastic, 0.4, 0.3], noAO: true });
-    for (let k = 0; k < 3; k++) B.box('std', s * (L * 0.36 + 0.25), 15, -W * 0.3 + k * 5.4, 0.5, 2.6, 4, ['#2a8a3a', '#2a5ac4', '#c8281e'][k], null, { surf: [DET.plastic, 0.4, 0.1], noAO: true });
+    for (let i = 0; i < 12; i++) B.box('std', s * (L * 0.36 + 0.2), 27 - Math.floor(i / 3) * 2.2, -W * 0.3 + (i % 3) * 2.4, 0.4, 1.5, 2, '#8a8e92', null, { surf: [DET.plasticworn, 0.4, 0.3], noAO: true });
+    for (let k = 0; k < 3; k++) B.box('std', s * (L * 0.36 + 0.25), 15, -W * 0.3 + k * 5.4, 0.5, 2.6, 4, ['#2a8a3a', '#2a5ac4', '#c8281e'][k], null, { surf: [DET.plasticworn, 0.4, 0.1], noAO: true });
     B.box('std', s * (L * 0.36 + 0.3), 11, -W * 0.1, 0.6, 2.2, 6.4, '#0a0a0a', null, { surf: [0, 0.6, 0.2], noAO: true });
   }
   for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bolt(B, x * (L / 2 + 3.4), 6, z * (W / 2 + 5), 'up', 0.8, '#7a7e82');
@@ -256,9 +256,9 @@ export function cinPump(B, L, W) {
 /** A street lamp's base plate nuts and hand-hole. */
 export function cinLampBase(B, px, H) {
   for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bolt(B, px + x * 3.0, 5, z * 3.0, 'up', 0.55, '#9aa0a4');
-  B.box('std', px + 2.5, 32, 0, 0.5, 14, 3.2, '#5a5e62', null, { surf: [DET.panel, 0.45, 0.6], noAO: true });
+  B.box('std', px + 2.5, 32, 0, 0.5, 14, 3.2, '#5a5e62', null, { surf: [DET.paintmetal, 0.45, 0.6], noAO: true });
   for (const y of [26, 38]) bolt(B, px + 3.0, y, 0, 'px', 0.5, '#9aa0a4');
-  B.cyl('std', px, H * 0.5, 0, 3.0, 1.2, '#6e757b', 10, 1.05, null, { surf: [DET.panel, 0.48, 0.6], noAO: true });   // the joint band
+  B.cyl('std', px, H * 0.5, 0, 3.0, 1.2, '#6e757b', 10, 1.05, null, { surf: [DET.paintmetal, 0.48, 0.6], noAO: true });   // the joint band
 }
 
 /** A road sign's channel rails, corner bolts and post clamps. */

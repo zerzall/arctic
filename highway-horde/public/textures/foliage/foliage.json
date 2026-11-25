@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "width": 2048,
+ "height": 1024,
+ "cell": 512,
+ "cells": {
+  "pine": {
+   "at": [
+    0,
+    0
+   ],
+   "about": "pine needles on twigs, a sapling seen from above",
+   "cover": 0.489,
+   "triangles": 425898,
+   "source": {
+    "library": "Poly Haven",
+    "id": "pine_sapling_small",
+    "name": "Pine Sapling Small",
+    "url": "https://polyhaven.com/a/pine_sapling_small",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "photography",
+     "Rico Cilliers": "modeling"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_sapling_small/pine_sapling_small_1k.gltf",
+      "md5": "237a7672645631550ae571743aa9f55b"
+     },
+     "textures/pine_sapling_small_twig_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_diff_1k.jpg",
+      "md5": "dacc918bb421968e9ccc1956d78a2dbe"
+     },
+     "pine_sapling_small.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/pine_sapling_small/pine_sapling_small.bin",
+      "md5": "76dd1802d8de128c812f2e124a258b35"
+     }
+    }
+   }
+  },
+  "scrub": {
+   "at": [
+    1,
+    0
+   ],
+   "about": "a leafy shrub, another plant of the same bush, seen from the side",
+   "cover": 0.452,
+   "triangles": 39060,
+   "source": {
+    "library": "Poly Haven",
+    "id": "searsia_lucida",
+    "name": "Searsia Lucida",
+    "url": "https://polyhaven.com/a/searsia_lucida",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "James Ray Cock": "modeling",
+     "Jenelle van Heerden": "Photography"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/searsia_lucida/searsia_lucida_1k.gltf",
+      "md5": "befd961f4f139131eda7dfca952e8d78"
+     },
+     "textures/searsia_lucida_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_diff_1k.jpg",
+      "md5": "d41a7089a41122ddc4edc96288105ecd"
+     },
+     "searsia_lucida.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/searsia_lucida/searsia_lucida.bin",
+      "md5": "aa4c42ee903a3ac22d53386d82480e6d"
+     }
+    }
+   }
+  },
+  "broadA": {
+   "at": [
+    0,
+    1
+   ],
+   "about": "the crown of a young deciduous tree, seen from the side",
+   "cover": 0.518,
+   "triangles": 6102582,
+   "source": {
+    "library": "Poly Haven",
+    "id": "tree_small_02",
+    "name": "Tree Small 02",
+    "url": "https://polyhaven.com/a/tree_small_02",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rico Cilliers": "All"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02_1k.gltf",
+      "md5": "63f42b19687332f7b3a5c8b531734d8e"
+     },
+     "textures/tree_small_02_branch_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_diff_1k.jpg",
+      "md5": "88b531469f5dba2fc44ca85df3776e7c"
+     },
+     "textures/tree_small_02_leaves_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_diff_1k.jpg",
+      "md5": "315cbc2cebfb399e649ccd39112c109a"
+     },
+     "tree_small_02.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/tree_small_02/tree_small_02.bin",
+      "md5": "7a7019a87e6fe0d7475c0fa2e08d8962"
+     }
+    }
+   }
+  },
+  "broadB": {
+   "at": [
+    1,
+    1
+   ],
+   "about": "a round broadleaf crown, seen from the side",
+   "cover": 0.39,
+   "triangles": 3134745,
+   "source": {
+    "library": "Poly Haven",
+    "id": "island_tree_02",
+    "name": "Island Tree 02",
+    "url": "https://polyhaven.com/a/island_tree_02",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "scanning, processing",
+     "Rico Cilliers": "cleanup, processing"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_02/island_tree_02_1k.gltf",
+      "md5": "825057164e987894cbfc6c462977fa71"
+     },
+     "textures/island_tree_02_leaves_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_diff_1k.jpg",
+      "md5": "1356cbb5a5dd1318f9f2a01eddbf03e1"
+     },
+     "textures/island_tree_02_branches_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_branches_diff_1k.jpg",
+      "md5": "7792907fe2b2b748c129a2384192a579"
+     },
+     "island_tree_02.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/island_tree_02/island_tree_02.bin",
+      "md5": "7fa9d6ee752b670cabb65053a5c6395b"
+     }
+    }
+   }
+  },
+  "birch": {
+   "at": [
+    3,
+    1
+   ],
+   "about": "small glossy leaves on fine twigs, a bush seen from the side",
+   "cover": 0.536,
+   "triangles": 77229,
+   "source": {
+    "library": "Poly Haven",
+    "id": "searsia_lucida",
+    "name": "Searsia Lucida",
+    "url": "https://polyhaven.com/a/searsia_lucida",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "James Ray Cock": "modeling",
+     "Jenelle van Heerden": "Photography"
+    },
+    "files": {
+     "gltf": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/searsia_lucida/searsia_lucida_1k.gltf",
+      "md5": "befd961f4f139131eda7dfca952e8d78"
+     },
+     "textures/searsia_lucida_diff_1k.jpg": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_diff_1k.jpg",
+      "md5": "d41a7089a41122ddc4edc96288105ecd"
+     },
+     "searsia_lucida.bin": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/searsia_lucida/searsia_lucida.bin",
+      "md5": "aa4c42ee903a3ac22d53386d82480e6d"
+     }
+    }
+   }
+  }
+ }
+}

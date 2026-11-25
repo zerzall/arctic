@@ -193,7 +193,9 @@ export function trunk(B, size, o) {
   const topK = sp === 'dead' ? 0.62 : 0.55;
   const cin = DETAIL.level >= 3;
   const tseg = cin ? 16 : sp === 'birch' ? 8 : 9;
-  B.cyl('std', 0, 0, 0, rad, tall, col, tseg, topK, null, { wobble: { amp: cin ? 0.05 : 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : DET.bark, 0.85, 0] });
+  const conifer = sp === 'pine' || sp === 'spruce';
+  if (conifer) col = '#6a5a4c';   // (plated pine bark carries its own red-brown)
+  B.cyl('std', 0, 0, 0, rad, tall, col, tseg, topK, null, { wobble: { amp: cin ? 0.05 : 0.07, seed: o.id }, surf: [sp === 'birch' ? DET.plaster : conifer ? DET.pinebark : DET.bark, 0.85, 0] });
   B.cyl('std', 0, 0, 0, rad * 1.45, 9, shadeHex(col, -0.15), cin ? 16 : 9, 0.68, null, { surf: [DET.bark, 0.9, 0] });
   if (cin && sp !== 'palm') {
     // bark in bands: a second, slightly wider skin in short sleeves with a darker seam between them
@@ -291,12 +293,13 @@ function pineCrown(B, R, r, layers, k) {
   const cards = cardList();
   const top = 200 + R * 1.4;
   const col = r.pick(PINE);
-  B.cyl('std', 0, 60, 0, R * 0.55, top - 70, shadeHex(col, -0.45), 8, 0.05, null, { surf: [DET.bark, 0.95, 0], noAO: true });
+  // a slim dark core behind the boughs (not a cone the cards sit on)
+  B.cyl('std', 0, 60, 0, R * 0.32, top - 80, shadeHex(col, -0.6), 7, 0.05, null, { surf: [0, 0.95, 0], noAO: true });
   for (let m = 0; m < layers; m++) {
     const t = m / (layers - 1);
     const y = 70 + t * (top - 95);
     const rad = R * (k - t * 0.9);
-    const n = Math.max(5, Math.round(12 - t * 6));
+    const n = DETAIL.level >= 2 ? Math.max(6, Math.round(14 - t * 7)) : Math.max(5, Math.round(12 - t * 6));
     for (let q = 0; q < n; q++) {
       const a = (q / n) * Math.PI * 2 + r.range(-0.25, 0.25) + m * 0.7;
       const out = rad * r.range(0.45, 0.7);
@@ -316,7 +319,7 @@ function broadCrown(B, R, r, i, o) {
   const col = r.pick(o.leaf);
   const cc = [0, top - R * 1.2, 0];
   // a small dark inner mass: the crown never reads as see-through paper
-  B.add('std', T.ico(1), cc, [R * 0.55, R * 0.45, R * 0.55], [0, r.range(0, 3), 0], shadeHex(col, -0.4), { wobble: { amp: 0.25, seed: i }, surf: [DET.grass, 0.95, 0], noAO: true });
+  B.add('std', T.ico(1), cc, [R * 0.5, R * 0.4, R * 0.5], [0, r.range(0, 3), 0], shadeHex(col, -0.55), { wobble: { amp: 0.25, seed: i }, surf: [0, 0.95, 0], noAO: true });
   // a few visible boughs from the trunk top to the clump centres
   const ctrs = [];
   for (let k = 0; k < o.clumps; k++) {

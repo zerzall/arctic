@@ -7,9 +7,12 @@
 import { T, S, DET, atlasUV, dressUV, rod, plank, pic, facing, BRIGHT, MUTED, clothGeo } from './dress-kit.js';
 import { shadeHex } from './world-geo.js';
 
-const WOODS = S(DET.wood, 0.88, 0);
+const WOODS = S(DET.crate, 0.88, 0);
+const PLY_S = S(DET.plywood, 0.85, 0);
+const OSB_S = S(DET.osb, 0.9, 0);
+const BAG_S = S(DET.burlap, 0.95, 0);
 const CLOTH = S(DET.fabric, 0.92, 0);
-const PLASTIC = S(DET.plastic, 0.3, 0);
+const PLASTIC = S(DET.plasticworn, 0.3, 0);
 const OLIVE = ['#4b5320', '#556b2f', '#4a4f35', '#5a5a3c'];
 const PLY = ['p_god', 'p_turn', 'p_stay', 'p_dead', 'p_end', 'p_none', 'p_safe', 'p_loot', 'p_run', 'p_help', 'p_theyre', 'p_nofood'];
 const GRAF = ['w_god', 'w_turn', 'w_out', 'w_dead', 'w_run', 'w_over'];
@@ -32,10 +35,10 @@ function barricade(P) {
   for (let k = 0; k < 4; k++) D.add('std', T.torus(10, 0.2, 4), [-1.5, 44 + k * 0.4, -22 + k * 14], [3.6, 3.6, 1], [0.3, Math.PI / 2, r.range(0, 3)], '#6a6e72', S(DET.rust, 0.5, 0.8));
   rod(D, 'std', [-1.4, 43, -34], [-1.4, 43, 34], 0.3, '#6a6e72', S(DET.rust, 0.5, 0.8), 4);
   const cell = PLY[it.v % PLY.length];
-  D.add('std', T.box(), [3.4, 24, 4], [0.8, 17, 30], [0.03, 0, 0.03], '#cdc6b0', WOODS);
+  D.add('std', T.box(), [3.4, 24, 4], [0.8, 17, 30], [0.03, 0, 0.03], '#cdc6b0', PLY_S);
   D.add('sign', T.plane(), [3.9, 24, 4], [30, 11.2, 1], [0.03, Math.PI / 2, 0.03], '#ffffff', { uv: dressUV(cell), noAO: true, noJitter: true });
   // sandbag feet
-  for (const z of [-30, 30]) D.add('std', T.pillow(7, 4, 0.5), [-3, 3, z], [5, 3, 7], [0, r.range(0, 3), 0], '#8a7a55', S(DET.fabric, 0.95, 0));
+  for (const z of [-30, 30]) D.add('std', T.pillow(7, 4, 0.5), [-3, 3, z], [5, 3, 7], [0, r.range(0, 3), 0], '#8a7a55', BAG_S);
 }
 
 function plywood(P) {
@@ -46,7 +49,7 @@ function plywood(P) {
   const H = 40, W = 28;
   // the sheet leans back against whatever is behind it (-x); the message faces +x
   const cx = -(H / 2) * Math.sin(lean), cy = (H / 2) * Math.cos(lean);
-  D.add('std', T.box(), [cx, cy, 0], [0.9, H, W], [0, 0, lean], r.pick(['#b09a70', '#a08a60', '#8a7a58']), WOODS);
+  D.add('std', T.box(), [cx, cy, 0], [0.9, H, W], [0, 0, lean], r.pick(['#c0a878', '#b09a70', '#a08a60']), it.v % 3 === 0 ? OSB_S : PLY_S);
   facing(D, 'sign', cell, [cx + 0.55 * Math.cos(lean), cy + 0.55 * Math.sin(lean), 0], W - 0.6, (W - 0.6) * 96 / 256, [Math.cos(lean), Math.sin(lean), 0]);
   for (const y of [8, 32]) D.box('std', cx + (y - cy) * -Math.sin(lean) + 0.4, y, 0, 0.5, 2.4, W + 1, '#6b5a44', [0, 0, lean], WOODS);
   if (r.chance(0.5)) D.box('std', -H * Math.sin(lean) - 4, 3, 0, 1.6, 6, 1.6, '#5a4632', [0, 0, 0.5], WOODS);
@@ -98,7 +101,7 @@ function bodybag(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#151618', '#151618', '#2a2f22', '#d8d8d0']);
-  const F = S(DET.plastic, 0.3, 0);
+  const F = S(DET.plasticworn, 0.3, 0);
   D.add('std', T.pillow(12, 6, 0.45), [0, 2.4, 0], [15, 2.6, 5.4], [0, 0, 0], col, { ...F, wobble: { amp: 0.06, seed: 1 } });         // torso + legs
   D.add('std', T.pillow(10, 5, 0.5), [-14.5, 2.6, 0], [4, 2.4, 3.6], null, col, F);                                             // head
   D.add('std', T.pillow(10, 5, 0.5), [15, 1.6, 0], [4.4, 1.5, 3.4], null, col, F);                                              // feet
@@ -110,8 +113,8 @@ function bodybag(P) {
 function helmet(P) {
   const { D } = P;
   const col = D.rng.pick(OLIVE);
-  D.add('std', T.sphere(12, 5), [0, 2.6, 0], [4.8, 3.8, 4.8], [0, D.rng.range(0, 6), 0], col, S(DET.panel, 0.7, 0.2));
-  D.cyl('std', 0, 0.2, 0, 5.6, 0.7, shadeHex(col, -0.15), 12, 1, null, S(DET.panel, 0.7, 0.2));
+  D.add('std', T.sphere(12, 5), [0, 2.6, 0], [4.8, 3.8, 4.8], [0, D.rng.range(0, 6), 0], col, S(DET.paintmetal, 0.7, 0.2));
+  D.cyl('std', 0, 0.2, 0, 5.6, 0.7, shadeHex(col, -0.15), 12, 1, null, S(DET.paintmetal, 0.7, 0.2));
   D.add('std', T.box(), [0, 3.5, 0], [8, 0.4, 0.6], [0, 0, 0], '#2a2a26', S(DET.fabric, 0.9, 0));
   D.add('std', T.torus(10, 0.2, 4), [0, 0.6, 3.5], [1.8, 2.4, 1], [0.6, 0, 0], '#2a2a26', S(DET.fabric, 0.9, 0));
 }
@@ -120,7 +123,7 @@ function milcrate(P) {
   const { D, s } = P;
   const r = D.rng;
   const col = r.pick(OLIVE);
-  const F = S(DET.panel, 0.55, 0.4);
+  const F = S(DET.paintmetal, 0.55, 0.4);
   D.add('std', T.rbox(24 * s, 12, 12, 0.9), [0, 6, 0], [1, 1, 1], null, col, F);
   D.add('std', T.rbox(24.6 * s, 2.4, 12.6, 0.6), [0, 12.4, 0], [1, 1, 1], null, shadeHex(col, -0.1), F);
   for (const x of [-8, 8]) D.box('std', x, 8, 6.4, 3, 2.6, 0.7, '#6a6e72', null, S(0, 0.4, 0.8));
@@ -133,7 +136,7 @@ function milBox(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(OLIVE);
-  const F = S(DET.panel, 0.5, 0.5);
+  const F = S(DET.paintmetal, 0.5, 0.5);
   const n = 1 + Math.floor(r.next() * 2);
   for (let i = 0; i < n; i++) {
     const y = i * 8;
@@ -147,7 +150,7 @@ function sandArc(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#8a7a55', '#7a6c4c', '#96866a']);
-  const F = S(DET.fabric, 0.95, 0);
+  const F = BAG_S;
   const rad = 24;
   const n = 8;
   for (let row = 0; row < 2; row++) {
@@ -179,7 +182,7 @@ function medTent(P) {
   const { D } = P;
   const r = D.rng;
   const col = r.pick(['#e2ddc8', '#dcd8c4']);
-  const F = S(DET.fabric, 0.9, 0);
+  const F = S(DET.linen, 0.9, 0);
   const L = 58, Wd = 40, wall = 14, ridge = 34;
   // walls, pitched roof (prism), the cross on both long sides, an open front with cots inside
   for (const z of [-Wd / 2, Wd / 2]) D.box('std', 0, wall / 2, z, L, wall, 0.8, col, null, F);
@@ -195,7 +198,7 @@ function medTent(P) {
     D.add('std', T.pillow(8, 4, 0.5), [-16, 8.6, z], [4.4, 1.4, 4], null, '#d8d4c8', F);
   }
   for (let k = 0; k < 6; k++) rod(D, 'std', [L / 2 * (k % 2 ? 1 : -1) * 1.15, 0, Wd / 2 * (k < 3 ? 1.3 : -1.3)], [L / 2 * (k % 2 ? 0.9 : -0.9), wall + 3, Wd / 2 * (k < 3 ? 1 : -1)], 0.2, '#e0d8b8', null, 4);
-  if (r.chance(0.6)) D.add('std', T.rbox(12, 8, 8, 0.6), [-L / 2 - 8, 4, r.range(-8, 8)], [1, 1, 1], [0, r.range(0, 6), 0], '#dcd8cc', S(DET.panel, 0.5, 0.4));
+  if (r.chance(0.6)) D.add('std', T.rbox(12, 8, 8, 0.6), [-L / 2 - 8, 4, r.range(-8, 8)], [1, 1, 1], [0, r.range(0, 6), 0], '#dcd8cc', S(DET.paintmetal, 0.5, 0.4));
 }
 
 function tape(P) {
@@ -239,7 +242,7 @@ function shrine(P) {
   }
   for (let i = 0; i < 5; i++) {
     const x = r.range(-9, 9), z = r.range(-7, 7), h = r.range(3, 7);
-    D.cyl('std', x, 2, z, 1.2, h, r.pick(['#f4f0e0', '#f4f0e0', '#c8281e']), 8, 1, null, S(DET.plastic, 0.5, 0));
+    D.cyl('std', x, 2, z, 1.2, h, r.pick(['#f4f0e0', '#f4f0e0', '#c8281e']), 8, 1, null, S(DET.plasticworn, 0.5, 0));
     D.add('glow', T.sphere(5, 3), [x, 2 + h + 0.9, z], [0.5, 1, 0.5], null, '#ffb04a', { emissive: 3, uv: atlasUV('white') });
   }
   D.rbox('std', 3, 12, 0, 1, 13, 10, 0.4, '#8a6a44', [0, 0, -0.1], WOODS);
@@ -266,8 +269,8 @@ function sawhorse(P) {
     rod(D, 'std', [0, 0, z - 4], [0, 26, z], 1, '#6b4a2c', F, 5);
     rod(D, 'std', [0, 0, z + 4], [0, 26, z], 1, '#6b4a2c', F, 5);
   }
-  for (let i = 0; i < 5; i++) D.box('std', 0.6, 25 + (i % 2 ? 0 : 0), -20 + i * 8 + 4, 1.4, 5, 8, i % 2 ? '#e8e8e0' : '#c8281e', null, S(DET.plastic, 0.4, 0));
-  for (let i = 0; i < 5; i++) D.box('std', 0.6, 17, -20 + i * 8 + 4, 1.4, 5, 8, i % 2 ? '#c8281e' : '#e8e8e0', null, S(DET.plastic, 0.4, 0));
+  for (let i = 0; i < 5; i++) D.box('std', 0.6, 25 + (i % 2 ? 0 : 0), -20 + i * 8 + 4, 1.4, 5, 8, i % 2 ? '#e8e8e0' : '#c8281e', null, S(DET.plasticworn, 0.4, 0));
+  for (let i = 0; i < 5; i++) D.box('std', 0.6, 17, -20 + i * 8 + 4, 1.4, 5, 8, i % 2 ? '#c8281e' : '#e8e8e0', null, S(DET.plasticworn, 0.4, 0));
   D.box('blink', 1.6, 32, 0, 2.6, 2.6, 2.6, '#ff9a1a', null, { emissive: 3.2 });
 }
 

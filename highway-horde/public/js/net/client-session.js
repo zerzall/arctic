@@ -19,7 +19,7 @@ import { mapBuildOptions } from '../shared/story/registry.js';
 import { createCollisionWorld, stepPlayerMovement, eyeHeight, groundSpeed } from '../shared/movement.js';
 import { syncGateColliders } from '../shared/level.js';
 import { copyVertical } from '../shared/jump.js';
-import { WEAPONS } from '../shared/weapons.js';
+import { WEAPONS, chargeTime, tightenedWeapon } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { rayCircle } from '../shared/geom.js';
@@ -826,10 +826,19 @@ export class ClientSession extends Emitter {
     // after the trigger is released); a live one follows the host's burst rule.
     const logged = live ? 0 : this.shotLog.get(cmd.seq) || 0;
     const fire = trigger || (live ? W.burstLeft > 0 : logged > 0);
+    // the host's spin (players.js handleFire): spin-up, a charge, the Barrage MG's wind-up
+    const wind = w.spinup || chargeTime(w);
     if (live) {
-      if (!w.spinup) W.spin = 0;
-      else if (fire) W.spin = Math.min(1, W.spin + DT / w.spinup);
-      else W.spin = Math.max(0, W.spin - DT / (w.spinup * 0.6));
+      if (wind) {
+        if (fire && !(w.charge && W.cooldown > COOLDOWN_EPS)) W.spin = Math.min(1, W.spin + DT / wind);
+        else if (!fire) W.spin = Math.max(0, W.spin - DT / (wind * 0.6));
+      } else if (w.tighten) {
+        const loaded = (aw.slot < 0 ? W.freeMag : W.mag[aw.slot]) > 0;
+        if (fire && loaded && W.reloadLeft <= 0) W.spin = Math.min(1, W.spin + DT / w.tighten.time);
+        else W.spin = Math.max(0, W.spin - DT / (w.tighten.time * 0.5));
+      } else {
+        W.spin = 0;
+      }
     }
     if (!fire) {
       if (live && W.cooldown < 0) W.cooldown = 0;
@@ -865,7 +874,7 @@ export class ClientSession extends Emitter {
       }
       return;
     }
-    if (w.spinup && W.spin < 1) {
+    if (wind && W.spin < 1) {
       if (W.cooldown < 0) W.cooldown = 0;
       return;
     }
@@ -878,11 +887,16 @@ export class ClientSession extends Emitter {
         }
         W.burstLeft--;
       }
-      this._emitShot(aw, w, h, cmd);
+      // (the Barrage MG's spread tightens with its wind-up, weapons.js `tighten`)
+      this._emitShot(aw, tightenedWeapon(w, W.spin), h, cmd);
       if (cmd.aim3d) aimKick(W.aim, h, (p.duckT || 0) > 0 ? 0.85 : 1);
       mag--;
       W.cooldown += spec.burst && W.burstLeft === 0 ? spec.burstDelay : 1 / spec.rate;
       shots++;
+      if (w.charge) {
+        W.spin = 0;
+        break;
+      }
     }
     if (mag <= 0) W.burstLeft = 0;
     if (aw.slot < 0) W.freeMag = mag;
@@ -937,6 +951,10 @@ export class ClientSession extends Emitter {
       const sil = aw.slot >= 0 && sec && sec.type === 'silencer' && (W.modes[aw.slot] & MODE_SIL) !== 0;
       fl = SHOT_3D | (sil ? SHOT_SIL : 0) | (W.scope > 0 ? SHOT_SCOPE : 0);
       const st = this._shotState(weapon, this.stScratch || (this.stScratch = {}));
+      // a gun whose spread differs from the table's (a wound-up Barrage MG) scales the cone like
+      // the host's aimNow (shared/sim/players.js)
+      const base = WEAPONS[weapon];
+      if (base && base.spread > 0 && w.spread !== base.spread) st.accK = w.spread / base.spread;
       const cone = inaccuracyOf(h, st), spread = h.spread * (st.accK || 1);
       const c0 = discOffset(cone, Math.random(), Math.random(), [0, 0]);
       const pitch = cmd.pitch || 0, ca = Math.cos(angle), sa = Math.sin(angle), cp = Math.cos(pitch), spt = Math.sin(pitch);

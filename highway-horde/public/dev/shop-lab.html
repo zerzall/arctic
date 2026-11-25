@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buy Menu Lab — Highway Horde</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../css/game.css">
+<script type="importmap">
+  { "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  /* a stand-in for the game behind the menu: dusk over the road */
+  #scene { position: fixed; inset: 0; background: linear-gradient(180deg, #2d3644 0%, #4a4a52 46%, #2a2724 47%, #1a1917 100%); }
+  #scene::after { content: ''; position: absolute; left: 0; right: 0; top: 47%; height: 2px; background: rgba(255, 210, 120, 0.25); }
+  #shop-root { position: fixed; inset: 0; }
+</style>
+<script type="module" src="./shop-lab.js"></script>
+</head>
+<body>
+<div id="scene"></div>
+<div id="shop-root" class="shop-root"></div>
+</body>
+</html>

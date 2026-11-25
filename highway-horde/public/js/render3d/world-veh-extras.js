@@ -240,7 +240,7 @@ export function vehicleExtras(B, o, v) {
 export function fireTruck(B, o, v, L, W, wheelFn) {
   const r = B.rng;
   const red = v.color;
-  const S2 = { surf: [DET.panel, 0.32, 0.4] };
+  const S2 = { surf: [DET.carpaint, 0.32, 0.4] };
   const Sm = { surf: [0, 0.2, 0.9] };
   B.block('std', 0, 13, 0, L * 0.98, 5, W * 0.62, '#1a1a1a', null, { surf: [DET.rust, 0.8, 0.5] });
   // cab (forward), pump body (aft), compartments

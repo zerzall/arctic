@@ -286,7 +286,9 @@ function dqWeapon(i) {
 // | str (≤ 60 chars) | enum list | rays | points.
 
 const ENUMS = {
-  explosion: ['frag', 'grenade', 'rocket', 'bloater'],
+  explosion: ['frag', 'grenade', 'rocket', 'bloater', 'singularity'],
+  // a saw blade (shared/sim/specials.js): ricocheted off a wall / cut a zombie / stopped (embedded or spent)
+  blade: ['wall', 'cut', 'stop'],
   throwKind: ['frag', 'molotov'],
   deployable: ['turret', 'barricade'],
   gameover: ['wiped', 'objective'],
@@ -364,6 +366,8 @@ const EVENT_SCHEMAS = [
   ['horde', [['x', 'pos'], ['y', 'pos'], ['n', 'u16']]],
   // Horde Elimination (SPEC §3.12): the next surge announced (its lanes, a boss in it, whole s to go) / let loose
   ['surge', [['what', ENUMS.surge], ['n', 'u16'], ['lanes', 'u16'], ['boss', 'bool'], ['time', 'u16']]],
+  // the saw-blade launcher's blades (protocol 14): a ricochet, a cut, the blade coming to rest
+  ['blade', [['what', ENUMS.blade], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang']]],
 ];
 
 /** Event types with a compact binary encoding (anything else travels as JSON). */

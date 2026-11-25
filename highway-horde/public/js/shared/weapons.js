@@ -30,7 +30,29 @@
 // projectile.flare: { radius, duration, dps } the flare burns on the ground where it lands.
 // projectile.drag / pin: a harpoon carries up to `drag` impaled zombies along and pins
 //   them (stunned) for `pin` s where it stops.
+// projectile 'blade' (saw-blade launcher): a spinning saw blade that slices through up to
+//   `pierce` zombies (each once per flight leg, kills `gib`), losing `slow` of its speed
+//   per cut, and ricochets off shot-blocking obstacles and the map edge up to `bounces`
+//   times (keeping `keep` of its speed); it embeds in the wall after the last bounce.
+//   shared/sim/specials.js.
+// projectile 'singularity' (the Hollow Star): a slow orb that drags every zombie within
+//   `pull.radius` toward itself (heavies resist, bosses are never moved), crushes what
+//   reaches its core (`core.dps` within `core.radius`), and collapses when its life ends
+//   or it meets a wall: `explodeDamage` to every zombie within `explodeRadius` (falling to
+//   half at the edge, never to players). shared/sim/specials.js.
 // arc: full cone width of a 'melee' weapon (radians).
+// charge: seconds the trigger is held before each shot (the snapshot's `spin` shows it);
+//   unlike the minigun's spin-up it drains again with every shot (the Hollow Star).
+// tighten: { to, time } spread shrinks from `spread` to `to` over `time` s of continuous
+//   fire (`spin` carries the wind-up), opening up again once the trigger is let go.
+// super: a super weapon: never in an ordinary weapon crate; bosses may drop it (SUPER_DROP).
+// secondary: what the right mouse button does with this gun, for the shooting-mechanics
+//   module (shared/handling.js, which fills in its defaults): { type: 'scope', levels:
+//   [fov, ...] } zoom steps, { type: 'burst', count, delay, rate } an alternative burst
+//   mode (rounds per burst, seconds between bursts, rounds/s within one), { type:
+//   'silencer', sfx } a screw-on suppressor (`sfx`: the suppressed report's sound id; it
+//   fits while the snapshot's per-slot `modes` has the silencer bit). The models carry the
+//   matching parts (a 'silencer' part and `muzzleBare` for the bare muzzle, scopes).
 
 export const WEAPONS = {
   pistol: {
@@ -83,7 +105,7 @@ export const WEAPONS = {
   },
   flare: {
     name: 'Flare Gun', short: 'FLR', category: 'special',
-    price: 900, unlockWave: 2,
+    price: 900, unlockWave: 1,
     kind: 'projectile', damage: 70, rate: 1.5, mag: 1, reserve: 30, reload: 1.0,
     pellets: 1, spread: 0.015, range: 1000, pierce: 1, falloff: 1, knockback: 60,
     projectile: { kind: 'flare', speed: 950, radius: 5, life: 1.05, flare: { radius: 52, duration: 8, dps: 30 } },
@@ -93,7 +115,7 @@ export const WEAPONS = {
   },
   tommy: {
     name: 'Tommy Gun', short: 'TMY', category: 'smg',
-    price: 1300, unlockWave: 2,
+    price: 1300, unlockWave: 1,
     kind: 'hitscan', damage: 23, rate: 13, mag: 50, reserve: 350, reload: 2.6,
     pellets: 1, spread: 0.12, range: 650, pierce: 1, falloff: 0.55, knockback: 35,
     moveMult: 0.97, recoil: 0.1, sound: 'tommy', tracer: '#ffcf7a',
@@ -101,7 +123,7 @@ export const WEAPONS = {
   },
   burst_rifle: {
     name: 'Burst Rifle', short: 'BRST', category: 'rifle',
-    price: 1500, unlockWave: 2,
+    price: 1500, unlockWave: 1,
     kind: 'hitscan', damage: 40, rate: 15, burst: 3, burstDelay: 0.3, mag: 30, reserve: 270, reload: 2.0,
     pellets: 1, spread: 0.02, range: 1200, pierce: 1, falloff: 0.8, knockback: 50,
     moveMult: 0.96, recoil: 0.13, sound: 'burst', tracer: '#ffd98a',
@@ -109,7 +131,7 @@ export const WEAPONS = {
   },
   dual_smg: {
     name: 'Twin Vipers', short: 'DUAL', category: 'smg',
-    price: 2100, unlockWave: 3,
+    price: 2100, unlockWave: 2,
     kind: 'hitscan', damage: 17, rate: 24, mag: 64, reserve: 448, reload: 2.2,
     pellets: 1, spread: 0.12, range: 700, pierce: 1, falloff: 0.6, knockback: 22,
     moveMult: 1.0, recoil: 0.09, sound: 'smg', tracer: '#ffe9a8',
@@ -117,7 +139,7 @@ export const WEAPONS = {
   },
   crossbow: {
     name: 'Crossbow', short: 'XBOW', category: 'special',
-    price: 2400, unlockWave: 3,
+    price: 2400, unlockWave: 2,
     kind: 'projectile', damage: 180, rate: 1.6, mag: 6, reserve: 60, reload: 2.0,
     pellets: 1, spread: 0.01, range: 1400, pierce: 8, falloff: 1, knockback: 120,
     projectile: { kind: 'bolt', speed: 1600, radius: 4, life: 1.2 },
@@ -126,7 +148,7 @@ export const WEAPONS = {
   },
   dmr: {
     name: 'Battle Rifle', short: 'DMR', category: 'rifle',
-    price: 2800, unlockWave: 3,
+    price: 2800, unlockWave: 2,
     kind: 'hitscan', damage: 85, rate: 3.5, mag: 20, reserve: 160, reload: 2.2,
     pellets: 1, spread: 0.02, range: 1300, pierce: 3, falloff: 0.85, knockback: 90,
     moveMult: 0.95, recoil: 0.22, sound: 'rifle_heavy', tracer: '#fff0b0',
@@ -134,7 +156,7 @@ export const WEAPONS = {
   },
   lever: {
     name: 'Lever-Action Rifle', short: 'LVR', category: 'rifle',
-    price: 1800, unlockWave: 3,
+    price: 1800, unlockWave: 1,
     kind: 'hitscan', damage: 160, rate: 2, mag: 8, reserve: 64, reload: 0.42, reloadOne: true,
     pellets: 1, spread: 0.008, range: 1400, pierce: 2, falloff: 0.9, knockback: 150,
     moveMult: 1.0, recoil: 0.32, sound: 'lever', tracer: '#fff0c0',
@@ -142,7 +164,7 @@ export const WEAPONS = {
   },
   sniper: {
     name: 'Sniper Rifle', short: 'SNPR', category: 'sniper',
-    price: 3200, unlockWave: 4,
+    price: 3200, unlockWave: 2,
     kind: 'hitscan', damage: 450, rate: 0.9, mag: 5, reserve: 40, reload: 2.8,
     pellets: 1, spread: 0, range: 2400, pierce: 10, falloff: 1, knockback: 250,
     moveMult: 0.9, recoil: 0.55, sound: 'sniper', tracer: '#ffffff',
@@ -150,15 +172,15 @@ export const WEAPONS = {
   },
   chainsaw: {
     name: 'Chainsaw', short: 'CSAW', category: 'melee',
-    price: 2400, unlockWave: 4,
+    price: 2400, unlockWave: 2,
     kind: 'melee', damage: 24, rate: 10, mag: 100, reserve: -1, reload: 2.0,
     pellets: 1, spread: 0, range: 64, arc: 1.5, pierce: 99, falloff: 1, knockback: 70, gib: true,
     moveMult: 0.92, recoil: 0.05, sound: 'chainsaw', tracer: '#c8c8c8',
     sprite: { len: 34, width: 9, color: '#e8620c', accent: '#2f2f2f', style: 'chainsaw' },
   },
   auto_shotgun: {
-    name: 'Auto Shotgun', short: 'AA12', category: 'shotgun',
-    price: 3600, unlockWave: 5,
+    name: 'Auto Shotgun', short: 'ASG', category: 'shotgun',
+    price: 3600, unlockWave: 3,
     kind: 'hitscan', damage: 16, rate: 4, mag: 16, reserve: 112, reload: 2.6,
     pellets: 7, spread: 0.3, range: 450, pierce: 1, falloff: 0.4, knockback: 70,
     moveMult: 0.93, recoil: 0.35, sound: 'shotgun', tracer: '#ffd27a',
@@ -166,7 +188,7 @@ export const WEAPONS = {
   },
   flamethrower: {
     name: 'Flamethrower', short: 'FLAME', category: 'heavy',
-    price: 4200, unlockWave: 5,
+    price: 4200, unlockWave: 3,
     kind: 'flame', damage: 9, rate: 30, mag: 200, reserve: 400, reload: 3.0,
     pellets: 1, spread: 0.12, range: 330, pierce: 99, falloff: 1, knockback: 0,
     projectile: { kind: 'flame', speed: 620, radius: 14, life: 0.5 },
@@ -176,7 +198,7 @@ export const WEAPONS = {
   },
   harpoon: {
     name: 'Harpoon Gun', short: 'HARP', category: 'special',
-    price: 2800, unlockWave: 5,
+    price: 2800, unlockWave: 3,
     kind: 'projectile', damage: 250, rate: 1.2, mag: 4, reserve: 32, reload: 2.0,
     pellets: 1, spread: 0.005, range: 1100, pierce: 5, falloff: 1, knockback: 0,
     projectile: { kind: 'harpoon', speed: 1250, radius: 5, life: 0.9, drag: 3, pin: 1.2 },
@@ -185,7 +207,7 @@ export const WEAPONS = {
   },
   cryo: {
     name: 'Cryo Blaster', short: 'CRYO', category: 'special',
-    price: 3200, unlockWave: 5,
+    price: 3200, unlockWave: 3,
     kind: 'cryo', damage: 9, rate: 20, mag: 160, reserve: 320, reload: 2.8,
     pellets: 1, spread: 0.1, range: 300, pierce: 99, falloff: 1, knockback: 0,
     projectile: { kind: 'frost', speed: 560, radius: 16, life: 0.55 },
@@ -195,7 +217,7 @@ export const WEAPONS = {
   },
   lmg: {
     name: 'Light Machine Gun', short: 'LMG', category: 'heavy',
-    price: 4400, unlockWave: 6,
+    price: 4400, unlockWave: 4,
     kind: 'hitscan', damage: 36, rate: 12, mag: 100, reserve: 400, reload: 4.0,
     pellets: 1, spread: 0.07, range: 1100, pierce: 2, falloff: 0.75, knockback: 50,
     moveMult: 0.82, recoil: 0.14, sound: 'lmg', tracer: '#ffcc66',
@@ -203,7 +225,7 @@ export const WEAPONS = {
   },
   grenade_launcher: {
     name: 'Grenade Launcher', short: 'GL', category: 'explosive',
-    price: 4600, unlockWave: 6,
+    price: 4600, unlockWave: 4,
     kind: 'projectile', damage: 60, rate: 1.5, mag: 6, reserve: 36, reload: 3.0,
     pellets: 1, spread: 0.02, range: 900, pierce: 1, falloff: 1, knockback: 0,
     projectile: { kind: 'grenade', speed: 700, radius: 6, life: 1.3, explodeRadius: 130, explodeDamage: 220 },
@@ -212,7 +234,7 @@ export const WEAPONS = {
   },
   rocket: {
     name: 'Rocket Launcher', short: 'RPG', category: 'explosive',
-    price: 6200, unlockWave: 8,
+    price: 6200, unlockWave: 6,
     kind: 'projectile', damage: 120, rate: 0.9, mag: 1, reserve: 14, reload: 1.8,
     pellets: 1, spread: 0.01, range: 1600, pierce: 1, falloff: 1, knockback: 0,
     projectile: { kind: 'rocket', speed: 900, radius: 7, life: 2.0, explodeRadius: 180, explodeDamage: 600 },
@@ -221,7 +243,7 @@ export const WEAPONS = {
   },
   tesla: {
     name: 'Tesla Gun', short: 'TSLA', category: 'special',
-    price: 6800, unlockWave: 8,
+    price: 6800, unlockWave: 6,
     kind: 'chain', damage: 45, rate: 6, mag: 40, reserve: 200, reload: 2.5,
     pellets: 1, spread: 0.05, range: 600, pierce: 1, falloff: 1, knockback: 30,
     chains: 5, chainRange: 180,
@@ -230,7 +252,7 @@ export const WEAPONS = {
   },
   minigun: {
     name: 'Minigun', short: 'MINI', category: 'heavy',
-    price: 8000, unlockWave: 9,
+    price: 8000, unlockWave: 7,
     kind: 'hitscan', damage: 30, rate: 30, mag: 300, reserve: 600, reload: 5.0,
     pellets: 1, spread: 0.07, range: 1000, pierce: 1, falloff: 0.7, knockback: 35,
     spinup: 0.7,
@@ -239,7 +261,7 @@ export const WEAPONS = {
   },
   railgun: {
     name: 'Railgun', short: 'RAIL', category: 'special',
-    price: 9500, unlockWave: 10,
+    price: 9500, unlockWave: 8,
     kind: 'rail', damage: 900, rate: 0.85, mag: 4, reserve: 28, reload: 2.6,
     pellets: 1, spread: 0, range: 3000, pierce: 999, falloff: 1, knockback: 300,
     moveMult: 0.9, recoil: 0.7, sound: 'rail', tracer: '#b388ff',
@@ -247,7 +269,7 @@ export const WEAPONS = {
   },
   amr: {
     name: '.50 Anti-Materiel Rifle', short: '.50', category: 'sniper',
-    price: 10000, unlockWave: 10,
+    price: 10000, unlockWave: 8,
     kind: 'hitscan', damage: 1200, rate: 0.55, mag: 5, reserve: 30, reload: 3.4,
     pellets: 1, spread: 0, range: 3000, pierce: 20, falloff: 1, knockback: 420, gib: true,
     penetrate: { walls: 2, thick: 90, loss: 0.25 },
@@ -258,13 +280,223 @@ export const WEAPONS = {
   // minigun, a slower but harder-hitting stream, and a long belt change.
   hmg: {
     name: 'Belt-Fed Heavy MG', short: 'HMG', category: 'heavy',
-    price: 7400, unlockWave: 8,
+    price: 7400, unlockWave: 6,
     kind: 'hitscan', damage: 40, rate: 16, mag: 500, reserve: 1000, reload: 6.0,
     pellets: 1, spread: 0.075, range: 1100, pierce: 2, falloff: 0.75, knockback: 55,
     moveMult: 0.7, recoil: 0.16, sound: 'hmg', tracer: '#ffb74d',
     sprite: { len: 46, width: 12, color: '#2b2d27', accent: '#5b5a3c', style: 'hmg' },
   },
+
+  // ---- the arsenal update (protocol 14): appended, so older weapon indices keep their meaning ----
+
+  // Pistols. A pistol-category gun in slot 0 is what a downed survivor fights with.
+  // Cheap polymer 9mm: a bigger magazine and faster follow-ups than the M9; right-click
+  // switches to three-round bursts.
+  compact9: {
+    name: 'Compact 9mm', short: 'C9', category: 'pistol',
+    price: 300, unlockWave: 1,
+    kind: 'hitscan', damage: 22, rate: 6.5, mag: 18, reserve: 126, reload: 1.05,
+    pellets: 1, spread: 0.034, range: 850, pierce: 1, falloff: 0.65, knockback: 32,
+    moveMult: 1.0, recoil: 0.07, sound: 'pistol9c', tracer: '#ffe9a8',
+    secondary: { type: 'burst', count: 3, delay: 0.34, rate: 20 },
+    sprite: { len: 13, width: 5, color: '#2a2b2d', accent: '#4a4c50', style: 'compact' },
+  },
+  // .45 tactical pistol with a screw-on suppressor: accurate, hard-hitting for a sidearm.
+  tac45: {
+    name: 'Tactical .45', short: 'T45', category: 'pistol',
+    price: 500, unlockWave: 1,
+    kind: 'hitscan', damage: 37, rate: 4.2, mag: 12, reserve: 96, reload: 1.25,
+    pellets: 1, spread: 0.022, range: 950, pierce: 1, falloff: 0.75, knockback: 55,
+    moveMult: 1.0, recoil: 0.1, sound: 'pistol45', tracer: '#ffe2a0',
+    secondary: { type: 'silencer', sfx: 'pistol45_sup' },
+    sprite: { len: 20, width: 5, color: '#262729', accent: '#5d6166', style: 'tac45' },
+  },
+  // Heavy .50 semi-automatic: seven rounds that punch through two zombies, a quicker
+  // reload than the revolver's.
+  handcannon: {
+    name: 'Hand Cannon', short: 'HCN', category: 'pistol',
+    price: 750, unlockWave: 1,
+    kind: 'hitscan', damage: 88, rate: 2.6, mag: 7, reserve: 49, reload: 1.5,
+    pellets: 1, spread: 0.02, range: 1150, pierce: 2, falloff: 0.8, knockback: 140,
+    moveMult: 1.0, recoil: 0.32, sound: 'handcannon', tracer: '#fff0b8',
+    sprite: { len: 17, width: 6, color: '#9a9c9e', accent: '#262626', style: 'handcannon' },
+  },
+  // Full-auto machine pistol: a hose of 9mm that still counts as a pistol (it fights on
+  // when you are down).
+  mpistol: {
+    name: 'Machine Pistol', short: 'MPL', category: 'pistol',
+    price: 650, unlockWave: 1,
+    kind: 'hitscan', damage: 16, rate: 17, mag: 20, reserve: 200, reload: 1.25,
+    pellets: 1, spread: 0.1, range: 650, pierce: 1, falloff: 0.55, knockback: 18,
+    moveMult: 1.0, recoil: 0.06, sound: 'mpistol', tracer: '#ffe9a8',
+    sprite: { len: 15, width: 5, color: '#232323', accent: '#3c3c3c', style: 'mpistol' },
+  },
+
+  // SMGs.
+  // Roller-locked 9mm sub-gun: the accurate one.
+  smg9: {
+    name: 'Compact SMG', short: 'CSMG', category: 'smg',
+    price: 1250, unlockWave: 1,
+    kind: 'hitscan', damage: 22, rate: 12.5, mag: 30, reserve: 270, reload: 1.6,
+    pellets: 1, spread: 0.045, range: 820, pierce: 1, falloff: 0.65, knockback: 28,
+    moveMult: 1.0, recoil: 0.065, sound: 'smg9', tracer: '#ffe9a8',
+    sprite: { len: 24, width: 6, color: '#1f2022', accent: '#3a3c3f', style: 'csmg' },
+  },
+  // Bullpup PDW: a 50-round magazine lying along the top, small armour-piercing rounds.
+  pdw: {
+    name: 'Bullpup PDW', short: 'PDW', category: 'smg',
+    price: 2350, unlockWave: 2,
+    kind: 'hitscan', damage: 20, rate: 15, mag: 50, reserve: 300, reload: 2.3,
+    pellets: 1, spread: 0.06, range: 850, pierce: 2, falloff: 0.7, knockback: 20,
+    moveMult: 1.0, recoil: 0.06, sound: 'pdw', tracer: '#e8f0ff',
+    sprite: { len: 22, width: 7, color: '#5a5440', accent: '#1d1d1d', style: 'pdw' },
+  },
+  // .45 box-magazine SMG: slow and heavy-hitting, knocks zombies back.
+  smg45: {
+    name: '.45 SMG', short: 'S45', category: 'smg',
+    price: 1500, unlockWave: 1,
+    kind: 'hitscan', damage: 31, rate: 10.5, mag: 25, reserve: 225, reload: 1.8,
+    pellets: 1, spread: 0.06, range: 720, pierce: 1, falloff: 0.6, knockback: 58,
+    moveMult: 0.99, recoil: 0.09, sound: 'smg45', tracer: '#ffcf7a',
+    sprite: { len: 25, width: 6, color: '#2a2a2a', accent: '#6a6458', style: 'smg45' },
+  },
+
+  // Shotguns.
+  // Semi-automatic tube-fed: shells go in one at a time (a trigger pull stops the reload).
+  combat_sg: {
+    name: 'Combat Shotgun', short: 'CBT', category: 'shotgun',
+    price: 2200, unlockWave: 1,
+    kind: 'hitscan', damage: 16, rate: 3.2, mag: 7, reserve: 56, reload: 0.45, reloadOne: true,
+    pellets: 8, spread: 0.25, range: 500, pierce: 1, falloff: 0.4, knockback: 75,
+    moveMult: 0.96, recoil: 0.38, sound: 'shotgun_semi', tracer: '#ffd27a',
+    sprite: { len: 33, width: 7, color: '#1e1f21', accent: '#4a4d52', style: 'combatsg' },
+  },
+  // Box-magazine shotgun: a tight choke that reaches further, a fast magazine change.
+  box_sg: {
+    name: 'Box-Mag Shotgun', short: 'BOX', category: 'shotgun',
+    price: 2700, unlockWave: 2,
+    kind: 'hitscan', damage: 13, rate: 4.2, mag: 10, reserve: 60, reload: 2.3,
+    pellets: 8, spread: 0.17, range: 580, pierce: 1, falloff: 0.45, knockback: 62,
+    moveMult: 0.95, recoil: 0.33, sound: 'shotgun_box', tracer: '#ffd27a',
+    sprite: { len: 32, width: 8, color: '#2c2e26', accent: '#1a1a1a', style: 'boxsg' },
+  },
+
+  // Rifles.
+  // AK-pattern 7.62: hits hard and goes through two, kicks and wanders.
+  ak: {
+    name: 'AK-Pattern Rifle', short: 'AK', category: 'rifle',
+    price: 2500, unlockWave: 1,
+    kind: 'hitscan', damage: 45, rate: 9.5, mag: 30, reserve: 240, reload: 2.4,
+    pellets: 1, spread: 0.055, range: 1100, pierce: 2, falloff: 0.75, knockback: 60,
+    moveMult: 0.95, recoil: 0.15, sound: 'ak', tracer: '#ffd98a',
+    sprite: { len: 35, width: 6, color: '#2b2b2b', accent: '#7a4424', style: 'ak' },
+  },
+  // M4-style carbine: quick and accurate; right-click screws the suppressor on or off.
+  m4: {
+    name: 'M4 Carbine', short: 'M4', category: 'rifle',
+    price: 2300, unlockWave: 1,
+    kind: 'hitscan', damage: 33, rate: 11.5, mag: 30, reserve: 270, reload: 2.0,
+    pellets: 1, spread: 0.035, range: 1100, pierce: 1, falloff: 0.75, knockback: 40,
+    moveMult: 0.97, recoil: 0.1, sound: 'carbine', tracer: '#ffe08a',
+    secondary: { type: 'silencer', sfx: 'carbine_sup' },
+    sprite: { len: 32, width: 6, color: '#25272a', accent: '#8a7350', style: 'm4' },
+  },
+  // Scoped bullpup: a long barrel in a short gun, a built-in optic (right-click zooms).
+  bullpup: {
+    name: 'Scoped Bullpup', short: 'SBP', category: 'rifle',
+    price: 3100, unlockWave: 2,
+    kind: 'hitscan', damage: 38, rate: 9, mag: 30, reserve: 240, reload: 2.2,
+    pellets: 1, spread: 0.028, range: 1350, pierce: 1, falloff: 0.85, knockback: 45,
+    moveMult: 0.95, recoil: 0.11, sound: 'bullpup', tracer: '#ffe9a8',
+    secondary: { type: 'scope', levels: [50] },
+    sprite: { len: 30, width: 6, color: '#3e4a2e', accent: '#1b1c1e', style: 'bullpup' },
+  },
+
+  // Snipers.
+  // Light bolt-action: you can run with it; one round drops a walker for most of a game.
+  scout: {
+    name: 'Scout Rifle', short: 'SCT', category: 'sniper',
+    price: 1700, unlockWave: 1,
+    kind: 'hitscan', damage: 185, rate: 1.3, mag: 10, reserve: 60, reload: 2.0,
+    pellets: 1, spread: 0.004, range: 2000, pierce: 4, falloff: 1, knockback: 150,
+    moveMult: 1.0, recoil: 0.35, sound: 'scout', tracer: '#ffffff',
+    secondary: { type: 'scope', levels: [40, 15] },
+    sprite: { len: 42, width: 6, color: '#2a2d30', accent: '#4f5a3a', style: 'scout' },
+  },
+  // Magnum bolt-action: one round kills anything short of a brute, and blows it apart.
+  magsniper: {
+    name: 'Magnum Sniper', short: 'MSN', category: 'sniper',
+    price: 4750, unlockWave: 3,
+    kind: 'hitscan', damage: 720, rate: 0.75, mag: 5, reserve: 30, reload: 3.0,
+    pellets: 1, spread: 0, range: 2600, pierce: 12, falloff: 1, knockback: 300, gib: true,
+    moveMult: 0.85, recoil: 0.65, sound: 'magsniper', tracer: '#fff6e8',
+    secondary: { type: 'scope', levels: [40, 12] },
+    sprite: { len: 50, width: 7, color: '#6e6048', accent: '#1d1e1f', style: 'magsniper' },
+  },
+  // Semi-automatic sniper: twenty heavy rounds as fast as you can pull.
+  autosniper: {
+    name: 'Semi-Auto Sniper', short: 'SAS', category: 'sniper',
+    price: 5000, unlockWave: 6,
+    kind: 'hitscan', damage: 150, rate: 4, mag: 20, reserve: 100, reload: 3.0,
+    pellets: 1, spread: 0.008, range: 2200, pierce: 4, falloff: 1, knockback: 110,
+    moveMult: 0.82, recoil: 0.3, sound: 'autosniper', tracer: '#ffffff',
+    secondary: { type: 'scope', levels: [40, 15] },
+    sprite: { len: 46, width: 7, color: '#262829', accent: '#4a4f3a', style: 'autosniper' },
+  },
+
+  // Machine guns (category 'heavy').
+  // General-purpose MG with a 100-round belt: slower than the LMG, every round hits harder.
+  m60: {
+    name: 'M60 Machine Gun', short: 'M60', category: 'heavy',
+    price: 5200, unlockWave: 4,
+    kind: 'hitscan', damage: 48, rate: 9.5, mag: 100, reserve: 300, reload: 4.8,
+    pellets: 1, spread: 0.065, range: 1150, pierce: 2, falloff: 0.78, knockback: 70,
+    moveMult: 0.83, recoil: 0.17, sound: 'm60', tracer: '#ffc46a',
+    sprite: { len: 44, width: 9, color: '#2a2b28', accent: '#4b5a2e', style: 'm60' },
+  },
+  // High-capacity MG: 150 rounds, wild for the first rounds, then the spread tightens to a
+  // laser the longer you hold the trigger.
+  barrage: {
+    name: 'Barrage MG', short: 'BRG', category: 'heavy',
+    price: 6000, unlockWave: 5,
+    kind: 'hitscan', damage: 30, rate: 15, mag: 150, reserve: 450, reload: 5.2,
+    pellets: 1, spread: 0.11, range: 1100, pierce: 1, falloff: 0.75, knockback: 35,
+    tighten: { to: 0.02, time: 1.4 },
+    moveMult: 0.8, recoil: 0.12, sound: 'barrage', tracer: '#ffb84d',
+    sprite: { len: 42, width: 10, color: '#2a2c2a', accent: '#3f4a3a', style: 'barrage' },
+  },
+
+  // Specials.
+  // Fires spinning saw blades that slice through a line of zombies and ricochet off walls.
+  sawblade: {
+    name: 'Saw-Blade Launcher', short: 'SAWL', category: 'special',
+    price: 3000, unlockWave: 2,
+    kind: 'projectile', damage: 80, rate: 2, mag: 8, reserve: 48, reload: 2.6,
+    pellets: 1, spread: 0.01, range: 1300, pierce: 10, falloff: 1, knockback: 90, gib: true,
+    projectile: { kind: 'blade', speed: 1050, radius: 9, life: 1.8, bounces: 4, keep: 0.86, slow: 0.95 },
+    moveMult: 0.94, recoil: 0.25, sound: 'sawlaunch', tracer: '#d8dde2',
+    sprite: { len: 30, width: 12, color: '#c9a227', accent: '#2a2a2a', style: 'sawblade' },
+  },
+  // The super weapon: hold the trigger to charge a captive singularity; the orb drags the
+  // horde into itself and collapses. Very expensive, late, and the rare boss drop.
+  hollowstar: {
+    name: 'Hollow Star', short: 'STAR', category: 'special',
+    price: 16000, unlockWave: 10, super: true,
+    kind: 'projectile', damage: 0, rate: 0.55, mag: 3, reserve: 6, reload: 3.6,
+    pellets: 1, spread: 0, range: 600, pierce: 999, falloff: 1, knockback: 0, gib: true,
+    charge: 0.75,
+    projectile: {
+      kind: 'singularity', speed: 400, radius: 12, life: 1.5,
+      pull: { radius: 260, force: 2600 }, core: { radius: 30, dps: 700 },
+      explodeRadius: 220, explodeDamage: 1600,
+    },
+    moveMult: 0.82, recoil: 0.8, sound: 'hollowstar', tracer: '#c4a0ff',
+    sprite: { len: 34, width: 12, color: '#1c1824', accent: '#c4a0ff', style: 'hollowstar' },
+  },
 };
+
+/** Chance that a boss leaves the super weapon in its crate instead of an ordinary gun (from SUPER_DROP.wave). */
+export const SUPER_DROP = { chance: 0.1, wave: 10 };
 
 // Stable order — the wire protocol sends weapons as indices into this array.
 export const WEAPON_IDS = Object.keys(WEAPONS);
@@ -275,9 +507,11 @@ export function weaponIndex(id) {
 
 /**
  * Shots per second with the trigger held (a burst gun pauses `burstDelay` after each
- * burst; everything else fires at `rate`).
+ * burst, a charged gun charges `charge` seconds before each shot; everything else fires at `rate`).
  */
 export function effectiveRate(w) {
+  // (a charged shot: the charge starts once the cooldown is over)
+  if (w.charge > 0) return 1 / (1 / w.rate + w.charge);
   if (!w.burst || w.burst <= 1) return w.rate;
   return w.burst / ((w.burst - 1) / w.rate + w.burstDelay);
 }
@@ -287,13 +521,58 @@ export function fullReloadTime(w) {
   return w.reloadOne ? w.reload * w.mag : w.reload;
 }
 
-/** Weapons a random weapon crate may contain on the given wave (never the starter pistol). */
+/**
+ * Weapons a random weapon crate may contain on the given wave (never the starter pistol,
+ * never a super weapon: those only come from bosses, see SUPER_DROP).
+ */
 export function crateWeaponPool(wave) {
-  return WEAPON_IDS.filter((id) => id !== 'pistol' && WEAPONS[id].unlockWave <= wave + 2);
+  return WEAPON_IDS.filter((id) => id !== 'pistol' && !WEAPONS[id].super && WEAPONS[id].unlockWave <= wave + 2);
 }
 
-// Things thrown or fired that exist as entities for a while.
-export const PROJECTILE_KINDS = ['bolt', 'grenade', 'rocket', 'flame', 'frag', 'molotov', 'acid', 'flare', 'frost', 'harpoon'];
+/**
+ * Seconds of held trigger before the next shot of a charging gun (0 for every other gun):
+ * the sim and the clients' shot prediction both use it.
+ */
+export function chargeTime(w) {
+  return w.charge > 0 ? w.charge : 0;
+}
+
+const TIGHT_STEPS = 16;
+const tightCache = new WeakMap();
+/**
+ * A gun with `tighten` as it shoots at wind-up k (0..1, the player's `spin`): the same table
+ * entry with its spread moved from `spread` toward `tighten.to` (cached in 16 steps).
+ * Any other gun comes back as it is.
+ */
+export function tightenedWeapon(w, k) {
+  if (!w.tighten) return w;
+  let steps = tightCache.get(w);
+  if (!steps) {
+    steps = [];
+    tightCache.set(w, steps);
+  }
+  const i = Math.max(0, Math.min(TIGHT_STEPS, Math.round((k || 0) * TIGHT_STEPS)));
+  return steps[i] || (steps[i] = { ...w, spread: w.spread + (w.tighten.to - w.spread) * (i / TIGHT_STEPS) });
+}
+
+/**
+ * Buy-menu section of a gun, like a CS buy menu: 'pistols', 'smgs', 'heavy' (shotguns and
+ * machine guns), 'rifles', 'snipers', 'specials' (special, explosive and melee weapons).
+ */
+export function buySection(id) {
+  const c = WEAPONS[id] && WEAPONS[id].category;
+  switch (c) {
+    case 'pistol': return 'pistols';
+    case 'smg': return 'smgs';
+    case 'shotgun': case 'heavy': return 'heavy';
+    case 'rifle': return 'rifles';
+    case 'sniper': return 'snipers';
+    default: return 'specials';
+  }
+}
+
+// Things thrown or fired that exist as entities for a while. Append only (wire indices).
+export const PROJECTILE_KINDS = ['bolt', 'grenade', 'rocket', 'flame', 'frag', 'molotov', 'acid', 'flare', 'frost', 'harpoon', 'blade', 'singularity'];
 
 /**
  * Frost from the cryo blaster. Each 'frost' puff adds the gun's `chill` (0..1) to every

@@ -30,16 +30,31 @@ else opens the invite link.
   skip, L for the log; an optional spoken voice per character is in Settings and off by
   default). Play solo with AI survivors, host online or join a friend, and the campaign
   goes on where you left it. See "Story saves" below.
-- **27 guns**: M9 pistol, magnum, sawed-off, micro SMG, pump shotgun, assault rifle, flare
-  gun, Tommy gun, burst rifle, twin SMGs, crossbow, battle rifle, lever-action rifle,
-  sniper, chainsaw, auto shotgun, flamethrower, harpoon gun, cryo blaster, LMG, grenade
-  launcher, rocket launcher, tesla gun, a belt-fed heavy machine gun carried at the hip with
-  a 500-round belt, minigun, railgun and the .50 anti-materiel rifle.
+- **46 guns**, in the buy menu's sections:
+  - *Pistols*: M9 pistol (you start with it), compact 9mm (auto or 3-round bursts), tactical
+    .45 (screw-on silencer), hand cannon, machine pistol, magnum, flare gun.
+  - *SMGs*: micro SMG, compact SMG, .45 SMG, Tommy gun, twin SMGs, bullpup PDW (50-round top
+    magazine).
+  - *Heavy*: sawed-off, pump shotgun, combat shotgun, box-mag shotgun, auto shotgun, and the
+    machine guns — the LMG, the M60 (100-round belt), the Barrage MG (150 rounds, its spray
+    tightens as it keeps firing), the flamethrower, a belt-fed heavy MG carried at the hip with
+    a 500-round belt, and the minigun.
+  - *Rifles*: burst rifle, lever-action rifle, assault rifle, M4 carbine (screw-on silencer),
+    AK-pattern rifle, battle rifle, scoped bullpup.
+  - *Snipers*: scout rifle, sniper rifle, magnum sniper, semi-auto sniper, the .50
+    anti-materiel rifle.
+  - *Specials*: crossbow, chainsaw, harpoon gun, saw-blade launcher, cryo blaster, grenade
+    launcher, rocket launcher, tesla gun, railgun — and the **Hollow Star**, the super weapon.
   Some have tricks: the burst rifle fires 3-round bursts, the lever-action loads one shell
   at a time, flares burn and light up the area where they land, the cryo blaster slows and
   then freezes zombies solid, the chainsaw cuts through everything in front of you, the
-  harpoon skewers a line of zombies and pins them to the next wall, and the .50 punches
-  through thin cover. There are also frag grenades, molotovs, sentry turrets and
+  harpoon skewers a line of zombies and pins them to the next wall, the .50 punches through
+  thin cover, the saw-blade launcher's blades slice through a whole line of zombies and
+  ricochet off walls to come back for more, and the Hollow Star charges up and fires a
+  captive black hole that drags the horde in, grinds up what reaches its core and collapses
+  in a shockwave. It's rare: wave 10 in the shop at $16,000, or a lucky drop from a boss.
+  The right mouse button does what the gun has: zoom a scope, switch to bursts, screw a
+  silencer on or off. There are also frag grenades, molotovs, sentry turrets and
   barricades.
 - **8 kinds of zombie**, each with its own trick: walkers, runners, crawlers, bloaters
   that burst, spitters that lob acid, screamers that speed up the horde, charging brutes,
@@ -384,6 +399,10 @@ In the classic top-down view the mouse points where you shoot and nothing is cap
   Buildings, tall walls and trucks are too high (trucks only from a roof next to them).
 - The shop is open between waves. Mid-wave, you can only buy at the supply station (in
   an Evac Run also at the zone's supply drop).
+- Buy fast: press B, then a digit for the section (1 pistols, 2 SMGs, 3 heavy, 4 rifles,
+  5 snipers, 6 specials, 7 equipment) and a digit for the item — B 4 2 buys the second
+  rifle. Backspace goes back; Q and E step through the sections. With a gamepad: the
+  D-pad and A, LB / RB for the sections, B to go back.
 - Evac Run: leave for the next zone as soon as it's announced, and press N once you're
   in to start the wave early. When the circle shrinks, head for the white ring.
 - Every fifth wave brings a boss. Save a frag or two for it.

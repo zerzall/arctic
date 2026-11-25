@@ -59,7 +59,7 @@ export function sandbags(B, L, W, color) {
       const x = -L / 2 + ((i + 0.5 + off * (i < n - 1 ? 1 : 0)) * L) / n;
       const c = mixHex(color, r.chance(0.5) ? '#a09070' : '#5e5238', r.range(0, 0.35));
       const bz = r.range(-1, 1), ba = r.range(-0.1, 0.1);
-      B.add('std', T.pillow(12, 7, 0.4), [x, bagH * 0.5 + row * (bagH - 0.8), bz], [bagL / 2 + 0.6, bagH * 0.6, depth / 2 - row * 1.1], [r.range(-0.05, 0.05), ba, r.range(-0.06, 0.06)], c, { surf: [DET.fabric, 0.92, 0] });
+      B.add('std', T.pillow(12, 7, 0.4), [x, bagH * 0.5 + row * (bagH - 0.8), bz], [bagL / 2 + 0.6, bagH * 0.6, depth / 2 - row * 1.1], [r.range(-0.05, 0.05), ba, r.range(-0.06, 0.06)], c, { surf: [DET.burlap, 0.95, 0] });
       if (DETAIL.level >= 3) CIN.cinSandbag(B, x, row * (bagH - 0.8) + bagH * 0.5, bz, bagL, bagH, depth, ba, c, r);
     }
   }
@@ -151,8 +151,8 @@ export function container(B, o, L, W) {
     if (light) {
       // propane cage: wire cage with white cylinders inside
       for (let x = -L / 2 + 8; x < L / 2 - 4; x += 12) {
-        B.cyl('std', x, 0, 0, 5.5, 40, '#e8e6e0', 12, 1, null, { surf: [DET.panel, 0.35, 0.3] });
-        B.add('std', T.sphere(10, 6), [x, 40, 0], [5.5, 3, 5.5], null, '#e8e6e0', { surf: [DET.panel, 0.35, 0.3] });
+        B.cyl('std', x, 0, 0, 5.5, 40, '#e8e6e0', 12, 1, null, { surf: [DET.paintmetal, 0.4, 0.3] });
+        B.add('std', T.sphere(10, 6), [x, 40, 0], [5.5, 3, 5.5], null, '#e8e6e0', { surf: [DET.paintmetal, 0.4, 0.3] });
         B.cyl('std', x, 43, 0, 1.2, 3, '#8a8a80', 6, 1, null, { surf: [0, 0.3, 0.9] });
       }
       B.block('std', 0, 60, 0, L, 3, W, '#9aa0a4', null, { surf: [DET.rust, 0.5, 0.8] });
@@ -165,7 +165,7 @@ export function container(B, o, L, W) {
     } else if (L >= 55 && W >= 40) {
       // generator: skid, enclosure with louvres, exhaust, status light
       B.block('std', 0, 0, 0, L, 8, W, '#222', null, { surf: [DET.rust, 0.7, 0.6] });
-      B.rblock('std', 0, 8, 0, L * 0.96, 48, W * 0.96, 2, color, null, { surf: [DET.panel, 0.55, 0.4] });
+      B.rblock('std', 0, 8, 0, L * 0.96, 48, W * 0.96, 2, color, null, { surf: [DET.paintmetal, 0.55, 0.4] });
       for (const s of [-1, 1]) B.box('std', L * 0.2, 32, s * (W * 0.48 + 0.3), L * 0.4, 30, 0.8, '#1c1c1c', null, { surf: [DET.corrugated, 0.6, 0.5] });
       B.cyl('std', -L * 0.3, 56, W * 0.2, 3, 14, '#3a3a3a', 8, 1, null, { surf: [DET.rust, 0.7, 0.6] });
       B.box('glow', -L * 0.2, 44, W * 0.48 + 0.4, 5, 3, 0.4, '#7dff7a', null, { emissive: 2.4, uv: atlasUV('white') });
@@ -173,8 +173,8 @@ export function container(B, o, L, W) {
     } else {
       // dumpster: sloped plastic lids, rusty body, trash spilling around it
       B.block('std', 0, 0, 0, L * 0.9, 4, W * 0.9, '#1a1a1a', null, { surf: [DET.rust, 0.8, 0.5] });
-      B.add('std', T.profile('dumpster' + L, [[-L / 2, 4], [L / 2, 4], [L / 2, 52], [-L / 2, 46]], 1.2, W), [0, 0, 0], [1, 1, 1], null, color, { surf: [DET.rust, 0.7, 0.4] });
-      B.rbox('std', 0, 53, 0, L + 2, 2, W + 2, 0.8, shadeHex(color, -0.35), [0, 0, 0.1], { surf: [DET.plastic, 0.5, 0] });
+      B.add('std', T.profile('dumpster' + L, [[-L / 2, 4], [L / 2, 4], [L / 2, 52], [-L / 2, 46]], 1.2, W), [0, 0, 0], [1, 1, 1], null, color, { surf: [DET.paintrust, 0.7, 0.4] });
+      B.rbox('std', 0, 53, 0, L + 2, 2, W + 2, 0.8, shadeHex(color, -0.35), [0, 0, 0.1], { surf: [DET.plasticworn, 0.5, 0] });
       trashBags(B, r, 2 + Math.floor(r.next() * 3), L, W / 2 + 5);
       if (DETAIL.level >= 3) CIN.cinDumpster(B, L, W, color, r);
     }
@@ -213,8 +213,8 @@ export function trashBags(B, r, n, span, zNear) {
 /** Fuel pump on its island: curb, bollards, lit price display, hoses. */
 export function pump(B, L, W, color) {
   B.rblock('std', 0, 0, 0, L + 8, 6, W + 12, 1.2, CONCRETE, null, { surf: [DET.slab, 0.85, 0] });
-  for (const s of [-1, 1]) B.cyl('std', s * (L / 2 + 1), 6, 0, 2.2, 30, '#e8c21a', 10, 1, null, { surf: [DET.panel, 0.5, 0.2] });
-  B.rblock('std', 0, 6, 0, L * 0.72, 44, W * 0.62, 1.4, color, null, { surf: [DET.panel, 0.42, 0.3] });
+  for (const s of [-1, 1]) B.cyl('std', s * (L / 2 + 1), 6, 0, 2.2, 30, '#e8c21a', 10, 1, null, { surf: [DET.paintmetal, 0.5, 0.2] });
+  B.rblock('std', 0, 6, 0, L * 0.72, 44, W * 0.62, 1.4, color, null, { surf: [DET.paintmetal, 0.42, 0.3] });
   B.rblock('std', 0, 50, 0, L * 0.84, 5, W * 0.72, 1, shadeHex(color, -0.25), null, { surf: [DET.panel, 0.45, 0.4] });
   for (const s of [-1, 1]) {
     B.add('glow', T.plane(), [s * (L * 0.36 + 0.3), 37, 0], [W * 0.42, 10, 1], [0, s * Math.PI / 2, 0], '#ffffff', { emissive: 1.8, uv: atlasUV('pump') });
@@ -294,7 +294,7 @@ export function tent(B, L, W, color, roof) {
     // clear plastic windows along the walls (a dim lamp inside)
     for (let x = -L / 2 + 24; x < L / 2 - 20; x += 34) B.add('glow', T.plane(), [x, 22, s * (W / 2 + 0.3)], [12, 8, 1], [0, s > 0 ? 0 : Math.PI, 0], '#ffffff', { emissive: 0.4, uv: atlasUV('winDim') });
     // sandbags holding down the skirt
-    for (let x = -L / 2 + 8; x < L / 2 - 4; x += 16) B.add('std', T.pillow(8, 5, 0.45), [x, 3, s * (W / 2 + 3)], [7.5, 3.4, 4.5], [0, B.rng.range(-0.2, 0.2), 0], '#6e6248', { surf: [DET.fabric, 0.92, 0] });
+    for (let x = -L / 2 + 8; x < L / 2 - 4; x += 16) B.add('std', T.pillow(8, 5, 0.45), [x, 3, s * (W / 2 + 3)], [7.5, 3.4, 4.5], [0, B.rng.range(-0.2, 0.2), 0], '#6e6248', { surf: [DET.burlap, 0.95, 0] });
   }
   // stove pipe through the roof, and a red cross on some
   B.cyl('std', L * 0.25, 52, W * 0.18, 1.8, 40, '#2a2a2a', 8, 1, null, { surf: [DET.rust, 0.7, 0.6] });
@@ -436,7 +436,7 @@ export function cone(B, d) {
   const R = 6 * s;
   const r = B.rng;
   const orange = '#e8641c';
-  const S = [DET.plastic, 0.55, 0];
+  const S = [DET.plasticworn, 0.55, 0];
   if (r.chance(0.3)) {
     B.add('std', T.cyl(12, 0.18), [0, R * 0.8, 0], [R, R * 3, R], [0, r.range(0, 6), Math.PI / 2], orange, { surf: S, map: 'cyl' });
     return;
@@ -487,9 +487,9 @@ export function debris(B, d) {
   for (let k = 0; k < n; k++) {
     const roll = r.next();
     const x = r.range(-10, 10) * s, z = r.range(-10, 10) * s;
-    if (roll < 0.35) B.box('std', x, 0.6, z, r.range(8, 16) * s, 0.8, r.range(3, 6) * s, r.pick(['#5a4632', '#6b5a44', '#4a3a2a']), [r.range(-0.1, 0.1), r.range(0, 6), r.range(-0.08, 0.08)], { surf: [DET.wood, 0.85, 0] });
+    if (roll < 0.35) B.box('std', x, 0.6, z, r.range(8, 16) * s, 0.8, r.range(3, 6) * s, r.pick(['#5a4632', '#6b5a44', '#4a3a2a']), [r.range(-0.1, 0.1), r.range(0, 6), r.range(-0.08, 0.08)], { surf: [DET.crate, 0.85, 0] });
     else if (roll < 0.65) B.box('std', x, 0.5, z, r.range(8, 14) * s, 0.5, r.range(6, 10) * s, r.pick(['#5a5e62', '#6a3a2a', '#3a4a5a']), [r.range(-0.15, 0.15), r.range(0, 6), r.range(-0.15, 0.15)], { surf: [DET.rust, 0.6, 0.7] });
-    else if (roll < 0.8) B.cyl('std', x, 0, z, 3.4 * s, 7 * s, r.pick(['#c43a2a', '#2a5ac4', '#e0c02a', '#e8e8e8']), 10, 0.85, null, { surf: [DET.plastic, 0.45, 0] });
+    else if (roll < 0.8) B.cyl('std', x, 0, z, 3.4 * s, 7 * s, r.pick(['#c43a2a', '#2a5ac4', '#e0c02a', '#e8e8e8']), 10, 0.85, null, { surf: [DET.plasticworn, 0.45, 0] });
     else B.add('std', T.pillow(9, 6, 0.55), [x, 3.6 * s, z], [5 * s, 4.2 * s, 4.6 * s], [0, r.range(0, 6), 0], '#141518', { wobble: { amp: 0.18, seed: k }, surf: [DET.plastic, 0.28, 0] });
   }
 }
