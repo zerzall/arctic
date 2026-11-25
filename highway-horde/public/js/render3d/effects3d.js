@@ -529,6 +529,18 @@ export function createEffects3D(ctx) {
         lights.flash(ox, oy, oh, '#ff4a2a', 2.4, 320, 0.25);
         smoke(ox, oh, oy, high ? 4 : 2, 5, 1.2, C('#b0483a'), 0.3, 14, 3);
         sparks(ox, oh, oy, e.angle, 0.6, high ? 8 : 3, 300, HOT_SPARK);
+      } else if (kind === 'blade') {
+        // the saw launcher: a gas puff off the rails and a shower of sparks as the blade leaves
+        smoke(ox, oh, oy, high ? 4 : 2, 5, 0.6, C('#d0d4d8'), 0.22, 10, 3);
+        sparks(ox, oh, oy, e.angle, 0.9, high ? 10 : 4, 340, hdr('#ffd8a0', 2.8));
+        if (isLocal) ctx.shake(0.1);
+      } else if (kind === 'singularity') {
+        // the Hollow Star: a violet flash, the air rippling at the emitter
+        if (!isLocal) muzzleFlash(ox, oh, oy, e.angle, 1.4, '#b088ff');
+        lights.flash(ox, oy, oh, '#a070ff', 3.4, 360, 0.3);
+        fx.spawn(ox, oh, oy, 0, 0, 0, 0.18, 6, 40, hdr('#c8a8ff', 2.4), 0.8, FR.SOFTRING, F_ADD, 0, 0);
+        fx0.distort(ox, oh, oy, 60, 0.8, 0.35, 1);
+        if (isLocal) ctx.shake(0.3);
       } else if (kind === 'harpoon') {
         // compressed air: a white puff and a hiss of mist, no flame
         smoke(ox, oh, oy, high ? 5 : 2, 5, 0.7, C('#d0d4d8'), 0.26, 10, 3);
@@ -616,6 +628,30 @@ export function createEffects3D(ctx) {
   function explosion(x, y, r, kind) {
     const bloat = kind === 'bloater';
     const d = distCam(x, y);
+    if (kind === 'singularity') {
+      // the Hollow Star's core collapsing: everything rushes in, then a violet shell blows out
+      // (no fire, no smoke column: a hard flash, a shockwave and a ripple in the air)
+      lights.flash(x, y, 40, '#a070ff', 5, r * 3.4, 0.5);
+      fx.spawn(x, 34, y, 0, 0, 0, 0.14, r * 0.15, r * 1.1, hdr('#f0e0ff', 3), 1, FR.GLOW, F_ADD, 0, 0);
+      fx.spawn(x, 34, y, 0, 0, 0, 0.12, r * 0.3, r * 1.25, hdr('#b080ff', 2.4), 0.8, FR.STAR, F_ADD, 0, 0);
+      for (let k = 0; k < (high ? 42 : 14); k++) {
+        const a = R() * TAU, dd = r * (0.8 + R() * 0.5), h0 = 8 + R() * 64, life = 0.14 + R() * 0.08;
+        const i = fx.spawn(x + Math.cos(a) * dd, h0, y + Math.sin(a) * dd, -Math.cos(a) * dd / life, (34 - h0) / life, -Math.sin(a) * dd / life, life, 2.2, 0.6, hdr('#d8c0ff', 2.6), 1, FR.DOT, F_ADD | F_STREAK, 0, 0);
+        fx.stretchLast(i, 2);
+      }
+      ring(x, 3, y, r * 2.4, 0.5, hdr('#b48cff', 2), 0.9, true, FR.SHOCK);
+      ring(x, 34, y, r * 2.0, 0.4, hdr('#e0d0ff', 1.6), 0.6, false, FR.SOFTRING);
+      fx0.distort(x, 30, y, r * 2.2, 1.2, 0.8, 1);
+      sparks(x, 30, y, 0, TAU, high ? 36 : 14, 700, hdr('#c8a8ff', 3));
+      for (let k = 0; k < (high ? 16 : 7); k++) {
+        const a = (k / (high ? 16 : 7)) * TAU + R() * 0.3;
+        fx.spawn(x + Math.cos(a) * r * 0.15, 5, y + Math.sin(a) * r * 0.15, Math.cos(a) * r * 2.2, 8 + R() * 10, Math.sin(a) * r * 2.2, 0.9 + R() * 0.5, 12, 30, C('#5a5068'), 0.4, FR.DUST, 0, -2, 2.8);
+      }
+      ctx.ground.decal('scorch', x, y, r * 0.3, R() * TAU, 0.7);
+      shakeAt(x, y, Math.min(1, (r / 160) * 0.9), 1400);
+      if (d < r) ctx.shake(0.9);
+      return;
+    }
     if (bloat) {
       // gore burst: green-grey mist, acid glow, chunks (zombies3d throws the gibs)
       lights.flash(x, y, 30, '#b8ff6a', 2.4, r * 2.6, 0.35);
@@ -852,6 +888,23 @@ export function createEffects3D(ctx) {
         break;
       }
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind); break;
+      case 'blade': {
+        // a flying saw blade: sparks and a gouge where it bounces off a wall, blood thrown off
+        // both sides where it slices through, a last shower of sparks where it bites in and stops
+        const a = e.angle || 0;
+        if (e.what === 'wall') {
+          sparks(e.x, 30, e.y, a, 1.9, high ? 18 : 7, 460, hdr('#ffd8a0', 3));
+          impact(e.x, 30, e.y, a + Math.PI, true);
+          lights.flash(e.x, e.y, 30, '#ffc080', 1.2, 120, 0.08);
+        } else if (e.what === 'cut') {
+          for (const s of [-1, 1]) blood(e.x, 30, e.y, a + s * Math.PI * 0.4, 1.2, high ? 7 : 3, 250, true);
+          fx.spawn(e.x, 32, e.y, Math.cos(a) * 60, 6, Math.sin(a) * 60, 0.5, 6, 18, fx.gore.mist, 0.4, FR.MIST, 0, 0, 2);
+          if (R() < 0.3) ctx.ground.decal('blood', e.x + (R() - 0.5) * 20, e.y + (R() - 0.5) * 20, 4 + R() * 6, R() * TAU, 0.8);
+        } else {
+          sparks(e.x, 30, e.y, a + Math.PI, 1.4, high ? 10 : 4, 300, hdr('#ffd8a0', 2.6));
+        }
+        break;
+      }
       case 'zdie': zdie(e); break;
       case 'freeze': {
         // frost races over a zombie and locks it solid: ice shards, a cold flash

@@ -9,7 +9,7 @@ import {
   TURRET, BARRICADE, DOWNED_HIT_BLEED, DOWNED_HIT_BLEED_RATE, DOWNED_HIT_BLEED_BANK, WAVE_CLEAR_BONUS,
   PLAYER_SPEED, DUCK_TICKS,
 } from '../constants.js';
-import { WEAPONS, crateWeaponPool } from '../weapons.js';
+import { WEAPONS, WEAPON_IDS, crateWeaponPool, chargeTime, SUPER_DROP } from '../weapons.js';
 import { CLASSES, perksFor } from '../classes.js';
 import { ITEMS, isBuyable, isWeaponId, isItemId, ammoPrice, DROP_TABLE } from '../items.js';
 import { angleDiff } from '../math.js';
@@ -455,9 +455,17 @@ function handleFire(game, p, cmd, aw) {
   if (!spec.burst || game.over) p.burstLeft = 0;
   // A burst, once started, finishes without the trigger.
   const fire = trigger || p.burstLeft > 0;
-  if (w.spinup) {
-    if (fire) p.spin = Math.min(1, p.spin + DT / w.spinup);
-    else p.spin = Math.max(0, p.spin - DT / (w.spinup * 0.6));
+  // `spin`: the minigun's spin-up, a charging gun's charge (it only builds while the gun is
+  // ready, and every shot drains it), the Barrage MG's wind-up (the spread tightens while
+  // the trigger stays down on a loaded gun). Clients predict it the same way.
+  const wind = w.spinup || chargeTime(w);
+  if (wind) {
+    if (fire && !(w.charge && p.cooldown > COOLDOWN_EPS)) p.spin = Math.min(1, p.spin + DT / wind);
+    else if (!fire) p.spin = Math.max(0, p.spin - DT / (wind * 0.6));
+  } else if (w.tighten) {
+    const loaded = (aw.slot < 0 ? p.freeMag : p.mag[aw.slot]) > 0;
+    if (fire && loaded && p.reloadT <= 0) p.spin = Math.min(1, p.spin + DT / w.tighten.time);
+    else p.spin = Math.max(0, p.spin - DT / (w.tighten.time * 0.5));
   } else {
     p.spin = 0;
   }
@@ -488,7 +496,7 @@ function handleFire(game, p, cmd, aw) {
     if (p.cooldown < 0) p.cooldown = 0;
     return;
   }
-  if (w.spinup && p.spin < 1) {
+  if (wind && p.spin < 1) {
     if (p.cooldown < 0) p.cooldown = 0;
     return;
   }
@@ -506,6 +514,11 @@ function handleFire(game, p, cmd, aw) {
     mag--;
     p.cooldown += spec.burst && p.burstLeft === 0 ? spec.burstDelay : 1 / spec.rate;
     shots++;
+    // a charged shot spends the charge: the next one charges from nothing
+    if (w.charge) {
+      p.spin = 0;
+      break;
+    }
   }
   if (mag <= 0) p.burstLeft = 0;
   if (aw.slot < 0) p.freeMag = mag;
@@ -873,16 +886,23 @@ export function spawnPickup(game, kind, x, y, weapon = null, life = PICKUP_LIFET
   return k;
 }
 
-/** Roll the drop table for a kill at (x, y). */
-export function rollDrop(game, x, y, chance, crateChance) {
+/** The super weapons (weapons.js `super`): only ever in a boss's crate. */
+const SUPER_IDS = WEAPON_IDS.filter((id) => WEAPONS[id].super);
+
+/**
+ * Roll the drop table for a kill at (x, y). A boss's crate (`boss`) may hold a super weapon
+ * instead of an ordinary gun from wave SUPER_DROP.wave on.
+ */
+export function rollDrop(game, x, y, chance, crateChance, boss = false) {
   const rng = game.rng;
   if (rng.chance(chance)) {
     const e = rng.weighted(DROP_TABLE);
     spawnPickup(game, e.kind, x, y);
   }
   if (rng.chance(crateChance)) {
-    const pool = crateWeaponPool(Math.max(1, game.wave));
-    spawnPickup(game, 'crate', x + 6, y + 6, rng.pick(pool));
+    const special = boss && SUPER_IDS.length && game.wave >= SUPER_DROP.wave && rng.chance(SUPER_DROP.chance);
+    const pool = special ? SUPER_IDS : crateWeaponPool(Math.max(1, game.wave));
+    spawnPickup(game, 'crate', x + 6, y + 6, rng.pick(pool), special ? PICKUP_LIFETIME * 3 : PICKUP_LIFETIME);
   }
 }
 

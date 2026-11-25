@@ -38,6 +38,7 @@ const PATTERN = { soldier: 3, heavy: 3 };
 const HOLD = {
   pistol: 'pistol', revolver: 'pistol', dual: 'dual', rocket: 'shoulder', minigun: 'hip', hmg: 'hip', lmg: 'hip', flamethrower: 'hip',
   flare: 'pistol', chainsaw: 'hip', cryo: 'hip',
+  compact: 'pistol', tac45: 'pistol', handcannon: 'pistol', mpistol: 'pistol', m60: 'hip', barrage: 'hip',
 };
 
 const cache = new Map();

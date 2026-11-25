@@ -93,8 +93,12 @@ export function classSkin(cls) {
  */
 function grips(style, len, x0) {
   switch (style) {
-    case 'pistol': case 'revolver': return [x0 + 3, x0 + 3];
+    case 'pistol': case 'revolver': case 'compact': case 'tac45': case 'handcannon': case 'mpistol': return [x0 + 3, x0 + 3];
     case 'dual': return [x0 + 3, x0 + 3];
+    case 'csmg': case 'pdw': case 'smg45': return [x0 + len * 0.28, x0 + len * 0.6];
+    case 'bullpup': return [x0 + len * 0.18, x0 + len * 0.5];
+    case 'm60': case 'barrage': return [x0 + len * 0.2, x0 + len * 0.5];
+    case 'hollowstar': return [x0 + len * 0.3, x0 + len * 0.5];
     case 'double': return [x0 + len * 0.25, x0 + len * 0.55];
     case 'smg': return [x0 + len * 0.3, x0 + len * 0.62];
     case 'flamethrower': case 'cryo': return [x0 + len * 0.3, x0 + len * 0.62];
@@ -382,6 +386,117 @@ export function drawWeapon(g, weaponId, x0, spin = 0) {
       g.moveTo(x0 + L * 0.7, W * 0.25); g.lineTo(x0 + L * 0.62, W * 0.9);
       g.stroke();
       break;
+    // ---- the arsenal ----
+    case 'compact': case 'tac45': case 'handcannon': case 'mpistol': {
+      // pistols: the slide over the frame; the .45's screw-on can, the hand cannon's
+      // ported slide, the machine pistol's long magazine and red selector
+      const sl = sp.style === 'tac45' ? 0.62 : 0.95;
+      box(x0, -W * 0.35, L * sl, W * 0.7, col);
+      box(x0 - 1, -W * 0.3, 4, W * 0.6, acc);
+      g.fillStyle = shade(col, 0.3);
+      g.fillRect(x0 + 3, -0.5, L * sl * 0.8, 1);
+      if (sp.style === 'tac45') box(x0 + L * 0.62, -W * 0.3, L * 0.38, W * 0.6, '#2a2c2e', 2);
+      if (sp.style === 'handcannon') {
+        g.fillStyle = '#111';
+        for (let k = 0; k < 3; k++) g.fillRect(x0 + L * (0.72 + k * 0.07), -W * 0.3, 1, W * 0.6);
+      }
+      if (sp.style === 'mpistol') { box(x0 + 1, W * 0.3, 3, W * 0.9, '#1a1a1a'); g.fillStyle = '#c62828'; g.fillRect(x0 - 0.5, -1, 1.5, 2); }
+      break;
+    }
+    case 'csmg': case 'pdw': case 'smg45': {
+      // SMGs: the receiver, a short shroud, the magazine (on top of the PDW), the stock
+      box(x0 - 6, -W * 0.25, 8, W * 0.5, '#1c1c1c', 2);
+      box(x0, -W * 0.45, L * 0.62, W * 0.9, col, sp.style === 'pdw' ? 3 : 1);
+      box(x0 + L * 0.62, -W * 0.2, L * 0.38, W * 0.4, shade(col, sp.style === 'pdw' ? -0.3 : 0.2));
+      if (sp.style === 'pdw') box(x0 - 3, -W * 0.22, L * 0.62, W * 0.44, '#2b2e2c', 2);
+      else box(x0 + L * 0.34, W * 0.4, 4, W * (sp.style === 'smg45' ? 0.8 : 0.7), acc);
+      break;
+    }
+    case 'combatsg': case 'boxsg': {
+      // shotguns: a stock, the receiver, the tube (or a box magazine) under a long barrel
+      box(x0 - 7, -W * 0.35, 10, W * 0.7, '#1c1c1c', 2);
+      box(x0 + 2, -W * 0.45, L * 0.3, W * 0.9, col);
+      box(x0 + L * 0.3, -W * 0.22, L * 0.7, W * 0.44, '#3a3d40');
+      box(x0 + L * 0.42, -W * 0.4, L * 0.28, W * 0.8, acc, 2);
+      if (sp.style === 'boxsg') box(x0 + L * 0.22, W * 0.4, 5, W * 0.75, '#1e1e1e');
+      break;
+    }
+    case 'ak': case 'm4': case 'bullpup': case 'scout': case 'magsniper': case 'autosniper': {
+      // rifles and snipers: stock, receiver, handguard, barrel; optics on the scoped ones
+      const scoped = sp.style !== 'ak' && sp.style !== 'm4';
+      const bp = sp.style === 'bullpup';
+      box(x0 - (bp ? 10 : 7), -W * 0.4, 10, W * 0.8, sp.style === 'ak' ? '#6b4526' : acc, 2);
+      box(x0 + 2, -W * 0.5, L * (bp ? 0.3 : 0.36), W, col);
+      box(x0 + L * 0.36, -W * 0.36, L * 0.3, W * 0.72, sp.style === 'ak' ? '#6b4526' : shade(col, 0.1));
+      box(x0 + L * 0.66, -W * 0.18, L * 0.34, W * 0.36, '#2a2c2e');
+      if (scoped) {
+        box(x0 + L * 0.1, -W * 0.3, L * 0.32, W * 0.6, '#151719', 2);
+        fillCircle(g, x0 + L * 0.42, 0, W * 0.3, '#6fa0c8');
+      } else box(x0 + L * 0.2, W * 0.35, 4, W * 0.75, sp.style === 'ak' ? '#3a3632' : '#1e1e1e');
+      if (sp.style === 'm4') box(x0 + L * 0.86, -W * 0.24, L * 0.16, W * 0.48, '#2a2c2e', 2);
+      if (sp.style === 'magsniper') box(x0 + L - 4, -W * 0.34, 5, W * 0.68, '#1a1a1a');
+      break;
+    }
+    case 'm60': case 'barrage': {
+      // machine guns: butt, receiver with the belt box, a long barrel (the M60's carry handle,
+      // the Barrage's perforated shield)
+      box(x0 - 7, -W * 0.3, 10, W * 0.6, '#1e1e1a', 2);
+      box(x0 + 2, -W * 0.45, L * 0.38, W * 0.9, col);
+      box(x0 + L * 0.16, -W * 0.95, L * 0.2, W * 0.55, acc, 1);
+      box(x0 + L * 0.4, -W * 0.22, L * 0.6, W * 0.44, '#2a2c2a');
+      if (sp.style === 'barrage') {
+        box(x0 + L * 0.4, -W * 0.32, L * 0.3, W * 0.64, '#26282a');
+        g.fillStyle = '#0a0a0a';
+        for (let x = x0 + L * 0.43; x < x0 + L * 0.68; x += 3) g.fillRect(x, -1, 1.5, 2);
+      } else box(x0 + L * 0.5, -W * 0.12, L * 0.12, W * 0.24, '#151515');
+      break;
+    }
+    case 'sawblade': {
+      // the saw launcher: yellow receiver, the rails, the blade on them (spinning)
+      box(x0 - 6, -W * 0.25, 8, W * 0.5, '#1f2022', 2);
+      box(x0 + 1, -W * 0.45, L * 0.5, W * 0.9, col, 2);
+      box(x0 + L * 0.5, -W * 0.42, L * 0.5, W * 0.18, '#1f2022');
+      box(x0 + L * 0.5, W * 0.24, L * 0.5, W * 0.18, '#1f2022');
+      const bx = x0 + L * 0.74;
+      fillCircle(g, bx, 0, W * 0.5, out);
+      fillCircle(g, bx, 0, W * 0.46, '#b8bcc0');
+      g.strokeStyle = '#e0e4e8';
+      g.lineWidth = 0.8;
+      g.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const a = spin * 3 + (k / 8) * TAU;
+        g.moveTo(bx + Math.cos(a) * W * 0.2, Math.sin(a) * W * 0.2);
+        g.lineTo(bx + Math.cos(a + 0.4) * W * 0.5, Math.sin(a + 0.4) * W * 0.5);
+      }
+      g.stroke();
+      fillCircle(g, bx, 0, W * 0.12, '#2a2c2e');
+      break;
+    }
+    case 'hollowstar': {
+      // the Hollow Star: a dark bullpup body, the coil cage at the front round a glowing core
+      box(x0 - 10, -W * 0.42, L * 0.62, W * 0.84, col, 3);
+      g.fillStyle = acc;
+      for (let k = 0; k < 4; k++) g.fillRect(x0 - 6 + k * 4.5, -W * 0.08, 2, W * 0.16);
+      const cx = x0 + L * 0.66;
+      g.strokeStyle = '#3a3644';
+      g.lineWidth = 1.6;
+      g.beginPath();
+      g.moveTo(cx - L * 0.12, -W * 0.42); g.lineTo(cx + L * 0.14, -W * 0.42);
+      g.moveTo(cx - L * 0.12, W * 0.42); g.lineTo(cx + L * 0.14, W * 0.42);
+      g.stroke();
+      const pulse = 0.8 + Math.sin(spin * 6) * 0.2;
+      fillCircle(g, cx, 0, W * 0.36 * pulse, 'rgba(160,110,255,0.35)');
+      fillCircle(g, cx, 0, W * 0.2, '#050407');
+      g.strokeStyle = '#f2e6ff';
+      g.lineWidth = 0.9;
+      g.beginPath(); g.ellipse(cx, 0, W * 0.3, W * 0.12, spin * 2, 0, TAU); g.stroke();
+      g.strokeStyle = '#48445a';
+      g.lineWidth = 1.2;
+      g.beginPath();
+      g.moveTo(cx + L * 0.14, -W * 0.4); g.lineTo(x0 + L, 0); g.lineTo(cx + L * 0.14, W * 0.4);
+      g.stroke();
+      break;
+    }
     default:
       box(x0, -W / 2, L, W, col);
   }
@@ -470,7 +585,7 @@ export function drawSurvivor(g, a) {
   if (style === 'dual') {
     hand(1, 10, x0 + 3, 6);
     hand(1, -10, x0 + 3, -6);
-  } else if (style === 'pistol' || style === 'revolver') {
+  } else if (style === 'pistol' || style === 'revolver' || style === 'compact' || style === 'tac45' || style === 'handcannon' || style === 'mpistol') {
     hand(1, 10, rear, 1.5);
     hand(1, -10, front, -1.5);
   } else {
@@ -962,6 +1077,40 @@ export function drawProjectileBody(g, p, time) {
       fillCircle(g, p.x, p.y, 4.4, '#8ee03a');
       fillCircle(g, p.x - 1.2, p.y - 1.2, 1.5, '#e8ffb0');
       break;
+    case 'blade': {
+      // a spinning saw blade: a toothed steel disc, its holes, the hub
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(-time * 40 - p.id);
+      fillCircle(g, 0, 0, 9.6, 'rgba(0,0,0,0.55)');
+      g.fillStyle = '#d0d4d8';
+      g.beginPath();
+      for (let k = 0; k < 16; k++) {
+        const a0 = (k / 16) * TAU, a1 = a0 + TAU / 32;
+        g.lineTo(Math.cos(a0) * 7.6, Math.sin(a0) * 7.6);
+        g.lineTo(Math.cos(a1) * 9.2, Math.sin(a1) * 9.2);
+      }
+      g.closePath();
+      g.fill();
+      fillCircle(g, 0, 0, 7.4, '#aab0b4');
+      for (let k = 0; k < 4; k++) fillCircle(g, Math.cos((k / 4) * TAU) * 4, Math.sin((k / 4) * TAU) * 4, 1.3, '#2a2c2e');
+      fillCircle(g, 0, 0, 1.8, '#2a2c2e');
+      g.restore();
+      break;
+    }
+    case 'singularity': {
+      // the Hollow Star's core: a black disc in a white-hot ring and a violet halo
+      const pulse = 1 + Math.sin(time * 19 + p.id) * 0.06;
+      fillCircle(g, p.x, p.y, 22 * pulse, 'rgba(124,60,255,0.18)');
+      g.strokeStyle = '#fff0ff';
+      g.lineWidth = 2.4;
+      g.beginPath(); g.ellipse(p.x, p.y, 12 * pulse, 7 * pulse, time * 2.6, 0, TAU); g.stroke();
+      fillCircle(g, p.x, p.y, 7 * pulse, '#030205');
+      g.strokeStyle = 'rgba(180,140,255,0.8)';
+      g.lineWidth = 1;
+      g.beginPath(); g.arc(p.x, p.y, 15 * pulse, 0, TAU); g.stroke();
+      break;
+    }
     default:
       break;
   }

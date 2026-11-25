@@ -429,13 +429,14 @@ describe('.50 anti-materiel rifle (cover penetration)', () => {
 // -------------------------------------------------------------------------------------
 describe('every gun is complete', () => {
   const src = (f) => readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
-  const guns3d = src('render3d/actor-guns.js');
+  // (the detailed builders live in guns-long / guns-small / guns-heavy.js as B.<style> = ...)
+  const guns3d = ['actor-guns', 'guns-long', 'guns-small', 'guns-heavy'].map((f) => src(`render3d/${f}.js`)).join('\n');
   const vm = src('render3d/viewmodel.js');
   const topdown = src('render/actors.js');
   const KINDS = ['hitscan', 'projectile', 'flame', 'chain', 'rail', 'cryo', 'melee'];
 
-  test('27 guns, the eight new ones and the belt-fed HMG included', () => {
-    assert.equal(WEAPON_IDS.length, 27);
+  test('46 guns: the eight post-launch ones, the belt-fed HMG and the arsenal (tests/arsenal.test.js)', () => {
+    assert.equal(WEAPON_IDS.length, 46);
     assert.ok(WEAPONS.hmg);
     for (const id of NEW_GUNS) assert.ok(WEAPONS[id], id);
   });
@@ -457,7 +458,7 @@ describe('every gun is complete', () => {
       for (const [snd] of RELOADS[id]) assert.ok(SOUNDS[snd], `reload sound ${snd}`);
       const sp = w.sprite;
       assert.ok(sp && sp.len > 0 && sp.width > 0 && /^#/.test(sp.color) && /^#/.test(sp.accent), 'sprite');
-      assert.ok(guns3d.includes(`BUILDERS.${sp.style} =`), `3D model for style ${sp.style}`);
+      assert.ok(guns3d.includes(`BUILDERS.${sp.style} =`) || guns3d.includes(`B.${sp.style} =`), `3D model for style ${sp.style}`);
       assert.match(vm, new RegExp(`\\b${sp.style}: \\[`), `viewmodel placement for ${sp.style}`);
       if (sp.style !== 'rifle') assert.ok(topdown.includes(`'${sp.style}'`), `top-down sprite for ${sp.style}`);
       if (w.projectile) assert.ok(PROJECTILE_KINDS.includes(w.projectile.kind));
@@ -472,8 +473,9 @@ describe('every gun is complete', () => {
     for (const id of NEW_GUNS) assert.ok(crateWeaponPool(WEAPONS[id].unlockWave).includes(id), id);
   });
 
-  test('the .50 is the most expensive gun and unlocks last', () => {
+  test('the .50 is the most expensive gun and unlocks last (the super weapon apart)', () => {
     for (const id of WEAPON_IDS) {
+      if (WEAPONS[id].super) continue;
       assert.ok(WEAPONS[id].price <= WEAPONS.amr.price, id);
       assert.ok(WEAPONS[id].unlockWave <= WEAPONS.amr.unlockWave, id);
     }
@@ -485,7 +487,7 @@ describe('belt-fed heavy MG', () => {
     const w = WEAPONS.hmg;
     assert.equal(w.mag, 500);
     assert.ok(!w.spinup);
-    assert.equal(WEAPON_IDS[WEAPON_IDS.length - 1], 'hmg', 'appended, so older weapon indices keep their meaning');
+    assert.equal(WEAPON_IDS[26], 'hmg', 'appended, so older weapon indices keep their meaning');
     const g = makeGame();
     const p = armed(g, 'hmg');
     const first = run(g, 1, () => ({ 1: { fire: true, angle: 0 } }));

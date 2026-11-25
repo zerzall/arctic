@@ -136,7 +136,9 @@ describe('material assignment', () => {
     assert.equal(familyFor(GUN_CLASS.WOOD, '#c09a6a', 'shotgun'), 'birch');
     assert.equal(familyFor(GUN_CLASS.RUBBER, '#161616', 'rifle'), 'rubber');
     assert.equal(familyFor(GUN_CLASS.STEEL, '#23262b', 'shotgun'), 'blued');
-    assert.equal(familyFor(GUN_CLASS.ALLOY, '#2f3326', 'rifle'), 'anod_od');
+    // (the assault rifle is black anodised now; the box-mag shotgun is the OD alloy gun)
+    assert.equal(familyFor(GUN_CLASS.ALLOY, '#2f3326', 'box_sg'), 'anod_od');
+    assert.equal(familyFor(GUN_CLASS.ALLOY, '#2f3326', 'rifle'), 'anod_black');
     assert.equal(familyFor(GUN_CLASS.POLY, '#8a7350', 'crossbow'), 'poly_fde');
     assert.equal(familyFor(GUN_CLASS.PAINT, '#e2541b', 'flare'), 'paint');
     assert.equal(familyFor(GUN_CLASS.STEEL, '#0d47a1', 'tesla'), 'cerakote', 'a vivid colour keeps its hue');

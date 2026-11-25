@@ -186,6 +186,94 @@ export const WEAPON_HANDLING = {
     spray: { up: 0.055, climb: 12, tail: 0.001, side: 0.036, sway: 8, lean: -0.3, first: -1, jit: 0.003, seed: 107 },
     deploy: 1.15, pen: 2.4,
   },
+
+  // ---- the arsenal update (weapons.js, appended guns) ----
+  // pistols: the compact 9 barely kicks (burst on right click), the .45 is the precise one, the
+  // hand cannon kicks like the magnum and takes long to settle, the machine pistol sprays
+  compact9: {
+    inacc: { fire: 0.026, fireMax: 0.09, recover: 0.28 },
+    spray: { up: 0.016, climb: 1, tail: 0.016, side: 0.006, sway: 2, lean: 0.2, first: 1, jit: 0.004, seed: 111 },
+    deploy: 0.4,
+  },
+  tac45: {
+    inacc: { stand: 0.005, crouch: 0.0038, fire: 0.03, fireMax: 0.09, recover: 0.3 },
+    spray: { up: 0.02, climb: 1, tail: 0.02, side: 0.007, sway: 2, lean: 0.3, first: -1, jit: 0.004, seed: 113 },
+    deploy: 0.45,
+  },
+  handcannon: {
+    inacc: { stand: 0.0045, fire: 0.07, fireMax: 0.13, recover: 0.6 },
+    spray: { up: 0.06, climb: 1, tail: 0.06, side: 0.013, sway: 2, lean: 0.4, first: 1, jit: 0.006, seed: 117 },
+    recovery: 0.5, deploy: 0.6, pen: 1.8,
+  },
+  mpistol: {
+    inacc: { stand: 0.009, crouch: 0.007, move: 0.05, fire: 0.012, fireMax: 0.09 },
+    spray: { up: 0.05, climb: 8, tail: 0.002, side: 0.03, sway: 4, lean: 0.3, first: -1, jit: 0.005, seed: 119 },
+    deploy: 0.5,
+  },
+  // SMGs: the 9mm is easy, the PDW shoots well on the move, the .45 kicks harder and goes further in
+  smg9: {
+    inacc: { stand: 0.01, move: 0.035 },
+    spray: { up: 0.04, climb: 8, tail: 0.0012, side: 0.024, sway: 5, lean: 0.25, first: 1, jit: 0.0035, seed: 127 },
+    deploy: 0.55,
+  },
+  pdw: {
+    inacc: { stand: 0.012, move: 0.03, fire: 0.0055, fireMax: 0.06 },
+    spray: { up: 0.035, climb: 10, tail: 0.001, side: 0.022, sway: 6, lean: -0.2, first: -1, jit: 0.004, seed: 131 },
+    deploy: 0.6,
+  },
+  smg45: {
+    spray: { up: 0.055, climb: 8, tail: 0.0015, side: 0.028, sway: 5, lean: 0.3, first: 1, jit: 0.004, seed: 137 },
+    pen: 1.2,
+  },
+  combat_sg: { deploy: 0.7, spray: { up: 0.04, climb: 1, tail: 0.04, side: 0.012, sway: 2, lean: 0.3, first: 1, jit: 0.006, seed: 139 } },
+  box_sg: { spread: 0.12, deploy: 0.7, spray: { up: 0.05, climb: 1, tail: 0.05, side: 0.012, sway: 2, lean: -0.3, first: -1, jit: 0.006, seed: 149 } },
+  // rifles: the AK climbs hard and swings wide (and goes through more), the M4 is the tamer
+  // spray, the scoped bullpup is precise through its scope
+  ak: {
+    inacc: { stand: 0.006, crouch: 0.0045, move: 0.14, fire: 0.0085, fireMax: 0.09 },
+    spray: { up: 0.12, climb: 9, tail: 0.002, side: 0.042, sway: 6, lean: 0.35, first: -1, jit: 0.003, seed: 151 },
+    recovery: 0.45, pen: 2.3,
+  },
+  m4: {
+    inacc: { stand: 0.005, crouch: 0.0038, fire: 0.0065, fireMax: 0.08 },
+    spray: { up: 0.085, climb: 9, tail: 0.0012, side: 0.03, sway: 6, lean: 0.15, first: 1, jit: 0.0022, seed: 157 },
+    recovery: 0.4, pen: 1.9,
+  },
+  bullpup: {
+    spray: { up: 0.08, climb: 9, tail: 0.0012, side: 0.026, sway: 6, lean: 0.2, first: 1, jit: 0.002, seed: 163 },
+    secondary: { type: 'scope', levels: [50], speed: 0.75, inacc: { stand: 0.0022, crouch: 0.0017, move: 0.11 } },
+  },
+  // snipers: the scout is light (better on the move, quicker to draw), the magnum is the one-shot
+  // bolt gun that is hopeless unscoped, the semi-auto kicks every shot
+  scout: {
+    inacc: { stand: 0.045, crouch: 0.038, move: 0.12, air: 0.2 },
+    recovery: 0.4, deploy: 0.75, pen: 2.6,
+    secondary: { type: 'scope', levels: [40, 15], speed: 0.75, inacc: { stand: 0.0015, crouch: 0.0011, move: 0.12 } },
+  },
+  magsniper: {
+    inacc: { stand: 0.085, crouch: 0.075, move: 0.24, air: 0.4 },
+    recovery: 0.6, deploy: 1.1, pen: 4,
+    secondary: { type: 'scope', levels: [40, 12], speed: 0.5, inacc: { stand: 0.0007, crouch: 0.0005, move: 0.24 } },
+  },
+  autosniper: {
+    inacc: { fire: 0.03, fireMax: 0.08, recover: 0.3 },
+    spray: { up: 0.04, climb: 1, tail: 0.04, side: 0.01, sway: 2, lean: 0.2, first: 1, jit: 0.004, seed: 167 },
+    deploy: 1.0, pen: 3,
+    secondary: { type: 'scope', levels: [40, 15], speed: 0.55, inacc: { stand: 0.0022, crouch: 0.0016, move: 0.18 } },
+  },
+  // machine guns: the M60 climbs and swings like the LMG but harder; the Barrage flattens out
+  // (its cone also tightens with the wind-up: weapons.js `tighten`, aimNow's accK)
+  m60: {
+    spray: { up: 0.07, climb: 12, tail: 0.0012, side: 0.04, sway: 9, lean: 0.3, first: 1, jit: 0.003, seed: 173 },
+    deploy: 1.2, pen: 2.5,
+  },
+  barrage: {
+    inacc: { stand: 0.014, fire: 0.002, fireMax: 0.04 },
+    spray: { up: 0.05, climb: 8, tail: 0.0003, side: 0.03, sway: 10, lean: 0.1, first: -1, jit: 0.003, seed: 179 },
+    deploy: 1.15, pen: 2,
+  },
+  sawblade: { deploy: 0.75 },
+  hollowstar: { deploy: 1.0 },
 };
 
 const SECONDARY_DEFAULTS = {
@@ -250,8 +338,14 @@ export function handlingOf(id) {
   for (const k of Object.keys(inacc)) if (!(Number(inacc[k]) >= 0)) inacc[k] = 0;
   if (!(inacc.recover > 0)) inacc.recover = 0.4;
   const zones = { ...DEFAULT_ZONES, ...(merged.zones || {}) };
-  // weapons.js `secondary` (a gun's own declaration) wins over the handling defaults
-  const sec = w && Object.prototype.hasOwnProperty.call(w, 'secondary') ? w.secondary : merged.secondary;
+  // weapons.js `secondary` (a gun's own declaration) wins over the handling defaults; a declaration
+  // of the same type only overrides the fields it names (a sniper declaring its zoom levels keeps
+  // the handling's scoped accuracy)
+  let sec = merged.secondary;
+  if (w && Object.prototype.hasOwnProperty.call(w, 'secondary')) {
+    const own = w.secondary;
+    sec = isObj(own) && isObj(sec) && sec.type === own.type ? { ...sec, ...own } : own;
+  }
   h = Object.freeze({
     id,
     category: cat,

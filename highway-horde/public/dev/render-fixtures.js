@@ -137,9 +137,12 @@ export function createFixtureMap(objectiveKind = 'bus') {
 const ZTYPE_MIX = [
   ['walker', 44], ['runner', 16], ['crawler', 10], ['bloater', 7], ['spitter', 7], ['screamer', 6], ['brute', 4], ['boss', 1],
 ];
+// Six each at most: a 30 s run at 5 s a gun reaches every one. (The older guns keep the
+// time slots they had in the shorter lists; the arsenal's fill the last ten seconds.)
 const PLAYER_WEAPONS = [
-  ['rifle', 'dmr', 'minigun', 'burst_rifle', 'amr'], ['uzi', 'dual_smg', 'tesla', 'tommy'], ['shotgun', 'auto_shotgun', 'flamethrower', 'cryo'],
-  ['magnum', 'sniper', 'railgun', 'lever'], ['grenade_launcher', 'sawedoff', 'flare', 'rocket'], ['harpoon', 'crossbow', 'chainsaw', 'lmg', 'pistol'],
+  ['rifle', 'dmr', 'minigun', 'burst_rifle', 'amr', 'ak'], ['smg45', 'dual_smg', 'tesla', 'tommy', 'uzi', 'pdw'],
+  ['sawblade', 'combat_sg', 'flamethrower', 'cryo', 'shotgun', 'auto_shotgun'], ['railgun', 'scout', 'hollowstar', 'lever', 'magnum', 'sniper'],
+  ['flare', 'rocket', 'box_sg', 'm60', 'grenade_launcher', 'sawedoff'], ['crossbow', 'chainsaw', 'lmg', 'pistol', 'barrage', 'harpoon'],
 ];
 
 /**
@@ -199,7 +202,8 @@ export function createFixtureScene(map, opts = {}) {
     const def = ZOMBIES[type];
     const z = {
       id: nextZid, type, x: 0, y: 0, angle: 0, hp: 1, flags: 0,
-      _speed: rng.range(def.speed[0], def.speed[1]) * 0.6, _life: rng.range(4, 30), _cool: rng.range(0, 3), _charge: 0,
+      // (_charge staggered by id: some brutes are ready to charge as soon as they get close)
+      _speed: rng.range(def.speed[0], def.speed[1]) * 0.6, _life: rng.range(4, 30), _cool: rng.range(0, 3), _charge: -(nextZid % 9),
     };
     nextZid = (nextZid % 65000) + 1;
     placeZombie(z, near);
@@ -549,6 +553,8 @@ export function allEventsSample(x, y) {
     { type: 'slam', id: 12, x, y, r: 190 },
     { type: 'explosion', x, y, r: 150, kind: 'frag' },
     { type: 'explosion', x, y, r: 115, kind: 'bloater' },
+    { type: 'explosion', x, y, r: 220, kind: 'singularity' },
+    { type: 'blade', what: 'wall', x, y, angle: 0.4 }, { type: 'blade', what: 'cut', x: x + 30, y, angle: 0 }, { type: 'blade', what: 'stop', x: x + 60, y, angle: 0 },
     { type: 'ignite', x, y, r: 110 },
     { type: 'pdamage', pid: 1, amount: 12, x: x - 20, y },
     { type: 'down', pid: 2 }, { type: 'revived', pid: 2, by: 1 }, { type: 'died', pid: 3 }, { type: 'respawn', pid: 3 },

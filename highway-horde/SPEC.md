@@ -68,7 +68,7 @@ highway-horde/
 ```
 
 Data tables already written (read them — they are the source of truth):
-`constants.js` (all tuning numbers), `weapons.js` (27 guns + throwables), `zombies.js`
+`constants.js` (all tuning numbers), `weapons.js` (46 guns + throwables; the arsenal, §3.4), `zombies.js`
 (8 zombie types, `ZFLAG` bits), `classes.js` (6 survivor classes + perks), `items.js`
 (shop items, pickups, drop tables).
 
@@ -531,6 +531,29 @@ cone within `range` with line of sight each shot, the magazine is fuel with no r
 lands as a 'flare' hazard (burns like fire, at most 24 alive, lights the area in both
 renderers); `drag`/`pin` (harpoon) carries up to `drag` pierced zombies along, slowed, and
 pins them for `pin` s at the wall or where it stops (bosses are never dragged).
+**The arsenal** (`shared/sim/specials.js`; client prediction mirrors the fire timing). A
+`blade` projectile (the Saw-Blade Launcher) flies at waist height in up to four sub-steps a
+tick, slices every zombie its path crosses (each at most once per leg, `damage` × damageMult,
+knockback, gibs on a kill; heavies cost 3 of the `pierce` cuts and slow it, a boss stops
+it), loses `slow` of its speed per cut and ricochets off solid obstacles and the map edge
+(the velocity mirrored about the surface normal × `keep`, a new leg: the same zombies can be
+cut again) `bounces` times, then embeds in the next wall; it stops when its life or speed
+runs out. Events 'blade' (what: 'wall' | 'cut' | 'stop', at most one 'cut' per blade per tick).
+A `singularity` (the Hollow Star) drifts slowly and sticks at the first wall (its life then
+cut to 0.45 s); every tick it pulls zombies within `pull.radius` that it can see toward it
+(stronger closer in, with a swirl; bosses and range dummies never move; small zombies are
+stunned while pulled) and grinds those in its `core` (`core.dps`, gibbing); when its life
+ends it collapses: 'explosion' kind 'singularity', `explodeDamage` falling to half at
+`explodeRadius` to every zombie in line of sight, an outward shove, never hurting players.
+`charge` (seconds): the trigger is held that long before each shot, building `spin` once
+the cooldown is over; every shot drains it (`effectiveRate()` includes it). `tighten:
+{to, time}` (the Barrage MG): `spin` winds up over `time` s of continuous fire with a round
+loaded and the spread narrows from `spread` to `to` with it, unwinding twice as fast when the
+trigger is let go. A `super` weapon is never in an ordinary crate (`crateWeaponPool()`); a
+boss killed from wave `SUPER_DROP.wave` on drops one in its crate with chance
+`SUPER_DROP.chance` (the crate lasts three times as long); the shop sells it from its
+`unlockWave`. `secondary` declares the right-mouse function for the shooting mechanics
+(`shared/handling.js`): a scope's zoom levels, a burst mode, a screw-on silencer.
 Explosions: damage falls off linearly to 30% at the edge,
 × perks.explosiveMult, hurt players at 35% (unless selfExplosionImmune and own), blocked
 by solid obstacles (ray from centre). Melee: cone MELEE_ARC/MELEE_RANGE, MELEE_DAMAGE and
@@ -1172,7 +1195,7 @@ Snapshot = {
     // host-only (not on the wire; clients predict their own): punchY, punchP (recoil offset), inacc, spray
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/, z /*feet height, 0 on the ground*/ } ],
-  projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
+  projectiles: [ { id, kind /*PROJECTILE_KINDS: … blade, singularity*/, x, y, angle } ],
   pickups: [ { id, kind /*PICKUP_KINDS*/, x, y, weapon /*crate gun id or null*/ } ],
   turrets: [ { id, owner, x, y, angle, hp /*0..1*/, ammo /*0..1*/, firing } ],
   barricades: [ { id, owner, x, y, angle, hp /*0..1*/ } ],
@@ -1200,7 +1223,8 @@ All events carry the fields listed; consumers ignore unknown types.
 | `scream` | id, x, y | screamer buff |
 | `charge` | id, x, y, angle | brute started charging |
 | `slam` | id, x, y, r | boss ground slam landed |
-| `explosion` | x, y, r, kind | kind: 'frag'|'grenade'|'rocket'|'bloater' |
+| `explosion` | x, y, r, kind | kind: 'frag'|'grenade'|'rocket'|'bloater'|'singularity' (the Hollow Star's collapse) |
+| `blade` | what ('wall'\|'cut'\|'stop'), x, y, angle | a saw blade ricocheted off a wall, sliced a zombie (at most one per blade per tick) or bit in and stopped (§3.4) |
 | `ignite` | x, y, r | molotov burst into fire |
 | `freeze` | id, x, y | cryo froze a zombie solid (cosmetic) |
 | `pdamage` | pid, amount, x, y | player took damage (x,y = where from) |
@@ -1254,12 +1278,14 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 14 (first-person gunplay, §3.4: InputCmd button bits crouch 2048, walk 4096, alt 8192,
+u8. PROTOCOL_VERSION 15 (the arsenal, §3.4: nineteen guns appended to the weapon table after the HMG, the
+projectile kinds 'blade' and 'singularity', the explosion kind 'singularity' and the binary `blade` event — what
+u8, position, angle); 14 was first-person gunplay (§3.4: InputCmd button bits crouch 2048, walk 4096, alt 8192,
 aim3d 16384 and, per cmd, the pitch i16 (×1e4) and the view tick u16 (0xffff = none); each snapshot player
 appends mvx, mvy f32, duckT u8, scope u8, pitch i16 and a modes u8 per slot; the `shot` event's height,
 pitch and flags, its rays' height (i16 at 0.5) and one byte of hit | zone << 2 | pen << 5; `zdie`'s hs /
-wb / pop; the binary `alt` event). 13 was the open maps' walk-in buildings, §2: the wire is unchanged, but the maps every peer
-builds from (id, seed) are not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
+wb / pop; the binary `alt` event); 13 was the open maps' walk-in buildings (§2: the wire was unchanged, but the maps every
+peer builds from (id, seed) were not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
 20-byte horde block — total, left, alive u16, surge, surges, tier, stage u8, the breather timer at 0.01 s
 u16, the lane mask u16, the round's clock f32 — and the binary `surge` event; 11 was the story levels'
 `H_LEVEL` block, §3.11; 10 was Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
@@ -1525,6 +1551,22 @@ everything but that button through. A touch button that opens the shop or pause 
 swallows the tap's trailing click (it would land on what just opened, e.g. buy a card).
 The HUD weapon panel shows the weapon actually in hand (`activeWeapon()`: a downed
 survivor's pistol).
+**Buy menu** (`ui/shop.js`, B): sections down the left — 1 Pistols (and the flare pistol),
+2 SMGs, 3 Heavy (shotguns and machine guns), 4 Rifles, 5 Snipers, 6 Specials (launchers,
+energy weapons, the chainsaw, the saw-blade launcher, the super weapon), 7 Equipment (ammo,
+armour, medkit, frag, molotov, barricade, turret, self-revive, repair) — each with the count of
+its items in stock; the chosen section's cards fill a grid on the right (guns cheapest first:
+a side-view picture drawn from the gun's 3D model by `ui/gun-thumbs.js`, the top-down sprite
+where the 3D models can't load; name, category, a trait line, DMG / RATE / MAG bars, the
+price — or 'Wave N' while locked, 'Owned' with the ammo price, 'Full'). Keys work like a classic
+buy menu: a digit picks a section, a second digit buys its n-th item (the number row runs on
+past 9 with 0, - and =) and the menu drops back to the sections; Backspace goes back a level,
+Q / E step through the sections, arrows move between sections and cards. Mouse / touch: tap a
+section, tap a card (on phones the sections become a scrolling row above the grid). Gamepad:
+the d-pad moves, A picks a section or buys, B goes back (and closes from the sections), LB / RB
+step through the sections. `SECTIONS`, `sectionOf(id)`, `sectionItems(section)` and
+`ITEM_KEYS` are exported (`tests/ui.test.js`); `public/dev/shop-lab.html` shows the real menu
+for a made-up player (`scripts/shop-shot.js` takes screenshots of it).
 Lobby: a Mode row (Defend / Evac Run / Campaign, with the mode's description) above difficulty; a
 map card that does not play both standard modes carries a tag ("Evac Run · Campaign only" on
 Harlan County) and picking it switches the mode; maps with the campaign extension carry a
@@ -1727,6 +1769,12 @@ casings3d.js    ejected shell casings (pooled instanced mesh)
 surfaces.js     obstacle faces (normal, top, extent) and ground materials derived from the map data
 ambient3d.js    motes, fireflies, leaves / paper, wind-blown ash, rain splashes, far lightning, birds
 viewmodel.js    the first-person gun + hands (own scene/camera, drawn after the world)
+vm-hands.js     the first-person hands in tactical gloves (fabric back, suede palm and fingers, moulded
+                knuckle guard and finger pads, stitched seams, neoprene cuff and strap) and the fabric
+                sleeves with the player's colour on a patch; the hand material (woven / grained relief)
+vm-arsenal.js   the arsenal's first-person parts: MG belt changes (feed cover, box, belt, charging
+                handle), the top-magazine PDW, the chainsaw's nose links and starter pull, the saw
+                blade, the Hollow Star's coils and core, the screw-on silencer, the rack points
 overlay.js      2D overlay canvas: crosshair, hit/kill markers, name tags, revive rings,
                 damage-direction arcs, off-screen arrows, low-hp vignette
 zone3d.js       Evac Run (ctx.mode 'zone', built at creation so the warm-up compiles it): the
@@ -1985,9 +2033,25 @@ shader unless the look switches them on — so variety costs no draw calls, only
 big packs; LOD 2 is the plain silhouette. Skin has a wrapped-diffuse "subsurface" term and a warm rim.
 Survivors get class gear and camouflage cloth, a status light in the player colour, a holstered pistol and a
 slung long gun, a draw animation on weapon switches and a kneeling CPR pose (hands on the downed teammate) while
-reviving. First-person hands are gloved per class (nitrile, work leather, fingerless with tape, padded), with
-seams, watch, cuff and sleeve detail; the viewmodel breathes and inspects the gun when idle, and publishes
+reviving. First-person hands (`vm-hands.js`) wear tactical gloves in the class colours (nitrile for the medic,
+fingerless with tape for the heavy): a stretch-fabric back with a woven ripstop relief, a lighter synthetic-suede
+palm running up the jointed, creased fingers to reinforced tips, a moulded knuckle guard and finger pads, stitched
+seams and a neoprene cuff with a strap; the sleeves are woven fabric with a rolled hem, a seam and the player's
+colour on a small hook-and-loop patch. The viewmodel breathes and inspects the gun when idle, and publishes
 each ejected case as `fx.localEject` ({ seq, kind, x, h, y, vx, vh, vy }) for effects3d.
+**The arsenal's guns** (`guns-parts.js`: receivers, rails and M-LOK handguards, muzzle devices, suppressors,
+sights and optics, magazines, stocks, grips, belts and boxes; `guns-long.js` rifles, snipers and shotguns,
+`guns-small.js` pistols and SMGs, `guns-heavy.js` machine guns, the chainsaw, the saw-blade launcher and the
+Hollow Star) are built from separate, bevelled parts with their real proportions. Moving parts the viewmodel
+animates (`vm-arsenal.js`): an MG's feed cover swings up on a belt change while the box and belt come out and a
+fresh one goes in; the PDW's top magazine tips up about its front catch; the chainsaw's chain runs round the
+whole bar (the top and bottom runs slide a link at a time while the nose links turn); the saw launcher's blade
+idles round, leaves on a shot and the next rides up from the cassette; the Hollow Star's coil cage spins up and
+its core swells and glows with the charge, is spent on a shot and grows back; a gun with a silencer shows it
+while the slot's mode bit says it is fitted (the support hand screws it on or off; the muzzle flash moves to the
+bare muzzle without it). In the world: saw blades spin flat at waist height with sparks off the teeth, the
+singularity drags motes in and lights the street violet, its collapse is a violet shockwave; a super weapon's
+crate burns violet.
 Zombies: one InstancedMesh per body part per type (≤ ~60 draw calls for 300 zombies),
 walk/run/crawl cycles phased by id, distinct silhouettes per type, flags shown
 (burning, attacking lunge, charging, buffed, elite eyes). Performance target: 60 fps at
@@ -2427,7 +2491,11 @@ refresh rate (for example Auto on a 4070 Ti Super at 1080p, 100-150 % at 4K on U
   `msaa=0|2|4|8`, `dof=0|1`, `mb=0|1`, `shadows=`, `contact=`, `aofull=`, `fxhigh=`, `lens=`,
   `lightshadows=`, `bright= contrast= sat=`, `timing=1`, `hp=<1..100>` (low health: the hurt look and
   depth of field in the ghost view), and the existing `scale=`,
-  `zombies=`, `time=`, `wave=`.
+  `zombies=`, `time=`, `wave=`. `__fps.hold({ fire: true })` holds scripted input for the local
+  player (merged into every tick of `step()` and `advance()`; `hold({})` lets go), so a script can
+  stage a fight: `scripts/arsenal-shots.js <dir> "<query>" gun:<id>[:<pose>] fight:hollowstar|chainsaw|sawblade`
+  places the player at the `objective` view, gives the gun, spawns zombies in front and saves JPEGs
+  of the moments worth seeing (the screenshots in `docs/shots/new-guns/`).
 - `public/dev/benchmark.html`: a 20-second fly-through of the highway map on a fixed
   camera path (`bench-stats.js` `pathAt`), with `q=`, `scale=`, `msaa=`, `secs=`, `auto=1`
   (dynamic resolution on), `fixed=1`, `warm=` and `timing=1` parameters, printing average fps,
