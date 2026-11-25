@@ -423,7 +423,8 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     // the sun (day) / moon (night) direction feeds the lens flare; the shared fx pools feed the heat / shockwave distortion
     const flareDir = (amb.sunDir ? amb.sunDir.clone() : new THREE.Vector3(-0.45, 0.62, -0.64)).normalize();
     post = createPost(renderer, {
-      scene, camera, getViewmodel: () => vm, quality: q, look: amb.grade || nightGradeFor(map),
+      // (through a scope the gun is out of the picture: no viewmodel pass)
+      scene, camera, getViewmodel: () => (rig.scoped ? null : vm), quality: q, look: amb.grade || nightGradeFor(map),
       getAtmos: () => { atmosSrc.lights = lights.poolLights; atmosSrc.kinds = lights.poolKinds; atmosSrc.sun = lights.sun; return atmosSrc; },
       gpuTimer,
       getFx: () => peekFx(ctx), flareDir, flareStrength: amb.time === 'day' ? 0.11 : 0.04,
