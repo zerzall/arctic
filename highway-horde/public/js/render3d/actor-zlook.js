@@ -79,9 +79,9 @@ const EYES = {
   boss: ['#ff5a28'],
 };
 
-const SHIRT_LIGHT = ['#e8e8e4', '#cfd8e0', '#b9cde0', '#e6d3d8', '#d9d2bf', '#c8d8c0', '#f0ead8'];
+const SHIRT_LIGHT = ['#e8e8e4', '#a9c4e0', '#b9cde0', '#e6c3cc', '#d9c89f', '#b8d0b0', '#8fb0d8'];
 const SHIRT_MID = ['#7a8fa8', '#8a9a7a', '#a89078', '#9a7a8a', '#6a7a9a'];
-const TEE = ['#b33a3a', '#3a5ea0', '#2f7a4a', '#d4a82a', '#7a3a8a', '#e0e0e0', '#2a2a2a', '#d8702a', '#3a8a9a', '#8a8a8a', '#c86a8a', '#5a3a2a'];
+const TEE = ['#b33a3a', '#3a5ea0', '#2f7a4a', '#d4a82a', '#7a3a8a', '#4a6a8a', '#2a2a2a', '#d8702a', '#3a8a9a', '#6a2a2a', '#c86a8a', '#5a3a2a'];
 const FLANNEL = ['#9a2a24', '#2a5a3a', '#2a3a6a', '#7a5a2a', '#5a2a3a', '#3a3a3a'];
 const SUMMER = ['#e8c878', '#e88a7a', '#7ac8d0', '#f0e8c8', '#c8e0a0', '#e8a0c0', '#f0d0a0'];
 const DENIM = ['#3a4c6a', '#4c5a78', '#2f3f5a', '#5a6a88'];
@@ -184,7 +184,7 @@ const ARCH = {
   bloater: [
     A('xl_tee', 24, { top: 'tee', topC: TEE, bot: 'jeans', botC: [...JEANS, ...KHAKI], shoeC: SHOE_DARK, shoe: 'sneaker', hat: [['hat_cap', 0.2]], gear: [['watch', 0.2]], gearC: CAP }),
     A('gown', 18, { top: 'gown', topC: ['#bcd4e0', '#a8c8d8', '#c8dce4'], bot: 'bare', botC: ['#bcd4e0'], shoe: 'bare', gear: [['bandage_hand', 0.4]] }),
-    A('sweater', 14, { top: 'sweater', topC: ['#6a4a3a', '#3a4a6a', '#4a6a4a', '#8a8a80'], bot: 'trousers', botC: KHAKI, shoe: 'dress', shoeC: SHOE_DARK, gear: [['face_glasses', 0.3], ['face_beard', 0.3]] }),
+    A('sweater', 14, { top: 'sweater', topC: ['#6a4a3a', '#3a4a6a', '#4a6a4a', '#5a4a6a'], bot: 'trousers', botC: KHAKI, shoe: 'dress', shoeC: SHOE_DARK, gear: [['face_glasses', 0.3], ['face_beard', 0.3]] }),
     A('cook', 10, { top: 'apron', topC: ['#e8e8e4', '#d8d4c8'], topPat: [[0, 1]], bot: 'trousers', botC: [...DARK, '#8a8a80'], shoe: 'sneaker', shoeC: ['#e8e8e4', '#2a2a2a'], hat: [['hat_cap', 0.5]], gear: [['apron', 0.95]], gearC: ['#e8e8e4'] }),
     A('coverall', 9, { top: 'long', topC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], topPat: [[7, 4], [0, 2]], bot: 'trousers', botC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], sync: true, shoe: 'boot', shoeC: BOOT, hat: [['hat_hard', 0.4]] }),
     A('shirtless', 3, { top: 'bare', topC: TEE, bot: 'trousers', botC: [...JEANS, ...KHAKI, ...DARK], shoe: 'bare', gear: [] }),
@@ -365,9 +365,17 @@ export function zombieLook(type, id, theme = '') {
     q = mixRgb(q, [gy * 1.02, gy, gy * 0.94], range(r, 0.12, 0.32) * fresh);
     return capL(q, cap);
   };
-  // (no brighter than the skin: a pale shirt under the flashlight read as bare skin)
-  look.top = grime(topC, 0.25, 0.55, 0.15);
-  look.bottom = grime(botC, 0.25, 0.55, 0.13);
+  // a garment the skin's own value reads as bare skin at night: off it, lighter if the cloth was light
+  // (dingy, never white), else darker
+  const offSkin = (q, c0, maxL) => {
+    const l = luma(q), s = luma(look.skin);
+    if (l <= s * 0.55 || l >= s * 2) return q;
+    const up = luma(c0) > 0.3 && s * 2 <= maxL;
+    const k = (up ? s * 2 : s * 0.55) / Math.max(1e-4, l);
+    return [q[0] * k, q[1] * k, q[2] * k];
+  };
+  look.top = offSkin(grime(topC, 0.25, 0.55, 0.15), topC, 0.26);
+  look.bottom = offSkin(grime(botC, 0.25, 0.55, 0.13), botC, 0.22);
   // (torn and holed, but still clothes: the holes open with the tear, actor-zmat.js)
   const tearBase = T === 'brute' || T === 'boss' ? 0.55 : T === 'runner' ? 0.1 + r() * 0.3 : 0.2 + r() * 0.5;
   look.tear = Math.min(0.85, tearBase * (arch.tearMul || 1));
@@ -415,6 +423,8 @@ export function zombieLook(type, id, theme = '') {
     let thr = T === 'brute' || T === 'boss' ? HAIR_NONE : st ? st.thr : HAIR_BALD;
     // the hair falls out as the body rots; no two heads thin alike
     if (thr < 1) thr = Math.min(0.97, thr + (q() - 0.5) * 0.08 + look.rot * 0.1);
+    // (under long hair the scalp stays covered: bald gaps between the locks read as ribbons on a skull)
+    if (st && st.strands) thr = Math.min(thr, st.thr + 0.03 + st.strands[1] * 0.3);
     look.hairThr = thr;
     if (st) {
       if (st.opt) opts.add(st.opt);

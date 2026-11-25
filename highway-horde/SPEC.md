@@ -2019,23 +2019,29 @@ split by stretch marks over the shoulders and arms, bulging veins, filthy; the b
 muscle; the bloater taut and blistered; the spitter's acid burns; the screamer's bloodless blue-grey and dark veins).
 The shader takes the creases at 75 % (dry skin's specular is weak and gone from them), greys the atlas only a little,
 and tints it toward the person's tone. The fabrics are Poly Haven scans (`scripts/zbake/fabric.js`). The eyes are
-shaded in the material (a dull, clouded, yellowed white, milky iris) from the eye centres.
+shaded in the material (a dull, clouded, yellowed white, milky iris) from the eye centres, their glow a dim sheen (a
+sixteenth of the look's eye glow; the elites' still burn). The specials' growths glow through their skin, not like
+lamps: through the thin places between the veins, brightest where they face the eye (the boss's pulse 0.3 ± 0.1).
 Hair is painted on the scalp: the atlas' B channel is a rank per texel — on the scalp the density (thinnest on the
 crown and the temples, where hair goes first) times strands and clumps combed out from a whorl, the brows near 1, a
-low band (0.06–0.2) for the beard — and the shader keeps the hair where the rank is over the zombie's own threshold
+low band (0.07–0.2) for the beard — and the shader keeps the hair where the rank is over the zombie's own threshold
 (`T_VAR3.y`: threshold × 100 in the integer part, the clumps' sparseness in the fraction; on the thinning it wanders in
-a mangy noise), in its hair colour (greyed with age), the clumps' cores lighter than the gaps, greasy, with a bump of
-its own; the band shows as a beard on the bearded (`face_beard`) and as a shadow of stubble on the other men; the
-procedural (low) shading paints a scalp by a hairline instead. Longer hair adds clumps (`hair_strands`,
-`PART.HCLUMP` 22): rounded, tapered, lumpy, twisting tubes lying on the scalp, then down the back behind the shoulders
-(side locks to the shoulder, face-framing ones short), their uv the clump's number plus the way round and the run
-from root to tip; the shader splits them into fine strands with grooves, frays them toward the end and where the
-zombie's hair is cut (`T_VAR3.x`) through a screen dither (soft ends, no card edges), drops whole clumps on thin hair,
-and gives hair no rim and a damped grazing specular (18 clumps on the near models of high and up, 8 at mid, 30 on
-the cinematic hero; a three-clump ponytail and a bun). Clothes are dressed on most: tops are holed sparingly (the
-material's rot holes at 1.1 − 0.3 tear, the grime set's rips at 1 − 0.34 tear, tear ≤ 0.85), keep more of their own
-colour and stay darker than the skin, and fold (drape at the waist and from the armpits, bunched at the elbows, knees
-and over the shoes: a bump and shade from the rest pose, faded out with distance).
+a mangy noise) with a soft edge (thinning over the scalp, not breaking into stripes), in its hair colour (greyed with
+age), the clumps' cores lighter than the gaps, greasy, with a bump of its own; the band shows as a beard on the
+bearded (`face_beard`) and as a shadow of stubble on the other men; the procedural (low) shading paints a scalp by a
+hairline instead. Longer hair adds clumps (`hair_strands`, `PART.HCLUMP` 22; the scalp under them stays covered):
+thin, wide locks matted flat on the scalp (overlapping into one layer, no ridges), then rounded, tapered and lumpy
+down the back behind the shoulders (side locks to the shoulder, face-framing ones short), their uv the clump's number
+plus the way round and the run from root to tip; the shader splits them into 17 strands round with grooves between —
+faded to their average where a strand is under ~2 px, so they never alias into a braid or knit pattern —, frays them
+toward the end and where the zombie's hair is cut (`T_VAR3.x`) through a screen dither (soft ends, no card edges),
+drops whole clumps on thin hair, and gives hair no rim and a damped grazing specular (18 clumps on the near models of
+high and up, 8 at mid, 30 on the cinematic hero; a three-clump ponytail and a bun). Clothes are dressed on most: tops
+are holed sparingly (the material's rot holes at 1.1 − 0.3 tear, the grime set's rips at 1 − 0.34 tear, tear ≤ 0.85),
+keep more of their own colour and stay off the skin's value (a garment within 0.55–2× the skin's luminance is pushed
+out of it, lighter and dingy if the cloth was light, else darker: a top as light as the skin read as bare skin at
+night), and fold (bunched just above the hem, drawn from the armpits, at the elbows, knees and over the shoes: low,
+broken ridges, a bump and shade from the rest pose, faded out with distance).
 Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
 triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms
 (134 / 0.38 M / 8.6). Zombie texture VRAM on high 119 MB (was 130). Heads at scale 1 (the head frame's centre, x forward):

@@ -711,7 +711,8 @@ export function createZombies3D(ctx) {
       pool.texel(i, T_FX, buff, s.char, flash, 1);
       // (the sick light under the skin is a faint pulse, not a toy's LEDs; it flares when the spitter retches)
       const glowK = z.type === 'bloater' ? 0.22 + Math.sin(time * 2.6 + s.seed * 7) * 0.1
-        : z.type === 'spitter' ? 0.3 + Math.sin(time * 3.4 + s.seed * 5) * 0.12 + (s.spit < 0.7 ? 1.1 : 0) : 0.7;
+        : z.type === 'spitter' ? 0.3 + Math.sin(time * 3.4 + s.seed * 5) * 0.12 + (s.spit < 0.7 ? 1.1 : 0)
+        : z.type === 'boss' ? 0.3 + Math.sin(time * 1.7 + s.seed * 3) * 0.1 : 0.7;
       pool.texel(i, T_FX2, s.burn, glowK, 0, s.ice);
       if ((elite || z.type === 'boss') && d2 < 1600 * 1600) eyeGlow(i, z, T, elite);
     }

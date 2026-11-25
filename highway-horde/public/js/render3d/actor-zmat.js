@@ -171,11 +171,13 @@ export const Z_CUTS = /* glsl */`
       float hid = floor(hu.x + 0.001);
       zAlong = clamp(hu.y, 0.0, 1.0);
       if (zHash(hid * 3.17 + seed * 1.31) < fract(v3.y)) discard;
-      float sp = fract(hu.x) * 23.0 + zHash(hid + 0.5) * 7.0;
+      float sp = fract(hu.x) * 17.0 + zHash(hid + 0.5) * 7.0 + (hhD.g - 0.5) * 1.2;
       float sh = zHash(floor(sp) * 1.93 + hid * 5.1);
-      zStrand = clamp(0.5 + 0.3 * sin(sp * 6.2832) + (sh - 0.5) * 0.7 + (hhD.r - 0.5) * 0.3, 0.0, 1.0);
+      // (strands under ~2 px fade into their average: no moire, no knit or braid pattern)
+      float aa = smoothstep(0.5, 0.18, fwidth(sp));
+      zStrand = clamp(0.5 + aa * (0.22 * sin(sp * 6.2832) + (sh - 0.5) * 0.6) + (hhD.r - 0.5) * 0.4, 0.0, 1.0);
       // (grooves between the strands: a bump of their own, Z_TEX_NORMAL)
-      zBumpH = (0.5 + 0.5 * sin(sp * 6.2832)) * 0.035;
+      zBumpH = aa * (0.5 + 0.5 * sin(sp * 6.2832)) * 0.035;
       float endD = min((1.0 - zAlong) * 14.0 * (0.75 + sh * 0.5), vMP.y - v3.x - (sh - 0.5) * 2.4);
       float fray = smoothstep(2.8, 0.0, endD);
       // (soft: each strand's edge and its end fade out through a fine screen dither)
@@ -309,6 +311,12 @@ const SHADE_REST = /* glsl */`  } else if (hhM == 3 || hhM == 10) {
   } else if (hhM == 6) {
     diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
     hhWet = max(hhWet, 0.7);
+  } else if (hhM == 8) {
+    // a growth with the sick light inside it (the emissive): a dark, veined, wet skin over it
+    vec3 g = diffuseColor.rgb;
+    diffuseColor.rgb = mix(vec3(0.045, 0.026, 0.02), g * 0.18, 0.35) * (0.7 + 0.6 * hhD.r);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09, 0.015, 0.015), smoothstep(0.5, 0.85, hhD2.r) * 0.6);
+    hhWet = max(hhWet, 0.6);
   } else if (hhM == 7) {
     // milky eyes: a clouded cornea over a faded iris, red veins, wet
     vec3 milk = vec3(0.42, 0.41, 0.36);
@@ -520,7 +528,7 @@ vec3 zEye(vec3 p, vec3 tint) {
   vec3 d = normalize(p - c);
   float f = d.x;
   // (a dull, yellowed grey: a bright white read as a doll's eye under the flashlight)
-  vec3 white = vec3(0.4, 0.37, 0.3) * (0.85 + 0.3 * hhD.r);
+  vec3 white = vec3(0.21, 0.195, 0.155) * (0.85 + 0.3 * hhD.r);
   float vein = smoothstep(0.55, 0.9, hhD2.r + hhD.a * 0.2) * (1.0 - smoothstep(0.75, 0.9, f));
   white = mix(white, vec3(0.36, 0.06, 0.05), vein * 0.6);
   float iris = smoothstep(0.86, 0.9, f);
@@ -602,7 +610,7 @@ const SKIN_TEX = /* glsl */`
     }
     // the person's own skin tone: its lightness and a share of its hue (the decay colours stay)
     float tl = max(0.004, dot(tSkin.rgb, ZLUMA));
-    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.15) * clamp(tl / 0.33, 0.3, 1.2);
+    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.15) * clamp(tl / 0.33, 0.42, 1.2);
     // (the atlas carries its own occlusion and features: only a share of the vertex shading)
     vec3 c = zLin(A.rgb) * toneK * (zUV ? mix(vec3(1.0), baseCol, 0.25) : mix(vec3(1.0), baseCol * 1.12, 0.75));
     // (a mottle at another scale from the procedural detail, so no two tiles of skin match)
@@ -617,7 +625,8 @@ const SKIN_TEX = /* glsl */`
       // lighter than the gaps between them, greasy, with a bump of its own (Z_TEX_NORMAL)
       float thr0 = floor(v3.y) * 0.01, thr = thr0;
       if (thr0 < 1.0) thr += (hhD2.b - 0.5) * 0.55 * smoothstep(0.4, 0.75, thr0) + (hhD.g - 0.5) * 0.06;
-      float hk = smoothstep(thr, thr + 0.06, A.a);
+      // (a soft edge: where the hair is going it thins over the scalp instead of breaking into stripes)
+      float hk = smoothstep(thr - 0.03, thr + 0.14, A.a);
       // the beard: the rank's low band, on the bearded ('face_beard'); a shadow of stubble on the other men
       if (thr0 < 1.0) {
         float band = smoothstep(0.035, 0.07, A.a) * smoothstep(0.24, 0.2, A.a);
@@ -678,6 +687,7 @@ const SKIN_TEX = /* glsl */`
     if (ZDBG == 1) diffuseColor.rgb = zLin(A.rgb);
     if (ZDBG == 2) diffuseColor.rgb = vec3(zW);
     if (ZDBG == 3) diffuseColor.rgb = vec3(fract(vMP * kS));
+    if (ZDBG == 4) diffuseColor.rgb = vec3(0.1);
 #endif
     zRoughT = rough;
     hhWet = max(hhWet, wet);
@@ -759,28 +769,32 @@ const CLOTH_TEX = /* glsl */`
     c = mix(c, vec3(dot(c, ZLUMA)) * vec3(1.05, 1.02, 0.95), (topG ? smoothstep(uBody.y, uBody.z + 1.0, vMP.y) * 0.3 : 0.0));
     // (filthy, but still its own colour: a garment must not go the dirty yellow-grey of the skin)
     c *= mix(vec3(1.0), vec3(0.7, 0.64, 0.54), 0.35 + 0.4 * zG.b);
-    // folds: the cloth hangs and bunches (round the waist and the small of the back, from the
-    // armpits, at the elbows, the knees and over the shoes) in low ridges that catch the light, a
+    // folds: the cloth hangs and bunches (just above the hem, from the armpits, at the elbows, the
+    // knees and over the shoes) in low, broken ridges that catch the light — never even stripes —, a
     // little of each zombie's own (the bump is Z_TEX_NORMAL's)
     {
       float ang = atan(vMP.z, vMP.x - 0.3);
-      float wob = sin(ang * 3.0 + zSeed) * 0.7 + sin(ang * 5.0 - zSeed * 1.7) * 0.35 + (hhD.g - 0.5) * 0.6;
+      float wob = sin(ang * 3.0 + zSeed) * 1.3 + sin(ang * 5.0 - zSeed * 1.7) * 0.6 + (hhD.g - 0.5) * 0.9;
+      float brk = smoothstep(0.3, 0.7, hhD.g + (hhD2.g - 0.5) * 0.6);
       float fh = 0.0, y = vMP.y;
       if (topG) {
-        float waistK = smoothstep(uBody.x + 6.0, uBody.x, y) * smoothstep(v1.x - 0.5, v1.x + 2.5, y);
-        fh += sin(y * 2.2 + wob) * 0.17 * waistK;
-        float pitK = smoothstep(uBody.z - 8.0, uBody.z - 3.5, y) * smoothstep(uBody.z + 0.5, uBody.z - 2.0, y) * smoothstep(2.5 * W, 5.0 * W, abs(vMP.z));
-        fh += sin((y + abs(vMP.z) * 0.9) * 2.5 + wob) * 0.15 * pitK;
-        if (hhPart == 2) fh += sin(y * 3.0 + wob) * 0.16 * smoothstep(4.5, 0.0, abs(y - (uBody.z - 8.2)));
+        float waistK = smoothstep(v1.x + 5.5, v1.x + 1.0, y) * smoothstep(v1.x - 0.5, v1.x + 1.0, y) * (0.35 + 0.65 * brk);
+        fh += sin(y * 2.4 + wob) * 0.2 * waistK;
+        float pitK = smoothstep(uBody.z - 8.0, uBody.z - 3.5, y) * smoothstep(uBody.z + 0.5, uBody.z - 2.0, y) * smoothstep(2.5 * W, 5.0 * W, abs(vMP.z)) * (0.5 + 0.5 * brk);
+        fh += sin((y + abs(vMP.z) * 1.1) * 2.5 + wob) * 0.16 * pitK;
+        if (hhPart == 2) fh += sin(y * 3.0 + wob) * 0.18 * smoothstep(4.5, 0.0, abs(y - (uBody.z - 8.2)));
       } else if (botG) {
         float kn = smoothstep(4.5, 0.0, abs(y - 16.2)), an = smoothstep(6.0, 1.5, y);
-        fh += sin(y * 2.7 + wob) * (0.16 * kn + 0.2 * an);
+        fh += sin(y * 2.7 + wob) * (0.18 * kn + 0.22 * an) * (0.5 + 0.5 * brk);
         fh += sin(y * 1.5 + vMP.z * 0.7 + wob) * 0.07;
       }
       zBumpH = fh;
-      c *= 1.0 - 0.3 * smoothstep(0.02, -0.15, fh);
+      c *= 1.0 - 0.25 * smoothstep(0.02, -0.18, fh);
     }
     diffuseColor.rgb = c;
+#ifdef ZDBG
+    if (ZDBG == 4) diffuseColor.rgb = topG ? vec3(0.6, 0.0, 0.0) : vec3(0.0, 0.0, 0.6);
+#endif
     float rough = mix(0.93, 0.74, sk * (1.0 - fresh));
     rough = mix(rough, 0.3, sk * fresh);
     rough = mix(rough, 0.97, md);

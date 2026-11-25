@@ -10,8 +10,10 @@
 // still wear theirs over the skull's rotted cavity.
 //
 // Several looks share one group and differ by a per-instance parameter the shader reads:
-// the cap is a visor when its crown is cut away, hair strands are long, shoulder-length,
-// a bob or shaggy by their cut height, and one shoe is a dress shoe, a sneaker or a boot.
+// the cap is a visor when its crown is cut away, the hair's clumps are long, shoulder-length,
+// a bob or shaggy by their cut height (thinner hair drops whole clumps), and one shoe is a
+// dress shoe, a sneaker or a boot. The scalp's hair and the beards are painted (the body
+// atlas' hair rank, actor-zmat.js): no shell over the skull, no blob on the jaw.
 // Hidden groups still cost their vertices, so everything here is low-poly.
 
 import { SLOT, MAT, PART, lineRings } from './actor-shape.js';
@@ -166,12 +168,13 @@ function hair(sb, P, L, has, headDef, cin = false, near = false) {
       // at the back, the temples at the front
       const latX = 0.05 - 0.35 * sideK * (1 - frontK) - 0.45 * backK + 0.12 * frontK;
       const ref = dir(lon, lat0);
-      const w0 = (0.6 + h3 * 0.32) * hk, t0 = (0.3 + h1 * 0.12) * hk;
+      const w0 = (0.62 + h3 * 0.34) * hk, t0 = (0.22 + h1 * 0.1) * hk;
       const pts = [];
       for (let k = 0; k <= lvl.ks; k++) {
         const t = k / lvl.ks;
-        const p = on(dir(lon + (h3 - 0.5) * 0.08 * t, lat0 + (latX - lat0) * t), 0.985 + 0.06 * t);
-        pts.push({ c: p, rx: t0 * (1 + 0.25 * t), rz: w0 * (1 - 0.1 * t), bone: B.HEAD });
+        // (on the scalp: thin and wide, overlapping its neighbours into one matted layer, no ridges)
+        const p = on(dir(lon + (h3 - 0.5) * 0.08 * t, lat0 + (latX - lat0) * t), 0.98 + 0.06 * t);
+        pts.push({ c: p, rx: t0 * (0.7 + 0.6 * t), rz: w0 * (1.35 - 0.3 * t), bone: B.HEAD });
       }
       // then it hangs: down the back (behind the shoulders), the side locks to the shoulder, the front ones short
       const E = pts[pts.length - 1].c;
@@ -186,9 +189,9 @@ function hair(sb, P, L, has, headDef, cin = false, near = false) {
           z = Math.max(-4.4, Math.min(4.4, z));
           x = Math.min(x, back(y, z) - 0.3 - t0);
         }
-        // (lumpy and twisting as it hangs: matted, not a tube)
-        const lump = 1 + 0.18 * Math.sin(t * 9 + i * 1.7);
-        pts.push({ c: [x, y, z], rx: t0 * (1.3 - 0.85 * t) * lump, rz: w0 * (1.05 - 0.7 * t) * (2 - lump), tw: (h1 - 0.5) * 2.4 * t, bone: t < 0.2 ? B.HEAD : y > P.neck ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+        // (lumpy as it hangs: matted, not a tube)
+        const lump = 1 + 0.1 * Math.sin(t * 7 + i * 1.7);
+        pts.push({ c: [x, y, z], rx: t0 * (1.3 - 0.85 * t) * lump, rz: w0 * (1.05 - 0.7 * t) * (2 - lump), bone: t < 0.2 ? B.HEAD : y > P.neck ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
       }
       clump(sb, pts, i, { ...S, opt: 'hair_strands', seg: lvl.seg, subdiv: cin ? 2 : 1, ref });
     }

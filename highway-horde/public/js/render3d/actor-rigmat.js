@@ -415,9 +415,11 @@ const RIM_BASE = /* glsl */`
 // zombies: no warm "living" rim on the skin, and no cold outline by day
 const RIM_ZOMBIE = /* glsl */`
   hhRimCol = (uRimColor * uRimStrength * (1.0 - uDay) + vec3(1.0, 0.06, 0.02) * tFx.x * 0.9 + vec3(1.0, 0.45, 0.1) * tFx2.x * 0.5) * tFx.w;
-  if (hhSlot == 6) hhGlow += baseCol * tFx2.y;
+  // (a growth's light comes through its skin, not off a lamp: through the thin places between the
+  //  veins, brightest where it faces the eye, dim toward its rim; by day hardly a glow at all)
+  if (hhSlot == 6) hhGlow += baseCol * tFx2.y * (0.15 + 0.85 * smoothstep(0.3, 0.75, hhD2.r * 0.7 + hhD.g * 0.5)) * (0.3 + 0.7 * abs(normalize(vNormal).z)) * (1.0 - 0.7 * uDay);
   // (a real eyeball is bigger than the old bead: its glow is spread thinner; elites still burn)
-  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK * (tAcc.w > 3.0 ? 0.6 : 0.3);
+  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK * (tAcc.w > 3.0 ? 0.6 : 0.06);
   // (hair takes no rim: an outline round every clump read as glowing tape)
   hhRimCol *= 1.0 - zHair;`;
 
@@ -511,7 +513,8 @@ export function makeMaterials(shared, opts = {}) {
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
       .replace('#include <normal_fragment_maps>', Z ? (zt ? Z_TEX_NORMAL : Z_NORMAL_DETAIL) + Z_NORMAL : NORMAL_BASE);
     if (Z) frag = frag.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n' + Z_SPEC);
-    // (dev: window.__HH_ZDBG = 1 raw baked albedo, 2 the triplanar weights, 3 the tile coordinates)
+    // (dev: window.__HH_ZDBG = 1 raw baked albedo, 2 the triplanar weights, 3 the tile coordinates,
+    //  4 the garments: tops red, bottoms blue, skin near black)
     if (zt && globalThis.__HH_ZDBG) frag = `#define ZDBG ${globalThis.__HH_ZDBG | 0}\n` + frag;
     sh.fragmentShader = frag
       .replace('#include <emissivemap_fragment>', /* glsl */`
