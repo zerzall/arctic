@@ -101,6 +101,7 @@ function params(type) {
   P.hipZ = P.sideZ(P.hip - 1);
   // where the arms and the feet are (the rig's pivots are not on the x = 0 plane)
   P.elbowX = T.pivots[B.FARM_L][0]; P.wristX = T.pivots[B.HAND_L][0];
+  P.elbowZ = Math.abs(T.pivots[B.FARM_L][2]); P.wristZ = Math.abs(T.pivots[B.HAND_L][2]);
   P.foot = T.toes.map((t, k) => { const a = T.pivots[k ? B.FOOT_R : B.FOOT_L]; return { ankle: a, toe: t }; });
   pcache.set(type, P);
   return P;

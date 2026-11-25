@@ -392,7 +392,8 @@ export function createZombies3D(ctx) {
         // legless: prone, pulling itself with alternating arms, stumps dragging
         bob = 0;
         hipsZ = -1.42; hipsX = sw * 0.06; hipsY = sw * 0.12;
-        rootY = -22.5 + Math.max(0, sw) * 1.2; rootX = -2 + Math.max(0, -cw) * 2.5;
+        // (prone: the MakeHuman hip sits 1.5 higher than the old one)
+        rootY = -23.8 + Math.max(0, sw) * 1.2; rootX = -2 + Math.max(0, -cw) * 2.5;
         spineZ = 0.06 + sw * 0.05; chestZ = 0.12; chestY = sw * 0.15 * G.sway; chestX = 0;
         neckZ = 0.55; headZ = 0.75 + Math.sin(time * 2 + seed) * 0.08; headX = s.tilt * 0.4; headY = sw * 0.2 + Math.sin(time * 1.3 + seed * 3) * 0.15;
         uaLZ = 2.2 + sw * 0.8; uaRZ = 2.2 - sw * 0.8; uaLX = 0.35; uaRX = -0.35; uaLY = 0; uaRY = 0;
@@ -797,7 +798,7 @@ export function createZombies3D(ctx) {
     let jaw = -0.6 * limp - seed * 0.3;
     if (c.kind === 'flat') {
       pose.set(B.HIPS, 0, 0, -1.45);
-      pose.root[1] = -22.5 - e * 2;
+      pose.root[1] = -(P.hip - 5.7) - e * 2;
       pose.set(B.CHEST, 0, 0, 0.1);
       pose.set(B.NECK, 0, 0, 0.3 - e * 0.3);
       pose.set(B.HEAD, (seed - 0.5) * 1.2 * e, (seed - 0.5) * 0.8, 0.5 - e * 0.9);

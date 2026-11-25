@@ -448,25 +448,27 @@ function limbGear(sb, P, L, has) {
     const R = s > 0;
     const FA = R ? B.FARM_R : B.FARM_L, HD = R ? B.HAND_R : B.HAND_L, UA = R ? B.UARM_R : B.UARM_L;
     const z = s * P.sw;
+    // (the real arm's wrist and elbow: the MakeHuman bodies hang their arms a little forward and out)
+    const wz = s * (P.wristZ ?? P.sw), wx = P.wristX ?? 0.2, ez = s * (P.elbowZ ?? P.sw), ex = P.elbowX ?? 0;
     if (has('cuffs')) {
       const g = grp(sb, 'cuffs', { bone: FA, slot: SLOT.FIXED, mat: MAT.METAL, color: '#8a8a88' });
-      g.tube([{ c: [0.2, wr + 1.6, z], rx: P.armR * 0.6 + 0.55, rz: P.armR * 0.66 + 0.5 }, { c: [0.2, wr + 0.6, z], rx: P.armR * 0.58 + 0.6, rz: P.armR * 0.66 + 0.55 }], { seg: 8, cap0: 'flat', cap1: 'flat' });
-      g.line([0.9, wr + 0.9, z], [2.4, wr - 3.5, z * 0.7], 0.14, 0.14, 3, { seg: 3, bone: HD });
+      g.tube([{ c: [wx, wr + 1.6, wz], rx: P.armR * 0.6 + 0.55, rz: P.armR * 0.66 + 0.5 }, { c: [wx, wr + 0.6, wz], rx: P.armR * 0.58 + 0.6, rz: P.armR * 0.66 + 0.55 }], { seg: 8, cap0: 'flat', cap1: 'flat' });
+      g.line([wx + 0.7, wr + 0.9, wz], [wx + 2.2, wr - 3.5, wz * 0.7], 0.14, 0.14, 3, { seg: 3, bone: HD });
     }
     if (has('watch') && !R) {
       const g = grp(sb, 'watch', { bone: FA, slot: SLOT.FIXED, mat: MAT.METAL, color: '#2a2a2e' });
-      g.tube([{ c: [0.2, wr + 1.7, z], rx: 1.55, rz: 1.45 }, { c: [0.2, wr + 0.9, z], rx: 1.55, rz: 1.45 }], { seg: 8, mat: MAT.LEATHER, color: '#3a2a1e' });
-      g.box([1.55, wr + 1.35, z], [0.4, 1.2, 1.4], { seg: 5, round: 0.3, color: '#9a9a96' });
+      g.tube([{ c: [wx, wr + 1.7, wz], rx: 1.55, rz: 1.45 }, { c: [wx, wr + 0.9, wz], rx: 1.55, rz: 1.45 }], { seg: 8, mat: MAT.LEATHER, color: '#3a2a1e' });
+      g.box([wx + 1.35, wr + 1.35, wz], [0.4, 1.2, 1.4], { seg: 5, round: 0.3, color: '#9a9a96' });
     }
     if (has('bandage_hand') && R) {
       const g = grp(sb, 'bandage_hand', { bone: FA, slot: SLOT.FIXED, mat: MAT.CLOTH, color: '#e8e4d8' });
-      g.tube([{ c: [0.2, wr + 5.0, z], rx: 1.95, rz: 1.8 }, { c: [0.2, wr + 1.8, z], rx: 1.95, rz: 1.8 }], { seg: 8 });
-      g.ell([0.7, wr - 1.6, z], [1.5, 2.6, 1.9], { segW: 7, segH: 5, bone: HD, color: '#e4e0d4', deform: (p) => { if (p.y < 0) p.y *= 0.8; } });
-      g.ell([1.0, wr + 4.2, z + 0.4], [0.5, 0.8, 0.5], { segW: 5, segH: 4, color: '#8a1414', bone: FA });
+      g.tube([{ c: [wx, wr + 5.0, wz], rx: 1.95, rz: 1.8 }, { c: [wx, wr + 1.8, wz], rx: 1.95, rz: 1.8 }], { seg: 8 });
+      g.ell([wx + 0.5, wr - 1.6, wz], [1.5, 2.6, 1.9], { segW: 7, segH: 5, bone: HD, color: '#e4e0d4', deform: (p) => { if (p.y < 0) p.y *= 0.8; } });
+      g.ell([wx + 0.8, wr + 4.2, wz + 0.4], [0.5, 0.8, 0.5], { segW: 5, segH: 4, color: '#8a1414', bone: FA });
     }
     if (has('pompom')) {
       const g = grp(sb, 'pompom', { bone: HD, slot: SLOT.GEAR, mat: MAT.CLOTH, color: '#ffffff' });
-      g.ell([1.6, wr - 2.6, z], [2.6, 2.6, 2.6], { segW: 8, segH: 6, deform: (p) => { const k = 1 + 0.16 * Math.sin(p.x * 11 + p.y * 7) * Math.sin(p.z * 9); p.x *= k; p.y *= k; p.z *= k; } });
+      g.ell([wx + 1.4, wr - 2.6, wz], [2.6, 2.6, 2.6], { segW: 8, segH: 6, deform: (p) => { const k = 1 + 0.16 * Math.sin(p.x * 11 + p.y * 7) * Math.sin(p.z * 9); p.x *= k; p.y *= k; p.z *= k; } });
     }
     if (has('kneepads')) {
       const g = grp(sb, 'kneepads', { slot: SLOT.FIXED, mat: MAT.RUBBER, color: '#26282a' });
@@ -477,10 +479,10 @@ function limbGear(sb, P, L, has) {
       const g = grp(sb, 'holster', { bone: B.THIGH_R, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#1c1c1c' });
       g.box([0.2, P.hip - 7, P.legGap + P.thighR + 1.1], [2.0, 7.0, 1.8], { seg: 5, round: 0.3 });
     }
-    if (has('stump_hand_l') && !R) stump(sb, 'stump_hand_l', [0.2, wr + 0.8, z], FA, 1.5, 0.35);
-    if (has('stump_hand_r') && R) stump(sb, 'stump_hand_r', [0.2, wr + 0.8, z], FA, 1.5, 0.35);
-    if (has('stump_l') && !R) stump(sb, 'stump_l', [-0.3, el - 0.2, z], UA, 1.9, 0.55);
-    if (has('stump_r') && R) stump(sb, 'stump_r', [-0.3, el - 0.2, z], UA, 1.9, 0.55);
+    if (has('stump_hand_l') && !R) stump(sb, 'stump_hand_l', [wx, wr + 0.8, wz], FA, 1.5, 0.35);
+    if (has('stump_hand_r') && R) stump(sb, 'stump_hand_r', [wx, wr + 0.8, wz], FA, 1.5, 0.35);
+    if (has('stump_l') && !R) stump(sb, 'stump_l', [ex - 0.3, el - 0.2, ez], UA, 1.9, 0.55);
+    if (has('stump_r') && R) stump(sb, 'stump_r', [ex - 0.3, el - 0.2, ez], UA, 1.9, 0.55);
   }
   if (has('skirt')) {
     const g = grp(sb, 'skirt', { bone: B.HIPS, slot: SLOT.CLOTH2, mat: MAT.CLOTH, part: PART.PELVIS });

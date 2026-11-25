@@ -146,9 +146,9 @@ export const BODY_LOOKS = {
   'body-months': { base: '#7a6c58', base2: '#6c6a58', ext: '#3c3026', lip: '#2a1e1a', sock: '#1e1612', vein: '#3a3020', veins: 0.3, marble: 0.5, bruise: 0.4, slip: 0.75, rough: 0.76, crack: 0.75, nail: '#4a3a28', blood: 0.45, liv: '#4a3a34' },
   'body-bloater': { base: '#97976a', base2: '#8a9a60', ext: '#5e6040', lip: '#3a3428', sock: '#2e2a20', vein: '#2e4020', veins: 0.6, marble: 1.0, bruise: 0.6, slip: 0.3, rough: 0.42, crack: 0, nail: '#6a6448', blood: 0.4, liv: '#5a5040', wet: 0.55, stretch: 1, blister: 1 },
   'body-spitter': { base: '#99946a', base2: '#a0965e', ext: '#6a6440', lip: '#3a3020', sock: '#2e2618', vein: '#3c4a1e', veins: 0.7, marble: 0.6, bruise: 0.4, slip: 0.25, rough: 0.55, crack: 0.15, nail: '#6e6640', blood: 0.35, liv: '#5a5030', acid: 1 },
-  'body-brute': { base: '#7a7276', base2: '#6e6a70', ext: '#4a4048', lip: '#3a2a2e', sock: '#2a1e22', vein: '#3a3048', veins: 0.6, marble: 0.35, bruise: 0.8, slip: 0.1, rough: 0.66, crack: 0.2, nail: '#5a5048', blood: 0.6, liv: '#5a3a48', scars: 1 },
+  'body-brute': { base: '#a09496', base2: '#958c92', ext: '#62545c', lip: '#3a2a2e', sock: '#2a1e22', vein: '#3a3048', veins: 0.6, marble: 0.35, bruise: 0.8, slip: 0.1, rough: 0.66, crack: 0.2, nail: '#5a5048', blood: 0.6, liv: '#5a3a48', scars: 1 },
   'body-screamer': { base: '#b4b6b8', base2: '#a9b0ba', ext: '#7a8090', lip: '#4a3a48', sock: '#2e2232', vein: '#4a5a8a', veins: 1.0, marble: 0.2, bruise: 0.35, slip: 0.15, rough: 0.54, crack: 0.1, nail: '#8a8890', blood: 0.8, liv: '#6a4a62' },
-  'body-boss': { base: '#7a5048', base2: '#6a4a44', ext: '#3a2420', lip: '#2a1414', sock: '#1a0c0c', vein: '#3a1418', veins: 0.6, marble: 0.4, bruise: 0.5, slip: 0.6, rough: 0.6, crack: 0.9, nail: '#4a3028', blood: 0.6, liv: '#4a2a2a', ulcer: 1 },
+  'body-boss': { base: '#946a60', base2: '#86645a', ext: '#4e3028', lip: '#2a1414', sock: '#1a0c0c', vein: '#3a1418', veins: 0.6, marble: 0.4, bruise: 0.5, slip: 0.6, rough: 0.6, crack: 0.9, nail: '#4a3028', blood: 0.6, liv: '#4a2a2a', ulcer: 1 },
 };
 
 /**

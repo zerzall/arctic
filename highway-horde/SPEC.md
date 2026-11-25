@@ -1840,6 +1840,11 @@ roughness, G occlusion, B hair coverage tinted with the zombie's hair colour) pa
 body rasterised into UV space (anatomy-aware: pores, creases, veins, marbling, bruises, sockets, lips, nails, scalp,
 slipped skin, scrapes, dried blood; the specials' stretch marks, acid burns, scars, ulcers); the fabrics are Poly Haven
 scans (`scripts/zbake/fabric.js`). The eyes are shaded in the material (clouded white, milky iris) from the eye centres.
+Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
+triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms
+(134 / 0.38 M / 8.6). Zombie texture VRAM on high 119 MB (was 130). Heads at scale 1 (the head frame's centre, x forward):
+walker (1.6, 52.4), runner (1.6, 52.5), bloater (1.7, 52.5), spitter (1.6, 53.0), screamer (1.6, 52.4), brute (4.4, 51.4),
+boss (4.7, 51.2); the renderer's SCALE puts the brute's 2.6 and the boss's 4.5 world units forward of the old ones.
 Zombie variety (`actor-zlook.js`, `actor-rigmat.js`): `zombieLook(type, id)` is a pure function of the
 sim id (same person on every client; `tests/zlook.test.js`): an archetype per type (walkers are commuters,
 executives, police, firefighters, EMTs, soldiers, prisoners, tourists, hikers, farmers, patients in gowns ...;
