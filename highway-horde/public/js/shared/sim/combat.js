@@ -520,8 +520,8 @@ function lagPose(z, tick) {
   return true;
 }
 
-/** The pose flags the hit volumes read (hitbox.js variantOf): lunging, charging, elite. */
-function poseFlags(z) {
+/** A zombie's pose bits for its hit volumes (hitbox.js variantOf): 2 attacking, 4 charging, 16 elite. */
+export function poseFlags(z) {
   return (z.swingT > 0 || z.flashT > 0 ? 2 : 0) | (z.mode === 1 || z.mode === 2 ? 4 : 0) | (z.elite ? 16 : 0);
 }
 
