@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -106,7 +107,12 @@ test('the texture queue: later sets wait for the world library (at most QUEUE_MA
   assert.equal(after, true);
 });
 
-test('the one-file build embeds the fresh copies (and their index), a stale copy\'s PNG instead', () => {
+// (the build needs esbuild, a dev dependency of highway-horde: the repository root's own test run,
+// which does not install it, skips this one)
+let esbuildOk = true;
+try { createRequire(import.meta.url).resolve('esbuild'); } catch { esbuildOk = false; }
+
+test('the one-file build embeds the fresh copies (and their index), a stale copy\'s PNG instead', { skip: !esbuildOk && 'esbuild is not installed' }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'hh-onefile-'));
   try {
     const lib = path.join(dir, 'textures');
