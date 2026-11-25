@@ -106,3 +106,42 @@ test('garment cuts stay inside the body', () => {
     }
   }
 });
+
+test('most of the dead are dressed: bare chests, vests and shorts are a minority, a torn shirt is still a shirt', () => {
+  for (const t of ZOMBIE_IDS) {
+    let bare = 0, vest = 0, shorts = 0;
+    const N = 400;
+    for (let id = 1; id <= N; id++) {
+      const l = zombieLook(t, id);
+      if (l.topKind === 'bare') bare++;
+      if (l.topKind === 'tank' || l.topKind === 'crop' || l.topKind === 'rags') vest++;
+      if (l.legKind === 'shorts') shorts++;
+      assert.ok(l.tear >= 0 && l.tear <= 0.85, `${t} ${id}: tear ${l.tear}`);
+    }
+    assert.ok(bare / N < 0.08, `${t}: ${bare} of ${N} bare-chested`);
+    assert.ok(vest / N < 0.08, `${t}: ${vest} of ${N} in vests`);
+    assert.ok(shorts / N < 0.15, `${t}: ${shorts} of ${N} in shorts`);
+  }
+});
+
+test('hair: the painted scalp\'s threshold and the clumps\' sparseness travel in T_VAR3.y; the brutes are hairless', () => {
+  const stage = new Float32Array(TEX_W * 4);
+  const seen = new Set();
+  for (const t of ZOMBIE_IDS) {
+    for (let id = 1; id <= 150; id++) {
+      const l = zombieLook(t, id);
+      stage.fill(0);
+      packLook(l, stage, 0, null);
+      const y = stage[T_VAR3 * 4 + 1];
+      assert.equal(Math.floor(y), Math.round(l.hairThr * 100), `${t} ${id}: threshold`);
+      assert.ok(Math.abs((y - Math.floor(y)) - l.hairSparse) < 1e-4, `${t} ${id}: sparseness`);
+      if (t === 'brute' || t === 'boss') assert.ok(l.hairThr >= 1, `${t} ${id}: hairless`);
+      else assert.ok(l.hairThr > 0.1 && l.hairThr < 1, `${t} ${id}: threshold ${l.hairThr}`);
+      // (the scalp is painted: no shell over the skull; long hair adds the clumps)
+      assert.ok(!l.opts.has('hair_scalp'));
+      if (['long', 'shoulder', 'bob', 'stringy'].includes(l.hairStyle)) assert.ok(l.opts.has('hair_strands'));
+      seen.add(Math.round(l.hairThr * 10));
+    }
+  }
+  assert.ok(seen.size >= 6, `a range of hair from full to bald (${[...seen].sort()})`);
+});

@@ -19,7 +19,7 @@
 // Per-mesh uniforms: uBody (waist, chest, shoulder y, gaunt), uBody2 (head centre x, y, leg
 // gap, width scale), uDay (1 in daylight: no cold rim outline).
 
-import { T_COL4, T_COL5, T_HAIR, T_ACCENT } from './actor-consts.js';
+import { T_COL4, T_COL5, T_HAIR, T_ACCENT, T_MORPH, optBit } from './actor-consts.js';
 import { SKIN_TILE, CLOTH_TILE, GRIME_TILE, WOUND_Q } from './actor-ztex.js';
 
 const f1 = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
@@ -36,6 +36,12 @@ float zDry = 0.0;
 float zCav = 0.0;
 float zSheen = 0.0;
 vec3 zSheenCol = vec3(0.0);
+// hair: zHair 1 on hair (0..1 on the painted scalp: no rim, a soft edge to its sheen), zHairH the
+// scalp hair's bump, the clumps' run from root to tip and their strand pattern
+float zHair = 0.0;
+float zHairH = 0.0;
+float zAlong = 0.0;
+float zStrand = 0.5;
 float zHash(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
 // bump from a height field in view units (Mikkelsen's surface gradient, unnormalised so a
 // relief in model units keeps its slope whatever the distance)
@@ -154,10 +160,22 @@ export const Z_CUTS = /* glsl */`
     }
     // one shoe lost somewhere: the left foot bare
     if ((hhPart == 6 || hhPart == 10 || hhPart == 11) && mod(tC4.w, 2.0) > 0.5 && vMP.z < 0.0) discard;
-    // long hair: each strand card splits into lank clumps with gaps between them
-    if (hhPart == 9 && abs(fract(vDUv.x * 6.0 + hhD.r * 0.5) - 0.5) > 0.28 + hhD.g * 0.16) discard;
-    // hair falling out in patches (scalp, buns, afros)
-    if (hhM == 5 && hhPart != 9 && hhD2.b * 0.7 + hhD.r * 0.5 < 0.4 + rot * 0.12) discard;
+    // a clump of hair (uv.x its number + the way round, uv.y root → tip): whole clumps gone on thin
+    // hair (v3.y's fraction), fine strands along it, each with its own length, the clump splitting
+    // into them toward its end and where the zombie's hair is cut (v3.x): no hard card edges
+    if (hhPart == 22) {
+      vec2 hu = vDUv - vec2(fract(seed * 0.3719), fract(seed * 0.6133));
+      float hid = floor(hu.x + 0.001);
+      zAlong = clamp(hu.y, 0.0, 1.0);
+      if (zHash(hid * 3.17 + seed * 1.31) < fract(v3.y)) discard;
+      float sp = fract(hu.x) * 11.0 + zHash(hid + 0.5) * 7.0;
+      float sh = zHash(floor(sp) * 1.93 + hid * 5.1);
+      zStrand = clamp(0.5 + 0.3 * sin(sp * 6.2832) + (sh - 0.5) * 0.7 + (hhD.r - 0.5) * 0.3, 0.0, 1.0);
+      float endD = min((1.0 - zAlong) * 14.0 * (0.75 + sh * 0.5), vMP.y - v3.x - (sh - 0.5) * 2.4);
+      if (endD < 0.0) discard;
+      float fray = smoothstep(2.8, 0.0, endD);
+      if (abs(fract(sp) - 0.5) > 0.5 - 0.44 * fray * (0.5 + sh)) discard;
+    }
   }
 `;
 
@@ -195,6 +213,17 @@ const SKIN_PROC = /* glsl */`    vec3 c = diffuseColor.rgb;
     // grime from the feet up, on the hands, in the creases
     float dirt = smoothstep(24.0, 2.0, vMP.y) * (0.3 + hhD.b * 0.8) + (hhPart == 5 ? hhD.b * 0.7 : 0.0) + hhD.b * 0.12;
     c = mix(c, c * vec3(0.5, 0.42, 0.32), clamp(dirt, 0.0, 1.0) * 0.72);
+    // the scalp's hair (the baked atlas paints it on the textured tiers): above a hairline round
+    // the head, kept over the zombie's threshold (v3.y), thinning in mangy patches
+    if (hhPart == 17) {
+      vec3 hq = vMP - vec3(uBody2.x, uBody2.y, 0.0);
+      float hl = mix(-2.3, 2.5, smoothstep(-2.6, 2.6, hq.x)) + 1.6 * smoothstep(2.0, 2.8, abs(hq.z)) * smoothstep(-1.5, 0.5, hq.x);
+      float thr = floor(v3.y) * 0.01;
+      float hv = smoothstep(hl, hl + 0.5, hq.y) * (0.45 + 0.55 * hhD2.b + (hhD.r - 0.5) * 0.25);
+      float hk = thr < 1.0 ? smoothstep(thr, thr + 0.08, hv) : 0.0;
+      c = mix(c, hhT(${T_HAIR}).rgb * (0.45 + 0.7 * hhD.g), hk);
+      zHair = hk;
+    }
     diffuseColor.rgb = c;
     zWoundPaint(wA, dA, rot, diffuseColor.rgb, hhWet, hhGlow);
     zWoundPaint(wB, dB, rot, diffuseColor.rgb, hhWet, hhGlow);
@@ -260,22 +289,22 @@ const SHADE_REST = /* glsl */`  } else if (hhM == 3 || hhM == 10) {
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.14, 0.08), hhD.b * 0.4);
     zSpec = 0.6;
   } else if (hhM == 5) {
-    // matted, greasy, dusty hair in strands; where it is falling out it thins to the scalp
-    // (no hard-edged patches: they read as paint)
-    vec3 c = diffuseColor.rgb * (0.5 + hhD.r * 0.45) * (0.75 + 0.5 * hhD.g);
-    c = mix(c, c * vec3(0.7, 0.66, 0.58), hhD.b * 0.5);
-    if (hhPart != 9) {
-      float thin = smoothstep(0.4 + rot * 0.12, 0.62 + rot * 0.12, hhD2.b * 0.7 + hhD.r * 0.5);
-      c = mix(tSkin.rgb * baseCol * 0.55, c, thin * (0.55 + 0.45 * hhD.g));
-    }
+    // matted, greasy, dusty hair: in strands (the clumps' own, Z_CUTS; a weave of them on a bun or a
+    // beard), darker at the roots and in the clump's shade, a grey film of dust in places; its sheen
+    // follows the strands
+    if (hhPart != 22) zStrand = clamp(0.5 + 0.3 * sin((vDUv.x * 23.0 + hhD.r * 2.0) * 6.2832) + (hhD.g - 0.5) * 0.6, 0.0, 1.0);
+    float root = hhPart == 22 ? smoothstep(0.0, 0.3, zAlong) : 1.0;
+    vec3 c = diffuseColor.rgb * (0.4 + 0.72 * zStrand) * mix(0.5, 1.0, root) * (0.82 + 0.36 * hhD.g);
+    c = mix(c, vec3(0.05, 0.047, 0.042), hhD.b * 0.3);
     diffuseColor.rgb = c;
-    zSpec = 0.45;
+    zSpec = 0.3 + 0.55 * zStrand;
+    zHair = 1.0;
   } else if (hhM == 6) {
     diffuseColor.rgb *= 0.7 + hhD.r * 0.5;
     hhWet = max(hhWet, 0.7);
   } else if (hhM == 7) {
     // milky eyes: a clouded cornea over a faded iris, red veins, wet
-    vec3 milk = vec3(0.6, 0.6, 0.55);
+    vec3 milk = vec3(0.42, 0.41, 0.36);
     vec3 c = mix(milk, tAcc.rgb * 0.35 + milk * 0.4, 0.35);
     float sv = smoothstep(0.45, 0.8, hhD2.r + hhD.a * 0.2);
     c = mix(c, vec3(0.36, 0.05, 0.04), sv * 0.45);
@@ -341,7 +370,7 @@ export const Z_ROUGH = /* glsl */`
   else if (hhM == 1 || hhM == 2) roughnessFactor = 0.96;
   else if (hhM == 3) roughnessFactor = 0.58 + hhD.b * 0.3;
   else if (hhM == 4) roughnessFactor = 0.62;
-  else if (hhM == 5) roughnessFactor = 0.74;
+  else if (hhM == 5) roughnessFactor = 0.46 + 0.24 * (1.0 - zStrand);
   else if (hhM == 6) roughnessFactor = 0.32;
   else if (hhM == 7) roughnessFactor = 0.07;
   else if (hhM == 9) roughnessFactor = 0.35 + hhD.b * 0.4;
@@ -399,7 +428,8 @@ export const Z_SHEEN = /* glsl */`
 export const Z_SPEC = /* glsl */`
   material.specularColor *= zSpec;
   material.specularColorBlended *= zSpec;
-  material.specularF90 = mix(0.35, 1.0, zSpec);`;
+  // (hair: no grazing glare round the clumps' edges)
+  material.specularF90 = mix(0.35, 1.0, zSpec) * (1.0 - 0.75 * zHair);`;
 
 // ---------------------------------------------------------------------------------------------
 // The baked texture sets (actor-ztex.js) on high and up: `#define HH_ZTEX` swaps the skin and cloth
@@ -463,6 +493,13 @@ vec3 zPerturb2(vec3 N, vec2 st0, vec2 st1, vec2 nxy) {
   float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
   return normalize(T * (nxy.x * s) + Bt * (nxy.y * s) + N * nz);
 }
+// a bump from a height's screen-space derivatives (model units), through the view position's frame
+vec3 zBumpD(vec3 N, float dhx, float dhy) {
+  vec3 r1 = cross(zDEy, N), r2 = cross(N, zDEx);
+  float det = dot(zDEx, r1);
+  vec3 g = sign(det) * (dhx * r1 + dhy * r2);
+  return normalize(abs(det) * N - g);
+}
 // unit head coordinates of a rest-pose point (x forward, y up, z right)
 vec3 zHeadQ(vec3 p) { return vec3((p.x - uBody2.x) / uZHead.x, (p.y - uBody2.y) / uZHead.y, p.z / uZHead.z); }
 // a dead eye on the body's eyeball (rest-pose model space): a clouded, veined white, the iris gone
@@ -471,7 +508,8 @@ vec3 zEye(vec3 p, vec3 tint) {
   vec3 c = vec3(uZFace.x, uZFace.y, p.z < 0.0 ? -uZFace.z : uZFace.z);
   vec3 d = normalize(p - c);
   float f = d.x;
-  vec3 white = vec3(0.62, 0.58, 0.5) * (0.85 + 0.3 * hhD.r);
+  // (a dull, yellowed grey: a bright white read as a doll's eye under the flashlight)
+  vec3 white = vec3(0.4, 0.37, 0.3) * (0.85 + 0.3 * hhD.r);
   float vein = smoothstep(0.55, 0.9, hhD2.r + hhD.a * 0.2) * (1.0 - smoothstep(0.75, 0.9, f));
   white = mix(white, vec3(0.36, 0.06, 0.05), vein * 0.6);
   float iris = smoothstep(0.86, 0.9, f);
@@ -558,17 +596,33 @@ const SKIN_TEX = /* glsl */`
     vec3 c = zLin(A.rgb) * toneK * (zUV ? mix(vec3(1.0), baseCol, 0.25) : mix(vec3(1.0), baseCol * 1.12, 0.75));
     // (a mottle at another scale from the procedural detail, so no two tiles of skin match)
     c *= 0.84 + 0.28 * hhD.r;
-    // (dead skin is a drained colour: the decay tints stay, but greyed; dark skin goes ashen)
-    c = mix(c, vec3(dot(c, ZLUMA)) * (1.0 + 0.5 * smoothstep(0.2, 0.05, tl)), 0.25 + 0.15 * smoothstep(0.2, 0.05, tl));
+    // (dead skin is a drained colour: the atlas' decay tints stay, a little greyed; dark skin goes ashen)
+    c = mix(c, vec3(dot(c, ZLUMA)) * (1.0 + 0.5 * smoothstep(0.2, 0.05, tl)), 0.12 + 0.2 * smoothstep(0.2, 0.05, tl));
     float rough = B.z, wet = 0.0, thick = zUV ? 0.5 : A.a;
     float ao = B.w;
     if (zUV) {
-      // the scalp: matted hair (the atlas' coverage) in the person's hair colour, thinned on some
-      float hk = A.a * (0.35 + 0.65 * fract(zSeed * 0.731 + 0.2));
-      vec3 hc = hhT(${T_HAIR}).rgb * (0.45 + hhD.r * 0.9);
-      c = mix(c, hc, hk * 0.92);
-      rough = mix(rough, 0.62, hk);
-      thick = mix(thick, 0.2, hk);
+      // the scalp's hair: the atlas' rank (scripts/zbake/body.js) over this zombie's threshold (v3.y),
+      // which wanders in a mangy noise where the hair is going; in its hair colour, the clumps' cores
+      // lighter than the gaps between them, greasy, with a bump of its own (Z_TEX_NORMAL)
+      float thr0 = floor(v3.y) * 0.01, thr = thr0;
+      if (thr0 < 1.0) thr += (hhD2.b - 0.5) * 0.55 * smoothstep(0.4, 0.75, thr0) + (hhD.g - 0.5) * 0.06;
+      float hk = smoothstep(thr, thr + 0.06, A.a);
+      // the beard: the rank's low band, on the bearded ('face_beard'); a shadow of stubble on the other men
+      if (thr0 < 1.0) {
+        float band = smoothstep(0.035, 0.07, A.a) * smoothstep(0.24, 0.2, A.a);
+        float bearded = mod(floor(tOpt.x / ${(2 ** (optBit('face_beard') % 24)).toFixed(1)}), 2.0);
+        hk = max(hk, band * (bearded > 0.5 ? 0.95 : hhT(${T_MORPH}).x < -0.15 ? 0.4 : 0.0));
+      }
+      if (hk > 0.0) {
+        float sv = clamp((A.a - thr) / max(0.08, 1.0 - thr), 0.0, 1.0);
+        vec3 hc = hhT(${T_HAIR}).rgb * (0.36 + 0.8 * sv) * (0.85 + 0.3 * hhD.r);
+        hc = mix(hc, vec3(0.05, 0.047, 0.042), hhD.b * 0.25);
+        c = mix(c, hc, hk);
+        rough = mix(rough, 0.44 + 0.26 * (1.0 - sv), hk);
+        thick = mix(thick, 0.1, hk);
+        zHair = hk;
+        zHairH = hk * (0.3 + 0.7 * sv);
+      }
     }
     if (hhPart == 17) {
       vec3 q = zHeadQ(vMP);
@@ -607,7 +661,8 @@ const SKIN_TEX = /* glsl */`
       c = mix(c, c * vec3(0.92, 1.05, 0.42) * 1.2 + vec3(0.02, 0.025, 0.0), st * 0.8);
       rough = mix(rough, 0.42, st * 0.6);
     }
-    diffuseColor.rgb = c * mix(1.0, ao, 0.45);
+    // (the creases, sockets, folds and the body's own occlusion: dark, as on a corpse)
+    diffuseColor.rgb = c * mix(1.0, ao, 0.75);
 #ifdef ZDBG
     if (ZDBG == 1) diffuseColor.rgb = zLin(A.rgb);
     if (ZDBG == 2) diffuseColor.rgb = vec3(zW);
@@ -619,7 +674,8 @@ const SKIN_TEX = /* glsl */`
     // bloater's stretched skin glows a sick yellow-green
     hhSSS = thick * 0.32;
     hhSSSCol = uZTex.w > 0.5 ? vec3(0.44, 0.46, 0.26) : vec3(0.3, 0.33, 0.38);
-    zSpec = mix(0.45, 1.0, smoothstep(0.4, 0.12, rough));
+    // dry skin is dull: a weak specular, gone from the creases; only the wet parts shine
+    zSpec = mix(0.32, 1.0, smoothstep(0.45, 0.12, rough)) * mix(1.0, ao, 0.6);
 `;
 
 /** Cloth: the zombie's fabric, then holes, blood from the collar, mud from the hem, sweat stains. */
@@ -674,7 +730,7 @@ const CLOTH_TEX = /* glsl */`
     c = mix(c, c * vec3(0.6, 0.55, 0.34), fl * 0.6);
     // holes: opened wider the more torn the clothes (frayed, dirty rims)
     vec4 GB = zTriN(ZS_grimeB, ZB_grimeB, vMP * gk, gk, zOff, 1.0, false, clamp(max(sk * (1.0 - fresh * 0.6), md) * 0.85, 0.0, 1.0));
-    float th = 1.02 - tear * 0.5;
+    float th = 1.0 - tear * 0.34;
     if (GB.w > th) discard;
     c *= mix(1.0, 0.5, smoothstep(th - 0.05, th, GB.w));
     // dinginess: everything they wear has gone a dirty yellow-grey, sun-faded where it was bright
@@ -690,7 +746,8 @@ const CLOTH_TEX = /* glsl */`
     sk = max(sk, spat * 0.6);
     // sun-faded across the shoulders and the top of the back
     c = mix(c, vec3(dot(c, ZLUMA)) * vec3(1.05, 1.02, 0.95), (topG ? smoothstep(uBody.y, uBody.z + 1.0, vMP.y) * 0.3 : 0.0));
-    c *= mix(vec3(1.0), vec3(0.64, 0.57, 0.46), 0.45 + 0.45 * zG.b);
+    // (filthy, but still its own colour: a garment must not go the dirty yellow-grey of the skin)
+    c *= mix(vec3(1.0), vec3(0.7, 0.64, 0.54), 0.35 + 0.4 * zG.b);
     diffuseColor.rgb = c;
     float rough = mix(0.93, 0.74, sk * (1.0 - fresh));
     rough = mix(rough, 0.3, sk * fresh);
@@ -718,6 +775,8 @@ export const Z_SHADE_TEX = TEX_PRE + '  if (hhM == 0) {\n' + SKIN_TEX + '  } els
 
 /** Normals with the baked sets: the per-plane accumulators through each plane's frame; else the detail map. */
 export const Z_TEX_NORMAL = /* glsl */`
+  // (the scalp hair's height, differentiated here in uniform control flow; faded out where it would alias)
+  float zHHx = dFdx(zHairH), zHHy = dFdy(zHairH), zHHk = smoothstep(0.5, 0.12, length(fwidth(vMP))) * 0.06;
   if (zUV) {
     // the atlas' tangent-space normal through the UV's own screen-space frame (+ the wounds' planes)
     vec3 N0 = normal;
@@ -729,6 +788,8 @@ export const Z_TEX_NORMAL = /* glsl */`
       else acc = zPerturb2(N0, zDpx.xy, zDpy.xy, zNP[2]) - N0;
       normal = normalize(normal + acc);
     }
+    // the scalp's hair: its own relief, per zombie (the bald show the bare scalp's)
+    if (zHHk > 0.0 && (zHairH > 0.0 || zHHx != 0.0 || zHHy != 0.0)) normal = zBumpD(normal, zHHx * zHHk, zHHy * zHHk);
   } else if (zW.x + zW.y + zW.z > 0.0) {
     vec3 N0 = normal, acc = vec3(0.0);
     if (zW.x > 0.0) acc += zW.x * (zPerturb2(N0, zDpx.zy, zDpy.zy, zNP[0]) - N0);

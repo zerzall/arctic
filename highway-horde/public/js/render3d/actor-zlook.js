@@ -108,7 +108,7 @@ const TOPS = {
 };
 /** Neckline of a top kind (actor-zmat.js): 0 crew, 1 v-neck / open collar, 2 scoop, 3 tank straps, 4 a gown's open back. */
 const NECK = { polo: 1, long: 1, jacket: 1, coat: 1, lab: 1, flannel: 1, scrubs: 1, rags: 2, tank: 3, crop: 3, dress: 2, gown: 4 };
-const LEGS = { jeans: -1, trousers: -1, shorts: 20.0, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
+const LEGS = { jeans: -1, trousers: -1, track: -1, shorts: 20.0, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
 
 // ---------------------------------------------------------------------------------------
 // archetypes: who the zombie was. Fields: w weight; top/bot kind; topC/botC colour lists;
@@ -116,14 +116,21 @@ const LEGS = { jeans: -1, trousers: -1, shorts: 20.0, capri: 9.0, torn: 15.0, ba
 // hat [[option, chance]] (first that hits wins); gear [[option, chance]]; gearC; glove chance
 // (a colour from gloveC); hairs allowed; tear/blood ranges; extra: fixed options.
 
-/** Hair looks: strands = [cut height, sparseness] of the shared strand group, opt = an extra group. */
+/**
+ * Hair looks. The hair on the scalp is painted in the body atlas (scripts/zbake/body.js: a rank per
+ * texel); `thr` is the rank this zombie keeps it above (0.2 a full head, 0.6 thinning in patches,
+ * 0.9 bald but for the brows). Longer hair adds the clumps group: strands = [cut height,
+ * sparseness] (whole clumps missing); opt = an extra group (ponytail, bun).
+ */
 const HAIR_STYLES = {
-  short: {}, patchy: { strands: [50.6, 0.62] }, shaggy: { strands: [50.6, 0.1] }, bob: { strands: [46.8, 0.05] },
-  shoulder: { strands: [41.6, 0.05] }, long: { strands: [0, 0.03] }, stringy: { strands: [0, 0.5] },
-  pony: { opt: 'hair_pony' }, bun: { opt: 'hair_bun' },
+  short: { thr: 0.3 }, patchy: { thr: 0.62 }, shaggy: { thr: 0.25, strands: [50.6, 0.15] }, bob: { thr: 0.22, strands: [46.8, 0.06] },
+  shoulder: { thr: 0.22, strands: [41.6, 0.06] }, long: { thr: 0.2, strands: [0, 0.05] }, stringy: { thr: 0.44, strands: [0, 0.45] },
+  pony: { thr: 0.22, opt: 'hair_pony' }, bun: { thr: 0.22, opt: 'hair_bun' },
   // (on the dead a mohawk or an afro is a matted, patchy crop: the big wig-like shells read as a doll's)
-  mohawk: { strands: [50.6, 0.45] }, afro: {},
+  mohawk: { thr: 0.5, strands: [50.6, 0.4] }, afro: { thr: 0.16 },
 };
+/** The rank the bald keep (the brows and a few tufts), and the hairless brutes and boss (nothing). */
+const HAIR_BALD = 0.9, HAIR_NONE = 1.2;
 
 const A = (name, w, o) => ({ name, w, top: 'tee', bot: 'jeans', shoe: 'sneaker', topPat: [[0, 1]], botPat: [[0, 1]], ...o });
 
@@ -144,30 +151,31 @@ const ARCH = {
     A('firefighter', 3, { top: 'coat', topC: ['#c8a030', '#3a3a34', '#8a6a20'], topPat: [[4, 1]], bot: 'trousers', botC: ['#c8a030', '#3a3a34', '#8a6a20'], botPat: [[4, 1]], sync: true, shoe: 'boot', shoeC: ['#c8a030', '#1c1c1c'], hat: [['hat_fire', 0.85]], gear: [['tank_o2', 0.4], ['belt_duty', 0.2]], glove: 0.6, gloveC: ['#3a3a30'], gearC: ['#d8c020', '#c62828', '#e0e0e0'] }),
     A('emt', 3, { top: 'polo', topC: ['#1f2a44', '#3a3f48'], topPat: [[4, 1]], bot: 'trousers', botC: ['#1f2a44', '#2a2f38'], shoe: 'boot', shoeC: ['#141210'], gear: [['bag_medic', 0.5], ['stetho', 0.3], ['lanyard', 0.5], ['belt_duty', 0.4]], glove: 0.5, gloveC: ['#2a5aa8', '#e8e8e4'], gearC: ['#c62828', '#1f2a44'] }),
     A('prisoner', 4, { top: 'long', topC: ['#e07a10', '#d8700c', '#e88a20'], topPat: [[0, 3], [6, 1]], bot: 'trousers', botC: ['#e07a10', '#d8700c'], sync: true, shoe: 'sneaker', shoeC: ['#e8e8e4', '#c8c8c0'], gear: [['cuffs', 0.35]] }),
-    A('tourist', 5, { top: 'polo', topC: ['#e8d8a8', '#e07a8a', '#4ab8c8', '#f0f0d0'], topPat: [[5, 6], [0, 2]], bot: 'shorts', botC: KHAKI, shoe: 'sneaker', shoeC: SNEAKER, hat: [['hat_visor', 0.3], ['hat_straw', 0.3], ['hat_cap', 0.15]], gear: [['camera', 0.55], ['fanny', 0.35], ['face_shades', 0.35], ['pack_small', 0.2]], gearC: ['#e8e8d8', '#c8a860', '#3a8a9a'] }),
+    A('tourist', 4, { top: 'polo', topC: ['#e8d8a8', '#e07a8a', '#4ab8c8', '#f0f0d0'], topPat: [[5, 6], [0, 2]], bot: 'shorts', botC: KHAKI, shoe: 'sneaker', shoeC: SNEAKER, hat: [['hat_visor', 0.3], ['hat_straw', 0.3], ['hat_cap', 0.15]], gear: [['camera', 0.55], ['fanny', 0.35], ['face_shades', 0.35], ['pack_small', 0.2]], gearC: ['#e8e8d8', '#c8a860', '#3a8a9a'] }),
     A('hiker', 4, { top: 'long', topC: ['#6a7a4a', '#a06a3a', '#3a6a8a', '#8a2a2a'], topPat: [[2, 3], [0, 2]], bot: 'trousers', botC: KHAKI, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.3], ['hat_straw', 0.2], ['hat_beanie', 0.2]], gear: [['pack_big', 0.85], ['face_shades', 0.2]], glove: 0.2, gloveC: ['#3a3a3a'], gearC: ['#c86a20', '#2a6a4a', '#a02a2a', '#3a4a8a'] }),
     A('vagrant', 3, { top: 'coat', topC: ['#4a4038', '#3a3a34', '#5a4a3a'], bot: 'torn', botC: ['#3a3a34', '#4a4038'], shoe: 'boot', shoeC: BOOT, hat: [['hat_beanie', 0.55], ['hat_hood', 0.2]], gear: [['scarf', 0.55], ['face_beard', 0.5], ['bag_msg', 0.25]], glove: 0.4, gloveC: ['#3a3a3a'], gearC: ['#5a3a2a', '#3a4a3a', '#8a8a80'], tearMul: 1.5 }),
-    A('cheer', 2, { top: 'tank', topC: ['#c62828', '#1565c0', '#f9a825'], bot: 'skirt', botC: ['#c62828', '#1565c0', '#f9a825'], shoe: 'sneaker', shoeC: ['#e8e8e4'], hair: 'long', gear: [['pompom', 0.8], ['skirt', 1]], gearC: ['#f0f0f0', '#f9a825'] }),
+    A('cheer', 1, { top: 'tank', topC: ['#c62828', '#1565c0', '#f9a825'], bot: 'skirt', botC: ['#c62828', '#1565c0', '#f9a825'], shoe: 'sneaker', shoeC: ['#e8e8e4'], hair: 'long', gear: [['pompom', 0.8], ['skirt', 1]], gearC: ['#f0f0f0', '#f9a825'] }),
     A('student', 6, { top: 'hoodie', topC: [...TEE], bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_beanie', 0.12], ['hat_cap', 0.15]], gear: [['pack_small', 0.8], ['face_glasses', 0.2]], gearC: PACK }),
     // bib overalls: the apron and straps in the trousers' denim
     A('overalls', 5, { top: 'tee', topC: ['#c8c0b0', '#8a8a80', '#a03030', '#e0d8c8', '#6a7a5a'], bot: 'jeans', botC: DENIM, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.35], ['hat_straw', 0.1]], gear: [['apron', 1], ['suspenders', 1], ['face_beard', 0.25]], gearFromBot: true }),
     // an open flannel shirt over a tee
     A('flannel', 7, { top: 'flannel', topC: FLANNEL, topPat: [[2, 1]], bot: 'jeans', botC: JEANS, shoe: 'boot', shoeC: BOOT, hat: [['hat_cap', 0.3], ['hat_beanie', 0.12]], gear: [['face_beard', 0.3], ['watch', 0.2]], gearC: CAP, open: true }),
-    A('summer', 6, { top: 'tank', topC: SUMMER, topPat: [[5, 2], [0, 3], [6, 1]], bot: 'shorts', botC: [...KHAKI, ...DENIM, '#e8e0d0'], shoe: 'sneaker', shoeC: SNEAKER, hat: [['hat_straw', 0.15], ['hat_cap', 0.2]], gear: [['face_shades', 0.3], ['fanny', 0.1], ['watch', 0.2]], gearC: SUMMER }),
+    A('summer', 3, { top: 'tank', topC: SUMMER, topPat: [[5, 2], [0, 3], [6, 1]], bot: 'shorts', botC: [...KHAKI, ...DENIM, '#e8e0d0'], shoe: 'sneaker', shoeC: SNEAKER, hat: [['hat_straw', 0.15], ['hat_cap', 0.2]], gear: [['face_shades', 0.3], ['fanny', 0.1], ['watch', 0.2]], gearC: SUMMER }),
     A('sundress', 3, { top: 'dress', topC: SUMMER, topPat: [[5, 3], [0, 2]], bot: 'bare', botC: SUMMER, shoe: 'sneaker', shoeC: ['#e8e4d8', '#c8a060'], hair: 'long', female: true, gear: [['face_shades', 0.2]] }),
     A('shopper', 5, { top: 'sweater', topC: [...SHIRT_MID, '#8a3a4a', '#3a4a6a'], bot: 'jeans', botC: JEANS, shoeC: SNEAKER, gear: [['bag_msg', 0.5], ['face_glasses', 0.25], ['scarf', 0.2]], gearC: PACK }),
   ],
   runner: [
-    A('jogger', 24, { top: 'tank', topC: ['#e07a10', '#2ac0c0', '#c62828', '#5ad040', '#e8e8e4', '#f0c020', '#3a6ad0'], bot: 'shorts', botC: ['#1c1c22', '#2a2f38', '#3a3a40'], shoeC: SNEAKER, hat: [['hat_visor', 0.3], ['hat_cap', 0.15]], gear: [['watch', 0.5], ['face_shades', 0.15]], gearC: CAP, glove: 0.0 }),
-    A('athlete', 14, { top: 'tee', topC: ['#c62828', '#1565c0', '#2e7d32', '#e0e0e0', '#f9a825'], topPat: [[6, 3], [0, 4]], bot: 'shorts', botC: ['#1565c0', '#c62828', '#1c1c22'], shoeC: SNEAKER, gear: [['watch', 0.3]], hat: [], gearC: CAP }),
-    A('teen', 14, { top: 'hoodie', topC: TEE, bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_hood', 0.3], ['hat_cap', 0.2]], gear: [['pack_small', 0.3]], gearC: PACK }),
-    A('courier', 6, { top: 'long', topC: ['#e07a10', '#d8c020', '#3a3f48'], topPat: [[4, 2], [0, 3]], bot: 'shorts', botC: ['#1c1c22'], shoeC: SNEAKER, hat: [['hat_helmet', 0.0], ['hat_cap', 0.4]], gear: [['bag_msg', 0.85], ['face_shades', 0.3]], gearC: ['#2a2a2e', '#1565c0', '#e07a10'] }),
-    A('shirtless', 9, { top: 'bare', topC: TEE, bot: 'shorts', botC: [...JEANS, ...KHAKI], shoeC: SNEAKER, shoe: 'sneaker', gear: [['dogtags', 0.2]], tearMul: 1.2 }),
-    A('casual', 14, { top: 'tee', topC: TEE, bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_cap', 0.25]], gear: [['pack_small', 0.15]], gearC: CAP }),
-    A('biker', 4, { top: 'tank', topC: ['#1c1c1c', '#2a2a2a'], bot: 'jeans', botC: ['#1c1c22', '#232a38'], shoe: 'boot', shoeC: ['#141210'], gear: [['chains', 0.6], ['vest_plate', 0.0], ['face_beard', 0.4], ['face_shades', 0.3]], glove: 0.7, gloveC: ['#141414'] }),
+    A('jogger', 12, { top: 'long', topC: ['#e07a10', '#2ac0c0', '#c62828', '#5ad040', '#e8e8e4', '#f0c020', '#3a6ad0'], topPat: [[6, 1], [0, 3]], bot: 'track', botC: ['#1c1c22', '#2a2f38', '#3a3a40', '#1f2a44'], shoeC: SNEAKER, hat: [['hat_visor', 0.3], ['hat_cap', 0.15]], gear: [['watch', 0.5], ['face_shades', 0.15]], gearC: CAP, glove: 0.0 }),
+    A('athlete', 8, { top: 'tee', topC: ['#c62828', '#1565c0', '#2e7d32', '#e0e0e0', '#f9a825'], topPat: [[6, 3], [0, 4]], bot: 'shorts', botC: ['#1565c0', '#c62828', '#1c1c22'], shoeC: SNEAKER, gear: [['watch', 0.3]], hat: [], gearC: CAP }),
+    A('teen', 16, { top: 'hoodie', topC: TEE, bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_hood', 0.3], ['hat_cap', 0.2]], gear: [['pack_small', 0.3]], gearC: PACK }),
+    A('courier', 7, { top: 'long', topC: ['#e07a10', '#d8c020', '#3a3f48'], topPat: [[4, 2], [0, 3]], bot: 'trousers', botC: ['#1c1c22', '#3a3a40', ...KHAKI], shoeC: SNEAKER, hat: [['hat_helmet', 0.0], ['hat_cap', 0.4]], gear: [['bag_msg', 0.85], ['face_shades', 0.3]], gearC: ['#2a2a2e', '#1565c0', '#e07a10'] }),
+    A('shirtless', 3, { top: 'bare', topC: TEE, bot: 'jeans', botC: [...JEANS, ...KHAKI], shoeC: SNEAKER, shoe: 'sneaker', gear: [['dogtags', 0.2]], tearMul: 1.2 }),
+    A('casual', 18, { top: 'tee', topC: TEE, bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hat: [['hat_cap', 0.25]], gear: [['pack_small', 0.15]], gearC: CAP }),
+    A('biker', 6, { top: 'jacket', topC: ['#1c1c1c', '#2a2420', '#3a2a20'], bot: 'jeans', botC: ['#1c1c22', '#232a38'], shoe: 'boot', shoeC: ['#141210'], gear: [['chains', 0.6], ['vest_plate', 0.0], ['face_beard', 0.4], ['face_shades', 0.3]], glove: 0.7, gloveC: ['#141414'] }),
+    A('tracksuit', 8, { top: 'hoodie', topC: ['#1f2a44', '#c62828', '#2e7d32', '#3a3a40', '#5a2a6a'], topPat: [[6, 1], [0, 2]], bot: 'track', botC: null, sync: true, shoeC: SNEAKER, hat: [['hat_cap', 0.2]], gear: [['watch', 0.2]], gearC: CAP }),
   ],
   crawler: [
-    A('rags', 30, { top: 'rags', topC: [...TEE, '#5a4a3a'], bot: 'bare', botC: DARK, shoe: 'bare', tearMul: 1.5, hair: 'any', gear: [['bandage_hand', 0.2]] }),
+    A('rags', 30, { top: 'tee', topC: [...TEE, '#5a4a3a'], bot: 'torn', botC: DARK, shoe: 'bare', tearMul: 1.5, hair: 'any', gear: [['bandage_hand', 0.2]] }),
     A('gown', 18, { top: 'gown', topC: ['#bcd4e0', '#a8c8d8', '#c8dce4'], bot: 'bare', botC: ['#bcd4e0'], shoe: 'bare', tearMul: 1.3, gear: [['bandage_hand', 0.4]] }),
     A('casual', 26, { top: 'tee', topC: TEE, bot: 'torn', botC: JEANS, shoe: 'bare', tearMul: 1.3, hat: [['hat_beanie', 0.1]], gear: [['watch', 0.2]] }),
     A('prisoner', 8, { top: 'long', topC: ['#e07a10'], bot: 'trousers', botC: ['#e07a10'], sync: true, shoe: 'bare', tearMul: 1.3, gear: [['cuffs', 0.5]] }),
@@ -179,7 +187,7 @@ const ARCH = {
     A('sweater', 14, { top: 'sweater', topC: ['#6a4a3a', '#3a4a6a', '#4a6a4a', '#8a8a80'], bot: 'trousers', botC: KHAKI, shoe: 'dress', shoeC: SHOE_DARK, gear: [['face_glasses', 0.3], ['face_beard', 0.3]] }),
     A('cook', 10, { top: 'apron', topC: ['#e8e8e4', '#d8d4c8'], topPat: [[0, 1]], bot: 'trousers', botC: [...DARK, '#8a8a80'], shoe: 'sneaker', shoeC: ['#e8e8e4', '#2a2a2a'], hat: [['hat_cap', 0.5]], gear: [['apron', 0.95]], gearC: ['#e8e8e4'] }),
     A('coverall', 9, { top: 'long', topC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], topPat: [[7, 4], [0, 2]], bot: 'trousers', botC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], sync: true, shoe: 'boot', shoeC: BOOT, hat: [['hat_hard', 0.4]] }),
-    A('shirtless', 9, { top: 'bare', topC: TEE, bot: 'trousers', botC: [...JEANS, ...KHAKI, ...DARK], shoe: 'bare', gear: [] }),
+    A('shirtless', 3, { top: 'bare', topC: TEE, bot: 'trousers', botC: [...JEANS, ...KHAKI, ...DARK], shoe: 'bare', gear: [] }),
     A('suit', 6, { top: 'jacket', topC: SUIT, bot: 'trousers', botC: SUIT, sync: true, shoe: 'dress', shoeC: SHOE_DARK, gear: [['tie', 0.8], ['lanyard', 0.3]] }),
   ],
   spitter: [
@@ -201,12 +209,13 @@ const ARCH = {
   ],
   brute: [
     A('riot', 30, { top: 'long', topC: ['#1a2236', '#1c1c20'], bot: 'trousers', botC: ['#1a2236', '#1c1c20'], sync: true, shoe: 'boot', shoeC: ['#141210'], hat: [['hat_helmet', 0.85]], gear: [['plate_chest', 0.95], ['plate_shoulder', 0.9], ['plate_arm', 0.8], ['shield', 0.3], ['badge', 0.4]], glove: 0.9, gloveC: ['#141414'], tearMul: 1.4, gearC: ['#1c2028', '#262a30'], big: true }),
-    A('bouncer', 18, { top: 'tank', topC: ['#1c1c1c', '#2a2a2a'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: ['#141210'], gear: [['chains', 0.7], ['plate_shoulder', 0.5], ['face_shades', 0.5], ['spikes', 0.4]], glove: 0.6, gloveC: ['#141414'], tearMul: 1.4, big: true }),
-    A('inmate', 16, { top: 'bare', topC: ['#e07a10'], bot: 'trousers', botC: ['#e07a10'], shoe: 'bare', gear: [['cuffs', 0.7], ['chains', 0.6], ['spikes', 0.3], ['plate_arm', 0.3]], tearMul: 1.2, big: true }),
+    A('bouncer', 18, { top: 'tee', topC: ['#1c1c1c', '#2a2a2a'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: ['#141210'], gear: [['chains', 0.7], ['plate_shoulder', 0.5], ['face_shades', 0.5], ['spikes', 0.4]], glove: 0.6, gloveC: ['#141414'], tearMul: 1.4, big: true }),
+    A('inmate', 16, { top: 'long', topC: ['#e07a10', '#d8700c'], bot: 'trousers', botC: ['#e07a10'], sync: true, shoe: 'bare', gear: [['cuffs', 0.7], ['chains', 0.6], ['spikes', 0.3], ['plate_arm', 0.3]], tearMul: 1.2, big: true }),
     A('butcher', 12, { top: 'apron', topC: ['#e8e8e4'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: BOOT, gear: [['apron', 1], ['plate_shoulder', 0.3], ['spikes', 0.3]], glove: 0.9, gloveC: ['#c8a020', '#3a3a3a'], tearMul: 1.3, big: true, gearC: ['#e8e8e4', '#8a2a22'] }),
-    A('welded', 24, { top: 'rags', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
+    A('shirtless', 5, { top: 'bare', topC: DARK, bot: 'trousers', botC: [...DARK, ...JEANS], shoe: 'boot', shoeC: BOOT, gear: [['chains', 0.6], ['spikes', 0.4], ['cuffs', 0.3]], tearMul: 1.2, big: true }),
+    A('welded', 24, { top: 'long', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
   ],
-  boss: [A('abomination', 1, { top: 'coat', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'bare', shoe: 'bare', big: true, tearMul: 1.3 })],
+  boss: [A('abomination', 1, { top: 'coat', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'torn', botC: ['#2a2420', '#3a3230', '#2a2a2e'], shoe: 'bare', big: true, tearMul: 1.3 })],
 };
 
 /**
@@ -333,7 +342,10 @@ export function zombieLook(type, id, theme = '') {
   look.sleeveEnd = tk[1] === 99 || tk[1] === 0 ? tk[1] : tk[1] + (r() - 0.5) * 3;
   // (a bloater's top rides up its belly: the lower belly hangs out under the hem; a gown, dress
   // or long coat still covers it)
-  if (T === 'bloater' && look.hemTop < 31 && !['bare', 'gown', 'dress', 'coat', 'lab'].includes(topKind)) look.hemTop = 31.5 + r() * 3.5;
+  if (T === 'bloater' && look.hemTop < 31 && !['bare', 'gown', 'dress', 'coat', 'lab'].includes(topKind)) {
+    const up = 31.5 + r() * 3.5;
+    if (h01(id * 13 + 5) < 0.5) look.hemTop = up;
+  }
   const legKind = arch.bot;
   look.legKind = legKind;
   look.legHem = LEGS[legKind] ?? -1;
@@ -353,8 +365,9 @@ export function zombieLook(type, id, theme = '') {
   };
   look.top = grime(topC, 0.25, 0.55, 0.2);
   look.bottom = grime(botC, 0.25, 0.55, 0.17);
-  const tearBase = T === 'brute' || T === 'boss' ? 0.8 : T === 'runner' ? 0.15 + r() * 0.35 : 0.25 + r() * 0.6;
-  look.tear = Math.min(1, tearBase * (arch.tearMul || 1));
+  // (torn and holed, but still clothes: the holes open with the tear, actor-zmat.js)
+  const tearBase = T === 'brute' || T === 'boss' ? 0.55 : T === 'runner' ? 0.1 + r() * 0.3 : 0.2 + r() * 0.5;
+  look.tear = Math.min(0.85, tearBase * (arch.tearMul || 1));
   look.blood = Math.min(1, 0.25 + r() * 0.55 + (T === 'crawler' ? 0.15 : 0) + (T === 'runner' ? 0.15 : 0));
   look.wet = 0;
 
@@ -392,11 +405,21 @@ export function zombieLook(type, id, theme = '') {
   const hs = pickW(r, hairStyles);
   look.hairStyle = hs;
   look.hairCut = 0; look.hairSparse = 0;
-  if (hs) {
-    const st = HAIR_STYLES[hs];
-    if (st.scalp !== false) opts.add('hair_scalp');
-    if (st.opt) opts.add(st.opt);
-    if (st.strands) { opts.add('hair_strands'); look.hairCut = st.strands[0]; look.hairSparse = st.strands[1]; }
+  {
+    // (its own generator: the rest of the look stays what it was)
+    const q = rngFor(id, 6151 + T.length);
+    const st = hs ? HAIR_STYLES[hs] : null;
+    let thr = T === 'brute' || T === 'boss' ? HAIR_NONE : st ? st.thr : HAIR_BALD;
+    // the hair falls out as the body rots; no two heads thin alike
+    if (thr < 1) thr = Math.min(0.97, thr + (q() - 0.5) * 0.08 + look.rot * 0.1);
+    look.hairThr = thr;
+    if (st) {
+      if (st.opt) opts.add(st.opt);
+      if (st.strands) { opts.add('hair_strands'); look.hairCut = st.strands[0]; look.hairSparse = st.strands[1]; }
+    }
+    // grey with age
+    const old = look.morph[3];
+    if (old > 0.45) look.hairCol = mixRgb(look.hairCol, [0.3, 0.29, 0.27], Math.min(0.85, (old - 0.45) * 1.6));
   }
 
   // ---- gear options ----
@@ -510,7 +533,7 @@ export function optionsForType(type) {
     if (a.bot === 'skirt') set.add('skirt');
   }
   if (T !== 'brute' && T !== 'boss') {
-    for (const o of ['hair_scalp', 'hair_strands', 'nose']) set.add(o);
+    for (const o of ['hair_strands', 'nose']) set.add(o);
     if (T !== 'bloater') for (const o of ['hair_pony', 'hair_bun']) set.add(o);
     for (const o of ['ribs', 'entrails', 'rebar', 'arrow', 'bone_arm']) set.add(o);
     if (T === 'walker' || T === 'runner' || T === 'bloater') for (const o of ['stump_l', 'stump_r', 'stump_hand_l', 'stump_hand_r']) set.add(o);
@@ -614,7 +637,8 @@ export function packLook(look, stage, base, eliteEye = null) {
   if (w1) put(T_WND2, w1.x, w1.y, w1.z, w1.r + 8 * w1.type); else put(T_WND2, 0, 0, 0, 0);
   const words = look._words || (look._words = optionWords(look.opts, [0, 0, 0]));
   put(T_OPT, words[0], words[1], words[2], look.glove ? 1 : 0);
-  put(T_VAR3, look.hairCut, look.hairSparse, look.shoeKind + (look.visor ? 10 : 0), look.lensDark);
+  // (y: the painted hair's rank threshold × 100 in the integer part, the clumps' sparseness in the fraction)
+  put(T_VAR3, look.hairCut, Math.round((look.hairThr ?? HAIR_BALD) * 100) + Math.min(0.99, look.hairSparse), look.shoeKind + (look.visor ? 10 : 0), look.lensDark);
   put(T_COL3, g[0], g[1], g[2], look.openFront ? 1 : 0);
   // (w: the lost shoe in bit 0, the baked face and fabrics above it: ztexCode)
   put(T_COL4, tr[0], tr[1], tr[2], (look.shoeLost ? 1 : 0) + 2 * ztexCode(look));
