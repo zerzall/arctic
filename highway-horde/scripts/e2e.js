@@ -1168,29 +1168,60 @@ async function walkForward(pl, observer, pid, dist) {
  */
 async function climbOnto(pl) {
   const pickTarget = () => pl.page.evaluate(async () => {
-    const [{ createCollisionWorld, mantleSpot }, { closestPointOnObb, MASK_MOVE }] = await Promise.all([
-      import('/js/shared/movement.js'), import('/js/shared/geom.js'),
+    const [{ createCollisionWorld, mantleSpot, stepPlayerMovement }, { closestPointOnObb, MASK_MOVE }, { DT }] = await Promise.all([
+      import('/js/shared/movement.js'), import('/js/shared/geom.js'), import('/js/shared/constants.js'),
     ]);
     const H = window.__HH;
     const v = H.getView();
     const me = H.session.getPredictedLocal() || v.players.find((p) => p.id === H.session.localId);
     const world = createCollisionWorld(H.session.getMap());
     world.setBarricades(v.barricades || []);
-    let best = null;
+    const cands = [];
     const cp = { x: 0, y: 0 }, spot = { x: 0, y: 0 };
     for (const c of world.colliders) {
       if (!c.stand || c.top > 88 || c.top < 36) continue;
       closestPointOnObb(c, me.x, me.y, cp);
       const d = Math.hypot(cp.x - me.x, cp.y - me.y);
-      if (d < 30 || d > 900 || (best && d >= best.dist)) continue;
+      if (d < 30 || d > 900) continue;
       // a clear run up to it, and room on top
       const k = (d - 24) / d;
       if (!world.lineOfMovement(me.x, me.y, me.x + (cp.x - me.x) * k, me.y + (cp.y - me.y) * k, 17, MASK_MOVE)) continue;
       mantleSpot(c, cp.x, cp.y, 18, spot);
       if (world.circleBlockedAt(spot.x, spot.y, 16, c.top)) continue;
-      best = { ci: c.ci, kind: c.ref.kind, top: c.top, x: c.x, y: c.y, dist: d, yaw: Math.atan2(c.y - me.y, c.x - me.x) };
+      cands.push({ c, d, near: Math.atan2(cp.y - me.y, cp.x - me.x) });
     }
-    return best;
+    cands.sort((a, b) => a.d - b.d);
+    // Make the attempt with the shared movement code first, the way the test then makes it: run at
+    // the car holding W, and once within reach add Space (a few ticks late or not: slow frames).
+    // A car met at a glancing angle, or behind debris, lets the player slide past it (and the
+    // Counter-Strike-like movement carries the walk further, so the player often stands where
+    // that happens): keep the nearest one the run really climbs.
+    const REACH = 30;
+    const attempt = (t, yaw, late) => {
+      const p = {
+        x: me.x, y: me.y, z: 0, zq: 0, vzq: 0, state: 'alive', stamina: 100, sprintLock: false,
+        speedMult: 1, moveMult: 1, mvx: 0, mvy: 0, jumpCd: 0, climbT: 0, climbTo: -1,
+      };
+      let jumpAt = -1;
+      for (let i = 0; i < 9 / DT && !(p.climbT > 0); i++) {
+        if (jumpAt < 0) {
+          closestPointOnObb(t.c, p.x, p.y, cp);
+          if (Math.hypot(cp.x - p.x, cp.y - p.y) < REACH || i > 6 / DT) jumpAt = i + late;
+        }
+        stepPlayerMovement(p, { moveX: Math.cos(yaw), moveY: Math.sin(yaw), sprint: false, jump: jumpAt >= 0 && i >= jumpAt }, DT, world);
+      }
+      return p.climbT > 0 && p.climbTo === t.c.ci;
+    };
+    // (the run-up below measures the distance to the car with this world)
+    window.__e2eClimb = { world, closestPointOnObb, cp: { x: 0, y: 0 }, reach: REACH };
+    for (const t of cands.slice(0, 8)) {
+      for (const yaw of [t.near, Math.atan2(t.c.y - me.y, t.c.x - me.x)]) {
+        if ([0, 3, 8].every((late) => attempt(t, yaw, late))) {
+          return { ci: t.c.ci, kind: t.c.ref.kind, top: t.c.top, x: t.c.x, y: t.c.y, dist: t.d, yaw };
+        }
+      }
+    }
+    return null;
   });
   // Up to three tries: a zombie that shoves the player off the line, or a slow frame, costs one try,
   // not the whole scenario (each try picks the nearest climbable thing afresh).
@@ -1200,6 +1231,23 @@ async function climbOnto(pl) {
     target = await pickTarget();
     expect(target, 'test setup: no car, van or container within reach of a clear run');
     await turnTo(pl, target.yaw);
+    // Run up to it, then jump, like a player does (Space held from a standstill hops at once and
+    // can carry the player past a car met at an angle).
+    await setKeys(pl, new Set(['w']));
+    try {
+      await waitFor(pl, (ci) => {
+        const C = window.__e2eClimb;
+        const H = window.__HH;
+        const v = H.session.getView();
+        const me = H.session.getPredictedLocal() || (v && v.players.find((q) => q.id === H.session.localId));
+        if (!me) return false;
+        C.closestPointOnObb(C.world.colliders[ci], me.x, me.y, C.cp);
+        return Math.hypot(C.cp.x - me.x, C.cp.y - me.y) < C.reach;
+      }, target.ci, `the run-up to the ${target.kind}`, 8e3);
+    } catch (err) {
+      // stopped short (a shove, a slow frame): jump from here; the climb check below decides
+      if (!(err instanceof Failure)) throw err;
+    }
     await setKeys(pl, new Set(['w', 'Space']));
     try {
       started = await waitFor(pl, () => {
