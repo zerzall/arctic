@@ -96,4 +96,38 @@ through surface ids of their own (`PHOTO_NEW` in the script); they keep the phot
 
 `road_wear`, `road_paint`, `metal_camo`, `char`, `linoleum_hospital`, `ceiling_tile`, `canvas`, `tarp`, `rubber`, `glass_cracked`, `hesco`
 
-The decals, guns and zombies folders are the game's own bakes as well.
+The decals and guns folders are the game's own bakes as well.
+
+## Zombies (`zombies/`, and the body in `public/js/render3d/actor-zbody-data.js`)
+
+* **The body: [MakeHuman](http://www.makehumancommunity.org)** (Data Collection AB, Joel Palmius,
+  Jonas Hauquier and the MakeHuman community), whose bundled assets were released under
+  [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) in 2020
+  ([licence](https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md)). Used: the base
+  mesh `makehuman/data/3dobjs/base.obj` (with its eye, teeth and tongue helpers and its UV layout),
+  the default skeleton `rigs/default.mhskel` and its weights `rigs/default_weights.mhw`, and the macro
+  targets `targets/macrodetails/caucasian-{male,female}-{young,old}.target`,
+  `universal-{male,female}-young-{averagemuscle-maxweight,minmuscle-minweight,maxmuscle-averageweight}.target`
+  and `targets/stomach/stomach-pregnant-incr.target`, fetched from raw.githubusercontent.com by
+  `scripts/build-zbody.js`, which poses, morphs, decimates and repacks them (MIT like the rest of the game).
+* **The skin atlases** (`body-*`) are painted on that mesh's UV layout by `scripts/zbake/body.js`
+  (procedural, this repository); the tiling skins (`skin-*`), the wound atlas and the grime masks
+  by `scripts/zbake/skin.js` and `misc.js`.
+* **The fabrics** (`cloth-*`) are photo-scanned materials from [Poly Haven](https://polyhaven.com),
+  CC0 1.0, downloaded as 2K JPG maps (colour, OpenGL normal, roughness, occlusion) and repacked by
+  `scripts/zbake/fabric.js` (a whole number of repeats across a 48 cm tile, the colour turned into a
+  relative brightness the game tints per zombie, sun-bleached wear added):
+
+| Set | Source asset | Authors | Licence | Scale |
+| --- | --- | --- | --- | --- |
+| `cloth-denim` | [Denim Fabric 03](https://polyhaven.com/a/denim_fabric_03) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 27 cm) |
+| `cloth-flannel` | [Fabric Pattern 05](https://polyhaven.com/a/fabric_pattern_05) | Rob Tuytel | CC0 1.0 | 1×1 over 48 cm (photo 50 cm) |
+| `cloth-tee` | [Cotton Jersey](https://polyhaven.com/a/cotton_jersey) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 26 cm) |
+| `cloth-gown` | [Rough Linen](https://polyhaven.com/a/rough_linen) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 27 cm) |
+| `cloth-police` | [Terlenka](https://polyhaven.com/a/terlenka) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 27 cm) |
+| `cloth-military` | [Book Pattern](https://polyhaven.com/a/book_pattern) | Rob Tuytel | CC0 1.0 | 2×2 over 48 cm (photo 30 cm) |
+| `cloth-work` | [Denim Fabric 06](https://polyhaven.com/a/denim_fabric_06) | Greg Zaal, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 25 cm) |
+| `cloth-shirt` | [Stretch Poplin](https://polyhaven.com/a/stretch_poplin) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 29 cm) |
+| `cloth-suit` | [Poly Wool Herringbone](https://polyhaven.com/a/poly_wool_herringbone) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 27 cm) |
+| `cloth-hoodie` | [Jogging Melange](https://polyhaven.com/a/jogging_melange) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 27 cm) |
+| `cloth-dress` | [Crepe Georgette](https://polyhaven.com/a/crepe_georgette) | colormass, Rico Cilliers | CC0 1.0 | 2×2 over 48 cm (photo 26 cm) |

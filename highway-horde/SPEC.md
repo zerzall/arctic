@@ -1821,6 +1821,11 @@ actor-consts.js rig texel layout (T_*), colour slots, material classes, garment 
 actor-rigmat.js the rig's material: garment cuts, cloth patterns, wounds, skin (veins, sores, wrapped light), accessory culling
 actor-zlook.js  per-zombie look from (type, sim id): archetype (office worker … prisoner), skin/decay, hems, wounds, gear, gait — pure JS, deterministic
 actor-zkit.js   the accessory groups of the zombie models (hats, hair, packs, belts, gore, armour), switched on per instance
+actor-zbody.js  the zombies' human body (MakeHuman, CC0: actor-zbody-data.js, built by scripts/build-zbody.js): per type the
+                macro mix, decay sculpted in, the rest pose fitted on the rig's bones, the proportions P; per model a
+                decimated level, the clothes as offset shells, eyes / teeth / tongue; four instance morphs
+actor-zmodels.js  buildZombie(type, L, tier): the body + shoes + accessories + the types' extras, one model per type × LOD
+actor-ztex.js   the baked zombie texture sets as texture arrays per tier (ZTEX_TIERS), loaded in the texture worker
 actor-sgear.js  class gear of the survivors (helmets, packs, bandoliers, plates) + the gloves shared with the first-person hands
 actor-guns.js   low-poly gun per weapons.js sprite style, shared by viewmodel + teammates (screws, stamped labels, witness holes, reticles);
                 every vertex carries its material family (shared/gun-finish.js familyFor); setGunTier(q) (renderer3d)
@@ -1931,11 +1936,38 @@ lights/fires/muzzle flashes/explosions through the fixed light pool (never add/r
 lights at runtime — shader recompiles). Mostly procedural (the texture library, the photo-scanned prop models and foliage cards of §7.5.2 aside):
 PBR materials with generated detail textures (wet asphalt with reflective puddles,
 concrete, grass, brick), rounded vehicles with clearcoat paint and glass, buildings with
-lit windows, alpha-tested foliage, instanced grass, sculpted zombies/survivors with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
+lit windows, alpha-tested foliage, instanced grass, sculpted survivors and MakeHuman-bodied zombies with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
 gloved hands in the class outfit colour, idle sway, walk/sprint bob, recoil kick on each
 own `shot` (predicted shots included; `echo` shots ignored), reload dip over
 `reloading`, weapon switch lower/raise, melee swing, throw motion, minigun barrel spin,
 flamethrower pilot light; drawn in its own pass so it never clips into walls.
+Zombie bodies (`actor-zbody.js`, `actor-zmodels.js`, `scripts/build-zbody.js`, `scripts/zbake/*`): the MakeHuman
+base mesh (CC0; `public/textures/CREDITS.md`) posed by its own skeleton and weights from its A-pose into the rig's rest
+pose (arms down, legs straight), its weights folded onto the rig's 20 bones (two per vertex), simplified with
+meshoptimizer into six nested levels over one 9.3 k-vertex pool (16 k / 9 k / 6 k / 3 k / 1.2 k / 0.5 k triangles;
+near models: cinematic 16 k, ultra 9 k, high 6 k, low 3 k; mid 3 k (low 1.2 k); far 0.5 k), and the macro targets it
+mixes stored as posed deltas — everything in one base64 module, decoded synchronously. Per type: a macro mix (the walker
+starved and a little old, the runner fresh with some muscle, the crawler emaciated and legless above the knee, the
+bloater fat with a swollen, sagging gut on X1 so it heaves, the spitter's throat goitre on X1, the screamer emaciated
+with a long jaw and longer arms, the brute and the boss muscled, fat, broad, with bone scales and a hunch; the boss's
+hump), decay sculpted into the surface (sunken eyeballs, sockets, temples and cheeks, receding lips, collarbones and ribs),
+and the type's skeleton pivots and proportions measured from that shape (feet on y = 0, ~56 units tall; heads within
+~2 units of the old procedural ones). Clothes are shells offset from a coarser level of the body and relaxed outward
+over hollows (the top and sleeves, the trousers), cut per instance as before; far models paint them onto the body.
+Four body morphs per instance — sex (−0.5 male .. 0.5 female), fat, emaciation, age — are vertex attributes
+(`aMorph0..3`: xyz position delta, w the normal delta packed 3 × 7 bits) blended in the vertex shader by the weights in
+the rig texel `T_MORPH` (76; `TEX_W` 77) that `zombieLook` decides (`look.morph`, from the person's sex and build);
+accessories, shoes and extras take the nearest skin vertex's deltas. The skin is textured by the MakeHuman UVs (`aMH`):
+eight body atlases (`body-*`, three decay stages and the five specials' own, 2048² colour and normal, 1024² pack: R
+roughness, G occlusion, B hair coverage tinted with the zombie's hair colour) painted by `scripts/zbake/body.js` from the
+body rasterised into UV space (anatomy-aware: pores, creases, veins, marbling, bruises, sockets, lips, nails, scalp,
+slipped skin, scrapes, dried blood; the specials' stretch marks, acid burns, scars, ulcers); the fabrics are Poly Haven
+scans (`scripts/zbake/fabric.js`). The eyes are shaded in the material (clouded white, milky iris) from the eye centres.
+Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
+triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms
+(134 / 0.38 M / 8.6). Zombie texture VRAM on high 119 MB (was 130). Heads at scale 1 (the head frame's centre, x forward):
+walker (1.6, 52.4), runner (1.6, 52.5), bloater (1.7, 52.5), spitter (1.6, 53.0), screamer (1.6, 52.4), brute (4.4, 51.4),
+boss (4.7, 51.2); the renderer's SCALE puts the brute's 2.6 and the boss's 4.5 world units forward of the old ones.
 Zombie variety (`actor-zlook.js`, `actor-rigmat.js`): `zombieLook(type, id)` is a pure function of the
 sim id (same person on every client; `tests/zlook.test.js`): an archetype per type (walkers are commuters,
 executives, police, firefighters, EMTs, soldiers, prisoners, tourists, hikers, farmers, patients in gowns ...;

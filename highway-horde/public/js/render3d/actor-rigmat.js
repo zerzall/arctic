@@ -22,7 +22,7 @@
 
 import * as THREE from 'three';
 import {
-  T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3,
+  T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_HAIR, T_FX, T_FX2, T_VAR1, T_VAR2, T_WND1, T_WND2, T_OPT, T_COL3, T_COL4, T_COL5, T_VAR3, T_MORPH,
 } from './actor-consts.js';
 import { Z_HEAD, Z_CUTS, Z_SHADE, Z_BLOOD, Z_ROUGH, Z_NORMAL_DETAIL, Z_NORMAL, Z_SPEC, Z_SHEEN, Z_TEX_HEAD, Z_SHADE_TEX, Z_TEX_NORMAL } from './actor-zmat.js';
 import { ztexGLSL } from './actor-ztex.js';
@@ -411,7 +411,8 @@ const RIM_BASE = /* glsl */`
 const RIM_ZOMBIE = /* glsl */`
   hhRimCol = (uRimColor * uRimStrength * (1.0 - uDay) + vec3(1.0, 0.06, 0.02) * tFx.x * 0.9 + vec3(1.0, 0.45, 0.1) * tFx2.x * 0.5) * tFx.w;
   if (hhSlot == 6) hhGlow += baseCol * tFx2.y;
-  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK;`;
+  // (a real eyeball is bigger than the old bead: its glow is spread thinner; elites still burn)
+  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK * (tAcc.w > 3.0 ? 0.6 : 0.3);`;
 
 const ROUGH_BASE = /* glsl */`
   float roughnessFactor = 0.8;
@@ -473,13 +474,13 @@ export function makeMaterials(shared, opts = {}) {
   }
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
   const skinned = 'rigP = vec3(dot(r0, p), dot(r1, p), dot(r2, p));';
-  const vhead = Z ? RIG_VERT_HEAD.replace(skinned, skinned + Z_SWAY) : RIG_VERT_HEAD;
+  const vhead = Z ? zMorphed(RIG_VERT_HEAD).replace(skinned, skinned + Z_SWAY) : RIG_VERT_HEAD;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     // zombies on high and up, once their texture arrays are in (the define keys the program)
     const zt = Z && Z.ztex && Z.ztex.state.layout && mat.defines && mat.defines.HH_ZTEX !== undefined ? Z.ztex.state.layout : null;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + vhead + VARYINGS + (Z ? 'varying vec3 vMN;\n' : ''))
+      .replace('#include <common>', '#include <common>\n' + vhead + VARYINGS + (Z ? 'varying vec3 vMN;\nvarying vec2 vMH;\n' : ''))
       .replace('#include <beginnormal_vertex>', /* glsl */`
   rigSkin();
   vRow = rigRow;
@@ -490,7 +491,7 @@ export function makeMaterials(shared, opts = {}) {
   {
     vec4 hair = rigT(${T_HAIR});
     vI = vec4(aInfo.z, aInfo.w, aExt.y, aInfo.y);
-    vMP = position;${Z ? '\n    vMN = normal;' : ''}
+    vMP = ${Z ? 'rigRest' : 'position'};${Z ? '\n    vMN = rigRestN;\n    vMH = aMH;' : ''}
     vDUv = uv + vec2(fract(hair.w * 0.3719), fract(hair.w * 0.6133));
   }`)
       .replace('#include <begin_vertex>', 'vec3 transformed = rigP;')
@@ -530,21 +531,48 @@ export function makeMaterials(shared, opts = {}) {
   #endif
   gl_FragColor.rgb += hhRimCol * rigRim;`);
   };
-  mat.customProgramCacheKey = () => (Z ? 'hh-rig5-zombie1' : 'hh-rig5-std');
+  mat.customProgramCacheKey = () => (Z ? 'hh-rig6-zombie1' : 'hh-rig5-std');
 
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     // zombies: the shadow follows the garment cuts (a tee does not cast a coat's skirt, the
     // torn strips only their fringe, bare arms no sleeves)
-    const head = Z ? RIG_VERT_HEAD.replace('vec4 p = vec4(position, 1.0);', 'vec4 p = vec4(rigShadowPos(), 1.0);').replace('void rigSkin() {', Z_SHADOW_POS + 'void rigSkin() {') : RIG_VERT_HEAD;
+    const head = Z ? zMorphed(RIG_VERT_HEAD).replace('vec4 p = vec4(rigRest, 1.0);', 'vec4 p = vec4(rigShadowPos(), 1.0);').replace('void rigSkin() {', Z_SHADOW_POS + 'void rigSkin() {') : RIG_VERT_HEAD;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + head)
       .replace('#include <begin_vertex>', 'rigSkin(); vec3 transformed = rigP;' + (Z ? ' if (rigCutAway) rigHide = true;' : ''))
       .replace('#include <project_vertex>', '#include <project_vertex>\n  if (rigHide) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
   };
-  depth.customProgramCacheKey = () => (Z ? 'hh-rig5-zdepth1' : 'hh-rig5-depth');
+  depth.customProgramCacheKey = () => (Z ? 'hh-rig6-zdepth1' : 'hh-rig5-depth');
   return { material: mat, depth, uniforms };
+}
+
+// a zombie's body morphs (actor-zbody.js: sex, fat, wasting, age; weights in T_MORPH), blended
+// before the skinning; the normal's deltas are packed 3 × 7 bits in each morph's w
+const Z_MORPH = /* glsl */`
+attribute vec2 aMH;
+attribute vec4 aMorph0;
+attribute vec4 aMorph1;
+attribute vec4 aMorph2;
+attribute vec4 aMorph3;
+vec3 rigRest;
+vec3 rigRestN;
+vec3 rigND(float w) {
+  if (w < 0.5) return vec3(0.0);
+  return vec3(mod(w, 128.0), mod(floor(w / 128.0), 128.0), floor(w / 16384.0)) / 63.5 - 1.0;
+}
+void rigMorph() {
+  vec4 mw = texelFetch(uRigTex, ivec2(${T_MORPH}, rigRow), 0);
+  rigRest = position + aMorph0.xyz * mw.x + aMorph1.xyz * mw.y + aMorph2.xyz * mw.z + aMorph3.xyz * mw.w;
+  rigRestN = normalize(normal + rigND(aMorph0.w) * mw.x + rigND(aMorph1.w) * mw.y + rigND(aMorph2.w) * mw.z + rigND(aMorph3.w) * mw.w);
+}
+`;
+function zMorphed(head) {
+  return head
+    .replace('void rigSkin() {', Z_MORPH + 'void rigSkin() {')
+    .replace('  vec4 p = vec4(position, 1.0);', '  rigMorph();\n  vec4 p = vec4(rigRest, 1.0);')
+    .replace('dot(r0.xyz, normal), dot(r1.xyz, normal), dot(r2.xyz, normal)', 'dot(r0.xyz, rigRestN), dot(r1.xyz, rigRestN), dot(r2.xyz, rigRestN)');
 }
 
 // a zombie's torn strips swing a little under their hem (every tier: a texel fetch for the
@@ -566,7 +594,7 @@ const Z_SWAY = /* glsl */`
 const Z_SHADOW_POS = /* glsl */`
 bool rigCutAway = false;
 vec3 rigShadowPos() {
-  vec3 q = position;
+  vec3 q = rigRest;
   int prt = int(aExt.y + 0.5);
   if (prt == 1 || prt == 2 || prt == 18 || prt == 19 || prt == 21) {
     vec4 v1 = rigT(${T_VAR1});

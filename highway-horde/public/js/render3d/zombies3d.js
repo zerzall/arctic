@@ -61,6 +61,8 @@ function zombieLook(type, id, theme) {
   look.height = b.h;
   look.girthW = b.gw;
   look.girthD = b.gd;
+  // (the build is mostly in the body morphs: width and depth only nudge it, as actor-zlook.js does)
+  look.wK = 1 + (look.girthW - 1) * 0.3; look.dK = 1 + (look.girthD - 1) * 0.35;
   if (look.gait) { look.gait.hunch = b.hunch; look.gait.jut = b.jut; }
   return look;
 }
@@ -138,7 +140,7 @@ export function createZombies3D(ctx) {
     const zombie = {
       body: [P.waist, P.chest, P.sY, P.gaunt], body2: [P.headC[0], P.headC[1], P.legGap, P.bulk * P.upper], day: uDay, lite: uZLite,
       // (the baked sets: the special's own skin, the face anchors, the texel size kept the same on the giants)
-      ztex, special: SPECIAL[t] ?? -1, spitter: t === 'spitter', bloater: t === 'bloater', face: [fa.ez, fa.ey, fa.my, fa.cy], head: P.headR, tileK: 1 / (SCALE[t] || 1),
+      ztex, special: SPECIAL[t] ?? -1, spitter: t === 'spitter', bloater: t === 'bloater', face: [fa.ex, fa.ey, fa.ez, fa.my], head: P.headR, tileK: 1 / (SCALE[t] || 1),
     };
     const lods = [];
     for (let L = 0; L < 3; L++) {
@@ -407,7 +409,8 @@ export function createZombies3D(ctx) {
         // legless: prone, pulling itself with alternating arms, stumps dragging
         bob = 0;
         hipsZ = -1.42; hipsX = sw * 0.06; hipsY = sw * 0.12;
-        rootY = -22.5 + Math.max(0, sw) * 1.2; rootX = -2 + Math.max(0, -cw) * 2.5;
+        // (prone: the MakeHuman hip sits 1.5 higher than the old one)
+        rootY = -23.8 + Math.max(0, sw) * 1.2; rootX = -2 + Math.max(0, -cw) * 2.5;
         spineZ = 0.06 + sw * 0.05; chestZ = 0.12; chestY = sw * 0.15 * G.sway; chestX = 0;
         neckZ = 0.55; headZ = 0.75 + Math.sin(time * 2 + seed) * 0.08; headX = s.tilt * 0.4; headY = sw * 0.2 + Math.sin(time * 1.3 + seed * 3) * 0.15;
         uaLZ = 2.2 + sw * 0.8; uaRZ = 2.2 - sw * 0.8; uaLX = 0.35; uaRX = -0.35; uaLY = 0; uaRY = 0;
@@ -700,7 +703,7 @@ export function createZombies3D(ctx) {
       stats.lod[L]++;
       poseZombie(z, s, T, s.ft);
       const lk = s.look;
-      pose.place(z.x, zh, z.y, s.a, sc * lk.girthD, sc * lk.height, sc * lk.girthW);
+      pose.place(z.x, zh, z.y, s.a, sc * lk.dK, sc * lk.height, sc * lk.wK);
       pool.solve(i, model, pose);
       writeColors(i, z, s, elite);
       const buff = (f & ZFLAG.BUFFED) ? 0.6 + Math.sin(time * 8 + s.seed * 6) * 0.4 : 0;
@@ -814,7 +817,7 @@ export function createZombies3D(ctx) {
     let jaw = -0.6 * limp - seed * 0.3;
     if (c.kind === 'flat') {
       pose.set(B.HIPS, 0, 0, -1.45);
-      pose.root[1] = -22.5 - e * 2;
+      pose.root[1] = -(P.hip - 5.7) - e * 2;
       pose.set(B.CHEST, 0, 0, 0.1);
       pose.set(B.NECK, 0, 0, 0.3 - e * 0.3);
       pose.set(B.HEAD, (seed - 0.5) * 1.2 * e, (seed - 0.5) * 0.8, 0.5 - e * 0.9);
@@ -928,7 +931,7 @@ export function createZombies3D(ctx) {
       }
       poseCorpse(c, T);
       const lk = c.look;
-      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.girthD, T.scale * lk.height, T.scale * lk.girthW);
+      pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.dK, T.scale * lk.height, T.scale * lk.wK);
       pose.scale(B.HEAD, c.pop ? 0.02 : lk.headK, c.pop ? 0.02 : lk.headK, c.pop ? 0.02 : lk.headK);
       if (lk.missing.jaw || c.pop) pose.scale(B.JAW, 0.02, 0.02, 0.02);
       if (lk.missing.armL) pose.scale(B.FARM_L, 0.02, 0.02, 0.02);
