@@ -510,7 +510,7 @@ export function targetScore(game, b, z, d, range) {
     case 'boss': s += 0.25; break;
     case 'bloater': {
       // Pop it at range, never next to a teammate (or ourselves): within its burst it is not
-      // a target at all (aimAndFire holds fire on it too)
+      // a target at all (aimAndFire holds fire on it too; the bot backs off from it instead)
       if (bloaterNearPlayer(game, z)) s -= 3;
       else s += 0.35 * aw;
       break;
@@ -1313,7 +1313,6 @@ function steer(game, b) {
       // Backing off out of a pool, from under a glob of acid or away from a bloater too.
       if (b.threat) {
         const l1 = Math.hypot(dx, dy) || 1;
-        escapeDir(b);
         dx = dx / l1 + b._ex * 1.2;
         dy = dy / l1 + b._ey * 1.2;
       }
@@ -1353,7 +1352,6 @@ function steer(game, b) {
       dy = p.y - hz.y;
     } else if (b.threat) {
       // out of the pool / from under the acid / away from the bloater first, then back to it
-      escapeDir(b);
       dx = b._ex;
       dy = b._ey;
     } else if (b.mode === 'defend' && b.target && gd < 320 && !outsideZone(game, p)) {
@@ -1428,68 +1426,67 @@ function dangerAt(game, x, y) {
 /**
  * What a standing bot must not stand in or next to (and must never stop to shoot in): a pool
  * (acid; fire and flares when they hurt players) under it or at its edge, a glob of acid in
- * flight that lands on it, once it has seen it coming, and a bloater close enough to burst on
- * it. Sets b.threat and the point to get away from (b.thX, b.thY): the most pressing one.
+ * flight that lands on it, once it has seen it coming, and a bloater close enough to burst on it.
+ * Sets b.threat and the way out (b._ex, b._ey): away from all of them at once, the deeper in
+ * one the more it counts (never out of one pool into the next); b.thX / b.thY is the centre of
+ * the most pressing one.
  */
 function threatFor(game, b) {
   const p = b.p;
   b.threat = false;
   if (p.state !== 'alive') return;
-  let best = Infinity;
+  let sx = 0, sy = 0, best = 0;
+  const push = (x, y, reach) => {
+    const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
+    const depth = reach - d;
+    if (depth <= 0) return;
+    const w = depth / reach + 0.25;
+    if (d > 1e-3) {
+      sx += (dx / d) * w;
+      sy += (dy / d) * w;
+    }
+    if (depth > best) {
+      best = depth;
+      b.thX = x;
+      b.thY = y;
+    }
+  };
   for (const h of game.hazards) {
     if (h.life <= 0) continue;
     if ((h.kind === 'fire' || h.kind === 'flare') && !game.settings.friendlyFire) continue;
-    const gap = Math.hypot(h.x - p.x, h.y - p.y) - h.r - PLAYER_RADIUS;
-    if (gap < HAZARD_NEAR && gap < best) {
-      best = gap;
-      b.thX = h.x;
-      b.thY = h.y;
-    }
+    push(h.x, h.y, h.r + PLAYER_RADIUS + HAZARD_NEAR);
   }
   const notice = SPIT_NOTICE * b.prof.react * b.skill;
   for (const pr of game.projectiles) {
     if (pr.dead || pr.kind !== 'acid' || pr.maxLife - pr.life < notice) continue;
-    const gap = Math.hypot(pr.tx - p.x, pr.ty - p.y) - (pr.poolRadius || 60) - PLAYER_RADIUS;
-    if (gap < ACID_CLEAR && gap < best) {
-      best = gap;
-      b.thX = pr.tx;
-      b.thY = pr.ty;
-    }
+    push(pr.tx, pr.ty, (pr.poolRadius || 60) + PLAYER_RADIUS + ACID_CLEAR);
   }
   for (let i = 0; i < b.closeN; i++) {
     const z = b.closeZ[i];
     if (!z || z.dead || z.type !== 'bloater') continue;
     const sp = z.def && z.def.special;
-    const gap = Math.hypot(z.x - p.x, z.y - p.y) - ((sp && sp.deathRadius) || 115) - PLAYER_RADIUS;
-    if (gap < BLOATER_CLEAR && gap < best) {
-      best = gap;
-      b.thX = z.x;
-      b.thY = z.y;
-    }
+    push(z.x, z.y, ((sp && sp.deathRadius) || 115) + PLAYER_RADIUS + BLOATER_CLEAR);
   }
-  b.threat = best < Infinity;
-}
-
-/** Unit direction (b._ex, b._ey) away from the threat point; sideways when right on top of it. */
-function escapeDir(b) {
-  const p = b.p;
-  let ex = p.x - b.thX, ey = p.y - b.thY;
-  let l = Math.hypot(ex, ey);
-  if (l < 6) {
-    // dead centre: a side step, to the goal's side when it has one, and the same way until clear
-    if (b.escX === b.thX && b.escY === b.thY) return;
-    ex = -Math.sin(b.aim);
-    ey = Math.cos(b.aim);
-    if ((b.goalX - p.x) * ex + (b.goalY - p.y) * ey < 0) {
-      ex = -ex;
-      ey = -ey;
-    }
-    l = 1;
+  if (best <= 0) return;
+  b.threat = true;
+  const l = Math.hypot(sx, sy);
+  if (l > 0.05) {
+    b._ex = sx / l;
+    b._ey = sy / l;
+    b.escX = NaN;
+    return;
+  }
+  // dead centre of it: a side step, to the goal's side when it has one, the same way until clear
+  if (b.escX === b.thX && b.escY === b.thY) return;
+  let ex = -Math.sin(b.aim), ey = Math.cos(b.aim);
+  if ((b.goalX - p.x) * ex + (b.goalY - p.y) * ey < 0) {
+    ex = -ex;
+    ey = -ey;
   }
   b.escX = b.thX;
   b.escY = b.thY;
-  b._ex = ex / l;
-  b._ey = ey / l;
+  b._ex = ex;
+  b._ey = ey;
 }
 
 /** Direction toward the goal along a straight line when clear, else along an A* path. */
