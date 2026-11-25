@@ -2,7 +2,7 @@
  "version": 1,
  "seed": 1,
  "render": 2048,
- "bytes": 231361819,
+ "bytes": 246309611,
  "sets": {
   "brick_red": {
    "about": "red clay brick wall in running bond, photo-scanned",
@@ -3899,6 +3899,841 @@
     0.3,
     0.4
    ]
+  },
+  "crate_wood": {
+   "about": "rough-sawn lumber (crates, pallets, sawhorses), photo-scanned",
+   "det": "crate",
+   "size": 512,
+   "render": 2048,
+   "tile": 1,
+   "files": {
+    "albedo": "crate_wood/albedo.png",
+    "normal": "crate_wood/normal.png",
+    "rah": "crate_wood/rah.png",
+    "mask": "crate_wood/mask.png"
+   },
+   "bytes": 510821,
+   "mean": [
+    0.152,
+    0.1271,
+    0.0995
+   ],
+   "meanAll": [
+    0.152,
+    0.1271,
+    0.0995
+   ],
+   "rough": 0.5042,
+   "height": 0.8254,
+   "metal": 0,
+   "tint": 0.7333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "rough_wood",
+    "name": "Rough Wood",
+    "url": "https://polyhaven.com/a/rough_wood",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "sizeM": 0.5,
+    "repeat": 2,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_wood/rough_wood_diff_2k.jpg",
+      "md5": "f5f9c55696f047ceaa49dc97c5aa5526"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_wood/rough_wood_nor_gl_2k.jpg",
+      "md5": "62594f2d00eb246581b9d4fde30209f1"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_wood/rough_wood_arm_2k.jpg",
+      "md5": "2f6ee37ee8810aeeb72a14a7d345ba9f"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_wood/rough_wood_disp_2k.jpg",
+      "md5": "4e04c41245146e21ca500ff72eac74d9"
+     }
+    }
+   }
+  },
+  "plywood": {
+   "about": "plywood sheet face (boarded windows, barricades), photo-scanned",
+   "det": "plywood",
+   "size": 512,
+   "render": 2048,
+   "tile": 1,
+   "files": {
+    "albedo": "plywood/albedo.png",
+    "normal": "plywood/normal.png",
+    "rah": "plywood/rah.png",
+    "mask": "plywood/mask.png"
+   },
+   "bytes": 512920,
+   "mean": [
+    0.2137,
+    0.1223,
+    0.0553
+   ],
+   "meanAll": [
+    0.2137,
+    0.1223,
+    0.0553
+   ],
+   "rough": 0.7447,
+   "height": 0.4941,
+   "metal": 0,
+   "tint": 0.5333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "plywood",
+    "name": "Plywood",
+    "url": "https://polyhaven.com/a/plywood",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "sizeM": 0.5,
+    "repeat": 2,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plywood/plywood_diff_2k.jpg",
+      "md5": "ce20176e90b0984ca7dec366832e8198"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plywood/plywood_nor_gl_2k.jpg",
+      "md5": "ed5dbe559ec897ff2c744fca23f98152"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plywood/plywood_arm_2k.jpg",
+      "md5": "c677803e975a837f4611b7237abbcd6f"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plywood/plywood_disp_2k.jpg",
+      "md5": "2c4a128b4aefb0fa6b27f24a2331953c"
+     }
+    }
+   }
+  },
+  "osb": {
+   "about": "oriented strand board (boarded doors, site hoarding), photo-scanned",
+   "det": "osb",
+   "size": 512,
+   "render": 2048,
+   "tile": 2.5,
+   "files": {
+    "albedo": "osb/albedo.png",
+    "normal": "osb/normal.png",
+    "rah": "osb/rah.png",
+    "mask": "osb/mask.png"
+   },
+   "bytes": 1501769,
+   "mean": [
+    0.5096,
+    0.3198,
+    0.1714
+   ],
+   "meanAll": [
+    0.5096,
+    0.3198,
+    0.1714
+   ],
+   "rough": 0.5796,
+   "height": 0.5086,
+   "metal": 0.0054,
+   "tint": 0.4,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "oriented_strand_board",
+    "name": "Oriented Strand Board",
+    "url": "https://polyhaven.com/a/oriented_strand_board",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Dimitrios Savva": "All"
+    },
+    "sizeM": 2.51,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oriented_strand_board/oriented_strand_board_diff_2k.jpg",
+      "md5": "266a8ec86bca143b95c10fe14198b3f5"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oriented_strand_board/oriented_strand_board_nor_gl_2k.jpg",
+      "md5": "5dc6ecab796bd6a18b5140a127bc2ce3"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oriented_strand_board/oriented_strand_board_arm_2k.jpg",
+      "md5": "01c1b867db1bef95f859690a3f37ba0a"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oriented_strand_board/oriented_strand_board_disp_2k.jpg",
+      "md5": "6a1c0251498d77f10b954aeb1587e941"
+     }
+    }
+   }
+  },
+  "paint_metal": {
+   "about": "painted steel with scratches, chips and rust spots (drums, bins, cylinders, machines), photo-scanned",
+   "det": "paintmetal",
+   "size": 512,
+   "render": 2048,
+   "tile": 1,
+   "files": {
+    "albedo": "paint_metal/albedo.png",
+    "normal": "paint_metal/normal.png",
+    "rah": "paint_metal/rah.png",
+    "mask": "paint_metal/mask.png"
+   },
+   "bytes": 785663,
+   "mean": [
+    0.048,
+    0.0725,
+    0.0335
+   ],
+   "meanAll": [
+    0.048,
+    0.0725,
+    0.0335
+   ],
+   "rough": 0.4998,
+   "height": 0.4713,
+   "metal": 0,
+   "tint": 0.9333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "green_metal_rust",
+    "name": "Green Metal Rust",
+    "url": "https://polyhaven.com/a/green_metal_rust",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "sizeM": 1,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_diff_2k.jpg",
+      "md5": "fed1afb0e3b6f5a5710cee229fd54897"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_nor_gl_2k.jpg",
+      "md5": "379dfb43f495a44569674717e974b920"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_arm_2k.jpg",
+      "md5": "d2b0d367da9f077b0f5727be761896fa"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_disp_2k.jpg",
+      "md5": "5f4f70b5034c82d4c1ff8b7b2adbb654"
+     }
+    }
+   }
+  },
+  "paint_rust": {
+   "about": "paint flaking off rusting steel (old drums, dumpsters, wrecks), photo-scanned",
+   "det": "paintrust",
+   "size": 512,
+   "render": 2048,
+   "tile": 2.2,
+   "files": {
+    "albedo": "paint_rust/albedo.png",
+    "normal": "paint_rust/normal.png",
+    "rah": "paint_rust/rah.png",
+    "mask": "paint_rust/mask.png"
+   },
+   "bytes": 517869,
+   "mean": [
+    0.1607,
+    0.0449,
+    0.0249
+   ],
+   "meanAll": [
+    0.1607,
+    0.0449,
+    0.0249
+   ],
+   "rough": 0.8212,
+   "height": 0.4872,
+   "metal": 0,
+   "tint": 0.5333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "rusty_painted_metal",
+    "name": "Rusty Painted Metal",
+    "url": "https://polyhaven.com/a/rusty_painted_metal",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Amal Kumar": "All"
+    },
+    "sizeM": 2.2,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rusty_painted_metal/rusty_painted_metal_diff_2k.jpg",
+      "md5": "dd4f975d539100c4d31fa91d41e1ea71"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rusty_painted_metal/rusty_painted_metal_nor_gl_2k.jpg",
+      "md5": "f9fe4bf3312f06b0eacd7c57470d6285"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rusty_painted_metal/rusty_painted_metal_arm_2k.jpg",
+      "md5": "1ae307c9293e24227313d18f857c226b"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rusty_painted_metal/rusty_painted_metal_disp_2k.jpg",
+      "md5": "eb027ebd9d64e76d885ffe0fb0a4bcf7"
+     }
+    }
+   }
+  },
+  "car_paint": {
+   "about": "painted body steel with road dust and streaks (car bodies), photo-scanned",
+   "det": "carpaint",
+   "size": 1024,
+   "render": 2048,
+   "tile": 2,
+   "files": {
+    "albedo": "car_paint/albedo.png",
+    "normal": "car_paint/normal.png",
+    "rah": "car_paint/rah.png",
+    "mask": "car_paint/mask.png"
+   },
+   "bytes": 2695829,
+   "mean": [
+    0.1066,
+    0.2495,
+    0.079
+   ],
+   "meanAll": [
+    0.1066,
+    0.2495,
+    0.079
+   ],
+   "rough": 0.6708,
+   "height": 0.5037,
+   "metal": 0,
+   "tint": 1,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "container_side",
+    "name": "Container Side",
+    "url": "https://polyhaven.com/a/container_side",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Dimitrios Savva": "All"
+    },
+    "sizeM": 1.94,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/container_side/container_side_diff_2k.jpg",
+      "md5": "6c9e41a68d17430477cf740aed4315c1"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/container_side/container_side_nor_gl_2k.jpg",
+      "md5": "5e969a314c345a9437e4c92eae6c68a6"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/container_side/container_side_arm_2k.jpg",
+      "md5": "9d66bd38ebbbf25dec503a6242d52799"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/container_side/container_side_disp_2k.jpg",
+      "md5": "41fab84ac8b863ae9953dbeae8b0614a"
+     }
+    }
+   }
+  },
+  "burlap": {
+   "about": "coarse hessian / burlap weave (sandbags, sacks), photo-scanned",
+   "det": "burlap",
+   "size": 512,
+   "render": 2048,
+   "tile": 0.27,
+   "files": {
+    "albedo": "burlap/albedo.png",
+    "normal": "burlap/normal.png",
+    "rah": "burlap/rah.png",
+    "mask": "burlap/mask.png"
+   },
+   "bytes": 1577772,
+   "mean": [
+    0.2996,
+    0.2077,
+    0.1108
+   ],
+   "meanAll": [
+    0.283,
+    0.1968,
+    0.1051
+   ],
+   "rough": 0.5833,
+   "height": 0.4605,
+   "metal": 0.2488,
+   "tint": 0.5266,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "hessian_230",
+    "name": "Hessian 230",
+    "url": "https://polyhaven.com/a/hessian_230",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "colormass": "Photography",
+     "Rico Cilliers": "Processing"
+    },
+    "sizeM": 0.27,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_230/hessian_230_diff_2k.jpg",
+      "md5": "e73dcb7ae06f7267f74fc5869c63233c"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_230/hessian_230_nor_gl_2k.jpg",
+      "md5": "3926d1f27d318a410b41ac5952aae574"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_230/hessian_230_arm_2k.jpg",
+      "md5": "8b852521af9809e7160ba42b8eca0726"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_230/hessian_230_disp_2k.jpg",
+      "md5": "0c3d9ee1abda84887b8c0f0c980a44e0"
+     }
+    }
+   }
+  },
+  "kraft": {
+   "about": "fine kraft-paper fibre (cardboard boxes; a fine hessian scan read at paper scale), photo-scanned",
+   "det": "cardboard",
+   "size": 512,
+   "render": 2048,
+   "tile": 0.54,
+   "files": {
+    "albedo": "kraft/albedo.png",
+    "normal": "kraft/normal.png",
+    "rah": "kraft/rah.png",
+    "mask": "kraft/mask.png"
+   },
+   "bytes": 795089,
+   "mean": [
+    0.4313,
+    0.2794,
+    0.1452
+   ],
+   "meanAll": [
+    0.4313,
+    0.2794,
+    0.1452
+   ],
+   "rough": 0.5861,
+   "height": 0.483,
+   "metal": 0.0758,
+   "tint": 0.7894,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "hessian_380",
+    "name": "Hessian 380",
+    "url": "https://polyhaven.com/a/hessian_380",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "colormass": "Photography",
+     "Rico Cilliers": "Processing"
+    },
+    "sizeM": 0.27,
+    "repeat": 2,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_380/hessian_380_diff_2k.jpg",
+      "md5": "4d5384ae026bfbe4aafe22c164e79e7a"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_380/hessian_380_nor_gl_2k.jpg",
+      "md5": "e5bfe82c3ce5d2e8b651aba74af7747f"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_380/hessian_380_arm_2k.jpg",
+      "md5": "df0f76b2245077b85eba9a62866cd10e"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/hessian_380/hessian_380_disp_2k.jpg",
+      "md5": "79eb064b7df3051c00367955c5596036"
+     }
+    }
+   }
+  },
+  "leather": {
+   "about": "worn leather with a seam (seats, sofas, bags), photo-scanned",
+   "det": "leather",
+   "size": 512,
+   "render": 2048,
+   "tile": 0.4,
+   "files": {
+    "albedo": "leather/albedo.png",
+    "normal": "leather/normal.png",
+    "rah": "leather/rah.png",
+    "mask": "leather/mask.png"
+   },
+   "bytes": 1385209,
+   "mean": [
+    0.2104,
+    0.0901,
+    0.0459
+   ],
+   "meanAll": [
+    0.2106,
+    0.0901,
+    0.0459
+   ],
+   "rough": 0.6416,
+   "height": 0.3344,
+   "metal": 0.0098,
+   "tint": 0.8951,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "fabric_leather_01",
+    "name": "Fabric Leather 01",
+    "url": "https://polyhaven.com/a/fabric_leather_01",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "sizeM": 0.4,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fabric_leather_01/fabric_leather_01_diff_2k.jpg",
+      "md5": "f9c0c71ebadf92071d5779257c12d73a"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fabric_leather_01/fabric_leather_01_nor_gl_2k.jpg",
+      "md5": "cd8a6ea40e5e732e30e8d004ea62ffba"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fabric_leather_01/fabric_leather_01_arm_2k.jpg",
+      "md5": "6426fdb7f3b4c39f5c1e4cc490d17aaa"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fabric_leather_01/fabric_leather_01_disp_2k.jpg",
+      "md5": "55bbac4458235f06ac22665985e51291"
+     }
+    }
+   }
+  },
+  "linen": {
+   "about": "rough linen / upholstery weave (mattresses, cushions, clothes), photo-scanned",
+   "det": "linen",
+   "size": 512,
+   "render": 2048,
+   "tile": 0.27,
+   "files": {
+    "albedo": "linen/albedo.png",
+    "normal": "linen/normal.png",
+    "rah": "linen/rah.png",
+    "mask": "linen/mask.png"
+   },
+   "bytes": 1481518,
+   "mean": [
+    0.2881,
+    0.4116,
+    0.6175
+   ],
+   "meanAll": [
+    0.2881,
+    0.4116,
+    0.6175
+   ],
+   "rough": 0.6579,
+   "height": 0.4434,
+   "metal": 0.0009,
+   "tint": 0.9333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "rough_linen",
+    "name": "Rough Linen",
+    "url": "https://polyhaven.com/a/rough_linen",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "colormass": "Photography",
+     "Rico Cilliers": "Processing"
+    },
+    "sizeM": 0.27,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_linen/rough_linen_diff_2k.jpg",
+      "md5": "1287d4d1183c511e4adc55b8d006d763"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_linen/rough_linen_nor_gl_2k.jpg",
+      "md5": "facad45539d3011e197bd87562ba1679"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_linen/rough_linen_arm_2k.jpg",
+      "md5": "e78a9e39e81a973cba797adfd83f9d88"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rough_linen/rough_linen_disp_2k.jpg",
+      "md5": "20b90aaa33ac2b7d071ea0682bf44249"
+     }
+    }
+   }
+  },
+  "veneer": {
+   "about": "worn wood veneer (furniture, counters, shelves, doors), photo-scanned",
+   "det": "veneer",
+   "size": 512,
+   "render": 2048,
+   "tile": 0.6,
+   "files": {
+    "albedo": "veneer/albedo.png",
+    "normal": "veneer/normal.png",
+    "rah": "veneer/rah.png",
+    "mask": "veneer/mask.png"
+   },
+   "bytes": 1247628,
+   "mean": [
+    0.1675,
+    0.1155,
+    0.0723
+   ],
+   "meanAll": [
+    0.1675,
+    0.1155,
+    0.0723
+   ],
+   "rough": 0.559,
+   "height": 0.5283,
+   "metal": 0.0001,
+   "tint": 0.6,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "kitchen_wood",
+    "name": "Kitchen Wood",
+    "url": "https://polyhaven.com/a/kitchen_wood",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Rob Tuytel": "All"
+    },
+    "sizeM": 0.6,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/kitchen_wood/kitchen_wood_diff_2k.jpg",
+      "md5": "e23ef649eda9bf19c44126b3ffdaaa8a"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/kitchen_wood/kitchen_wood_nor_gl_2k.jpg",
+      "md5": "5dad69d0f1d07153e633000fc678e9c5"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/kitchen_wood/kitchen_wood_arm_2k.jpg",
+      "md5": "a4a1c585ad2affa22c757cd0776b2d9c"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/kitchen_wood/kitchen_wood_disp_2k.jpg",
+      "md5": "a13a2b7773c19e4f567dac7e4a5e4bf9"
+     }
+    }
+   }
+  },
+  "bark_pine": {
+   "about": "plated pine bark (pines and spruces), photo-scanned",
+   "det": "pinebark",
+   "size": 512,
+   "render": 2048,
+   "tile": 2,
+   "files": {
+    "albedo": "bark_pine/albedo.png",
+    "normal": "bark_pine/normal.png",
+    "rah": "bark_pine/rah.png",
+    "mask": "bark_pine/mask.png"
+   },
+   "bytes": 1420862,
+   "mean": [
+    0.1373,
+    0.0873,
+    0.053
+   ],
+   "meanAll": [
+    0.1373,
+    0.0873,
+    0.053
+   ],
+   "rough": 0.7047,
+   "height": 0.5444,
+   "metal": 0,
+   "tint": 0.5332,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "pine_bark",
+    "name": "Pine Bark",
+    "url": "https://polyhaven.com/a/pine_bark",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Dimitrios Savva": "All"
+    },
+    "sizeM": 2,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_diff_2k.jpg",
+      "md5": "d10980446d36a65a73081cf61bc84992"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_nor_gl_2k.jpg",
+      "md5": "ee1de039967165665060653a0e12e571"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_arm_2k.jpg",
+      "md5": "e8a438551d14ac7dccbaee5cc2c5fe45"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_disp_2k.jpg",
+      "md5": "4f46a23fd05aed2f2c5ab948abb1e589"
+     }
+    }
+   }
+  },
+  "plastic_worn": {
+   "about": "weathered moulded plastic with streaks and grime (cones, bins, tanks, coolers), photo-scanned",
+   "det": "plasticworn",
+   "size": 512,
+   "render": 2048,
+   "tile": 1,
+   "files": {
+    "albedo": "plastic_worn/albedo.png",
+    "normal": "plastic_worn/normal.png",
+    "rah": "plastic_worn/rah.png",
+    "mask": "plastic_worn/mask.png"
+   },
+   "bytes": 514843,
+   "mean": [
+    0.5841,
+    0.5274,
+    0.4513
+   ],
+   "meanAll": [
+    0.5841,
+    0.5274,
+    0.4513
+   ],
+   "rough": 0.9024,
+   "height": 0.5213,
+   "metal": 0,
+   "tint": 0.9333,
+   "shift": [
+    0.43,
+    0.29
+   ],
+   "source": {
+    "library": "Poly Haven",
+    "id": "weathered_pvc_tank",
+    "name": "Weathered Pvc Tank",
+    "url": "https://polyhaven.com/a/weathered_pvc_tank",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authors": {
+     "Amal Kumar": "All"
+    },
+    "sizeM": 0.99,
+    "repeat": 1,
+    "normal": "opengl",
+    "files": {
+     "diff": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/weathered_pvc_tank/weathered_pvc_tank_diff_2k.jpg",
+      "md5": "779437c977f904c5db6a9338bd4ddfee"
+     },
+     "nor": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/weathered_pvc_tank/weathered_pvc_tank_nor_gl_2k.jpg",
+      "md5": "40600f76717cb8567d621261f8e2ebb4"
+     },
+     "arm": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/weathered_pvc_tank/weathered_pvc_tank_arm_2k.jpg",
+      "md5": "9ee2b1feca408eb01fa59f561a35c3cf"
+     },
+     "disp": {
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/weathered_pvc_tank/weathered_pvc_tank_disp_2k.jpg",
+      "md5": "7627add01ceec3f28c01656495303f40"
+     }
+    }
+   }
   }
  }
 }
