@@ -2277,7 +2277,11 @@ refresh rate (for example Auto on a 4070 Ti Super at 1080p, 100-150 % at 4K on U
   `msaa=0|2|4|8`, `dof=0|1`, `mb=0|1`, `shadows=`, `contact=`, `aofull=`, `fxhigh=`, `lens=`,
   `lightshadows=`, `bright= contrast= sat=`, `timing=1`, `hp=<1..100>` (low health: the hurt look and
   depth of field in the ghost view), and the existing `scale=`,
-  `zombies=`, `time=`, `wave=`.
+  `zombies=`, `time=`, `wave=`. `__fps.hold({ fire: true })` holds scripted input for the local
+  player (merged into every tick of `step()` and `advance()`; `hold({})` lets go), so a script can
+  stage a fight: `scripts/arsenal-shots.js <dir> "<query>" gun:<id>[:<pose>] fight:hollowstar|chainsaw|sawblade`
+  places the player at the `objective` view, gives the gun, spawns zombies in front and saves JPEGs
+  of the moments worth seeing (the screenshots in `docs/shots/new-guns/`).
 - `public/dev/benchmark.html`: a 20-second fly-through of the highway map on a fixed
   camera path (`bench-stats.js` `pathAt`), with `q=`, `scale=`, `msaa=`, `secs=`, `auto=1`
   (dynamic resolution on), `fixed=1`, `warm=` and `timing=1` parameters, printing average fps,

@@ -2191,7 +2191,7 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 .shop-sec-hint { font-size: 0.8125rem; color: var(--text-mute); }
 .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 0.5625rem; }
 .shop-grid.gear { grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
-.card-pic { height: 4.5rem; margin: 0.125rem -0.25rem 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 60%, rgba(255, 255, 255, 0.07), transparent 70%); border-radius: 0.125rem; }
+.card-pic { height: 4.5rem; margin: 0.125rem -0.25rem 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 60%, rgba(255, 255, 255, 0.1), transparent 72%); border-radius: 0.125rem; }
 .card-canvas { width: 12.5rem; max-width: 100%; height: 4.5rem; object-fit: contain; }
 .shop-card.super { border-color: rgba(160, 112, 255, 0.55); background: linear-gradient(160deg, #1b1426, #13161b 60%); }
 .shop-card.super .card-name { color: #d4bcff; }

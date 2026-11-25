@@ -399,24 +399,36 @@ function detailPass(gb, out, id, w) {
       [-1, 'S  ·  1  ·  F', 0.34, 1], [1, 'LOT ' + String.fromCharCode(65 + Math.floor(hash01(seed + 9) * 26)) + (100 + Math.floor(hash01(seed + 3) * 899)), 0.3, 0]);
   }
   const used = [];
-  for (const [s, text, h, style] of marks) {
-    const info = markRow(text);
-    const wq = h * info.aspect;
-    let done = false;
-    // scan for a flat stretch the label fits on (coplanar along its length and height)
-    for (let y = 1.4; y >= -1.6 && !done; y -= 0.35) {
-      for (let x = 1.0; x + wq < L * 0.85 && !done; x += 0.6) {
+  // Scan for a flat stretch a label of height h fits on (coplanar along its length and height,
+  // one part and one material), sampled every 0.3 along it so slots, vents and rails in between
+  // are seen too; stamp it there. Returns whether it found room.
+  const place = (s, text, h, style) => {
+    const wq = h * markRow(text).aspect;
+    const nSteps = Math.max(2, Math.ceil(wq / 0.3));
+    for (let y = 1.4; y >= -1.6; y -= 0.35) {
+      for (let x = 1.0; x + wq < L * 0.85; x += 0.6) {
         if (used.some((u) => u.s === s && Math.abs(u.y - y) < h + 0.3 && x < u.x1 + 0.3 && x + wq > u.x0 - 0.3)) continue;
-        const pts = [[x, y], [x + wq, y], [x + wq / 2, y], [x, y + h * 0.5], [x + wq, y + h * 0.5], [x, y - h * 0.5], [x + wq, y - h * 0.5], [x + wq / 2, y + h * 0.5], [x + wq / 2, y - h * 0.5]];
-        const hits = pts.map((p) => cast.ray(p[0], p[1], s));
-        const c0 = hits[2];
+        const c0 = cast.ray(x + wq / 2, y, s);
         if (!c0 || Math.abs(c0.nz) < 0.96 || !stampable(c0.layer)) continue;
-        if (hits.some((q) => !q || q.key !== c0.key || Math.abs(q.z - c0.z) > 0.03)) continue;
+        let flat = true;
+        for (let i = 0; i <= nSteps && flat; i++) {
+          const px = x + (wq * i) / nSteps;
+          for (const dy of [-0.5, 0, 0.5]) {
+            const q = cast.ray(px, y + dy * h, s);
+            if (!q || q.key !== c0.key || Math.abs(q.z - c0.z) > 0.03 || q.layer !== c0.layer) { flat = false; break; }
+          }
+        }
+        if (!flat) continue;
         markQuad(gb, x + wq / 2, y, c0.z, s, text, h, '#c9c5b6', c0.layer, style);
         used.push({ s, y, x0: x, x1: x + wq });
-        done = true;
+        return true;
       }
     }
+    return false;
+  };
+  // (smaller lettering where the full size finds no room)
+  for (const [s, text, h, style] of marks) {
+    for (const k of [1, 0.78, 0.62]) if (place(s, text, h * k, style)) break;
   }
   // ---- magazine witness holes: a column of holes with a brass round showing in each ----
   for (const s of [-1, 1]) {

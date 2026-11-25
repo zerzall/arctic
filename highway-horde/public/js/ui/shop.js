@@ -108,7 +108,7 @@ function gunTrait(w) {
   if (w.secondary && w.secondary.type === 'burst') return 'Auto or burst fire';
   if (w.secondary && w.secondary.type === 'scope') return w.pierce > 1 ? `Scoped, pierces ${w.pierce}` : 'Scoped';
   if (w.tighten) return 'Tightens as it fires';
-  if (w.reloadOne) return `Pierces ${w.pierce}, loads by hand`;
+  if (w.reloadOne) return w.pierce > 1 ? `Pierces ${w.pierce}, loads by hand` : w.pellets > 1 ? `${w.pellets} pellets, loads by hand` : 'Loads by hand';
   if (w.projectile && w.projectile.explodeRadius) return 'Explosive';
   if (w.spinup) return 'Needs to spin up';
   if (w.pellets > 1) return `${w.pellets} pellets`;

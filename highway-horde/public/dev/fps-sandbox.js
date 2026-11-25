@@ -15,7 +15,8 @@
 // gallery=<kind,kind,...>|all (set-dressing review: the map is emptied and the props stand in a row at x=1000, gv=<variants each>;
 // set the camera with __fps.setView({ x: 1000 + d, y, z: -28, yaw: Math.PI, pitch: -0.2 }), z lowers the eye).
 // window.__fps exposes hooks for Playwright: setView(name | {x, y, yaw, pitch}), views,
-// stats(), step(n), recreate(mapId), renderer, game.
+// stats(), step(n), advance(n), hold(input) (scripted fire etc.: scripts/arsenal-shots.js), look(yaw, pitch),
+// recreate(mapId), renderer, game.
 
 import { createRenderer3D, isWebGLAvailable } from '../js/render3d/renderer3d.js';
 import { CLASS_IDS } from '../js/shared/classes.js';
@@ -547,7 +548,8 @@ function step(dt, nowS) {
     game.setInput(1, {
       ...idle, ...edge, ...forced, seq: ++seq,
       moveX: live ? wx : 0, moveY: live ? wy : 0, angle: yaw,
-      fire: live && !!(mouse & 1), melee: live && !!(mouse & 4), sprint: keys.has('ShiftLeft'), interact: keys.has('KeyE'),
+      // (__fps.hold({ fire: true }) pulls the trigger for a scripted fight)
+      fire: forced.fire !== undefined ? !!forced.fire : live && !!(mouse & 1), melee: live && !!(mouse & 4), sprint: keys.has('ShiftLeft'), interact: keys.has('KeyE'),
       slot: edge.slot ?? -1,
     });
     edge = {};
@@ -607,10 +609,10 @@ async function main() {
     /** Feed synthetic events to the renderer (effects tests / screenshots). */
     events(list) { renderer.addEvents(list, { localId: 1 }); },
     recreate(mapId) { setup(mapId || opt.map); },
-    /** Simulate n ticks without rendering (the local player idles; bots play). */
+    /** Simulate n ticks without rendering (the local player idles, or does what hold() says; bots play). */
     advance(n = 60) {
       for (let i = 0; i < n; i++) {
-        game.setInput(1, { ...idle, seq: ++seq, angle: yaw });
+        game.setInput(1, { ...idle, ...forced, seq: ++seq, angle: yaw });
         game.step();
       }
       game.snapshot();

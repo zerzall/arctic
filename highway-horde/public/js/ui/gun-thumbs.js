@@ -78,9 +78,11 @@ function paintModel(g, model, w, h) {
     const nl = Math.hypot(nx, ny, nz) || 1;
     const lambert = Math.max(0, (nx * lx + ny * ly + nz * lz) / (nl * ll));
     const rim = Math.max(0, nz / nl) * 0.35;
-    // (lifted: most guns are near-black and the cards are dark)
+    // (lifted: most guns are near-black and the cards are dark, so a little light is added
+    // on top of the shading, more on the lit faces, and the black guns still read as shapes)
     const k2 = glow ? 1.6 : 0.5 + lambert * 0.95 + rim;
-    const r = (C[a * 3] + C[b * 3] + C[c * 3]) / 3 * k2, gg = (C[a * 3 + 1] + C[b * 3 + 1] + C[c * 3 + 1]) / 3 * k2, bb = (C[a * 3 + 2] + C[b * 3 + 2] + C[c * 3 + 2]) / 3 * k2;
+    const lift = glow ? 0 : 0.012 + lambert * 0.035 + rim * 0.05;
+    const r = (C[a * 3] + C[b * 3] + C[c * 3]) / 3 * k2 + lift, gg = (C[a * 3 + 1] + C[b * 3 + 1] + C[c * 3 + 1]) / 3 * k2 + lift, bb = (C[a * 3 + 2] + C[b * 3 + 2] + C[c * 3 + 2]) / 3 * k2 + lift * 1.1;
     const col = `rgb(${toSrgb(r)},${toSrgb(gg)},${toSrgb(bb)})`;
     g.fillStyle = col;
     g.strokeStyle = col;
