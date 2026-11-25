@@ -2126,9 +2126,9 @@ shelves), `pinebark` (pines and spruces) and weathered moulded plastic (`plastic
 coolers, tanks; thin film keeps the tarp weave). Each takes the object's vertex colour as its tint, so
 every prop keeps its palette with the photo's grain, scuffs and grime. Without the library ('low', or a
 failed load) each draws its base procedural layer.
-The photo-scanned **prop models** (`props3d.js`, `dress-models.js`; 22 Poly Haven CC0 models converted
+The photo-scanned **prop models** (`props3d.js`, `dress-models.js`; 21 Poly Haven CC0 models converted
 by `scripts/fetch-models.js`: three steel drums, two wooden crates, a military crate, a cardboard box, a
-propane cylinder, a jerrycan, two trash cans, a hydrant, a bench, a generator, a tyre, a trash bag, a picnic
+propane cylinder, a jerrycan, two trash cans, a hydrant, a generator, a tyre, a trash bag, a picnic
 table, a garden chair, a stump, a fallen trunk, a boulder, a wheelchair) replace the procedural models of
 those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles), every instance of every
 model in ONE BatchedMesh (one draw call with WEBGL_multi_draw; each instance shows LOD 0 within 420 / 620 /
@@ -2137,8 +2137,8 @@ camera's position every 24 units or 30 frames; no per-instance frustum walk), on
 MeshStandardMaterial for all (layer per vertex, tangent-free normal mapping from the uv derivatives, AO /
 roughness / metalness maps), a per-instance tint (± 14 % brightness, a little warmth) and random turns so
 copies never look cloned; a kind's builder may decline a variant the models do not cover (wire baskets,
-wheelie bins, folding chairs stay procedural). The texture layers (512², 23 of them: A = sRGB albedo + AO,
-B = normal xy + roughness + metalness, ≈ 64 MB with mips) load after the world's library through the
+wheelie bins, folding chairs stay procedural). The texture layers (512², 22 of them: A = sRGB albedo + AO,
+B = normal xy + roughness + metalness, ≈ 62 MB with mips) load after the world's library through the
 texture worker; until then — and on 'low', with `?props=0` or when anything fails — the procedural props
 stand in, and the dressing rebuilds once when the models arrive. They cast no shadow (like the rest of the
 dressing). `world-dress.js` stats: `modelled`, `models` (instances, draws, triangles).

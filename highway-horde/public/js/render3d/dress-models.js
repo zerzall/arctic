@@ -47,7 +47,7 @@ export const MODEL_KINDS = {
   },
   crate(P, put) {
     const r = P.D.rng;
-    put(r.chance(0.5) ? 'crate_a' : 'crate_b', 0, 0, 0, r.range(0, TAU), P.s || 1, { tint: tintOf(r, 0.18) });
+    put(r.chance(0.5) ? 'crate_a' : 'crate_b', 0, 0, 0, r.range(0, TAU), 1.25 * (P.s || 1), { tint: tintOf(r, 0.18) });
     return true;
   },
   crates(P, put) {
@@ -55,11 +55,12 @@ export const MODEL_KINDS = {
     const base = r.range(0, TAU);
     const c = Math.cos(base), s = Math.sin(base);
     const at = (lx, lz) => [lx * c + lz * s, -lx * s + lz * c];
-    let [x, z] = at(-14, 0); put('crate_a', x, 0, z, base + r.range(-0.1, 0.1), 1, { tint: tintOf(r, 0.18) });
-    [x, z] = at(14, 0); put('crate_a', x, 0, z, base + r.range(-0.1, 0.1), 1, { tint: tintOf(r, 0.18) });
+    const k = 1.3;
+    let [x, z] = at(-17, 0); put('crate_a', x, 0, z, base + r.range(-0.1, 0.1), k, { tint: tintOf(r, 0.18) });
+    [x, z] = at(17, 0); put('crate_a', x, 0, z, base + r.range(-0.1, 0.1), k, { tint: tintOf(r, 0.18) });
     // (crate_a is 0.35 m high)
-    [x, z] = at(0, 0); put('crate_a', x, 0.35 * UNITS, z, base + r.range(-0.3, 0.3), 1, { tint: tintOf(r, 0.18) });
-    if (r.chance(0.5)) { [x, z] = at(4, -24); put('crate_b', x, 0, z, base + Math.PI / 2 + r.range(-0.2, 0.2), 1, { tint: tintOf(r, 0.18) }); }
+    [x, z] = at(0, 0); put('crate_a', x, 0.35 * UNITS * k, z, base + r.range(-0.3, 0.3), k, { tint: tintOf(r, 0.18) });
+    if (r.chance(0.5)) { [x, z] = at(4, -28); put('crate_b', x, 0, z, base + Math.PI / 2 + r.range(-0.2, 0.2), 1.2, { tint: tintOf(r, 0.18) }); }
     return true;
   },
   milcrate(P, put) {
@@ -122,12 +123,6 @@ export const MODEL_KINDS = {
     put('hydrant', 0, 0, 0, r.range(0, TAU), 1, { tint: tintOf(r, 0.1) });
     return true;
   },
-  bench(P, put) {
-    const r = P.D.rng;
-    // (the model's seat faces +z: turned to face the prop's +x)
-    put('bench', 0, 0, 0, -Math.PI / 2, 1.05, { tint: tintOf(r, 0.12) });
-    return true;
-  },
   generator(P, put) {
     const r = P.D.rng;
     put('generator', 0, 0, 0, r.range(0, TAU), 1.1, { tint: tintOf(r, 0.08) });
@@ -157,7 +152,7 @@ export const MODEL_KINDS = {
   },
   stump(P, put) {
     const r = P.D.rng;
-    put('stump', 0, -2, 0, r.range(0, TAU), r.range(0.45, 0.7), { tint: tintOf(r, 0.15) });
+    put('stump', 0, -2, 0, r.range(0, TAU), r.range(0.8, 1.05), { tint: tintOf(r, 0.15) });
     return true;
   },
   log(P, put) {
@@ -167,9 +162,9 @@ export const MODEL_KINDS = {
   },
   boulders(P, put) {
     const r = P.D.rng;
-    put('boulder', 0, -3, 0, r.range(0, TAU), r.range(0.9, 1.3), { tint: tintOf(r, 0.12) });
+    put('boulder', 0, -3, 0, r.range(0, TAU), r.range(0.55, 0.85), { tint: tintOf(r, 0.12, 0.03).map((v) => v * 1.25) });
     const n = Math.floor(r.next() * 3);
-    for (let i = 0; i < n; i++) put('boulder', r.range(-30, 30), -2, r.range(-24, 24), r.range(0, TAU), r.range(0.35, 0.6), { tint: tintOf(r, 0.12) });
+    for (let i = 0; i < n; i++) put('boulder', r.range(-30, 30), -2, r.range(-24, 24), r.range(0, TAU), r.range(0.25, 0.4), { tint: tintOf(r, 0.12, 0.03).map((v) => v * 1.25) });
     return true;
   },
   wheelchair(P, put) {

@@ -1,6 +1,6 @@
 // Photo-scanned prop models (Poly Haven, CC0 1.0; scripts/fetch-models.js) for the set dressing (SPEC
 // §7.5.2): steel drums, wooden and military crates, cardboard boxes, propane cylinders, jerrycans, trash
-// cans, a fire hydrant, a park bench, a generator, tyres, trash bags, a picnic table, a garden chair, a
+// cans, a fire hydrant, a generator, tyres, trash bags, a picnic table, a garden chair, a
 // stump, a fallen trunk, a boulder, a wheelchair.
 //
 // The geometry (models/props.bin + props.json: two levels of detail per model) is drawn as one
@@ -321,7 +321,9 @@ export function createPropModels(ctx, deps) {
       if (!bm) return;
       frame++;
       const cx = camera.position.x, cz = camera.position.z;
-      if (Math.hypot(cx - lastX, cz - lastZ) < 24 && frame % 30) return;
+      // (a camera on the move re-levels at most every fourth frame: the batch rebuilds its draw list after a switch)
+      const moved = Math.hypot(cx - lastX, cz - lastZ);
+      if (moved < 24 ? frame % 30 : moved < 160 && frame % 4) return;
       lastX = cx; lastZ = cz;
       const [near, far] = tierRow(PROP_LOD, tier);
       const n2 = near * near, f2 = far * far;

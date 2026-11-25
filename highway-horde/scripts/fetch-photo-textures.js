@@ -115,21 +115,23 @@ export const PHOTO = {
  *   tile       metres one tile of the set covers (= DET_TILE / 32)
  *   tint       how much of the object's own colour replaces the photo's (0..1; the mask's mean)
  *   lum        optional linear luminance the photo's mean is scaled to (else its own)
+ *   store      stored size (default 512: a prop's tile is 0.3–2.5 m, 512 texels are 200–1900 a metre;
+ *              the loader resamples a set to the array's size, so the download is a quarter)
  */
 export const PHOTO_NEW = {
-  crate_wood: { id: 'rough_wood', det: 'crate', tile: 1.0, tint: 0.75, desat: 0.3, shift: ANY, about: 'rough-sawn lumber (crates, pallets, sawhorses), photo-scanned' },
-  plywood: { id: 'plywood', det: 'plywood', tile: 1.0, tint: 0.55, shift: ANY, about: 'plywood sheet face (boarded windows, barricades), photo-scanned' },
-  osb: { id: 'oriented_strand_board', det: 'osb', tile: 2.5, tint: 0.4, shift: ANY, about: 'oriented strand board (boarded doors, site hoarding), photo-scanned' },
-  paint_metal: { id: 'green_metal_rust', det: 'paintmetal', tile: 1.0, tint: 0.92, desat: 0.92, shift: ANY, about: 'painted steel with scratches, chips and rust spots (drums, bins, cylinders, machines), photo-scanned' },
-  paint_rust: { id: 'rusty_painted_metal', det: 'paintrust', tile: 2.2, tint: 0.55, desat: 0.75, shift: ANY, about: 'paint flaking off rusting steel (old drums, dumpsters, wrecks), photo-scanned' },
-  car_paint: { id: 'container_side', det: 'carpaint', tile: 2.0, tint: 0.97, desat: 0.97, shift: ANY, about: 'painted body steel with road dust and streaks (car bodies), photo-scanned' },
-  burlap: { id: 'hessian_230', det: 'burlap', tile: 0.27, tint: 0.7, desat: 0.4, shift: ANY, about: 'coarse hessian / burlap weave (sandbags, sacks), photo-scanned' },
-  kraft: { id: 'hessian_380', det: 'cardboard', tile: 0.54, tint: 0.85, desat: 0.5, shift: ANY, lum: 0.3, about: 'fine kraft-paper fibre (cardboard boxes; a fine hessian scan read at paper scale), photo-scanned' },
-  leather: { id: 'fabric_leather_01', det: 'leather', tile: 0.4, tint: 0.9, desat: 0.6, shift: ANY, about: 'worn leather with a seam (seats, sofas, bags), photo-scanned' },
-  linen: { id: 'rough_linen', det: 'linen', tile: 0.27, tint: 0.95, desat: 0.9, shift: ANY, about: 'rough linen / upholstery weave (mattresses, cushions, clothes), photo-scanned' },
-  veneer: { id: 'kitchen_wood', det: 'veneer', tile: 0.6, tint: 0.6, shift: ANY, about: 'worn wood veneer (furniture, counters, shelves, doors), photo-scanned' },
-  bark_pine: { id: 'pine_bark', det: 'pinebark', tile: 2.0, tint: 0.5, shift: ANY, about: 'plated pine bark (pines and spruces), photo-scanned' },
-  plastic_worn: { id: 'weathered_pvc_tank', det: 'plasticworn', tile: 1.0, tint: 0.95, desat: 0.95, shift: ANY, about: 'weathered moulded plastic with streaks and grime (cones, bins, tanks, coolers), photo-scanned' },
+  crate_wood: { store: 512, id: 'rough_wood', det: 'crate', tile: 1.0, tint: 0.75, desat: 0.3, shift: ANY, about: 'rough-sawn lumber (crates, pallets, sawhorses), photo-scanned' },
+  plywood: { store: 512, id: 'plywood', det: 'plywood', tile: 1.0, tint: 0.55, shift: ANY, about: 'plywood sheet face (boarded windows, barricades), photo-scanned' },
+  osb: { store: 512, id: 'oriented_strand_board', det: 'osb', tile: 2.5, tint: 0.4, shift: ANY, about: 'oriented strand board (boarded doors, site hoarding), photo-scanned' },
+  paint_metal: { store: 512, id: 'green_metal_rust', det: 'paintmetal', tile: 1.0, tint: 0.92, desat: 0.92, shift: ANY, about: 'painted steel with scratches, chips and rust spots (drums, bins, cylinders, machines), photo-scanned' },
+  paint_rust: { store: 512, id: 'rusty_painted_metal', det: 'paintrust', tile: 2.2, tint: 0.55, desat: 0.75, shift: ANY, about: 'paint flaking off rusting steel (old drums, dumpsters, wrecks), photo-scanned' },
+  car_paint: { store: 1024, id: 'container_side', det: 'carpaint', tile: 2.0, tint: 0.97, desat: 0.97, shift: ANY, about: 'painted body steel with road dust and streaks (car bodies), photo-scanned' },
+  burlap: { store: 512, id: 'hessian_230', det: 'burlap', tile: 0.27, tint: 0.7, desat: 0.4, shift: ANY, about: 'coarse hessian / burlap weave (sandbags, sacks), photo-scanned' },
+  kraft: { store: 512, id: 'hessian_380', det: 'cardboard', tile: 0.54, tint: 0.85, desat: 0.5, shift: ANY, lum: 0.3, about: 'fine kraft-paper fibre (cardboard boxes; a fine hessian scan read at paper scale), photo-scanned' },
+  leather: { store: 512, id: 'fabric_leather_01', det: 'leather', tile: 0.4, tint: 0.9, desat: 0.6, shift: ANY, about: 'worn leather with a seam (seats, sofas, bags), photo-scanned' },
+  linen: { store: 512, id: 'rough_linen', det: 'linen', tile: 0.27, tint: 0.95, desat: 0.9, shift: ANY, about: 'rough linen / upholstery weave (mattresses, cushions, clothes), photo-scanned' },
+  veneer: { store: 512, id: 'kitchen_wood', det: 'veneer', tile: 0.6, tint: 0.6, shift: ANY, about: 'worn wood veneer (furniture, counters, shelves, doors), photo-scanned' },
+  bark_pine: { store: 512, id: 'pine_bark', det: 'pinebark', tile: 2.0, tint: 0.5, shift: ANY, about: 'plated pine bark (pines and spruces), photo-scanned' },
+  plastic_worn: { store: 512, id: 'weathered_pvc_tank', det: 'plasticworn', tile: 1.0, tint: 0.95, desat: 0.95, shift: ANY, about: 'weathered moulded plastic with streaks and grime (cones, bins, tanks, coolers), photo-scanned' },
 };
 
 // ---- helpers -----------------------------------------------------------------------------------
@@ -250,7 +252,7 @@ function aoFromHeight(h, n) {
 
 /** Build one set's four maps and its stats. */
 export function packSet(name, cfg, old, imgs, dx, k) {
-  const n = STORE, NN = n * n;
+  const n = cfg.store || STORE, NN = n * n;
   // albedo, averaged in linear light
   const alb = packTile(imgs.diff, n, k, 3, (a, s, p) => { a[0] += LIN[s[p]]; a[1] += LIN[s[p + 1]]; a[2] += LIN[s[p + 2]]; });
   // normal, as vectors (renormalised below)
@@ -396,7 +398,7 @@ through surface ids of their own (\`PHOTO_NEW\` in the script); they keep the ph
 
 * \`models/\` holds the texture layers (512² albedo, normal, AO / roughness / metalness) of the
   photo-scanned prop models in \`../models/\` (barrels, crates, cardboard boxes, cylinders, jerrycans, trash
-  cans, a hydrant, a bench, a generator, tyres, trash bags, a picnic table, a chair, a stump, a log, a
+  cans, a hydrant, a generator, tyres, trash bags, a picnic table, a chair, a stump, a log, a
   boulder, a wheelchair): Poly Haven models, CC0 1.0, converted by \`scripts/fetch-models.js\`; the
   credits per model are in \`../models/CREDITS.md\`.
 * \`foliage/leaves.png\` holds the photo foliage cards of the leaf atlas, rendered by
@@ -449,14 +451,14 @@ async function main() {
     mkdirSync(dir, { recursive: true });
     const sizes = {};
     for (const [kind, px] of Object.entries(res.maps)) {
-      const buf = encodePNG(px, STORE, STORE, 3, { level: a.level });
+      const buf = encodePNG(px, cfg.store || STORE, cfg.store || STORE, 3, { level: a.level });
       writeFileSync(join(dir, `${kind}.png`), buf);
       sizes[kind] = buf.length;
     }
     const e = {
       about: cfg.about,
       det: old.det,
-      size: STORE,
+      size: cfg.store || STORE,
       render: imgs.diff.w,
       tile: old.tile,
       files: { albedo: `${name}/albedo.png`, normal: `${name}/normal.png`, rah: `${name}/rah.png`, mask: `${name}/mask.png` },

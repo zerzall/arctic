@@ -51,7 +51,6 @@ export const MODELS = {
   trashcan: { id: 'metal_trash_can', tris: 1200, mats: ['metal_trash_can'], nodes: /^metal_trash_can(_handle_(left|right))?$/, about: 'galvanised trash can' },
   trashcan_rust: { id: 'metal_trash_can', tris: 1200, mats: ['metal_trash_can_rust'], nodes: /^metal_trash_can_rust(_handle_(left|right))?$/, about: 'rusting galvanised trash can' },
   hydrant: { id: 'fire_hydrant', tris: 1400, mats: ['fire_hydrant'], about: 'cast-iron fire hydrant' },
-  bench: { id: 'painted_wooden_bench', tris: 630, about: 'painted wooden park bench' },
   generator: { id: 'portable_generator', tris: 1800, about: 'portable petrol generator in its frame' },
   tyre: { id: 'old_tyre', tris: 1000, about: 'worn car tyre' },
   trashbag: { id: 'trashbag', tris: 700, about: 'tied black trash bag' },
