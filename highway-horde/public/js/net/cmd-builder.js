@@ -3,8 +3,10 @@
 // next produced cmd consumes them, so a press in a frame that happens to produce no
 // tick is carried over — never lost, never sent twice. `jump` is both: set while the
 // button is held (hold to keep hopping) and for one cmd after a tap shorter than a tick.
+// First person adds the aim pitch, crouch / walk (held), the secondary fire (an edge), the
+// aim3d flag and the view tick the session stamps on every cmd (lag compensation).
 
-const EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon'];
+const EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'alt'];
 const MAX_PENDING_CYCLE = 3;
 
 function num(v) {
@@ -17,12 +19,18 @@ export class CmdBuilder {
     this.moveX = 0;
     this.moveY = 0;
     this.angle = 0;
+    this.pitch = 0;
     this.fire = false;
     this.melee = false;
     this.sprint = false;
     this.interact = false;
     this.jump = false;
     this.jumpTap = false;
+    this.crouch = false;
+    this.walk = false;
+    this.aim3d = false;
+    /** The tick the player is looking at (set by the session before next()), -1 = none. */
+    this.viewTick = -1;
     this.edges = {};
     for (const e of EDGES) this.edges[e] = false;
     this.slot = -1;
@@ -38,7 +46,7 @@ export class CmdBuilder {
     if (Number.isFinite(aimAngle)) this.angle = aimAngle;
     if (!input) {
       this.moveX = this.moveY = 0;
-      this.fire = this.melee = this.sprint = this.interact = this.jump = false;
+      this.fire = this.melee = this.sprint = this.interact = this.jump = this.crouch = this.walk = false;
       return;
     }
     let mx = num(input.moveX), my = num(input.moveY);
@@ -54,6 +62,11 @@ export class CmdBuilder {
     this.sprint = !!input.sprint;
     this.interact = !!input.interact;
     this.jump = !!input.jump;
+    this.crouch = !!input.crouch;
+    this.walk = !!input.walk;
+    // first person: the UI hands over its camera pitch and says the aim is 3D
+    if (Number.isFinite(input.pitch)) this.pitch = input.pitch;
+    this.aim3d = !!input.aim3d;
     if (input.jump) this.jumpTap = true;
     for (const e of EDGES) if (input[e]) this.edges[e] = true;
     if (Number.isInteger(input.slot) && input.slot >= 0) this.slot = input.slot;
@@ -72,10 +85,15 @@ export class CmdBuilder {
       melee: this.melee,
       sprint: this.sprint,
       interact: this.interact,
-      reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
+      reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false, alt: false,
       slot: this.slot,
       cycle: Math.sign(this.cycle),
       jump: this.jump || this.jumpTap,
+      pitch: this.pitch,
+      crouch: this.crouch,
+      walk: this.walk,
+      aim3d: this.aim3d,
+      vt: this.viewTick,
     };
     this.jumpTap = false;
     for (const e of EDGES) {
@@ -100,8 +118,9 @@ export class CmdBuilder {
       seq: this.nextSeq(),
       moveX: 0, moveY: 0, angle: this.angle,
       fire: false, melee: false, sprint: false, interact: false,
-      reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
+      reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false, alt: false,
       slot: -1, cycle: 0, jump: false,
+      pitch: this.pitch, crouch: false, walk: false, aim3d: this.aim3d, vt: -1,
     };
   }
 
@@ -109,6 +128,9 @@ export class CmdBuilder {
   reset() {
     this.moveX = this.moveY = 0;
     this.fire = this.melee = this.sprint = this.interact = this.jump = this.jumpTap = false;
+    this.crouch = this.walk = false;
+    this.pitch = 0;
+    this.viewTick = -1;
     for (const e of EDGES) this.edges[e] = false;
     this.slot = -1;
     this.cycle = 0;

@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createCollisionWorld, stepPlayerMovement, MASK_HEAVY } from '../public/js/shared/movement.js';
+import { createCollisionWorld, stepPlayerMovement, eyeHeight, MASK_HEAVY } from '../public/js/shared/movement.js';
 import { circleOverlapsObb, MASK_MOVE, MASK_BARRICADE } from '../public/js/shared/geom.js';
 import {
   DT, PLAYER_RADIUS, PLAYER_SPEED, SPRINT_MULT, STAMINA_MAX, STAMINA_DRAIN, STAMINA_REGEN,
-  STAMINA_MIN_TO_SPRINT, DOWNED_SPEED,
+  STAMINA_MIN_TO_SPRINT, DOWNED_SPEED, WALK_MULT, CROUCH_MULT, DUCK_TICKS, EYE_HEIGHT, CROUCH_EYE,
 } from '../public/js/shared/constants.js';
 import { createRng } from '../public/js/shared/rng.js';
 import { buildFixtureMap, buildArenaMap } from './fixtures/sim-map.js';
@@ -29,23 +29,70 @@ function overlapsAny(world, x, y, r) {
   return false;
 }
 
-test('walks at PLAYER_SPEED, diagonal input is normalised, speed multipliers apply', () => {
+/** Hold `cmd` for `n` ticks (the ground speed settles), then return one more tick's step length. */
+function settled(world, p, cmd, n = 60) {
+  for (let i = 0; i < n; i++) stepPlayerMovement(p, cmd, DT, world);
+  const x0 = p.x, y0 = p.y;
+  stepPlayerMovement(p, cmd, DT, world);
+  return Math.hypot(p.x - x0, p.y - y0);
+}
+
+test('walks at PLAYER_SPEED once up to speed, diagonal input is normalised, speed multipliers apply', () => {
   const world = createCollisionWorld(wallMap([]));
-  const p = player(300, 300);
-  stepPlayerMovement(p, { moveX: 1, moveY: 0 }, DT, world);
-  assert.ok(near(p.x, 300 + PLAYER_SPEED * DT) && near(p.y, 300));
-  const q = player(300, 300);
-  stepPlayerMovement(q, { moveX: 1, moveY: 1 }, DT, world);
-  assert.ok(near(Math.hypot(q.x - 300, q.y - 300), PLAYER_SPEED * DT));
-  const r = player(300, 300, { speedMult: 1.15, moveMult: 0.62 });
-  stepPlayerMovement(r, { moveX: 0, moveY: -1 }, DT, world);
-  assert.ok(near(300 - r.y, PLAYER_SPEED * 1.15 * 0.62 * DT));
+  assert.ok(near(settled(world, player(300, 300), { moveX: 1, moveY: 0 }), PLAYER_SPEED * DT));
+  const q = player(300, 450);
+  assert.ok(near(settled(world, q, { moveX: 1, moveY: 1 }, 40), PLAYER_SPEED * DT));
+  const r = player(300, 800, { speedMult: 1.15, moveMult: 0.62 });
+  assert.ok(near(settled(world, r, { moveX: 0, moveY: -1 }), PLAYER_SPEED * 1.15 * 0.62 * DT));
   const s = player(300, 300);
-  stepPlayerMovement(s, { moveX: 0.5, moveY: 0 }, DT, world);
-  assert.ok(near(s.x - 300, PLAYER_SPEED * 0.5 * DT), 'analog input scales speed');
+  assert.ok(near(settled(world, s, { moveX: 0.5, moveY: 0 }), PLAYER_SPEED * 0.5 * DT), 'analog input scales speed');
   const t = player(300, 300);
   stepPlayerMovement(t, { moveX: NaN, moveY: undefined }, DT, world);
   assert.ok(near(t.x, 300) && near(t.y, 300), 'garbage input is ignored');
+});
+
+test('ground acceleration and friction: a quick start, a short stop, counter-strafing stops faster', () => {
+  const world = createCollisionWorld(wallMap([]));
+  const p = player(200, 450);
+  // the first tick moves a little at once, then the speed climbs to 90 % within ~0.3 s
+  stepPlayerMovement(p, { moveX: 1, moveY: 0 }, DT, world);
+  assert.ok(p.x > 200 && p.mvx > 0 && p.mvx < PLAYER_SPEED * 0.2, `first tick ${p.mvx}`);
+  let n = 1;
+  while (p.mvx < PLAYER_SPEED * 0.9 && n < 200) { stepPlayerMovement(p, { moveX: 1, moveY: 0 }, DT, world); n++; }
+  assert.ok(n * DT < 0.35, `90 % speed after ${(n * DT).toFixed(2)} s`);
+  for (let i = 0; i < 40; i++) stepPlayerMovement(p, { moveX: 1, moveY: 0 }, DT, world);
+  assert.ok(near(p.mvx, PLAYER_SPEED, 1e-6), 'never above the running speed');
+  // letting go: friction stops it in ~0.35 s
+  const q = { ...p };
+  let stop = 0;
+  while (q.mvx > 0 && stop < 200) { stepPlayerMovement(q, { moveX: 0, moveY: 0 }, DT, world); stop++; }
+  assert.ok(stop * DT > 0.2 && stop * DT < 0.45, `stopped after ${(stop * DT).toFixed(2)} s`);
+  // counter-strafing (the opposite key) gets below the accurate speed (34 %) in a few ticks
+  const c = { ...p };
+  let cs = 0;
+  while (c.mvx > PLAYER_SPEED * 0.34 && cs < 200) { stepPlayerMovement(c, { moveX: -1, moveY: 0 }, DT, world); cs++; }
+  const d = { ...p };
+  let rel = 0;
+  while (d.mvx > PLAYER_SPEED * 0.34 && rel < 200) { stepPlayerMovement(d, { moveX: 0, moveY: 0 }, DT, world); rel++; }
+  assert.ok(cs <= 5 && cs < rel, `counter-strafe ${cs} ticks vs ${rel} letting go`);
+});
+
+test('walking and crouching: slower; the crouch takes DUCK_TICKS; neither sprints', () => {
+  const world = createCollisionWorld(wallMap([]));
+  const w = player(200, 300);
+  assert.ok(near(settled(world, w, { moveX: 1, moveY: 0, walk: true, sprint: true }), PLAYER_SPEED * WALK_MULT * DT));
+  assert.ok(!w.sprinting, 'walking never sprints');
+  const c = player(200, 500);
+  stepPlayerMovement(c, { moveX: 0, moveY: 0, crouch: true }, DT, world);
+  assert.equal(c.duckT, 1);
+  assert.ok(near(eyeHeight(c), EYE_HEIGHT - (EYE_HEIGHT - CROUCH_EYE) / DUCK_TICKS));
+  assert.ok(near(settled(world, c, { moveX: 1, moveY: 0, crouch: true, sprint: true }), PLAYER_SPEED * CROUCH_MULT * DT));
+  assert.equal(c.duckT, DUCK_TICKS);
+  assert.equal(eyeHeight(c), CROUCH_EYE);
+  assert.ok(!c.sprinting, 'crouching never sprints');
+  for (let i = 0; i < DUCK_TICKS; i++) stepPlayerMovement(c, { moveX: 0, moveY: 0 }, DT, world);
+  assert.equal(c.duckT, 0, 'stands back up');
+  assert.equal(eyeHeight({ state: 'downed', duckT: 8 }), 16);
 });
 
 test('sprint: faster, drains stamina, locks when empty until STAMINA_MIN_TO_SPRINT', () => {
@@ -53,8 +100,8 @@ test('sprint: faster, drains stamina, locks when empty until STAMINA_MIN_TO_SPRI
   const p = player(100, 450);
   stepPlayerMovement(p, { moveX: 1, moveY: 0, sprint: true }, DT, world);
   assert.ok(p.sprinting);
-  assert.ok(near(p.x - 100, PLAYER_SPEED * SPRINT_MULT * DT));
   assert.ok(near(p.stamina, STAMINA_MAX - STAMINA_DRAIN * DT));
+  assert.ok(near(settled(world, player(100, 600), { moveX: 1, moveY: 0, sprint: true }), PLAYER_SPEED * SPRINT_MULT * DT));
   // Standing still with sprint held is not sprinting and regenerates.
   const idle = player(100, 450, { stamina: 50 });
   stepPlayerMovement(idle, { moveX: 0, moveY: 0, sprint: true }, DT, world);
@@ -68,10 +115,13 @@ test('sprint: faster, drains stamina, locks when empty until STAMINA_MIN_TO_SPRI
   }
   assert.ok(q.sprintLock && q.stamina === 0);
   assert.ok(near(ticks * DT, STAMINA_MAX / STAMINA_DRAIN, DT * 2));
-  // Still locked below the threshold even with sprint held...
+  // Still locked below the threshold even with sprint held (back down to running speed)...
+  // (20 ticks: enough for the speed to settle back to running, too few to regain the threshold)
+  for (let i = 0; i < 20; i++) stepPlayerMovement(q, { moveX: 1, moveY: 0, sprint: true }, DT, world);
+  assert.ok(q.sprintLock, 'still locked');
   const x0 = q.x;
   stepPlayerMovement(q, { moveX: 1, moveY: 0, sprint: true }, DT, world);
-  assert.ok(!q.sprinting && near(q.x - x0, PLAYER_SPEED * DT));
+  assert.ok(!q.sprinting && near(Math.abs(q.x - x0), PLAYER_SPEED * DT, 1e-6));
   while (q.stamina < STAMINA_MIN_TO_SPRINT - 0.5) stepPlayerMovement(q, { moveX: 0, moveY: 0 }, DT, world);
   stepPlayerMovement(q, { moveX: 1, moveY: 0, sprint: true }, DT, world);
   assert.ok(!q.sprinting || q.stamina >= STAMINA_MIN_TO_SPRINT - STAMINA_DRAIN * DT);
@@ -93,8 +143,8 @@ test('staminaMult slows drain and speeds regeneration', () => {
 test('downed players crawl at DOWNED_SPEED and cannot sprint; dead players do not move', () => {
   const world = createCollisionWorld(wallMap([]));
   const p = player(300, 300, { state: 'downed', speedMult: 1.2, moveMult: 0.5 });
-  stepPlayerMovement(p, { moveX: 1, moveY: 0, sprint: true }, DT, world);
-  assert.ok(!p.sprinting && near(p.x - 300, DOWNED_SPEED * DT));
+  assert.ok(near(settled(world, p, { moveX: 1, moveY: 0, sprint: true, crouch: true }), DOWNED_SPEED * DT));
+  assert.ok(!p.sprinting && p.duckT === 0);
   const d = player(300, 300, { state: 'dead' });
   stepPlayerMovement(d, { moveX: 1, moveY: 0 }, DT, world);
   assert.equal(d.x, 300);
@@ -105,7 +155,9 @@ test('slides along walls instead of sticking', () => {
   const world = createCollisionWorld(wallMap([ob(0, 600, 400, 1000, 20)]));
   const p = player(300, 400 - 10 - PLAYER_RADIUS - 1);
   for (let i = 0; i < 60; i++) stepPlayerMovement(p, { moveX: 0.7071, moveY: 0.7071 }, DT, world);
-  assert.ok(p.x > 300 + PLAYER_SPEED * 0.7071 * 0.95, `kept sliding along x (${p.x})`);
+  // (the first ~0.3 s is the speed building up)
+  assert.ok(p.x > 300 + PLAYER_SPEED * 0.7071 * 0.85, `kept sliding along x (${p.x})`);
+  assert.ok(Math.abs(p.mvy) < 1e-6, 'the wall took the velocity into it');
   assert.ok(p.y <= 400 - 10 - PLAYER_RADIUS + 1e-6, 'never enters the wall');
   // Rotated wall: sliding follows its direction.
   const w2 = createCollisionWorld(wallMap([ob(0, 600, 450, 900, 20, Math.PI / 6)]));

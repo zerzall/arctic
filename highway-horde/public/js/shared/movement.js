@@ -551,10 +551,13 @@ export function stepPlayerMovement(p, cmd, dt, world) {
   p.sprinting = sprinting;
   // Counter-Strike-like ground movement: friction, then acceleration toward the wanted velocity
   // (none in the air, where AIR_ACCEL steers what the jump carries)
+  const run = downed ? DOWNED_SPEED : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1);
   const wish = !moving ? 0 : (downed
     ? DOWNED_SPEED
-    : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1) * (walking ? WALK_MULT : 1)
-      * (1 - (1 - CROUCH_MULT) * duck)) * Math.min(1, len);
+    : run * (sprinting ? SPRINT_MULT : 1) * (walking ? WALK_MULT : 1) * (1 - (1 - CROUCH_MULT) * duck)) * Math.min(1, len);
+  // (like Counter-Strike, the acceleration scales with the full running speed, not the
+  // reduced one of walking or crouching, so slow movement still gets going crisply)
+  const accRef = downed ? DOWNED_SPEED * 3 : Math.max(wish, run);
   const air = p.vzq !== 0;
   let vx = p.mvx, vy = p.mvy;
   let sp = Math.hypot(vx, vy);
@@ -566,10 +569,11 @@ export function stepPlayerMovement(p, cmd, dt, world) {
     sp = ns;
   }
   if (wish > 0) {
-    const ux = mx / len, uy = my / len;
+    const ml = Math.hypot(mx, my);
+    const ux = mx / ml, uy = my / ml;
     const add = wish - (vx * ux + vy * uy);
     if (add > 0) {
-      const acc = Math.min(add, (air ? AIR_ACCEL : GROUND_ACCEL) * wish * dt);
+      const acc = Math.min(add, (air ? AIR_ACCEL : GROUND_ACCEL) * accRef * dt);
       vx += ux * acc;
       vy += uy * acc;
     }
