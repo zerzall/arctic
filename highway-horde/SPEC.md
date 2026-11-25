@@ -2380,8 +2380,17 @@ crowns, a shrub, small-leaved bushes; leaves and needles are geometry there) in 
 atlas' cells (2048 × 1024 RGBA, `textures/foliage/leaves.png`, grey-normalised so each tree's vertex colour
 still gives its species' green, coverage dilated a texel and faded before the cell's border);
 `world-tex.js` pastes them over the procedural cells when they arrive (`?foliage=0` keeps the procedural
-ones). Pines (the map's and the tree line's) lost their solid cones: a slim dark core under more whorls of
-bough cards, so the silhouette is needles, not a cone.
+ones). Pines (the map's and the tree line's) lost their solid cones: a dark core under whorls of bough
+cards, so the silhouette is needles, not a cone. The core is a short, tapering cylinder that ends about 70 %
+up the tree, inside the boughs (it never reaches the top: no bare spike over the crown); the top is a
+*leader*, `pineLeader` in `world-flora.js`: 3-6 upright needle cards of different sizes, the tallest at the
+tree's top and the others stepping down, so the crown ends in a soft, uneven tuft (it replaces the top
+whorl, so the card count stays the same). Each tree also leans a little (up to 5-6 % of its height, growing
+with height), has its own density (0.8-1.2 of the cards a whorl) and whorl heights / radii, and its own
+top height. The tree line (`buildTreeLine`) is the far level of the same tree and uses the same leader
+(fewer cards on 'high' / 'low'); the foliage atlas is unchanged. Budget: draw calls unchanged, world static
+triangles 635 884 -> 633 208 on 'high' (low 601 978 -> 599 302, ultra 657 370 -> 654 046, cinematic
+1 922 410 -> 1 907 042).
 
 **Vehicles** (`world-veh-extras.js`): a car may be a taxi or police cruiser, an SUV a police
 cruiser or news vehicle, a van an ambulance / delivery / plumber / news van, a pickup a tow truck
