@@ -252,7 +252,7 @@ test('the one-file build embeds the texture library: its manifest and every file
     assert.ok(mm, 'the manifest element');
     assert.deepEqual(Object.keys(JSON.parse(mm[1]).sets), ['brick_red', 'asphalt']);
     for (const [p, b] of Object.entries(files)) {
-      const m = html.match(new RegExp(`<script type="application/x-hh-tex" data-hh-tex="${p}">([A-Za-z0-9+/=]*)</script>`));
+      const m = html.match(new RegExp(`<script type="application/x-hh-tex" data-hh-tex="${p}" data-type="image/png">([A-Za-z0-9+/=]*)</script>`));
       assert.ok(m, `embedded ${p}`);
       assert.ok(Buffer.from(m[1], 'base64').equals(b), `${p} round-trips`);
     }

@@ -39,11 +39,16 @@ import * as campaignMod from './campaign3d.js';
 import * as hideoutMod from './hideout3d.js';
 import * as npcsMod from './npcs3d.js';
 import * as storyMod from './story3d.js';
-import { releaseSharedGuns, setGunTier } from './actor-guns.js';
+import { releaseSharedGuns, setGunTier, gunTexStats } from './actor-guns.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
 import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT, PIXEL_BUDGET } from './post.js';
 import { normTier, tierAtLeast } from './tier.js';
+import { prefetchLibrary } from './world-surf-bake.js';
+
+// (the texture library's manifest and the copies' index, asked for while the menus are up: a world
+// built later hands its files to the decode worker at once, world-surf-bake.js)
+prefetchLibrary();
 
 const EYE = 52;
 const EYE_DOWNED = 16;
@@ -244,6 +249,24 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     } catch (err) {
       logErr('create ' + name, err);
     }
+  }
+
+  // the streamed texture sets' progress, for the load-timing script and the dev tools: world library
+  // (world-surf-bake.js), decal sheets, zombie sets, gun arrays; done = nothing still loading
+  if (typeof window !== 'undefined') {
+    window.__hhTexLoad = () => {
+      const z = subs.find((s) => s.__name === 'zombies3d');
+      const zs = z && z.stats ? z.stats.ztex : undefined;
+      const w = world.stats || {};
+      const out = {
+        world: (globalThis.__hhTextures || {}).state || 'off',
+        decals: w.decals ? w.decals.state : 'off',
+        zombies: zs === 2 ? 'ready' : zs === 1 ? 'loading' : zs === -1 ? 'failed' : 'off',
+        guns: gunTexStats().status,
+      };
+      out.done = !Object.values(out).includes('loading');
+      return out;
+    };
   }
 
   // story levels: the sub-systems' lit materials read the indoor light mask too (world.js / indoor.js)

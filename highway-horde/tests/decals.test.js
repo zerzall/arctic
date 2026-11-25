@@ -315,14 +315,10 @@ test('a failed sheet load falls back silently to no decals', async () => {
   }
 });
 
-test('sheet files resolve to the one-file build\'s embedded copies first', () => {
-  globalThis.__HH_FILES = { 'textures/decals/decals-a.png': 'data:image/png;base64,AAAA' };
-  try {
-    assert.equal(runtime.decalFileURL('decals-a.png'), 'data:image/png;base64,AAAA');
-    assert.match(runtime.decalFileURL('decals-b.png'), /textures\/decals\/decals-b\.png$/);
-  } finally {
-    delete globalThis.__HH_FILES;
-  }
-  const src = fs.readFileSync(path.resolve(HERE, '../scripts/build-standalone.js'), 'utf8');
-  assert.match(src, /embedFiles\('textures\/decals'/);
+test('sheet files load through tex-files.js (the download copies, the one-file build\'s store)', () => {
+  const src = fs.readFileSync(path.resolve(HERE, '../public/js/render3d/decals.js'), 'utf8');
+  assert.match(src, /textureBlob\('decals\/' \+ file, size\)/);
+  assert.match(src, /await textureQueue\(\)/, 'after the world\'s library');
+  const build = fs.readFileSync(path.resolve(HERE, '../scripts/build-standalone.js'), 'utf8');
+  assert.match(build, /listPNGs\(TEX_DIR\)/, 'the one-file build embeds every texture file');
 });

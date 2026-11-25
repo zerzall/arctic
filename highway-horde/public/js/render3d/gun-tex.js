@@ -11,15 +11,19 @@
 // until then (and if a file is missing, the decoder is absent or this is a node test) the
 // uniforms point at 1-texel placeholders and uGunTexOn is 0 — the shader's procedural path.
 //
-// Loading: fetch + createImageBitmap (resized to the layer size off the main thread), drawn into
-// a canvas to read the pixels back (one file a frame), packed into the array and uploaded once
-// with mipmaps; the CPU copy is dropped after the upload. The one-file build embeds the PNGs (window.__HH_FILES).
+// Loading, once the world's texture library is in: the files (the PNGs' download copies at the
+// layer size, tex-files.js, which also reads the one-file build's embedded store) are fetched,
+// decoded and packed into the arrays by a worker (tex-worker.js), then uploaded once with mipmaps;
+// the CPU copy is dropped after the upload. Without a worker: fetch + createImageBitmap (resized to
+// the layer size off the main thread), drawn into a canvas to read the pixels back, one file a frame.
 // `?guntex=0` in the page address leaves them off (before / after screenshots); a software
 // rasterizer (SwiftShader, llvmpipe: no graphics card) leaves them off too unless `?guntex=1`.
 
 import * as THREE from 'three';
 import { GUN_FAMILIES, SKIN_PATTERNS, GUN_WEAR_FILE } from '../shared/gun-finish.js';
 import { tierRow, tierRank, anisoFor } from './tier.js';
+import { textureBlob, textureQueue, textureSource } from './tex-files.js';
+import { makeTexWorker, decodeRGBA } from './tex-worker.js';
 
 /** Per tier: layer size of the families, the skins and the wear overlay (null: no textures). */
 export const GUN_TEX_TIERS = Object.freeze({
@@ -28,18 +32,6 @@ export const GUN_TEX_TIERS = Object.freeze({
   ultra: { family: 1024, skin: 1024, wear: 2048 },
   cinematic: { family: 2048, skin: 1024, wear: 2048 },
 });
-
-/** Where a gun texture comes from: the one-file build's embedded copy, else next to the game. */
-export function gunTexURL(file) {
-  const key = 'textures/guns/' + file;
-  const emb = globalThis.__HH_FILES && globalThis.__HH_FILES[key];
-  if (emb) return emb;
-  try {
-    return new URL('../../textures/guns/' + file, import.meta.url).href;
-  } catch {
-    return key;
-  }
-}
 
 function placeholderArray(rgba) {
   const t = new THREE.DataArrayTexture(new Uint8Array(rgba), 1, 1, 1);
@@ -120,9 +112,8 @@ async function decode(file, size) {
 }
 
 async function decodeBitmap(file, size) {
-  const res = await fetch(gunTexURL(file));
-  if (!res.ok) throw new Error(`${res.status} ${file}`);
-  const blob = await res.blob();
+  // (the download copy at the layer size when one is listed, else the PNG: tex-files.js)
+  const { blob } = await textureBlob('guns/' + file, size);
   const base = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
   try {
     return await createImageBitmap(blob, { ...base, resizeWidth: size, resizeHeight: size, resizeQuality: 'high' });
@@ -170,6 +161,42 @@ async function pool(jobs, limit) {
   await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, run));
 }
 
+/** Copy channels of an RGBA image into a layer: map[c] = the source channel of c (-1: keep). */
+function gunPut(dst, layer, size, px, map) {
+  const o = layer * size * size * 4;
+  for (let i = 0, n = size * size; i < n; i++) {
+    const s = i * 4, d = o + s;
+    for (let c = 0; c < 4; c++) { const src = map[c]; if (src >= 0) dst[d + c] = px[s + src]; }
+  }
+}
+
+/**
+ * The decode worker's job (tex-worker.js; self-contained): every file of the tier, decoded at its
+ * layer size and copied into the arrays it feeds. → { arrays: { name: ArrayBuffer }, failed: [why] }.
+ */
+async function gunPackJob(d) {
+  const arrays = {};
+  for (const [name, size, layers] of d.arrays) arrays[name] = new Uint8Array(size * size * 4 * layers);
+  const failed = [];
+  let next = 0;
+  const run = async () => {
+    while (next < d.files.length) {
+      const f = d.files[next++];
+      try {
+        const img = await decodeRGBA(f.src, f.size);
+        if (img.w !== f.size || img.h !== f.size) throw new Error(`decoded at ${img.w}x${img.h}`);
+        for (const [dst, layer, map] of f.puts) gunPut(arrays[dst], layer, f.size, img.px, map);
+      } catch (err) {
+        failed.push(`${f.name}: ${String((err && err.message) || err).slice(0, 60)}`);
+      }
+    }
+  };
+  await Promise.all([run(), run(), run()]);
+  const out = {};
+  for (const k in arrays) out[k] = arrays[k].buffer;
+  return { out: { arrays: out, failed }, transfer: Object.values(out) };
+}
+
 function makeArray(data, size, layers, srgb, aniso) {
   const t = new THREE.DataArrayTexture(data, size, size, layers);
   t.format = THREE.RGBAFormat;
@@ -214,16 +241,10 @@ export function loadGunTextures(tier, opts = {}) {
   state.promise = (async () => {
     const L = GUN_FAMILIES.length, P = SKIN_PATTERNS.length;
     const fs = row.family, ss = row.skin;
-    const famA = new Uint8Array(fs * fs * 4 * L), famB = new Uint8Array(fs * fs * 4 * L);
-    const skinA = new Uint8Array(ss * ss * 4 * P), skinB = new Uint8Array(ss * ss * 4 * P);
+    // (allocated by whoever fills them: the worker, else this thread)
+    let famA = null, famB = null, skinA = null, skinB = null;
     const jobs = [];
-    const put = (dst, layer, size, px, map) => {
-      const o = layer * size * size * 4;
-      for (let i = 0, n = size * size; i < n; i++) {
-        const s = i * 4, d = o + s;
-        for (let c = 0; c < 4; c++) { const src = map[c]; if (src >= 0) dst[d + c] = px[s + src]; }
-      }
-    };
+    const put = gunPut;
     // family maps: albedo → A.rgb, orm.g → A.a; normal.rg → B.rg, orm.r → B.b, orm.b → B.a
     GUN_FAMILIES.forEach((f, i) => {
       jobs.push(async () => { const px = pixelsOf(await decode(`${f.id}_albedo.png`, fs), fs); put(famA, i, fs, px, [0, 1, 2, -1]); });
@@ -236,9 +257,48 @@ export function loadGunTextures(tier, opts = {}) {
       jobs.push(async () => { const px = pixelsOf(await decode(`skin_${p}_orm.png`, ss), ss); put(skinB, i, ss, px, [-1, -1, 1, 2]); });
     });
     let wearPx = null;
+    // (after the world's texture library: tex-files.js)
+    await textureQueue();
     jobs.push(async () => { wearPx = new Uint8Array(pixelsOf(await decode(`${GUN_WEAR_FILE}.png`, row.wear), row.wear)); });
-    // (one at a time per decode slot: each failure is recorded, the rest carry on)
-    const guarded = jobs.map((j) => async () => {
+    // The decode worker does it all off the main thread (tex-worker.js): the files of the tier at
+    // their layer sizes (their download copies, tex-files.js), copied into the arrays here handed back.
+    const tw = makeTexWorker(gunPackJob, [gunPut], 1);
+    let viaWorker = false;
+    if (tw) {
+      try {
+        const files = [];
+        const add = (name, size, puts) => files.push({ name, size, puts });
+        GUN_FAMILIES.forEach((f, i) => {
+          add(`${f.id}_albedo.png`, fs, [['famA', i, [0, 1, 2, -1]]]);
+          add(`${f.id}_normal.png`, fs, [['famB', i, [0, 1, -1, -1]]]);
+          add(`${f.id}_orm.png`, fs, [['famA', i, [-1, -1, -1, 1]], ['famB', i, [-1, -1, 0, 2]]]);
+        });
+        SKIN_PATTERNS.forEach((p, i) => {
+          add(`skin_${p}_albedo.png`, ss, [['skinA', i, [0, 1, 2, 3]]]);
+          add(`skin_${p}_normal.png`, ss, [['skinB', i, [0, 1, -1, -1]]]);
+          add(`skin_${p}_orm.png`, ss, [['skinB', i, [-1, -1, 1, 2]]]);
+        });
+        add(`${GUN_WEAR_FILE}.png`, row.wear, [['wear', 0, [0, 1, 2, 3]]]);
+        await Promise.all(files.map(async (f) => { f.src = await textureSource('guns/' + f.name, f.size); }));
+        if (stale()) return false;
+        const r = await tw.run({ arrays: [['famA', fs, L], ['famB', fs, L], ['skinA', ss, P], ['skinB', ss, P], ['wear', row.wear, 1]], files });
+        if (r.failed.length) throw new Error(r.failed[0]);
+        famA = new Uint8Array(r.arrays.famA); famB = new Uint8Array(r.arrays.famB);
+        skinA = new Uint8Array(r.arrays.skinA); skinB = new Uint8Array(r.arrays.skinB);
+        wearPx = new Uint8Array(r.arrays.wear);
+        viaWorker = true;
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.info) console.info('gun textures: the decode worker failed, decoding here —', String((err && err.message) || err));
+      } finally {
+        tw.close();
+      }
+    }
+    if (!viaWorker) {
+      famA = new Uint8Array(fs * fs * 4 * L); famB = new Uint8Array(fs * fs * 4 * L);
+      skinA = new Uint8Array(ss * ss * 4 * P); skinB = new Uint8Array(ss * ss * 4 * P);
+    }
+    // (else here, one decoded file packed a frame; each failure is recorded, the rest carry on)
+    const guarded = viaWorker ? [] : jobs.map((j) => async () => {
       if (stale()) return;
       try { await j(); } catch (err) { state.failed.push(String(err && err.message || err).slice(0, 80)); if (state.failed.length === 1) console.warn('gun textures: a file failed', err && err.message ? err.message : err); }
     });

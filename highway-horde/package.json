@@ -9,7 +9,9 @@
     "start": "node server/relay-server.js",
     "test": "node --test \"tests/**/*.test.js\"",
     "e2e": "node scripts/e2e.js",
-    "standalone": "node scripts/build-standalone.js"
+    "standalone": "node scripts/build-standalone.js",
+    "textures:compress": "node scripts/compress-textures.js",
+    "timing": "node scripts/load-timing.js"
   },
   "engines": {
     "node": ">=22"

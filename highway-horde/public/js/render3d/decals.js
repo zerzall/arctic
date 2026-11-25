@@ -9,14 +9,15 @@
 // (Standard on high and up: the sheet's normal map, its alpha the roughness; Lambert on low) with the
 // indoor light mask chained on (indoor.js patchIndoor keeps our onBeforeCompile).
 //
-// The sheets load after the world is built (fetch + createImageBitmap, resized per tier) and the
-// meshes show once their albedo is in. Any failure (no file, no decoder, a node test) leaves them
-// hidden: the map simply has no decals. The one-file build embeds the PNGs (window.__HH_FILES).
+// The sheets load after the world's texture library (tex-files.js: their download copies at the
+// tier's size, decoded by createImageBitmap) and the meshes show once their albedo is in. Any failure
+// (no file, no decoder, a node test) leaves them hidden: the map simply has no decals.
 
 import * as THREE from 'three';
 import { DECALS, DECAL_SHEETS, DECAL_SHEET_SIZE } from './decals-manifest.js';
 import { autoDecals } from './decals-auto.js';
 import { tierRow, anisoFor } from './tier.js';
+import { textureBlob, textureQueue } from './tex-files.js';
 
 /**
  * Per tier: albedo / normal sheet size (0 = no normal map), how many decals at most, the share of
@@ -31,18 +32,6 @@ export const DECAL_TIERS = Object.freeze({
 
 const WALL_OFF = 0.55;    // units off a wall (≈ 1.6 cm)
 const FLOOR_OFF = 0.42;   // above the ground
-
-/** Where a sheet file comes from: the one-file build's embedded copy, else next to the game. */
-export function decalFileURL(file) {
-  const key = 'textures/decals/' + file;
-  const emb = globalThis.__HH_FILES && globalThis.__HH_FILES[key];
-  if (emb) return emb;
-  try {
-    return new URL('../../textures/decals/' + file, import.meta.url).href;
-  } catch {
-    return key;
-  }
-}
 
 /**
  * The decals a map shows on a tier: its hand-placed `map.decals` (unknown ids dropped), then the
@@ -190,10 +179,10 @@ function makeMaterial(tier, withNormal) {
   return m;
 }
 
-async function fetchBitmap(url, size, normal) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`decals: ${res.status} ${url.slice(0, 80)}`);
-  const blob = await res.blob();
+async function fetchBitmap(file, size, normal) {
+  // (after the world's library: tex-files.js; the copy at the tier's size, else the PNG)
+  await textureQueue();
+  const { blob } = await textureBlob('decals/' + file, size);
   const base = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
   if (size && size < DECAL_SHEET_SIZE) {
     try {
@@ -260,7 +249,7 @@ export function createDecals(ctx, deps) {
       const jobs = [['map', `decals-${name}.png`, row.albedo]];
       if (withNormal) jobs.push(['normalMap', `decals-${name}-n.png`, row.normal]);
       for (const [slot, file, size] of jobs) {
-        fetchBitmap(decalFileURL(file), size, slot === 'normalMap').then((bmp) => {
+        fetchBitmap(file, size, slot === 'normalMap').then((bmp) => {
           if (disposed) { if (bmp.close) bmp.close(); return; }
           const t = new THREE.Texture(bmp);
           t.flipY = false;

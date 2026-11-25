@@ -13,8 +13,8 @@
 // both paths fill, so the shaders (world-mat.js, ground.js) look a surface up the same way. The
 // procedural array stays bound as uDetailP for the weathering's noise fields (layer 23).
 //
-// Each set's four PNGs are decoded off the main thread (createImageBitmap, resized to the tier's
-// size by the browser), uploaded to scratch textures and packed into the arrays' layers by a tiny
+// Each set's four maps (their download copies, tex-files.js: JPEG / lossless WebP, else the PNGs) are
+// decoded off the main thread (createImageBitmap, resized to the tier's size by the browser), uploaded to scratch textures and packed into the arrays' layers by a tiny
 // shader pass; then the arrays get their mips and anisotropy. Memory policy: one array layer per set
 // the map uses, at the tier's size (high 512², ultra and cinematic up to the library's 1024²; each
 // tier has a byte budget the size halves to fit). Anything failing — no WebGL 2, a missing file, a
@@ -23,6 +23,8 @@
 import * as THREE from 'three';
 import { DET, DET_COUNT, DET_LAYERS, DET_BASE, DET_PARAMS, DET_CELLS, DET_SHIFT } from './world-surf-gen.js';
 import { planSlots } from './world-surf-sets.js';
+import { embeddedStore, textureBlob, textureURL, textureSource, textureSourceNow, textureIndex } from './tex-files.js';
+import { keptTexWorker } from './tex-worker.js';
 
 /** Per tier: the largest layer size used and the byte budget of both arrays (mips included). */
 export const BAKED_TIERS = Object.freeze({
@@ -157,40 +159,50 @@ export function bakedDisabled() {
 
 // ---- the files --------------------------------------------------------------------------------
 
-const BASE = (() => {
-  try { return new URL('../../textures/', import.meta.url).href; } catch { return 'textures/'; }
-})();
-
 /**
  * Where the files come from: the one-file build's embedded store (window.__HH_TEX, scripts/
- * build-standalone.js), else the textures/ folder next to the game. Tests may set their own.
+ * build-standalone.js), else the textures/ folder next to the game; either way through tex-files.js,
+ * which picks each PNG's download copy (compressed.json) at the layer size. Tests may set their own
+ * { manifest(), blob(path, size) }.
  */
 let source = null;
-export function setTextureSource(s) { source = s; manifestP = null; }
+export function setTextureSource(s) { source = s; manifestP = null; manifestNow = undefined; }
 function defaultSource() {
-  const emb = typeof window !== 'undefined' ? window.__HH_TEX : null;
-  if (emb && typeof emb.blob === 'function') return emb;
+  const emb = embeddedStore();
   return {
     async manifest() {
-      const r = await fetch(BASE + 'manifest.json');
+      if (emb) return emb.manifest();
+      const r = await fetch(textureURL('manifest.json'));
       if (!r.ok) throw new Error(`textures: manifest ${r.status}`);
       return r.json();
     },
-    async blob(path) {
-      const r = await fetch(BASE + path);
-      if (!r.ok) throw new Error(`textures: ${path} ${r.status}`);
-      return r.blob();
+    async blob(path, size) {
+      return (await textureBlob(path, size)).blob;
     },
   };
 }
-let manifestP = null;
+let manifestP = null, manifestNow;
 /** The library's manifest (cached; null if there is none). */
 export function libraryManifest() {
   if (!manifestP) {
     const s = source || defaultSource();
-    manifestP = Promise.resolve().then(() => s.manifest()).then((m) => (m && m.sets ? m : null)).catch(() => null);
+    const p = Promise.resolve().then(() => s.manifest()).then((m) => (m && m.sets ? m : null)).catch(() => null)
+      .then((m) => { if (manifestP === p) manifestNow = m; return m; });
+    manifestP = p;
+    manifestNow = undefined;
   }
   return manifestP;
+}
+
+/**
+ * Ask for the manifest and the copies' index ahead (renderer3d does when it loads, while the menus
+ * are up), so a world's build can hand the library's files to the decode worker at once.
+ */
+export function prefetchLibrary() {
+  if (typeof window === 'undefined' || bakedDisabled()) return;
+  libraryManifest();
+  textureIndex();
+  keptTexWorker(packWorldSet, [], 3);
 }
 
 // ---- GL packing --------------------------------------------------------------------------------
@@ -252,6 +264,37 @@ async function decode(blob, n, stored) {
   return createImageBitmap(blob, o);
 }
 
+/**
+ * The decode worker's job (tex-worker.js; self-contained, it runs as source there): a set's four
+ * maps at n² → its two layers, exactly what the GL pass (FS_D, FS_C) writes: D = normal x, y,
+ * roughness, tint / metal; C = albedo × the folded occlusion (in linear light, sRGB bytes) and the
+ * height. Rows bottom-up (the layer's v runs up).
+ */
+async function packWorldSet(d) {
+  const n = d.n, aoK = d.aoK;
+  const maps = await Promise.all(['albedo', 'normal', 'rah', 'mask'].map((k) => decodeRGBA(d.files[k], n)));
+  for (const m of maps) if (m.w !== n || m.h !== n) throw new Error(`decoded at ${m.w}x${m.h}, not ${n}`);
+  const [a, nm, r, m] = maps.map((x) => x.px);
+  const toLin = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const c = i / 255; toLin[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  const LUT = 16383, toS = new Uint8Array(LUT + 1);
+  for (let i = 0; i <= LUT; i++) { const l = i / LUT; toS[i] = Math.round(255 * (l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055)); }
+  const D = new Uint8Array(n * n * 4), C = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    const src = (n - 1 - y) * n * 4, dst = y * n * 4;
+    for (let x = 0; x < n * 4; x += 4) {
+      const i = src + x, o = dst + x;
+      D[o] = nm[i]; D[o + 1] = nm[i + 1]; D[o + 2] = r[i];
+      const mx = m[i] / 255;
+      D[o + 3] = Math.round(255 * (mx > 0.02 ? 0.5 - 0.5 * mx : 0.5 + 0.5 * (m[i + 1] / 255)));
+      const k = 1 + (r[i + 1] / 255 - 1) * aoK;
+      for (let c = 0; c < 3; c++) C[o + c] = toS[Math.round(Math.min(1, toLin[a[i + c]] * k) * LUT)];
+      C[o + 3] = r[i + 2];
+    }
+  }
+  return { out: { D: D.buffer, C: C.buffer }, transfer: [D.buffer, C.buffer] };
+}
+
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /**
@@ -271,7 +314,9 @@ export async function loadBaked(o) {
   const gl = o.renderer && o.renderer.getContext ? o.renderer.getContext() : null;
   if (!gl || typeof WebGL2RenderingContext === 'undefined' || !(gl instanceof WebGL2RenderingContext)) throw new Error('textures: WebGL 2 needed');
   if (typeof createImageBitmap !== 'function') throw new Error('textures: no createImageBitmap');
-  const manifest = await libraryManifest();
+  // (no wait when the manifest is in: the jobs below go to the worker before this call returns,
+  // so the files decode while the rest of the world and the renderer are still being built)
+  const manifest = manifestNow !== undefined && !source ? manifestNow : await libraryManifest();
   if (!manifest) throw new Error('textures: no library');
   const plan = planSlots(o.mapId, o.usedIds);
   for (const s of plan.sets) if (!manifest.sets[s]) throw new Error(`textures: the library has no ${s}`);
@@ -297,14 +342,12 @@ export async function loadBaked(o) {
     o.renderer.resetState();
   };
   const freeAll = () => { for (const t of made) gl.deleteTexture(t); };
+  let viaWorker = false;
   try {
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texD);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, n, n, L);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texC);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.SRGB8_ALPHA8, n, n, L);
-    progD = program(gl, FS_D);
-    progC = program(gl, FS_C);
-    vao = gl.createVertexArray();
     o.renderer.resetState();
     if (gl.getError() !== gl.NO_ERROR) throw new Error('textures: could not allocate the arrays');
 
@@ -348,9 +391,67 @@ export async function loadBaked(o) {
       o.renderer.resetState();
       gpuMs += now() - t1;
     };
-    // decode a few sets at a time (the browser decodes off the main thread), pack each as it lands
-    const queue = plan.sets.map((name, slot) => ({ name, slot }));
-    const width = 3;
+    const kinds = ['albedo', 'normal', 'rah', 'mask'];
+    const progress = () => { done++; if (o.onProgress) { try { o.onProgress(done, L); } catch { /* the UI's problem */ } } };
+    const cancelled = () => !!(o.cancelled && o.cancelled());
+    /** Upload a set's two packed layers (the worker's result). */
+    const uploadOne = (slot, D, C) => {
+      const t1 = now();
+      gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+      gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+      gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+      gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+      gl.pixelStorei(gl.UNPACK_SKIP_IMAGES, 0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, texD);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot, n, n, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(D));
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, texC);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot, n, n, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(C));
+      o.renderer.resetState();
+      gpuMs += now() - t1;
+    };
+    // The worker path (the files' own source: not a test's): every set's files are fetched, decoded
+    // and packed in the worker, all queued at once; the main thread only uploads each set's layers as
+    // they come back (one turn of it per set, not one per fetch, decode and pack).
+    const tw = source ? null : keptTexWorker(packWorldSet, [], 3);
+    let stop = false;
+    if (tw) {
+      try {
+        await Promise.all(plan.sets.map(async (name, slot) => {
+          const e = manifest.sets[name];
+          // (the sources at once where they can be had: this runs before the first await)
+          let files = {};
+          for (const k of kinds) { files[k] = textureSourceNow(e.files[k], n); if (!files[k]) { files = null; break; } }
+          if (!files) {
+            files = {};
+            await Promise.all(kinds.map(async (k) => { files[k] = await textureSource(e.files[k], n); }));
+          }
+          if (cancelled()) throw new Error('textures: cancelled');
+          const r = await tw.run({ n, aoK: 0.65, files });
+          if (stop) return;
+          if (cancelled()) throw new Error('textures: cancelled');
+          uploadOne(slot, r.D, r.C);
+          progress();
+        }));
+        viaWorker = true;
+      } catch (err) {
+        stop = true;
+        if (cancelled()) throw err;
+        // (the worker could not do it: the main thread's own path below, from the start)
+        done = 0;
+        if (typeof console !== 'undefined' && console.info) console.info('textures: the decode worker failed, decoding here —', String((err && err.message) || err));
+      } finally {
+        tw.close();
+      }
+    }
+    // decode several sets at a time (the browser decodes off the main thread; every await is a turn
+    // of the main thread, a whole frame on a slow machine), pack each as it lands
+    const queue = viaWorker ? [] : plan.sets.map((name, slot) => ({ name, slot }));
+    const width = 6;
     let failed = null;
     const worker = async () => {
       for (;;) {
@@ -361,8 +462,7 @@ export async function loadBaked(o) {
         const e = manifest.sets[job.name];
         const bm = {};
         try {
-          const kinds = ['albedo', 'normal', 'rah', 'mask'];
-          const blobs = await Promise.all(kinds.map((k) => src.blob(e.files[k])));
+          const blobs = await Promise.all(kinds.map((k) => src.blob(e.files[k], n)));
           const maps = await Promise.all(blobs.map((b) => decode(b, n, e.size || 1024)));
           kinds.forEach((k, i) => { bm[k] = maps[i]; });
           if (o.cancelled && o.cancelled()) throw new Error('textures: cancelled');
@@ -373,11 +473,17 @@ export async function loadBaked(o) {
         } finally {
           for (const k of Object.keys(bm)) { try { bm[k].close(); } catch { /* closed */ } }
         }
-        done++;
-        if (o.onProgress) { try { o.onProgress(done, L); } catch { /* the UI's problem */ } }
+        progress();
       }
     };
-    await Promise.all(Array.from({ length: Math.min(width, L) }, worker));
+    if (queue.length) {
+      // (the GL pass that packs the layers here: compiled only when this path runs)
+      progD = program(gl, FS_D);
+      progC = program(gl, FS_C);
+      vao = gl.createVertexArray();
+      o.renderer.resetState();
+      await Promise.all(Array.from({ length: Math.min(width, L) }, worker));
+    }
     if (failed) throw failed;
     // mips and sampling state
     const ext = gl.getExtension('EXT_texture_filter_anisotropic');
@@ -401,7 +507,7 @@ export async function loadBaked(o) {
   const D = new THREE.ExternalTexture(texD), C = new THREE.ExternalTexture(texC);
   // (three only binds an external texture; the sampler state set above stays)
   const info = {
-    size: n, stored, sets: plan.sets.slice(), layers: L, bytes: bakedBytes(n, L), ms: Math.round(now() - t0),
+    size: n, stored, sets: plan.sets.slice(), layers: L, bytes: bakedBytes(n, L), ms: Math.round(now() - t0), worker: viaWorker,
   };
   let gone = false;
   return {

@@ -28,6 +28,7 @@ import { createShop, shopState } from './shop.js';
 import { createGameChat } from './chat.js';
 import { fillStatsTable, statRows } from './scoreboard.js';
 import { padNavigate } from './padnav.js';
+import { loadingCoverUp } from './loading.js';
 import { flashToast } from './menus.js';
 import { applyLook, moveToWorld, aimAssist, sensitivityOf, wrapAngle } from './look.js';
 import { rendererSettings } from './gfx.js';
@@ -212,6 +213,10 @@ export function startMatch(ctx, session) {
   let errors = 0;
   let fpsRate = 60;
   let frameCount = 0;
+  // frames drawn: once a few are (the shaders compiled), nothing more is drawn while the loading
+  // screen covers the game: the textures still loading behind it get the whole machine (loading.js)
+  let drawn = 0;
+  const DRAW_BEFORE_HOLD = 6;
   let fpsAcc = 0;
   let fpsN = 0;
   let lastLocal = null;
@@ -600,11 +605,14 @@ export function startMatch(ctx, session) {
     renderSettings.crosshair = showCross;
     renderLook.yaw = look.yaw;
     renderLook.pitch = look.pitch;
-    renderer.render(view, {
-      localId: session.localId, roster: session.roster, now, dt,
-      cursor: showCross ? input.cursor : null, settings: renderSettings,
-      look: fps ? renderLook : undefined,
-    });
+    if (drawn < DRAW_BEFORE_HOLD || !loadingCoverUp()) {
+      drawn++;
+      renderer.render(view, {
+        localId: session.localId, roster: session.roster, now, dt,
+        cursor: showCross ? input.cursor : null, settings: renderSettings,
+        look: fps ? renderLook : undefined,
+      });
+    }
     updateLockHint(me);
     if (story) story.matchFrame(lastView, lastLocal);
 
