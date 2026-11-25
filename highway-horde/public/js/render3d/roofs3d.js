@@ -131,15 +131,20 @@ export function createRoofs(ctx, deps) {
     const cs = { surf: [K.cs, 0.9, 0] };
     // the roof over the ceiling: a slab a little wider than the room, a parapet round it
     const roofS = { surf: [K.rs, 0.95, rc.kind === 'industrial' || rc.kind === 'mall' ? 0.5 : 0] };
-    // (a mall with skylights lays its slab in pieces round the openings: mallCeiling)
-    if (!(rc.kind === 'mall' && skylightsOf(r).length)) B.block('std', 0, H + 6, 0, w + 10, 10, d + 10, K.roof, null, roofS);
     rc.roofS = roofS;
-    for (const [x, z, sx, sz] of [[0, -d / 2 - 3, w + 10, 4], [0, d / 2 + 3, w + 10, 4], [-w / 2 - 3, 0, 4, d + 10], [w / 2 + 3, 0, 4, d + 10]]) {
-      B.block('std', x, H + 16, z, sx, 8, sz, shadeHex(K.roof, 0.12), null, { surf: [DET.concrete, 0.9, 0] });
-    }
-    // a fascia band on the outside, over the wall tops
-    for (const [x, z, sx, sz] of [[0, -d / 2 - 4, w + 12, 1.5], [0, d / 2 + 4, w + 12, 1.5], [-w / 2 - 4, 0, 1.5, d + 12], [w / 2 + 4, 0, 1.5, d + 12]]) {
-      B.block('std', x, H - 8, z, sx, 14, sz, '#7c7870', null, { surf: [DET.stucco, 0.9, 0] });
+    // (a walk-in building of an open map, shared/maps-walkin.js: its own art draws the shell, the storeys
+    // over the ceiling and the roof; only the ceiling and its fixtures are drawn here)
+    const shell = r.shell !== undefined;
+    // (a mall with skylights lays its slab in pieces round the openings: mallCeiling)
+    if (!shell && !(rc.kind === 'mall' && skylightsOf(r).length)) B.block('std', 0, H + 6, 0, w + 10, 10, d + 10, K.roof, null, roofS);
+    if (!shell) {
+      for (const [x, z, sx, sz] of [[0, -d / 2 - 3, w + 10, 4], [0, d / 2 + 3, w + 10, 4], [-w / 2 - 3, 0, 4, d + 10], [w / 2 + 3, 0, 4, d + 10]]) {
+        B.block('std', x, H + 16, z, sx, 8, sz, shadeHex(K.roof, 0.12), null, { surf: [DET.concrete, 0.9, 0] });
+      }
+      // a fascia band on the outside, over the wall tops
+      for (const [x, z, sx, sz] of [[0, -d / 2 - 4, w + 12, 1.5], [0, d / 2 + 4, w + 12, 1.5], [-w / 2 - 4, 0, 1.5, d + 12], [w / 2 + 4, 0, 1.5, d + 12]]) {
+        B.block('std', x, H - 8, z, sx, 14, sz, '#7c7870', null, { surf: [DET.stucco, 0.9, 0] });
+      }
     }
     switch (rc.kind) {
       case 'office': case 'hospital': tiledCeiling(B, G, rc, cs); break;
@@ -150,7 +155,7 @@ export function createRoofs(ctx, deps) {
       default: plainCeiling(B, G, rc, cs);
     }
     // a roof hatch and a vent on bigger roofs (they read from the street and in the shadows)
-    if (w * d > 90000) {
+    if (!shell && w * d > 90000) {
       B.block('std', -w * 0.25, H + 16, d * 0.2, 36, 14, 30, '#6c6a64', null, { surf: [DET.rust, 0.6, 0.6] });
       B.cyl('std', w * 0.3, H + 16, -d * 0.25, 9, 18, '#8a8c8a', 10, 1, null, { surf: [DET.rust, 0.5, 0.8] });
     }
@@ -357,7 +362,8 @@ export function createRoofs(ctx, deps) {
     B.cyl('std', 0, H - 28, 0, 0.4, 28, '#2a2826', 5, 1);
     B.add('std', T.cyl(14, 0.3, true), [0, H - 36, 0], [16, 12, 16], null, '#d9c7a0', { surf: [DET.fabric, 0.9, 0] });
     glowBox(G, rc, 0, H - 38, 0, 5, 5, 5, K.light, 3.4);
-    // the roof proper: a pitched roof over the slab, along the longer side
+    // the roof proper: a pitched roof over the slab, along the longer side (a walk-in's art draws its own)
+    if (r.shell !== undefined) { fixLights(rc, H - 40); return; }
     const along = r.w >= r.h, L = along ? r.w : r.h, Wd = along ? r.h : r.w;
     const rise = Math.min(70, Wd * 0.3), half = Wd / 2 + 8;
     const len = Math.hypot(half, rise), ang = Math.atan2(rise, half);

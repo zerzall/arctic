@@ -15,6 +15,12 @@
 // Walls are skins of quads around real openings (world-arch.js): every window is recessed
 // and framed, with a room behind the pane. Plus the diner (the truck stop objective) with
 // its glowing neon, and the radio mast.
+//
+// Scale: a building without an explicit height (`o.top`) is built at real scale: storeys of
+// STOREY units (~2.9 m; the eye is 52 up), 2–4 storey shop rows, 4–7 storey apartment blocks,
+// two-storey houses and motels, tall barns and halls, with doors and windows sized for people
+// (`ctx.K` = REAL_K). A building whose height a map or a hideout set by hand (`o.top`) keeps the
+// old compact proportions (K = 1) it was laid out for.
 
 import * as THREE from 'three';
 import { T, shadeHex, mixHex, hash01 } from './world-geo.js';
@@ -29,14 +35,59 @@ import {
 
 const CHROME = '#c9ced3';
 
-/** Canonical height of a building obstacle (150–260). */
+/** Storey height of a real-scale building (units). */
+export const STOREY = 96;
+/** Size of doors, windows and trim of a real-scale building against the compact ones. */
+const REAL_K = 1.85;
+/** Plinth under the ground floor. */
+const PLINTH = 10;
+
+// (shape per obstacle: the archetype, storeys, wall and total height; obstacles are plain shared data)
+const SHAPES = new WeakMap();
+
+/**
+ * Archetype, storeys and heights of a building obstacle: { arch, floors, wallH, H, K }.
+ * Real scale unless the obstacle has an explicit height (`o.top`).
+ * @param {object} o building obstacle
+ */
+export function buildingShape(o) {
+  let s = SHAPES.get(o);
+  if (s) return s;
+  const L = o.w, W = o.h;
+  if (Number.isFinite(o.top)) {
+    // a hand-set height: the compact proportions it was laid out for
+    const H = o.top;
+    const arch = archetypeOf(o, L, W, H);
+    const gable = arch === 'house' || arch === 'shack' || arch === 'barn' || arch === 'church';
+    const wallH = arch === 'steeple' ? Math.min(H - 110, 230) : gable ? (arch === 'barn' ? Math.min(H - 50, 90) : H - 50) : H;
+    const floors = arch === 'barn' || arch === 'shack' ? 1 : arch === 'industrial' ? 1 : arch === 'church' ? 1 : arch === 'house' ? (wallH >= 98 ? 2 : 1) : Math.max(1, Math.floor((wallH - 16) / 46));
+    s = { arch, floors, wallH, H, K: 1 };
+  } else {
+    const arch = archetypeOf(o, L, W, 0);
+    const big = Math.max(L, W), span = Math.min(L, W);
+    const h1 = hash01(o.id * 13 + 5), h2 = hash01(o.id * 7 + 1);
+    let floors = 1, wallH, roofH = 0;
+    switch (arch) {
+      case 'shack': floors = 1; wallH = 104 + Math.round(h1 * 12); roofH = 34; break;
+      case 'house': floors = big < 130 && h2 < 0.35 ? 1 : 2; wallH = PLINTH + floors * STOREY; roofH = Math.max(50, Math.min(110, span * 0.42)); break;
+      case 'barn': floors = 1; wallH = 150 + Math.round(h1 * 30); roofH = Math.max(70, span * 0.5); break;
+      case 'church': floors = 1; wallH = 200 + Math.round(h1 * 30); roofH = Math.max(60, span * 0.4) + 90; break;
+      case 'motel': floors = 2; wallH = PLINTH + floors * STOREY; roofH = 14; break;
+      case 'industrial': floors = 1; wallH = 170 + Math.round(h1 * 70); roofH = 30; break;
+      case 'apartment': floors = 4 + Math.floor(h1 * 3.2) + (big >= 260 ? 1 : 0); wallH = PLINTH + floors * STOREY; roofH = 14; break;
+      default: floors = 2 + Math.floor(h1 * 2.6) + (big >= 300 && h2 < 0.5 ? 1 : 0); wallH = PLINTH + floors * STOREY; roofH = 14;
+    }
+    s = { arch, floors, wallH, H: Math.round(wallH + roofH), K: REAL_K };
+  }
+  SHAPES.set(o, s);
+  return s;
+}
+
+/** Canonical height of a building obstacle (its explicit `top`, else the real-scale shape's). */
 export function buildingHeight(o) {
   // an explicit height (a church tower)
   if (Number.isFinite(o.top)) return o.top;
-  const small = Math.max(o.w, o.h) < 170;
-  if (small) return 150 + Math.round(hash01(o.id * 7 + 1) * 20);
-  const area = Math.min(1, (o.w * o.h) / 60000);
-  return Math.round(150 + area * 70 + hash01(o.id * 13 + 5) * 40);
+  return buildingShape(o).H;
 }
 
 const TRIMS = ['#d9d2bf', '#e6e2d6', '#c9c0a8', '#d9d2bf', '#a8a294', '#3a2a1c', '#2f4a3a', '#5a5e62', '#7a2a22'];
@@ -56,7 +107,8 @@ function archetypeOf(o, L, W, H) {
   if (big >= 380 && Math.min(L, W) <= 130) return 'motel';
   if (o.roof === '#4f5a60' || (big >= 300 && h < 0.5)) return 'industrial';
   if (big < 170) return big < 125 && h < 0.5 ? 'shack' : 'house';
-  if (H >= 205 && big < 300) return 'apartment';
+  // (compact scale: the tall ones are apartments; real scale: one in three mid-sized blocks)
+  if (Number.isFinite(o.top) ? H >= 205 && big < 300 : big < 300 && hash01(o.id * 37 + 11) < 0.36) return 'apartment';
   return 'shops';
 }
 
@@ -81,9 +133,9 @@ function wallSurface(arch, o) {
  * @param {object} [sign] { cell, color } a neon sign for its roof
  */
 export function building(B, o, L, W, sign) {
-  const H = buildingHeight(o);
-  const arch = archetypeOf(o, L, W, H);
-  const ctx = makeCtx(B, o, L, W, H, arch);
+  const shape = buildingShape(o);
+  const arch = shape.arch;
+  const ctx = makeCtx(B, o, L, W, shape);
   switch (arch) {
     case 'steeple': steepleTower(B, o, ctx); break;
     case 'barn': barn(B, o, ctx); break;
@@ -110,16 +162,14 @@ export function building(B, o, L, W, sign) {
 
 // ---- shared context -----------------------------------------------------------------------------------
 
-function makeCtx(B, o, L, W, H, arch) {
+function makeCtx(B, o, L, W, shape) {
   const id = o.id;
+  const { arch, floors, wallH, H, K } = shape;
   const surf = wallSurface(arch, o);
-  const gable = arch === 'house' || arch === 'shack' || arch === 'barn' || arch === 'church';
-  const wallH = arch === 'steeple' ? Math.min(H - 110, 230) : gable ? (arch === 'barn' ? Math.min(H - 50, 90) : H - 50) : H;
-  const floors = arch === 'barn' || arch === 'shack' ? 1 : arch === 'industrial' ? 1 : arch === 'church' ? 1 : arch === 'house' ? (wallH >= 98 ? 2 : 1) : Math.max(1, Math.floor((wallH - 16) / 46));
-  const plinth = arch === 'industrial' ? 6 : 10;
+  const plinth = arch === 'industrial' ? 6 : PLINTH;
   const trim = TRIMS[Math.floor(hash01(id * 5 + 2) * TRIMS.length)];
   return {
-    id, arch, L, W, H, wallH, floors, plinth,
+    id, arch, L, W, H, wallH, floors, plinth, K,
     floorH: arch === 'barn' ? wallH - plinth : arch === 'church' ? wallH - plinth : (wallH - plinth) / floors,
     color: o.color, roofColor: o.roof || '#4e4a45',
     trim: arch === 'industrial' ? '#8a8d90' : trim,
@@ -129,7 +179,7 @@ function makeCtx(B, o, L, W, H, arch) {
     shopCol: SHOPFRONTS[Math.floor(hash01(id * 17 + 6) * SHOPFRONTS.length)],
     surf,
     litRate: o.lit !== undefined ? o.lit : arch === 'house' || arch === 'shack' ? 0.28 : 0.17,
-    R: 3.8,
+    R: K > 1 ? 5.5 : 3.8,
   };
 }
 
@@ -142,7 +192,7 @@ const wallOpts = (ctx, extra) => ({ noJitter: true, surf: ctx.surf, ...(extra ||
  *         cornice (size|0), sideDoors (fn), rearDoor (bool) }
  */
 function wallsOf(B, o, ctx, opts) {
-  const { L, W, wallH, floors, plinth, floorH, R } = ctx;
+  const { L, W, wallH, floors, plinth, floorH, R, K } = ctx;
   const id = ctx.id;
   const win = opts.win;
   const wo = wallOpts(ctx);
@@ -180,7 +230,7 @@ function wallsOf(B, o, ctx, opts) {
       for (let i = 0; i < n; i++) {
         const t = tAt(i);
         if (fl === 0 && i === doorIdx) {
-          const dw = fi === 0 ? 17 : 15, dh = fi === 0 ? 38 : 34;
+          const dw = (fi === 0 ? 17 : 15) * K, dh = (fi === 0 ? 38 : 34) * (K > 1 ? 2 : 1);
           holes.push({ t0: t - dw / 2, t1: t + dw / 2, y0: plinth, y1: plinth + dh });
           wins.push({ door: true, t, w: dw, h: dh, y0: plinth, front: fi === 0 });
           continue;
@@ -224,48 +274,52 @@ function wallsOf(B, o, ctx, opts) {
     }
     // stringcourses at every floor line
     if (opts.stringCourses && DETAIL.level >= 1) {
-      for (let fl = 1; fl < floors; fl++) F.box('std', 0, floorY(fl), 0, len + 1.6, 2.6, 1.3, shadeHex(ctx.color, 0.12), { noJitter: true, surf: [DET.concrete, 0.85, 0] });
+      for (let fl = 1; fl < floors; fl++) F.box('std', 0, floorY(fl), 0, len + 1.6, 2.6 * Math.sqrt(K), 1.3 * Math.sqrt(K), shadeHex(ctx.color, 0.12), { noJitter: true, surf: [DET.concrete, 0.85, 0] });
     }
     faces.info = faces.info || [];
     faces.info[fi] = { n, step, tAt };
   }
   // corner pilasters
   if (opts.pilasters && DETAIL.level >= 1) {
+    const pw = 7.4 * Math.sqrt(K);
     for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-      B.rblock('std', sx * (L / 2 - 3.1), 0, sz * (W / 2 - 3.1), 7.4, wallH, 7.4, 0.5, shadeHex(ctx.color, 0.06), null, { surf: [DET.concrete, 0.86, 0], noJitter: true });
+      B.rblock('std', sx * (L / 2 - pw / 2 + 0.6), 0, sz * (W / 2 - pw / 2 + 0.6), pw, wallH, pw, 0.5, shadeHex(ctx.color, 0.06), null, { surf: [DET.concrete, 0.86, 0], noJitter: true });
     }
   }
   // cinematic: quoins (alternating long and short dressed stones) up every corner, a water table on the plinth
   if (DETAIL.level >= 3 && (ctx.surf[0] === DET.brick || ctx.surf[0] === DET.plaster || ctx.surf[0] === DET.concrete)) {
     const qc = shadeHex(ctx.color, 0.12), qo = { noJitter: true, surf: [DET.concrete, 0.86, 0] };
+    const qs = Math.sqrt(K);
     for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
       let k = 0;
-      for (let y = plinth + 1; y + 6 < wallH - 4; y += 6.4, k++) {
-        const long = k % 2 ? 7 : 4.2, short = k % 2 ? 4.2 : 7;
-        B.rbox('std', sx * (L / 2 - long / 2 + 0.25), y + 3, sz * (W / 2 + 0.25), long, 5.6, 1.6, 0.35, qc, null, qo);
-        B.rbox('std', sx * (L / 2 + 0.25), y + 3, sz * (W / 2 - short / 2 + 0.25), 1.6, 5.6, short, 0.35, qc, null, qo);
+      for (let y = plinth + 1; y + 6 * qs < wallH - 4; y += 6.4 * qs, k++) {
+        const long = (k % 2 ? 7 : 4.2) * qs, short = (k % 2 ? 4.2 : 7) * qs;
+        B.rbox('std', sx * (L / 2 - long / 2 + 0.25), y + 3 * qs, sz * (W / 2 + 0.25), long, 5.6 * qs, 1.6, 0.35, qc, null, qo);
+        B.rbox('std', sx * (L / 2 + 0.25), y + 3 * qs, sz * (W / 2 - short / 2 + 0.25), 1.6, 5.6 * qs, short, 0.35, qc, null, qo);
       }
     }
     for (const F of faces) F.box('std', 0, plinth + 0.6, 0, F.len + 1.4, 1.5, 1.4, shadeHex(ctx.color, -0.18), qo);       // water table
   }
   // cornice
-  if (opts.cornice) for (const F of faces) cornice(F, wallH, shadeHex(ctx.color, 0.14), 4.2, opts.cornice);
+  if (opts.cornice) for (const F of faces) cornice(F, wallH, shadeHex(ctx.color, 0.14), 4.2, opts.cornice * Math.sqrt(K));
   return { faces, floorY };
 }
 
 /** The ground floor of a shop row's front: display windows, doors, pilasters, signs, awnings. */
 function shopFront(F, ctx, opts, holes, wins) {
-  const { plinth, floorH, R } = ctx;
+  const { plinth, floorH, R, K } = ctx;
   const len = F.len;
-  const edge = 9;
-  const nu = Math.max(1, Math.floor((len - 2 * edge) / 68));
+  const edge = 9 * K;
+  const nu = Math.max(1, Math.floor((len - 2 * edge) / (68 * K)));
   const U = (len - 2 * edge) / nu;
-  const gTop = plinth + floorH - 15, gBot = plinth + 11;
+  const real = K > 1;
+  const gTop = plinth + floorH - (real ? 22 : 15), gBot = plinth + 11 * K;
+  const dh = real ? 72 : 38;
   const id = ctx.id;
   for (let u = 0; u < nu; u++) {
     const t0 = -len / 2 + edge + u * U;
     const usable = U - 6;
-    const dw = 18;
+    const dw = 18 * K;
     const gw = (usable - dw - 5) / 2;
     const flip = hash01(id * 7 + u) < 0.5 ? -1 : 1;
     const c0 = t0 + 3;
@@ -282,27 +336,27 @@ function shopFront(F, ctx, opts, holes, wins) {
         lamp: '#e8f0ff', k: 1.25, frame: ctx.frame, wall: ctx.color, sill: false, lintel: false, trim: ctx.trim, mullion: 2, seed: id * 41 + u * 13 + (g === g1 ? 1 : 2),
       });
       // the bulkhead under the display window
-      F.box('std', g.t, plinth + 5.5, -1.6, g.w + 1, 11 - 1, 2.6, ctx.shopCol, { noJitter: true, surf: [DET.panel, 0.55, 0.2] });
+      F.box('std', g.t, plinth + (gBot - plinth) / 2, -1.6, g.w + 1, gBot - plinth - 1, 2.6, ctx.shopCol, { noJitter: true, surf: [DET.panel, 0.55, 0.2] });
     }
-    holes.push({ t0: dr.t - dw / 2, t1: dr.t + dw / 2, y0: plinth, y1: plinth + 38 });
+    holes.push({ t0: dr.t - dw / 2, t1: dr.t + dw / 2, y0: plinth, y1: plinth + dh });
     wins.push({ shop: true });
-    doorUnit(F, { t: dr.t, w: dw, h: 38, y0: plinth, R, leaf: ctx.door, frame: '#c9ced3', wall: ctx.color, trim: ctx.trim, glazed: true, step: true, lamp: false, seed: id + u, room: roomId(1, id + u * 5) });
+    doorUnit(F, { t: dr.t, w: dw, h: dh, y0: plinth, R, leaf: ctx.door, frame: '#c9ced3', wall: ctx.color, trim: ctx.trim, glazed: true, step: true, lamp: false, seed: id + u, room: roomId(1, id + u * 5) });
     // the sign over the unit and an awning under it
     const cell = 'sign' + Math.floor(hash01(id * 3 + u * 11 + 1) * 24);
-    const sw = Math.min(U - 12, 64);
-    signBoard(F, t0 + U / 2, plinth + floorH - 5, sw, cell, { frame: shadeHex(ctx.shopCol, -0.2), lamp: DETAIL.level >= 2 });
-    if (hash01(id * 5 + u * 3) < 0.7) awning(F, t0 + 5, t0 + U - 5, gTop + 1, 9, ctx.awn[0], ctx.awn[1]);
+    const sw = real ? Math.min(U - 22, 100) : Math.min(U - 12, 64);
+    signBoard(F, t0 + U / 2, plinth + floorH - (real ? 2 : 5), sw, cell, { frame: shadeHex(ctx.shopCol, -0.2), lamp: DETAIL.level >= 2 });
+    if (hash01(id * 5 + u * 3) < 0.7) awning(F, t0 + 5, t0 + U - 5, gTop + 1, 9 * K, ctx.awn[0], ctx.awn[1]);
     else if (DETAIL.level >= 1) shutter(F, t0 + 4, t0 + U - 4, plinth, gTop, id);
     // a neon OPEN in the window of some units
     if (hash01(id * 13 + u * 5) < 0.55) {
-      F.rect('neon', g1.t, gTop - 5, -R + 3, 16, 4, '#ffffff', { uv: atlasUV('nsign' + Math.floor(hash01(id + u) * 8)), emissive: 1.6, noAO: true, noJitter: true });
+      F.rect('neon', g1.t, gTop - 5 * K, -R + 3, 16 * K, 4 * K, '#ffffff', { uv: atlasUV('nsign' + Math.floor(hash01(id + u) * 8)), emissive: 1.6, noAO: true, noJitter: true });
     }
   }
   // pilaster piers between units
   if (DETAIL.level >= 1) {
     for (let u = 0; u <= nu; u++) {
       const t = -len / 2 + edge + u * U;
-      F.box('std', t, plinth + floorH / 2 + 2, 0, u === 0 || u === nu ? 8 : 6, floorH - 4, 1.8, shadeHex(ctx.shopCol, 0.05), { noJitter: true, surf: [DET.concrete, 0.86, 0] });
+      F.box('std', t, plinth + floorH / 2 + 2, 0, (u === 0 || u === nu ? 8 : 6) * Math.sqrt(K), floorH - 4, 1.8, shadeHex(ctx.shopCol, 0.05), { noJitter: true, surf: [DET.concrete, 0.86, 0] });
     }
   }
   void opts;
@@ -313,11 +367,11 @@ function shopFront(F, ctx, opts, holes, wins) {
 /** Flat roof with a parapet and coping, plant and clutter on it. */
 function flatRoof(B, o, ctx, sign, opts = {}) {
   const r = B.rng;
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const lod = DETAIL.level;
   const roofC = ctx.roofColor;
   B.block('std', 0, wallH, 0, L - 2, 1.2, W - 2, roofC, null, { surf: [DET.gravel, 0.92, 0], noJitter: true });
-  const ph = opts.parapet ?? 8;
+  const ph = opts.parapet ?? (K > 1 ? 14 : 8);
   const S = wallOpts(ctx);
   for (const s of [-1, 1]) {
     B.block('std', 0, wallH, s * (W / 2 - 2), L, ph, 4, shadeHex(ctx.color, -0.06), null, S);
@@ -328,9 +382,14 @@ function flatRoof(B, o, ctx, sign, opts = {}) {
   const nAC = 1 + Math.floor(r.next() * 3);
   for (let i = 0; i < nAC; i++) acUnit(B, r.range(-L * 0.3, L * 0.3), wallH + 1, r.range(-W * 0.25, W * 0.25), r.range(18, 26), r.range(14, 18), r.range(11, 15), r.range(-0.2, 0.2), r.pick(['#8e9294', '#a3a49c', '#7d8286']));
   for (let i = 0; i < 3; i++) ventStack(B, r.range(-L * 0.4, L * 0.4), wallH + 1, r.range(-W * 0.4, W * 0.4), 2, r.range(6, 14));
-  if (r.chance(0.55)) B.rblock('std', r.range(-L * 0.3, L * 0.3), wallH + 1, r.range(-W * 0.2, W * 0.2), 26, 20, 26, 0.8, shadeHex(ctx.color, -0.15), null, S);
+  // a stair / lift house on a real-scale block, else a small plant box
+  if (K > 1 && ctx.floors >= 3) {
+    const hx = r.range(-L * 0.22, L * 0.22), hz = r.range(-W * 0.15, W * 0.15);
+    B.rblock('std', hx, wallH + 1, hz, Math.min(70, L * 0.28), 64, Math.min(56, W * 0.4), 0.8, shadeHex(ctx.color, -0.12), null, S);
+    B.box('std', hx, wallH + 66, hz, Math.min(70, L * 0.28) + 4, 2.4, Math.min(56, W * 0.4) + 4, '#6a6862', null, { surf: [DET.concrete, 0.8, 0], noJitter: true });
+  } else if (r.chance(0.55)) B.rblock('std', r.range(-L * 0.3, L * 0.3), wallH + 1, r.range(-W * 0.2, W * 0.2), 26, 20, 26, 0.8, shadeHex(ctx.color, -0.15), null, S);
   if (lod >= 1 && r.chance(0.6)) hatch(B, r.range(-L * 0.3, L * 0.3), wallH + 1, r.range(-W * 0.3, W * 0.3), 16, 12, r.range(-0.3, 0.3));
-  if (wallH > 170 && r.chance(0.65)) waterTank(B, r.range(-L * 0.25, L * 0.25), wallH + 1, r.range(-W * 0.2, W * 0.2), 13);
+  if ((wallH > 170 || (K > 1 && ctx.floors >= 3)) && r.chance(0.65)) waterTank(B, r.range(-L * 0.25, L * 0.25), wallH + 1, r.range(-W * 0.2, W * 0.2), K > 1 ? 20 : 13);
   if (r.chance(0.5)) antenna(B, L * 0.3, wallH + 1, -W * 0.3, r.range(34, 60));
   if (lod >= 1 && r.chance(0.4)) dish(B, -L * 0.3, wallH + 1, W * 0.28, r.range(6, 9), r.range(0, 6));
   // a run of conduit and a cable drum, litter
@@ -354,10 +413,10 @@ function flatRoof(B, o, ctx, sign, opts = {}) {
  * axis: 'x' ridge along the object's x, 'z' along z. rise: gable height.
  */
 function gableRoof(B, ctx, opts) {
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const axis = opts.axis || (L >= W ? 'x' : 'z');
   const span = axis === 'x' ? W : L, len = axis === 'x' ? L : W;
-  const rise = opts.rise ?? Math.max(30, Math.min(56, span * 0.34));
+  const rise = opts.rise ?? (K > 1 ? Math.max(50, Math.min(110, span * 0.42)) : Math.max(30, Math.min(56, span * 0.34)));
   const oh = opts.overhang ?? 6, gh = opts.gableOverhang ?? 4;
   const phi = Math.atan2(rise, span / 2);
   const slopeLen = (span / 2 + oh) / Math.cos(phi);
@@ -397,14 +456,31 @@ function gableRoof(B, ctx, opts) {
   return { rise, span, len, axis, map, rotY };
 }
 
+/**
+ * The top of a walk-in building (shared/maps-walkin.js, render3d/world-walkin.js) over walls `wallH` high:
+ * 'flat' (a parapet, coping, roof plant: a shop or apartment block's), 'gable' (a shingle or tile house
+ * roof with its gables) or 'metal' (a low ribbed metal roof: a warehouse, a garage). `o` gives the id
+ * (the hashes), `color` (gables, parapets) and `roof`. Returns the gable's frame or null.
+ */
+export function walkinTop(B, o, L, W, wallH, style, floors = 1) {
+  const arch = style === 'gable' ? 'house' : style === 'metal' ? 'industrial' : 'shops';
+  const ctx = makeCtx(B, o, L, W, { arch, floors, wallH, H: wallH, K: REAL_K });
+  if (o.surf) ctx.surf = o.surf;
+  if (style === 'gable') return gableRoof(B, ctx, { layer: hash01(o.id * 3 + 1) < 0.3 ? DET.tile : DET.shingle, overhang: 10 });
+  if (style === 'metal') return gableRoof(B, ctx, { rise: 34, overhang: 4, gableOverhang: 3, layer: DET.metalroof });
+  flatRoof(B, o, ctx, null, { parapet: o.parapet });
+  if (o.cornice !== false) for (let fi = 0; fi < 4; fi++) cornice(new Face(B, fi, L, W), wallH, shadeHex(o.color, 0.14), 4.2, 1.2);
+  return null;
+}
+
 // ---- archetypes ----------------------------------------------------------------------------------------------------
 
 function shopsOrApartment(B, o, ctx, sign) {
-  const { L, W } = ctx;
+  const { L, K } = ctx;
   const r = B.rng;
   const apt = ctx.arch === 'apartment';
   const opts = {
-    win: { w: 15, h: 22, sill: 12, bay: apt ? 32 : 36, margin: 15 },
+    win: { w: 15 * K, h: 22 * (K > 1 ? 2.05 : 1), sill: 12 * (K > 1 ? 2.2 : 1), bay: (apt ? 32 : 36) * K, margin: 15 * K },
     shopFront: !apt && hash01(o.id * 3 + 7) < 0.85,
     doorFace0: true,
     rearDoor: true,
@@ -422,27 +498,27 @@ function shopsOrApartment(B, o, ctx, sign) {
   downspout(faces[0], -L / 2 + 6, ctx.wallH);
   downspout(faces[0], L / 2 - 6, ctx.wallH);
   downspout(back, L / 2 - 6, ctx.wallH);
-  if (ctx.floors >= 2 && (apt || hash01(o.id * 41 + 1) < 0.5)) fireEscape(back, r.range(-L * 0.2, L * 0.2), ctx.floors, floorY);
+  if (ctx.floors >= 2 && (apt || hash01(o.id * 41 + 1) < 0.5)) fireEscape(back, r.range(-L * 0.2, L * 0.2), ctx.floors, floorY, 26 * Math.min(K, 1.6), 12 * Math.min(K, 1.6));
   if (DETAIL.level >= 1) {
     for (const F of [back, left, right]) {
       if (hash01(o.id * 91 + F.i * 7) < 0.55) {
         const t = (hash01(o.id * 17 + F.i) - 0.5) * F.len * 0.5;
-        F.rect('stain', t, 26 + hash01(o.id + F.i * 3) * 10, 0.25, 46, 23, '#ffffff', { uv: atlasUV('gfx' + Math.floor(hash01(o.id * 5 + F.i) * 9)), noAO: true, noJitter: true });
+        F.rect('stain', t, 26 * K + hash01(o.id + F.i * 3) * 10, 0.25, 46 * K, 23 * K, '#ffffff', { uv: atlasUV('gfx' + Math.floor(hash01(o.id * 5 + F.i) * 9)), noAO: true, noJitter: true });
       }
     }
     conduit(back, -L * 0.35, L * 0.1, ctx.wallH - 8);
     // a poster or two at street level
-    if (!opts.shopFront || hash01(o.id) < 0.5) faces[0].rect('decal', r.range(-L * 0.4, L * 0.4), 34, 0.35, 16, 24, '#ffffff', { uv: atlasUV('poster' + Math.floor(r.next() * 3)), noAO: true });
+    if (!opts.shopFront || hash01(o.id) < 0.5) faces[0].rect('decal', r.range(-L * 0.4, L * 0.4), 34 * Math.sqrt(K), 0.35, 16 * Math.sqrt(K), 24 * Math.sqrt(K), '#ffffff', { uv: atlasUV('poster' + Math.floor(r.next() * 3)), noAO: true });
   }
   // a wall lamp by the back door
-  back.box('glow', back.info ? 0 : 0, 40, 0.5, 3, 4, 2, '#ffd79a', { emissive: 3.2, uv: atlasUV('white'), noAO: true });
+  back.box('glow', back.info ? 0 : 0, 40 * (K > 1 ? 2 : 1), 0.5, 3, 4, 2, '#ffd79a', { emissive: 3.2, uv: atlasUV('white'), noAO: true });
 }
 
 function industrial(B, o, ctx) {
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const r = B.rng;
   const opts = {
-    win: { w: 26, h: 10, sill: wallH - 34, bay: 60, margin: 22, mullion: 2 },
+    win: { w: 26 * K, h: 10 * K, sill: wallH - 34 * K, bay: 60 * K, margin: 22 * K, mullion: 2 },
     doorFace0: false,
     rearDoor: true,
     rooms: 3,
@@ -454,23 +530,24 @@ function industrial(B, o, ctx) {
   const { faces } = wallsOf(B, o, ctx, opts);
   // roll-up doors on the front: recessed openings would need holes, so they are fitted on the face
   const F = faces[0];
-  const nDoors = Math.max(1, Math.floor(L / 110));
+  const nDoors = Math.max(1, Math.floor(L / (110 * K)));
+  const DH = K > 1 ? 104 : 46;
   for (let d = 0; d < nDoors; d++) {
     const t = -L / 2 + (d + 0.5) * (L / nDoors);
-    const dw = 44;
+    const dw = 44 * K;
     const up = hash01(o.id * 7 + d) * 0.6;
-    F.box('std', t, 26, -0.2, dw + 8, 52, 1.8, '#4a4e52', { noJitter: true, surf: [DET.panel, 0.55, 0.5] });
-    F.span('decal', t - dw / 2, t + dw / 2, 3, 3 + 46 * (1 - up), 1.7, '#ffffff', { uv: atlasUV('garage'), noAO: true });
-    F.box('std', t, 3 + 46 * (1 - up) + 2, 1.2, dw + 4, 3.4, 4.6, '#3a3d40', { noJitter: true, surf: [DET.rust, 0.6, 0.6] });
+    F.box('std', t, (DH + 6) / 2, -0.2, dw + 8, DH + 6, 1.8, '#4a4e52', { noJitter: true, surf: [DET.panel, 0.55, 0.5] });
+    F.span('decal', t - dw / 2, t + dw / 2, 3, 3 + DH * (1 - up), 1.7, '#ffffff', { uv: atlasUV('garage'), noAO: true });
+    F.box('std', t, 3 + DH * (1 - up) + 2, 1.2, dw + 4, 3.4, 4.6, '#3a3d40', { noJitter: true, surf: [DET.rust, 0.6, 0.6] });
     // dock bumpers and a wall lamp
     if (DETAIL.level >= 1) {
       for (const sd of [-1, 1]) F.box('std', t + sd * (dw / 2 + 6), 8, 0, 4, 14, 4, '#1b1b1c', { noJitter: true, surf: [DET.rubber, 0.9, 0] });
-      F.box('glow', t, 62, 0.5, 5, 3, 2.4, '#fff0d0', { emissive: 3.4, uv: atlasUV('white'), noAO: true });
-      F.box('std', t, 64.5, 0, 8, 3, 3, '#2a2c2e', { noJitter: true, surf: [DET.panel, 0.5, 0.5] });
+      F.box('glow', t, DH + 16, 0.5, 5, 3, 2.4, '#fff0d0', { emissive: 3.4, uv: atlasUV('white'), noAO: true });
+      F.box('std', t, DH + 18.5, 0, 8, 3, 3, '#2a2c2e', { noJitter: true, surf: [DET.panel, 0.5, 0.5] });
     }
   }
   // metal roof: low gable along the long side, ribbed, with a ridge vent
-  const g = gableRoof(B, ctx, { rise: 24, overhang: 3, gableOverhang: 2, layer: DET.metalroof, color: ctx.roofColor });
+  const g = gableRoof(B, ctx, { rise: K > 1 ? 30 : 24, overhang: 3, gableOverhang: 2, layer: DET.metalroof, color: ctx.roofColor });
   if (DETAIL.level >= 1) {
     const rv = ctx.wallH + g.rise;
     B.add('std', T.box(), g.map(0, rv + 3.6, 0), [g.len * 0.8, 3.4, 5], [0, g.rotY, 0], '#555a5e', { surf: [DET.rust, 0.55, 0.6], noJitter: true });
@@ -483,58 +560,60 @@ function industrial(B, o, ctx) {
   conduit(back, -L * 0.35, L * 0.35, wallH - 10);
   if (DETAIL.level >= 1) {
     for (let i = 0; i < 4; i++) B.block('std', L / 2 + 14 + (i % 2) * 2, 0, -W * 0.2 + i * 3, 20, 5 + (i % 3) * 3, 16, '#6b4a2c', [0, r.range(-0.2, 0.2), 0], { surf: [DET.wood, 0.85, 0] });
-    B.cyl('std', -L / 2 - 16, 0, W * 0.15, 11, 34, '#8d8a82', 14, 1, null, { surf: [DET.corrugated, 0.5, 0.7] });
-    B.cyl('std', -L / 2 - 16, 34, W * 0.15, 11, 8, '#7a7d80', 14, 0.15, null, { surf: [DET.corrugated, 0.5, 0.7] });
+    B.cyl('std', -L / 2 - 16, 0, W * 0.15, 11, 34 * Math.sqrt(K), '#8d8a82', 14, 1, null, { surf: [DET.corrugated, 0.5, 0.7] });
+    B.cyl('std', -L / 2 - 16, 34 * Math.sqrt(K), W * 0.15, 11, 8, '#7a7d80', 14, 0.15, null, { surf: [DET.corrugated, 0.5, 0.7] });
   }
 }
 
 function house(B, o, ctx) {
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const r = B.rng;
   const shack = ctx.arch === 'shack';
+  const real = K > 1;
   const opts = {
-    win: { w: shack ? 12 : 16, h: shack ? 15 : 22, sill: shack ? 16 : 11, bay: shack ? 30 : 36, margin: 14, mullion: 1 },
+    win: shack
+      ? (real ? { w: 22, h: 30, sill: 34, bay: 54, margin: 22, mullion: 1 } : { w: 12, h: 15, sill: 16, bay: 30, margin: 14, mullion: 1 })
+      : (real ? { w: 28, h: 44, sill: 26, bay: 62, margin: 24, mullion: 1 } : { w: 16, h: 22, sill: 11, bay: 36, margin: 14, mullion: 1 }),
     doorFace0: true,
     rearDoor: false,
     rooms: 0,
     shutters: !shack && hash01(o.id * 7 + 2) < 0.6 ? shadeHex(ctx.trim, -0.1) : null,
     pilasters: false,
     stringCourses: false,
-    skip: (fi, fl, i, n) => shack && fi > 1 && i % 2 === 0,
+    skip: (fi, fl, i) => shack && fi > 1 && i % 2 === 0,
   };
   const { faces, floorY } = wallsOf(B, o, ctx, opts);
   // corner boards
-  if (DETAIL.level >= 1) for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) B.block('std', sx * (L / 2 - 0.9), 0, sz * (W / 2 - 0.9), 2.2, wallH, 2.2, ctx.trim, null, { surf: [DET.wood, 0.85, 0], noJitter: true });
+  if (DETAIL.level >= 1) for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) B.block('std', sx * (L / 2 - 0.9), 0, sz * (W / 2 - 0.9), 2.2 * Math.sqrt(K), wallH, 2.2 * Math.sqrt(K), ctx.trim, null, { surf: [DET.wood, 0.85, 0], noJitter: true });
   const roofLayer = shack ? DET.metalroof : hash01(o.id * 3 + 1) < 0.3 ? DET.tile : DET.shingle;
-  const g = gableRoof(B, ctx, { layer: roofLayer, rise: shack ? 24 : undefined, overhang: shack ? 4 : 7 });
+  const g = gableRoof(B, ctx, { layer: roofLayer, rise: shack ? (real ? 34 : 24) : undefined, overhang: shack ? 4 : real ? 10 : 7 });
   // chimney on a gable end
   const chx = g.map(g.len * 0.26, ctx.wallH + g.rise * 0.4, g.span * 0.12);
-  if (!shack) chimney(B, chx[0], ctx.wallH + g.rise * 0.25, chx[2], 11, g.rise * 0.9, ctx.color);
+  if (!shack) chimney(B, chx[0], ctx.wallH + g.rise * 0.25, chx[2], 11 * Math.sqrt(K), g.rise * 0.9, ctx.color);
   else ventStack(B, chx[0], ctx.wallH + g.rise * 0.5, chx[2], 2.4, 26, '#4a4e52');
   // porch on the front (face 0): slab, columns, a shed roof, steps, railing
   const F = faces[0];
   if (!shack && L >= 110) {
-    const pw = Math.min(L * 0.5, 84), pd = 20;
+    const pw = Math.min(L * 0.5, 84 * K), pd = 20 * K;
+    const ph = real ? 92 : 48;
     F.box('std', 0, 2.5, 0, pw, 5, pd, '#8f8b82', { surf: [DET.slab, 0.88, 0] });
-    for (const t of [-pw / 2 + 2.5, pw / 2 - 2.5]) F.box('std', t, 5 + 24, pd - 3, 3.6, 48, 3.6, ctx.trim, { noJitter: true, surf: [DET.wood, 0.8, 0] });
-    F.box('std', 0, 5 + 49, pd / 2 - 1, pw + 4, 2.6, pd + 2, shadeHex(ctx.roofColor, -0.05), { noJitter: true, surf: [DET.shingle, 0.86, 0] });
+    for (const t of [-pw / 2 + 2.5, pw / 2 - 2.5]) F.box('std', t, 5 + ph / 2, pd - 3, 3.6 * Math.sqrt(K), ph, 3.6 * Math.sqrt(K), ctx.trim, { noJitter: true, surf: [DET.wood, 0.8, 0] });
+    F.box('std', 0, 5 + ph + 1, pd / 2 - 1, pw + 4, 2.6, pd + 2, shadeHex(ctx.roofColor, -0.05), { noJitter: true, surf: [DET.shingle, 0.86, 0] });
     if (DETAIL.level >= 1) {
-      railing(F, -pw / 2 + 4, -8, 5, pd - 4, ctx.trim, 11);
-      railing(F, 8, pw / 2 - 4, 5, pd - 4, ctx.trim, 11);
-      for (let k = 0; k < 3; k++) F.box('std', 0, 1.2 + k * 1.6, pd + k * 3, 24 - k * 2, 1.6, 3.2, '#9a978e', { noJitter: true, surf: [DET.slab, 0.88, 0] });
+      railing(F, -pw / 2 + 4, -8 * K, 5, pd - 4, ctx.trim, 11 * (real ? 1.8 : 1));
+      railing(F, 8 * K, pw / 2 - 4, 5, pd - 4, ctx.trim, 11 * (real ? 1.8 : 1));
+      for (let k = 0; k < 3; k++) F.box('std', 0, 1.2 + k * 1.6, pd + k * 3, 24 * K - k * 2, 1.6, 3.2, '#9a978e', { noJitter: true, surf: [DET.slab, 0.88, 0] });
     }
   }
   // dormer on a big house
   if (!shack && g.span >= 110 && DETAIL.level >= 2) {
     const dp = g.map(g.len * 0.05, ctx.wallH + g.rise * 0.34, g.span * 0.2);
-    const s = g.axis === 'x' ? 1 : 0;
-    void s;
-    B.rblock('std', dp[0], ctx.wallH + g.rise * 0.16, dp[2], g.axis === 'x' ? 22 : 16, 22, g.axis === 'x' ? 16 : 22, 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
+    B.rblock('std', dp[0], ctx.wallH + g.rise * 0.16, dp[2], (g.axis === 'x' ? 22 : 16) * Math.sqrt(K), 22 * Math.sqrt(K), (g.axis === 'x' ? 16 : 22) * Math.sqrt(K), 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
   }
   downspout(faces[0], L / 2 - 5, wallH);
   // rusty barrel, a woodpile, junk by the shack
   if (shack) {
-    B.cyl('std', L / 2 + 10, 0, -W * 0.2, 6, 17, '#5a3a24', 10, 1, null, { surf: [DET.rust, 0.8, 0.6] });
+    B.cyl('std', L / 2 + 10, 0, -W * 0.2, 6, 17 * Math.sqrt(K), '#5a3a24', 10, 1, null, { surf: [DET.rust, 0.8, 0.6] });
     for (let i = 0; i < 6; i++) B.cyl('std', -L / 2 - 8, i % 2 * 5, -W * 0.15 + (i >> 1) * 4, 2, 24, '#6b5238', 6, 1, [Math.PI / 2, 0, 0], { surf: [DET.bark, 0.9, 0] });
   } else if (DETAIL.level >= 1) {
     // a tree stump, a fence bit, a parked bicycle... a doghouse
@@ -544,9 +623,12 @@ function house(B, o, ctx) {
 }
 
 function motel(B, o, ctx, sign) {
-  const { L, W, wallH } = ctx;
+  const { L, wallH, K } = ctx;
+  const real = K > 1;
+  // (a room: a window and a door, `bay` apart; real scale doubles them)
+  const ww = real ? 24 : 13, wh = real ? 34 : 18, dw = real ? 26 : 13, dh = real ? 72 : 32, wy = real ? 30 : 14;
   const opts = {
-    win: { w: 13, h: 18, sill: 14, bay: 40, margin: 22 },
+    win: { w: 13 * K, h: 18 * (real ? 2 : 1), sill: 14 * (real ? 2 : 1), bay: 40 * K, margin: 22 * K },
     doorFace0: false,
     rearDoor: false,
     rooms: 0,
@@ -562,11 +644,12 @@ function motel(B, o, ctx, sign) {
         const seed = o.id * 13 + fl * 31 + i;
         const roll = hash01(seed);
         const state = roll < (o.lit !== undefined ? o.lit : 0.22) ? 'lit' : o.lit === undefined && roll < 0.3 ? 'boarded' : 'dark';
-        holes.push({ t0: t - 14.5, t1: t - 1.5, y0: g.y0 + 14, y1: g.y0 + 32 });
-        holes.push({ t0: t + 3, t1: t + 16, y0: g.y0, y1: g.y0 + 32 });
+        const wt = t - (ww / 2 + 1.5), dt = t + (dw / 2 + 3);
+        holes.push({ t0: wt - ww / 2, t1: wt + ww / 2, y0: g.y0 + wy, y1: g.y0 + wy + wh });
+        holes.push({ t0: dt - dw / 2, t1: dt + dw / 2, y0: g.y0, y1: g.y0 + dh });
         wins.push({ unit: (FF) => {
-          windowUnit(FF, { t: t - 8, yc: g.y0 + 23, ww: 13, wh: 18, R: ctx.R, state, room: roomId(state === 'boarded' ? 4 : 0, seed), k: 1.2, frame: ctx.frame, wall: ctx.color, sill: true, lintel: false, trim: ctx.trim, mullion: 2, seed });
-          doorUnit(FF, { t: t + 9.5, w: 13, h: 32, y0: g.y0, R: ctx.R, leaf: hash01(seed + 3) < 0.5 ? '#6a1f1a' : '#1f3a4a', frame: ctx.frame, wall: ctx.color, trim: ctx.trim, glazed: false, step: fl === 0, lamp: i % 2 === 0, seed, room: roomId(0, seed) });
+          windowUnit(FF, { t: wt, yc: g.y0 + wy + wh / 2, ww, wh, R: ctx.R, state, room: roomId(state === 'boarded' ? 4 : 0, seed), k: 1.2, frame: ctx.frame, wall: ctx.color, sill: true, lintel: false, trim: ctx.trim, mullion: 2, seed });
+          doorUnit(FF, { t: dt, w: dw, h: dh, y0: g.y0, R: ctx.R, leaf: hash01(seed + 3) < 0.5 ? '#6a1f1a' : '#1f3a4a', frame: ctx.frame, wall: ctx.color, trim: ctx.trim, glazed: false, step: fl === 0, lamp: i % 2 === 0, seed, room: roomId(0, seed) });
         } });
       }
       return true;
@@ -576,28 +659,30 @@ function motel(B, o, ctx, sign) {
   const F = faces[0];
   // the walkway slab and railing along the upper storey, posts down to the ground, a stair at one end
   if (ctx.floors >= 2) {
-    balcony(F, -L / 2 + 8, L / 2 - 8, floorY(1), 15, '#8a877e', '#2c2f32');
-    for (let i = 0; i <= 8; i++) F.box('std', -L / 2 + 12 + (i * (L - 24)) / 8, floorY(1) / 2 + 2, 12, 3, floorY(1) - 4, 3, '#4a4d50', { noJitter: true, surf: [DET.rust, 0.55, 0.6] });
-    const steps = 12;
-    for (let k = 0; k < steps; k++) F.box('std', L / 2 - 14 - k * 1.7, (floorY(1) * (k + 0.5)) / steps, 16, 12, 2, 12, '#8a877e', { noJitter: true, surf: [DET.slab, 0.88, 0] });
+    const bd = 15 * (real ? 1.8 : 1);
+    balcony(F, -L / 2 + 8, L / 2 - 8, floorY(1), bd, '#8a877e', '#2c2f32');
+    for (let i = 0; i <= 8; i++) F.box('std', -L / 2 + 12 + (i * (L - 24)) / 8, floorY(1) / 2 + 2, bd - 3, 3, floorY(1) - 4, 3, '#4a4d50', { noJitter: true, surf: [DET.rust, 0.55, 0.6] });
+    const steps = real ? 18 : 12, run = real ? 3.4 : 1.7, sw = real ? 22 : 12;
+    for (let k = 0; k < steps; k++) F.box('std', L / 2 - 14 * (real ? 1.6 : 1) - k * run, (floorY(1) * (k + 0.5)) / steps, real ? bd + 13 : 16, sw, 2, sw, '#8a877e', { noJitter: true, surf: [DET.slab, 0.88, 0] });
   }
-  flatRoof(B, o, ctx, sign, { parapet: 6 });
+  flatRoof(B, o, ctx, sign, { parapet: real ? 10 : 6 });
   downspout(F, -L / 2 + 6, wallH);
   downspout(F, L / 2 - 6, wallH);
   if (DETAIL.level >= 1) {
     // an ice machine and a vending machine by the office end
-    F.rbox('std', -L / 2 + 30, 18, 0, 16, 36, 10, 0.8, '#b8c4cc', { surf: [DET.panel, 0.4, 0.5] });
-    F.rbox('std', -L / 2 + 50, 22, 0, 18, 44, 12, 0.8, '#a51f25', { surf: [DET.panel, 0.4, 0.4] });
-    F.box('glow', -L / 2 + 50, 28, 12.2, 12, 20, 0.4, '#ffe6c0', { emissive: 1.4, uv: atlasUV('shop'), noAO: true });
+    const s = real ? 1.7 : 1;
+    F.rbox('std', -L / 2 + 30 * s, 18 * s, 0, 16 * s, 36 * s, 10 * s, 0.8, '#b8c4cc', { surf: [DET.panel, 0.4, 0.5] });
+    F.rbox('std', -L / 2 + 50 * s, 22 * s, 0, 18 * s, 44 * s, 12 * s, 0.8, '#a51f25', { surf: [DET.panel, 0.4, 0.4] });
+    F.box('glow', -L / 2 + 50 * s, 28 * s, 12.2 * s, 12 * s, 20 * s, 0.4, '#ffe6c0', { emissive: 1.4, uv: atlasUV('shop'), noAO: true });
   }
 }
 
 function barn(B, o, ctx) {
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const r = B.rng;
   const long = L >= W;
   const opts = {
-    win: { w: 10, h: 14, sill: 40, bay: 70, margin: 30, mullion: 2 },
+    win: { w: 10 * K, h: 14 * K, sill: 40 * K, bay: 70 * K, margin: 30 * K, mullion: 2 },
     doorFace0: false,
     rearDoor: false,
     rooms: 4,
@@ -608,7 +693,7 @@ function barn(B, o, ctx) {
   const { faces } = wallsOf(B, o, ctx, opts);
   // big double doors with an X of white braces on the gable end (the short side)
   const endFace = long ? faces[2] : faces[0];
-  const dw = Math.min(58, endFace.len * 0.5), dh = Math.min(64, wallH - 14);
+  const dw = Math.min(58 * K, endFace.len * 0.5), dh = Math.min(64 * K, wallH - 14 * K);
   const trim = '#e8e2d4';
   const wood = { noJitter: true, surf: [DET.wood, 0.85, 0] };
   endFace.box('std', 0, 10 + dh / 2, -0.4, dw + 6, dh + 5, 1.4, trim, wood);
@@ -616,33 +701,34 @@ function barn(B, o, ctx) {
   endFace.rect('std', dw / 4, 10 + dh / 2, 1.2, dw / 2 - 0.6, dh, shadeHex(ctx.color, -0.12), wood);
   for (const sd of [-1, 1]) {
     const ang = Math.atan2(dh, dw / 2);
-    for (const t of [-dw / 4, dw / 4]) endFace.B.add('std', T.box(), endFace.P(t, 10 + dh / 2, 2.0), [Math.hypot(dw / 2, dh) * 0.98, 2.2, 0.8], [0, endFace.frot, sd * ang], trim, wood);
+    for (const t of [-dw / 4, dw / 4]) endFace.B.add('std', T.box(), endFace.P(t, 10 + dh / 2, 2.0), [Math.hypot(dw / 2, dh) * 0.98, 2.2 * Math.sqrt(K), 0.8], [0, endFace.frot, sd * ang], trim, wood);
   }
   endFace.box('std', 0, 10 + dh + 4, 0, dw + 6, 2.6, 2, trim, wood);
   // hayloft door above, a steel track for the sliding door
-  const g = gableRoof(B, ctx, { layer: DET.metalroof, rise: Math.max(36, (long ? W : L) * 0.42), overhang: 8, gableOverhang: 6, color: mixHex(ctx.roofColor, '#6a3a2a', 0.3) });
-  const loft = g.map(g.len / 2 + 0.2, wallH + g.rise * 0.3, 0);
-  void loft;
-  endFace.B.add('std', T.box(), endFace.P(0, wallH + g.rise * 0.34, 1.6), [16, 18, 1.4], [0, endFace.frot, 0], trim, wood);
-  endFace.B.add('std', T.box(), endFace.P(0, wallH + g.rise * 0.34, 2.3), [11, 13, 0.8], [0, endFace.frot, 0], '#1a1512', wood);
+  const g = gableRoof(B, ctx, { layer: DET.metalroof, rise: Math.max(36 * (K > 1 ? 2 : 1), (long ? W : L) * (K > 1 ? 0.5 : 0.42)), overhang: 8, gableOverhang: 6, color: mixHex(ctx.roofColor, '#6a3a2a', 0.3) });
+  endFace.B.add('std', T.box(), endFace.P(0, wallH + g.rise * 0.34, 1.6), [16 * K, 18 * K, 1.4], [0, endFace.frot, 0], trim, wood);
+  endFace.B.add('std', T.box(), endFace.P(0, wallH + g.rise * 0.34, 2.3), [11 * K, 13 * K, 0.8], [0, endFace.frot, 0], '#1a1512', wood);
   // cupola on the ridge
-  B.rblock('std', 0, wallH + g.rise, 0, 12, 12, 12, 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
-  B.add('std', T.cyl(4, 0.05), [0, wallH + g.rise + 12 + 6, 0], [9.5, 12, 9.5], [0, Math.PI / 4, 0], shadeHex(ctx.roofColor, 0.05), { surf: [DET.metalroof, 0.5, 0.6], map: 'cyl', noJitter: true });
+  const cs = Math.sqrt(K);
+  B.rblock('std', 0, wallH + g.rise, 0, 12 * cs, 12 * cs, 12 * cs, 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
+  B.add('std', T.cyl(4, 0.05), [0, wallH + g.rise + 12 * cs + 6 * cs, 0], [9.5 * cs, 12 * cs, 9.5 * cs], [0, Math.PI / 4, 0], shadeHex(ctx.roofColor, 0.05), { surf: [DET.metalroof, 0.5, 0.6], map: 'cyl', noJitter: true });
   // weathervane
-  B.cyl('std', 0, wallH + g.rise + 22, 0, 0.4, 10, '#2a2a2a', 4, 1, null, { surf: [DET.rust, 0.5, 0.7], noJitter: true });
+  B.cyl('std', 0, wallH + g.rise + 22 * cs, 0, 0.4, 10, '#2a2a2a', 4, 1, null, { surf: [DET.rust, 0.5, 0.7], noJitter: true });
   // haybale stack and an old tractor tire by the side
   if (DETAIL.level >= 1) {
-    for (let i = 0; i < 5; i++) B.rblock('std', -L / 2 - 12 - (i % 2) * 2, (i >> 1) * 8, -W * 0.25 + (i % 2) * 14, 14, 8, 10, 1, '#b39a55', null, { surf: [DET.fabric, 0.95, 0] });
+    for (let i = 0; i < 5; i++) B.rblock('std', -L / 2 - 12 - (i % 2) * 2, (i >> 1) * 8 * cs, -W * 0.25 + (i % 2) * 14 * cs, 14 * cs, 8 * cs, 10 * cs, 1, '#b39a55', null, { surf: [DET.fabric, 0.95, 0] });
   }
   downspout(endFace, endFace.len / 2 - 4, wallH);
   void r;
 }
 
 function church(B, o, ctx) {
-  const { L, W, wallH } = ctx;
+  const { L, W, wallH, K } = ctx;
   const frontFace = L >= W ? 2 : 0;
+  const real = K > 1;
+  const dw = real ? 40 : 24, dh = real ? 84 : 42;
   const opts = {
-    win: { w: 12, h: 34, sill: 16, bay: 44, margin: 26, mullion: 2 },
+    win: real ? { w: 20, h: 76, sill: 34, bay: 70, margin: 40, mullion: 2 } : { w: 12, h: 34, sill: 16, bay: 44, margin: 26, mullion: 2 },
     doorFace0: false,
     rearDoor: false,
     rooms: 0,
@@ -652,8 +738,8 @@ function church(B, o, ctx) {
     cornice: 0.8,
     extra: (fi, fl, F, holes, wins) => {
       if (fi !== frontFace) return false;
-      holes.push({ t0: -12, t1: 12, y0: ctx.plinth, y1: ctx.plinth + 42 });
-      wins.push({ unit: (FF) => doorUnit(FF, { t: 0, w: 24, h: 42, y0: ctx.plinth, R: 5, leaf: '#5a2a1e', frame: '#2a2622', wall: ctx.color, trim: '#e6e2d6', glazed: false, step: true, lamp: true, seed: o.id, room: 1 }) });
+      holes.push({ t0: -dw / 2, t1: dw / 2, y0: ctx.plinth, y1: ctx.plinth + dh });
+      wins.push({ unit: (FF) => doorUnit(FF, { t: 0, w: dw, h: dh, y0: ctx.plinth, R: 5, leaf: '#5a2a1e', frame: '#2a2622', wall: ctx.color, trim: '#e6e2d6', glazed: false, step: true, lamp: true, seed: o.id, room: 1 }) });
       return true;
     },
   };
@@ -661,22 +747,24 @@ function church(B, o, ctx) {
   const g = gableRoof(B, ctx, { layer: DET.shingle, overhang: 5, gableOverhang: 3 });
   const front = faces[frontFace];
   // a rose window in the gable, lit from within
-  front.rect('room', 0, wallH + g.rise * 0.38, 0.5, 16, 16, '#ff9a4a', { pane: { id: roomId(4, o.id), w: 16, h: 16 }, emissive: 1.5 });
-  for (const [x, y, w, h] of [[0, 8, 17.5, 1.5], [0, -8, 17.5, 1.5], [-8, 0, 1.5, 17.5], [8, 0, 1.5, 17.5], [0, 0, 1.2, 16], [0, 0, 16, 1.2]]) front.box('std', x, wallH + g.rise * 0.38 + y, 0.4, w, h, 1.2, '#e6e2d6', { noJitter: true, surf: [DET.concrete, 0.85, 0] });
+  const rs = real ? 1.8 : 1;
+  front.rect('room', 0, wallH + g.rise * 0.38, 0.5, 16 * rs, 16 * rs, '#ff9a4a', { pane: { id: roomId(4, o.id), w: 16 * rs, h: 16 * rs }, emissive: 1.5 });
+  for (const [x, y, w, h] of [[0, 8, 17.5, 1.5], [0, -8, 17.5, 1.5], [-8, 0, 1.5, 17.5], [8, 0, 1.5, 17.5], [0, 0, 1.2, 16], [0, 0, 16, 1.2]]) front.box('std', x * rs, wallH + g.rise * 0.38 + y * rs, 0.4, w * rs, h * rs, 1.2, '#e6e2d6', { noJitter: true, surf: [DET.concrete, 0.85, 0] });
   // belfry over the porch
   const bt = front.P(0, wallH, -4);
-  B.rblock('std', bt[0], wallH, bt[2], 26, 44, 26, 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
+  const bw = 26 * rs, bh = 44 * rs;
+  B.rblock('std', bt[0], wallH, bt[2], bw, bh, bw, 0.6, ctx.color, null, { surf: ctx.surf, noJitter: true });
   for (let s = 0; s < 4; s++) {
     const a = (s * Math.PI) / 2;
-    B.box('std', bt[0] + Math.cos(a) * 13, wallH + 30, bt[2] + Math.sin(a) * 13, s % 2 ? 1.4 : 9, 16, s % 2 ? 9 : 1.4, '#141110', null, { noJitter: true, surf: [DET.wood, 0.8, 0] });
+    B.box('std', bt[0] + Math.cos(a) * bw / 2, wallH + bh * 0.68, bt[2] + Math.sin(a) * bw / 2, s % 2 ? 1.4 : 9 * rs, 16 * rs, s % 2 ? 9 * rs : 1.4, '#141110', null, { noJitter: true, surf: [DET.wood, 0.8, 0] });
   }
-  B.add('std', T.cyl(4, 0.02), [bt[0], wallH + 44 + 24, bt[2]], [19, 48, 19], [0, Math.PI / 4, 0], ctx.roofColor, { surf: [DET.shingle, 0.86, 0], map: 'cyl', noJitter: true });
+  B.add('std', T.cyl(4, 0.02), [bt[0], wallH + bh + 24 * rs, bt[2]], [19 * rs, 48 * rs, 19 * rs], [0, Math.PI / 4, 0], ctx.roofColor, { surf: [DET.shingle, 0.86, 0], map: 'cyl', noJitter: true });
   // the cross
-  B.box('std', bt[0], wallH + 44 + 52, bt[2], 1.8, 12, 1.8, '#d8d4c8', null, { noJitter: true, surf: [0, 0.4, 0.5] });
-  B.box('std', bt[0], wallH + 44 + 54, bt[2], 7, 1.8, 1.8, '#d8d4c8', null, { noJitter: true, surf: [0, 0.4, 0.5] });
+  B.box('std', bt[0], wallH + bh + 52 * rs, bt[2], 1.8 * rs, 12 * rs, 1.8 * rs, '#d8d4c8', null, { noJitter: true, surf: [0, 0.4, 0.5] });
+  B.box('std', bt[0], wallH + bh + 54 * rs, bt[2], 7 * rs, 1.8 * rs, 1.8 * rs, '#d8d4c8', null, { noJitter: true, surf: [0, 0.4, 0.5] });
   downspout(faces[0], L / 2 - 5, wallH);
   // the church sign by the road
-  if (DETAIL.level >= 1) signBoard(faces[frontFace === 2 ? 0 : 2], 0, wallH - 12, 56, 'sign23', { frame: '#2a2622', lamp: false });
+  if (DETAIL.level >= 1) signBoard(faces[frontFace === 2 ? 0 : 2], 0, wallH - 12 * rs, 56 * rs, 'sign23', { frame: '#2a2622', lamp: false });
 }
 
 /** A bell tower: a skinned shaft with tall lancet windows and clocks, an open belfry and a spire. */

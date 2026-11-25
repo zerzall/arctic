@@ -24,13 +24,16 @@ const AREA_KINDS = ['asphalt', 'concrete', 'grass', 'dirt', 'gravel', 'sand', 'w
 const LINE_KINDS = ['white', 'white_dashed', 'yellow', 'yellow_double', 'crosswalk', 'parking', 'stop'];
 const OBSTACLE_KINDS = ['car', 'suv', 'pickup', 'van', 'truck', 'semi', 'bus', 'tanker', 'barrier',
   'sandbags', 'building', 'wall', 'container', 'pump', 'tree', 'rock', 'hesco', 'tent', 'booth',
-  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave', 'counter', 'parapet', 'desk'];
+  'guardrail', 'pillar', 'pier', 'ramp', 'silo', 'grave', 'counter', 'parapet', 'desk',
+  // (the furniture of the walk-in buildings, shared/maps-walkin.js: shelving, coolers, racks, wardrobes)
+  'cabinet'];
 const DECOR_KINDS = ['tree_canopy', 'bush', 'grass_tuft', 'rock', 'cone', 'debris', 'tire', 'crack',
   'oil', 'blood_old', 'paper', 'skid', 'manhole', 'lamp_post', 'sign', 'flag', 'rubble', 'signal', 'pylon'];
 const OBJECTIVE_KINDS = ['bus', 'diner', 'apc', 'radio'];
 const LOW_COVER = ['guardrail', 'barrier', 'sandbags', 'grave'];
-/** Obstacle budget per map (the long highway map holds more wrecks and rails, Harlan County its woods). */
-const MAX_OBSTACLES = { highway: 300, harlan: 900, sandstone: 260 };
+/** Obstacle budget per map (the long highway map holds more wrecks and rails, Harlan County its woods; the walk-in
+ * buildings' walls, partitions and furniture count too). */
+const MAX_OBSTACLES = { highway: 360, harlan: 900, sandstone: 260, checkpoint: 200, truckstop: 200, bridge: 200 };
 /** Headroom under a deck a player walks beneath (eye 52, plus a jump, plus margin). */
 const DECK_CLEARANCE = 150;
 const HEX = /^#[0-9a-f]{6}$/i;

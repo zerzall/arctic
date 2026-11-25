@@ -36,6 +36,8 @@ import { createHideout } from './world-hideout.js';
 import { createLevelArt, levelBuckets } from './levels/index.js';
 import { createGates } from './gates3d.js';
 import { createRoofs } from './roofs3d.js';
+import { createWalkins } from './world-walkin.js';
+import { skylineOf } from './world-skyline.js';
 import { createIndoor, patchIndoor, patchIndoorTree } from './indoor.js';
 import { createDecals } from './decals.js';
 import { nearestSection } from '../shared/level.js';
@@ -82,7 +84,8 @@ export function obstacleHeight(kind, o) {
     case 'booth': return 90;
     // dumpsters / generators / the propane cage are the small 'container's
     case 'container': return o && Math.max(o.w, o.h) <= 72 ? 62 : 84;
-    case 'wall': return o && o.h <= 8 ? 40 : 90;
+    // (a walk-in building's walls stand as tall as the building: shared/maps-walkin.js)
+    case 'wall': return o && o.walkin !== undefined && Number.isFinite(o.top) ? o.top : o && o.h <= 8 ? 40 : 90;
     case 'rock': return o ? Math.max(16, Math.min(30, 10 + Math.min(o.w, o.h) * 0.4)) : 22;
     case 'tree': return 70;
     case 'pillar': return 150;
@@ -284,6 +287,11 @@ export function createWorld(ctx, deps) {
     try { keepGrassOut(ground, map.roofs); } catch (err) { console.warn('world: roof grass mask failed', err); }
   }
   const gateObs = map.kind === 'level';
+  // the walk-in buildings of an open map (shared/maps-walkin.js): shells, rooms and furniture
+  let walkins = null;
+  if (map.walkins && map.walkins.length) {
+    try { walkins = createWalkins(ctx, { gy }); } catch (err) { console.warn('world: walk-in buildings failed', err); }
+  }
 
   // ---- obstacles ----
   setBiome(map);   // tree species by map (the trunks agree with their crowns)
@@ -298,6 +306,7 @@ export function createWorld(ctx, deps) {
     B.obj(o.x, o.y, o.a || 0, o.id * 31 + (map.seed | 0));
     B.setJitter(0.06);
     try {
+      if (walkins && walkins.obstacle(B, o)) continue;
       if (hideout && hideout.obstacle(B, o)) continue;
       if (level && level.obstacle(B, o)) continue;
       buildObstacle(B, o, o === signBuilding ? { cell: signCell } : null, !!map.overpass, halos);
@@ -309,6 +318,9 @@ export function createWorld(ctx, deps) {
   }
   if (roofs) {
     try { roofs.build(B); } catch (err) { console.warn('world: roof models failed', err); }
+  }
+  if (walkins) {
+    try { walkins.build(B); } catch (err) { console.warn('world: walk-in models failed', err); }
   }
   const canopies = buildCanopies(B, map);
   // the overpass: decks, bents, ramps, deck lamps and signs, wrecks up top
@@ -551,6 +563,19 @@ export function createWorld(ctx, deps) {
       root.add(sky2);
       disposables.push(sky2.geometry, sky2.material, sky2.material.map);
     }
+  }
+
+  // ---- the open maps' (and the town levels') distant skyline past the tree line: one mesh ----
+  let skyline = null;
+  try {
+    const list = skylineOf(map);
+    if (list.length) {
+      skyline = makeSkyline(list, 360);
+      root.add(skyline);
+      disposables.push(skyline.geometry, skyline.material, skyline.material.map);
+    }
+  } catch (err) {
+    console.warn('world: skyline failed', err);
   }
 
   // ---- fx meshes ----

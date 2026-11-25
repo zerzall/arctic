@@ -13,7 +13,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # (~16 min as a rule: the end-to-end run alone is ~12; room for a slow Chromium download)
     timeout-minutes: 30
     defaults:
@@ -53,7 +53,7 @@ jobs:
   game:
     needs: test
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:

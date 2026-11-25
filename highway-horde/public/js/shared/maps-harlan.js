@@ -13,6 +13,7 @@
 // palettes and helpers it shares with them.
 
 import { TAU } from './math.js';
+import { walkInOf } from './maps-walkin.js';
 
 const W7 = 3600;            // Route 7 centre line (x)
 const C9 = 3600;            // County Road 9 centre line (y)
@@ -182,18 +183,21 @@ export function buildHarlan(B) {
     [3840, 150, '#a58f73', '#6d5a4a'], [4070, 130, '#8c7b6a', '#4a3f33'], [4300, 160, '#b9b2a4', '#7a3b2e'],
   ];
   fronts.forEach(([x, d, color, roof], i) => {
-    store(x, north - d / 2, 170, d, color, roof);
+    // (walk-in: the pharmacy north of the street, the sheriff's office south of it; shared/maps-walkin.js)
+    if (x === 3130) walkInOf(B, 'shop', x, north - 95, 220, 190, 0, { id: 'hc-pharmacy', name: 'Pharmacy', sign: 'PHARMACY', color, roof, storeys: 3 });
+    else store(x, north - d / 2, 170, d, color, roof);
     const s = fronts[(i + 3) % fronts.length];
-    store(x, south + s[1] / 2, 170, s[1], s[2], s[3]);
+    if (x === 4070) walkInOf(B, 'office', x, south + 100, 220, 200, Math.PI, { id: 'hc-sheriff', name: 'Sheriff', sign: 'SHERIFF', color: s[2], roof: s[3], storeys: 2 });
+    else store(x, south + s[1] / 2, 170, s[1], s[2], s[3]);
   });
   // back lots: dumpsters, a pickup, the old hotel and the feed store
-  B.ob('building', 3180, 3080, 360, 150, 0, { color: '#8c8478', roof: '#4e4a45' });
+  walkInOf(B, 'apartment', 3180, 3080, 360, 180, Math.PI, { id: 'hc-hotel', name: 'Harlan Hotel', color: '#8c8478', roof: '#4e4a45', storeys: 5 });   // the old hotel (walk-in)
   B.ob('building', 4120, 4130, 300, 150, 0, { color: '#9a8f7e', roof: '#5a3f35' });
   for (const [x, y] of [[3000, 3230], [3420, 3240], [3800, 3960], [4250, 3960]]) B.ob('container', x, y, 64, 36, 0, { color: '#2e5d3a', roof: '#294f33' });
   B.vehicle('pickup', 2880, 3190, 0.1, { wrecked: rng.chance(0.4) });
   B.vehicle('car', 4380, 3990, Math.PI / 2 + 0.1);
   // parked along the curbs, a crash in the crossroads, a burning car
-  for (const [kind, x, y, a, wr] of [['car', 2880, C9 - 50, 0, false], ['suv', 3090, C9 - 52, 0, true], ['car', 3320, C9 + 52, Math.PI, false],
+  for (const [kind, x, y, a, wr] of [['car', 2880, C9 - 50, 0, false], ['suv', 3250, C9 - 52, 0, true], ['car', 3320, C9 + 52, Math.PI, false],
     ['van', 2960, C9 + 52, Math.PI, false], ['car', 3900, C9 - 50, 0, true], ['pickup', 4180, C9 + 50, Math.PI, false],
     ['car', 4330, C9 - 50, 0, false]]) B.vehicle(kind, x, y, a, { wrecked: wr || rng.chance(0.2) });
   B.vehicle('car', W7 - 30, C9 + 20, 0.7, { wrecked: true, burning: true });
@@ -209,13 +213,13 @@ export function buildHarlan(B) {
     B.lamp(x, C9 - RW - 40, { a: Math.PI / 2 });
     B.lamp(x + 120, C9 + RW + 40, { a: -Math.PI / 2 });
   }
-  B.light(3130, north - 70, 150, '#ffd9a0', 0.1);
+  B.light(3130, north + 40, 150, '#ffd9a0', 0.1);
   B.light(3840, north - 70, 170, '#ff7aa2', 0.25);   // the diner's neon
   B.light(4070, south + 60, 140, '#bfe4ff', 0.2);
 
   // =====================================================================================
   // Gas-N-Go on Old Mill Road, and the Lucky 7 motel across the road
-  B.ob('building', 2080, 1960, 220, 110, 0, { color: '#b8ad98', roof: '#5b6770' });
+  walkInOf(B, 'kiosk', 2080, 1960, 270, 170, 0, { id: 'hc-gas', name: 'Gas-N-Go', sign: 'GENERAL STORE', color: '#b8ad98', roof: '#5b6770', storeys: 1, door: 60, back: true });   // (walk-in)
   B.ob('container', 1980, 2110, 64, 36, Math.PI / 2, { color: '#2e5d3a', roof: '#294f33' });
   B.ob('container', 2200, 2080, 60, 34, 0, { color: '#d9d9d0', roof: '#c9c9c0' });   // propane cage
   for (const [x, y] of [[2320, 2000], [2500, 2000], [2320, 2130], [2500, 2130]]) B.ob('pillar', x, y, 18, 18, 0);
@@ -237,7 +241,7 @@ export function buildHarlan(B) {
 
   // =====================================================================================
   // Haskell Farm: farmhouse, the big red barn, silos, a machine shed and fenced paddocks
-  B.ob('building', 5620, 1180, 210, 140, 0, { color: '#9a8f7e', roof: '#6e3b2f' });
+  walkInOf(B, 'house', 5620, 1180, 250, 180, 0, { id: 'hc-farmhouse', name: 'Haskell Farmhouse', color: '#9a8f7e', roof: '#6e3b2f', storeys: 2, top: 'gable', back: true });   // (walk-in)
   B.ob('building', 6060, 1160, 270, 180, 0, { color: '#7d3a2c', roof: '#5a2b22' });
   B.ob('building', 6300, 1470, 160, 110, 0.03, { color: '#7a6a55', roof: '#5b5048' });
   for (const [x, y, s] of [[6290, 1080, 86], [6290, 1190, 76], [6385, 1130, 70]]) B.ob('silo', x, y, s, s, 0, { color: rng.pick(['#b8bcbf', '#a9aeb2', '#c7c2b6']) });
@@ -248,7 +252,7 @@ export function buildHarlan(B) {
   B.runY('wall', 6420, 950, 1620, [[1300, 1420]], 6, { color: FENCE, solid: false, maxLen: 300 });
   B.runX('wall', 1600, 4300, 5200, [[4700, 4820]], 6, { color: FENCE, solid: false, maxLen: 300 });
   B.runY('wall', 6520, 1900, 2800, [[2300, 2420]], 6, { color: FENCE, solid: false, maxLen: 300 });
-  B.light(5620, 1270, 150, '#ffcf80', 0.15);
+  B.light(5620, 1295, 150, '#ffcf80', 0.15);
   B.light(6060, 1270, 140, '#ffcf80', 0.1);
   B.lamp(5720, 1600, { color: L.LAMP_COLOR });
   B.fire(5900, 1250, 12);

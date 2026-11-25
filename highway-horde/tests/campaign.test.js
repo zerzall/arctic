@@ -39,7 +39,8 @@ describe('the extension: maps', () => {
     for (const id of CAMPAIGN_MAPS) {
       const def = buildMap(id, 1), c = buildMap(id, 1, { mode: 'campaign' });
       assert.equal(def.campaign, undefined, `${id}: the default map has no campaign`);
-      assert.equal(def.terrain, undefined, `${id}: ... and no terrain`);
+      // (a walk-in building's roof terrace is the only terrain a default map may have: shared/maps-walkin.js)
+      assert.ok(!def.terrain || !def.terrain.hills.length, `${id}: ... and no hills`);
       assert.equal(JSON.stringify(def), JSON.stringify(buildMap(id, 1, { mode: 'defend' })), `${id}: mode defend builds the same map`);
       assert.equal(JSON.stringify(def), JSON.stringify(buildMap(id, 1, { mode: 'zone' })), `${id}: mode zone builds the same map`);
       assert.ok(c.campaign, `${id}: the campaign variant has the extension`);
@@ -47,7 +48,8 @@ describe('the extension: maps', () => {
       assert.deepEqual(c.zombieSpawns, [], `${id}: no edge spawns (the director places them)`);
       assert.ok(c.terrain && c.terrain.hills.length === 1 && c.terrain.plateaus.length >= 4, `${id}: a hill and the annex plateaus`);
       assert.ok(mapModes(id).includes('campaign'), `${id}: listed with the mode`);
-      for (const o of def.obstacles) assert.ok(!CAMPAIGN_KINDS.includes(o.kind), `${id}: default map has no '${o.kind}'`);
+      // (the walk-in buildings' furniture borrows the desk, counter and cabinet kinds)
+      for (const o of def.obstacles) if (o.walkin === undefined) assert.ok(!CAMPAIGN_KINDS.includes(o.kind), `${id}: default map has no '${o.kind}'`);
     }
     for (const id of OTHER_MAPS) {
       assert.equal(JSON.stringify(buildMap(id, 1)), JSON.stringify(buildMap(id, 1, { mode: 'campaign' })), `${id}: unextended maps ignore the mode`);
@@ -89,7 +91,8 @@ describe('the extension: maps', () => {
   });
 
   test('size and object budgets: the enlarged maps stay within what the sim and renderers handle', () => {
-    const budget = { checkpoint: [4850, 5860, 340], highway: [9500, 5060, 500], harlan: [7200, 10060, 800] };
+    // (the walk-in buildings' walls and furniture count too)
+    const budget = { checkpoint: [4850, 5860, 400], highway: [9500, 5060, 560], harlan: [7200, 10060, 860] };
     for (const id of CAMPAIGN_MAPS) {
       const m = buildMap(id, 1, { mode: 'campaign' });
       const [w, h, n] = budget[id];

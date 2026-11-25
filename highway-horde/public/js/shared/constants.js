@@ -3,7 +3,9 @@
 
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
-export const PROTOCOL_VERSION = 12;
+// (13: the open maps' walk-in buildings changed their layouts, shared/maps-walkin.js: a peer
+// building the old maps from the same (id, seed) would collide with walls the host doesn't have)
+export const PROTOCOL_VERSION = 13;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second

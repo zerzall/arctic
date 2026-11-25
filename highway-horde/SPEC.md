@@ -204,13 +204,44 @@ shots from `low` (44). Walkable ground under a deck keeps ≥ 130 units of headr
 
 Rules: every `playerSpawn` and the `supply` point must be reachable from every
 `zombieSpawn` for a 28 px-diameter walker; nothing spawns inside an obstacle or water;
-the objective sits roughly central with open ground around it; 60–160 obstacles per map
-(the long highway: up to 300, Harlan County: up to 900). Zombie spawn rects hug the map edges
+the objective sits roughly central with open ground around it; 60–200 obstacles per map
+(the long highway: up to 360, Harlan County: up to 900). Zombie spawn rects hug the map edges
 or sit at the foot of an overpass ramp. Evac Run maps (`modes: ['zone']`) skip the
 defend-layout rules (central objective, supply 250–450 px from it); Harlan County's radio mast
 is its objective collider and landmark, the team starts on Main Street next to the supply
 station, and every POI is reachable from every other.
 Guard rails, barriers and sandbags are `solid: false` (shots pass over them).
+
+**Walk-in buildings** (`shared/maps-walkin.js`; 3D art `render3d/world-walkin.js`): every main open map has
+three to six buildings the crew and the horde can walk into, built from the story levels' pieces (JOURNEY.md
+§3): `walkIn(B, spec)` / `walkInOf(B, type, x, y, w, h, a, opts)` lay one out on its footprint (local x along
+`w`, local y along `h`, the front on +y): outer `wall` obstacles 16 thick standing inside the footprint, cut at
+the doorways (≥ `WALKIN_DOOR` 84, mostly 88–150; a roll-up `shutter` on warehouses and garages), partitions
+10 thick with doors, furniture ('counter' and 'desk': low cover; 'cabinet': shelving, coolers, pallet racks,
+wardrobes; never in front of a doorway), lamps (`map.lights` at the ceiling) and one `map.roofs` entry over
+the rooms with `shell: <index>` (roofs3d.js draws only the ceiling and its fixtures; the indoor mask keeps sun,
+sky, fog and rain out). Types (`layoutOf`): kiosk (gas station store: till, aisles, coolers, stock room), shop,
+house, office, warehouse, apartment, garage, sandhouse. `map.walkins[i]` = `{ i, id, type, name, x, y, w, h,
+a, t, ceil, storeys, H, top ('flat'|'gable'|'metal'), color, trim, roof, floor, wall, kind, sign, look,
+doors[{side, at, w, shutter}], windows[{side, at, w}], parts[{x1, y1, x2, y2, gaps}], props[], lights[], stair }`;
+its obstacles carry `walkin: i` and a `style` 'wi:*' (`ext`, `part`, `wing`, `stairwall`, or the furniture's
+look), its walls `top` = the building's height. `roofTerrace(B, rec, {x0, y0, x1, y1, rise, run, lane, side,
+base})` adds a wing beside an axis-aligned walk-in whose flat roof is a terrace (a terrain plateau) reached by
+a flight of 40 fine steps from the street, walled so nothing else gets up there (Highway 9's Mill Road
+Apartments, Sandstone's B House). The layouts are fixed (seed-independent); clearing ground for the campaign
+(`clearCircle`/`clearRect`) removes a walk-in whole. Per map: Highway 9 — the Mill Road Gas store, the County
+Deli (three storeys of flats over it), the farmhouse, the red barn, the Mill Road Apartments with the roof
+terrace; Truck Stop — the fuel store, the motel office, the garage, a house; Bridge — the fishing cabin, River
+Flats, Bait & Tackle, a house; Checkpoint — the farmhouse, the gas station, a house, the corner store; Harlan —
+the pharmacy, the sheriff's office, the Harlan Hotel, the Gas-N-Go, the Haskell farmhouse; Sandstone — the CT
+House, the Long House, the Corner House (one door each, so no new way through the town) and the B House with its
+terrace over B. `tests/walkin.test.js`.
+
+Buildings are drawn at real scale (`render3d/world-bld.js`): storeys of 96 units (the eye is at 52), 2–4 storey
+shop rows, 4–7 storey apartment blocks, two-storey houses and motels, tall barns, halls and churches; a building
+with a hand-set `top` (hideouts, tuned level facades) keeps the old compact proportions. A distant skyline of
+blocks past the tree line (`render3d/world-skyline.js`, one mesh) stands where a town would on the open maps
+and the town levels.
 
 **Sandstone** (`shared/maps-sandstone.js`, 3300 x 3200, ~170 obstacles, budget 300): a walled
 desert town of sandstone and lime plaster built for Horde Elimination, laid out like the classic
@@ -1135,7 +1166,8 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 12 (Horde Elimination: header flag `H_HORDE` 64 and, after the level block, a
+u8. PROTOCOL_VERSION 13 (the open maps' walk-in buildings, §2: the wire is unchanged, but the maps every peer
+builds from (id, seed) are not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
 20-byte horde block — total, left, alive u16, surge, surges, tier, stage u8, the breather timer at 0.01 s
 u16, the lane mask u16, the round's clock f32 — and the binary `surge` event; 11 was the story levels'
 `H_LEVEL` block, §3.11; 10 was Road to Haven: header flag 16 and, after the campaign block, a story-bits byte
