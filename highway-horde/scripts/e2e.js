@@ -1377,7 +1377,7 @@ async function scenarioFpsSolo(sc) {
         pitch = Math.atan2((best.z || 0) + ap.h - ((me.z || 0) + eyeHeight(me)), Math.max(1, Math.hypot(tx - at.x, ty - at.y)));
       }
       return {
-        kills: me.kills, n: v.zombies.length, dist: bd, yaw: L.yaw, pitch,
+        kills: me.kills, n: v.zombies.length, dist: bd, yaw: L.yaw, pitch, lookPitch: L.pitch,
         want, onScreen: !!(sp && sp.visible), locked: L.locked,
       };
     });
@@ -1387,7 +1387,9 @@ async function scenarioFpsSolo(sc) {
     const want = new Set();
     if (t.want !== null) {
       const facing = Math.abs(angleDiff(t.yaw, t.want)) < 0.1;
-      if (facing) {
+      // (the camera aims up and down too now: count a look at the target once the pitch has
+      // caught up as well, e.g. after looking down from the car roof)
+      if (facing && Math.abs(t.lookPitch - t.pitch) < 0.1) {
         aimed++;
         if (t.onScreen) seen++;
       }
