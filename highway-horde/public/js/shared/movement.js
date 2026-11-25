@@ -6,6 +6,8 @@
 import {
   PLAYER_RADIUS, PLAYER_SPEED, SPRINT_MULT, STAMINA_MAX, STAMINA_DRAIN, STAMINA_REGEN,
   STAMINA_MIN_TO_SPRINT, DOWNED_SPEED, BARRICADE, STAND_PAD, MANTLE_REACH, MANTLE_MIN, MANTLE_TICKS,
+  GROUND_ACCEL, GROUND_FRICTION, STOP_SPEED, AIR_ACCEL, WALK_MULT, CROUCH_MULT, DUCK_TICKS,
+  EYE_HEIGHT, CROUCH_EYE, DOWNED_EYE,
 } from './constants.js';
 import {
   StaticIndex, makeObb, setObbPose, circleObbPush, circleOverlapsObb, mapColliders, obbOverlap,
@@ -478,10 +480,11 @@ function stepMantle(p, world) {
  * leaves them inside something moves them to the nearest free spot.
  *
  * @param {object} p { x, y, state, stamina, sprintLock, speedMult, moveMult,
- *   staminaMult?, zq?, vzq?, jumpCd?, climbT?, climbTo? } — staminaMult (default 1) is the
- *   class stamina perk: it slows the drain and speeds up regeneration while STAMINA_MAX
- *   stays the HUD's scale.
- * @param {object} cmd InputCmd (moveX, moveY, sprint, jump are read)
+ *   staminaMult?, zq?, vzq?, jumpCd?, climbT?, climbTo?, mvx?, mvy?, duckT? } — staminaMult
+ *   (default 1) is the class stamina perk: it slows the drain and speeds up regeneration while
+ *   STAMINA_MAX stays the HUD's scale. mvx / mvy is the walking velocity (px/s) the ground
+ *   acceleration and friction work on, duckT the crouch (0 standing .. DUCK_TICKS down).
+ * @param {object} cmd InputCmd (moveX, moveY, sprint, jump, crouch, walk are read)
  * @param {number} dt seconds
  * @param {CollisionWorld} world
  * @returns {number} 1 = took off this tick, -1 = landed (or finished a climb), 2 = started
@@ -489,14 +492,19 @@ function stepMantle(p, world) {
  */
 export function stepPlayerMovement(p, cmd, dt, world) {
   normVertical(p);
+  if (!Number.isFinite(p.mvx) || !Number.isFinite(p.mvy)) { p.mvx = 0; p.mvy = 0; }
+  if (!(p.duckT >= 0)) p.duckT = 0;
   if (p.state === 'dead') {
     p.sprinting = false;
+    p.mvx = p.mvy = 0;
+    p.duckT = 0;
     settleVertical(p, world);
     return 0;
   }
   // Riding the zip line (campaign): the director moves the body along the cable.
   if (p.frozen) {
     p.sprinting = false;
+    p.mvx = p.mvy = 0;
     return 0;
   }
   const sm = p.staminaMult > 0 ? p.staminaMult : 1;
@@ -506,6 +514,7 @@ export function stepPlayerMovement(p, cmd, dt, world) {
     p.stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN * sm * dt);
     if (p.sprintLock && p.stamina >= STAMINA_MIN_TO_SPRINT) p.sprintLock = false;
     p.sprinting = false;
+    p.mvx = p.mvy = 0;
     return stepMantle(p, world);
   }
   const jump = stepJump(p, cmd, (x, y, zq) => world.groundQ(x, y, zq));
@@ -519,9 +528,14 @@ export function stepPlayerMovement(p, cmd, dt, world) {
   }
   const moving = len > 0.05;
   const downed = p.state === 'downed';
+  // crouch: the body goes down (and comes up) over DUCK_TICKS; never while downed
+  const wantDuck = !!(cmd && cmd.crouch) && !downed;
+  if (wantDuck) { if (p.duckT < DUCK_TICKS) p.duckT++; } else if (p.duckT > 0) p.duckT--;
+  const duck = p.duckT / DUCK_TICKS;
+  const walking = !!(cmd && cmd.walk) && !downed;
   let lock = !!p.sprintLock;
   if (lock && stamina >= STAMINA_MIN_TO_SPRINT) lock = false;
-  const sprinting = !!(cmd && cmd.sprint) && moving && !downed && !lock && stamina > 0;
+  const sprinting = !!(cmd && cmd.sprint) && moving && !downed && !lock && stamina > 0 && !walking && p.duckT === 0;
   if (sprinting) {
     stamina -= (STAMINA_DRAIN / sm) * dt;
     if (stamina <= 0) {
@@ -535,15 +549,48 @@ export function stepPlayerMovement(p, cmd, dt, world) {
   p.stamina = stamina;
   p.sprintLock = lock;
   p.sprinting = sprinting;
-  if (!moving) {
+  // Counter-Strike-like ground movement: friction, then acceleration toward the wanted velocity
+  // (none in the air, where AIR_ACCEL steers what the jump carries)
+  const wish = !moving ? 0 : (downed
+    ? DOWNED_SPEED
+    : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1) * (walking ? WALK_MULT : 1)
+      * (1 - (1 - CROUCH_MULT) * duck)) * Math.min(1, len);
+  const air = p.vzq !== 0;
+  let vx = p.mvx, vy = p.mvy;
+  let sp = Math.hypot(vx, vy);
+  if (!air && sp > 0) {
+    const drop = Math.max(sp, STOP_SPEED) * GROUND_FRICTION * dt;
+    const ns = sp - drop > 0 ? sp - drop : 0;
+    vx *= ns / sp;
+    vy *= ns / sp;
+    sp = ns;
+  }
+  if (wish > 0) {
+    const ux = mx / len, uy = my / len;
+    const add = wish - (vx * ux + vy * uy);
+    if (add > 0) {
+      const acc = Math.min(add, (air ? AIR_ACCEL : GROUND_ACCEL) * wish * dt);
+      vx += ux * acc;
+      vy += uy * acc;
+    }
+  }
+  sp = Math.hypot(vx, vy);
+  if (sp < 0.5 && wish === 0) { vx = 0; vy = 0; sp = 0; }
+  if (sp === 0) {
     // Still resolve so a barricade placed on top of someone pushes them out.
     world.resolveCircle(p, PLAYER_RADIUS, MASK_MOVE, z);
   } else {
-    const speed = downed
-      ? DOWNED_SPEED
-      : PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1) * (sprinting ? SPRINT_MULT : 1);
-    world.moveCircle(p, PLAYER_RADIUS, mx * speed * dt, my * speed * dt, MASK_MOVE, z);
+    const x0 = p.x, y0 = p.y;
+    world.moveCircle(p, PLAYER_RADIUS, vx * dt, vy * dt, MASK_MOVE, z);
+    // what the walls let through is the velocity now (sliding along them keeps the rest)
+    let nvx = (p.x - x0) / dt, nvy = (p.y - y0) / dt;
+    const ns = Math.hypot(nvx, nvy);
+    if (ns > sp && ns > 0) { nvx *= sp / ns; nvy *= sp / ns; }
+    vx = nvx;
+    vy = nvy;
   }
+  p.mvx = vx;
+  p.mvy = vy;
   // Walked off the edge of what we stand on: fall from the next tick. On terrain a body
   // standing on the ground follows it up and down the slope instead (no fall, no landing).
   if (p.vzq === 0 && (p.zq > 0 || !world.terrain.flat)) {
@@ -572,10 +619,28 @@ export function stepPlayerMovement(p, cmd, dt, world) {
       p.climbTo = ci;
       p.vzq = 0;
       p.sprinting = false;
+      p.mvx = p.mvy = 0;
       return 2;
     }
   }
   return jump;
+}
+
+/**
+ * Eye height above the feet of a player record: standing, crouched (by its duckT) or downed.
+ * First person: where the camera sits and where a bullet starts.
+ * @param {{ state: string, duckT?: number }} p
+ * @returns {number}
+ */
+export function eyeHeight(p) {
+  if (p.state === 'downed') return DOWNED_EYE;
+  const k = p.duckT > 0 ? Math.min(1, p.duckT / DUCK_TICKS) : 0;
+  return EYE_HEIGHT - (EYE_HEIGHT - CROUCH_EYE) * k;
+}
+
+/** Ground speed (px/s) of a player record from its walking velocity. */
+export function groundSpeed(p) {
+  return Number.isFinite(p.mvx) && Number.isFinite(p.mvy) ? Math.hypot(p.mvx, p.mvy) : 0;
 }
 
 /**

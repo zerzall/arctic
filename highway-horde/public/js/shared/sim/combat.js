@@ -2,14 +2,18 @@
 // projectiles, ground hazards, sentry turrets and barricade upkeep.
 
 import {
-  DT, PLAYER_RADIUS, THROW_SPEED, TURRET,
+  DT, PLAYER_RADIUS, THROW_SPEED, TURRET, MAX_UNLAG, LAG_HISTORY,
 } from '../constants.js';
 import { THROWABLES, FROST } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import { DROP_CHANCE, CRATE_DROP_CHANCE } from '../items.js';
 import { angleDiff, turnTowards } from '../math.js';
 import { rayCircle, MASK_SOLID, MASK_OBJECTIVE } from '../geom.js';
-import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS } from './players.js';
+import { handlingOf, discOffset, zoneMult, ZONE, MODE_SIL } from '../handling.js';
+import { rayZombie, TYPE_ZONES } from '../hitbox.js';
+import { traceShot, createTrace, multAt, wallsBefore as wallsBefore3 } from '../ballistics.js';
+import { eyeHeight } from '../movement.js';
+import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS, aimNow, kickAfterShot, activeWeapon } from './players.js';
 
 /** Largest zombie radius: pad for spatial ray/radius queries. */
 export const MAX_ZOMBIE_RADIUS = Math.max(...Object.values(ZOMBIES).map((z) => z.radius));
@@ -61,11 +65,18 @@ export function knockZombie(z, nx, ny, impulse) {
   }
 }
 
+/** Kill flags (zdie `hs` / `wb` / `pop`): a headshot, through a wall, the head burst. */
+export const KILL_HEAD = 1, KILL_WALL = 2, KILL_POP = 4;
+/** Leg hits slow a zombie (tagging): for this long, by this share (heavies a third of it, bosses not). */
+export const TAG_TIME = 0.45;
+export const TAG_SLOW = 0.45;
+
 /**
- * Damage a zombie; credits damage/kills to player `by` (0 = nobody).
+ * Damage a zombie; credits damage/kills to player `by` (0 = nobody). `kf` (KILL_* bits)
+ * describes the hit for the 'zdie' event when it kills.
  * @returns {boolean} true if this killed it
  */
-export function damageZombie(game, z, amount, by, gib = false) {
+export function damageZombie(game, z, amount, by, gib = false, kf = 0) {
   if (z.dead || !(amount > 0)) return false;
   // a range dummy (sim/range.js) takes nothing: the hit is only reported
   if (z.dummy) { game.range.hit(z, amount, by); return false; }
@@ -83,7 +94,7 @@ export function damageZombie(game, z, amount, by, gib = false) {
   }
   z.hurtT = 0.12;
   if (z.hp <= 0) {
-    killZombie(game, z, by, gib);
+    killZombie(game, z, by, gib, kf);
     return true;
   }
   return false;
@@ -124,7 +135,7 @@ export function chillZombie(game, z, amount) {
 }
 
 /** Kill a zombie: event, kill credit and cash, drops, and the bloater burst. */
-export function killZombie(game, z, by, gib) {
+export function killZombie(game, z, by, gib, kf = 0) {
   if (z.dead) return;
   z.dead = true;
   z.hp = 0;
@@ -133,6 +144,8 @@ export function killZombie(game, z, by, gib) {
   game.emit({
     type: 'zdie', id: z.id, ztype: z.type, x: Math.round(z.x), y: Math.round(z.y), angle: z.angle,
     by: by || 0, gib: !!gib,
+    // first person: killed by a headshot / through a wall / the head burst (SPEC §4.1)
+    hs: (kf & KILL_HEAD) !== 0, wb: (kf & KILL_WALL) !== 0, pop: (kf & KILL_POP) !== 0 && !gib,
   });
   if (by && !game.over) {
     const p = game.getPlayer(by);
@@ -261,9 +274,20 @@ export function explode(game, x, y, radius, dmg, owner, kind, opt = null) {
 // -------------------------------------------------------------------------------------
 // Firing
 
+/** Shot event flags (SPEC §4.1 `fl`): silenced, aimed in 3D (pitch + ray heights), through a scope. */
+export const SHOT_SIL = 1, SHOT_3D = 2, SHOT_SCOPE = 4;
+
 /** Fire one shot of player p's weapon `id` (ammo/cooldown are handled by the caller). */
 export function fireWeaponShot(game, p, id, w) {
   const a = p.angle;
+  // first person (SPEC §3.4): the bullet goes where the player looks, up or down, plus the
+  // gun's recoil and inaccuracy, and hits zones; a shooter without pitch keeps the flat shot
+  if (p.cmd.aim3d && (w.kind === 'hitscan' || w.kind === 'rail')) {
+    fireHitscan3D(game, p, id, w);
+    kickAfterShot(p, id);
+    return;
+  }
+  if (p.cmd.aim3d) kickAfterShot(p, id);
   switch (w.kind) {
     case 'hitscan':
       fireHitscan(game, p.id, p.id, 0, id, w, p.x, p.y, a, p.perks.damageMult || 1, p.id, p);
@@ -382,7 +406,9 @@ function falloffMult(t, w) {
  * @param {object|null} shooter player object (friendly fire exclusion), or null
  */
 export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, dmgMult, credit, shooter) {
-  const ev = game.shotEvent(key, pid, turretId, weaponId, x + Math.cos(angle) * MUZZLE, y + Math.sin(angle) * MUZZLE, angle);
+  // (flat shots: the muzzle's height is the gun's, 34 on a turret, 38 in hand)
+  const gunZ = (shooter ? shooter.z || 0 : 0) + (turretId ? 34 : 38);
+  const ev = game.shotEvent(key, pid, turretId, weaponId, x + Math.cos(angle) * MUZZLE, y + Math.sin(angle) * MUZZLE, angle, gunZ);
   const world = game.world, rng = game.rng;
   const above = shooter ? shooter.z || 0 : 0;
   const ff = !!game.settings.friendlyFire && !!shooter;
@@ -443,9 +469,201 @@ export function fireHitscan(game, key, pid, turretId, weaponId, w, x, y, angle, 
       if (!hit) hit = 2;
     }
     if (ev.rays.length < MAX_RAYS_PER_EVENT) {
-      ev.rays.push({ x: Math.round((x + dx * endT) * 10) / 10, y: Math.round((y + dy * endT) * 10) / 10, hit });
+      ev.rays.push({ x: Math.round((x + dx * endT) * 10) / 10, y: Math.round((y + dy * endT) * 10) / 10, hit, z: Math.round(gunZ * 10) / 10, zone: 0, pen: 0 });
     }
   }
+}
+
+// ---- first-person hitscan (SPEC §3.4 "Gunplay") ------------------------------------------
+
+/** Lag compensation: how far a zombie can move in MAX_UNLAG (pads the ray's zombie query). */
+const LAG_PAD = 90;
+/** A headshot kill whose bullet carried at least this much damage bursts the head. */
+const POP_DAMAGE = 60;
+const POPPABLE = new Set(['walker', 'runner', 'crawler', 'spitter', 'screamer']);
+const UNLAG_TICKS = Math.round(MAX_UNLAG / DT);
+const hitZn = new Uint8Array(1024);
+const trace3 = createTrace();
+const _aim = { py: 0, pp: 0, inacc: 0, spread: 0 };
+const _cone = [0, 0], _pel = [0, 0];
+const _rz = { s: -1, zone: 0 };
+const _pose = { x: 0, y: 0, z: 0, a: 0 };
+
+/**
+ * Record every live zombie's pose at the end of the tick that just finished (call at the
+ * start of a tick): clients' shots are judged against these (lag compensation).
+ */
+export function recordLagHistory(game) {
+  const t = game.tick - 1;
+  const i = ((t % LAG_HISTORY) + LAG_HISTORY) % LAG_HISTORY;
+  const zs = game.zombies;
+  for (let k = 0; k < zs.length; k++) {
+    const z = zs[k];
+    if (z.dead) continue;
+    let h = z.lagH;
+    if (!h) {
+      h = z.lagH = new Float64Array(LAG_HISTORY * 5);
+      for (let j = 0; j < LAG_HISTORY; j++) h[j * 5] = -1;
+    }
+    const o = i * 5;
+    h[o] = t; h[o + 1] = z.x; h[o + 2] = z.y; h[o + 3] = z.z; h[o + 4] = z.angle;
+  }
+}
+
+/** A zombie's recorded pose at `tick` into _pose; false when there is none (it came later). */
+function lagPose(z, tick) {
+  const h = z.lagH;
+  if (!h) return false;
+  const o = (((tick % LAG_HISTORY) + LAG_HISTORY) % LAG_HISTORY) * 5;
+  if (h[o] !== tick) return false;
+  _pose.x = h[o + 1]; _pose.y = h[o + 2]; _pose.z = h[o + 3]; _pose.a = h[o + 4];
+  return true;
+}
+
+/** The pose flags the hit volumes read (hitbox.js variantOf): lunging, charging, elite. */
+function poseFlags(z) {
+  return (z.swingT > 0 || z.flashT > 0 ? 2 : 0) | (z.mode === 1 || z.mode === 2 ? 4 : 0) | (z.elite ? 16 : 0);
+}
+
+/**
+ * How many ticks back player p saw the zombies when it pulled the trigger (its cmd's view
+ * tick; 0 for the host's own player and the bots), capped at MAX_UNLAG.
+ */
+function unlagTicks(game, p) {
+  const vt = p.cmd.vt;
+  if (!(vt >= 0)) return 0;
+  const now = (game.tick - 1) & 0xffff;
+  let back = (now - vt + 0x10000) & 0xffff;
+  if (back > 0x8000) back = 0;
+  return Math.min(back, UNLAG_TICKS);
+}
+
+/**
+ * One first-person shot of player p (hitscan or rail): from its eye along its yaw and pitch,
+ * plus the recoil offset and a random point in its inaccuracy cone (shared by the pellets,
+ * each with its own spread on top), through the world (ballistics.js: heights, the ground,
+ * penetration) and the zombies' hit volumes (hitbox.js; judged where the shooter saw them).
+ */
+function fireHitscan3D(game, p, id, w) {
+  const h = handlingOf(id);
+  const rng = game.rng;
+  const yaw = p.angle, pitch = p.cmd.pitch;
+  const eye = p.z + eyeHeight(p);
+  aimNow(p, id, w, _aim);
+  const aw = activeWeapon(p).slot;
+  const sec = h.secondary;
+  const sil = aw >= 0 && sec && sec.type === 'silencer' && (p.modes[aw] & MODE_SIL) !== 0;
+  const fl = SHOT_3D | (sil ? SHOT_SIL : 0) | (p.scope > 0 ? SHOT_SCOPE : 0);
+  const ca = Math.cos(yaw), sa = Math.sin(yaw);
+  const ev = game.shotEvent(p.id, p.id, 0, id, p.x + ca * MUZZLE, p.y + sa * MUZZLE, yaw, Math.max(0, eye - 9), pitch, fl);
+  discOffset(_aim.inacc, rng.next(), rng.next(), _cone);
+  const cp = Math.cos(pitch), spt = Math.sin(pitch);
+  const pellets = w.pellets || 1;
+  const dmgMult = (p.perks.damageMult || 1) * (sil ? sec.damage : 1);
+  const back = unlagTicks(game, p);
+  for (let k = 0; k < pellets; k++) {
+    let ox = _aim.py + _cone[0], oy = _aim.pp + _cone[1];
+    if (_aim.spread > 0) {
+      discOffset(_aim.spread, rng.next(), rng.next(), _pel);
+      ox += _pel[0];
+      oy += _pel[1];
+    }
+    // view basis: forward f, right r = (-sin yaw, cos yaw, 0), up u; direction f + r tan(ox) + u tan(oy)
+    const tx = Math.tan(ox), ty = Math.tan(oy);
+    const vx = cp * ca - sa * tx - spt * ca * ty;
+    const vy = cp * sa + ca * tx - spt * sa * ty;
+    const vz = spt + cp * ty;
+    const hl = Math.hypot(vx, vy);
+    const dx = hl > 1e-9 ? vx / hl : ca, dy = hl > 1e-9 ? vy / hl : sa;
+    const kk = hl > 1e-9 ? vz / hl : (vz >= 0 ? 1e6 : -1e6);
+    shoot3D(game, p, w, h, ev, eye, dx, dy, kk, dmgMult, back);
+  }
+}
+
+function shoot3D(game, p, w, h, ev, z0, dx, dy, k, dmgMult, back) {
+  const x = p.x, y = p.y;
+  const tr = traceShot(game.world, x, y, z0, dx, dy, k, w.range, h.pen, trace3);
+  const stopT = tr.stop;
+  const pierce = Math.min(w.pierce || 1, hitT.length);
+  const cand = game.tmpA;
+  const n = game.zgrid.queryRay(x, y, dx, dy, stopT, MAX_ZOMBIE_RADIUS + (back > 0 ? LAG_PAD : 0), cand);
+  const tick = game.tick - 1 - back;
+  let nh = 0;
+  for (let i = 0; i < n; i++) {
+    const z = cand[i];
+    if (z.dead) continue;
+    let zx = z.x, zy = z.y, zz = z.z, za = z.angle;
+    if (back > 0) {
+      // where the shooter saw it (it wasn't there yet: it can't have been hit)
+      if (!lagPose(z, tick)) continue;
+      zx = _pose.x; zy = _pose.y; zz = _pose.z; za = _pose.a;
+    }
+    const r = rayZombie(z.type, z.id, poseFlags(z), zx, zy, zz, za, x, y, z0, dx, dy, k, stopT, _rz);
+    if (r.s < 0) continue;
+    nh = insertHitZ(nh, pierce, r.s, z, r.zone);
+  }
+  if (game.settings.friendlyFire) {
+    for (const q of game.players) {
+      if (q === p || q.state !== 'alive') continue;
+      const t = rayCircle(x, y, dx, dy, q.x, q.y, PLAYER_RADIUS * 0.75, stopT);
+      if (t < 0) continue;
+      const hz = z0 + k * t - (q.z || 0);
+      if (hz < 0 || hz > 58) continue;
+      nh = insertHitZ(nh, pierce, t, q, ZONE.CHEST);
+    }
+  }
+  const gib = !!w.gib || w.kind === 'rail';
+  let zone0 = 0;
+  for (let i = 0; i < nh; i++) {
+    const o = hitO[i], s = hitT[i], zone = hitZn[i];
+    if (i === 0) zone0 = zone;
+    const base = w.damage * falloffMult(s, w) * dmgMult * multAt(tr, s);
+    if (o.def) {
+      const dmg = base * zoneMult(h, zone, TYPE_ZONES[o.type]);
+      knockZombie(o, dx, dy, w.knockback);
+      if (zone === ZONE.LEGS && !o.boss) {
+        o.tagT = TAG_TIME;
+        o.tagK = o.heavy ? TAG_SLOW / 3 : TAG_SLOW;
+      }
+      const kf = (zone === ZONE.HEAD ? KILL_HEAD : 0) | (wallsBefore3(tr, s) > 0 ? KILL_WALL : 0)
+        | (zone === ZONE.HEAD && base >= POP_DAMAGE && POPPABLE.has(o.type) ? KILL_POP : 0);
+      damageZombie(game, o, dmg, p.id, gib, kf);
+    } else {
+      damagePlayer(game, o, base * FF_MULT, x, y, true);
+    }
+    hitO[i] = null;
+  }
+  // the ray ends at its last victim once the pierce budget is spent, else where the world
+  // stopped it (a wall, a roof, the ground) or at its range (SPEC §4.1)
+  let endT = w.range, hit = nh > 0 ? 1 : 0;
+  if (nh >= pierce) endT = hitT[nh - 1];
+  else if (tr.hit) {
+    endT = stopT;
+    if (!hit) hit = 2;
+  }
+  if (ev.rays.length < MAX_RAYS_PER_EVENT) {
+    const ex = x + dx * endT, ey = y + dy * endT;
+    ev.rays.push({
+      x: Math.round(ex * 10) / 10, y: Math.round(ey * 10) / 10, hit,
+      z: Math.round((z0 + k * endT) * 10) / 10, zone: zone0, pen: Math.min(7, wallsBefore3(tr, endT + 1e-6)),
+    });
+  }
+}
+
+/** insertHit with the hit zone carried along. */
+function insertHitZ(n, cap, t, o, zone) {
+  if (n >= cap && t >= hitT[n - 1]) return n;
+  let i = n < cap ? n : n - 1;
+  while (i > 0 && hitT[i - 1] > t) {
+    hitT[i] = hitT[i - 1];
+    hitO[i] = hitO[i - 1];
+    hitZn[i] = hitZn[i - 1];
+    i--;
+  }
+  hitT[i] = t;
+  hitO[i] = o;
+  hitZn[i] = zone;
+  return n < cap ? n + 1 : n;
 }
 
 /** Insert (t, o) into the sorted scratch hit list, keeping at most `cap` nearest. */

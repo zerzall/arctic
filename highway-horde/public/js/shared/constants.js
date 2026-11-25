@@ -4,8 +4,11 @@
 export const GAME_VERSION = '1.0.0';
 // Bumped whenever the wire format changes; host and clients must match.
 // (13: the open maps' walk-in buildings changed their layouts, shared/maps-walkin.js: a peer
-// building the old maps from the same (id, seed) would collide with walls the host doesn't have)
-export const PROTOCOL_VERSION = 13;
+// building the old maps from the same (id, seed) would collide with walls the host doesn't have;
+// 14: first-person gunplay — InputCmds carry the aim pitch, crouch / walk / secondary-fire bits and
+// the client's view tick, players their velocity, crouch, scope and weapon modes, shots and kills
+// their heights, hit zones and wallbangs)
+export const PROTOCOL_VERSION = 14;
 
 // ---- Simulation clock -------------------------------------------------------
 export const TICK_RATE = 60;               // simulation ticks per second
@@ -40,6 +43,27 @@ export const ARMOR_MAX = 100;
 export const ARMOR_ABSORB = 0.6;           // share of incoming damage that armour soaks up
 export const WEAPON_SLOTS = 3;
 export const START_CASH = 500;
+// Ground movement (Counter-Strike-like, shared/movement.js): the speed eases toward the wanted
+// one at GROUND_ACCEL × that speed per second and friction takes GROUND_FRICTION × max(speed,
+// STOP_SPEED) per second off it, so a stop takes ~0.35 s and tapping the opposite key
+// (counter-strafing) ~0.07 s. In the air there is no friction and AIR_ACCEL steers.
+export const GROUND_ACCEL = 6.5;
+export const GROUND_FRICTION = 6;
+export const STOP_SPEED = 60;
+export const AIR_ACCEL = 4;
+// Walking (quiet, accurate) and crouching (slower, more accurate) speed multipliers; a crouch
+// takes DUCK_TICKS to go down or come up.
+export const WALK_MULT = 0.52;
+export const CROUCH_MULT = 0.36;
+export const DUCK_TICKS = 8;
+// Eye heights above the feet (first person: the camera, and where bullets start).
+export const EYE_HEIGHT = 52;
+export const CROUCH_EYE = 36;
+export const DOWNED_EYE = 16;
+// Lag compensation: a client's hitscan shots are judged against the zombies where that client
+// saw them (its view tick), at most MAX_UNLAG s back; the host keeps LAG_HISTORY ticks of them.
+export const MAX_UNLAG = 0.3;
+export const LAG_HISTORY = 32;
 
 // Jumping (shared/jump.js): a fixed parabola, JUMP_HEIGHT world units high at its apex and
 // JUMP_TIME seconds long (a whole number of ticks), then JUMP_COOLDOWN s on the ground

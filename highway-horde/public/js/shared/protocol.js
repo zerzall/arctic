@@ -297,13 +297,20 @@ const ENUMS = {
   radioKind: ['radio', 'say'],
   npcWhat: ['down', 'up', 'dead', 'arrive'],
   surge: ['next', 'go'],
+  alt: ['zoom', 'unzoom', 'burst', 'auto', 'silencer_on', 'silencer_off'],
 };
 
 const EVENT_SCHEMAS = [
-  ['shot', [['pid', 'pid'], ['turret', 'id'], ['weapon', 'wpn'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang'], ['rays', 'rays']]],
+  // (protocol 14: the muzzle height, the aim pitch and the flags: silenced 1, aimed in 3D 2, scoped 4)
+  ['shot', [['pid', 'pid'], ['turret', 'id'], ['weapon', 'wpn'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang'], ['rays', 'rays'],
+    ['z', 'amt'], ['pitch', 'ang'], ['fl', 'pid']]],
   ['chain', [['pid', 'pid'], ['points', 'points']]],
   ['melee', [['pid', 'pid'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang'], ['hits', 'u16']]],
-  ['zdie', [['id', 'id'], ['ztype', 'ztype'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang'], ['by', 'pid'], ['gib', 'bool']]],
+  // (14: a headshot, through a wall, the head burst)
+  ['zdie', [['id', 'id'], ['ztype', 'ztype'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang'], ['by', 'pid'], ['gib', 'bool'],
+    ['hs', 'bool'], ['wb', 'bool'], ['pop', 'bool']]],
+  // secondary fire (14): zoom level n / burst or automatic / the silencer on or off
+  ['alt', [['pid', 'pid'], ['what', ENUMS.alt], ['n', 'u16']]],
   ['zattack', [['id', 'id'], ['ztype', 'ztype'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang']]],
   ['spit', [['id', 'id'], ['x', 'pos'], ['y', 'pos'], ['angle', 'ang']]],
   ['scream', [['id', 'id'], ['x', 'pos'], ['y', 'pos']]],
@@ -395,7 +402,12 @@ function fits(codec, v) {
     case 'txt': return typeof v === 'string' && v.length <= 240;
     case 'rays':
       if (!Array.isArray(v) || v.length > 255) return false;
-      for (const r of v) if (!isPoint(r) || !isInt(r.hit, 255)) return false;
+      for (const r of v) {
+        if (!isPoint(r) || !isInt(r.hit, 3)) return false;
+        if (r.zone !== undefined && !isInt(r.zone, 7)) return false;
+        if (r.pen !== undefined && !isInt(r.pen, 7)) return false;
+        if (r.z !== undefined && !isNum(r.z)) return false;
+      }
       return true;
     case 'points':
       if (!Array.isArray(v) || v.length > 255) return false;
@@ -435,11 +447,13 @@ function writeField(w, codec, v) {
       break;
     }
     case 'rays':
+      // end point (x, y and its height z at 0.5 units), then hit | zone << 2 | walls passed << 5
       w.u8(v.length);
       for (const r of v) {
         w.i16(qEventPos(r.x));
         w.i16(qEventPos(r.y));
-        w.u8(r.hit);
+        w.i16(qEventPos(r.z));
+        w.u8(r.hit | ((r.zone | 0) << 2) | ((r.pen | 0) << 5));
       }
       break;
     case 'points':
@@ -471,7 +485,10 @@ function readField(r, codec) {
     case 'rays': {
       const n = r.u8();
       const out = new Array(n);
-      for (let i = 0; i < n; i++) out[i] = { x: r.i16() / 2, y: r.i16() / 2, hit: r.u8() };
+      for (let i = 0; i < n; i++) {
+        const x = r.i16() / 2, y = r.i16() / 2, z = r.i16() / 2, b = r.u8();
+        out[i] = { x, y, hit: b & 3, z, zone: (b >> 2) & 7, pen: b >> 5 };
+      }
       return out;
     }
     case 'points': {
@@ -623,6 +640,19 @@ function writePlayer(w, p) {
   if (climbT) w.u16(qInt(p.climbTo, 65535));
   // Campaign: zip-line ride progress (0 = not riding); `esc` travels in the flags byte.
   w.u8(qUnitNz(p.ride));
+  // First-person gunplay (14): the walking velocity (exact, for prediction), the crouch, the
+  // scope level, the aim pitch and every slot's weapon modes (burst / silencer bits)
+  w.f32(num(p.mvx));
+  w.f32(num(p.mvy));
+  w.u8(qInt(p.duckT, 255));
+  w.u8(qInt(p.scope, 255));
+  w.i16(qPitch(p.pitch));
+  const modes = arr(p.modes);
+  for (let i = 0; i < ns; i++) w.u8(qInt(modes[i], 255));
+}
+
+function qPitch(v) {
+  return qSmall(num(v) * 10000, -32767, 32767);
 }
 
 function readPlayer(r) {
@@ -684,6 +714,13 @@ function readPlayer(r) {
   rec.z = rec.zq * Z_UNIT;
   rec.ride = r.u8() / 255;
   rec.esc = (flags & P_ESCAPED) !== 0;
+  rec.mvx = r.f32();
+  rec.mvy = r.f32();
+  rec.duckT = r.u8();
+  rec.scope = r.u8();
+  rec.pitch = r.i16() / 10000;
+  rec.modes = new Array(ns);
+  for (let i = 0; i < ns; i++) rec.modes[i] = r.u8();
   return rec;
 }
 
@@ -1293,7 +1330,10 @@ export function decodeSnapshot(buf) {
 // ---- inputs
 
 const B_FIRE = 1, B_MELEE = 2, B_SPRINT = 4, B_INTERACT = 8, B_RELOAD = 16, B_FRAG = 32,
-  B_MOLOTOV = 64, B_TURRET = 128, B_BARRICADE = 256, B_LAST_WEAPON = 512, B_JUMP = 1024;
+  B_MOLOTOV = 64, B_TURRET = 128, B_BARRICADE = 256, B_LAST_WEAPON = 512, B_JUMP = 1024,
+  B_CROUCH = 2048, B_WALK = 4096, B_ALT = 8192, B_AIM3D = 16384;
+/** A cmd without a view tick (bots, old senders): never compensated. */
+const NO_VT = 0xffff;
 
 const inputWriter = new Writer(256);
 
@@ -1329,9 +1369,13 @@ export function encodeInputs(cmds) {
     w.u16((c.fire ? B_FIRE : 0) | (c.melee ? B_MELEE : 0) | (c.sprint ? B_SPRINT : 0)
       | (c.interact ? B_INTERACT : 0) | (c.reload ? B_RELOAD : 0) | (c.frag ? B_FRAG : 0)
       | (c.molotov ? B_MOLOTOV : 0) | (c.turret ? B_TURRET : 0) | (c.barricade ? B_BARRICADE : 0)
-      | (c.lastWeapon ? B_LAST_WEAPON : 0) | (c.jump ? B_JUMP : 0));
+      | (c.lastWeapon ? B_LAST_WEAPON : 0) | (c.jump ? B_JUMP : 0)
+      | (c.crouch ? B_CROUCH : 0) | (c.walk ? B_WALK : 0) | (c.alt ? B_ALT : 0) | (c.aim3d ? B_AIM3D : 0));
     w.i8(qSmall(c.slot ?? -1, -1, 127));
     w.i8(qSmall(c.cycle, -1, 1));
+    // first person (14): the aim pitch (1e-4 rad) and the tick the player was looking at
+    w.i16(qPitch(c.pitch));
+    w.u16(Number.isInteger(c.vt) && c.vt >= 0 ? Math.min(NO_VT - 1, c.vt & 0xffff) : NO_VT);
   }
   return w.finish();
 }
@@ -1369,7 +1413,15 @@ export function decodeInputs(buf) {
       slot: r.i8(),
       cycle: r.i8(),
       jump: (b & B_JUMP) !== 0,
+      crouch: (b & B_CROUCH) !== 0,
+      walk: (b & B_WALK) !== 0,
+      alt: (b & B_ALT) !== 0,
+      aim3d: (b & B_AIM3D) !== 0,
+      pitch: r.i16() / 10000,
+      vt: -1,
     };
+    const vt = r.u16();
+    out[i].vt = vt === NO_VT ? -1 : vt;
   }
   return out;
 }
@@ -1384,6 +1436,7 @@ export function quantizeInput(cmd) {
   cmd.moveX = qMove(cmd.moveX) / 127;
   cmd.moveY = qMove(cmd.moveY) / 127;
   cmd.angle = dqAngle16(qAngle16(cmd.angle));
+  cmd.pitch = qPitch(cmd.pitch) / 10000;
   return cmd;
 }
 

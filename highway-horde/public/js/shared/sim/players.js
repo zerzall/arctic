@@ -7,14 +7,18 @@ import {
   INTERACT_RADIUS, PICKUP_RADIUS, PICKUP_LIFETIME, SUPPLY_RADIUS, MELEE_RANGE, MELEE_ARC,
   MELEE_DAMAGE, MELEE_KNOCKBACK, MELEE_COOLDOWN, FRAG_MAX, MOLOTOV_MAX, THROW_COOLDOWN,
   TURRET, BARRICADE, DOWNED_HIT_BLEED, DOWNED_HIT_BLEED_RATE, DOWNED_HIT_BLEED_BANK, WAVE_CLEAR_BONUS,
+  PLAYER_SPEED, DUCK_TICKS,
 } from '../constants.js';
 import { WEAPONS, crateWeaponPool } from '../weapons.js';
 import { CLASSES, perksFor } from '../classes.js';
 import { ITEMS, isBuyable, isWeaponId, isItemId, ammoPrice, DROP_TABLE } from '../items.js';
 import { angleDiff } from '../math.js';
 import { makeObb, circleOverlapsObb, MASK_MOVE } from '../geom.js';
-import { stepPlayerMovement, settleVertical } from '../movement.js';
+import { stepPlayerMovement, settleVertical, groundSpeed } from '../movement.js';
 import { resetVertical } from '../jump.js';
+import {
+  handlingOf, createAim, resetAim, aimTick, aimKick, inaccuracyOf, fireSpec, MODE_BURST, MODE_SIL,
+} from '../handling.js';
 import { RIDE_TICKS } from '../campaign.js';
 import { levelSupplies } from '../level.js';
 import { HORDE, shopWaveOf } from '../horde.js';
@@ -34,18 +38,39 @@ export const MAX_QUEUE = 6;
 const DRAIN_WINDOW = 20;
 const DRAIN_MIN = 2;
 const MELEE_ANIM = 0.25;
-/** Weapon switch: no shot for this long (clients mirror it for shot prediction). */
+/** Weapon switch: no shot for at least this long (the gun's deploy time is usually longer). */
 export const SWITCH_DELAY = 0.15;
 const MAX_PICKUPS = 80;
 const PLAYER_KB_DECAY = 7;
 // Float residue (1/30 - 2/60 is not exactly 0) must not cost a whole tick per shot.
 export const COOLDOWN_EPS = 1e-6;
+/** A bolt-action rifle (slower than this many shots a second) drops out of its scope after a shot. */
+const BOLT_RATE = 1.5;
 
 const DEFAULT_CMD = {
   seq: 0, moveX: 0, moveY: 0, angle: 0, fire: false, melee: false, sprint: false, interact: false,
   reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
-  slot: -1, cycle: 0, jump: false,
+  slot: -1, cycle: 0, jump: false, pitch: 0, crouch: false, walk: false, alt: false, aim3d: false, vt: -1,
 };
+
+/**
+ * Seconds from drawing gun `id` to its first shot (SPEC §3.4: the handling's deploy time,
+ * never less than SWITCH_DELAY). Clients mirror it for their shot prediction.
+ */
+export function deployTime(id) {
+  return id ? Math.max(SWITCH_DELAY, handlingOf(id).deploy) : SWITCH_DELAY;
+}
+
+/**
+ * Running speed multiplier of the gun in hand: the handling's speed, slower while scoped.
+ * Shared with the clients' movement prediction.
+ */
+export function gunSpeedMult(id, scope) {
+  if (!id) return 1;
+  const h = handlingOf(id);
+  const sec = h.secondary;
+  return h.speed * (scope > 0 && sec && sec.type === 'scope' ? sec.speed : 1);
+}
 
 /** Build a fresh player record for { id, name, color, cls }. */
 export function createPlayer(game, info) {
@@ -70,6 +95,9 @@ export function createPlayer(game, info) {
     reloadT: 0, reloadTotal: 0, reloadSlot: -1,
     cooldown: 0, spin: 0, lastFireTick: -1000, meleeT: 0, meleeCd: 0, throwCd: 0, burstLeft: 0, prevFire: false,
     emptyLatch: false, freeMag: WEAPONS.pistol.mag, prevSlot: 1,
+    // first-person gunplay (SPEC §3.4): walking velocity and crouch (movement.js), recoil and
+    // inaccuracy (handling.js), scope level and the bolt's re-zoom, burst / silencer per slot
+    mvx: 0, mvy: 0, duckT: 0, aim: createAim(), scope: 0, scopeT: 0, scopeBack: 0, modes: [0, 0, 0],
     // (Horde Elimination: a real buy time at the start, sim/horde.js)
     cash: game.horde ? HORDE.startCash : START_CASH, kills: 0, damage: 0, revives: 0, downs: 0, earned: 0,
     frags: perks.startFrags, molotovs: perks.startMolotovs,
@@ -99,6 +127,7 @@ function giveStarterKit(p) {
 /** Put weapon `id` (or nothing) in slot i with a full magazine and reserve. */
 export function setSlot(p, i, id) {
   p.slots[i] = id;
+  if (p.modes) p.modes[i] = 0;
   if (id) {
     const w = weaponOf(p, id);
     p.mag[i] = w.mag;
@@ -217,12 +246,16 @@ export function updatePlayers(game) {
       continue;
     }
     p.angle = cmd.angle;
+    p.pitch = cmd.pitch;
     const alive = p.state === 'alive' && !p.escaped;
     if (alive) handleSwitch(game, p, cmd);
     const aw = activeWeapon(p);
-    p.moveMult = alive && aw.id ? WEAPONS[aw.id].moveMult : 1;
+    if (alive && cmd.alt && !game.over) secondaryFire(game, p, aw);
+    if (p.scope > 0 && (!alive || !aw.id || !handlingOf(aw.id).secondary || handlingOf(aw.id).secondary.type !== 'scope')) p.scope = 0;
+    p.moveMult = alive && aw.id ? gunSpeedMult(aw.id, p.scope) : 1;
     const ox = p.x, oy = p.y;
-    stepPlayerMovement(p, cmd, DT, game.world);
+    const mv = stepPlayerMovement(p, cmd, DT, game.world);
+    if (mv === -1) p.aim.landT = 0;
     // Knockback impulses (brute charge, boss slam) are applied after normal movement.
     if (p.kbx !== 0 || p.kby !== 0) {
       game.world.moveCircle(p, PLAYER_RADIUS, p.kbx * DT, p.kby * DT, MASK_MOVE, p.z);
@@ -288,8 +321,44 @@ function switchSlot(game, p, s) {
   p.reloadSlot = -1;
   p.spin = 0;
   p.burstLeft = 0;
-  if (p.cooldown < SWITCH_DELAY) p.cooldown = SWITCH_DELAY;
+  drawWeapon(p, p.slots[s]);
   game.emit({ type: 'switch', pid: p.id, weapon: p.slots[s] });
+}
+
+/** A gun comes out: no shot before its deploy time, no scope, its recoil starts fresh. */
+function drawWeapon(p, id) {
+  const d = deployTime(id);
+  if (p.cooldown < d) p.cooldown = d;
+  p.scope = 0;
+  p.scopeBack = 0;
+  resetAim(p.aim);
+}
+
+/**
+ * Right mouse on a gun with a secondary (SPEC §3.4): cycle the scope's zoom levels, toggle
+ * burst / automatic, or screw the silencer on or off (no shots while it turns).
+ */
+function secondaryFire(game, p, aw) {
+  if (!aw.id || aw.slot < 0) return;
+  const sec = handlingOf(aw.id).secondary;
+  if (!sec) return;
+  if (sec.type === 'scope') {
+    if (p.reloadT > 0) return;
+    p.scope = (p.scope + 1) % (sec.levels.length + 1);
+    p.scopeT = 0;
+    p.scopeBack = 0;
+    game.emit({ type: 'alt', pid: p.id, what: p.scope ? 'zoom' : 'unzoom', n: p.scope });
+  } else if (sec.type === 'burst') {
+    p.modes[aw.slot] ^= MODE_BURST;
+    p.burstLeft = 0;
+    game.emit({ type: 'alt', pid: p.id, what: p.modes[aw.slot] & MODE_BURST ? 'burst' : 'auto', n: 0 });
+  } else if (sec.type === 'silencer') {
+    if (p.reloadT > 0 || p.cooldown > sec.time * 0.5) return;
+    p.modes[aw.slot] ^= MODE_SIL;
+    if (p.cooldown < sec.time) p.cooldown = sec.time;
+    p.burstLeft = 0;
+    game.emit({ type: 'alt', pid: p.id, what: p.modes[aw.slot] & MODE_SIL ? 'silencer_on' : 'silencer_off', n: 0 });
+  }
 }
 
 /** Begin reloading the active weapon if it can take ammo. */
@@ -306,6 +375,8 @@ function startReload(game, p) {
   p.reloadT = p.reloadTotal;
   p.reloadSlot = aw.slot;
   p.burstLeft = 0;
+  p.scope = 0;
+  p.scopeBack = 0;
   game.emit({ type: 'reload', pid: p.id, weapon: aw.id, time: p.reloadTotal });
   return true;
 }
@@ -328,6 +399,28 @@ function finishReload(game, p, aw) {
   if (w.reloadOne && aw.slot >= 0) startReload(game, p);
 }
 
+const _spec = { rate: 0, burst: 0, burstDelay: 0 };
+
+/**
+ * The shot state of player p right now (SPEC §3.4): for handling.js inaccuracyOf and the
+ * crosshair. Shared shape with the clients' prediction (net/client-session.js).
+ */
+export function shotState(p, id, out) {
+  const h = handlingOf(id);
+  out.speed = groundSpeed(p);
+  out.maxSpeed = PLAYER_SPEED * (p.speedMult || 1) * gunSpeedMult(id, 0);
+  out.air = p.vzq !== 0 || p.climbT > 0;
+  out.landT = p.aim.landT;
+  out.duck = p.duckT / DUCK_TICKS;
+  const sec = h.secondary;
+  out.scope = p.scope;
+  out.scopeK = p.scope > 0 && sec && sec.type === 'scope' ? Math.min(1, (p.scopeT * DT) / Math.max(0.01, sec.settle)) : 0;
+  out.sprint = !!p.sprinting;
+  out.added = p.aim.inacc;
+  out.accK = 1;
+  return out;
+}
+
 function handleFire(game, p, cmd, aw) {
   if (!aw.id) {
     p.spin = 0;
@@ -336,6 +429,16 @@ function handleFire(game, p, cmd, aw) {
     return;
   }
   const w = weaponOf(p, aw.id);
+  const h = handlingOf(aw.id);
+  const spec = fireSpec(w, h, aw.slot >= 0 ? p.modes[aw.slot] : 0, _spec);
+  // recoil and inaccuracy recover a tick; a bolt-action scope comes back once the bolt is worked
+  aimTick(p.aim, h, spec.rate, DT, p.duckT / DUCK_TICKS);
+  if (p.scope > 0 && p.scopeT < 9999) p.scopeT++;
+  if (p.scopeBack > 0 && p.cooldown <= COOLDOWN_EPS && p.reloadT <= 0) {
+    p.scope = p.scopeBack;
+    p.scopeBack = 0;
+    p.scopeT = 0;
+  }
   if (p.reloadT > 0) {
     if (p.reloadSlot !== aw.slot) {
       p.reloadT = 0;
@@ -349,7 +452,7 @@ function handleFire(game, p, cmd, aw) {
   const trigger = cmd.fire && !game.over;
   const pulled = trigger && !p.prevFire;
   p.prevFire = trigger;
-  if (!w.burst || game.over) p.burstLeft = 0;
+  if (!spec.burst || game.over) p.burstLeft = 0;
   // A burst, once started, finishes without the trigger.
   const fire = trigger || p.burstLeft > 0;
   if (w.spinup) {
@@ -391,23 +494,53 @@ function handleFire(game, p, cmd, aw) {
   }
   let shots = 0;
   while (p.cooldown <= COOLDOWN_EPS && mag > 0 && shots < 4) {
-    if (w.burst) {
+    if (spec.burst) {
       // a new burst only on the trigger; `burstDelay` after its last round
       if (p.burstLeft <= 0) {
         if (!trigger) break;
-        p.burstLeft = w.burst;
+        p.burstLeft = spec.burst;
       }
       p.burstLeft--;
     }
     fireWeaponShot(game, p, aw.id, w);
     mag--;
-    p.cooldown += w.burst && p.burstLeft === 0 ? w.burstDelay : 1 / w.rate;
+    p.cooldown += spec.burst && p.burstLeft === 0 ? spec.burstDelay : 1 / spec.rate;
     shots++;
   }
   if (mag <= 0) p.burstLeft = 0;
   if (aw.slot < 0) p.freeMag = mag;
   else p.mag[aw.slot] = mag;
-  if (shots) p.lastFireTick = game.tick;
+  if (shots) {
+    p.lastFireTick = game.tick;
+    // a bolt-action drops out of the scope to work the bolt, and goes back in after
+    const sec = h.secondary;
+    if (p.scope > 0 && sec && sec.type === 'scope' && spec.rate < BOLT_RATE) {
+      p.scopeBack = p.scope;
+      p.scope = 0;
+    }
+  }
+}
+
+/**
+ * Where player p's next bullet goes relative to its view, and how wide its cone is
+ * (SPEC §3.4): out.py / out.pp the recoil offset (yaw, pitch, rad), out.inacc the inaccuracy
+ * radius. For the shot (sim/combat.js) and the crosshair.
+ */
+const _st = {};
+export function aimNow(p, id, w, out) {
+  const h = handlingOf(id);
+  shotState(p, id, _st);
+  if (w && WEAPONS[id] && WEAPONS[id].spread > 0 && w.spread !== WEAPONS[id].spread) _st.accK = w.spread / WEAPONS[id].spread;
+  out.py = p.aim.py;
+  out.pp = p.aim.pp;
+  out.inacc = inaccuracyOf(h, _st);
+  out.spread = h.spread * (_st.accK || 1);
+  return out;
+}
+
+/** After a shot: the recoil steps along the pattern, the cone grows (a crouched shooter kicks less). */
+export function kickAfterShot(p, id) {
+  aimKick(p.aim, handlingOf(id), p.duckT > 0 ? 0.85 : 1);
 }
 
 function doMelee(game, p) {
@@ -546,6 +679,8 @@ export function downPlayer(game, p) {
   p.spin = 0;
   p.burstLeft = 0;
   p.sprinting = false;
+  p.scope = 0;
+  p.scopeBack = 0;
   p.prevSlot = p.slot;
   if (p.slots[0] && WEAPONS[p.slots[0]].category === 'pistol') p.slot = 0;
   game.emit({ type: 'down', pid: p.id });
@@ -603,6 +738,12 @@ export function respawnPlayer(game, p, i) {
   p.reviver = 0;
   p.kbx = 0;
   p.kby = 0;
+  p.mvx = 0;
+  p.mvy = 0;
+  p.duckT = 0;
+  p.scope = 0;
+  p.scopeBack = 0;
+  resetAim(p.aim);
   p.reloadT = 0;
   p.reloadSlot = -1;
   p.freeMag = WEAPONS.pistol.mag;
@@ -871,6 +1012,7 @@ export function giveWeapon(game, p, id) {
   let s = p.slots.indexOf(null);
   if (s < 0) s = p.slot;
   setSlot(p, s, id);
+  p.modes[s] = 0;
   if (s !== p.slot) {
     p.lastSlot = p.slot;
     p.slot = s;
@@ -879,6 +1021,10 @@ export function giveWeapon(game, p, id) {
   p.reloadSlot = -1;
   p.spin = 0;
   p.burstLeft = 0;
+  // (bought or taken from a crate it is ready at once; drawing from another slot takes the deploy time)
+  p.scope = 0;
+  p.scopeBack = 0;
+  resetAim(p.aim);
   game.emit({ type: 'switch', pid: p.id, weapon: id });
   return s;
 }
@@ -1111,5 +1257,20 @@ export function playerSnapshot(game, p) {
     // campaign: how far along its zip-line ride (0 = not riding, else 0..1) and escaped down the line
     ride: p.riding > 0 ? Math.max(1 / 255, 1 - p.riding / RIDE_TICKS) : 0,
     esc: !!p.escaped,
+    // first-person gunplay (SPEC §4): walking velocity and crouch (prediction), scope level,
+    // burst / silencer per slot, the aim pitch (teammates' guns point where they look)
+    mvx: p.mvx, mvy: p.mvy, duckT: p.duckT, scope: p.scope, modes: p.modes.slice(), pitch: p.pitch || 0,
+    // (host only, not on the wire: the recoil offset and the cone for the host's own camera and
+    // crosshair; a client predicts its own)
+    ...aimView(p),
   };
+}
+
+const _aimV = { py: 0, pp: 0, inacc: 0, spread: 0 };
+/** The recoil and inaccuracy of p's gun right now, for the local camera and crosshair. */
+function aimView(p) {
+  const aw = activeWeapon(p);
+  if (!aw.id || p.state === 'dead') return { punchY: 0, punchP: 0, inacc: 0, spray: 0 };
+  aimNow(p, aw.id, weaponOf(p, aw.id), _aimV);
+  return { punchY: _aimV.py, punchP: _aimV.pp, inacc: _aimV.inacc, spray: p.aim.spray };
 }
