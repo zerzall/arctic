@@ -3,7 +3,7 @@
 How the game is tuned, the numbers it is tuned to, and why each number changed. The
 figures come from `scripts/balance.js`, a headless harness that plays whole games with AI
 survivors. Re-run it after touching any number in `constants.js`, `weapons.js`, `zombies.js`,
-`classes.js` or `items.js`.
+`classes.js`, `items.js` or `handling.js` (the guns' recoil, inaccuracy and penetration).
 
 ## The harness
 
@@ -467,7 +467,101 @@ the hardest case (one gun, no reviver); a human playing alone usually brings bot
 * **Levers**: `HORDE.total` (size), `cap` (pressure at once), `tier` (how tough the last surges
   play), `gap` (breathers and lulls: the round's length), `surgeBonus` and `startCash` (economy).
 
+## First-person gunplay (Counter-Strike style, SPEC §3.4)
+
+Shots aimed in first person resolve in 3D: the zombie bodies (`shared/hitbox.js`) are about
+half as wide as the 2D circles they replace (a walker's chest 14 px across against a 28 px
+circle), every gun has a spray pattern and an inaccuracy cone that opens with movement and
+fire, and a head takes ×4 (×2 for the brute and the Abomination), the stomach ×1.25, legs
+×0.75. Bots shoot this way too (`aim3d`), so the harness measures it. Quick sweep (5 runs a
+cell; median waves cleared and share clearing 10 / 15), before and after the pass:
+
+| profile, diff, team | before | 3D gunplay, old numbers | after (this pass) |
+|---|---|---|---|
+| average, easy, 4p | 15.0 (100% / 100%), hits 50% | 15.0 (100% / 100%), hits 37% | 15.0 (100% / 100%), hits 40% |
+| average, normal, 1p | 8.0 (0% / 0%), hits 55% | 5.0 (0% / 0%), hits 44% | 6.0 (0% / 0%), hits 44% |
+| average, normal, 2p | 9.0 (40% / 0%), hits 58% | 5.0 (0% / 0%), hits 42% | 9.0 (40% / 0%), hits 47% |
+| average, normal, 4p | 15.0 (100% / 60%), hits 55% | 10.0 (60% / 20%), hits 40% | 11.0 (100% / 0%), hits 46% |
+| average, normal, 6p | 15.0 (100% / 60%), hits 53% | 10.0 (80% / 0%), hits 41% | 13.0 (100% / 0%), hits 42% |
+| average, hard, 4p | 7.0 (0% / 0%), hits 58% | 7.0 (0% / 0%), hits 44% | 8.0 (40% / 0%), hits 47% |
+| average, nightmare, 4p | 6.0 (20% / 0%), hits 60% | 4.0 (0% / 0%), hits 44% | 4.0 (0% / 0%), hits 47% |
+| skilled, normal, 1p | 10.0 (60% / 20%), hits 65% | 7.0 (20% / 20%), hits 53% | 8.0 (40% / 20%), hits 59% |
+| skilled, normal, 2p | 15.0 (100% / 80%), hits 58% | 15.0 (80% / 80%), hits 56% | 15.0 (100% / 80%), hits 69% |
+| skilled, normal, 4p | 15.0 (100% / 100%), hits 60% | 15.0 (100% / 80%), hits 55% | 15.0 (100% / 80%), hits 64% |
+| skilled, normal, 6p | 15.0 (100% / 100%), hits 56% | 15.0 (100% / 80%), hits 57% | 15.0 (100% / 80%), hits 65% |
+
+**What dropped and why.** With the old numbers the average bot's hit rate fell from 55% to
+41% (smaller targets, spray, shooting on the move) and the one-shot precision guns lost the
+most: the DMR, lever-action, magnum, sniper and .50 killed 40-60% fewer zombies a minute in
+hand, because a thin body lines up with the next one behind it far less often than a fat
+circle did (their pierce) and because the bots spammed them as fast as they cycle.
+
+**Changes.**
+* **Zombie health** (zombies.js), the body shots were the bulk of the loss: walker 70 → 54,
+  runner 45 → 35, crawler 35 → 27, bloater 160 → 130, spitter 90 → 70, screamer 110 → 88,
+  brute 1100 → 950, Abomination 8500 → 7400 (two steps, 58 / 38 / 29 / 140 / 78 / 95 / 1000 /
+  7700 first). A rifle kills a walker with any two hits (even two in the legs: 27 + 27 ≥ 54)
+  or one in the head; a pistol with three body hits, two in the stomach or one in the head.
+* **The railgun's beam** is 9 px thick (handling `beam`): a beam that only killed what its
+  hairline crossed lost most of the line it used to cut through (35.9 → 20.8 kills a minute);
+  with the beam it is back to 31.
+* **Weapon damage** stays as it was: the drop is in hitting, not in damage per hit, and the
+  guns that lost most kill a walker with one round anyway. What changed for the guns is
+  their handling (`shared/handling.js`): the heavy machine guns kick less (spray climb 0.07 →
+  0.055 rad, sway 0.048 → 0.034; per-shot cone 0.004 → 0.003, cap 0.075 → 0.05) — a belt-fed
+  gun hosing a crowd, not a rifle to tap; semi-automatics recover between shots instead of
+  climbing for as long as they are tapped.
+* **Bots** (sim/bots.js): stop (counter-strafe) before shooting at range and wait until they
+  are accurate, pace precise guns until the cone fits the target, burst automatics shorter
+  at small, far targets and longer into big ones, hold the trigger with heavy and spin-up
+  guns, never stand still in fire or acid, zoom scopes in at range, and pull against the
+  recoil (all of it at full skill, about 60% for the average profile).
+
+**Guns in the hands of average teams** (kills per minute in hand, quick sweep):
+
+| gun | before | after |
+|---|---|---|
+| pistol | 13.8 | 15.1 |
+| uzi | 14.5 | 17.6 |
+| dual_smg | 18.1 | 20.7 |
+| tommy | 16.7 | 21.7 |
+| rifle | 25.3 | 21.0 |
+| burst_rifle | 27.0 | 20.4 |
+| dmr | 33.4 | 27.6 |
+| lever | 34.2 | 24.7 |
+| magnum | 28.2 | 21.8 |
+| sniper | 26.7 | 14.9 |
+| amr | 30.2 | 15.5 |
+| lmg | 32.8 | 25.4 |
+| hmg | 43.4 | 30.9 |
+| minigun | 22.9 | 20.1 |
+| shotgun | 5.2 | 15.1 |
+| auto_shotgun | 28.3 | 31.5 |
+| sawedoff | 18.9 | 22.3 |
+| railgun | 35.9 | 31.1 |
+| crossbow | 33.0 | 39.3 |
+| tesla | 57.7 | 73.0 |
+
+**Where it lands.** Teams of 2-6 average players clear wave 10 as often as before (2p 40%,
+4p and 6p 100%), and hard and easy are where they were. The last waves are harder: no
+average 4p / 6p run finished 15 in this sample (60% before), and solo dies a wave or two
+earlier (median 6 against 8). Spitter acid is the difference: 375 hp a run against 245 —
+spitters at range take longer to hit and lob more acid at a bot standing to shoot. Skilled
+teams of 2-6 still finish 15 (80%+). See the open issue below.
+
+**Read with care.** The average profile models aim error, reaction and spraying as before;
+how much worse an average human gets at a 14 px target at 600 px is a playtest question.
+Headshots (×4) reward good players far more than they reward bots (12-48% head picks by skill,
+rarer past 380 px). If playtests find the waves too easy for people who aim well, the lever is
+the zombie health above; if too hard for casual players, `inacc.stand` / `spray.up` per
+category in `shared/handling.js`.
+
 ## Open issues
+* **First-person gunplay: the last waves** (wave 11-15) are harder for average teams than
+  before it (no 4p / 6p run finished 15 in the quick sweep, 60% before) and solo dies a
+  wave or two earlier, mostly to spitter acid. Levers, in order: spitter health or its acid
+  (zombies.js), a third step of zombie health, the bots' movement under acid lobs. A human
+  who aims for heads (×4) is not modelled by the bots; playtest before moving more numbers.
 * **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
   15, against 33% in defend) and the harassers never really hurt a bot team. Human players,
   who walk and shoot worse at the same time, should feel them more; if playtests agree it is

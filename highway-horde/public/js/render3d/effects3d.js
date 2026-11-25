@@ -262,7 +262,7 @@ export function createEffects3D(ctx) {
 
   function endHeight(isLocal, r, org) {
     // 3D shots: the sim says where the bullet stopped
-    if (Number.isFinite(r.z) && r.z !== 0 && shot3d) return r.z;
+    if (shot3d && Number.isFinite(r.z)) return r.z;
     if (isLocal) {
       // tracers go where the camera aims: bullets are horizontal in the sim, but the
       // player looks up/down at what they shoot
