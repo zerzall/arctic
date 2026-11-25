@@ -3433,519 +3433,717 @@
    "psnr": 37.6,
    "size": 1024
   },
+  "zombies/body-bloater-albedo.png": {
+   "file": "zombies/body-bloater-albedo.jpg",
+   "sha1": "fa1bc3938046a9bcca22a6f2f22561bba4a07d37",
+   "rules": 2,
+   "bytes": 561863,
+   "png": 2091000,
+   "q": 93,
+   "psnr": 47.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-bloater-albedo@1024.jpg",
+     "bytes": 192416,
+     "q": 93,
+     "psnr": 45.9
+    }
+   ]
+  },
+  "zombies/body-bloater-normal.png": {
+   "file": "zombies/body-bloater-normal.jpg",
+   "sha1": "b747e2f8e414436e8c7fa02ec44d0f0fe51fc21f",
+   "rules": 2,
+   "bytes": 2043819,
+   "png": 3353942,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-bloater-normal@1024.jpg",
+     "bytes": 600503,
+     "q": 95,
+     "psnr": 39.8
+    }
+   ]
+  },
+  "zombies/body-bloater-pack.png": {
+   "file": "zombies/body-bloater-pack.jpg",
+   "sha1": "b2a7d117b8201286da75e6801906e05b8c3fc339",
+   "rules": 2,
+   "bytes": 288502,
+   "png": 543470,
+   "q": 95,
+   "psnr": 45.8,
+   "size": 1024
+  },
+  "zombies/body-boss-albedo.png": {
+   "file": "zombies/body-boss-albedo.jpg",
+   "sha1": "579684f5a23cf0c06c480be5169342c5b33f97fe",
+   "rules": 2,
+   "bytes": 607752,
+   "png": 2296506,
+   "q": 93,
+   "psnr": 47.7,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-boss-albedo@1024.jpg",
+     "bytes": 208895,
+     "q": 93,
+     "psnr": 46.3
+    }
+   ]
+  },
+  "zombies/body-boss-normal.png": {
+   "file": "zombies/body-boss-normal.jpg",
+   "sha1": "68cb3a8728dd80cbc42f132721d82dcbf4c20e55",
+   "rules": 2,
+   "bytes": 2326568,
+   "png": 3527613,
+   "q": 95,
+   "psnr": 41.1,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-boss-normal@1024.jpg",
+     "bytes": 716204,
+     "q": 95,
+     "psnr": 39.3
+    }
+   ]
+  },
+  "zombies/body-boss-pack.png": {
+   "file": "zombies/body-boss-pack.jpg",
+   "sha1": "762fe5101e0b1b806f64c6b7ec02fd2a453eeca1",
+   "rules": 2,
+   "bytes": 314349,
+   "png": 559471,
+   "q": 95,
+   "psnr": 45,
+   "size": 1024
+  },
+  "zombies/body-brute-albedo.png": {
+   "file": "zombies/body-brute-albedo.jpg",
+   "sha1": "66e10905b8328efc561bb3748675e3eb2d6fc510",
+   "rules": 2,
+   "bytes": 531510,
+   "png": 2146761,
+   "q": 93,
+   "psnr": 47.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-brute-albedo@1024.jpg",
+     "bytes": 180489,
+     "q": 93,
+     "psnr": 46.3
+    }
+   ]
+  },
+  "zombies/body-brute-normal.png": {
+   "file": "zombies/body-brute-normal.jpg",
+   "sha1": "23adf49ab2097b40c2321e6db5a608398daf4382",
+   "rules": 2,
+   "bytes": 2060929,
+   "png": 3378921,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-brute-normal@1024.jpg",
+     "bytes": 607311,
+     "q": 95,
+     "psnr": 39.7
+    }
+   ]
+  },
+  "zombies/body-brute-pack.png": {
+   "file": "zombies/body-brute-pack.jpg",
+   "sha1": "3dae6f4262d3d2e21ad8b9bb79686241ae4aa0b6",
+   "rules": 2,
+   "bytes": 317793,
+   "png": 550019,
+   "q": 95,
+   "psnr": 45,
+   "size": 1024
+  },
+  "zombies/body-fresh-albedo.png": {
+   "file": "zombies/body-fresh-albedo.jpg",
+   "sha1": "1e39ccef5d5ac74c12f2f5da370080d6b816e756",
+   "rules": 2,
+   "bytes": 443636,
+   "png": 1942111,
+   "q": 93,
+   "psnr": 48.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-fresh-albedo@1024.jpg",
+     "bytes": 146757,
+     "q": 93,
+     "psnr": 47.8
+    }
+   ]
+  },
+  "zombies/body-fresh-normal.png": {
+   "file": "zombies/body-fresh-normal.jpg",
+   "sha1": "6cc1443d5ade15d97ae2cc074e916a6b742f1633",
+   "rules": 2,
+   "bytes": 1905539,
+   "png": 3259218,
+   "q": 95,
+   "psnr": 41.9,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-fresh-normal@1024.jpg",
+     "bytes": 545917,
+     "q": 95,
+     "psnr": 40
+    }
+   ]
+  },
+  "zombies/body-fresh-pack.png": {
+   "file": "zombies/body-fresh-pack.jpg",
+   "sha1": "8b45a28e0e2650c89f322519f4a55b1f0aa81715",
+   "rules": 2,
+   "bytes": 270946,
+   "png": 505686,
+   "q": 95,
+   "psnr": 46.1,
+   "size": 1024
+  },
+  "zombies/body-months-albedo.png": {
+   "file": "zombies/body-months-albedo.jpg",
+   "sha1": "c2a3ee1a633600ee9170c6c796df61dee9d5ea8c",
+   "rules": 2,
+   "bytes": 576096,
+   "png": 2159402,
+   "q": 93,
+   "psnr": 47.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-months-albedo@1024.jpg",
+     "bytes": 198141,
+     "q": 93,
+     "psnr": 46
+    }
+   ]
+  },
+  "zombies/body-months-normal.png": {
+   "file": "zombies/body-months-normal.jpg",
+   "sha1": "a7b0efc3b4d04cf404fc700af5284b2bd4d8de56",
+   "rules": 2,
+   "bytes": 2296226,
+   "png": 3515171,
+   "q": 95,
+   "psnr": 41.1,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-months-normal@1024.jpg",
+     "bytes": 699493,
+     "q": 95,
+     "psnr": 39.3
+    }
+   ]
+  },
+  "zombies/body-months-pack.png": {
+   "file": "zombies/body-months-pack.jpg",
+   "sha1": "62a7f5f04f6b1f56d4da6d41a42dc1d9c72a04ac",
+   "rules": 2,
+   "bytes": 339004,
+   "png": 543486,
+   "q": 95,
+   "psnr": 44.2,
+   "size": 1024
+  },
+  "zombies/body-screamer-albedo.png": {
+   "file": "zombies/body-screamer-albedo.jpg",
+   "sha1": "149a1cf1d333caf15cf5eb77d189c6be26bc3337",
+   "rules": 2,
+   "bytes": 581881,
+   "png": 2245059,
+   "q": 93,
+   "psnr": 47.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-screamer-albedo@1024.jpg",
+     "bytes": 198485,
+     "q": 93,
+     "psnr": 45.6
+    }
+   ]
+  },
+  "zombies/body-screamer-normal.png": {
+   "file": "zombies/body-screamer-normal.jpg",
+   "sha1": "7f1c96bd49a95bc49bb565db251e9c672c0c74a3",
+   "rules": 2,
+   "bytes": 2030589,
+   "png": 3350242,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-screamer-normal@1024.jpg",
+     "bytes": 593038,
+     "q": 95,
+     "psnr": 39.8
+    }
+   ]
+  },
+  "zombies/body-screamer-pack.png": {
+   "file": "zombies/body-screamer-pack.jpg",
+   "sha1": "cd6df8e246aec27c1ea2f121a4e139d85f166c14",
+   "rules": 2,
+   "bytes": 280128,
+   "png": 521494,
+   "q": 95,
+   "psnr": 45.9,
+   "size": 1024
+  },
+  "zombies/body-spitter-albedo.png": {
+   "file": "zombies/body-spitter-albedo.jpg",
+   "sha1": "b044559a0b3601fce7a5cfc1745bc3bae964af32",
+   "rules": 2,
+   "bytes": 548497,
+   "png": 2103526,
+   "q": 93,
+   "psnr": 47.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-spitter-albedo@1024.jpg",
+     "bytes": 186289,
+     "q": 93,
+     "psnr": 46.2
+    }
+   ]
+  },
+  "zombies/body-spitter-normal.png": {
+   "file": "zombies/body-spitter-normal.jpg",
+   "sha1": "ce21973f36c428823361f89387735cf7eb143e8a",
+   "rules": 2,
+   "bytes": 2028862,
+   "png": 3359769,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-spitter-normal@1024.jpg",
+     "bytes": 590972,
+     "q": 95,
+     "psnr": 39.8
+    }
+   ]
+  },
+  "zombies/body-spitter-pack.png": {
+   "file": "zombies/body-spitter-pack.jpg",
+   "sha1": "07e7f66954f2b28e6f28b1d49b862b783fcfd549",
+   "rules": 2,
+   "bytes": 294105,
+   "png": 550219,
+   "q": 95,
+   "psnr": 45.7,
+   "size": 1024
+  },
+  "zombies/body-weeks-albedo.png": {
+   "file": "zombies/body-weeks-albedo.jpg",
+   "sha1": "9937d70fbd1464920fffaf254ad3fe11e49dd5d0",
+   "rules": 2,
+   "bytes": 520765,
+   "png": 2085582,
+   "q": 93,
+   "psnr": 47.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-weeks-albedo@1024.jpg",
+     "bytes": 176603,
+     "q": 93,
+     "psnr": 46.5
+    }
+   ]
+  },
+  "zombies/body-weeks-normal.png": {
+   "file": "zombies/body-weeks-normal.jpg",
+   "sha1": "23b26508dc0fe71d7253a8216fa83125e5a44f0a",
+   "rules": 2,
+   "bytes": 2016799,
+   "png": 3346628,
+   "q": 95,
+   "psnr": 41.7,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-weeks-normal@1024.jpg",
+     "bytes": 582756,
+     "q": 95,
+     "psnr": 39.8
+    }
+   ]
+  },
+  "zombies/body-weeks-pack.png": {
+   "file": "zombies/body-weeks-pack.jpg",
+   "sha1": "3bc25ea5aeda7044389524d6d393076f68eb067e",
+   "rules": 2,
+   "bytes": 294699,
+   "png": 527995,
+   "q": 95,
+   "psnr": 45.3,
+   "size": 1024
+  },
   "zombies/cloth-denim-albedo.png": {
    "file": "zombies/cloth-denim-albedo.jpg",
-   "sha1": "8551955cf80c93d7762007406469e41a97c67b8b",
+   "sha1": "6555848d7c65068386a12bf587b4bbfac26b5476",
    "rules": 2,
-   "bytes": 379990,
-   "png": 873908,
+   "bytes": 593681,
+   "png": 1025577,
    "q": 93,
-   "psnr": 42.2,
+   "psnr": 39.4,
    "size": 1024
   },
   "zombies/cloth-denim-normal.png": {
-   "file": "zombies/cloth-denim-normal.jpg",
-   "sha1": "fa7a81afa6a573ea23a3a7e1180df71b544f763f",
+   "file": "zombies/cloth-denim-normal.png",
+   "sha1": "895e20ea8b1b37019a413bb5b1399ee46826265b",
    "rules": 2,
-   "bytes": 1168082,
-   "png": 1527446,
-   "q": 95,
-   "psnr": 37.2,
-   "size": 1024,
-   "la": true
+   "bytes": 807983,
+   "size": 1024
   },
   "zombies/cloth-denim-pack.png": {
    "file": "zombies/cloth-denim-pack.jpg",
-   "sha1": "55c5640b7c535df6a931d7fdc37868639231e86b",
+   "sha1": "f72a7d3e943eac0a5030175dfd242146b894a309",
    "rules": 2,
-   "bytes": 1414636,
-   "png": 1715716,
+   "bytes": 335776,
+   "png": 736888,
    "q": 95,
-   "psnr": 36.5,
+   "psnr": 40.9,
    "size": 1024
   },
   "zombies/cloth-dress-albedo.png": {
    "file": "zombies/cloth-dress-albedo.jpg",
-   "sha1": "be4c23dc53dabe7b0cce5609708793776360c210",
+   "sha1": "522b70407bec2ae824e87c7fc867850ce6ddd3f2",
    "rules": 2,
-   "bytes": 217185,
-   "png": 733499,
+   "bytes": 35250,
+   "png": 239678,
    "q": 93,
-   "psnr": 44.6,
+   "psnr": 49.7,
    "size": 1024
   },
   "zombies/cloth-dress-normal.png": {
    "file": "zombies/cloth-dress-normal.jpg",
-   "sha1": "a2d3728ed484dbac528efb534beaae0952f4cb35",
+   "sha1": "cf3ecdc312528f0b5a929171c1f70d2232187704",
    "rules": 2,
-   "bytes": 792180,
-   "png": 1417086,
+   "bytes": 114341,
+   "png": 520810,
    "q": 95,
-   "psnr": 37.8,
+   "psnr": 44.6,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-dress-pack.png": {
    "file": "zombies/cloth-dress-pack.jpg",
-   "sha1": "00c3aa3111e45a5d13d277bdac73f9f02a45aeff",
+   "sha1": "1960812b8b1aec9852da4fca1aedda4bd54b4aff",
    "rules": 2,
-   "bytes": 1033394,
-   "png": 1557254,
+   "bytes": 108179,
+   "png": 554361,
    "q": 95,
-   "psnr": 36.7,
+   "psnr": 46.1,
    "size": 1024
   },
   "zombies/cloth-flannel-albedo.png": {
    "file": "zombies/cloth-flannel-albedo.jpg",
-   "sha1": "88e85cc41cdb667d2f33988df263fc6faae56e9d",
+   "sha1": "f3b612461da943e477e48413fee43002006d9fda",
    "rules": 2,
-   "bytes": 204579,
-   "png": 595783,
+   "bytes": 678946,
+   "png": 1843304,
    "q": 93,
-   "psnr": 46.8,
+   "psnr": 39.4,
    "size": 1024
   },
   "zombies/cloth-flannel-normal.png": {
    "file": "zombies/cloth-flannel-normal.jpg",
-   "sha1": "6238b4566c5990e2d353a85cefbb57eb001a12b5",
+   "sha1": "8331729dc407ac1b802567cfaeda3c131689e940",
    "rules": 2,
-   "bytes": 723088,
-   "png": 1258316,
+   "bytes": 1077405,
+   "png": 1539878,
    "q": 95,
-   "psnr": 38.8,
+   "psnr": 37.5,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-flannel-pack.png": {
    "file": "zombies/cloth-flannel-pack.jpg",
-   "sha1": "8dc71fa438036e98cfd4e32350dcd9aa8b5623dc",
+   "sha1": "b741d3f3fb6430e75b355f23829580294066d739",
    "rules": 2,
-   "bytes": 781598,
-   "png": 1216906,
+   "bytes": 654087,
+   "png": 1451648,
    "q": 95,
-   "psnr": 38.4,
+   "psnr": 39.5,
    "size": 1024
   },
   "zombies/cloth-gown-albedo.png": {
    "file": "zombies/cloth-gown-albedo.jpg",
-   "sha1": "92fb33dc9c88a54a7a2406dd1eac79cf4e789f50",
+   "sha1": "d02a7e8e42b9b25685070ba1cae26e48f8783c50",
    "rules": 2,
-   "bytes": 246138,
-   "png": 763488,
+   "bytes": 338755,
+   "png": 522603,
    "q": 93,
-   "psnr": 43.7,
+   "psnr": 40.2,
    "size": 1024
   },
   "zombies/cloth-gown-normal.png": {
-   "file": "zombies/cloth-gown-normal.jpg",
-   "sha1": "3480b4eebab22df6cdff94078293631a1dc2a228",
+   "file": "zombies/cloth-gown-normal.png",
+   "sha1": "598946a322d9bbf0b86618931f368eda7b45b279",
    "rules": 2,
-   "bytes": 863229,
-   "png": 1451589,
-   "q": 95,
-   "psnr": 37.5,
-   "size": 1024,
-   "la": true
+   "bytes": 725017,
+   "size": 1024
   },
   "zombies/cloth-gown-pack.png": {
    "file": "zombies/cloth-gown-pack.jpg",
-   "sha1": "bf7a33354a49a6228aefb425e1148cb47f1edb5e",
+   "sha1": "7997dd2466568ac8f3cf2154fd706c09a6677826",
    "rules": 2,
-   "bytes": 990882,
-   "png": 1504642,
+   "bytes": 763908,
+   "png": 918538,
    "q": 95,
-   "psnr": 37.1,
+   "psnr": 37.7,
    "size": 1024
   },
   "zombies/cloth-hoodie-albedo.png": {
    "file": "zombies/cloth-hoodie-albedo.jpg",
-   "sha1": "741423c328b30fd05743c4106d5d14d767b3ec69",
+   "sha1": "44f1433a8242a90747e2e11f620dfdc9c0450b2f",
    "rules": 2,
-   "bytes": 329946,
-   "png": 806966,
+   "bytes": 415716,
+   "png": 548432,
    "q": 93,
-   "psnr": 43.3,
+   "psnr": 39.7,
    "size": 1024
   },
   "zombies/cloth-hoodie-normal.png": {
-   "file": "zombies/cloth-hoodie-normal.jpg",
-   "sha1": "a27463f42a09486f5b4b19d14022208229e572d1",
+   "file": "zombies/cloth-hoodie-normal.png",
+   "sha1": "11ec65350f1ba61f30e383d93bebb4d51e80c1a2",
    "rules": 2,
-   "bytes": 1296146,
-   "png": 1802885,
-   "q": 95,
-   "psnr": 37.2,
-   "size": 1024,
-   "la": true
+   "bytes": 700695,
+   "size": 1024
   },
   "zombies/cloth-hoodie-pack.png": {
    "file": "zombies/cloth-hoodie-pack.jpg",
-   "sha1": "04e3bee2fae503c6f27be08d82610aca347d5f87",
+   "sha1": "77e921888bf46adb4fe6ff29d94c9a179513e9d8",
    "rules": 2,
-   "bytes": 1074301,
-   "png": 1533561,
+   "bytes": 303746,
+   "png": 695253,
    "q": 95,
-   "psnr": 37.5,
+   "psnr": 41.2,
    "size": 1024
   },
   "zombies/cloth-military-albedo.png": {
    "file": "zombies/cloth-military-albedo.jpg",
-   "sha1": "0d04f807f166ea3bb27c2378cf185a1da74ff80b",
+   "sha1": "53f8696c8a205afcdefd9161636557f50fc5d84a",
    "rules": 2,
-   "bytes": 231286,
-   "png": 721325,
+   "bytes": 674863,
+   "png": 1231632,
    "q": 93,
-   "psnr": 44.7,
+   "psnr": 39.4,
    "size": 1024
   },
   "zombies/cloth-military-normal.png": {
    "file": "zombies/cloth-military-normal.jpg",
-   "sha1": "7b3670283d3c6121bb3f0b5795b54e522d1842c1",
+   "sha1": "b8d60b7112ac04d5ef3c973dae530f53b7e9898e",
    "rules": 2,
-   "bytes": 1141296,
-   "png": 1542780,
+   "bytes": 587692,
+   "png": 702607,
    "q": 95,
-   "psnr": 37.2,
+   "psnr": 38.7,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-military-pack.png": {
    "file": "zombies/cloth-military-pack.jpg",
-   "sha1": "059e38612eb43443b93c5027584a451689d1a62e",
+   "sha1": "28671ce5104509b1a4e3a5d53707fc4d87d84ad5",
    "rules": 2,
-   "bytes": 1022461,
-   "png": 1502105,
+   "bytes": 860863,
+   "png": 967279,
    "q": 95,
-   "psnr": 37.2,
+   "psnr": 37.5,
    "size": 1024
   },
   "zombies/cloth-police-albedo.png": {
    "file": "zombies/cloth-police-albedo.jpg",
-   "sha1": "d066ce46c5c3450715b3b400bef870d409340a54",
+   "sha1": "1e8521539e9dea597e2bfdd86fb1580b00997621",
    "rules": 2,
-   "bytes": 256039,
-   "png": 724484,
+   "bytes": 161203,
+   "png": 391114,
    "q": 93,
-   "psnr": 42.9,
+   "psnr": 42.1,
    "size": 1024
   },
   "zombies/cloth-police-normal.png": {
    "file": "zombies/cloth-police-normal.jpg",
-   "sha1": "46624998bb406802084c05d7a398196f1d90a3c2",
+   "sha1": "e80b9a224ca56549bbec4a2d16223719279cb92f",
    "rules": 2,
-   "bytes": 883848,
-   "png": 1434818,
+   "bytes": 430259,
+   "png": 656496,
    "q": 95,
-   "psnr": 37.7,
+   "psnr": 38.8,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-police-pack.png": {
    "file": "zombies/cloth-police-pack.jpg",
-   "sha1": "21e619a87fe93be93294ab6a8afdada195ab1480",
+   "sha1": "8c88758e72c6a9466e04cc99e287a44f91048deb",
    "rules": 2,
-   "bytes": 944321,
-   "png": 1461565,
+   "bytes": 195780,
+   "png": 669541,
    "q": 95,
-   "psnr": 37.1,
+   "psnr": 42.4,
    "size": 1024
   },
   "zombies/cloth-shirt-albedo.png": {
    "file": "zombies/cloth-shirt-albedo.jpg",
-   "sha1": "a06358d72f8f5643efdbe9f71c05725585d2066f",
+   "sha1": "4b6bb162a4f7447d86ace789bd313a507a9b7301",
    "rules": 2,
-   "bytes": 310605,
-   "png": 760256,
+   "bytes": 93202,
+   "png": 284391,
    "q": 93,
-   "psnr": 42.9,
+   "psnr": 47.5,
    "size": 1024
   },
   "zombies/cloth-shirt-normal.png": {
    "file": "zombies/cloth-shirt-normal.jpg",
-   "sha1": "cb9ef655b4a4e52f00fc58e62e0187f707b9df02",
+   "sha1": "7df314b11ecd554200fb73b3df7ae4362a554ba2",
    "rules": 2,
-   "bytes": 903310,
-   "png": 1435180,
+   "bytes": 231297,
+   "png": 503874,
    "q": 95,
-   "psnr": 37.6,
+   "psnr": 44.1,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-shirt-pack.png": {
    "file": "zombies/cloth-shirt-pack.jpg",
-   "sha1": "a221721b2c65c956c48f4eb558fc7e2dd4c19649",
+   "sha1": "d3ce75a7f6213caba89055964f4f24f7d78360ae",
    "rules": 2,
-   "bytes": 1238476,
-   "png": 1650545,
+   "bytes": 177679,
+   "png": 566714,
    "q": 95,
-   "psnr": 36.6,
+   "psnr": 44.7,
    "size": 1024
   },
   "zombies/cloth-suit-albedo.png": {
    "file": "zombies/cloth-suit-albedo.jpg",
-   "sha1": "e1d85469d872fb0f4c87084ebcbe7fdfb6711d2f",
+   "sha1": "3ed43705b6d0cf510a80c12530d0291b3f1a7436",
    "rules": 2,
-   "bytes": 197072,
-   "png": 652368,
+   "bytes": 554226,
+   "png": 777068,
    "q": 93,
-   "psnr": 45.2,
+   "psnr": 39.4,
    "size": 1024
   },
   "zombies/cloth-suit-normal.png": {
-   "file": "zombies/cloth-suit-normal.jpg",
-   "sha1": "779870b4de84e567cd3377f6dc3db17dd4cf6557",
+   "file": "zombies/cloth-suit-normal.png",
+   "sha1": "d4954cc196113876df2937d0046bb52ce664f93d",
    "rules": 2,
-   "bytes": 755015,
-   "png": 1365378,
-   "q": 95,
-   "psnr": 38.2,
-   "size": 1024,
-   "la": true
+   "bytes": 769058,
+   "size": 1024
   },
   "zombies/cloth-suit-pack.png": {
    "file": "zombies/cloth-suit-pack.jpg",
-   "sha1": "ba605b21a71b62ebee5641e0bf1ae78e447947b5",
+   "sha1": "3e62e13b00d781eb972d895d135cd09f9f675923",
    "rules": 2,
-   "bytes": 943178,
-   "png": 1422671,
+   "bytes": 632032,
+   "png": 810525,
    "q": 95,
-   "psnr": 37.1,
+   "psnr": 38.5,
    "size": 1024
   },
   "zombies/cloth-tee-albedo.png": {
    "file": "zombies/cloth-tee-albedo.jpg",
-   "sha1": "dadc8d29eb3822448d42662c37f8df137b183757",
+   "sha1": "3319d9c705f12295ea49a1c55aae87f2e8e24cd4",
    "rules": 2,
-   "bytes": 299387,
-   "png": 813224,
+   "bytes": 187301,
+   "png": 378596,
    "q": 93,
-   "psnr": 41.9,
+   "psnr": 43.4,
    "size": 1024
   },
   "zombies/cloth-tee-normal.png": {
    "file": "zombies/cloth-tee-normal.jpg",
-   "sha1": "4d1731fcdeb5fde85791af61ac4330cbc6140a83",
+   "sha1": "185be7406065b49ac7b147dcb58864adbdbe68df",
    "rules": 2,
-   "bytes": 1262640,
-   "png": 1942306,
+   "bytes": 351542,
+   "png": 621448,
    "q": 95,
-   "psnr": 37.4,
+   "psnr": 40.6,
    "size": 1024,
    "la": true
   },
   "zombies/cloth-tee-pack.png": {
    "file": "zombies/cloth-tee-pack.jpg",
-   "sha1": "c5cfd40033655a673f28b6bba59f771b94f5e873",
+   "sha1": "1ec8137d6dab7ab95407d0e4851ad8ce4d414175",
    "rules": 2,
-   "bytes": 1096883,
-   "png": 1578949,
+   "bytes": 253005,
+   "png": 665813,
    "q": 95,
-   "psnr": 37.1,
+   "psnr": 42.4,
    "size": 1024
   },
   "zombies/cloth-work-albedo.png": {
    "file": "zombies/cloth-work-albedo.jpg",
-   "sha1": "4b30f907835803825254b1f8753cf2c15289b41f",
+   "sha1": "4f43ee7976a7087b9e3e1e2b50378a8ba728710e",
    "rules": 2,
-   "bytes": 249856,
-   "png": 579681,
+   "bytes": 617046,
+   "png": 1002670,
    "q": 93,
-   "psnr": 45.8,
+   "psnr": 39.4,
    "size": 1024
   },
   "zombies/cloth-work-normal.png": {
-   "file": "zombies/cloth-work-normal.jpg",
-   "sha1": "05bf4359f044d71aaeaf9e52d97e31083d576a0d",
+   "file": "zombies/cloth-work-normal.png",
+   "sha1": "fb4ea31361935c0861b6c7b4f7ee5073f3c5b36b",
    "rules": 2,
-   "bytes": 1116173,
-   "png": 1355437,
-   "q": 95,
-   "psnr": 38.1,
-   "size": 1024,
-   "la": true
+   "bytes": 918879,
+   "size": 1024
   },
   "zombies/cloth-work-pack.png": {
    "file": "zombies/cloth-work-pack.jpg",
-   "sha1": "330b5e127f30d6145e3d072590b70accf1bad19d",
+   "sha1": "83369ad98524d27d30a5789969a61fb6617ef9a1",
    "rules": 2,
-   "bytes": 861021,
-   "png": 1032851,
+   "bytes": 441402,
+   "png": 784945,
    "q": 95,
-   "psnr": 39.1,
-   "size": 1024
-  },
-  "zombies/face-a-albedo.png": {
-   "file": "zombies/face-a-albedo.webp",
-   "sha1": "14c3cd3fcfa21421452bffdf3f5a097ca1bbbbcc",
-   "rules": 2,
-   "bytes": 198502,
-   "png": 289501,
-   "size": 1024
-  },
-  "zombies/face-a-normal.png": {
-   "file": "zombies/face-a-normal.jpg",
-   "sha1": "6931b70f5dbabdaa4cf087e8d3c96704cbfecccc",
-   "rules": 2,
-   "bytes": 115552,
-   "png": 193156,
-   "q": 95,
-   "psnr": 49.4,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-a-pack.png": {
-   "file": "zombies/face-a-pack.jpg",
-   "sha1": "e314016f1a3247233674cad6c21aaf8a84b514b5",
-   "rules": 2,
-   "bytes": 88363,
-   "png": 163013,
-   "q": 95,
-   "psnr": 50.7,
-   "size": 1024
-  },
-  "zombies/face-b-albedo.png": {
-   "file": "zombies/face-b-albedo.webp",
-   "sha1": "b13e31b6eada90c028e597fe8c467f84f56f8e65",
-   "rules": 2,
-   "bytes": 228530,
-   "png": 332462,
-   "size": 1024
-  },
-  "zombies/face-b-normal.png": {
-   "file": "zombies/face-b-normal.jpg",
-   "sha1": "1bfe487eb3631af33b42abcc06a20ab4774550f9",
-   "rules": 2,
-   "bytes": 144806,
-   "png": 238716,
-   "q": 95,
-   "psnr": 47.7,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-b-pack.png": {
-   "file": "zombies/face-b-pack.jpg",
-   "sha1": "ab7dbbd15e7e44fdaad147551d248c238456bbab",
-   "rules": 2,
-   "bytes": 101417,
-   "png": 199493,
-   "q": 95,
-   "psnr": 50.5,
-   "size": 1024
-  },
-  "zombies/face-c-albedo.png": {
-   "file": "zombies/face-c-albedo.webp",
-   "sha1": "a764f53c3215c8a27c77db6136f6938f62d1c551",
-   "rules": 2,
-   "bytes": 516104,
-   "png": 701011,
-   "size": 1024
-  },
-  "zombies/face-c-normal.png": {
-   "file": "zombies/face-c-normal.jpg",
-   "sha1": "6638dd3f69a69060e8c1073986fcc3945628a81c",
-   "rules": 2,
-   "bytes": 311104,
-   "png": 472124,
-   "q": 95,
-   "psnr": 44.2,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-c-pack.png": {
-   "file": "zombies/face-c-pack.jpg",
-   "sha1": "a4978467acf72bcff5f7d9857ceecd558cdff558",
-   "rules": 2,
-   "bytes": 187421,
-   "png": 385318,
-   "q": 95,
-   "psnr": 47.5,
-   "size": 1024
-  },
-  "zombies/face-d-albedo.png": {
-   "file": "zombies/face-d-albedo.webp",
-   "sha1": "0997144a947ab254631235c4144df1aa219790c8",
-   "rules": 2,
-   "bytes": 286028,
-   "png": 415607,
-   "size": 1024
-  },
-  "zombies/face-d-normal.png": {
-   "file": "zombies/face-d-normal.jpg",
-   "sha1": "0217a2f2fe91ec9253e384cf01ddfc9df3e50de9",
-   "rules": 2,
-   "bytes": 154332,
-   "png": 251194,
-   "q": 95,
-   "psnr": 47.5,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-d-pack.png": {
-   "file": "zombies/face-d-pack.jpg",
-   "sha1": "44aa38195b1d7c71ba82e6a4314942d93e9a461e",
-   "rules": 2,
-   "bytes": 108670,
-   "png": 221437,
-   "q": 95,
-   "psnr": 50.2,
-   "size": 1024
-  },
-  "zombies/face-e-albedo.png": {
-   "file": "zombies/face-e-albedo.webp",
-   "sha1": "709359301a397ecbaf89cf9341006e9635cfaf86",
-   "rules": 2,
-   "bytes": 433408,
-   "png": 597597,
-   "size": 1024
-  },
-  "zombies/face-e-normal.png": {
-   "file": "zombies/face-e-normal.jpg",
-   "sha1": "3e9ef3b1ec765366a392858f080baa744820c15a",
-   "rules": 2,
-   "bytes": 305579,
-   "png": 444015,
-   "q": 95,
-   "psnr": 44.7,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-e-pack.png": {
-   "file": "zombies/face-e-pack.jpg",
-   "sha1": "2c4c356907c910c9add34427970bc17ef5768483",
-   "rules": 2,
-   "bytes": 170364,
-   "png": 337197,
-   "q": 95,
-   "psnr": 47.9,
-   "size": 1024
-  },
-  "zombies/face-f-albedo.png": {
-   "file": "zombies/face-f-albedo.webp",
-   "sha1": "a6d032a560213a929f2407cc298ed65de7e84bf7",
-   "rules": 2,
-   "bytes": 461162,
-   "png": 635178,
-   "size": 1024
-  },
-  "zombies/face-f-normal.png": {
-   "file": "zombies/face-f-normal.jpg",
-   "sha1": "d10d6518bc7c7948e091a44e6e0ee0db6985849a",
-   "rules": 2,
-   "bytes": 323361,
-   "png": 502407,
-   "q": 95,
-   "psnr": 44.5,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/face-f-pack.png": {
-   "file": "zombies/face-f-pack.jpg",
-   "sha1": "debd0677b701faad7cdd89b33206feb1eaf656e7",
-   "rules": 2,
-   "bytes": 182031,
-   "png": 383534,
-   "q": 95,
-   "psnr": 47.8,
+   "psnr": 39.2,
    "size": 1024
   },
   "zombies/grime-albedo.png": {
@@ -3977,453 +4175,98 @@
    "psnr": 41.9,
    "size": 1024
   },
-  "zombies/scalp-albedo.png": {
-   "file": "zombies/scalp-albedo.webp",
-   "sha1": "1237dcaadd81543acab170eb4d533cbf83ee673c",
-   "rules": 2,
-   "bytes": 1050634,
-   "png": 1423627,
-   "size": 1024
-  },
-  "zombies/scalp-normal.png": {
-   "file": "zombies/scalp-normal.jpg",
-   "sha1": "70b5dcefc85bb3df72623fcc45fb9fa26ee51f3d",
-   "rules": 2,
-   "bytes": 554990,
-   "png": 988091,
-   "q": 95,
-   "psnr": 42.4,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/scalp-pack.png": {
-   "file": "zombies/scalp-pack.jpg",
-   "sha1": "971606e5d2afcc23612e7626edcc0bf323dba8eb",
-   "rules": 2,
-   "bytes": 422471,
-   "png": 724314,
-   "q": 95,
-   "psnr": 44.2,
-   "size": 1024
-  },
-  "zombies/skin-bloater-albedo.png": {
-   "file": "zombies/skin-bloater-albedo.jpg",
-   "sha1": "97108b0eac97863614b5f27f0affe2987640375a",
-   "rules": 2,
-   "bytes": 936387,
-   "png": 3918335,
-   "q": 93,
-   "psnr": 46.8,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-bloater-albedo@1024.jpg",
-     "bytes": 335912,
-     "q": 93,
-     "psnr": 44.2
-    }
-   ]
-  },
-  "zombies/skin-bloater-normal.png": {
-   "file": "zombies/skin-bloater-normal.jpg",
-   "sha1": "9706bc172ef51c23d757568e5423f3e0512685da",
-   "rules": 2,
-   "bytes": 1024072,
-   "png": 1540652,
-   "q": 95,
-   "psnr": 37.2,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/skin-bloater-pack.png": {
-   "file": "zombies/skin-bloater-pack.jpg",
-   "sha1": "29f05537b20629e8d76c92a40f03fd643e03a02b",
-   "rules": 2,
-   "bytes": 1100830,
-   "png": 2612779,
-   "q": 95,
-   "psnr": 44.8,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-bloater-pack@1024.jpg",
-     "bytes": 339648,
-     "q": 95,
-     "psnr": 43.9
-    }
-   ]
-  },
-  "zombies/skin-boss-albedo.png": {
-   "file": "zombies/skin-boss-albedo.jpg",
-   "sha1": "0d12b9ec3a9d0f3251060687e115cb193a54a82b",
-   "rules": 2,
-   "bytes": 888191,
-   "png": 3962480,
-   "q": 93,
-   "psnr": 44.3,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-boss-albedo@1024.jpg",
-     "bytes": 251667,
-     "q": 93,
-     "psnr": 43.9
-    }
-   ]
-  },
-  "zombies/skin-boss-normal.png": {
-   "file": "zombies/skin-boss-normal.jpg",
-   "sha1": "1cd339111d30af5b704103bde00a858881bcfd2b",
-   "rules": 2,
-   "bytes": 1623997,
-   "png": 1917972,
-   "q": 95,
-   "psnr": 36.9,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/skin-boss-pack.png": {
-   "file": "zombies/skin-boss-pack.jpg",
-   "sha1": "0fbdc8e6a48213eadff05ff77b63044707f79635",
-   "rules": 2,
-   "bytes": 2673252,
-   "png": 4039319,
-   "q": 95,
-   "psnr": 38.8,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-boss-pack@1024.jpg",
-     "bytes": 732814,
-     "q": 95,
-     "psnr": 38.5
-    }
-   ]
-  },
-  "zombies/skin-brute-albedo.png": {
-   "file": "zombies/skin-brute-albedo.jpg",
-   "sha1": "969b11fdd894c168fc788e9bf701880efea5e8be",
-   "rules": 2,
-   "bytes": 882468,
-   "png": 3695086,
-   "q": 93,
-   "psnr": 44.2,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-brute-albedo@1024.jpg",
-     "bytes": 235066,
-     "q": 93,
-     "psnr": 43
-    }
-   ]
-  },
-  "zombies/skin-brute-normal.png": {
-   "file": "zombies/skin-brute-normal.jpg",
-   "sha1": "3fcb6e36a98f3810f4816c936dc8dbb238e30171",
-   "rules": 2,
-   "bytes": 1734648,
-   "png": 1952024,
-   "q": 95,
-   "psnr": 36.9,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/skin-brute-pack.png": {
-   "file": "zombies/skin-brute-pack.jpg",
-   "sha1": "544135d45735a3b1c66ffd1fe7ee136127d6234a",
-   "rules": 2,
-   "bytes": 3247313,
-   "png": 3876347,
-   "q": 95,
-   "psnr": 38,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-brute-pack@1024.jpg",
-     "bytes": 907891,
-     "q": 95,
-     "psnr": 37.1
-    }
-   ]
-  },
   "zombies/skin-fresh-albedo.png": {
    "file": "zombies/skin-fresh-albedo.jpg",
-   "sha1": "c8019c101dd0ba89361165ec157367c05304c1ed",
+   "sha1": "05688c875bca292af7766696e36a2dfa96c39ea4",
    "rules": 2,
-   "bytes": 1024397,
-   "png": 4136133,
+   "bytes": 266812,
+   "png": 1249083,
    "q": 93,
-   "psnr": 42.5,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-fresh-albedo@1024.jpg",
-     "bytes": 266812,
-     "q": 93,
-     "psnr": 42.8
-    }
-   ]
+   "psnr": 42.8,
+   "size": 1024
   },
   "zombies/skin-fresh-normal.png": {
    "file": "zombies/skin-fresh-normal.jpg",
-   "sha1": "c7ee222d0ff85adbb1633bafad554169ce0c37ba",
+   "sha1": "ad3d902f5cb46cda05a427c52d67b55949ba8bab",
    "rules": 2,
-   "bytes": 5769160,
-   "png": 6820013,
+   "bytes": 1331979,
+   "png": 1757519,
    "q": 95,
-   "psnr": 37,
-   "size": 2048,
-   "la": true,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-fresh-normal@1024.jpg",
-     "bytes": 1331979,
-     "q": 95,
-     "psnr": 36.9
-    }
-   ]
+   "psnr": 36.9,
+   "size": 1024,
+   "la": true
   },
   "zombies/skin-fresh-pack.png": {
    "file": "zombies/skin-fresh-pack.jpg",
-   "sha1": "9612bbb63042b0e51f47b4ae8c15dacff9f0a85a",
+   "sha1": "e80f76f6f5af5c2ccffd8567e66343c4d4b61ada",
    "rules": 2,
-   "bytes": 1780660,
-   "png": 3072934,
+   "bytes": 409911,
+   "png": 990334,
    "q": 95,
-   "psnr": 40.2,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-fresh-pack@1024.jpg",
-     "bytes": 409911,
-     "q": 95,
-     "psnr": 40.7
-    }
-   ]
+   "psnr": 40.7,
+   "size": 1024
   },
   "zombies/skin-months-albedo.png": {
    "file": "zombies/skin-months-albedo.jpg",
-   "sha1": "64364e204012f46a101eabe86d942ffd5ef42c41",
+   "sha1": "ac6da4ad3fc6aca100c1ef31f189ae731bc66459",
    "rules": 2,
-   "bytes": 839286,
-   "png": 3796161,
+   "bytes": 262422,
+   "png": 1168514,
    "q": 93,
-   "psnr": 45.8,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-months-albedo@1024.jpg",
-     "bytes": 262422,
-     "q": 93,
-     "psnr": 44
-    }
-   ]
+   "psnr": 44,
+   "size": 1024
   },
   "zombies/skin-months-normal.png": {
    "file": "zombies/skin-months-normal.jpg",
-   "sha1": "d71e2e21d0e8f52a7fee95d137b0a6468401ccbd",
+   "sha1": "21d1cf30f6f52f7e2952fc08a70e80dfec44019e",
    "rules": 2,
-   "bytes": 6141904,
-   "png": 7151053,
+   "bytes": 1615088,
+   "png": 1869943,
    "q": 95,
-   "psnr": 37,
-   "size": 2048,
-   "la": true,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-months-normal@1024.jpg",
-     "bytes": 1615088,
-     "q": 95,
-     "psnr": 36.9
-    }
-   ]
+   "psnr": 36.9,
+   "size": 1024,
+   "la": true
   },
   "zombies/skin-months-pack.png": {
    "file": "zombies/skin-months-pack.jpg",
-   "sha1": "db2fa7a6c353586e1c2c4eb01655dec5ab9f23e0",
+   "sha1": "a74eb0a5ae9e8f31cabb3a86f6bc7f3adfc290d0",
    "rules": 2,
-   "bytes": 2262820,
-   "png": 3490289,
+   "bytes": 753243,
+   "png": 1130513,
    "q": 95,
-   "psnr": 41.1,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-months-pack@1024.jpg",
-     "bytes": 753243,
-     "q": 95,
-     "psnr": 39.6
-    }
-   ]
-  },
-  "zombies/skin-screamer-albedo.png": {
-   "file": "zombies/skin-screamer-albedo.jpg",
-   "sha1": "2a593cdfbb5b80051b0b5ca5c1066efd2fa73a60",
-   "rules": 2,
-   "bytes": 676858,
-   "png": 3285492,
-   "q": 93,
-   "psnr": 48.2,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-screamer-albedo@1024.jpg",
-     "bytes": 231125,
-     "q": 93,
-     "psnr": 46.2
-    }
-   ]
-  },
-  "zombies/skin-screamer-normal.png": {
-   "file": "zombies/skin-screamer-normal.jpg",
-   "sha1": "10a0d18cd70a0e4b6bb6bc0fb4d8ca7844052d1b",
-   "rules": 2,
-   "bytes": 828137,
-   "png": 1426855,
-   "q": 95,
-   "psnr": 37.5,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/skin-screamer-pack.png": {
-   "file": "zombies/skin-screamer-pack.jpg",
-   "sha1": "47c64e990da5d27bfad398f13cf4c2279acc143f",
-   "rules": 2,
-   "bytes": 774989,
-   "png": 2188667,
-   "q": 95,
-   "psnr": 46.4,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-screamer-pack@1024.jpg",
-     "bytes": 212353,
-     "q": 95,
-     "psnr": 45.9
-    }
-   ]
-  },
-  "zombies/skin-spitter-albedo.png": {
-   "file": "zombies/skin-spitter-albedo.jpg",
-   "sha1": "b25e71294fd384665399ebd216f9bbb004db5f6d",
-   "rules": 2,
-   "bytes": 852985,
-   "png": 3686312,
-   "q": 93,
-   "psnr": 44.1,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-spitter-albedo@1024.jpg",
-     "bytes": 231294,
-     "q": 93,
-     "psnr": 44.3
-    }
-   ]
-  },
-  "zombies/skin-spitter-normal.png": {
-   "file": "zombies/skin-spitter-normal.jpg",
-   "sha1": "da30dd8ab733abdc1c05c26aef0967fd8cf66704",
-   "rules": 2,
-   "bytes": 1504630,
-   "png": 1846958,
-   "q": 95,
-   "psnr": 36.9,
-   "size": 1024,
-   "la": true
-  },
-  "zombies/skin-spitter-pack.png": {
-   "file": "zombies/skin-spitter-pack.jpg",
-   "sha1": "b81be3c992efae625a59758ac9f7fff858b6747f",
-   "rules": 2,
-   "bytes": 2193303,
-   "png": 3259935,
-   "q": 95,
-   "psnr": 39.4,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-spitter-pack@1024.jpg",
-     "bytes": 551001,
-     "q": 95,
-     "psnr": 39.4
-    }
-   ]
+   "psnr": 39.6,
+   "size": 1024
   },
   "zombies/skin-weeks-albedo.png": {
    "file": "zombies/skin-weeks-albedo.jpg",
-   "sha1": "7e988df3d4ee8e6469644184ef712e5548b9550d",
+   "sha1": "b98412bd591ef3ebd9c7f9323c4ceed40e678922",
    "rules": 2,
-   "bytes": 969545,
-   "png": 4429579,
+   "bytes": 296204,
+   "png": 1353014,
    "q": 93,
-   "psnr": 44.1,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-weeks-albedo@1024.jpg",
-     "bytes": 296204,
-     "q": 93,
-     "psnr": 43.6
-    }
-   ]
+   "psnr": 43.6,
+   "size": 1024
   },
   "zombies/skin-weeks-normal.png": {
    "file": "zombies/skin-weeks-normal.jpg",
-   "sha1": "5a818d7bdd02ccbcc6a62c1804c7bcb51210487c",
+   "sha1": "d1a5fed95d7d1cdbd18105928286fb5f60fa3001",
    "rules": 2,
-   "bytes": 6325917,
-   "png": 7204715,
+   "bytes": 1528597,
+   "png": 1851510,
    "q": 95,
    "psnr": 36.9,
-   "size": 2048,
-   "la": true,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-weeks-normal@1024.jpg",
-     "bytes": 1528597,
-     "q": 95,
-     "psnr": 36.9
-    }
-   ]
+   "size": 1024,
+   "la": true
   },
   "zombies/skin-weeks-pack.png": {
    "file": "zombies/skin-weeks-pack.jpg",
-   "sha1": "cc7c402f4ddbf748a0dfd83976d09949f2751a4f",
+   "sha1": "d38ff5ac324efbfb02b2111ae5f619a52f45d604",
    "rules": 2,
-   "bytes": 2317118,
-   "png": 3619917,
+   "bytes": 614109,
+   "png": 1175062,
    "q": 95,
-   "psnr": 39.2,
-   "size": 2048,
-   "variants": [
-    {
-     "size": 1024,
-     "file": "zombies/skin-weeks-pack@1024.jpg",
-     "bytes": 614109,
-     "q": 95,
-     "psnr": 39.1
-    }
-   ]
+   "psnr": 39.1,
+   "size": 1024
   },
   "zombies/wounds-albedo.png": {
    "file": "zombies/wounds-albedo.webp",
