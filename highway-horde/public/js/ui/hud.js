@@ -38,6 +38,18 @@ export const KEY_LABELS = {
 };
 
 const COMMON_ZOMBIES = new Set(['walker', 'runner', 'crawler']);
+/**
+ * Kill-feed marks (SPEC §7.3), drawn for this game: a headshot is a head with a burst over
+ * it, a wallbang a few bricks with the bullet's line through them. Inline SVG in the text
+ * colour of the line.
+ */
+export const KF_ICONS = {
+  hs: '<svg viewBox="0 0 18 14" aria-hidden="true"><circle cx="7" cy="8.2" r="4.6" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+    + '<path d="M4.6 12.2h4.8v1.6H4.6z" fill="currentColor"/><path d="M14 0.6l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z" fill="currentColor"/></svg>',
+  wb: '<svg viewBox="0 0 18 14" aria-hidden="true"><path d="M2 2h6v4H2zM9 2h6v4H9zM5.5 7h6v4h-6z" fill="none" stroke="currentColor" stroke-width="1.3"/>'
+    + '<path d="M0.5 12.8L17.5 1.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+};
+const KF_TITLES = { hs: 'Headshot', wb: 'Through cover' };
 const FEED_MAX = 5;
 const FEED_LIFE = 4.5;
 const FEED_MERGE = 2;
@@ -294,10 +306,16 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     setTimeout(() => el.remove(), dur * 1000 + 450);
   }
 
-  function feedPush(killer, ztype, weapon, gib) {
+  function kfIcon(kind) {
+    const el = h('span.kf-icon', { class: `kf-${kind}`, title: KF_TITLES[kind], 'aria-label': KF_TITLES[kind] });
+    el.innerHTML = KF_ICONS[kind];
+    return el;
+  }
+
+  function feedPush(killer, ztype, weapon, gib, hs = false, wb = false) {
     const now = time;
     const last = feedItems[feedItems.length - 1];
-    if (last && last.killer === killer && last.ztype === ztype && last.weapon === weapon && now - last.t < FEED_MERGE) {
+    if (last && last.killer === killer && last.ztype === ztype && last.weapon === weapon && last.hs === hs && last.wb === wb && now - last.t < FEED_MERGE) {
       last.count++;
       last.t = now;
       last.countEl.textContent = `×${last.count}`;
@@ -312,12 +330,15 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     if (killer) kids.push(h('span.kf-killer', { style: { color: colorOf(killer) }, text: nameOf(killer) }));
     else kids.push(h('span.kf-killer.env', { text: 'Turret' }));
     if (weapon) kids.push(h('span.kf-weapon', { text: weapon }));
+    // the wallbang before the headshot, the way it happened
+    if (wb) kids.push(kfIcon('wb'));
+    if (hs) kids.push(kfIcon('hs'));
     kids.push(h('span.kf-x', { text: gib ? '✸' : '✕' }));
     kids.push(h('span.kf-victim', { class: COMMON_ZOMBIES.has(ztype) ? null : 'special', text: zname }));
     kids.push(countEl);
     const el = h('div.kf-item', { class: killer === localId ? 'mine' : null }, kids);
     feed.appendChild(el);
-    feedItems.push({ el, killer, ztype, weapon, t: now, born: now, count: 1, countEl });
+    feedItems.push({ el, killer, ztype, weapon, hs, wb, t: now, born: now, count: 1, countEl });
     while (feedItems.length > FEED_MAX) feedItems.shift().el.remove();
   }
 
@@ -365,7 +386,7 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
         case 'zdie': {
           const common = COMMON_ZOMBIES.has(e.ztype);
           // Commons are merged per killer; specials always get their own line.
-          if (!common || e.by || feedItems.length < FEED_MAX) feedPush(e.by | 0, e.ztype, e.by ? weaponShortOf(e.by) : '', !!e.gib);
+          if (!common || e.by || feedItems.length < FEED_MAX) feedPush(e.by | 0, e.ztype, e.by ? weaponShortOf(e.by) : '', !!e.gib, !!e.hs, !!e.wb);
           break;
         }
         case 'wave': {

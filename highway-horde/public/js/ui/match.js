@@ -31,10 +31,12 @@ import { padNavigate } from './padnav.js';
 import { loadingCoverUp } from './loading.js';
 import { flashToast } from './menus.js';
 import { applyLook, moveToWorld, aimAssist, sensitivityOf, wrapAngle } from './look.js';
+import { secondaryOf, secondaryLabel, scopeFov } from '../shared/handling.js';
+import { WEAPONS } from '../shared/weapons.js';
 import { rendererSettings } from './gfx.js';
 import { createFrameLimiter } from './display.js';
 import { currentUiScale } from './uiscale.js';
-import { enterFullscreen, fullscreenSupported, isFullscreen } from './fullscreen.js';
+import { enterFullscreen, fullscreenSupported, isFullscreen, setLockAllKeys } from './fullscreen.js';
 
 const END_DELAY = 2.6;
 /**
@@ -169,6 +171,7 @@ export function startMatch(ctx, session) {
   const input = createInput(canvas, {
     touchRoot: $('#touch-root'), forceTouch: ctx.forceTouch, view: fps ? 'fps' : 'topdown',
     onLockChange: (locked) => onLockChange(locked), rawMouse: prefs.settings.rawMouse,
+    binds: prefs.settings.keys,
   });
   const hud = createHud(hudEl, {
     map, renderClassPortrait: deps.renderClassPortrait, audio, invite,
@@ -246,6 +249,9 @@ export function startMatch(ctx, session) {
     renderSettings.uiScale = currentUiScale();
     hud.setMinimapRotate(s.minimapRotate);
     input.setRawMouse(s.rawMouse);
+    input.setBinds(s.keys);
+    // (crouch or walk on Ctrl / Alt: fullscreen claims every key, so Ctrl+W can't close the tab)
+    setLockAllKeys(Object.values(input.binds).some((c) => /^(Control|Alt)/.test(c)));
     if (renderer.setRefreshHz) renderer.setRefreshHz(effectiveHz(ctx));
     if (s.quality !== appliedQuality) {
       appliedQuality = s.quality;
@@ -548,8 +554,12 @@ export function startMatch(ctx, session) {
     }
     const mouse = inp.mode === 'kbm';
     if (inp.lookDX || inp.lookDY) {
+      // Through a scope the view turns slower by the zoom (the picture moves as much per flick).
+      const zf = me && me.scope > 0 ? scopeFov(heldGun(me), me.scope) : null;
+      const base = renderSettings.fov || s.fov || 80;
+      const zoomK = zf ? Math.tan((zf * Math.PI) / 360) / Math.tan((base * Math.PI) / 360) : 1;
       applyLook(look, inp.lookDX, inp.lookDY, {
-        sensitivity: mouse ? sensitivityOf(s.sensitivity) : sensitivityOf(s.padLook),
+        sensitivity: (mouse ? sensitivityOf(s.sensitivity) : sensitivityOf(s.padLook)) * zoomK,
         invertY: !!s.invertY,
       });
     }
@@ -565,18 +575,34 @@ export function startMatch(ctx, session) {
     return look.yaw;
   }
 
+  /** The gun in the local player's hands (its weapon id), or null. */
+  function heldGun(me) {
+    if (!me || !me.slots) return null;
+    const id = me.slot >= 0 ? me.slots[me.slot] : me.state === 'downed' ? 'pistol' : null;
+    return id && WEAPONS[id] ? id : null;
+  }
+
   function step(now, dt) {
     frameCount++;
     const viewBefore = lastView;
     const meBefore = findLocal(viewBefore);
+    // Right click (pad LT, the touch SHOVE button) fires the gun's secondary mode, if it has one.
+    input.setRightAlt(meBefore && meBefore.state === 'alive' ? secondaryLabel(secondaryOf(heldGun(meBefore))) : null);
     const inp = input.sample();
     handleUi(inp, viewBefore, meBefore);
+    if (inp.inspect && renderer.inspect && meBefore && meBefore.state === 'alive') {
+      renderer.inspect();
+      if (audio.local) audio.local('inspect');
+    }
 
     const local = session.getPredictedLocal();
     lastLocal = local;
     let aim = NaN;
     if (fps) {
       aim = firstPersonAim(inp, local, meBefore, dt);
+      // the shot's pitch rides on the cmd: hitscan resolves in 3D (heads, legs, roofs)
+      inp.pitch = look.pitch;
+      inp.aim3d = true;
     } else if (local) {
       // aim: from the predicted local player to the cursor in world space
       const sp = renderer.worldToScreen(local.x, local.y);

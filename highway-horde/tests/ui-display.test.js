@@ -14,6 +14,7 @@ import {
   rendererSettings, applyPreset, presetMatches, GRAPHICS_PRESETS, PRESET_KEYS, statsLine, renderScaleLabel,
 } from '../public/js/ui/gfx.js';
 import { segValue } from '../public/js/ui/menus.js';
+import { XH_DEFAULTS } from '../public/js/ui/crosshair.js';
 
 function withStorage(store, fn) {
   const had = Object.prototype.hasOwnProperty.call(globalThis, 'localStorage');
@@ -228,6 +229,8 @@ test('the renderer gets the graphics settings every frame, in the agreed shape',
     volumetrics: true, reflections: true, gore: 'on',
     msaa: 0, shadowsHigh: false, contactShadows: false, aoFull: false, fxHigh: false, motionBlur: false, dof: false, lensFx: false, lightShadows: false,
     brightness: 1, contrast: 1, saturation: 1, timing: false,
+    // the crosshair (ui/crosshair.js) and the dev hit-volume view
+    xh: { ...XH_DEFAULTS }, hitboxes: false,
   });
   // Reuses the object it is given (the match loop passes the same one every frame).
   s.renderScale = 0.85;

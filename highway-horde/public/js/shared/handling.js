@@ -275,9 +275,35 @@ export function handlingOf(id) {
   return h;
 }
 
+/**
+ * Forget the cached handling records: after the weapon or handling tables were patched at run
+ * time (scripts/balance.js --set, tests, a mod declaring `secondary` on a gun).
+ */
+export function resetHandling() {
+  cache.clear();
+}
+
 /** The right-mouse action of gun `id`, or null (right mouse shoves). */
 export function secondaryOf(id) {
   return id ? handlingOf(id).secondary : null;
+}
+
+/** Short name of a secondary mode for buttons and hints: 'ZOOM' | 'BURST' | 'SIL' (null: none). */
+export function secondaryLabel(sec) {
+  if (!sec) return null;
+  return sec.type === 'scope' ? 'ZOOM' : sec.type === 'burst' ? 'BURST' : sec.type === 'silencer' ? 'SIL' : null;
+}
+
+/**
+ * The field of view (degrees) a player sees through gun `id`'s scope at zoom `level`
+ * (0 = not scoped: null). The renderer narrows the camera to it; the UI scales the mouse
+ * by the zoom so a flick moves the crosshair over the same part of the picture.
+ */
+export function scopeFov(id, level) {
+  const sec = level > 0 ? secondaryOf(id) : null;
+  if (!sec || sec.type !== 'scope') return null;
+  const l = sec.levels[Math.min(sec.levels.length, level) - 1];
+  return Number.isFinite(l) && l > 0 ? l : null;
 }
 
 // ---- recoil patterns ----------------------------------------------------------------------
@@ -388,7 +414,11 @@ export function aimTick(a, h, rate, dt, duck = 0) {
     if (a.inacc < 1e-5) a.inacc = 0;
   }
   if (a.spray > 0) {
-    const flow = Math.ceil(60 / Math.max(0.5, rate)) + 2;
+    // An automatic's spray holds while the shots keep coming (the pattern is the offset);
+    // a gun that kicks once per shot (semi-automatics, bolt guns, pumps: a one-step
+    // pattern) recovers all the time, so tapping it as fast as it cycles doesn't climb
+    // forever (its per-shot inaccuracy punishes the spam instead).
+    const flow = h.auto && !(h.spray && h.spray.climb <= 1) ? Math.ceil(60 / Math.max(0.5, rate)) + 2 : 0;
     if (a.since > flow) {
       const r = h.recovery;
       const s0 = a.spray;
@@ -463,7 +493,9 @@ export function inaccuracyOf(h, s) {
 /** Damage multiplier of a hit in `zone` (ZONE.*) for gun handling `h` against zombie type data `zt`. */
 export function zoneMult(h, zone, zt) {
   const name = ZONE_NAMES[zone] || 'chest';
-  if (zt && zt.zones && Number.isFinite(zt.zones[name])) return zt.zones[name];
+  // a type's own multipliers (hitbox.js TYPE_ZONES: the brute's and the boss's heavy skulls)
+  const tz = zt ? zt.zones || zt : null;
+  if (tz && Number.isFinite(tz[name])) return tz[name];
   const v = h.zones[name];
   return Number.isFinite(v) ? v : 1;
 }

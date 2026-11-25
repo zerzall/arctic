@@ -453,6 +453,95 @@ export const SOUNDS = {
     return out;
   } },
 
+  // Gunplay (SPEC §3.4): impacts by material, the headshot crack, bullets passing close,
+  // far gunfire, a suppressed shot, and the secondary-mode handling sounds. -------------------
+  impact_metal: { cat: 'impact', v: 4, g: 0.34, prio: 26, wet: 0.25, range: 0.7, lim: [0.03, 4], group: 'ricochet', render: (sr, rng) => {
+    // a hard clang: a bright struck partial set over a short noise slap
+    const out = S.mix(S.makeBuf(sr, 0.4), burst(sr, rng, 'highpass', J(rng, 3500, 0.15), 0.8, 0.012), sr, 0.8);
+    S.mix(out, S.partials(sr, 0.35, J(rng, 1900, 0.25), [[1, 1, 0.12], [2.41, 0.6, 0.09], [3.93, 0.35, 0.06], [6.1, 0.2, 0.04]]), sr, 0.5);
+    S.mix(out, thud(sr, J(rng, 520, 0.2), 300, 0.025, 0.008), sr, 0.25);
+    return out;
+  } },
+  impact_wood: { cat: 'impact', v: 4, g: 0.34, prio: 25, wet: 0.12, range: 0.6, lim: [0.03, 4], group: 'ricochet', render: (sr, rng) => {
+    // a dry knock and splinters
+    const out = S.mix(S.makeBuf(sr, 0.2), burst(sr, rng, 'bandpass', J(rng, 900, 0.2), 1.6, 0.03), sr);
+    S.mix(out, thud(sr, J(rng, 330, 0.15), 160, 0.04, 0.01), sr, 0.6);
+    S.mix(out, S.filter(S.env(S.crackle(sr, 0.12, rng, { rate: 220 }), sr, 0.002, 0.09), sr, 'bandpass', 2400, 1.2), sr, 0.35, 0.004);
+    return S.drive(out, 1.3);
+  } },
+  impact_dirt: { cat: 'impact', v: 4, g: 0.3, prio: 22, wet: 0.08, range: 0.55, lim: [0.03, 4], group: 'ricochet', render: (sr, rng) => {
+    // a soft thup and a scatter of grit
+    const out = S.mix(S.makeBuf(sr, 0.25), thud(sr, J(rng, 170, 0.2), 70, 0.05, 0.012), sr, 0.8);
+    S.mix(out, burst(sr, rng, 'lowpass', J(rng, 1300, 0.2), 0.7, 0.05), sr, 0.6);
+    S.mix(out, S.filter(S.env(S.crackle(sr, 0.2, rng, { rate: 160 }), sr, 0.01, 0.16), sr, 'highpass', 1500), sr, 0.25, 0.01);
+    return out;
+  } },
+  headshot: { cat: 'impact', v: 3, g: 0.62, prio: 75, wet: 0.08, range: 0.9, lim: [0.03, 3], render: (sr, rng) => {
+    // a sharp crack with a brittle, ringing tick on top: the skull, not the body
+    const out = S.mix(S.makeBuf(sr, 0.32), burst(sr, rng, 'highpass', J(rng, 4200, 0.08), 0.9, 0.006, 0.0001), sr, 0.9);
+    S.mix(out, S.partials(sr, 0.22, J(rng, 3100, 0.05), [[1, 1, 0.07], [1.47, 0.5, 0.05], [2.9, 0.3, 0.03]]), sr, 0.45, 0.002);
+    S.mix(out, thud(sr, J(rng, 260, 0.1), 120, 0.04, 0.01), sr, 0.45, 0.004);
+    S.mix(out, burst(sr, rng, 'lowpass', 1800, 0.8, 0.05), sr, 0.35, 0.006);
+    return S.drive(out, 1.5);
+  } },
+  whiz: { cat: 'impact', v: 4, g: 0.4, prio: 50, wet: 0.05, range: 3, lim: [0.05, 2], render: (sr, rng) => {
+    // a bullet going by: a narrow noise band falling in pitch (Doppler), loudest as it passes
+    const d = 0.16 + rng.next() * 0.06;
+    const f0 = J(rng, 4800, 0.15), f1 = J(rng, 1400, 0.2);
+    return whoosh(sr, rng, d, [[0, f0], [d * 0.45, f0 * 0.8], [d, f1]], 9, [[0, 0], [d * 0.42, 1], [d * 0.55, 0.8], [d, 0]]);
+  } },
+  gun_far: { srate: 0.5, cat: 'gun', v: 3, g: 0.55, prio: 30, wet: 0.7, range: 3.2, lim: [0.05, 3], render: (sr, rng) => {
+    // gunfire far away: the highs gone, a dull pop and the long rolling echo off the landscape
+    const out = S.mix(S.makeBuf(sr, 1.6), thud(sr, J(rng, 120, 0.1), 50, 0.12, 0.03, 1.3), sr, 0.8);
+    S.mix(out, burst(sr, rng, 'lowpass', J(rng, 700, 0.15), 0.7, 0.08), sr, 0.6);
+    const tl = S.filter(S.pink(sr, 1.4, rng), sr, 'lowpass', 500, 0.6);
+    S.mix(out, S.env(tl, sr, 0.03, 1.1), sr, 0.22, 0.05);
+    S.echoes(out, sr, [[0.21, 0.35, 600], [0.47, 0.2, 450], [0.83, 0.1, 350]]);
+    return out;
+  } },
+  suppressed: { ...GUN, v: 4, g: 0.42, wet: 0.12, range: 0.45, render: (sr, rng) => {
+    // a suppressed shot: a cough of gas, the action cycling louder than the shot itself
+    const out = S.mix(S.makeBuf(sr, 0.25), burst(sr, rng, 'bandpass', J(rng, 1100, 0.15), 1.1, 0.045, 0.001), sr, 0.9);
+    S.mix(out, thud(sr, J(rng, 180, 0.1), 90, 0.04, 0.012), sr, 0.5);
+    S.mix(out, click(sr, rng, J(rng, 3600, 0.1), 0.01, 2.5), sr, 0.45, 0.03);
+    S.mix(out, click(sr, rng, J(rng, 2500, 0.1), 0.01, 2.5), sr, 0.3, 0.05);
+    return S.drive(out, 1.3);
+  } },
+  scope_in: { cat: 'weapon', v: 2, g: 0.32, prio: 60, wet: 0.02, range: 0.4, lim: [0.05, 2], render: (sr, rng) => {
+    // the eye to the glass: a soft slide and a lens click
+    const out = S.mix(S.makeBuf(sr, 0.12), whoosh(sr, rng, 0.07, [[0, 2200], [0.07, 3400]], 2, [[0, 0], [0.04, 1], [0.07, 0]]), sr, 0.4);
+    S.mix(out, click(sr, rng, J(rng, 5200, 0.1), 0.004, 3), sr, 0.6, 0.06);
+    return out;
+  } },
+  scope_out: { cat: 'weapon', v: 2, g: 0.28, prio: 60, wet: 0.02, range: 0.4, lim: [0.05, 2], render: (sr, rng) => {
+    const out = S.mix(S.makeBuf(sr, 0.1), click(sr, rng, J(rng, 4200, 0.1), 0.004, 3), sr, 0.6);
+    S.mix(out, whoosh(sr, rng, 0.06, [[0, 3000], [0.06, 1800]], 2, [[0, 0], [0.02, 1], [0.06, 0]]), sr, 0.35, 0.01);
+    return out;
+  } },
+  mode_switch: { cat: 'weapon', v: 2, g: 0.38, prio: 60, wet: 0.02, range: 0.45, lim: [0.05, 2], render: (sr, rng) => {
+    // a selector detent: two stiff clicks
+    const out = S.mix(S.makeBuf(sr, 0.09), click(sr, rng, J(rng, 3000, 0.1), 0.006, 2.5), sr, 0.8);
+    S.mix(out, click(sr, rng, J(rng, 2200, 0.1), 0.008, 2.5), sr, 0.6, 0.035);
+    return out;
+  } },
+  silencer: { cat: 'weapon', v: 2, g: 0.34, prio: 55, wet: 0.03, range: 0.45, lim: [0.1, 1], render: (sr, rng) => {
+    // threading a can on or off: a metal scrape in short turns, a seat click
+    const out = S.makeBuf(sr, 0.7);
+    for (let i = 0; i < 4; i++) {
+      const sc = S.filter(S.noise(sr, 0.1, rng), sr, 'bandpass', J(rng, 2600 + i * 200, 0.1), 4);
+      S.mix(out, S.env(sc, sr, 0.02, 0.07), sr, 0.4, 0.04 + i * 0.13);
+    }
+    S.mix(out, click(sr, rng, J(rng, 3400, 0.1), 0.008, 2), sr, 0.7, 0.6);
+    return out;
+  } },
+  inspect: { cat: 'weapon', v: 2, g: 0.26, prio: 40, wet: 0.03, range: 0.35, lim: [0.3, 1], render: (sr, rng) => {
+    // turning the gun over in gloved hands: fabric, a sling buckle, a light knock
+    const out = S.mix(S.makeBuf(sr, 0.9), whoosh(sr, rng, 0.5, [[0, 900], [0.5, 1500]], 1.2, [[0, 0], [0.2, 1], [0.5, 0]]), sr, 0.35);
+    S.mix(out, click(sr, rng, J(rng, 2800, 0.1), 0.01, 2), sr, 0.4, 0.45);
+    S.mix(out, thud(sr, 300, 200, 0.03, 0.01), sr, 0.25, 0.62);
+    return out;
+  } },
+
   // Explosions & fire. --------------------------------------------------------------------
   expl_frag: { cat: 'explosion', v: 3, g: 1, prio: 80, wet: 0.5, range: 2.2, lim: [0.02, 6], group: 'explosion', render: (sr, rng) => explosion(sr, rng, {
     dur: 2.4, f0: 75, f1: 28, boomD: 0.9, bodyD: 1.0, rumbleD: 2.0, debris: 150, chunks: 4, drive: 2 }) },

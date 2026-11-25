@@ -18,7 +18,7 @@ import { WEAPONS, effectiveRate } from '../weapons.js';
 import { ITEMS } from '../items.js';
 import { FlowField, BARRICADE_COST } from '../flowfield.js';
 import { angleDiff, turnTowards, TAU } from '../math.js';
-import { activeWeapon, priceFor, shopWave, findPlacement } from './players.js';
+import { activeWeapon, priceFor, shopWave, findPlacement, aimNow } from './players.js';
 import { MODE_CHARGE } from './zombies.js';
 import { walkComponents, componentAt } from './zone.js';
 import { nearestSupply } from '../level.js';
@@ -1466,6 +1466,7 @@ function danger(b, x, y) {
 // Aim and fire
 
 const _ap = { f: 0, side: 0, h: 0 };
+const _an = { py: 0, pp: 0, inacc: 0, spread: 0 };
 
 function aimAndFire(game, b, cmd) {
   const p = b.p;
@@ -1536,6 +1537,14 @@ function aimAndFire(game, b, cmd) {
   if (w.reloadOne && p.reloadT > 0 && b.nearestAdj > 220) return;
   // A scope settles before the shot.
   if (wantScope && (p.scope === 0 || p.scopeT < sec.settle)) return;
+  // Pace the shots at range: wait for the cone (movement, the last shots) to close to about
+  // the size of what it aims at, as a good player taps instead of spamming; an average one
+  // waits less. Up close, and with pellet guns, it just fires.
+  if (d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail')) {
+    aimNow(p, aw.id, w, _an);
+    const room = Math.atan2(partR, d) * (pr.level >= 0.5 ? 1.3 : 2.6) + 0.004;
+    if (_an.inacc > room && (b.burstT <= 0 || _an.inacc > room * 2)) return;
+  }
   // Bursts with automatic guns at range, shorter the farther (taps), with pauses that let the
   // spray recover; hold the trigger up close (and on spin-up guns).
   if (w.rate >= 8 && !w.spinup && !w.burst && d > 260) {

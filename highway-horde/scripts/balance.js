@@ -55,6 +55,7 @@ import {
   DIFFICULTIES, DIFFICULTY_IDS, TICK_RATE, BOSS_EVERY, WAVE_ZOMBIES, SPAWN_PACING, TURRET, BARRICADE,
 } from '../public/js/shared/constants.js';
 import { BOT_SKILL } from '../public/js/shared/sim/bots.js';
+import { resetHandling } from '../public/js/shared/handling.js';
 import { mapModes } from '../public/js/shared/zone.js';
 import { frontGap, STAGE_SHORT, CAMPAIGN } from '../public/js/shared/campaign.js';
 
@@ -406,6 +407,8 @@ export function applySets(spec) {
     const v = Number(m[2]);
     o[key] = Number.isFinite(v) ? v : m[2] === 'true' ? true : m[2] === 'false' ? false : m[2];
   }
+  // (the guns' handling records cache what they read from the weapon table)
+  resetHandling();
 }
 
 // -------------------------------------------------------------------------------------

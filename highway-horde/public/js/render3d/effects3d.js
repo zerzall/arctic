@@ -15,6 +15,13 @@
 // Shot rules (SPEC §4.1): `echo` shots are never drawn again; the local player's shots
 // (predicted on clients) start at the viewmodel muzzle, which viewmodel.js publishes in
 // fx.localMuzzle every frame; teammates' shots start at the muzzle players3d publishes.
+//
+// Gunplay (SPEC §3.4): first-person shots are resolved in 3D, so their rays carry the height
+// the bullet stopped at (ray z) and the event the eye height (e.z): tracers and impacts go
+// exactly there. Your own tracers show for one shot in `tracer` (shared/handling.js: every
+// third from automatics, every one from a sniper), everyone else's always. A suppressed shot
+// (shot flag 1) shows a small flash and lights little. A zdie with `pop` bursts the head: a
+// red mist and skull fragments at head height.
 
 import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
@@ -22,6 +29,8 @@ import { ZOMBIES } from '../shared/zombies.js';
 import { acquireFx, releaseFx, F_ADD, F_FLAT, F_STREAK, F_BOUNCE, F_FIRE, F_FLICKER, F_SPIN, F_VSTRETCH, F_HOT, FR, DC, DK } from './fx-core.js';
 import { surfaceIndex, groundIndex, MAT } from './surfaces.js';
 import { createBlood } from './blood3d.js';
+import { handlingOf } from '../shared/handling.js';
+import { aimPoint } from '../shared/hitbox.js';
 import { createGore3D } from './gore3d.js';
 import { createCasings3D } from './casings3d.js';
 import { col } from './actor-kit.js';
@@ -246,11 +255,14 @@ export function createEffects3D(ctx) {
     const extra = e.pid ? 10 : 8;
     _org.x = e.x + Math.cos(e.angle) * extra;
     _org.y = e.y + Math.sin(e.angle) * extra;
-    _org.h = (e.turret ? 34 : 38) + G(e.x, e.y);
+    // a 3D shot names its height (absolute, like the ray heights); older ones are level
+    _org.h = (e.fl & 2) && Number.isFinite(e.z) && e.z > 0 ? e.z : (e.turret ? 34 : 38) + G(e.x, e.y);
     return _org;
   }
 
   function endHeight(isLocal, r, org) {
+    // 3D shots: the sim says where the bullet stopped
+    if (Number.isFinite(r.z) && r.z !== 0 && shot3d) return r.z;
     if (isLocal) {
       // tracers go where the camera aims: bullets are horizontal in the sim, but the
       // player looks up/down at what they shoot
@@ -381,12 +393,18 @@ export function createEffects3D(ctx) {
 
   // ---- event handlers -------------------------------------------------------------------------
   let tracerBudget = 0;
+  // the shot being drawn is a 3D one (its ray heights are real)
+  let shot3d = false;
+  // own shots per gun since the last tracer (a tracer every `tracer` shots)
+  let ownShots = 0;
 
   function shot(e) {
     if (e.echo) return;                           // already drawn as the predicted shot
     const w = WEAPONS[e.weapon];
     if (!w) return;
     const isLocal = !!e.pid && e.pid === localId;
+    shot3d = (e.fl & 2) !== 0;
+    const silenced = (e.fl & 1) !== 0;
     const lk = e.turret ? -e.turret : e.pid || 0;   // light-gate key: this shooter
     const org = shotOrigin(e, isLocal);
     const ox = org.x, oh = org.h, oy = org.y;
@@ -456,11 +474,18 @@ export function createEffects3D(ctx) {
       }
       const shotgun = w.category === 'shotgun';
       const width = big ? 1.8 : shotgun ? 0.75 : 1.1;
+      // your own tracers: one shot in `tracer` (the first of a spray shows); others' always
+      let ownTracer = true;
+      if (isLocal && !e.turret) {
+        const every = handlingOf(e.weapon).tracer;
+        ownTracer = ownShots % every === 0;
+        ownShots++;
+      }
       for (let k = 0; k < rays.length; k++) {
         const r = rays[k];
         if (!r) continue;
         const bh = endHeight(isLocal, r, org);
-        if (tracerBudget > 0 || k === 0) {
+        if (ownTracer && (tracerBudget > 0 || k === 0)) {
           tracerBudget--;
           const len = Math.hypot(r.x - ox, r.y - oy, bh - oh);
           if (len > 4 && tracers.length < 400) {
@@ -477,11 +502,11 @@ export function createEffects3D(ctx) {
       }
       ejectCasing(lk, isLocal, org, e.angle, w);
       if (!isLocal) {
-        const size = shotgun ? 1.5 : big ? 1.6 : w.category === 'heavy' ? 1.25 : w.category === 'pistol' ? 0.8 : 1.0;
+        const size = (shotgun ? 1.5 : big ? 1.6 : w.category === 'heavy' ? 1.25 : w.category === 'pistol' ? 0.8 : 1.0) * (silenced ? 0.35 : 1);
         muzzleFlash(ox, oh, oy, e.angle, size, '#ffc070', lk, e.weapon === 'magnum' ? 'magnum' : w.category);
       } else {
-        // the viewmodel draws its own flash; the world still gets the light
-        gatedFlash(lk, 0.06, ox, oy, oh, '#ffc070', 1.2, 180, 0.07);
+        // the viewmodel draws its own flash; the world still gets the light (a suppressor hides most of it)
+        gatedFlash(lk, 0.06, ox, oy, oh, '#ffc070', silenced ? 0.3 : 1.2, silenced ? 80 : 180, 0.07);
         if (high && R() < (shotgun ? 0.9 : w.category === 'heavy' ? 0.3 : 0.5)) smoke(ox + ca * 6, oh, oy + sa * 6, shotgun ? 2 : 1, shotgun ? 7 : 4, shotgun ? 1.1 : 0.6, C('#8a8a8a'), shotgun ? 0.22 : 0.16, 15, 2);
       }
       return;
@@ -681,11 +706,37 @@ export function createEffects3D(ctx) {
     }
   }
 
+  const _hp = { f: 0, side: 0, h: 0 };
+  /** A headshot that burst the head: a red mist, a spray and skull fragments at head height. */
+  function headPop(e) {
+    const a = e.angle || 0;
+    aimPoint(e.ztype, e.id | 0, 0, 'head', _hp);
+    const hx = e.x + Math.cos(a) * _hp.f, hy = e.y + Math.sin(a) * _hp.f;
+    const hh = _hp.h + G(e.x, e.y);
+    const P = fx.gore;
+    // the shot came from the killer's side: the spray goes away from them
+    let away = a + Math.PI;
+    for (let k = 0; k < HEAVY_N; k++) {
+      const q = heavyHits[k];
+      if (now - q.t < 0.45 && (q.x - e.x) * (q.x - e.x) + (q.y - e.y) * (q.y - e.y) < 70 * 70) { away = q.ang; break; }
+    }
+    blood(hx, hh, hy, away, 1.6, high ? 14 : 6, 260, true);
+    fx.spawn(hx, hh, hy, Math.cos(away) * 30, 18, Math.sin(away) * 30, 0.8, 6, 26, P.mist, 0.6, FR.MIST, 0, 0, 2);
+    if (P.k > 0) {
+      for (let k = 0; k < (high ? 7 : 3); k++) {
+        const aa = away + (R() - 0.5) * 2.2, sp = 90 + R() * 170;
+        fx.spawn(hx, hh, hy, Math.cos(aa) * sp, 60 + R() * 140, Math.sin(aa) * sp, 0.7 + R() * 0.5, 1 + R() * 1.2, 1, k % 2 ? C('#d8ccb0') : C('#6a1418'), 1, FR.CHUNK, F_BOUNCE | F_SPIN, 800, 0.4);
+      }
+    }
+    blood3.exitSpray(hx, hh, hy, away, 0.9, 0);
+  }
+
   function zdie(e) {
     if (e.ztype === 'bloater') return;               // its explosion event carries the show
     const def = ZOMBIES[e.ztype] || ZOMBIES.walker;
     const r = def.radius || 14;
     const P = fx.gore;
+    if (e.pop && !e.gib && P.k > 0) headPop(e);
     // was it finished by a heavy hit? (a recent one close to the body)
     let hh = null;
     for (let k = 0; k < HEAVY_N; k++) {

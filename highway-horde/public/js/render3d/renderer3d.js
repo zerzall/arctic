@@ -27,6 +27,8 @@ import { createLights, ambientFor } from './lights.js';
 import { resolveTime } from '../shared/timeofday.js';
 import * as sunShadowMod from './sunshadow.js';
 import { WEAPONS } from '../shared/weapons.js';
+import { handlingOf, scopeFov } from '../shared/handling.js';
+import { eyeHeight } from '../shared/movement.js';
 import * as zombiesMod from './zombies3d.js';
 import * as playersMod from './players3d.js';
 import * as itemsMod from './items3d.js';
@@ -278,6 +280,9 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     lastX: NaN, lastY: NaN, speed: 0, bob: 0, kick: 0, mode: 'fps', chaseId: 0,
     cx: camera.position.x, cy: EYE, cz: camera.position.z, orbit: 0, time: 0,
     lastZ: 0, lastAir: false, air: 0, land: 0, landV: 0, climb: 0, ride: 0,
+    // gunplay (SPEC §3.4): the view punch (yaw, pitch: the recoil's share the camera shows,
+    // smoothed between sim ticks), the scope's zoom (field of view, degrees, 0 = none), the duck
+    py: 0, pp: 0, zoom: 0, scoped: false, gun: null,
   };
   let lastSettings = { screenShake: true, fov: 80 };
   let localId = 0;
@@ -319,12 +324,25 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       rig.speed += (inst - rig.speed) * (1 - Math.exp(-dt * 10));
       const sp = Math.min(1.6, rig.speed / 190);
       rig.bob += dt * rig.speed * (local.sprinting ? 0.05 : 0.056);
-      const targetEye = downed ? EYE_DOWNED : EYE;
-      rig.eye += (targetEye - rig.eye) * (1 - Math.exp(-dt * 6));
-      const amp = (downed ? 0.6 : (local.sprinting ? 2.3 : 1.4) * Math.min(1, sp)) * (1 - rig.air);
+      // eye height: standing, ducked (crouch), downed — the sim's own eye (shots start there)
+      const targetEye = downed ? EYE_DOWNED : eyeHeight(local);
+      rig.eye += (targetEye - rig.eye) * (1 - Math.exp(-dt * (downed ? 6 : 16)));
+      // less bob walking slowly and ducked (Counter-Strike's steady walk): the amplitude
+      // follows the speed, and a crouch halves it
+      const ducked = local.duckT > 0 ? 0.5 : 1;
+      const amp = (downed ? 0.6 : (local.sprinting ? 2.3 : 1.4 * Math.min(1, sp * sp * 1.6)) * Math.min(1, sp) * ducked) * (1 - rig.air);
       const bobY = Math.abs(Math.sin(rig.bob)) * amp - amp * 0.5;
       const bobX = Math.cos(rig.bob) * amp * 0.45;
-      const yaw = look.yaw, pitch = look.pitch;
+      // the view punch: the recoil's offset (local.punchY / punchP, predicted) times the gun's
+      // viewKick share; the bullets go the whole offset (CS: the crosshair stays centred, the
+      // view climbs half as far as the spray)
+      const gun = local.slots ? (downed ? 'pistol' : local.slots[local.slot]) : null;
+      const vk = gun && WEAPONS[gun] ? handlingOf(gun).viewKick : 0.5;
+      const kp = 1 - Math.exp(-dt * 38);
+      rig.py += ((Number(local.punchY) || 0) * vk - rig.py) * kp;
+      rig.pp += ((Number(local.punchP) || 0) * vk - rig.pp) * kp;
+      rig.gun = gun;
+      const yaw = look.yaw + rig.py, pitch = look.pitch + rig.pp;
       const rx = Math.cos(yaw + Math.PI / 2), ry = Math.sin(yaw + Math.PI / 2);
       camera.position.set(local.x + rx * bobX, rig.eye + bobY + z + rig.land, local.y + ry * bobX);
       const rollT = downed ? 0.22 + Math.sin(rig.time * 0.7) * 0.03 : Math.cos(rig.bob) * 0.006 * sp;
@@ -332,6 +350,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       camera.rotation.set(pitch + rig.kick - rig.climb * 0.1, -yaw - Math.PI / 2, rig.roll + rig.climb * 0.035);
       rig.cx = camera.position.x; rig.cy = camera.position.y; rig.cz = camera.position.z;
       rig.yaw = yaw; rig.pitch = pitch;
+      // the scope: a quick zoom to the level's field of view
+      const zf = local.scope > 0 && gun ? scopeFov(gun, local.scope) : null;
+      rig.scoped = !!zf;
+      rig.zoom = zf || 0;
     } else {
       // --- spectating: chase a living teammate, else orbit the objective ---
       const players = view ? view.players : [];
@@ -360,6 +382,9 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       rig.yaw = Math.atan2(ly - rig.cz, lx - rig.cx);
       rig.pitch = camera.rotation.x;
       rig.roll = 0;
+      rig.py = rig.pp = 0;
+      rig.scoped = false;
+      rig.zoom = 0;
     }
     if (shakeOn && trauma > 0) {
       const t2 = trauma * trauma, t = rig.time * 31;
@@ -374,7 +399,15 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       camera.rotation.z += Math.sin(rig.time * 2.1) * 0.05 * rig.ride;
       camera.rotation.x += Math.sin(rig.time * 3.3 + 1) * 0.01 * rig.ride;
     }
-    const f = verticalFov(settings.fov, camera.aspect) + rig.ride * 12;
+    let f = verticalFov(settings.fov, camera.aspect) + rig.ride * 12;
+    if (rig.zoom > 0) {
+      // the zoom is a horizontal field of view on 4:3, like the FOV setting (verticalFov)
+      const a = Number.isFinite(camera.aspect) && camera.aspect > 0 ? Math.min(4 / 3, camera.aspect) : 4 / 3;
+      const zv = 2 * Math.atan(Math.tan((rig.zoom * Math.PI) / 360) / a) * 180 / Math.PI;
+      f = Math.round(Math.min(f, zv) * 100) / 100;
+    }
+    // (zooming in and out takes a few frames, not one)
+    if (Math.abs(f - fov) > 0.05) f = fov + (f - fov) * (1 - Math.exp(-dt * 30));
     if (f !== fov || camera.fov !== f) { fov = f; camera.fov = f; camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
   }
@@ -525,6 +558,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       const frame = {
         dt, now: Number(opts.now) || 0, localId, roster: opts.roster || [], local,
         camX: camera.position.x, camY: camera.position.z, camH: camera.position.y, yaw: rig.yaw, pitch: rig.pitch, settings,
+        scoped: rig.scoped, punchY: rig.py, punchP: rig.pp,
       };
       if (view) {
         // (a hideout's range dummies are drawn by hideout3d, not as zombies)
@@ -610,7 +644,8 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
       }
     }
     renderer.render(scene, camera);
-    if (vm) renderViewmodel(frame);
+    // (through a scope the gun is out of the picture)
+    if (vm && !rig.scoped) renderViewmodel(frame);
   }
 
   /**
@@ -671,11 +706,12 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     const lid = opts.localId ?? localId;
     try {
       for (const e of events) {
-        // recoil kick on our own shots (predicted ones included, echoes never)
+        // a short shove on our own shots (predicted ones included, echoes never), on top of
+        // the view punch that follows the spray (updateCamera)
         if (e && e.type === 'shot' && e.pid === lid && lid && !e.echo) {
           const w = WEAPONS[e.weapon];
           const r = w ? w.recoil || 0.1 : 0.1;
-          rig.kick = Math.min(0.09, rig.kick + r * 0.05 * (lastSettings.screenShake === false ? 0.5 : 1));
+          rig.kick = Math.min(0.05, rig.kick + r * 0.025 * (lastSettings.screenShake === false ? 0.5 : 1));
         }
       }
     } catch (err) {
@@ -715,6 +751,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     },
     getCamera() {
       return { x: camera.position.x, y: camera.position.z, yaw: rig.yaw };
+    },
+    /** Inspect the gun in hand (the viewmodel's turn-it-over animation; the key in Settings). */
+    inspect() {
+      try { if (vm && typeof vm.inspect === 'function') vm.inspect(); } catch (err) { logErr('inspect', err); }
     },
     resize,
     /** Story hideouts: show these upgrade tiers ({ generator: 2, ... }); rebuilds only the upgrade layer. */

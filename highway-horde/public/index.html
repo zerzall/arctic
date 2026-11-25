@@ -437,6 +437,44 @@
               <label class="check-row"><input type="checkbox" data-setting="aimAssist"><span>Aim assist (gamepad &amp; touch)</span></label>
               <label class="check-row" id="set-raw-row"><input type="checkbox" data-setting="rawMouse"><span>Raw mouse input <small>skips the OS pointer acceleration where supported</small></span></label>
             </div>
+            <div class="set-row" id="set-keys">
+              <div class="set-label">Keys <button type="button" class="btn btn-small btn-ghost" id="set-keys-reset">Reset</button></div>
+              <div class="key-binds">
+                <div class="key-bind"><span>Crouch <small>hold</small></span><button type="button" class="btn btn-small key-btn" data-bind="crouch"></button></div>
+                <div class="key-bind"><span>Walk <small>hold: quiet, accurate</small></span><button type="button" class="btn btn-small key-btn" data-bind="walk"></button></div>
+                <div class="key-bind"><span>Inspect weapon</span><button type="button" class="btn btn-small key-btn" data-bind="inspect"></button></div>
+              </div>
+              <p class="set-help">Click a key, then press the new one (Esc cancels). Ctrl works for crouch, as in other shooters; outside fullscreen the browser keeps Ctrl+W, so the game asks before closing the tab.</p>
+            </div>
+            <div class="set-row" id="set-xh">
+              <div class="set-label">Crosshair</div>
+              <div class="xh-wrap">
+                <canvas class="xh-preview" id="set-xh-preview" width="132" height="96" aria-label="Crosshair preview"></canvas>
+                <div class="xh-controls">
+                  <div class="seg" role="radiogroup" aria-label="Crosshair style" data-setting="xhStyle">
+                    <button type="button" class="seg-btn" role="radio" data-value="dynamic" title="Opens up while moving, jumping and spraying">Dynamic</button>
+                    <button type="button" class="seg-btn" role="radio" data-value="static" title="Always the same size">Static</button>
+                  </div>
+                  <div class="seg xh-colors" role="radiogroup" aria-label="Crosshair colour" data-setting="xhColor">
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="green" title="Green" aria-label="Green" style="--sw:#4cf04c"></button>
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="yellow" title="Yellow" aria-label="Yellow" style="--sw:#f5e642"></button>
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="cyan" title="Cyan" aria-label="Cyan" style="--sw:#46e6f0"></button>
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="white" title="White" aria-label="White" style="--sw:#ffffff"></button>
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="pink" title="Pink" aria-label="Pink" style="--sw:#ff6ad5"></button>
+                    <button type="button" class="seg-btn xh-swatch" role="radio" data-value="red" title="Red" aria-label="Red" style="--sw:#ff4b4b"></button>
+                  </div>
+                </div>
+              </div>
+              <label class="range-row wide-label"><span>Length</span><input type="range" min="10" max="140" step="5" data-setting="xhSize" data-scale="10" data-unit="px10"><output></output></label>
+              <label class="range-row wide-label"><span>Thickness</span><input type="range" min="5" max="40" step="5" data-setting="xhThick" data-scale="10" data-unit="px10"><output></output></label>
+              <label class="range-row wide-label"><span>Gap</span><input type="range" min="-30" max="100" step="5" data-setting="xhGap" data-scale="10" data-unit="px10"><output></output></label>
+              <label class="range-row wide-label"><span>Opacity</span><input type="range" min="30" max="100" step="5" data-setting="xhAlpha"><output></output></label>
+              <div class="check-grid">
+                <label class="check-row"><input type="checkbox" data-setting="xhDot"><span>Centre dot</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="xhOutline"><span>Outline</span></label>
+                <label class="check-row"><input type="checkbox" data-setting="hitboxes"><span>Show hit volumes <small>developer view</small></span></label>
+              </div>
+            </div>
           </section>
 
           <section class="set-pane" id="set-pane-audio" role="tabpanel" aria-labelledby="set-tab-audio" data-pane="audio" hidden>
@@ -473,10 +511,14 @@
                   <tr><td>Move (forward / strafe)</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</td><td>Left stick</td><td>Left thumb</td></tr>
                   <tr><td>Look &amp; aim</td><td>Mouse (click the game to capture it)</td><td>Right stick</td><td>Drag on the right half</td></tr>
                   <tr><td>Shoot</td><td>Left mouse</td><td>RT</td><td>FIRE (drag it to look while shooting)</td></tr>
+                  <tr><td>Secondary fire: scope / burst / suppressor (guns that have one)</td><td>Right mouse</td><td>Tap LT</td><td>Tap the button (it shows ZOOM / BURST / SIL)</td></tr>
+                  <tr><td>Crouch (steadier aim, slower)</td><td>Hold <kbd>Z</kbd> (Settings → Controls → Keys)</td><td>Click right stick</td><td>—</td></tr>
+                  <tr><td>Walk (quiet, steady aim)</td><td>Hold <kbd>X</kbd> (rebindable)</td><td>Push the stick part way</td><td>Push the thumb part way</td></tr>
+                  <tr><td>Inspect weapon</td><td><kbd>Y</kbd> (rebindable)</td><td>—</td><td>—</td></tr>
                   <tr><td>Release the mouse</td><td><kbd>Esc</kbd> (opens the menu)</td><td>—</td><td>—</td></tr>
                   <tr><td>Jump / climb (into a car, van, container)</td><td><kbd>Space</kbd></td><td>A</td><td>JUMP</td></tr>
-                  <tr><td>Shove (melee)</td><td>Right mouse or <kbd>V</kbd></td><td>LT</td><td>SHOVE</td></tr>
-                  <tr><td>Sprint</td><td><kbd>Shift</kbd></td><td>Click left stick</td><td>Push left thumb fully</td></tr>
+                  <tr><td>Shove (melee)</td><td><kbd>V</kbd>, or right mouse on a gun without a secondary mode</td><td>LT (hold it on a gun with one)</td><td>SHOVE (hold it on a gun with one)</td></tr>
+                  <tr><td>Sprint (you can't shoot straight running flat out)</td><td><kbd>Shift</kbd></td><td>Click left stick</td><td>Push left thumb fully</td></tr>
                   <tr><td>Reload</td><td><kbd>R</kbd></td><td>X</td><td>RELOAD</td></tr>
                   <tr><td>Revive (hold) / take crate (tap)</td><td><kbd>E</kbd></td><td>RB</td><td>USE</td></tr>
                   <tr><td>Switch weapon</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>, wheel, <kbd>Q</kbd> last</td><td>Y next, D-pad ▶ last</td><td>SWAP</td></tr>
@@ -484,7 +526,7 @@
                   <tr><td>Molotov</td><td><kbd>F</kbd></td><td>B</td><td>MOLO</td></tr>
                   <tr><td>Place turret</td><td><kbd>T</kbd></td><td>D-pad ▲</td><td>TURRET</td></tr>
                   <tr><td>Place barricade</td><td><kbd>C</kbd></td><td>D-pad ▼</td><td>WALL</td></tr>
-                  <tr><td>Shop</td><td><kbd>B</kbd></td><td>Click right stick</td><td>SHOP</td></tr>
+                  <tr><td>Shop</td><td><kbd>B</kbd></td><td>Tap Back</td><td>SHOP</td></tr>
                   <tr><td>Ready (skip the break)</td><td><kbd>N</kbd></td><td>D-pad ◀</td><td>READY</td></tr>
                   <tr><td>Scoreboard</td><td>Hold <kbd>Tab</kbd></td><td>Hold Back</td><td>SCORES</td></tr>
                   <tr><td>Chat</td><td><kbd>Enter</kbd></td><td>—</td><td>CHAT</td></tr>
@@ -503,6 +545,7 @@
               <li><strong>Watch your back.</strong> The horde comes from every side: turn when you hear groans behind you (they sound muffled), and follow the red arcs that show where a hit came from.</li>
               <li><strong>Bosses every 5 waves.</strong> The Abomination slams the ground around it — keep your distance and focus fire.</li>
               <li><strong>Know the specials.</strong> Bloaters burst when they die, spitters lob acid, screamers speed up the horde, brutes charge.</li>
+              <li><strong>Shoot like you mean it.</strong> Every gun throws its spray the same way every time: the first rounds climb, then it wanders side to side — pull down against it, or tap and burst. Stop before you shoot (let go of the keys, or tap the opposite one): the first shot of a standing, rested gun goes exactly where the crosshair is; running, jumping and spraying open the cone (the dynamic crosshair shows it). Crouch or walk to steady it. Heads take four times the damage (big ones half that), legs slow a zombie down, and rifles and snipers punch through car doors, fences and thin walls.</li>
               <li><strong>Jump the low stuff.</strong> <kbd>Space</kbd> hops over guard rails, jersey barriers, sandbags and fences (not barricades) — sprint for a longer leap. Crawlers can't reach you in the air.</li>
               <li><strong>Climb for a better view.</strong> <kbd>Space</kbd> while walking into a car, van, HESCO wall or container pulls you up on top — shoot over the cover around you, hop roof to roof, walk off the edge to get down. It buys time, not safety: zombies grab your legs on a car, runners and walkers climb after you, brutes knock you off.</li>
               <li><strong>Fortify.</strong> Barricades make zombies go around or smash through; sentry turrets shoot on their own.</li>

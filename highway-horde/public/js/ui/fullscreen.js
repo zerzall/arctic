@@ -19,11 +19,23 @@ export function isFullscreen(doc = document) {
   return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
 }
 
+// With a game key on Ctrl or Alt (crouch on Ctrl, Settings → Controls → Keys) every key is
+// claimed in fullscreen, so Ctrl+W / Ctrl+T reach the game instead of closing or opening a tab.
+let lockAll = false;
+
+/** Claim every key while fullscreen (true) or just Esc (false); re-locks at once when fullscreen. */
+export function setLockAllKeys(on, doc = document) {
+  const v = !!on;
+  if (v === lockAll) return;
+  lockAll = v;
+  if (isFullscreen(doc)) lockEscape();
+}
+
 function lockEscape() {
   const kb = navigator.keyboard;
   if (!kb || typeof kb.lock !== 'function') return;
   try {
-    const p = kb.lock(['Escape']);
+    const p = lockAll ? kb.lock() : kb.lock(['Escape']);
     if (p && typeof p.catch === 'function') p.catch(() => {});
   } catch {
     // not allowed here: the browser's default Esc handling stays

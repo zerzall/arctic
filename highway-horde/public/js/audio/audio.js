@@ -28,6 +28,19 @@ import { createBank } from './bank.js';
 import { createMusic } from './music.js';
 import { levelGates } from '../shared/level.js';
 
+// Gunplay (SPEC §3.4): what a bullet hitting an obstacle of each kind sounds like; anything
+// else is masonry / stone ('impact'), the bare ground is dirt.
+const IMPACT_METAL = new Set([
+  'car', 'suv', 'pickup', 'van', 'bus', 'truck', 'semi', 'tanker', 'container', 'pump', 'guardrail', 'hesco',
+  'hvac', 'cabinet', 'booth', 'barrel', 'dumpster', 'tank', 'gate', 'sign', 'locker',
+]);
+const IMPACT_WOOD = new Set(['tent', 'desk', 'counter', 'pier', 'crate', 'pallet', 'shelf', 'table', 'bench', 'door', 'cabin', 'shed', 'fencewood', 'tree', 'log']);
+/** A shot passing closer than this (px) to the listener whizzes by; only from farther than WHIZ_FROM. */
+const WHIZ_NEAR = 46;
+const WHIZ_FROM = 140;
+/** Shots farther than this (px) add the far-gunfire roll. */
+const FAR_SHOT = 650;
+
 export const MAX_VOICES = 24;
 export const MAX_LOOPS = 12;
 /** Beyond this distance (px, scaled by a sound's `range`) a sound is inaudible. */
@@ -743,6 +756,12 @@ class Engine {
       case 'switch':
         if (own) this.cancelReload(e.pid);
         return void this.atPlayer('switch', e.pid, { gain: own ? 1 : 0.6 });
+      // the secondary mode of a gun: scope in / out, burst / auto, the suppressor on / off
+      case 'alt': {
+        const id = e.what === 'zoom' ? 'scope_in' : e.what === 'unzoom' ? 'scope_out'
+          : e.what === 'burst' || e.what === 'auto' ? 'mode_switch' : 'silencer';
+        return void this.atPlayer(id, e.pid, { gain: own ? 1 : 0.5 });
+      }
       case 'empty': return void this.atPlayer('empty', e.pid, { gain: own ? 1 : 0.6 });
       case 'throw': return void this.atPlayer(e.kind === 'molotov' ? 'throw_molotov' : 'throw_frag', e.pid, { gain: own ? 1 : 0.7 });
       case 'place': return void this.play(e.kind === 'turret' ? 'place_turret' : 'place_barricade', pos);
@@ -836,12 +855,20 @@ class Engine {
         this.lastShotT.set(e.pid, now + delay);
         this.lastShotW.set(e.pid, e.weapon);
       }
-      const snd = w.sound;
+      // a suppressed shot (shot flag 1) coughs instead of cracking
+      const snd = (e.fl & 1) && !LOOP_GUNS.has(w.sound) ? 'suppressed' : w.sound;
       // The minigun, flamethrower, cryo blaster and chainsaw are continuous loops driven
       // from update().
       if (!LOOP_GUNS.has(snd)) {
         if (own) this.play(snd, { local: true, prio: PRIO_OWN, delay, lim: null });
-        else this.play(snd, { x: e.x, y: e.y, delay, gain: 0.85 });
+        else {
+          this.play(snd, { x: e.x, y: e.y, delay, gain: 0.85 });
+          // far away: the dull pop and the long echo roll in over the landscape
+          const far = Math.hypot(e.x - this.lx, e.y - this.ly);
+          if (far > FAR_SHOT && snd !== 'suppressed' && w.kind === 'hitscan' && k < 2) {
+            this.play('gun_far', { x: e.x, y: e.y, delay: delay + Math.min(0.25, far / 6000), gain: Math.min(1, (far - FAR_SHOT) / 900 + 0.35) });
+          }
+        }
         if (e.weapon === 'shotgun') {
           this.play('pump', own ? { local: true, prio: PRIO_OWN, delay: delay + 0.33 } : { x: e.x, y: e.y, delay: delay + 0.33 });
         }
@@ -859,10 +886,64 @@ class Engine {
       const r = e.rays[i];
       if (!r || !r.hit) continue;
       const o = { x: r.x, y: r.y, delay: delay + 0.004 };
-      if (r.hit === 1) this.play('flesh', o);
-      else this.play(Math.random() < 0.3 ? 'ricochet' : 'impact', o);
+      if (r.hit === 1) {
+        this.play('flesh', o);
+        // a head hit cracks: loud and clear for the shooter
+        if (r.zone === 1) this.play('headshot', own ? { local: true, prio: PRIO_OWN, delay: delay + 0.01 } : { ...o, gain: 0.7 });
+      } else {
+        const mat = this.surfaceAt(r.x, r.y, r.z, (e.fl & 2) !== 0);
+        this.play(mat === 'metal' ? (Math.random() < 0.35 ? 'ricochet' : 'impact_metal') : mat === 'wood' ? 'impact_wood' : mat === 'dirt' ? 'impact_dirt' : Math.random() < 0.25 ? 'ricochet' : 'impact', o);
+      }
       n++;
     }
+    // Somebody else's bullets going past your head (not your own, not a shot from right beside you)
+    if (!own && !flood && w && (w.kind === 'hitscan' || w.kind === 'rail')) this.whizBy(e, delay);
+  }
+
+  /**
+   * What the bullet at (x, y) (height z when the shot was 3D) hit: 'metal' | 'wood' | 'dirt'
+   * (the bare ground) | 'stone' — the nearest obstacle's kind decides.
+   */
+  surfaceAt(x, y, z, is3d) {
+    const obs = this.obstacles;
+    let best = null, bd = 30;
+    if (obs) {
+      for (let i = 0; i < obs.length; i++) {
+        const o = obs[i];
+        const half = Math.max(o.w || 0, o.h || 0) / 2 + 12;
+        const dx = x - o.x, dy = y - o.y;
+        if (Math.abs(dx) > half || Math.abs(dy) > half) continue;
+        const d = Math.hypot(dx, dy) - Math.min(o.w || 0, o.h || 0) / 2;
+        if (d < bd) { bd = d; best = o; }
+      }
+    }
+    if (best) {
+      const k = best.kind || '';
+      if (IMPACT_METAL.has(k)) return 'metal';
+      if (IMPACT_WOOD.has(k) || (k === 'wall' && Math.min(best.w || 99, best.h || 99) <= 8)) return 'wood';
+      return 'stone';
+    }
+    // nothing there: the bullet went into the ground (or the far end of its range)
+    if (is3d && Number.isFinite(z) && z > 6) return 'stone';
+    return 'dirt';
+  }
+
+  /** A shot passing close by the listener: a whiz at the closest point, panned to that side. */
+  whizBy(e, delay) {
+    const rays = e.rays;
+    if (!Array.isArray(rays) || !rays.length) return;
+    const r = rays[0];
+    if (!r || !Number.isFinite(r.x)) return;
+    const ax = e.x, ay = e.y, bx = r.x, by = r.y;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    if (L2 < 1) return;
+    const t = ((this.lx - ax) * dx + (this.ly - ay) * dy) / L2;
+    if (t <= 0 || t >= 1) return;
+    const cx = ax + dx * t, cy = ay + dy * t;
+    const near = Math.hypot(this.lx - cx, this.ly - cy);
+    if (near > WHIZ_NEAR || Math.hypot(this.lx - ax, this.ly - ay) < WHIZ_FROM) return;
+    // (the crack arrives with the bullet, a little before the shot's own report)
+    this.play('whiz', { x: cx, y: cy, delay: Math.max(0, delay - 0.01), gain: 1 - near / (WHIZ_NEAR * 1.6) });
   }
 
   reload(e, own) {
@@ -1370,6 +1451,8 @@ class Engine {
     const t = map && map.terrain ? terrainOf(map) : null;
     this.terrain = t && !t.flat ? t : null;
     const st = map && Array.isArray(map.obstacles) ? map.obstacles.filter((o) => o.kind === 'stairs') : [];
+    // (what a bullet hits: the obstacles' kinds pick the impact sound)
+    this.obstacles = map && Array.isArray(map.obstacles) ? map.obstacles : null;
     this.stairs = st.length ? st : null;
     // a story level's gates (where a 'gate' event is heard, and what it sounds like)
     this.gates = map && map.kind === 'level' ? levelGates(map) : null;
@@ -1459,6 +1542,8 @@ export function createAudio(options = {}) {
         return { state: 'error', voices: 0, maxVoices: MAX_VOICES, loops: 0 };
       }
     },
+    /** One of your own sounds, centred (the weapon inspect: 'inspect'). */
+    local: safe((id) => eng.play(id, { local: true, prio: PRIO_OWN })),
     /** Dev hooks (audio sandbox). */
     debug: {
       play: safe((id, o) => eng.play(id, o || { local: true })),

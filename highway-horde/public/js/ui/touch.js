@@ -6,11 +6,16 @@
 // thumb there turns the camera (deltas in CSS px, consumed by read()) and the aim stick is
 // hidden; a big FIRE button fires while held, and dragging a thumb that holds FIRE turns
 // the camera too, so you can track a target while shooting.
+//
+// Secondary fire (setAltLabel): while the gun in hand has a scope / burst / silencer, the
+// SHOVE button shows that mode's name; a tap fires it (the `alt` edge), a hold still shoves.
 
 import { h } from './dom.js';
 
 const STICK_RADIUS = 56;
 const FIRE_AT = 0.55;
+/** SHOVE in secondary-fire mode: released sooner than this (ms) = a tap (the secondary mode). */
+const ALT_TAP_MS = 250;
 
 /**
  * Buttons: [id, label, kind, cluster] — kind 'edge' fires once per tap, 'hold' is held,
@@ -80,11 +85,14 @@ export function createTouchControls(root) {
   let lookDX = 0, lookDY = 0;
   const lookPtr = { id: -1, x: 0, y: 0 };
   const firePtr = { id: -1, x: 0, y: 0 };
-  const edges = {};
+  const edges = { alt: 0 };
   const buttonEls = {};
   const listeners = [];
   let enabled = true;
   let activeUntil = 0;
+  // secondary-fire mode of the SHOVE button (its label, or null) and when it went down
+  let altLabel = null;
+  let meleeDownAt = -1;
 
   function on(target, type, fn, o) {
     target.addEventListener(type, fn, o);
@@ -114,6 +122,7 @@ export function createTouchControls(root) {
         firePtr.y = e.clientY;
       }
       if (kind === 'edge' || id === 'jump') edges[id]++;
+      if (id === 'melee') meleeDownAt = performance.now();
       if (kind === 'hold') held[id] = true;
       else if (kind === 'toggle') held[id] = !held[id];
       if (kind === 'toggle') b.classList.toggle('on', held[id]);
@@ -140,6 +149,8 @@ export function createTouchControls(root) {
       if (e.pointerId !== pointer) return;
       pointer = -1;
       if (id === 'fire') firePtr.id = -1;
+      if (id === 'melee' && altLabel && meleeDownAt >= 0 && performance.now() - meleeDownAt < ALT_TAP_MS) edges.alt++;
+      if (id === 'melee') meleeDownAt = -1;
       b.classList.remove('pressed');
       if (kind === 'hold') held[id] = false;
     };
@@ -268,7 +279,9 @@ export function createTouchControls(root) {
         moveX: move.x, moveY: move.y, moveM: move.m,
         aimX: aim.x, aimY: aim.y, aimM: aim.m,
         fire: lookMode ? held.fire : aim.m > FIRE_AT,
-        interact: held.interact, melee: held.melee, scoreboard: held.scoreboard, jump: held.jump,
+        interact: held.interact, scoreboard: held.scoreboard, jump: held.jump,
+        // (in secondary-fire mode the shove waits out the tap window)
+        melee: held.melee && (!altLabel || (meleeDownAt >= 0 && performance.now() - meleeDownAt >= ALT_TAP_MS)),
         lookDX, lookDY,
         edges: {},
       };
@@ -317,6 +330,19 @@ export function createTouchControls(root) {
     },
     get lookMode() {
       return lookMode;
+    },
+    /**
+     * Secondary fire on the SHOVE button: its label (e.g. 'ZOOM') while the gun in hand has a
+     * secondary mode, null for the plain shove.
+     */
+    setAltLabel(label) {
+      const l = label ? String(label).slice(0, 6) : null;
+      if (l === altLabel) return;
+      altLabel = l;
+      const b = buttonEls.melee;
+      if (!b) return;
+      b.firstChild.textContent = l || 'SHOVE';
+      b.classList.toggle('alt-mode', !!l);
     },
     /** Show/hide individual buttons (e.g. READY only between waves). */
     showButton(id, shown) {

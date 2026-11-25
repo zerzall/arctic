@@ -11,13 +11,15 @@
 //     // Cinematic-tier extras (ignored below Cinematic): msaa 0|2|4|8, shadowsHigh, contactShadows,
 //     // aoFull, fxHigh, motionBlur, dof, lensFx, lightShadows: boolean
 //     // display calibration (multipliers around 1): brightness, contrast, saturation
-//     // timing: boolean (per-pass GPU timings for the stats overlay) }
+//     // timing: boolean (per-pass GPU timings for the stats overlay)
+//     // xh: the crosshair settings (ui/crosshair.js crosshairSettings), hitboxes: boolean (dev) }
 // and r.stats may report renderScale (the scale in use right now), gpuMs and passMs.
 // The top-down renderer ignores the fields it doesn't know.
 
 import {
   ANTIALIAS_MODES, QUALITIES, RENDER_SCALE_MIN, RENDER_SCALE_MAX, GRAPHICS_PRESETS, GORE_MODES, MSAA_MODES, CALIB_MIN, CALIB_MAX,
 } from './storage.js';
+import { crosshairSettings } from './crosshair.js';
 
 /** A display-calibration multiplier: a finite number inside its range, else 1. */
 const calib = (v) => (Number.isFinite(v) ? Math.min(CALIB_MAX, Math.max(CALIB_MIN, v)) : 1);
@@ -120,6 +122,9 @@ export function rendererSettings(s, out = {}) {
   out.contrast = calib(s.displayContrast);
   out.saturation = calib(s.displaySaturation);
   out.timing = s.showStats === true;
+  // the crosshair (ui/crosshair.js) and the dev hit-volume overlay
+  out.xh = crosshairSettings(s);
+  out.hitboxes = s.hitboxes === true;
   return out;
 }
 
