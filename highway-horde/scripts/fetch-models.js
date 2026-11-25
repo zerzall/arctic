@@ -66,7 +66,7 @@ export const MODELS = {
 const md5 = (b) => createHash('md5').update(b).digest('hex');
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
 
-async function fetchRetry(url, kind = 'buffer') {
+export async function fetchRetry(url, kind = 'buffer') {
   let err;
   for (let a = 0; a < 4; a++) {
     try {
@@ -78,7 +78,7 @@ async function fetchRetry(url, kind = 'buffer') {
   throw err;
 }
 
-async function cached(cache, id, file) {
+export async function cached(cache, id, file) {
   const dir = join(cache, id);
   mkdirSync(dir, { recursive: true });
   const p = join(dir, file.url.split('/').pop());
@@ -140,7 +140,7 @@ function mul(a, b) {
 }
 
 /** Every primitive of the scene with its world matrix baked in: { mat, pos, nor, uv, idx }. */
-function primitives(gl, bins, keepNode = null) {
+export function primitives(gl, bins, keepNode = null) {
   const out = [];
   const visit = (ni, parent) => {
     const node = gl.nodes[ni];
@@ -179,7 +179,7 @@ function primitives(gl, bins, keepNode = null) {
 }
 
 /** Face normals where a primitive has none (area-weighted per vertex). */
-function fillNormals(p) {
+export function fillNormals(p) {
   if (p.nor) return;
   const N = new Float64Array(p.pos.length);
   for (let t = 0; t < p.idx.length; t += 3) {
@@ -195,7 +195,7 @@ function fillNormals(p) {
 
 // ---- textures --------------------------------------------------------------------------------------
 
-function decodeJpg(buf) {
+export function decodeJpg(buf) {
   const d = jpeg.decode(buf, { useTArray: true, formatAsRGBA: false, maxMemoryUsageInMB: 2048 });
   return { w: d.width, h: d.height, ch: d.data.length / (d.width * d.height), data: d.data };
 }

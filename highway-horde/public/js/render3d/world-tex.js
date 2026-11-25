@@ -5,6 +5,8 @@
 
 import * as THREE from 'three';
 import { periodicFbm, createRng } from '../render/util.js';
+import { textureSource, textureQueue } from './tex-files.js';
+import { makeTexWorker, decodeRGBA } from './tex-worker.js';
 
 const AW = 1024, AH = 1536;
 // Atlas cells in canvas pixels [x0, y0, x1, y1] (y down).
@@ -884,7 +886,69 @@ export function makeLeafTexture(anisotropy = 4, scale = 1) {
   tex.magFilter = THREE.LinearFilter;
   tex.anisotropy = anisotropy;
   tex.needsUpdate = true;
+  // the photo cards (scripts/bake-foliage.js) replace their procedural cells once they have arrived
+  if (!ent.photo) {
+    ent.photo = loadFoliage().then((ph) => {
+      if (!ph) return false;
+      pasteFoliage(leafData, leafCanvas.width, leafCanvas.height, ph);
+      return true;
+    });
+  }
+  ent.photo.then((ok) => { if (ok) tex.needsUpdate = true; });
   return tex;
+}
+
+// ---- the photo foliage cards (scripts/bake-foliage.js: Poly Haven plants rendered into the atlas' cells) ----
+
+let foliageP = null;
+/** The decode worker's job (tex-worker.js runs it as source): the atlas PNG to RGBA. */
+async function foliageJob(d) {
+  const img = await decodeRGBA(d.src, 0);
+  return { out: { w: img.w, h: img.h, px: img.px.buffer }, transfer: [img.px.buffer] };
+}
+/**
+ * textures/foliage/leaves.png and its cell list, decoded off the main thread → { w, h, px, cells } or
+ * null (no file, no decoder, `?foliage=0`: the procedural cells stay).
+ */
+export function loadFoliage() {
+  if (!foliageP) {
+    foliageP = (async () => {
+      try { if (typeof location !== 'undefined' && /[?&]foliage=0\b/.test(location.search || '')) return null; } catch { /* (no location) */ }
+      if (typeof fetch !== 'function') return null;
+      const r = await fetch(new URL('../../textures/foliage/foliage.json', import.meta.url).href);
+      if (!r.ok) return null;
+      const man = await r.json();
+      await textureQueue();
+      const src = await textureSource('foliage/leaves.png');
+      const tw = makeTexWorker(foliageJob, [], 1);
+      let img;
+      if (tw) {
+        try { const o = await tw.run({ src }); img = { w: o.w, h: o.h, px: new Uint8Array(o.px) }; } finally { tw.close(); }
+      } else img = await decodeRGBA(src, 0);
+      return { ...img, cells: man.cells, cell: man.cell };
+    })().catch((err) => { console.info('foliage cards: the procedural leaves stay —', String((err && err.message) || err)); return null; });
+  }
+  return foliageP;
+}
+
+/** Paste the photo cells into the atlas data (rows bottom first, like the canvas upload), scaled to its size. */
+function pasteFoliage(data, W, H, ph) {
+  const f = ph.w / W;                 // 2: the 1024 × 512 atlas takes every 2 × 2 block averaged
+  const cw = W / 4, chh = H / 2;
+  for (const c of Object.values(ph.cells)) {
+    const [cx, cy] = c.at;
+    for (let y = 0; y < chh; y++) {
+      const ay = cy * chh + y;                // canvas row
+      const o = ((H - 1 - ay) * W + cx * cw) * 4;
+      for (let x = 0; x < cw; x++) {
+        for (let k = 0; k < 4; k++) {
+          let sum = 0;
+          for (let dy = 0; dy < f; dy++) for (let dx = 0; dx < f; dx++) sum += ph.px[(((ay * f + dy) * ph.w) + (cx * cw + x) * f + dx) * 4 + k];
+          data[o + x * 4 + k] = Math.round(sum / (f * f));
+        }
+      }
+    }
+  }
 }
 
 /** Chain-link fence mask (alpha), repeat every 16 units. */
