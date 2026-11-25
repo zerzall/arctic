@@ -288,14 +288,18 @@ export function installSmallArms(B, K) {
     P.extX(gb, P.rrect(0.82, 2.0, 3.0, 0.3), -6.8, 3.6, { ...M, color: '#2b2e2c', mat: GM.POLY, bevel: 0.1 });
     if (!K.lite()) for (let k = 0; k < 16; k++) rbox(gb, -6.2 + k * 0.6, -5.85 + k * 0.6, 2.25, 2.75, -0.88, -0.84, 0.08, { ...M, color: BRASS, mat: GM.BRASS, seg: 1 });
     rbox(gb, 2.9, 3.7, 2.1, 3.1, -0.6, 0.6, 0.1, { ...M, color: dark, mat: GM.POLY });          // the latch at the front
-    // barrel, a short shroud, an integrated reflex sight on top of the magazine's rail
+    // barrel, a short shroud, a reflex sight on a raised mount ahead of the magazine (the
+    // magazine tips up at the back and lifts out under nothing)
     P.extX(gb, P.rrect(0.6, 0.15, 1.6, 0.3), 6.2, 8.2, { color: dark, mat: GM.POLY, bevel: 0.12 });
     cylX(gb, 8.2, 9.6, 0.85, 0, 0.28, 0.26, { color: '#151617', seg: 14 });
     P.muzzle(gb, 'cone', 9.6, 0.85, 0.26, 0.8, { color: '#151617' });
-    P.redDot(gb, -1.2, 3.0, { glow: '#ffb02a' });
+    ext(gb, [[3.75, 1.9], [5.2, 1.9], [5.6, 1.45], [6.0, 1.45], [5.9, 2.4], [5.6, 3.1], [3.75, 3.1]], -0.62, 0.62, { color: shell, mat: GM.POLY, bevel: 0.16 });
+    P.redDot(gb, 3.85, 3.05, { glow: '#ffb02a' });
     rbox(gb, 1.6, 2.4, 1.6, 2.0, -1.2, -0.9, 0.1, { part: 'bolt', color: dark, mat: GM.POLY });       // charging handle (left)
     ext(gb, [[0.95, -0.55], [1.25, -0.55], [1.1, -1.05], [0.9, -1.3], [0.75, -1.25], [0.95, -0.85]], -0.12, 0.12, { color: '#3a3c3f', mat: GM.STEEL, bevel: 0.03 });
     smgOut(out, { muzzle: [10.4, 0.85, 0], front: [4.4, -2.3, 0], eject: [-3.0, -0.6, 0.3], magwell: [-1.5, 2.5, 0], bolt: 1.0, glow: '#ffb02a' });
+    // the magazine turns about its front catch
+    out.pivots.mag = [3.6, 3.0, 0];
     out.reload = 'topmag';
   };
 

@@ -179,6 +179,39 @@ function projectileModels() {
     }
     rbox(gb, -16.5, -15.2, -0.6, 0.6, -0.6, 0.6, 0.2, { color: '#f2a900', mat: GM.PAINT });
   });
+  // saw blade in flight: a toothed steel disc spinning flat, its lightening holes, the arbor
+  // nut; a faint bright rim where the blurred teeth catch the light
+  m.blade = built((gb) => {
+    const R = 8.4;
+    gb.add(new THREE.CylinderGeometry(R * 0.92, R * 0.92, 0.45, 40), { color: '#b9bdc1', mat: GM.STEEL, round: true, wear: 1.5 });
+    for (let k = 0; k < 28; k++) {
+      const a = (k / 28) * TAU;
+      gb.add(new THREE.ConeGeometry(0.55, 1.5, 4), { at: [Math.cos(a) * R * 0.95, 0, Math.sin(a) * R * 0.95], rot: [0, -a, -HALF_PI], scale: [0.35, 1, 1], color: '#d8dce0', mat: GM.STEEL, round: true });
+    }
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * TAU + 0.4;
+      for (const s of [-1, 1]) {
+        const d = new THREE.CircleGeometry(1.1, 12);
+        d.rotateX(-s * HALF_PI);
+        gb.add(d, { at: [Math.cos(a) * 4.6, s * 0.24, Math.sin(a) * 4.6], color: '#060607', mat: GM.STEEL });
+      }
+    }
+    gb.add(new THREE.CylinderGeometry(1.6, 1.6, 0.9, 16), { color: '#2a2c2e', mat: GM.STEEL, round: true });
+    const rim = new THREE.TorusGeometry(R * 0.97, 0.22, 4, 40);
+    rim.rotateX(HALF_PI);
+    gb.add(rim, { glow: true, color: '#6e7276', round: true });
+  });
+  // the Hollow Star's singularity: a black core in a white-hot accretion ring and a violet halo
+  m.singularity = built((gb) => {
+    sphere(gb, 0, 0, 0, 6, { color: '#020203', mat: GM.LENS, seg: 18 });
+    const disk = new THREE.TorusGeometry(9, 1.1, 6, 40);
+    disk.rotateX(1.25);
+    gb.add(disk, { glow: true, color: '#fff0ff', round: true });
+    const halo = new THREE.TorusGeometry(11.5, 0.45, 4, 40);
+    halo.rotateX(1.25);
+    halo.rotateY(0.7);
+    gb.add(halo, { glow: true, color: '#7c3cff', round: true });
+  });
   // a road flare burning on the ground
   m.flareStick = built((gb) => {
     cylX(gb, -6, 4, 0, 0, 0.9, 0.9, { color: '#b3261e', mat: GM.PAINT, seg: 10 });
@@ -381,7 +414,7 @@ export function createItems3D(ctx) {
   // projectiles
   const pm = projectileModels();
   const proj = {};
-  for (const k of ['bolt', 'grenade', 'rocket', 'frag', 'molotov', 'acid', 'flare', 'harpoon']) proj[k] = mkPair(pm[k], P_CAP);
+  for (const k of ['bolt', 'grenade', 'rocket', 'frag', 'molotov', 'acid', 'flare', 'harpoon', 'blade', 'singularity']) proj[k] = mkPair(pm[k], P_CAP);
   const flareSticks = mkPair(pm.flareStick, H_CAP);
   const projState = new Map();   // id → { t, seen, kind, x, y }
 
@@ -484,7 +517,7 @@ export function createItems3D(ctx) {
     const camX = frame.camX, camY = frame.camY;
 
     // ---- projectiles ----
-    const counts = { bolt: 0, grenade: 0, rocket: 0, frag: 0, molotov: 0, acid: 0, flare: 0, harpoon: 0 };
+    const counts = { bolt: 0, grenade: 0, rocket: 0, frag: 0, molotov: 0, acid: 0, flare: 0, harpoon: 0, blade: 0, singularity: 0 };
     const list = (view && view.projectiles) || [];
     for (let k = 0; k < list.length; k++) {
       const p = list[k];
@@ -594,6 +627,43 @@ export function createItems3D(ctx) {
           fx.beam(bx, 40 - sag, by, p.x - Math.cos(a) * 16, 40, p.y - Math.sin(a) * 16, 0.35, 0.35, C('#8a8478'), 0.5, 0, 0.7, 0);
           break;
         }
+        case 'blade': {
+          // a spinning saw blade skimming at waist height: a thin steel streak behind it,
+          // sparks thrown off the teeth now and then
+          const i = counts.blade++;
+          if (i < P_CAP) put(proj.blade, i, p.x, 30, p.y, -t * 46 - p.id, 0.05 * Math.sin(t * 9 + p.id), 0);
+          fx.beam(p.x - Math.cos(a) * 30, 30, p.y - Math.sin(a) * 30, p.x - Math.cos(a) * 6, 30, p.y - Math.sin(a) * 6, 3.2, 0.6, H('#c8ccd0', 0.8), 0.3, 0, 0.6, 0);
+          if (high && R() < dt * 24) {
+            const sa = a + HALF_PI * (R() < 0.5 ? 1 : -1) + (R() - 0.5) * 0.6, sp = 120 + R() * 160;
+            fx.spawn(p.x, 30, p.y, Math.cos(sa) * sp, 20 + R() * 50, Math.sin(sa) * sp, 0.25 + R() * 0.2, 1.1, 0.4, H('#ffd8a0', 2.6), 1, FR.DOT, F_ADD | F_BOUNCE, 500, 1);
+          }
+          break;
+        }
+        case 'singularity': {
+          // the Hollow Star's core drifting out: it swells as it settles, drags dust and
+          // light in toward itself, and lights the street violet
+          const i = counts.singularity++;
+          const moving = Math.hypot(p.x - s.x, p.y - s.y) > 0.5;
+          s.x = p.x; s.y = p.y;
+          s.stuck = moving ? 0 : (s.stuck || 0) + dt;
+          const grow = Math.min(1, s.t / 0.25) * (1 + Math.min(1, s.stuck * 3) * 0.35);
+          const pulse = 1 + Math.sin(t * 19 + p.id) * 0.06;
+          if (i < P_CAP) put(proj.singularity, i, p.x, 34, p.y, t * 2.6, 0.25 * Math.sin(t * 1.7), 0, grow * pulse);
+          fx.glow(p.x, 34, p.y, 70 * grow, H('#7c3cff', 1.5), 0.55);
+          fx.glow(p.x, 34, p.y, 18 * grow, H('#ffffff', 2.4), 0.85);
+          // matter drawn in: motes spawned on a wide ring, flying at the core and fading there
+          const n = R() < dt * (high ? 90 : 30) ? (high ? 3 : 1) : 0;
+          for (let q = 0; q < n; q++) {
+            const ang = R() * TAU, d = 110 + R() * 150, hh = 6 + R() * 70;
+            const x0 = p.x + Math.cos(ang) * d, y0 = p.y + Math.sin(ang) * d, life = 0.5 + R() * 0.3;
+            const sw = 0.9;   // a swirl: aim a little round the core
+            const vx = (p.x - x0) / life - Math.sin(ang) * d * sw, vy = (p.y - y0) / life + Math.cos(ang) * d * sw;
+            fx.spawn(x0, hh, y0, vx, (34 - hh) / life, vy, life, 1.6, 0.4, R() < 0.5 ? H('#c8a8ff', 2.2) : H('#ffffff', 1.6), 0.9, FR.DOT, F_ADD, 0, 0);
+          }
+          if (high && R() < dt * 20) fx.spawn(p.x + (R() - 0.5) * 140, 2, p.y + (R() - 0.5) * 140, 0, 4, 0, 0.8, 8, 2, C('#6a6070'), 0.25, FR.SMOKE2, 0, 0, 1);
+          lights.steady('sing' + p.id, p.x, p.y, 34, '#9a6aff', 2.4 * grow, 340);
+          break;
+        }
         case 'frost': {
           // cold mist rolling out along the stream, with ice glints
           if (fx.load() < 0.9 && R() < dt * (high ? 34 : 14)) {
@@ -628,8 +698,15 @@ export function createItems3D(ctx) {
         if (nCrate < 16) put(crateInst, nCrate++, p.x, 0, p.y, hash01(p.id) * TAU);
         seenCrates.add(p.id);
         crateExtra(p, t);
-        fx.glow(p.x, 1, p.y, 70, glowC, 0.35 * pulse, FR.GLOW, true);
-        fx.glow(p.x, 22, p.y, 34, glowC, 0.2 * pulse);
+        // a super weapon's crate (a boss drop) burns violet, pulses harder and lights the ground
+        const sup = p.weapon && WEAPONS[p.weapon] && WEAPONS[p.weapon].super;
+        const gc = sup ? H('#8a4dff', 1.4) : glowC;
+        fx.glow(p.x, 1, p.y, sup ? 110 : 70, gc, (sup ? 0.5 : 0.35) * pulse, FR.GLOW, true);
+        fx.glow(p.x, 22, p.y, sup ? 50 : 34, gc, (sup ? 0.32 : 0.2) * pulse);
+        if (sup) {
+          lights.steady('supercrate' + p.id, p.x, p.y, 30, '#9a6aff', 1.6 * pulse, 260);
+          if (high && R() < dt * 14) fx.spawn(p.x + (R() - 0.5) * 30, 6, p.y + (R() - 0.5) * 30, 0, 30 + R() * 30, 0, 1.2, 1.4, 0.3, H('#c8a8ff', 2.4), 0.9, FR.DOT, F_ADD, -10, 0.5);
+        }
         continue;
       }
       const pair = pick[p.kind];

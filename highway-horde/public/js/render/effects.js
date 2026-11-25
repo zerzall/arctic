@@ -251,6 +251,14 @@ export function createEffects(opts) {
       smoke(x, y, 10, 40 * s, 1.2, -0.5, r * 0.4, 60);
       ring(x, y, r * 0.2, r * 1.05, 0.35, '#b8ff5a', 6);
       addLight(x, y, r * 2, 0.8, '#a6ff4a', 0.35);
+    } else if (kind === 'singularity') {
+      // the Hollow Star's core collapsing: a violet flash and shockwave, no fire
+      flash(x, y, 0, r * 0.8, 0.12, 2);
+      addLight(x, y, r * 3.2, 1, '#a070ff', 0.6);
+      sparks(x, y, 0, TAU, heavy() ? 34 : 14, 650 * s + 200);
+      ring(x, y, r * 0.15, r * 1.2, 0.4, '#c8a8ff', 4 + 3 * s, 0.6);
+      ring(x, y, r * 1.1, r * 0.1, 0.22, '#f0e0ff', 3, 0.5);
+      smoke(x, y, 8, 30 * s + 8, 1.4, 0.4, r * 0.4, 40);
     } else {
       // flash, fireball, sparks, debris, smoke, shockwave, scorch
       flash(x, y, 0, r * 0.9, 0.1, 2);
@@ -441,6 +449,12 @@ export function createEffects(opts) {
         break;
       }
       case 'explosion': explosion(e.x, e.y, e.r || 150, e.kind, env); break;
+      case 'blade':
+        // a saw blade bouncing off a wall (sparks), slicing a zombie (blood both sides), biting in
+        if (e.what === 'cut') {
+          for (const s of [-1, 1]) zParticles(P_BLOOD, C_BLOOD, e.x, e.y, (e.angle || 0) + s * 1.2, 0.8, heavy() ? 6 : 3, 220, 300, 1.6, 1);
+        } else sparks(e.x, e.y, (e.angle || 0) + (e.what === 'wall' ? 0 : Math.PI), 1.6, heavy() ? 14 : 6, 380);
+        break;
       case 'freeze':
         // ice crystals burst off a zombie freezing solid
         zParticles(P_GLASS, C_GLASS, e.x, e.y, 0, TAU, heavy() ? 10 : 4, 120, 120, 1.3, 1);

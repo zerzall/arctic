@@ -73,7 +73,7 @@ try {
 
 const SPEC_EVENTS = ['shot', 'chain', 'melee', 'zdie', 'zattack', 'spit', 'scream', 'charge', 'slam', 'explosion',
   'ignite', 'pdamage', 'down', 'revived', 'died', 'respawn', 'pickup', 'buy', 'buyfail', 'reload', 'switch', 'empty',
-  'throw', 'place', 'destroyed', 'objhit', 'wave', 'bossspawn', 'waveclear', 'drop', 'gameover', 'victory'];
+  'throw', 'place', 'destroyed', 'objhit', 'wave', 'bossspawn', 'waveclear', 'drop', 'gameover', 'victory', 'blade'];
 
 /** Run `fn` and fail if the renderer logged an error (or a warning, unless allowed). */
 function noRenderErrors(fn, allowWarnings = false) {

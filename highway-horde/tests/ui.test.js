@@ -7,11 +7,11 @@ import assert from 'node:assert/strict';
 import { createInput } from '../public/js/ui/input.js';
 import { parseJoinInput, perkLines } from '../public/js/ui/menus.js';
 import { loadPrefs, savePrefs, cleanName, DEFAULT_CLIENT_SETTINGS } from '../public/js/ui/storage.js';
-import { priceOf, shopWave, blockReason, shopState, gunStats } from '../public/js/ui/shop.js';
+import { priceOf, shopWave, blockReason, shopState, gunStats, SECTIONS, sectionItems, sectionOf, ITEM_KEYS } from '../public/js/ui/shop.js';
 import { statRows } from '../public/js/ui/scoreboard.js';
 import { CLASS_IDS } from '../public/js/shared/classes.js';
-import { WEAPON_IDS } from '../public/js/shared/weapons.js';
-import { ITEMS, ammoPrice } from '../public/js/shared/items.js';
+import { WEAPONS, WEAPON_IDS } from '../public/js/shared/weapons.js';
+import { ITEMS, ITEM_IDS, ammoPrice } from '../public/js/shared/items.js';
 import { SUPPLY_RADIUS } from '../public/js/shared/constants.js';
 
 // ---- fake DOM for input.js ------------------------------------------------------------
@@ -378,8 +378,11 @@ test('shop stock follows the sim: next wave between waves, current wave mid-wave
   assert.equal(shopWave(view({ phase: 'intermission', wave: 4 })), 5);
   assert.equal(shopWave(view({ phase: 'wave', wave: 4 })), 4);
   const me = player();
-  assert.equal(blockReason('flamethrower', view({ phase: 'intermission', wave: 4 }), me, 'soldier'), null);
-  assert.equal(blockReason('flamethrower', view({ phase: 'wave', wave: 4 }), me, 'soldier'), 'locked');
+  // a wave-5 gun: on sale between waves 4 and 5, locked while wave 4 is on
+  const late = WEAPON_IDS.find((id) => WEAPONS[id].unlockWave === 5 && WEAPONS[id].price <= 10000);
+  assert.ok(late, 'a gun that unlocks on wave 5');
+  assert.equal(blockReason(late, view({ phase: 'intermission', wave: 4 }), me, 'soldier'), null);
+  assert.equal(blockReason(late, view({ phase: 'wave', wave: 4 }), me, 'soldier'), 'locked');
   assert.equal(blockReason('rifle', view(), me, 'soldier'), 'full');
   assert.equal(blockReason('rifle', view(), player({ ammo: [[12, -1], [30, 100], [0, 0]] }), 'soldier'), null);
   assert.equal(blockReason('shotgun', view(), player({ cash: 10 }), 'soldier'), 'cash');
@@ -397,6 +400,34 @@ test('shop is open between waves and only near the supply station mid-wave', () 
   assert.equal(shopState(view({ phase: 'wave' }), player({ x: 1000 + SUPPLY_RADIUS + 5, y: 1000 }), map).open, false);
   assert.equal(shopState(view({ phase: 'intermission' }), player({ state: 'downed' }), map).open, false);
   assert.equal(shopState(view({ phase: 'gameover' }), player(), map).open, false);
+});
+
+test('buy menu: seven sections in key order, every buyable gun in exactly one, shotguns and MGs under Heavy', () => {
+  assert.deepEqual(SECTIONS.map((s) => s.id), ['pistols', 'smgs', 'heavy', 'rifles', 'snipers', 'specials', 'gear']);
+  const seen = new Map();
+  for (const s of SECTIONS) {
+    const list = sectionItems(s.id);
+    assert.ok(list.length > 0, s.id);
+    assert.ok(list.length <= ITEM_KEYS.length, `${s.id}: ${list.length} items, ${ITEM_KEYS.length} keys`);
+    for (const id of list) {
+      assert.ok(!seen.has(id), `${id} in ${seen.get(id)} and ${s.id}`);
+      seen.set(id, s.id);
+      assert.equal(sectionOf(id), s.id, id);
+    }
+    if (s.id === 'gear') assert.deepEqual(list, ITEM_IDS);
+    // guns cheapest first
+    else for (let i = 1; i < list.length; i++) assert.ok(WEAPONS[list[i]].price >= WEAPONS[list[i - 1]].price, `${s.id} order`);
+  }
+  for (const id of WEAPON_IDS) if (WEAPONS[id].price > 0) assert.ok(seen.has(id), `${id} is on sale somewhere`);
+  assert.ok(!seen.has('pistol'), 'the starting pistol is not sold');
+  for (const id of sectionItems('heavy')) assert.ok(['shotgun', 'heavy'].includes(WEAPONS[id].category), id);
+  for (const id of ['m60', 'barrage', 'lmg', 'hmg', 'minigun', 'combat_sg', 'shotgun']) assert.equal(sectionOf(id), 'heavy', id);
+  assert.equal(sectionOf('hollowstar'), 'specials');
+  assert.equal(sectionOf('sawblade'), 'specials');
+  assert.equal(sectionOf('flare'), 'pistols', 'the flare pistol sits with the pistols');
+  assert.equal(sectionOf('frag'), 'gear');
+  assert.equal(sectionOf('nope'), null);
+  assert.deepEqual(ITEM_KEYS.slice(0, 10), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
 });
 
 test('every buyable gun has stat bars in 0..1', () => {

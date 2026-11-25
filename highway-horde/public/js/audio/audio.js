@@ -865,7 +865,8 @@ class Engine {
         this.lastShotT.set(e.pid, now + delay);
         this.lastShotW.set(e.pid, e.weapon);
       }
-      const snd = w.sound;
+      // a suppressed shot (the shot flags' silenced bit, a gun with a screw-on silencer) has its own report
+      const snd = (e.fl & 1) && w.secondary && w.secondary.sfx ? w.secondary.sfx : w.sound;
       // The minigun, flamethrower, cryo blaster and chainsaw are continuous loops driven
       // from update().
       if (!LOOP_GUNS.has(snd)) {

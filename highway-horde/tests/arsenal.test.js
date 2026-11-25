@@ -68,9 +68,16 @@ describe('the roster', () => {
   });
 
   test('secondary functions are declared for the shooting module', () => {
-    assert.deepEqual(WEAPONS.compact9.secondary.type, 'burst');
-    assert.equal(WEAPONS.tac45.secondary.type, 'silencer');
-    assert.equal(WEAPONS.m4.secondary.type, 'silencer');
+    // (the field names of shared/handling.js: count / delay / rate; a silencer's report in sfx)
+    const b = WEAPONS.compact9.secondary;
+    assert.equal(b.type, 'burst');
+    assert.ok(b.count >= 2 && b.delay > 0 && b.rate > 0);
+    for (const id of ['tac45', 'm4']) {
+      const s = WEAPONS[id].secondary;
+      assert.equal(s.type, 'silencer', id);
+      assert.equal(typeof s.sfx, 'string', id);
+      assert.ok(!('sound' in s), `${id}: a silencer's sound is the module's loudness number`);
+    }
     for (const id of ['bullpup', 'scout', 'magsniper', 'autosniper']) {
       const s = WEAPONS[id].secondary;
       assert.equal(s.type, 'scope', id);

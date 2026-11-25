@@ -43,8 +43,13 @@ export function installHeavyArms(B, K) {
     out.travel.bolt = 0;
     out.casing = 'rifle';
     out.reload = o.reload || 'belt';
-    if (o.cover) out.pivots.cover = o.cover;
-    if (o.feed) out.feed = o.feed;
+    if (o.rc) {
+      out.pivots.cover = o.rc.cover;
+      out.feed = o.rc.feed;
+      out.latch = o.rc.latch;
+      out.handle = o.rc.handle;
+    }
+    if (o.pack) out.beltPack = true;
     if (o.glow) out.glowColor = o.glow;
   }
 
@@ -71,7 +76,8 @@ export function installHeavyArms(B, K) {
     rbox(gb, x0 + 2.0, x0 + 4.2, y0 - 0.05, y0 + 0.2, -0.45, 0.45, 0.06, { color: '#060607' });
     rbox(gb, x1 - 2.2, x1 - 1.4, y0 + 0.6, y0 + 1.1, hz, hz + 0.75, 0.12, { part: 'bolt', color: '#2c2e30', mat: GM.STEEL });
     if (!K.lite()) for (const x of [x0 + 0.4, x1 - 0.5]) P.pin(gb, x, y0 + 0.5, hz + 0.08, 0.12);
-    return { cover: [cx1, y1 + 0.2, 0], feed: [(fx0 + fx1) / 2, y1 - 0.45, -hz - 0.1] };
+    // (the reload's hand points: the cover latch, the feed tray, the charging handle)
+    return { cover: [cx1, y1 + 0.2, 0], feed: [(fx0 + fx1) / 2, y1 - 0.45, -hz - 0.1], latch: [x0 + 0.85, y1 + 0.45, -hz - 0.3], handle: [x1 - 1.8, y0 + 0.85, hz + 0.9] };
   }
 
   // ---- light machine gun (remake): a soft 100-round pouch, carry handle, folded bipod --------
@@ -98,7 +104,7 @@ export function installHeavyArms(B, K) {
     // the soft pouch on the left under the receiver, the belt up into the feed tray
     P.ammoBox(gb, 1.2, 6.2, -4.4, -0.4, -2.6, -0.6, { color: od, soft: true });
     P.belt(gb, [[2.7, -0.5, -1.75], [2.4, 0.6, -1.6], [2.1, 1.7, -1.2]], 5, { r: 0.18, half: 0.8, along: 'x' });
-    mgOut(out, { muzzle: [21.3, 1.5, 0], front: [9.8, -0.3, 0], eject: [3.0, -0.2, 0.6], magwell: [3.7, -2.4, -1.6], cover: rc.cover, feed: rc.feed });
+    mgOut(out, { muzzle: [21.3, 1.5, 0], front: [9.8, -0.3, 0], eject: [3.0, -0.2, 0.6], magwell: [3.7, -2.4, -1.6], rc });
   };
 
   // ---- M60: a long slim GPMG, the carry handle on the barrel, a steel ammo can with its belt ----
@@ -136,7 +142,7 @@ export function installHeavyArms(B, K) {
     // a 100-round steel can hung on the left, its belt up into the tray
     P.ammoBox(gb, 0.8, 5.6, -5.2, -1.2, -3.0, -0.9, { color: od });
     P.belt(gb, [[3.0, -1.2, -1.95], [2.7, 0.2, -1.75], [2.4, 1.5, -1.15]], 6, { r: 0.2, half: 0.85, along: 'x' });
-    mgOut(out, { muzzle: [25.0, 1.4, 0], front: [10.2, -0.55, 0], eject: [3.2, -0.1, 0.6], magwell: [3.2, -3.0, -1.9], cover: rc.cover, feed: rc.feed });
+    mgOut(out, { muzzle: [25.0, 1.4, 0], front: [10.2, -0.55, 0], eject: [3.2, -0.1, 0.6], magwell: [3.2, -3.0, -1.9], rc });
   };
 
   // ---- Barrage MG: a compact 150-round MG, a perforated heat shield, a red dot, a front grip ----
@@ -168,7 +174,7 @@ export function installHeavyArms(B, K) {
       for (let k = 0; k < 6; k++) cylX(gb, 3.4, 4.6, -1.7 - k * 0.32, -2.36, 0.12, 0.12, { part: 'mag', color: '#b08a3a', mat: GM.BRASS, seg: 8 });
     }
     P.belt(gb, [[3.0, -0.6, -1.65], [2.8, 0.5, -1.55], [2.5, 1.6, -1.15]], 5, { r: 0.18, half: 0.8, along: 'x' });
-    mgOut(out, { muzzle: [21.2, 1.45, 0], front: [9.4, -2.3, 0], eject: [3.0, -0.3, 0.6], magwell: [5.0, -3.0, -1.0], cover: rc.cover, feed: rc.feed, glow: '#ff4a2a' });
+    mgOut(out, { muzzle: [21.2, 1.45, 0], front: [9.4, -2.3, 0], eject: [3.0, -0.3, 0.6], magwell: [5.0, -3.0, -1.0], rc, glow: '#ff4a2a' });
   };
 
   // ---- belt-fed heavy MG (remake): hip-carried, a perforated jacket, the chute to the backpack ----
@@ -206,7 +212,7 @@ export function installHeavyArms(B, K) {
       }
     }
     P.belt(gb, [[2.6, 2.3, -1.75], [2.2, 0.9, -2.05], [1.7, -0.5, -2.3]], 5, { r: 0.22, half: 0.95, along: 'x' });
-    mgOut(out, { muzzle: [30.2, 1.4, 0], front: [13.6, -2.9, 0], eject: [3.2, -0.6, 0.8], magwell: [-1.5, -4.2, -4.2], cover: rc.cover, feed: rc.feed });
+    mgOut(out, { muzzle: [30.2, 1.4, 0], front: [13.6, -2.9, 0], eject: [3.2, -0.6, 0.8], magwell: [-1.5, -4.2, -4.2], rc, pack: true });
   };
 
   // ---- minigun (remake): six barrels in clamps, a finned motor housing, the feed chute ----------
@@ -351,6 +357,8 @@ export function installHeavyArms(B, K) {
     out.muzzle = [bx1 - 0.3, by, 0.6];
     out.length = bx1;
     out.front = [e0 + 4.6, 6.25, -0.1];
+    // (the support arm comes over the saw from low on the left, clear of the engine's side)
+    out.supportElbow = [-1, -4, -17];
     out.magwell = [scx, 3.8, -2.65];
     out.eject = [2, 2, 1];
     out.heavy = true;

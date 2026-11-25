@@ -462,7 +462,8 @@ export function setGunMaterialSkin(mat, skinId) {
 export function setGunMaterialModel(mat, model) {
   const g = mat && mat.userData.gun;
   if (!g || !model) return;
-  const hand = model.style === 'pistol' || model.style === 'revolver' || model.style === 'dual' || model.style === 'flare';
+  // (handguns: one-handed models, the dual pair and the flare pistol)
+  const hand = model.twoHanded === false || model.style === 'dual' || model.style === 'flare';
   g.own.uHolster.value.set(model.length * 0.35, model.length, hand ? 1 : 0.35, 0);
   const fires = model.casing && model.style !== 'chainsaw' && model.style !== 'crossbow';
   g.own.uSootM.value.set(model.muzzle[0], model.muzzle[1], model.muzzle[2], fires ? 0.9 : 0);

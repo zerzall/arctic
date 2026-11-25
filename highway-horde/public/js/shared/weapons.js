@@ -47,10 +47,12 @@
 //   fire (`spin` carries the wind-up), opening up again once the trigger is let go.
 // super: a super weapon: never in an ordinary weapon crate; bosses may drop it (SUPER_DROP).
 // secondary: what the right mouse button does with this gun, for the shooting-mechanics
-//   module (shared/handling.js): { type: 'scope', levels: [fov, ...] } zoom steps,
-//   { type: 'burst', burst, rate, burstDelay } an alternative burst mode,
-//   { type: 'silencer', sound } a screw-on suppressor (`sound`: the suppressed report).
-//   The models carry the matching parts (a 'silencer' part, scopes).
+//   module (shared/handling.js, which fills in its defaults): { type: 'scope', levels:
+//   [fov, ...] } zoom steps, { type: 'burst', count, delay, rate } an alternative burst
+//   mode (rounds per burst, seconds between bursts, rounds/s within one), { type:
+//   'silencer', sfx } a screw-on suppressor (`sfx`: the suppressed report's sound id; it
+//   fits while the snapshot's per-slot `modes` has the silencer bit). The models carry the
+//   matching parts (a 'silencer' part and `muzzleBare` for the bare muzzle, scopes).
 
 export const WEAPONS = {
   pistol: {
@@ -296,7 +298,7 @@ export const WEAPONS = {
     kind: 'hitscan', damage: 22, rate: 6.5, mag: 18, reserve: 126, reload: 1.05,
     pellets: 1, spread: 0.034, range: 850, pierce: 1, falloff: 0.65, knockback: 32,
     moveMult: 1.0, recoil: 0.07, sound: 'pistol9c', tracer: '#ffe9a8',
-    secondary: { type: 'burst', burst: 3, rate: 20, burstDelay: 0.34 },
+    secondary: { type: 'burst', count: 3, delay: 0.34, rate: 20 },
     sprite: { len: 13, width: 5, color: '#2a2b2d', accent: '#4a4c50', style: 'compact' },
   },
   // .45 tactical pistol with a screw-on suppressor: accurate, hard-hitting for a sidearm.
@@ -306,7 +308,7 @@ export const WEAPONS = {
     kind: 'hitscan', damage: 37, rate: 4.2, mag: 12, reserve: 96, reload: 1.25,
     pellets: 1, spread: 0.022, range: 950, pierce: 1, falloff: 0.75, knockback: 55,
     moveMult: 1.0, recoil: 0.1, sound: 'pistol45', tracer: '#ffe2a0',
-    secondary: { type: 'silencer', sound: 'pistol45_sup' },
+    secondary: { type: 'silencer', sfx: 'pistol45_sup' },
     sprite: { len: 20, width: 5, color: '#262729', accent: '#5d6166', style: 'tac45' },
   },
   // Heavy .50 semi-automatic: seven rounds that punch through two zombies, a quicker
@@ -396,7 +398,7 @@ export const WEAPONS = {
     kind: 'hitscan', damage: 33, rate: 11.5, mag: 30, reserve: 270, reload: 2.0,
     pellets: 1, spread: 0.035, range: 1100, pierce: 1, falloff: 0.75, knockback: 40,
     moveMult: 0.97, recoil: 0.1, sound: 'carbine', tracer: '#ffe08a',
-    secondary: { type: 'silencer', sound: 'carbine_sup' },
+    secondary: { type: 'silencer', sfx: 'carbine_sup' },
     sprite: { len: 32, width: 6, color: '#25272a', accent: '#8a7350', style: 'm4' },
   },
   // Scoped bullpup: a long barrel in a short gun, a built-in optic (right-click zooms).
@@ -505,9 +507,11 @@ export function weaponIndex(id) {
 
 /**
  * Shots per second with the trigger held (a burst gun pauses `burstDelay` after each
- * burst; everything else fires at `rate`).
+ * burst, a charged gun charges `charge` seconds before each shot; everything else fires at `rate`).
  */
 export function effectiveRate(w) {
+  // (a charged shot: the charge starts once the cooldown is over)
+  if (w.charge > 0) return 1 / (1 / w.rate + w.charge);
   if (!w.burst || w.burst <= 1) return w.rate;
   return w.burst / ((w.burst - 1) / w.rate + w.burstDelay);
 }
