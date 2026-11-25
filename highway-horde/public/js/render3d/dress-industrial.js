@@ -101,8 +101,9 @@ function crates(P) {
 
 function drumAt(D, x, z, lying, col, rot = 0) {
   const R = 8.5, H = 26;
-  // painted steel, scratched and spotted with rust; one in four is an old drum the paint is coming off
-  const F = D.rng.chance(0.25) ? S(DET.paintrust, 0.62, 0.55) : S(DET.paintmetal, 0.48, 0.45);
+  // painted steel, scratched and spotted with rust; the olive and the brown ones are old drums the paint is
+  // coming off (by colour: no extra draw from the rng, the props after it keep their shapes)
+  const F = col === '#7a6a3a' || col === '#8a4a1c' ? S(DET.paintrust, 0.62, 0.55) : S(DET.paintmetal, 0.48, 0.45);
   if (!lying) {
     D.cyl('std', x, 0, z, R, H, col, 10, 1, null, F);
     for (const y of [5, 13, 21]) D.cyl('std', x, y, z, R + 0.35, 1, shadeHex(col, -0.25), 10, 1, null, F);

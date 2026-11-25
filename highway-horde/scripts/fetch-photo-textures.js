@@ -22,7 +22,8 @@
 // each file's URL and md5; a later run refuses files whose md5 differs (pass --update to accept new
 // versions). Sets not listed here are left untouched; so is everything a set does not own.
 //
-//   node scripts/fetch-photo-textures.js [--only a,b] [--cache dir] [--update] [--list] [--fast]
+//   node scripts/fetch-photo-textures.js [--only a,b] [--cache dir] [--update] [--list] [--fast] [--credits]
+//   (--credits: only rewrite CREDITS.md, e.g. after scripts/bake-foliage.js)
 //
 // The cache defaults to .cache/photo-textures/ under highway-horde/ (ignored by git).
 // Licence and credits: public/textures/CREDITS.md (written by this script).
@@ -354,6 +355,7 @@ function parseArgs(argv) {
     else if (v === '--update') a.update = true;
     else if (v === '--list') a.list = true;
     else if (v === '--fast') a.level = 4;
+    else if (v === '--credits') a.credits = true;
     else throw new Error(`unknown argument ${v}`);
   }
   return a;
@@ -362,8 +364,10 @@ function parseArgs(argv) {
 function credits(man) {
   const rows = Object.entries(man.sets).filter(([, e]) => e.source).map(([n, e]) => {
     const s = e.source;
-    return `| \`${n}\` | [${s.name}](${s.url}) (\`${s.id}\`) | ${Object.keys(s.authors || {}).join(', ')} | ${s.license} | ${s.repeat}×${s.repeat} over ${e.tile} m (photo ${s.sizeM} m) |`;
+    return `| \`${n}\`${PHOTO_NEW[n] ? ' (new)' : ''} | [${s.name}](${s.url}) (\`${s.id}\`) | ${Object.keys(s.authors || {}).join(', ')} | ${s.license} | ${s.repeat}×${s.repeat} over ${e.tile} m (photo ${s.sizeM} m) |`;
   });
+  const fp = join(LIB, 'foliage', 'foliage.json');
+  const fol = existsSync(fp) ? Object.entries(JSON.parse(readFileSync(fp, 'utf8')).cells).map(([n, c]) => `  * \`${n}\`: [${c.source.name}](${c.source.url}) (\`${c.source.id}\`), ${Object.keys(c.source.authors || {}).join(', ')}, ${c.source.license} — ${c.about}`) : [];
   const kept = Object.entries(man.sets).filter(([, e]) => !e.source).map(([n]) => `\`${n}\``);
   return `# Texture credits
 
@@ -385,6 +389,20 @@ The world's surface sets in this folder come from two places:
 | --- | --- | --- | --- | --- |
 ${rows.join('\n')}
 
+Sets marked *new* are not replacements of a baked set: the props, vehicles, furniture and trees draw them
+through surface ids of their own (\`PHOTO_NEW\` in the script); they keep the photo's own colour.
+
+## Prop models and foliage cards (CC0 1.0)
+
+* \`models/\` holds the texture layers (512² albedo, normal, AO / roughness / metalness) of the
+  photo-scanned prop models in \`../models/\` (barrels, crates, cardboard boxes, cylinders, jerrycans, trash
+  cans, a hydrant, a bench, a generator, tyres, trash bags, a picnic table, a chair, a stump, a log, a
+  boulder, a wheelchair): Poly Haven models, CC0 1.0, converted by \`scripts/fetch-models.js\`; the
+  credits per model are in \`../models/CREDITS.md\`.
+* \`foliage/leaves.png\` holds the photo foliage cards of the leaf atlas, rendered by
+  \`scripts/bake-foliage.js\` from Poly Haven plant models (CC0 1.0):
+${fol.join('\n')}
+
 ## Procedurally baked (this repository)
 
 ${kept.join(', ')}
@@ -399,6 +417,7 @@ async function main() {
   const man = JSON.parse(readFileSync(mPath, 'utf8'));
   const ALL = { ...PHOTO, ...PHOTO_NEW };
   const names = a.only || Object.keys(ALL);
+  if (a.credits) { writeFileSync(join(LIB, 'CREDITS.md'), credits(man)); console.log('wrote CREDITS.md'); return; }
   if (a.list) { for (const n of Object.keys(ALL)) console.log(`${n.padEnd(20)} ${ALL[n].id}${PHOTO_NEW[n] ? '  (new)' : ''}`); return; }
   const t0 = Date.now();
   for (const name of names) {

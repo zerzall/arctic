@@ -915,9 +915,15 @@ export function loadFoliage() {
     foliageP = (async () => {
       try { if (typeof location !== 'undefined' && /[?&]foliage=0\b/.test(location.search || '')) return null; } catch { /* (no location) */ }
       if (typeof fetch !== 'function') return null;
-      const r = await fetch(new URL('../../textures/foliage/foliage.json', import.meta.url).href);
-      if (!r.ok) return null;
-      const man = await r.json();
+      // (the one-file build carries the list in window.__HH_MODELS, scripts/build-standalone.js)
+      const emb = typeof window !== 'undefined' && window.__HH_MODELS && window.__HH_MODELS['foliage.json'];
+      let man;
+      if (emb) man = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(emb), (c) => c.charCodeAt(0))));
+      else {
+        const r = await fetch(new URL('../../textures/foliage/foliage.json', import.meta.url).href);
+        if (!r.ok) return null;
+        man = await r.json();
+      }
       await textureQueue();
       const src = await textureSource('foliage/leaves.png');
       const tw = makeTexWorker(foliageJob, [], 1);

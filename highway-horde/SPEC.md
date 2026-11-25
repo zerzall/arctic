@@ -58,6 +58,7 @@ highway-horde/
   public/js/net/*.js                                 (net)
   public/js/render/*.js                              (render)
   public/js/render3d/*.js                            (render3d — first-person view, §7.5)
+  public/models/ (props.bin, props.json, CREDITS.md)  (render3d — photo-scanned prop models, scripts/fetch-models.js)
   public/dev/*                                       (sandboxes, incl. fps-sandbox, actors3d-sandbox)
   public/vendor/three/                               (vendored three.js r186, do not edit)
   public/js/audio/*.js                               (audio)
@@ -1626,7 +1627,10 @@ world-rural.js  Harlan County's kinds: grain silos (300) and headstones (30)
 world-dress.js  set dressing (§7.5.2): the props of shared/dress.js as merged meshes per quality
                 tier, plus dress-life.js (crows, fireflies, butterflies, wind-blown litter);
                 prop models in dress-debris / -street / -life-props / -industrial / -nature /
-                -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js
+                -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js; the kinds drawn by the
+                photo-scanned models in dress-models.js
+props3d.js      the photo-scanned prop models (§7.5.2): models/props.bin + props.json, two LODs per
+                model drawn instanced, texture layers in two arrays decoded by the texture worker
 world-veh-extras.js  vehicle jobs (taxi, police, ambulance, delivery, news, tow, contractor,
                 fire engine), lettering, damage (open hood, flat tyre, dents)
 campaign3d.js   the Campaign (built whenever the map has `campaign`; ctx.mode 'campaign'): an
@@ -1649,16 +1653,19 @@ world-ridge.js  the campaign's kinds and dressing: the palisade, watchtower, tow
   helpers (no ctx sub-system of their own):
 world-geo.js    merges world primitives into per-material, per-cell vertex-coloured meshes
 world-tex.js    procedural world textures (window/neon atlas incl. 24 painted shop signs, 8 neon signs and
-                graffiti cells; chain-link mask; leaf-card atlas: oak/pine/scrub/palm/birch/fern/ivy;
-                water normals)
+                graffiti cells; chain-link mask; leaf-card atlas: oak/pine/scrub/palm/birch/fern/ivy, whose
+                broadleaf, pine, scrub and birch cells are replaced by photo foliage cards once
+                textures/foliage/leaves.png has arrived (§7.5.2); water normals)
 world-surf.js   the 32-layer detail texture array (brick ... plaster, roof tile, standing-seam metal,
                 paving, cracked earth, rock strata, a road-wear layer with cracks / tar seams /
                 patches / oil, wind-rippled sand, and layer 23 'macro', four raw noise fields the
                 world-space weathering samples)
 world-surf-bake.js / world-surf-sets.js  the baked texture library at run time (high and up): the
                 sets of public/textures/ (scripts/bake-textures.js renders 55 tileable PBR materials at
-                2048² — albedo, normal, roughness / AO / height, metalness / tint — stored at 1024²)
-                replace the procedural layers. world-surf-sets.js maps every DET id to a set, with
+                2048² — albedo, normal, roughness / AO / height, metalness / tint — stored at 1024²; 44
+                of them since replaced by Poly Haven photo scans and 13 photo-only sets added for props,
+                vehicles, furniture and trees, scripts/fetch-photo-textures.js) replace the procedural
+                layers. world-surf-sets.js maps every DET id to a set, with
                 per-map themes (hospital and metro tile, dam concrete, rail ballast and rusted rail,
                 airbase camouflage and runway, Sandstone plaster / adobe / shutters); ids 38–56 are
                 library-only surfaces drawn by a base layer on the procedural path (DET_BASE). Only the
@@ -1805,7 +1812,7 @@ city skyline (sparse lit windows, orange glow) over the tree line, fog tinted by
 camera; shadows only on 'high'; a hot centre fading softly to the rim, irradiance capped
 inside ~2 m so near walls never wash out — patched into three's light chunk in lights.js), teammates' flashlights as cheap additive cones, map
 lights/fires/muzzle flashes/explosions through the fixed light pool (never add/remove
-lights at runtime — shader recompiles). Everything procedural (no model or texture files):
+lights at runtime — shader recompiles). Mostly procedural (the texture library, the photo-scanned prop models and foliage cards of §7.5.2 aside):
 PBR materials with generated detail textures (wet asphalt with reflective puddles,
 concrete, grass, brick), rounded vehicles with clearcoat paint and glass, buildings with
 lit windows, alpha-tested foliage, instanced grass, sculpted zombies/survivors with LODs. Viewmodel: a gun built from `weapons.js` `sprite` params per weapon style,
@@ -2105,6 +2112,42 @@ listed props in a row (facing +x at x = 1000) on an empty map. `map.dressItems` 
 list (dev only). Top-down: `render/dress2d.js` paints the flat marks and prop glyphs into the
 ground chunks (`prep.dress`).
 
+**Surfaces and models** (the "make it look real" pass). Props, vehicles, interiors and trees draw
+photo-scanned surfaces of their own (surface ids 57–69, `world-surf-gen.js` DET; sets in
+`public/textures/<set>/`, `world-surf-sets.js` PHOTO_ONLY, fetched by `scripts/fetch-photo-textures.js`
+PHOTO_NEW): rough-sawn crate lumber (`crate`: crates, pallets, barricades, sawhorses, boarded windows),
+`plywood` and `osb` sheets, painted steel with scratches and rust spots (`paintmetal`: drums, cylinders,
+jerrycans, generators, street furniture, military crates), paint flaking off rust (`paintrust`: old drums,
+dumpsters, burnt-out wrecks), road-dusted body paint (`carpaint`: every car, van, pickup and the fire
+engine), `burlap` (sandbags, sacks), kraft `cardboard`, `leather` (sofas, car seats, generator seats),
+`linen` (clothes, beds, the field hospital's canvas, cushions), wood `veneer` (furniture, counters,
+shelves), `pinebark` (pines and spruces) and weathered moulded plastic (`plasticworn`: cones, cases, bins,
+coolers, tanks; thin film keeps the tarp weave). Each takes the object's vertex colour as its tint, so
+every prop keeps its palette with the photo's grain, scuffs and grime. Without the library ('low', or a
+failed load) each draws its base procedural layer.
+The photo-scanned **prop models** (`props3d.js`, `dress-models.js`; 22 Poly Haven CC0 models converted
+by `scripts/fetch-models.js`: three steel drums, two wooden crates, a military crate, a cardboard box, a
+propane cylinder, a jerrycan, two trash cans, a hydrant, a bench, a generator, a tyre, a trash bag, a picnic
+table, a garden chair, a stump, a fallen trunk, a boulder, a wheelchair) replace the procedural models of
+those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles) drawn as two
+InstancedMeshes per model (LOD 0 within 420 / 620 / 900 units on high / ultra / cinematic, LOD 1 to 2200 /
+2800 / 3200, none past it; refilled from the camera's position every 24 units or 30 frames), one patched
+MeshStandardMaterial for all (layer per vertex, tangent-free normal mapping from the uv derivatives, AO /
+roughness / metalness maps), a per-instance tint (± 14 % brightness, a little warmth) and random turns so
+copies never look cloned; a kind's builder may decline a variant the models do not cover (wire baskets,
+wheelie bins, folding chairs stay procedural). The texture layers (512², 23 of them: A = sRGB albedo + AO,
+B = normal xy + roughness + metalness, ≈ 64 MB with mips) load after the world's library through the
+texture worker; until then — and on 'low', with `?props=0` or when anything fails — the procedural props
+stand in, and the dressing rebuilds once when the models arrive. They cast no shadow (like the rest of the
+dressing). `world-dress.js` stats: `modelled`, `models` (instances, draws, triangles).
+**Foliage**: `scripts/bake-foliage.js` renders Poly Haven plant models (pine sapling, two broadleaf tree
+crowns, a shrub, small-leaved bushes; leaves and needles are geometry there) in software into the leaf
+atlas' cells (2048 × 1024 RGBA, `textures/foliage/leaves.png`, grey-normalised so each tree's vertex colour
+still gives its species' green, coverage dilated a texel and faded before the cell's border);
+`world-tex.js` pastes them over the procedural cells when they arrive (`?foliage=0` keeps the procedural
+ones). Pines (the map's and the tree line's) lost their solid cones: a slim dark core under more whorls of
+bough cards, so the silhouette is needles, not a cone.
+
 **Vehicles** (`world-veh-extras.js`): a car may be a taxi or police cruiser, an SUV a police
 cruiser or news vehicle, a van an ambulance / delivery / plumber / news van, a pickup a tow truck
 or contractor's pickup (paint, lettering, light bars on the blinking bucket, ladders, dishes),
@@ -2299,6 +2342,10 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
   and objective rows disabled, three bots; the buy time (the horde block, the surge panel, the wave panel
   counting the horde), the first surge on the streets, the bots bring the count down for an idle human
   (kept alive), then the whole team falls: "Overrun" with the zombies that remained, nobody respawns.
+- `tests/props-models.test.js`: the prop models' library (every level's indices and layers inside
+  props.bin, two LODs, models standing on y = 0, 512² RGB layers, CC0 sources and credits, the model maps
+  under 40 MB of PNG, the dressing places only models the library has) and the foliage cards (atlas size,
+  cells in the leaf atlas' grid, CC0 sources).
 - Graphics-tier tests (all `node --test`, no GPU): `render3d-tiers.test.js` (every per-tier
   table has a `cinematic` key; no tier ternary folds cinematic into high), `gpu.test.js` (GPU
   name cleaning, the classification table, the first-run rule), `display.test.js` (refresh

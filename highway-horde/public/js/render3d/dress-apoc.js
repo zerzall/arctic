@@ -49,7 +49,7 @@ function plywood(P) {
   const H = 40, W = 28;
   // the sheet leans back against whatever is behind it (-x); the message faces +x
   const cx = -(H / 2) * Math.sin(lean), cy = (H / 2) * Math.cos(lean);
-  D.add('std', T.box(), [cx, cy, 0], [0.9, H, W], [0, 0, lean], r.pick(['#c0a878', '#b09a70', '#a08a60']), r.chance(0.35) ? OSB_S : PLY_S);
+  D.add('std', T.box(), [cx, cy, 0], [0.9, H, W], [0, 0, lean], r.pick(['#c0a878', '#b09a70', '#a08a60']), it.v % 3 === 0 ? OSB_S : PLY_S);
   facing(D, 'sign', cell, [cx + 0.55 * Math.cos(lean), cy + 0.55 * Math.sin(lean), 0], W - 0.6, (W - 0.6) * 96 / 256, [Math.cos(lean), Math.sin(lean), 0]);
   for (const y of [8, 32]) D.box('std', cx + (y - cy) * -Math.sin(lean) + 0.4, y, 0, 0.5, 2.4, W + 1, '#6b5a44', [0, 0, lean], WOODS);
   if (r.chance(0.5)) D.box('std', -H * Math.sin(lean) - 4, 3, 0, 1.6, 6, 1.6, '#5a4632', [0, 0, 0.5], WOODS);
