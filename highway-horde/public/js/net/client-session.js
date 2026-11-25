@@ -19,7 +19,7 @@ import { mapBuildOptions } from '../shared/story/registry.js';
 import { createCollisionWorld, stepPlayerMovement } from '../shared/movement.js';
 import { syncGateColliders } from '../shared/level.js';
 import { copyVertical } from '../shared/jump.js';
-import { WEAPONS } from '../shared/weapons.js';
+import { WEAPONS, chargeTime, tightenedWeapon } from '../shared/weapons.js';
 import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { rayCircle } from '../shared/geom.js';
@@ -764,10 +764,19 @@ export class ClientSession extends Emitter {
     // after the trigger is released); a live one follows the host's burst rule.
     const logged = live ? 0 : this.shotLog.get(cmd.seq) || 0;
     const fire = trigger || (live ? W.burstLeft > 0 : logged > 0);
+    // the host's spin (players.js handleFire): spin-up, a charge, the Barrage MG's wind-up
+    const wind = w.spinup || chargeTime(w);
     if (live) {
-      if (!w.spinup) W.spin = 0;
-      else if (fire) W.spin = Math.min(1, W.spin + DT / w.spinup);
-      else W.spin = Math.max(0, W.spin - DT / (w.spinup * 0.6));
+      if (wind) {
+        if (fire && !(w.charge && W.cooldown > COOLDOWN_EPS)) W.spin = Math.min(1, W.spin + DT / wind);
+        else if (!fire) W.spin = Math.max(0, W.spin - DT / (wind * 0.6));
+      } else if (w.tighten) {
+        const loaded = (aw.slot < 0 ? W.freeMag : W.mag[aw.slot]) > 0;
+        if (fire && loaded && W.reloadLeft <= 0) W.spin = Math.min(1, W.spin + DT / w.tighten.time);
+        else W.spin = Math.max(0, W.spin - DT / (w.tighten.time * 0.5));
+      } else {
+        W.spin = 0;
+      }
     }
     if (!fire) {
       if (live && W.cooldown < 0) W.cooldown = 0;
@@ -798,7 +807,7 @@ export class ClientSession extends Emitter {
       else W.freeMag = left;
       return;
     }
-    if (w.spinup && W.spin < 1) {
+    if (wind && W.spin < 1) {
       if (W.cooldown < 0) W.cooldown = 0;
       return;
     }
@@ -811,10 +820,14 @@ export class ClientSession extends Emitter {
         }
         W.burstLeft--;
       }
-      this._emitShot(aw.id, w, cmd.angle);
+      this._emitShot(aw.id, tightenedWeapon(w, W.spin), cmd.angle);
       mag--;
       W.cooldown += w.burst && W.burstLeft === 0 ? w.burstDelay : 1 / w.rate;
       shots++;
+      if (w.charge) {
+        W.spin = 0;
+        break;
+      }
     }
     if (mag <= 0) W.burstLeft = 0;
     if (aw.slot < 0) W.freeMag = mag;

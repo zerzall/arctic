@@ -79,6 +79,13 @@ export const GUN_VALUE = {
   // Bots fight at range and back off from what closes in: they can't use a chainsaw
   // (gunScore rates it 0), so they never buy or pick one up.
   chainsaw: 0,
+  // the arsenal update
+  compact9: 1.6, tac45: 2.2, handcannon: 2.8, mpistol: 2.5,
+  smg9: 4.2, pdw: 5.8, smg45: 4.4, combat_sg: 5.2, box_sg: 6.2,
+  ak: 6.8, m4: 6.4, bullpup: 6.9, scout: 4.6, magsniper: 7.5, autosniper: 8.6,
+  m60: 9.1, barrage: 9.4, sawblade: 6,
+  // the super weapon: bots never save up $16k for it, but keep one a boss dropped
+  hollowstar: 11.5,
 };
 const BUY_ORDER = Object.keys(GUN_VALUE).filter((id) => GUN_VALUE[id] >= 3).sort((a, b) => GUN_VALUE[b] - GUN_VALUE[a]);
 

@@ -4,12 +4,13 @@
 import {
   DT, PLAYER_RADIUS, THROW_SPEED, TURRET,
 } from '../constants.js';
-import { THROWABLES, FROST } from '../weapons.js';
+import { THROWABLES, FROST, tightenedWeapon } from '../weapons.js';
 import { ZOMBIES } from '../zombies.js';
 import { DROP_CHANCE, CRATE_DROP_CHANCE } from '../items.js';
 import { angleDiff, turnTowards } from '../math.js';
 import { rayCircle, MASK_SOLID, MASK_OBJECTIVE } from '../geom.js';
 import { damagePlayer, rollDrop, spawnPickup, COOLDOWN_EPS } from './players.js';
+import { stepBlade, stepSingularity, specialFields } from './specials.js';
 
 /** Largest zombie radius: pad for spatial ray/radius queries. */
 export const MAX_ZOMBIE_RADIUS = Math.max(...Object.values(ZOMBIES).map((z) => z.radius));
@@ -144,8 +145,8 @@ export function killZombie(game, z, by, gib) {
     }
   }
   if (z.boss) {
-    // A boss always leaves a crate and some supplies behind.
-    rollDrop(game, z.x, z.y, 0, 1);
+    // A boss always leaves a crate (sometimes the super weapon, SUPER_DROP) and some supplies behind.
+    rollDrop(game, z.x, z.y, 0, 1, true);
     spawnPickup(game, 'ammo', z.x - 30, z.y);
     spawnPickup(game, 'health', z.x + 30, z.y);
     spawnPickup(game, 'armor', z.x, z.y + 30);
@@ -266,7 +267,8 @@ export function fireWeaponShot(game, p, id, w) {
   const a = p.angle;
   switch (w.kind) {
     case 'hitscan':
-      fireHitscan(game, p.id, p.id, 0, id, w, p.x, p.y, a, p.perks.damageMult || 1, p.id, p);
+      // (the Barrage MG's spread tightens with its wind-up, weapons.js `tighten`)
+      fireHitscan(game, p.id, p.id, 0, id, tightenedWeapon(w, p.spin), p.x, p.y, a, p.perks.damageMult || 1, p.id, p);
       break;
     case 'rail':
       fireRail(game, p, id, w);
@@ -562,16 +564,19 @@ function fireProjectile(game, p, id, w) {
   const off = tw >= 0 ? Math.max(0, tw - 2) : 12;
   sx += dx * off;
   sy += dy * off;
-  addProjectile(game, {
+  const pr = addProjectile(game, {
     kind: spec.kind, x: sx, y: sy, vx: dx * speed, vy: dy * speed, angle: a,
     life: spec.life, maxLife: spec.life, radius: spec.radius, owner: p.id, weapon: id,
-    damage: w.damage * (spec.kind === 'bolt' || spec.kind === 'harpoon' || spec.kind === 'flare' ? p.perks.damageMult || 1 : 1),
+    damage: w.damage * (spec.kind === 'bolt' || spec.kind === 'harpoon' || spec.kind === 'flare' || spec.kind === 'blade' ? p.perks.damageMult || 1 : 1),
     pierce: w.pierce || 1, knockback: w.knockback || 0,
     explodeRadius: spec.explodeRadius || 0, explodeDamage: spec.explodeDamage || 0,
     burn: w.burn || null, chill: w.chill || 0, flare: spec.flare || null,
     drag: spec.drag || 0, pin: spec.pin || 0, dragged: null,
     above: p.z || 0,
   });
+  // saw blades and the singularity carry a few fields of their own (sim/specials.js)
+  const extra = pr && specialFields(spec, w);
+  if (extra) Object.assign(pr, extra);
 }
 
 /**
@@ -671,6 +676,8 @@ export function updateProjectiles(game) {
       case 'molotov': stepMolotov(game, pr); break;
       case 'acid': stepAcid(game, pr); break;
       case 'flame': case 'frost': stepFlame(game, pr); break;
+      case 'blade': stepBlade(game, pr); break;
+      case 'singularity': stepSingularity(game, pr); break;
       default: stepShot(game, pr); break;
     }
   }

@@ -83,7 +83,11 @@ const DEFAULT_VOLUME = { master: 0.8, sfx: 1, music: 0.5 };
 /** Deepest music duck under heavy fire (fraction of the music level). */
 const MUSIC_DUCK = 0.3;
 
-const EXPLOSIONS = { frag: 'expl_frag', grenade: 'expl_grenade', rocket: 'expl_rocket', bloater: 'expl_bloater' };
+const EXPLOSIONS = { frag: 'expl_frag', grenade: 'expl_grenade', rocket: 'expl_rocket', bloater: 'expl_bloater', singularity: 'expl_singularity' };
+/** Bolt-action guns: the bolt is worked after every shot. */
+const BOLT_AFTER = { sniper: 0.42, scout: 0.36, magsniper: 0.5 };
+/** Projectiles that sound while they fly: [loop id, gain, how many at once]. */
+const FLYING = { blade: ['blade_whir', 1, 3], singularity: ['hollow_orb', 1, 2] };
 const PICKUPS = { ammo: 'pick_ammo', health: 'pick_health', cash: 'pick_cash', armor: 'pick_armor', frag: 'pick_frag', crate: 'pick_crate' };
 const UI = {
   click: 'ui_click', hover: 'ui_hover', buy: 'buy', deny: 'deny', chat: 'ui_chat', join: 'ui_join', leave: 'ui_leave',
@@ -96,7 +100,6 @@ const UI = {
 
 // Reload choreography per weapon: [sound, fraction of the reload time, playback rate].
 const MAG = (r) => [['mag_out', 0, r], ['mag_in', 0.6, r], ['rack', 0.86, r]];
-const BOX = [['box', 0, 1], ['box', 0.55, 1.1], ['rack', 0.88, 0.85]];
 export const RELOADS = {
   pistol: [['mag_out', 0, 1.1], ['mag_in', 0.55, 1.1], ['slide', 0.85, 1]],
   magnum: [['breach', 0, 1.1], ['shell', 0.35, 1], ['shell', 0.5, 1.05], ['shell', 0.65, 0.95], ['breach', 0.88, 1.2]],
@@ -110,12 +113,13 @@ export const RELOADS = {
   sniper: [['bolt', 0, 1], ['mag_out', 0.25, 1], ['mag_in', 0.6, 1], ['bolt', 0.82, 1.1]],
   auto_shotgun: MAG(0.85),
   flamethrower: [['canister', 0, 1], ['canister', 0.7, 1.1]],
-  lmg: BOX,
+  lmg: [['breach', 0, 0.85], ['box', 0.18, 1], ['mag_in', 0.5, 0.85], ['breach', 0.68, 0.95], ['rack', 0.88, 0.85]],
   grenade_launcher: [['breach', 0, 0.8], ['shell', 0.35, 0.7], ['shell', 0.55, 0.72], ['breach', 0.88, 0.9]],
   rocket: [['tube', 0.2, 1], ['breach', 0.8, 0.8]],
   tesla: [['mag_out', 0, 0.8], ['charge', 0.45, 1]],
-  minigun: BOX,
-  hmg: [['box', 0, 0.8], ['mag_out', 0.2, 0.75], ['mag_in', 0.62, 0.75], ['rack', 0.88, 0.8]],
+  minigun: [['box', 0, 0.9], ['breach', 0.3, 0.7], ['mag_in', 0.55, 0.7], ['box', 0.7, 1.05], ['rack', 0.88, 0.7]],
+  // belt-fed guns: the feed cover flips up, the box goes on, the belt is laid, the cover slams, the handle is racked
+  hmg: [['breach', 0, 0.75], ['box', 0.16, 0.8], ['mag_in', 0.48, 0.75], ['breach', 0.68, 0.85], ['rack', 0.88, 0.8]],
   railgun: [['mag_out', 0, 0.7], ['charge', 0.35, 0.8], ['mag_in', 0.85, 0.7]],
   flare: [['breach', 0, 1.15], ['shell', 0.45, 0.85], ['breach', 0.85, 1.25]],
   tommy: [['mag_out', 0, 0.85], ['box', 0.5, 1.2], ['mag_in', 0.62, 0.85], ['rack', 0.86, 0.85]],
@@ -126,6 +130,27 @@ export const RELOADS = {
   harpoon: [['mag_in', 0.12, 0.7], ['crank', 0.45, 0.85], ['breach', 0.86, 0.8]],
   cryo: [['canister', 0, 0.9], ['charge', 0.5, 0.6], ['canister', 0.82, 1.15]],
   amr: [['mag_out', 0, 0.72], ['mag_in', 0.55, 0.68], ['bolt', 0.84, 0.78]],
+  // the arsenal update
+  compact9: [['mag_out', 0, 1.2], ['mag_in', 0.55, 1.2], ['slide', 0.84, 1.1]],
+  tac45: [['mag_out', 0, 1.05], ['mag_in', 0.56, 1.0], ['slide', 0.85, 0.95]],
+  handcannon: [['mag_out', 0, 0.9], ['mag_in', 0.55, 0.88], ['slide', 0.84, 0.85]],
+  mpistol: [['mag_out', 0, 1.25], ['mag_in', 0.55, 1.2], ['slide', 0.85, 1.15]],
+  smg9: [['bolt', 0, 1.2], ['mag_out', 0.14, 1.1], ['mag_in', 0.55, 1.1], ['rack', 0.82, 1.2]],
+  pdw: [['mag_out', 0, 1.0], ['mag_in', 0.6, 1.0], ['rack', 0.86, 1.1]],
+  smg45: MAG(1),
+  // one event per round (per-round reload): a shell pushed into the tube
+  combat_sg: [['shell', 0.4, 1.06]],
+  box_sg: [['mag_out', 0, 0.85], ['mag_in', 0.58, 0.82], ['rack', 0.86, 0.8]],
+  ak: [['mag_out', 0, 0.9], ['mag_in', 0.6, 0.88], ['rack', 0.86, 0.85]],
+  m4: [['mag_out', 0, 1.05], ['mag_in', 0.58, 1.05], ['slide', 0.86, 1.1]],
+  bullpup: [['mag_out', 0, 1.0], ['mag_in', 0.62, 1.0], ['rack', 0.86, 1.0]],
+  scout: [['bolt', 0, 1.05], ['mag_out', 0.22, 1.05], ['mag_in', 0.6, 1.0], ['bolt', 0.84, 1.1]],
+  magsniper: [['bolt', 0, 0.92], ['mag_out', 0.24, 0.9], ['mag_in', 0.6, 0.88], ['bolt', 0.84, 0.95]],
+  autosniper: [['mag_out', 0, 0.85], ['mag_in', 0.58, 0.85], ['rack', 0.85, 0.8]],
+  m60: [['breach', 0, 0.75], ['box', 0.2, 0.8], ['mag_in', 0.52, 0.75], ['breach', 0.7, 0.85], ['rack', 0.88, 0.75]],
+  barrage: [['breach', 0, 0.8], ['box', 0.22, 0.9], ['mag_in', 0.55, 0.8], ['breach', 0.72, 0.9], ['rack', 0.88, 0.8]],
+  sawblade: [['canister', 0, 1.1], ['mag_in', 0.55, 0.9], ['crank', 0.78, 1.1]],
+  hollowstar: [['mag_out', 0, 0.6], ['charge', 0.4, 0.7], ['mag_in', 0.8, 0.65]],
 };
 /** Guns whose sound is a loop driven from update() (never a one-shot per shot event). */
 const LOOP_GUNS = new Set(['minigun', 'flame', 'cryo', 'chainsaw']);
@@ -709,6 +734,10 @@ class Engine {
       }
       case 'ignite': return void this.play('molotov', pos);
       case 'freeze': return void this.play('freeze', pos);
+      // a saw blade: a ricochet rings, a cut rips, a spent blade thunks into the wall
+      case 'blade':
+        if (flood && e.what !== 'wall') return;
+        return void this.play(e.what === 'wall' ? 'blade_ring' : e.what === 'cut' ? 'saw_cut' : 'blade_stop', pos);
       case 'pdamage':
         if (own) {
           this.play('hurt', { local: true, prio: PRIO_OWN, group: 'hurt_me', lim: [0.35, 1] });
@@ -845,6 +874,9 @@ class Engine {
         if (e.weapon === 'shotgun') {
           this.play('pump', own ? { local: true, prio: PRIO_OWN, delay: delay + 0.33 } : { x: e.x, y: e.y, delay: delay + 0.33 });
         }
+        // a bolt-action's bolt worked after the shot
+        const bolt = BOLT_AFTER[e.weapon];
+        if (bolt) this.play('bolt', own ? { local: true, prio: PRIO_OWN, delay: delay + bolt } : { x: e.x, y: e.y, delay: delay + bolt, gain: 0.7 });
       }
     }
     if (flood || !Array.isArray(e.rays)) return;
@@ -915,6 +947,7 @@ class Engine {
     const want = this.want || (this.want = []);
     want.length = 0;
     this.playerLoops(view, me, now, want);
+    this.flyingLoops(view, want);
     this.jumpSounds(view, me, dt);
     const horde = this.hordeLoops(view, dt, want);
     this.hazardLoops(view, want, horde);
@@ -950,6 +983,12 @@ class Engine {
     for (const p of view.players) {
       if (!p || p.state === 'dead' || !Array.isArray(p.slots)) continue;
       const wid = p.slots[p.slot];
+      if (wid === 'hollowstar') {
+        // the charge: a whine climbing with it (the snapshot's spin)
+        const ch = clamp(p.spin || 0, 0, 1);
+        if (ch > 0.02 && p.state === 'alive') this.wantLoop(want, 'hcharge' + p.id, 'hollow_charge', p, p === me, 0.35 + 0.65 * ch, 0.55 + 1.0 * ch);
+        continue;
+      }
       if (wid !== 'minigun' && wid !== 'flamethrower' && wid !== 'cryo' && wid !== 'chainsaw') continue;
       const local = p === me;
       const lt = this.lastShotT.get(p.id);
@@ -1048,6 +1087,22 @@ class Engine {
       if (Math.abs(dx * c + dy * sn) <= o.w / 2 && Math.abs(-dx * sn + dy * c) <= o.h / 2) return true;
     }
     return false;
+  }
+
+  /** Saw blades whirring and singularities droning as they fly (the nearest few of each). */
+  flyingLoops(view, want) {
+    const list = view.projectiles;
+    if (!Array.isArray(list) || !list.length) return;
+    for (const kind in FLYING) {
+      const [id, g, max] = FLYING[kind];
+      let n = 0;
+      for (let i = 0; i < list.length && n < max; i++) {
+        const pr = list[i];
+        if (!pr || pr.kind !== kind) continue;
+        n++;
+        this.wantLoop(want, kind + pr.id, id, pr, false, g, 1);
+      }
+    }
   }
 
   wantLoop(want, key, id, p, local, gain, rate) {
