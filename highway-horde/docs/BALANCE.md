@@ -613,8 +613,8 @@ circle did (their pierce) and because the bots spammed them as fast as they cycl
 * **Bots** (sim/bots.js): stop (counter-strafe) before shooting at range and wait until they
   are accurate, pace precise guns until the cone fits the target, burst automatics shorter
   at small, far targets and longer into big ones, hold the trigger with heavy and spin-up
-  guns, never stand still in fire or acid, zoom scopes in at range, and pull against the
-  recoil (all of it at full skill, about 60% for the average profile).
+  guns, zoom scopes in at range, and pull against the recoil (all of it at full skill, about
+  60% for the average profile). The stop planted them in acid: see the follow-up below.
 
 **Guns in the hands of average teams** (kills per minute in hand, quick sweep):
 
@@ -655,12 +655,75 @@ rarer past 380 px). If playtests find the waves too easy for people who aim well
 the zombie health above; if too hard for casual players, `inacc.stand` / `spray.up` per
 category in `shared/handling.js`.
 
+### Follow-up: the bots' stop to shoot, hazards and acid
+
+The stop before every shot past 140 px (in defend, hunt and clear) planted the bots. Standing
+still they took every spitter glob (a glob leads its target by 60% of its speed, so a still
+target is always under it), stopped next to pools and walked back into them, stopped instead
+of walking back to the team or to a downed teammate, and with the shot pacing a bot on the
+move hardly fired at all (backing off, getting out of acid). What the bots do now
+(sim/bots.js, SPEC §3.6):
+* they stop only where they mean to stand anyway (their spot, the ground round a downed
+  teammate, a revive) or when a hunt finds its zombie; never in or within 8 px of a pool,
+  under a glob of acid they have seen coming (0.12 s × their reaction), within a bloater's
+  burst + 30 px, with a zombie within 100 px, or while backing off or walking somewhere. Then
+  they fire on the move with the movement penalty (the pacing applies only when stopped);
+* they get out first: away from every pool, landing glob and bloater at once (the deeper in
+  one, the more it counts), weighing the zombies around as when backing off;
+* they back off from slow zombies at a walk (a steady aim, still faster than a walker), from
+  fast ones at a run; scopes zoom in only to stand and shoot;
+* a bloater within its burst of anyone is no target and is never fired at (they back off);
+* the range discipline (pacing, short bursts at far targets) scales with skill: none for the
+  average profile, which pulls the trigger once roughly on the body, as the 2D bots did.
+
+20 runs of average 4-player teams on normal (5 maps × seeds 1-4), the combined game (the
+arsenal and the new zombies merged) before and after the fix, and the old game for reference:
+
+| average 4p, normal | old game (before the gunplay) | combined, before the fix | combined, after the fix |
+|---|---|---|---|
+| median / mean waves cleared | 14.5 / 13.75 | 11 / 11.75 | 14 / 13.05 |
+| clear 10 / clear 15 | 100% / 50% | 85% / 20% | 90% / 35% |
+| damage taken a wave (team; acid) | 99 (43) | 126 (59) | 91 (31) |
+| downs a wave (team) | 0.58 | 0.75 | 0.57 |
+| bloater bursts a wave | 6.5 | 12.1 | 3.5 |
+
+The quick sweep (`--quick`: 5 maps, seed 1, so 5 runs a cell and ±20 points of noise on a
+share), median waves cleared (share clearing 10 / 15):
+
+| profile, diff, team | old game, before the gunplay | combined, before the fix | combined, after the fix |
+|---|---|---|---|
+| average, easy, 4p | 15.0 (100% / 100%) | 15.0 (100% / 80%) | 15.0 (100% / 100%) |
+| average, normal, 1p | 8.0 (0% / 0%) | 5.0 (0% / 0%) | 6.0 (0% / 0%) |
+| average, normal, 2p | 9.0 (40% / 0%) | 10.0 (60% / 0%) | 9.0 (40% / 0%) |
+| average, normal, 4p | 15.0 (100% / 60%) | 11.0 (80% / 0%) | 14.0 (100% / 20%) |
+| average, normal, 6p | 15.0 (100% / 60%) | 12.0 (100% / 0%) | 14.0 (100% / 40%) |
+| average, hard, 4p | 7.0 (0% / 0%) | 7.0 (20% / 0%) | 8.0 (40% / 0%) |
+| average, nightmare, 4p | 6.0 (20% / 0%) | 6.0 (0% / 0%) | 4.0 (0% / 0%) |
+| skilled, normal, 1p | 10.0 (60% / 20%) | 9.0 (40% / 0%) | 8.0 (0% / 0%) |
+| skilled, normal, 2p | 15.0 (100% / 80%) | 13.0 (80% / 20%) | 12.0 (100% / 40%) |
+| skilled, normal, 4p | 15.0 (100% / 100%) | 15.0 (100% / 60%) | 15.0 (100% / 60%) |
+| skilled, normal, 6p | 15.0 (100% / 100%) | 15.0 (100% / 100%) | 15.0 (100% / 100%) |
+| damage taken a run (acid) | 615 (245) | 856 (409) | 689 (218) |
+
+**What is left** is the 3D hit volumes, not behaviour. The same fixed bots shooting at the old
+2D circles (an experiment with `aim3d` off, old code) clear 14.45 waves on average, take 34
+damage a wave and let the objective take 69; with 3D shots, 12.95, 89 and 266. An average
+bot's aim wobble (~0.018 rad) is about the half-width of a walker's chest at 400 px (13.5 px
+across, half the old 28 px circle): it hits 30-45% standing against 45-70% in 2D, and in the
+late waves more walkers reach the objective (its damage a wave: 159 in the old game, 290-330
+in the combined one), which is how most of the remaining lost runs end. A third zombie-health step (−11% on every type: walker 48, runner 31,
+crawler 24, spitter 62, screamer 78, bloater 115, brute 840, Abomination 6500) did not move it
+(35% clear 15 with or without, 20 runs each), so the health stays where the gunplay pass left it.
+
 ## Open issues
-* **First-person gunplay: the last waves** (wave 11-15) are harder for average teams than
-  before it (no 4p / 6p run finished 15 in the quick sweep, 60% before) and solo dies a
-  wave or two earlier, mostly to spitter acid. Levers, in order: spitter health or its acid
-  (zombies.js), a third step of zombie health, the bots' movement under acid lobs. A human
-  who aims for heads (×4) is not modelled by the bots; playtest before moving more numbers.
+* **First-person gunplay: the last waves** (wave 11-15) are still a little harder for average
+  bot teams than before the gunplay (20 runs of 4p: 35% finish 15 against 50%; mean 13.05
+  against 13.75). The acid part is fixed (the bots no longer stand under it: acid damage is
+  below the old game's); what remains is their hit rate on the thinner 3D bodies and the
+  objective (walkers reach it more often). Zombie health did not move it (above). Levers to
+  try next: the objective's health or the walkers' damage to it, or the average profile's aim
+  wobble if playtests show people hit the 3D bodies better than the bots. A human who aims for
+  heads (×4) is not modelled by the bots; playtest before moving more numbers.
 * **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
   15, against 33% in defend) and the harassers never really hurt a bot team. Human players,
   who walk and shoot worse at the same time, should feel them more; if playtests agree it is

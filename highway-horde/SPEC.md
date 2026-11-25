@@ -688,14 +688,22 @@ average human in `scripts/balance.js` (docs/BALANCE.md). **Gunplay** (§3.4): bo
 (`aim3d`, `vt` -1) at `aimPoint` of the target's torso — now and then the head (12–48 % by skill,
 a quarter of that past 380 px unless scoped; never with pellet guns; a hash of who / what / when,
 no rng draw) — with a pitch error that settles like the yaw's, and pull against the recoil
-(`(0.35 + 0.6 × level) / skill` of the punch, at most all of it). In defend / hunt / clear,
-before a shot past 140 px with a gun that moving spoils (`move` > 2.5 × `stand`; not
-shotguns) they counter-strafe (push against the velocity, then let go) and a skilled one waits
-until it is below the accurate speed; past 140 px they pace their shots until the cone is
-about the size of the aimed-at part (× 1.3 skilled, × 2.6 average; heavy and spin-up guns just
-hold the trigger), and automatic bursts get shorter and the pauses longer with the range.
-Scoped guns zoom in for a target past 170 px with nothing within 150 px and wait for the
-scope to settle; they zoom out when things get close. Behaviour:
+(`(0.35 + 0.6 × level) / skill` of the punch, at most all of it). **Stopping to shoot**: for a
+shot past 140 px with a gun that moving spoils (`move` > 2.5 × `stand`; not shotguns), a bot
+that means to stand anyway (holding its spot, the ground round a downed teammate, a revive)
+or whose hunt has found its zombie counter-strafes (push against the velocity, then let go)
+and a skilled one waits until it is below the accurate speed; stopped, it paces its shots
+until the cone is about the size of the aimed-at part (× 1.3 at full skill, more the lower the
+skill, not at all for `BOT_SKILL.AVERAGE`; heavy and spin-up guns just hold the trigger), and a
+skilled one's automatic bursts get shorter and its pauses longer with the range. It never
+stops in or next to a hazard: a pool (acid; fire and flares when friendly fire is on) under it
+or within 8 px of its edge, a glob of acid in flight that will land on it (seen 0.12 s × its
+reaction after the spit), a bloater within its burst + 30 px; nor with a
+zombie within 100 px (past its reach: stopping is the worse choice), nor while backing off or
+walking somewhere (back to its spot, to a downed teammate, an errand). Then it fires on the
+move and takes the movement penalty. Scoped guns zoom in only to stand and shoot (a target
+past 170 px, nothing within 150 px, not backing off or getting out of a hazard) and wait for
+the scope to settle; they zoom out when things get close or the bot has to move. Behaviour:
 - **Anchor**: a living human (bots spread over the humans), or the objective when no human is
   alive, when the humans are holding the objective anyway (within 260 px of it) or there are
   none. Each bot takes a free, reachable defend spot on its own bearing around the anchor,
@@ -703,15 +711,21 @@ scope to settle; they zoom out when things get close. Behaviour:
   human; they place barricades only in open ground ≥ 180 px from any human.
 - **Targets** (every 6 ticks): the best-scoring zombie in sight — closer, mauling a teammate
   (humans first) or the objective, spitters/screamers at range, charging brutes, bosses;
-  bloaters only when no teammate is within 130 px; out of weapon range scores below zero.
+  bloaters only when nobody (teammates or itself) is within their burst + 26 px, and it never
+  fires at one then (it backs off from it instead); out of weapon range scores below zero.
   When it saw ≥ 4 zombies chewing on the objective, those outrank everything, even far away.
 - **Aim**: 0.08–0.32 s reaction after a new target, an aim error of 0.05–0.15 rad that decays
   while tracking, a finite turn speed; fires only with the crosshair on the target, in bursts
   with automatic guns beyond 260 px. With friendly fire on it never fires through a
   teammate, and never an explosive near one.
-- **Movement**: kites back from zombies closing in (bosses, brutes and bloaters by their
-  reach) by probing 12 directions with the real collide-and-slide (walls, cars, the map
-  edge, other zombies, acid), follows A* paths over its own player-sized nav grid (at most
+- **Movement**: gets out of hazards first (the ones above): away from all of them at once,
+  the deeper in one the more it counts, weighing the zombies around as when backing off (never
+  out of the acid into a crowd), back to its spot once clear. Kites back from zombies closing
+  in (bosses, brutes and bloaters by their reach) — at a walk from slow ones (still faster
+  than they are, and the aim stays steady), at a run from fast ones (runners, a charging brute,
+  anything buffed past a walk) — by probing 12 directions with the real collide-and-slide
+  (walls, cars, the map edge, other zombies, pools and where acid in flight will land),
+  follows A* paths over its own player-sized nav grid (at most
   one search per tick for all bots), and wiggles free in a random open direction when it
   makes no progress. After 3 s with nothing in sight mid-wave it hunts the nearest zombie
   (within 950 px of the anchor unless ≤ 8 are left).

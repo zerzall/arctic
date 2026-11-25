@@ -11,7 +11,7 @@
 // every buffer is allocated once per brain.
 
 import {
-  DT, PLAYER_RADIUS, PLAYER_SPEED, REVIVE_RADIUS, INTERACT_RADIUS, PICKUP_RADIUS, SUPPLY_RADIUS, MELEE_RANGE,
+  DT, PLAYER_RADIUS, PLAYER_SPEED, WALK_MULT, REVIVE_RADIUS, INTERACT_RADIUS, PICKUP_RADIUS, SUPPLY_RADIUS, MELEE_RANGE,
   FRAG_MAX, ARMOR_MAX, TURRET, BARRICADE, BLEEDOUT_TIME, WEAPON_SLOTS,
 } from '../constants.js';
 import { WEAPONS, effectiveRate } from '../weapons.js';
@@ -66,12 +66,21 @@ const AIM_TURN_GAIN = 11;
 /** 3D aim (SPEC §3.6): pitch limit, and how far off a skilled bot's first pitch is (rad). */
 const PITCH_MAX = 1.4;
 const PITCH_ERR = 0.03;
-/** Modes in which a bot stops (counter-strafes) to shoot at range instead of firing on the move. */
-const STOP_MODES = new Set(['defend', 'hunt', 'clear']);
 /** Closer than this the bot fires on the move (the target is big enough). */
 const STOP_RANGE = 140;
 /** Counter-strafe until the ground speed is below this (px/s); then let go of the keys. */
 const STOP_PUSH = 30;
+/** A zombie this close (gap past its reach, px: a walker a couple of body lengths off) makes a
+ * stop to shoot at something farther the worse choice: the bot fires on the move. */
+const STOP_NEAR = 100;
+/** Hazards (stopToShoot, threatFor): clear of a pool's edge by less than this (px) counts as
+ * next to it; acid in flight lands on us when we stand within its pool + ACID_CLEAR; a bloater
+ * bursting within its blast radius + BLOATER_CLEAR is too close to stand next to. */
+const HAZARD_NEAR = 8;
+const ACID_CLEAR = 14;
+const BLOATER_CLEAR = 30;
+/** Seconds a skilled bot takes to see a glob of acid coming (× its reaction for the others). */
+const SPIT_NOTICE = 0.12;
 /** Scoped guns: zoom in for targets farther than this, with nothing closer than SCOPE_CLEAR. */
 const SCOPE_RANGE = 170;
 const SCOPE_CLEAR = 150;
@@ -347,13 +356,15 @@ export function createBrain(game, p, level = 1) {
     nearestAdj: Infinity, nearestZ: null, tvx: 0, tvy: 0, crowd: 0, seenAny: false, objAlarm: 0,
     // aim
     aim: p.angle, target: null, reactT: 0, aimErr: 0, lastSeenT: -100, burstT: 0, pauseT: 0,
-    pitch: 0, pitchErr: 0, aimPart: 'chest', altT: 0, kiting: false,
+    pitch: 0, pitchErr: 0, aimPart: 'chest', altT: 0, kiting: false, stopped: false,
+    // what to get away from (threatFor): a pool, acid about to land, a bloater
+    threat: false, thX: 0, thY: 0, escX: NaN, escY: NaN,
     // intent
     mode: 'defend', goalX: p.x, goalY: p.y, goalR: 30, reviveRef: null, pickRef: null, storyUse: null,
     ax: p.x, ay: p.y, anchorHuman: false,
     spotX: p.x, spotY: p.y, spotT: 0, spotAX: NaN, spotAY: NaN,
     // movement
-    mx: 0, my: 0, sprint: false, hold: false, holding: false, _dx: 0, _dy: 0,
+    mx: 0, my: 0, sprint: false, walk: false, hold: false, holding: false, _dx: 0, _dy: 0, _ex: 0, _ey: 0,
     path: new Int32Array(PATH_MAX), pathLen: 0, pathI: 0, pathGX: 0, pathGY: 0, pathT: -100,
     sx: p.x, sy: p.y, stuckN: 0, unstickT: 0, ux: 0, uy: 0,
     // weapons and gear
@@ -447,6 +458,7 @@ function think(game, b, index) {
   cmd.moveX = b.mx;
   cmd.moveY = b.my;
   cmd.sprint = b.sprint;
+  cmd.walk = b.walk;
   aimAndFire(game, b, cmd);
   if (p.state === 'alive') {
     shopAndReady(game, b, cmd);
@@ -497,16 +509,10 @@ export function targetScore(game, b, z, d, range) {
     case 'brute': s += (z.mode === MODE_CHARGE ? 0.8 : 0.3) * aw; break;
     case 'boss': s += 0.25; break;
     case 'bloater': {
-      // Pop it at range, never next to a teammate (or ourselves).
-      let close = false;
-      for (const q of game.players) {
-        if (q.state === 'dead') continue;
-        if (Math.hypot(q.x - z.x, q.y - z.y) < 130) {
-          close = true;
-          break;
-        }
-      }
-      s += (close ? -0.9 : 0.35) * aw;
+      // Pop it at range, never next to a teammate (or ourselves): within its burst it is not
+      // a target at all (aimAndFire holds fire on it too; the bot backs off from it instead)
+      if (bloaterNearPlayer(game, z)) s -= 3;
+      else s += 0.35 * aw;
       break;
     }
     default: break;
@@ -1232,6 +1238,19 @@ function checkStuck(game, b) {
   }
 }
 
+/** True when every zombie closing in (within 1.3 × the kite radius) is slower than a walk. */
+function slowClosers(b, kr) {
+  const p = b.p;
+  const walkV = PLAYER_SPEED * WALK_MULT * (p.speedMult || 1) * (p.moveMult || 1);
+  for (let i = 0; i < b.closeN; i++) {
+    const z = b.closeZ[i];
+    if (!z || z.dead || b.closeD[i] > kr * 1.3) continue;
+    const v = z.mode === MODE_CHARGE ? Infinity : z.speed * (z.buffT > 0 ? 1.25 : 1);
+    if (v > walkV * 0.85) return false;
+  }
+  return true;
+}
+
 function kiteRadius(b) {
   const aw = activeWeapon(b.p);
   const w = aw.id ? WEAPONS[aw.id] : null;
@@ -1245,7 +1264,12 @@ function kiteRadius(b) {
 function steer(game, b) {
   const p = b.p;
   b.sprint = false;
+  b.walk = false;
   b.hold = false;
+  b.kiting = false;
+  // (standing: a pool under or next to us, acid about to land on us, a bloater that would burst
+  // on us; crawling: just the pool we are in)
+  threatFor(game, b);
   if (b.unstickT > game.time) {
     b.mx = b.ux;
     b.my = b.uy;
@@ -1253,8 +1277,7 @@ function steer(game, b) {
   }
   const downed = p.state === 'downed';
   let dx = 0, dy = 0, kiting = false;
-  b.kiting = false;
-  const hz = hazardAt(game, p.x, p.y);
+  const hz = downed ? hazardAt(game, p.x, p.y) : null;
   if (!downed) {
     const reviving = b.mode === 'revive' && b.reviveRef && Math.hypot(b.reviveRef.x - p.x, b.reviveRef.y - p.y) <= REVIVE_RADIUS * 0.85;
     if (b.nearestAdj < kiteRadius(b) && !(reviving && b.nearestAdj > 40) && game.time >= b.lapseT) {
@@ -1279,10 +1302,19 @@ function steer(game, b) {
         dy += (gy / gd) * w;
       }
       b.sprint = b.nearestAdj < kr * 0.5 && p.stamina > 25 && !p.sprintLock;
+      // Backing off from slow zombies with room to spare: walk, which still outpaces them and
+      // keeps the aim steady while shooting (SPEC §3.4: running spoils it); run from fast ones.
+      b.walk = !b.sprint && !b.threat && b.nearestAdj >= kr * 0.5 && slowClosers(b, kr);
       // Campaign breakout: the horde front is at our back, so backing off leans forward.
       if (b.mode === 'evac' && game.campaign && game.campaign.stage === 2 && gd > 80) {
         dx += (gx / gd) * 0.7;
         dy += (gy / gd) * 0.7;
+      }
+      // Backing off out of a pool, from under a glob of acid or away from a bloater too.
+      if (b.threat) {
+        const l1 = Math.hypot(dx, dy) || 1;
+        dx = dx / l1 + b._ex * 1.2;
+        dy = dy / l1 + b._ey * 1.2;
       }
       // Evac Run: backing off must not take us out into the blight. Near the edge, slide
       // along it (circle-kite) instead of backing out; outside, head back in.
@@ -1318,6 +1350,10 @@ function steer(game, b) {
     if (hz) {
       dx = p.x - hz.x;
       dy = p.y - hz.y;
+    } else if (b.threat) {
+      // out of the pool / from under the acid / away from the bloater first, then back to it
+      dx = b._ex;
+      dy = b._ey;
     } else if (b.mode === 'defend' && b.target && gd < 320 && !outsideZone(game, p)) {
       b.hold = true;
     } else if (gd <= b.goalR) {
@@ -1336,7 +1372,9 @@ function steer(game, b) {
     b.my = 0;
     return;
   }
-  avoid(game, b, dx / l, dy / l, kiting);
+  // (getting out of a pool, from under acid or away from a bloater weighs the zombies around
+  // like backing off does: never out of the acid into a crowd)
+  avoid(game, b, dx / l, dy / l, kiting || (b.threat && !downed));
 }
 
 /**
@@ -1362,6 +1400,93 @@ function hazardAt(game, x, y) {
     if (Math.hypot(h.x - x, h.y - y) < h.r + PLAYER_RADIUS) return h;
   }
   return null;
+}
+
+/** A living player within bloater z's burst (it would hurt them if it went now). */
+function bloaterNearPlayer(game, z) {
+  const sp = z.def && z.def.special;
+  const r = ((sp && sp.deathRadius) || 115) + PLAYER_RADIUS + 10;
+  for (const q of game.players) {
+    if (q.state === 'dead') continue;
+    if (Math.hypot(q.x - z.x, q.y - z.y) < r) return true;
+  }
+  return false;
+}
+
+/** A ground hazard at (x, y), or acid in flight that will make one there. */
+function dangerAt(game, x, y) {
+  if (hazardAt(game, x, y)) return true;
+  for (const pr of game.projectiles) {
+    if (pr.dead || pr.kind !== 'acid') continue;
+    if (Math.hypot(pr.tx - x, pr.ty - y) < (pr.poolRadius || 60) + PLAYER_RADIUS) return true;
+  }
+  return false;
+}
+
+/**
+ * What a standing bot must not stand in or next to (and must never stop to shoot in): a pool
+ * (acid; fire and flares when they hurt players) under it or at its edge, a glob of acid in
+ * flight that lands on it, once it has seen it coming, and a bloater close enough to burst on it.
+ * Sets b.threat and the way out (b._ex, b._ey): away from all of them at once, the deeper in
+ * one the more it counts (never out of one pool into the next); b.thX / b.thY is the centre of
+ * the most pressing one.
+ */
+function threatFor(game, b) {
+  const p = b.p;
+  b.threat = false;
+  if (p.state !== 'alive') return;
+  let sx = 0, sy = 0, best = 0;
+  const push = (x, y, reach) => {
+    const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
+    const depth = reach - d;
+    if (depth <= 0) return;
+    const w = depth / reach + 0.25;
+    if (d > 1e-3) {
+      sx += (dx / d) * w;
+      sy += (dy / d) * w;
+    }
+    if (depth > best) {
+      best = depth;
+      b.thX = x;
+      b.thY = y;
+    }
+  };
+  for (const h of game.hazards) {
+    if (h.life <= 0) continue;
+    if ((h.kind === 'fire' || h.kind === 'flare') && !game.settings.friendlyFire) continue;
+    push(h.x, h.y, h.r + PLAYER_RADIUS + HAZARD_NEAR);
+  }
+  const notice = SPIT_NOTICE * b.prof.react * b.skill;
+  for (const pr of game.projectiles) {
+    if (pr.dead || pr.kind !== 'acid' || pr.maxLife - pr.life < notice) continue;
+    push(pr.tx, pr.ty, (pr.poolRadius || 60) + PLAYER_RADIUS + ACID_CLEAR);
+  }
+  for (let i = 0; i < b.closeN; i++) {
+    const z = b.closeZ[i];
+    if (!z || z.dead || z.type !== 'bloater') continue;
+    const sp = z.def && z.def.special;
+    push(z.x, z.y, ((sp && sp.deathRadius) || 115) + PLAYER_RADIUS + BLOATER_CLEAR);
+  }
+  if (best <= 0) return;
+  b.threat = true;
+  const l = Math.hypot(sx, sy);
+  if (l > 0.05) {
+    b._ex = sx / l;
+    b._ey = sy / l;
+    b.escX = NaN;
+    return;
+  }
+  // dead centre of it: a side step, to the goal's side when it has one, the same way until clear
+  if (b.escX === b.thX && b.escY === b.thY) return;
+  let ex = -Math.sin(b.aim), ey = Math.cos(b.aim);
+  if ((b.goalX - p.x) * ex + (b.goalY - p.y) * ey < 0) {
+    ex = -ex;
+    ey = -ey;
+  }
+  b.escX = b.thX;
+  b.escY = b.thY;
+  b._ex = ex;
+  b._ey = ey;
 }
 
 /** Direction toward the goal along a straight line when clear, else along an A* path. */
@@ -1417,7 +1542,7 @@ function avoid(game, b, dx, dy, kiting) {
     const c = AVOID_COS[k], s = AVOID_SIN[k];
     const ux = dx * c - dy * s, uy = dx * s + dy * c;
     const prog = slideProbe(world, p, ux, uy, PROBE_DIST);
-    if (!kiting && k === 0 && prog > 0.9 && !hazardAt(game, p.x + ux * 44, p.y + uy * 44)) {
+    if (!kiting && k === 0 && prog > 0.9 && !dangerAt(game, p.x + ux * 44, p.y + uy * 44)) {
       bx = ux;
       by = uy;
       best = Infinity;
@@ -1428,7 +1553,8 @@ function avoid(game, b, dx, dy, kiting) {
       if (prog > 0.7 && world.isCircleFree(p.x + ux * 80, p.y + uy * 80, PLAYER_RADIUS - 2)) score += 0.4;
       score -= danger(b, p.x + ux * 50, p.y + uy * 50) * 1.5;
     }
-    if (hazardAt(game, p.x + ux * 40, p.y + uy * 40)) score -= 1.5;
+    // (a pool, or where acid in flight is about to make one)
+    if (dangerAt(game, p.x + ux * 40, p.y + uy * 40)) score -= 1.5;
     // Evac Run: steps that lead out of the circle cost (the blight hurts more than a scratch)
     const zc = zoneCircle(game);
     if (zc) {
@@ -1482,6 +1608,7 @@ function aimAndFire(game, b, cmd) {
   const w = aw.id ? WEAPONS[aw.id] : null;
   const sec = w ? handlingOf(aw.id).secondary : null;
   const scoped = !!(sec && sec.type === 'scope');
+  b.stopped = false;
   if (!z || z.dead || !w) {
     // Look toward the danger, or where we are going, or out from the team.
     let la = b.aim;
@@ -1527,40 +1654,51 @@ function aimAndFire(game, b, cmd) {
   const comp = a ? Math.min(1, (0.35 + 0.6 * pr.level) / b.skill) : 0;
   cmd.angle = a ? b.aim - a.py * comp : b.aim;
   cmd.pitch = clampPitch(a ? b.pitch - a.pp * comp : b.pitch);
-  // Scoped guns: zoom in for a target at range, back out when things get close.
-  const wantScope = scoped && d > SCOPE_RANGE && b.nearestAdj > SCOPE_CLEAR;
+  // Scoped guns: zoom in for a target at range while standing to shoot, back out when things
+  // get close or the bot has to move (a scope slows it down).
+  const wantScope = scoped && d > SCOPE_RANGE && b.nearestAdj > SCOPE_CLEAR && !b.kiting && !b.threat
+    && (b.hold || b.mode === 'hunt');
   if (scoped && wantScope !== (p.scope > 0) && !(wantScope && p.scopeBack > 0)) toggleScope(game, b, cmd);
   if (b.reactT > 0) {
     b.reactT -= DT;
     return;
   }
+  // A good player's discipline at range: fire only when on the part aimed at, wait for the cone
+  // to close, tap at a small far target. All of it at full skill, none for an average player,
+  // who pulls the trigger once roughly on the body and sprays (as the bots did in 2D).
+  const disc = Math.max(0, Math.min(1, (pr.level - 0.4) / 0.6));
   // (on target: within the aimed-at part, the head being the small one)
   const partR = z.radius * (b.aimPart === 'head' ? 0.3 : 0.6);
-  const tol = (Math.atan2(partR, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0) + (d > STOP_RANGE && !(w.pellets > 1) ? 0.003 : 0.008)) * pr.trigger;
+  const tol = (Math.atan2(partR + (1 - disc) * z.radius * 0.2, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0)
+    + (d > STOP_RANGE && !(w.pellets > 1) ? 0.003 : 0.008) + (1 - disc) * 0.012) * pr.trigger;
   if (Math.abs(angleDiff(b.aim, trueA)) > tol) return;
   if (Math.hypot(z.x - p.x, z.y - p.y) > w.range * 0.95) return;
   if (!safeToFire(game, b, w, trueA, d, tx, ty)) return;
+  // (never pop a bloater on ourselves or a teammate)
+  if (z.type === 'bloater' && bloaterNearPlayer(game, z)) return;
   // Let a round-by-round reload run unless something is getting close.
   if (w.reloadOne && p.reloadT > 0 && b.nearestAdj > 220) return;
   // A scope settles before the shot.
   if (wantScope && (p.scope === 0 || p.scopeT < sec.settle)) return;
   // Stop first (a counter-strafe), then shoot: a skilled bot waits until it is accurate.
   if (!stopToShoot(game, b, cmd, aw.id, w, d)) return;
-  // Pace the shots at range: wait for the cone (movement, the last shots) to close to about
-  // the size of what it aims at, as a good player taps instead of spamming; an average one
-  // waits less. Up close, and with pellet guns, it just fires.
+  // Stopped to shoot at range: pace the shots, waiting for the cone (the last shots) to close
+  // to about the size of what it aims at, as a good player taps instead of spamming (the less
+  // skilled, the less it waits; an average player does not). On the move (backing off, out of
+  // acid, walking somewhere) it fires anyway with the movement penalty; up close, and with
+  // pellet guns, it just fires.
   // (heavy guns and spin-up guns just hold the trigger: a belt-fed gun is a hose, not a rifle)
   const hh = handlingOf(aw.id);
-  if (d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail') && !w.spinup && hh.category !== 'heavy') {
+  if (disc > 0 && b.stopped && d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail') && !w.spinup && hh.category !== 'heavy') {
     aimNow(p, aw.id, w, _an);
-    const room = Math.atan2(partR, d) * (pr.level >= 0.5 ? 1.3 : 2.6) + 0.004;
+    const room = Math.atan2(partR, d) * (1.3 + 2.6 * (1 - disc)) + 0.004;
     if (_an.inacc > room && (b.burstT <= 0 || _an.inacc > room * 2)) return;
   }
-  // Bursts with automatic guns at range, shorter the smaller the target looks (taps at a far
-  // walker, long bursts into a brute), with pauses that let the spray recover; hold the trigger
-  // up close (and on spin-up guns).
+  // Bursts with automatic guns at range, for a disciplined shooter shorter the smaller the
+  // target looks (taps at a far walker, long bursts into a brute), with pauses that let the
+  // spray recover; hold the trigger up close (and on spin-up guns).
   if (w.rate >= 8 && !w.spinup && !w.burst && d > 260) {
-    const far = Math.max(0, Math.min(1, (0.035 - Math.atan2(partR, d)) / 0.025));
+    const far = disc * Math.max(0, Math.min(1, (0.035 - Math.atan2(partR, d)) / 0.025));
     if (b.burstT > 0) {
       b.burstT -= DT;
       if (b.burstT <= 0) b.pauseT = game.rng.range(0.08, 0.22) + handlingOf(aw.id).recovery * 0.6 * far;
@@ -1588,15 +1726,21 @@ function toggleScope(game, b, cmd) {
 
 /**
  * Stop before a shot at range, as a good player does: counter-strafe (push against the
- * current velocity) until nearly still, then let go. On the move (kiting, errands), up close
- * and with shotguns it just fires. Returns false while a skilled bot is still too fast to be
- * accurate (an average one shoots anyway).
+ * current velocity) until nearly still, then let go (b.stopped: the shots are then paced).
+ * Only where the bot means to stand anyway (holding its spot, the ground round a downed
+ * teammate, a revive) or when a hunt finds its zombie. Never in or next to a hazard, with acid
+ * coming down on it or a bloater close (steer moves it out first), with a zombie close (the
+ * stop is the worse choice then), while backing off or walking somewhere (back to the team, to
+ * a downed teammate, an errand): then it fires on the move and takes the movement penalty.
+ * Up close and with shotguns it just fires. Returns false while a skilled bot is still too
+ * fast to be accurate (an average one shoots anyway).
  */
 function stopToShoot(game, b, cmd, id, w, d) {
   const p = b.p;
-  if (p.state !== 'alive' || p.reloadT > 0 || b.kiting || d < STOP_RANGE || !STOP_MODES.has(b.mode) || w.pellets > 1) return true;
-  // (never stand still in fire or acid)
-  if (hazardAt(game, p.x, p.y)) return true;
+  b.stopped = false;
+  if (p.state !== 'alive' || p.reloadT > 0 || b.kiting || d < STOP_RANGE || w.pellets > 1) return true;
+  if (!b.hold && b.mode !== 'hunt') return true;
+  if (b.threat || b.nearestAdj < STOP_NEAR || hazardAt(game, p.x, p.y)) return true;
   const h = handlingOf(id);
   if (!(h.inacc.move > 2.5 * h.inacc.stand)) return true;
   const vx = p.mvx || 0, vy = p.mvy || 0, v = Math.hypot(vx, vy);
@@ -1609,6 +1753,7 @@ function stopToShoot(game, b, cmd, id, w, d) {
   }
   cmd.sprint = false;
   b.holding = true;
+  b.stopped = true;
   if (b.prof.level < 0.5) return true;
   return groundSpeed(p) <= ACCURATE_SPEED * PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1);
 }

@@ -4,10 +4,13 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { SUPPLY_RADIUS, PREP_TIME } from '../public/js/shared/constants.js';
+import { SUPPLY_RADIUS, PREP_TIME, PLAYER_RADIUS, PLAYER_SPEED, DT } from '../public/js/shared/constants.js';
 import { WEAPONS } from '../public/js/shared/weapons.js';
 import { GameCore } from '../public/js/shared/sim/core.js';
 import { damagePlayer, spawnPickup } from '../public/js/shared/sim/players.js';
+import { lobAcid, addHazard } from '../public/js/shared/sim/combat.js';
+import { groundSpeed } from '../public/js/shared/movement.js';
+import { ACCURATE_SPEED } from '../public/js/shared/handling.js';
 import { targetScore, nextPurchase, GUN_VALUE } from '../public/js/shared/sim/bots.js';
 import {
   makeGame, addZombie, place, run, eventsOf, godMode, buildFixtureMap, buildArenaMap, cmd,
@@ -241,6 +244,37 @@ describe('movement', () => {
     assert.ok(gap > 60, `kept its distance (${gap.toFixed(0)} px)`);
   });
 
+  test('backs off from slow walkers at a walk (a steady aim), from runners at a run', () => {
+    const kite = (type, speed) => {
+      const g = battle(makeGame({ players: [HUMAN, bot(2)], sandbox: false }));
+      place(g, 1, 150, 1050);
+      const p = place(g, 2, 800, 600, 0);
+      pinSpot(g, 2);
+      for (let i = 0; i < 3; i++) {
+        const z = addZombie(g, type, 930, 560 + i * 40);
+        z.speed = speed;
+        z.hp = z.maxHp = 5000;
+      }
+      let walked = 0, kited = 0, shots = 0;
+      for (let t = 0; t < 120; t++) {
+        godMode(g);
+        g.step();
+        if (g.snapshot().events.some((e) => e.type === 'shot' && e.pid === 2)) shots++;
+        const b = brainOf(g, 2);
+        if (b.kiting) {
+          kited++;
+          if (b.cmd.walk) walked++;
+        }
+      }
+      return { walked, kited, shots, x: p.x };
+    };
+    const slow = kite('walker', 45);
+    assert.ok(slow.kited > 30 && slow.walked > slow.kited * 0.6, `walked back from walkers (${slow.walked}/${slow.kited} ticks)`);
+    assert.ok(slow.x < 790 && slow.shots > 0, `backed off (x ${slow.x.toFixed(0)}) while shooting`);
+    const fast = kite('runner', 110);
+    assert.ok(fast.kited > 10 && fast.walked === 0, `ran from runners (${fast.walked}/${fast.kited} ticks at a walk)`);
+  });
+
   test('kiting against a wall slides along it instead of pushing into it', () => {
     // A long wall right behind the bot; the rush comes straight at it.
     const map = arenaWith([{ x: 700, y: 600, w: 30, h: 700 }]);
@@ -261,6 +295,100 @@ describe('movement', () => {
       g.snapshot();
     }
     assert.ok(Math.abs(p.y - y0) > 80, `slid along the wall (moved ${Math.abs(p.y - y0).toFixed(0)} px)`);
+  });
+
+  // (the arena's radio mast stands at (800, 450): these fights run along y = 600, clear of it)
+  test('holding its post it stops dead to shoot at range (a counter-strafe), then paces its shots', () => {
+    const g = battle(makeGame({ players: [HUMAN, bot(2)], sandbox: false }));
+    place(g, 1, 150, 1050);
+    const p = place(g, 2, 400, 600, 0);
+    pinSpot(g, 2);
+    const z = dummy(g, 'brute', 860, 600);
+    z.hp = z.maxHp = 1e5;
+    p.mvy = 170;
+    let first = null;
+    for (let t = 0; t < 120 && !first; t++) {
+      g.step();
+      if (g.snapshot().events.some((e) => e.type === 'shot' && e.pid === 2)) first = { t, v: groundSpeed(p), stopped: brainOf(g, 2).stopped };
+    }
+    assert.ok(first, 'fired');
+    assert.ok(first.stopped, 'stopped to shoot');
+    assert.ok(first.v <= ACCURATE_SPEED * PLAYER_SPEED, `the first shot came once it was still (${first.v.toFixed(0)} px/s)`);
+  });
+
+  test('never plants itself under acid: sees the glob coming, gets out from under it, fires on the move', () => {
+    const g = battle(makeGame({ players: [HUMAN, bot(2)], sandbox: false }));
+    place(g, 1, 150, 1050);
+    const p = place(g, 2, 400, 600, 0);
+    pinSpot(g, 2);
+    const sp = dummy(g, 'spitter', 740, 600);
+    sp.hp = sp.maxHp = 1e5;
+    let stood = 0;
+    run(g, 60, null, (gg) => {
+      if (brainOf(gg, 2).stopped) stood++;
+      return false;
+    });
+    assert.ok(stood > 0, 'standing to shoot at the spitter');
+    lobAcid(g, sp, p.x, p.y);
+    const pr = g.projectiles.find((q) => q.kind === 'acid' && !q.dead);
+    const hp0 = p.hp;
+    const ev = run(g, Math.ceil(pr.maxLife / DT) + 1);
+    const gap = Math.hypot(p.x - pr.tx, p.y - pr.ty);
+    assert.ok(gap > pr.poolRadius + PLAYER_RADIUS * 0.5, `out from under it when it landed (${gap.toFixed(0)} px)`);
+    assert.ok(shotsBy(ev, 2).length > 0, 'kept shooting on the move');
+    run(g, 90);
+    assert.equal(p.hp, hp0, 'no splash and no pool: it stayed out');
+  });
+
+  test('never stops to shoot in a pool: walks out first, shooting on the way', () => {
+    const g = battle(makeGame({ players: [HUMAN, bot(2)], sandbox: false }));
+    place(g, 1, 150, 1050);
+    const p = place(g, 2, 400, 600, 0);
+    pinSpot(g, 2);
+    const z = dummy(g, 'brute', 860, 600);
+    z.hp = z.maxHp = 1e5;
+    run(g, 60);
+    const h = addHazard(g, 'acid', p.x + 12, p.y + 6, 60, 4, 10, 0);
+    let stoppedIn = 0;
+    const ev = run(g, 60, null, (gg) => {
+      if (brainOf(gg, 2).stopped && Math.hypot(p.x - h.x, p.y - h.y) < h.r + PLAYER_RADIUS) stoppedIn++;
+      return false;
+    });
+    assert.equal(stoppedIn, 0, 'never stood still in it to shoot');
+    assert.ok(Math.hypot(p.x - h.x, p.y - h.y) > h.r + PLAYER_RADIUS * 0.5, 'out of the pool');
+    assert.ok(shotsBy(ev, 2).length > 0, 'fired on the way out');
+  });
+
+  test('no stop with a zombie close by, nor walking back to its post: it fires on the move', () => {
+    // a walker a short way off behind a wall (not the target: it can't be seen), the target far off
+    const map = arenaWith([{ x: 400, y: 660, w: 220, h: 20 }]);
+    const g = battle(makeGame({ map, players: [HUMAN, bot(2)], sandbox: false }));
+    place(g, 1, 150, 1050);
+    place(g, 2, 400, 600, 0);
+    const b = pinSpot(g, 2);
+    b.lapseT = 1e9;           // (tunnel vision: no backing off, so only the close-zombie rule is in play)
+    const z = dummy(g, 'brute', 860, 600);
+    z.hp = z.maxHp = 1e5;
+    dummy(g, 'walker', 400, 720);
+    let stopped = 0, shots = 0;
+    for (let t = 0; t < 90; t++) {
+      g.step();
+      if (g.snapshot().events.some((e) => e.type === 'shot' && e.pid === 2)) shots++;
+      if (b.stopped) stopped++;
+    }
+    assert.ok(shots > 0, 'fired at the far target');
+    assert.equal(stopped, 0, 'never stopped with the walker that close');
+    // walking back to its post (far off) with a target at range: it keeps walking
+    const g2 = battle(makeGame({ players: [HUMAN, bot(2)], sandbox: false }));
+    place(g2, 1, 150, 1050);
+    const p2 = place(g2, 2, 300, 600, 0);
+    const b2 = pinSpot(g2, 2);
+    b2.spotX = 1000;
+    const z2 = dummy(g2, 'brute', 1450, 600);
+    z2.hp = z2.maxHp = 1e5;
+    const ev = run(g2, 120);
+    assert.ok(p2.x > 460, `kept walking to its post (x ${p2.x.toFixed(0)})`);
+    assert.ok(shotsBy(ev, 2).length > 0, 'shooting on the way');
   });
 
   test('walks around obstacles to reach its post (A* over the bots\' grid)', () => {
