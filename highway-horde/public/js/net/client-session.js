@@ -16,7 +16,7 @@ import {
 } from '../shared/protocol.js';
 import { buildMap } from '../shared/maps.js';
 import { mapBuildOptions } from '../shared/story/registry.js';
-import { createCollisionWorld, stepPlayerMovement } from '../shared/movement.js';
+import { createCollisionWorld, stepPlayerMovement, eyeHeight, groundSpeed } from '../shared/movement.js';
 import { syncGateColliders } from '../shared/level.js';
 import { copyVertical } from '../shared/jump.js';
 import { WEAPONS } from '../shared/weapons.js';
@@ -24,8 +24,14 @@ import { ZOMBIES } from '../shared/zombies.js';
 import { perksFor } from '../shared/classes.js';
 import { rayCircle } from '../shared/geom.js';
 import { round1, angleDiff } from '../shared/math.js';
-import { activeWeapon, SWITCH_DELAY, COOLDOWN_EPS } from '../shared/sim/players.js';
-import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound, roofReach } from '../shared/sim/combat.js';
+import { activeWeapon, COOLDOWN_EPS, deployTime, gunSpeedMult } from '../shared/sim/players.js';
+import { MUZZLE, MAX_RAYS_PER_EVENT, traceRound, roofReach, SHOT_SIL, SHOT_3D, SHOT_SCOPE } from '../shared/sim/combat.js';
+import {
+  handlingOf, createAim, resetAim, aimTick, aimKick, inaccuracyOf, fireSpec, discOffset, MODE_BURST, MODE_SIL,
+} from '../shared/handling.js';
+import { rayZombieBeam } from '../shared/hitbox.js';
+import { traceShot, createTrace, wallsBefore } from '../shared/ballistics.js';
+import { PLAYER_SPEED, DUCK_TICKS } from '../shared/constants.js';
 import { Emitter } from './emitter.js';
 import { createTicker } from './ticker.js';
 import { CmdBuilder } from './cmd-builder.js';
@@ -200,7 +206,12 @@ export class ClientSession extends Emitter {
     this.wpn = {
       mag: [0, 0, 0], res: [0, 0, 0], freeMag: WEAPONS.pistol.mag, reloadLeft: 0, reloadTotal: 0, reloadSlot: -1,
       lastSlot: 0, cooldown: 0, spin: 0, lastFireAt: -Infinity, burstLeft: 0, prevFire: false,
+      // first person (SPEC §3.4): recoil / inaccuracy (live, like the cooldown), scope and the
+      // bolt's re-zoom, burst / silencer per slot (rebuilt from each snapshot like the mags)
+      aim: createAim(), scope: 0, scopeT: 0, scopeBack: 0, modes: [0, 0, 0], shots: 0,
     };
+    this.lastRt = null;
+    this.trace3 = createTrace();
     /** Trigger state of the newest acknowledged cmd (a replay starts from it). */
     this.ackFire = false;
     this.penScratch = { n: 0, wall: false, stop: 0, at: new Float64Array(8) };
@@ -302,6 +313,8 @@ export class ClientSession extends Emitter {
     const dt = Math.min(0.25, Math.max(0, Number.isFinite(frameDt) ? frameDt : 0));
     if (this.inGame) {
       this.builder.feed(input, aimAngle);
+      // lag compensation: the tick the zombies on screen are from (render time, SPEC §3.4)
+      this.builder.viewTick = this.lastRt !== null ? Math.max(0, Math.round((this.lastRt.t + (now - this.lastRt.at)) / DT)) : -1;
       this.acc += dt;
       let produced = 0;
       while (this.acc >= DT && produced < MAX_INPUTS_PER_MESSAGE) {
@@ -611,6 +624,11 @@ export class ClientSession extends Emitter {
     if (this.newest) rt = Math.min(rt, Math.max(this.lastRender, snapTime(this.newest) + MAX_EXTRAPOLATE));
     this.lastRender = rt;
     this.lastRenderAt = now;
+    if (Number.isFinite(rt)) {
+      if (!this.lastRt) this.lastRt = { t: rt, at: now };
+      this.lastRt.t = rt;
+      this.lastRt.at = now;
+    }
     return rt;
   }
 
@@ -620,9 +638,9 @@ export class ClientSession extends Emitter {
     return this.roster.find((r) => r.id === this.localId) || null;
   }
 
-  _moveMultFor(slots, slot, state) {
+  _moveMultFor(slots, slot, state, scope = 0) {
     const id = slots[slot];
-    return state === 'alive' && id && WEAPONS[id] ? WEAPONS[id].moveMult : 1;
+    return state === 'alive' && id && WEAPONS[id] ? gunSpeedMult(id, scope) : 1;
   }
 
   /** Mirror the host's weapon switch (slot keys, wheel, "last weapon"). */
@@ -651,25 +669,55 @@ export class ClientSession extends Emitter {
   _step(cmd, live) {
     const p = this.pred;
     const sp = this.newestLocal;
+    const W = this.wpn;
     if (sp && p.state === 'alive') {
       const before = this.predSlot;
       this._predictSlot(cmd, sp.slots);
       if (this.predSlot !== before) {
-        // Mirrors the host's switchSlot(): cancels a reload, spin and a short delay.
-        const W = this.wpn;
+        // Mirrors the host's switchSlot(): cancels a reload, spin, the scope, and the new gun
+        // takes its deploy time.
         W.lastSlot = before;
         W.reloadLeft = 0;
         W.reloadSlot = -1;
+        W.scope = 0;
+        W.scopeBack = 0;
         if (live) {
           W.spin = 0;
           W.burstLeft = 0;
-          if (W.cooldown < SWITCH_DELAY) W.cooldown = SWITCH_DELAY;
+          resetAim(W.aim);
+          const d = deployTime(sp.slots[this.predSlot]);
+          if (W.cooldown < d) W.cooldown = d;
         }
       }
-      p.moveMult = this._moveMultFor(sp.slots, this.predSlot, p.state);
+      if (cmd.alt) this._secondary(sp, live);
+      p.moveMult = this._moveMultFor(sp.slots, this.predSlot, p.state, W.scope);
     }
-    stepPlayerMovement(p, cmd, DT, this.world);
+    const mv = stepPlayerMovement(p, cmd, DT, this.world);
+    if (live && mv === -1) W.aim.landT = 0;
     if (sp) this._stepWeapon(cmd, sp, live);
+  }
+
+  /** The host's secondaryFire(): scope zoom levels, burst toggle, silencer on / off. */
+  _secondary(sp, live) {
+    const W = this.wpn;
+    const aw = activeWeapon({ state: this.pred.state, slots: sp.slots, slot: this.predSlot, mag: W.mag, res: W.res });
+    if (!aw.id || aw.slot < 0) return;
+    const sec = handlingOf(aw.id).secondary;
+    if (!sec) return;
+    if (sec.type === 'scope') {
+      if (W.reloadLeft > 0) return;
+      W.scope = (W.scope + 1) % (sec.levels.length + 1);
+      W.scopeT = 0;
+      W.scopeBack = 0;
+    } else if (sec.type === 'burst') {
+      W.modes[aw.slot] ^= MODE_BURST;
+      W.burstLeft = 0;
+    } else if (sec.type === 'silencer') {
+      if (W.reloadLeft > 0 || (live && W.cooldown > sec.time * 0.5)) return;
+      W.modes[aw.slot] ^= MODE_SIL;
+      if (live && W.cooldown < sec.time) W.cooldown = sec.time;
+      W.burstLeft = 0;
+    }
   }
 
   _applyCmd(cmd) {
@@ -705,6 +753,8 @@ export class ClientSession extends Emitter {
     W.reloadLeft = W.reloadTotal = this._reloadTime(aw.id);
     W.reloadSlot = aw.slot;
     W.burstLeft = 0;
+    W.scope = 0;
+    W.scopeBack = 0;
   }
 
   _finishReload(aw) {
@@ -746,6 +796,18 @@ export class ClientSession extends Emitter {
       return;
     }
     const w = this._weapon(aw.id);
+    const h = handlingOf(aw.id);
+    const spec = fireSpec(w, h, aw.slot >= 0 ? W.modes[aw.slot] : 0, this.specScratch || (this.specScratch = {}));
+    if (live) {
+      // the host's per-tick recovery (handleFire): recoil, inaccuracy, the bolt's re-zoom
+      aimTick(W.aim, h, spec.rate, DT, (p.duckT || 0) / DUCK_TICKS);
+      if (W.scope > 0 && W.scopeT < 9999) W.scopeT++;
+      if (W.scopeBack > 0 && W.cooldown <= COOLDOWN_EPS && W.reloadLeft <= 0) {
+        W.scope = W.scopeBack;
+        W.scopeBack = 0;
+        W.scopeT = 0;
+      }
+    }
     if (W.reloadLeft > 0) {
       if (W.reloadSlot !== aw.slot) {
         W.reloadLeft = 0;
@@ -759,7 +821,7 @@ export class ClientSession extends Emitter {
     const trigger = cmd.fire && phase !== 'gameover' && phase !== 'victory';
     const pulled = trigger && !W.prevFire;
     W.prevFire = trigger;
-    if (!w.burst) W.burstLeft = 0;
+    if (!spec.burst) W.burstLeft = 0;
     // A replayed cmd fired whatever was predicted for it back then (a burst runs on
     // after the trigger is released); a live one follows the host's burst rule.
     const logged = live ? 0 : this.shotLog.get(cmd.seq) || 0;
@@ -791,11 +853,16 @@ export class ClientSession extends Emitter {
       if (live && W.cooldown < 0) W.cooldown = 0;
       return;
     }
+    const bolt = h.secondary && h.secondary.type === 'scope' && spec.rate < 1.5;
     if (!live) {
       // Replay: the shots predicted for this cmd back then.
       const left = Math.max(0, mag - logged);
       if (aw.slot >= 0) W.mag[aw.slot] = left;
       else W.freeMag = left;
+      if (logged > 0 && bolt && W.scope > 0) {
+        W.scopeBack = W.scope;
+        W.scope = 0;
+      }
       return;
     }
     if (w.spinup && W.spin < 1) {
@@ -804,16 +871,17 @@ export class ClientSession extends Emitter {
     }
     let shots = 0;
     while (W.cooldown <= COOLDOWN_EPS && mag > 0 && shots < 4) {
-      if (w.burst) {
+      if (spec.burst) {
         if (W.burstLeft <= 0) {
           if (!trigger) break;
-          W.burstLeft = w.burst;
+          W.burstLeft = spec.burst;
         }
         W.burstLeft--;
       }
-      this._emitShot(aw.id, w, cmd.angle);
+      this._emitShot(aw, w, h, cmd);
+      if (cmd.aim3d) aimKick(W.aim, h, (p.duckT || 0) > 0 ? 0.85 : 1);
       mag--;
-      W.cooldown += w.burst && W.burstLeft === 0 ? w.burstDelay : 1 / w.rate;
+      W.cooldown += spec.burst && W.burstLeft === 0 ? spec.burstDelay : 1 / spec.rate;
       shots++;
     }
     if (mag <= 0) W.burstLeft = 0;
@@ -822,14 +890,72 @@ export class ClientSession extends Emitter {
     if (shots) {
       this.shotLog.set(cmd.seq, shots);
       W.lastFireAt = this.clock();
+      if (bolt && W.scope > 0) {
+        W.scopeBack = W.scope;
+        W.scope = 0;
+      }
     }
   }
 
-  /** A predicted 'shot' from where the local player is drawn, rays traced locally. */
-  _emitShot(weapon, w, angle) {
-    const x = this.pred.x + this.offX, y = this.pred.y + this.offY;
+  /** The shot state of the predicted local player (sim/players.js shotState). */
+  _shotState(id, out) {
+    const p = this.pred, W = this.wpn;
+    const h = handlingOf(id);
+    const sec = h.secondary;
+    const cls = (this._localEntry() || {}).cls;
+    out.speed = groundSpeed(p);
+    out.maxSpeed = PLAYER_SPEED * (p.speedMult || perksFor(cls).speedMult || 1) * gunSpeedMult(id, 0);
+    out.air = p.vzq !== 0 || p.climbT > 0;
+    out.landT = W.aim.landT;
+    out.duck = (p.duckT || 0) / DUCK_TICKS;
+    out.scope = W.scope;
+    out.scopeK = W.scope > 0 && sec && sec.type === 'scope' ? Math.min(1, (W.scopeT * DT) / Math.max(0.01, sec.settle)) : 0;
+    out.sprint = !!p.sprinting;
+    out.added = W.aim.inacc;
+    const w = this._weapon(id), base = WEAPONS[id];
+    out.accK = base && base.spread > 0 && w && w.spread !== base.spread ? w.spread / base.spread : 1;
+    return out;
+  }
+
+  /**
+   * A predicted 'shot' from where the local player is drawn, rays traced locally: in first
+   * person along the predicted recoil and a cone of the same size the host draws from (its
+   * random point is the host's own: the tracers are close, not identical), against the
+   * rendered zombies' hit volumes (where the host judges this shot too: lag compensation).
+   */
+  _emitShot(aw, w, h, cmd) {
+    const weapon = aw.id, angle = cmd.angle;
+    const p = this.pred, W = this.wpn;
+    const x = p.x + this.offX, y = p.y + this.offY;
     const rays = [];
-    if (w.kind === 'hitscan' || w.kind === 'rail') {
+    const d3 = !!cmd.aim3d && (w.kind === 'hitscan' || w.kind === 'rail');
+    let z = (p.z || 0) + 38, fl = 0;
+    if (d3) {
+      const eye = (p.z || 0) + eyeHeight(p);
+      z = Math.max(0, eye - 9);
+      const sec = h.secondary;
+      const sil = aw.slot >= 0 && sec && sec.type === 'silencer' && (W.modes[aw.slot] & MODE_SIL) !== 0;
+      fl = SHOT_3D | (sil ? SHOT_SIL : 0) | (W.scope > 0 ? SHOT_SCOPE : 0);
+      const st = this._shotState(weapon, this.stScratch || (this.stScratch = {}));
+      const cone = inaccuracyOf(h, st), spread = h.spread * (st.accK || 1);
+      const c0 = discOffset(cone, Math.random(), Math.random(), [0, 0]);
+      const pitch = cmd.pitch || 0, ca = Math.cos(angle), sa = Math.sin(angle), cp = Math.cos(pitch), spt = Math.sin(pitch);
+      const pellets = w.pellets || 1;
+      const pe = [0, 0];
+      for (let k = 0; k < pellets && rays.length < MAX_RAYS_PER_EVENT; k++) {
+        let ox = W.aim.py + c0[0], oy = W.aim.pp + c0[1];
+        if (spread > 0) {
+          discOffset(spread, Math.random(), Math.random(), pe);
+          ox += pe[0];
+          oy += pe[1];
+        }
+        const tx = Math.tan(ox), ty = Math.tan(oy);
+        const vx = cp * ca - sa * tx - spt * ca * ty, vy = cp * sa + ca * tx - spt * sa * ty, vz = spt + cp * ty;
+        const hl = Math.hypot(vx, vy);
+        const dx = hl > 1e-9 ? vx / hl : ca, dy = hl > 1e-9 ? vy / hl : sa, kk = hl > 1e-9 ? vz / hl : (vz >= 0 ? 1e6 : -1e6);
+        rays.push(this._traceRay3(x, y, eye, dx, dy, kk, w, h));
+      }
+    } else if (w.kind === 'hitscan' || w.kind === 'rail') {
       const pellets = w.pellets || 1;
       for (let k = 0; k < pellets && rays.length < MAX_RAYS_PER_EVENT; k++) {
         const a = w.spread > 0 ? angle + (Math.random() * 2 - 1) * w.spread : angle;
@@ -843,8 +969,51 @@ export class ClientSession extends Emitter {
     q.push({
       type: 'shot', pid: this.localId, turret: 0, weapon,
       x: round1(x + Math.cos(angle) * MUZZLE), y: round1(y + Math.sin(angle) * MUZZLE), angle,
-      rays, predicted: true,
+      rays, predicted: true, z: round1(z), pitch: cmd.pitch || 0, fl,
     });
+  }
+
+  /**
+   * One predicted first-person ray (sim/combat.js shoot3D without the damage): the world
+   * (heights, the ground, penetration) and the rendered zombies' hit volumes.
+   */
+  _traceRay3(x, y, z0, dx, dy, k, w, h) {
+    const tr = traceShot(this.world, x, y, z0, dx, dy, k, w.range, h.pen, this.trace3);
+    const stopT = tr.stop;
+    const pierce = w.pierce || 1;
+    const view = this.lastView;
+    const zs = view ? view.zombies : null;
+    const hits = this.hitScratch || (this.hitScratch = []);
+    const zones = this.zoneScratch || (this.zoneScratch = []);
+    hits.length = 0;
+    zones.length = 0;
+    const rz = this.rzScratch || (this.rzScratch = { s: -1, zone: 0 });
+    if (zs) {
+      for (let i = 0; i < zs.length; i++) {
+        const z = zs[i];
+        const r = rayZombieBeam(z.type, z.id, z.flags | 0, z.x, z.y, z.z || 0, z.angle, x, y, z0, dx, dy, k, stopT, h.beam, rz);
+        const t = r.s;
+        if (t < 0 || (hits.length >= pierce && t >= hits[hits.length - 1])) continue;
+        let j = hits.length < pierce ? hits.length : hits.length - 1;
+        while (j > 0 && hits[j - 1] > t) {
+          hits[j] = hits[j - 1];
+          zones[j] = zones[j - 1];
+          j--;
+        }
+        hits[j] = t;
+        zones[j] = r.zone;
+      }
+    }
+    let endT = w.range, hit = hits.length > 0 ? 1 : 0;
+    if (hits.length >= pierce) endT = hits[hits.length - 1];
+    else if (tr.hit) {
+      endT = stopT;
+      if (!hit) hit = 2;
+    }
+    return {
+      x: round1(x + dx * endT), y: round1(y + dy * endT), hit,
+      z: round1(z0 + k * endT), zone: hits.length ? zones[0] : 0, pen: Math.min(7, wallsBefore(tr, endT + 1e-6)),
+    };
   }
 
   /** The host's chainsaw sweep (combat.js fireSaw) against the rendered zombies: a ray per cut. */
@@ -928,6 +1097,11 @@ export class ClientSession extends Emitter {
       this.ackSlot = sp.slot;
     }
     W.lastSlot = this.ackLastSlot;
+    // scope level and the weapon modes as the host had them (the pending cmds' presses replay)
+    const sc = sp.scope | 0;
+    if (sc !== W.scope) W.scopeT = 0;
+    W.scope = sc;
+    for (let i = 0; i < W.modes.length; i++) W.modes[i] = (sp.modes && sp.modes[i]) | 0;
     // The host keeps the free pistol's mag to itself; a respawn refills it.
     if (sp.state !== this.ackState) {
       if (this.ackState === 'dead') W.freeMag = WEAPONS.pistol.mag;
@@ -1013,11 +1187,15 @@ export class ClientSession extends Emitter {
     p.sprinting = sp.sprinting;
     p.sprintLock = !!sp.sprintLock;
     copyVertical(p, sp);
+    // walking velocity and crouch (movement.js: the acceleration starts from them)
+    p.mvx = Number.isFinite(sp.mvx) ? sp.mvx : 0;
+    p.mvy = Number.isFinite(sp.mvy) ? sp.mvy : 0;
+    p.duckT = sp.duckT | 0;
     // (story mods multiply on top of the class perks, in the host's order)
     p.speedMult = this.mods ? perks.speedMult * this.mods.speed : perks.speedMult;
     p.staminaMult = this.mods ? perks.staminaMult * this.mods.stamina : perks.staminaMult;
     this.predSlot = sp.slot;
-    p.moveMult = this._moveMultFor(sp.slots, sp.slot, sp.state);
+    p.moveMult = this._moveMultFor(sp.slots, sp.slot, sp.state, sp.scope | 0);
     this.pred = p;
     this._resetWeapon(sp);
     // The free pistol's mag: the host's (when its snapshots carry it), else what it was
@@ -1059,6 +1237,9 @@ export class ClientSession extends Emitter {
         climbTo: this.pred.climbTo,
         spin: this.wpn.spin,
         firing: this.clock() - this.wpn.lastFireAt <= FIRING_HOLD,
+        mvx: this.pred.mvx || 0,
+        mvy: this.pred.mvy || 0,
+        duckT: this.pred.duckT | 0,
       };
       this._predictedWeapon(local, sp);
     } else {
@@ -1084,7 +1265,16 @@ export class ClientSession extends Emitter {
     local.reloading = W.reloadLeft > 0 && W.reloadTotal > 0
       ? Math.min(1, Math.max(0.01, 1 - W.reloadLeft / W.reloadTotal))
       : 0;
-    if (activeWeapon(local).slot < 0) local.freeMag = W.freeMag;
+    const aw = activeWeapon(local);
+    if (aw.slot < 0) local.freeMag = W.freeMag;
+    // first person: scope, weapon modes, and the recoil offset and cone the camera and the
+    // crosshair show (sim/players.js aimView on the host)
+    local.scope = W.scope;
+    local.modes = W.modes.slice();
+    local.punchY = W.aim.py;
+    local.punchP = W.aim.pp;
+    local.spray = W.aim.spray;
+    local.inacc = aw.id && WEAPONS[aw.id] && local.state !== 'dead' ? inaccuracyOf(handlingOf(aw.id), this._shotState(aw.id, this.stScratch || (this.stScratch = {}))) : 0;
   }
 
   // ---- lifecycle -----------------------------------------------------------------------

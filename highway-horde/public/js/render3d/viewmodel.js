@@ -28,9 +28,17 @@
 // shake, the harpoon's spinning reel and a new harpoon sliding in. Muzzle flash: layered star + side tongues + core in
 // HDR (blooms) with a short light. The muzzle's world position is published to effects3d
 // (fx.localMuzzle) so the local tracers start where the gun visibly is.
+//
+// Gunplay (SPEC §3.4): the gun sits low on the right; each shot kicks it back and up by the
+// gun's spray step, and the muzzle climbs with the spray (the renderer's view punch, frame
+// punchY / punchP) and settles as it recovers; a silenced shot kicks less. Bob shrinks fast
+// below a run (walking is steady) and halves ducked. The raise after a switch takes the
+// gun's deploy time (shared/handling.js: the sim won't fire before it either), and
+// inspect() turns the gun over on demand (Settings → Controls: the inspect key).
 
 import * as THREE from 'three';
 import { WEAPONS } from '../shared/weapons.js';
+import { handlingOf } from '../shared/handling.js';
 import { CLASSES } from '../shared/classes.js';
 import { PLAYER_COLORS } from '../shared/constants.js';
 import { gunObject, gunModel, gunMaterials, createGunMaterial, setGunDetail, upgradeGunAtlas, setGunMaterialSkin, setGunMaterialModel, gunTexOn } from './actor-guns.js';
@@ -57,8 +65,13 @@ const JUMP_SPRING_C = 14;
 // pistol looked like a rifle. Scaling about the firing hand keeps the grip where it was
 // and pulls the muzzle back toward it.
 const VM_SIZE = 0.74;
-// nudge right/down so the barrel stays clear of the crosshair's lower arm
-const VM_SHIFT_X = 0.7, VM_SHIFT_Y = -0.2;
+// nudge right/down so the barrel stays clear of the crosshair's lower arm (and the gun sits
+// low on the right, Counter-Strike style)
+const VM_SHIFT_X = 1.0, VM_SHIFT_Y = -0.55;
+/** Weapon switch: the old gun drops for this long (s); the new one rises over its deploy time. */
+const VM_LOWER = 0.14;
+/** Muzzle climb with the spray: the gun tilts up by this share of the view punch (rad / rad). */
+const VM_CLIMB = 2.2;
 
 // gun origin (the firing hand) in camera space per style, + gun scale (+ optional yaw in
 // radians turning the muzzle in toward the crosshair)
@@ -228,6 +241,7 @@ export function createViewmodel(ctx) {
     leverT: 9, leverEjected: false, chainPh: 0, saw: 0, reelV: 0,
     visible: false, lastAir: false, air: 0, jumpY: 0, jumpV: 0, climb: 0,
     idleT: 0, inspectT: -1, breathPh: 0, breathK: 0, revive: 0,
+    raiseT: 0.26, inspectReq: false, inspectKey: false,
   };
   let localId = 0;
   let now = 0;
@@ -308,7 +322,7 @@ export function createViewmodel(ctx) {
       if (!localId || e.pid !== localId) continue;
       if (e.type === 'shot') {
         if (e.echo || e.turret) continue;
-        onShot(e.weapon);
+        onShot(e.weapon, e.fl);
       } else if (e.type === 'throw') {
         st.throwT = 0;
         st.throwKind = e.kind;
@@ -316,10 +330,14 @@ export function createViewmodel(ctx) {
     }
   }
 
-  function onShot(weaponId) {
+  function onShot(weaponId, fl) {
     const w = WEAPONS[weaponId];
     if (!w) return;
-    const k = Math.min(1, w.recoil * 1.6 + 0.12);
+    // the kick follows the gun's spray step (a rifle's first rounds climb hard, a pistol's
+    // single shots snap); a silenced shot (shot flag 1) kicks a little less
+    const h = handlingOf(weaponId);
+    const step = h.spray ? Math.min(0.03, (h.spray.up || 0) / Math.max(1, h.spray.climb || 1)) : 0;
+    const k = Math.min(1, w.recoil * 1.6 + 0.12 + step * 6) * ((fl & 1) ? 0.8 : 1);
     // a little randomness so full-auto fire doesn't look like a metronome
     st.recoilV += k * (0.9 + Math.random() * 0.2);
     st.recoilRoll += (Math.random() - 0.5) * k * 0.12;
@@ -412,15 +430,18 @@ export function createViewmodel(ctx) {
       st.switchT = 0.5;
     } else if (wid !== curWeapon && st.pending !== wid) {
       st.pending = wid;
-      if (st.switchT >= 0.5) st.switchT = 0;
+      if (st.switchT >= VM_LOWER + st.raiseT) st.switchT = 0;
     }
     st.switchT += dt;
     // (a held dev pose swaps guns at once: no lower / raise in a screenshot)
     if (globalThis.__HH_VM_POSE && st.pending) st.switchT = 0.4;
-    if (st.pending && st.switchT >= 0.14) {
+    if (st.pending && st.switchT >= VM_LOWER) {
       curWeapon = st.pending; st.pending = null; curLook = look.key;
       buildGun(curWeapon, look);
-      st.switchT = globalThis.__HH_VM_POSE ? 1 : Math.max(st.switchT, 0.14);
+      // the raise takes the new gun's deploy time (the sim's draw delay)
+      st.raiseT = Math.max(0.26, handlingOf(curWeapon).deploy - VM_LOWER);
+      st.inspectT = -1;
+      st.switchT = globalThis.__HH_VM_POSE ? 9 : Math.max(st.switchT, VM_LOWER);
     } else if (look.key !== curLook) {
       curLook = look.key;
       buildGun(curWeapon, look);
@@ -435,7 +456,8 @@ export function createViewmodel(ctx) {
       st.speed += (v - st.speed) * damp(8, dt);
     }
     st.lastX = local.x; st.lastY = local.y;
-    const moving = Math.min(1, st.speed / 160);
+    // (steady at a walk: the bob grows with the square of the speed; ducked, half of it)
+    const moving = Math.min(1, Math.pow(st.speed / 170, 1.7)) * (local.duckT > 0 ? 0.5 : 1);
     st.bobAmt += (moving - st.bobAmt) * damp(6, dt);
     st.bobPh += dt * (st.speed / 190) * Math.PI * 2 * 1.05;
     const sprinting = local.sprinting && st.speed > 60 ? 1 : 0;
@@ -486,11 +508,14 @@ export function createViewmodel(ctx) {
 
     // melee shove
     const ml = local.meleeing > 0 ? Math.sin(Math.min(1, local.meleeing) * Math.PI) : 0;
-    // switch lower/raise: 0..0.14 lowering, 0.14..0.4 raising
+    // switch lower/raise: 0..VM_LOWER lowering, then raising over the deploy time
     let sw = 0;
-    if (st.switchT < 0.14) sw = st.switchT / 0.14;
-    else if (st.switchT < 0.4) sw = 1 - (st.switchT - 0.14) / 0.26;
+    if (st.switchT < VM_LOWER) sw = st.switchT / VM_LOWER;
+    else if (st.switchT < VM_LOWER + st.raiseT) sw = 1 - (st.switchT - VM_LOWER) / st.raiseT;
     sw = sw * sw * (3 - 2 * sw);
+    // the muzzle climbs with the spray and settles as it recovers (smoothed view punch)
+    const climbP = Math.max(-0.4, Math.min(0.4, (frame.punchP || 0) * VM_CLIMB));
+    const climbY = Math.max(-0.3, Math.min(0.3, (frame.punchY || 0) * VM_CLIMB));
     // throw: the gun dips right while the support arm lobs
     st.throwT += dt;
     const thK = st.throwT < 0.7 ? Math.sin((st.throwT / 0.7) * Math.PI) : 0;
@@ -501,11 +526,17 @@ export function createViewmodel(ctx) {
     st.breathPh += dt * (1.6 + st.breathK * 1.6);
     const breath = Math.sin(st.breathPh) * (0.5 + st.breathK * 0.6);
     const busy = st.speed > 10 || rl > 0 || ml > 0 || thK > 0 || sw > 0.01 || now - st.lastShot < 3 || local.firing || st.air > 0.1 || st.climb > 0.1 || downed;
+    // (an inspect asked for with the key survives walking; a shot, a reload or a switch ends it)
+    const busyKey = rl > 0 || ml > 0 || thK > 0 || sw > 0.01 || now - st.lastShot < 0.1 || local.firing || st.climb > 0.1 || downed;
     st.idleT = busy ? 0 : st.idleT + dt;
     if (st.inspectT >= 0) {
       st.inspectT += dt;
-      if (busy || st.inspectT > 3.6) { st.inspectT = -1; st.idleT = 0; }
-    } else if (st.idleT > 9) { st.inspectT = 0; st.idleT = 0; }
+      if ((st.inspectKey ? busyKey : busy) || st.inspectT > 3.6) { st.inspectT = -1; st.idleT = 0; st.inspectKey = false; }
+    } else if (st.idleT > 9) { st.inspectT = 0; st.idleT = 0; st.inspectKey = false; }
+    if (st.inspectReq) {
+      st.inspectReq = false;
+      if (!busyKey && st.inspectT < 0) { st.inspectT = 0; st.inspectKey = true; }
+    }
     // (dev: globalThis.__HH_VM_POSE = { inspect: 0..1, close: 0..1 } holds a pose for gun close-up screenshots)
     const devPose = globalThis.__HH_VM_POSE || null;
     const ik = devPose && Number.isFinite(devPose.inspect) ? devPose.inspect : st.inspectT >= 0 ? ease(Math.min(1, st.inspectT / 0.7)) * ease(Math.min(1, (3.6 - st.inspectT) / 0.7)) : 0;
@@ -542,8 +573,8 @@ export function createViewmodel(ctx) {
     const z = P[2] + rc * 2.4 * heavyK - ml * 3 + st.sprint * 1.2 - rlTilt * 0.8 + ik * 1.5;
     holder.position.set(x - closeK * (P[0] + VM_SHIFT_X) * 0.75, y + closeK * 2.2, z + closeK * 2.5);
     holder.rotation.set(
-      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04 - st.climb * 0.5 + breath * 0.004 + ik * 0.25 - rvK * 0.5,
-      -0.04 + (P[4] || 0) + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp + ik * 0.6,
+      rc * 0.16 * heavyK - st.sprint * 0.35 + rlTilt * 0.12 - sw * 0.6 + st.swayY * 0.02 + st.jumpY * 0.05 - st.air * 0.04 - st.climb * 0.5 + breath * 0.004 + ik * 0.25 - rvK * 0.5 + climbP,
+      -0.04 + (P[4] || 0) + st.swayX * 0.03 + st.sprint * 0.7 + ml * 0.6 - thK * 0.3 + rlTilt * 0.17 * rlUp + ik * 0.6 - climbY,
       st.recoilRoll + ik * (-0.7 + Math.sin(st.inspectT * 2.4) * 0.12) - rlTilt * (model.reload === 'shells' || model.reload === 'single' ? 0.95 : model.reload === 'mag' ? 0.7 : 0.45) + st.sprint * 0.2 + st.down * 0.35 + Math.sin(st.bobPh) * 0.02 * bobA,
       'YXZ');
     holder.scale.setScalar(P[3] * VM_SIZE);
@@ -920,6 +951,10 @@ export function createViewmodel(ctx) {
     camera,
     update,
     addEvents,
+    /** Turn the gun over to look at it (the inspect key); ignored while busy. */
+    inspect() {
+      st.inspectReq = true;
+    },
     /** World position of the muzzle as seen on screen (x, y = sim plane, h = height). */
     muzzle: muzzleWorld,
     setQuality(q) {

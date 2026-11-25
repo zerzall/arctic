@@ -261,22 +261,47 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 | Move (forward / strafe) | WASD or arrows | Left stick |
 | Look & aim | Mouse (click the game first) | Right stick |
 | Shoot | Left click | RT |
+| Secondary fire: scope / burst / suppressor (guns that have one) | Right click | Tap LT |
+| Crouch (hold: steadier, slower) | Z | Click right stick (toggle) |
+| Walk (hold: quiet, steady) | X | Push the stick part way |
+| Inspect your gun | Y | — |
 | Release the mouse / menu | Esc | Start |
 | Jump / climb (Space into a car, van or container) | Space | A |
-| Shove | Right click or V | LT |
+| Shove | V, or right click on a gun without a secondary mode | LT (hold it on a gun with one) |
 | Sprint | Shift | Click left stick |
 | Reload | R | X |
 | Revive (hold) / take crate | E | RB |
 | Switch weapon | 1 2 3, wheel, Q for last | Y, D-pad ▶ |
 | Frag / molotov | G / F | LB / B |
 | Turret / barricade | T / C | D-pad ▲ / ▼ |
-| Shop | B | Click right stick |
+| Shop | B | Tap Back |
 | Ready up (skip the break) | N | D-pad ◀ |
 | Scoreboard / chat | Tab / Enter | Back / — |
 
+Crouch, walk and inspect sit on browser-safe keys and can be moved in Settings → Controls →
+Keys (click the key, press the new one). Ctrl works for crouch too, as in other shooters:
+while you play, Ctrl+letter shortcuts stay in the game, in fullscreen even Ctrl+W does, and
+outside fullscreen the browser asks before closing the tab if you press Ctrl+W by accident.
+
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); JUMP
-sits next to it and the other actions have on-screen buttons. Gamepads and touch get a light aim assist.
+sits next to it and the other actions have on-screen buttons. With a sniper (or any gun
+with a secondary mode) the SHOVE button shows ZOOM / BURST / SIL: tap it for that, hold it
+to shove. Gamepads and touch get a light aim assist.
+
+**Shooting works like a tactical shooter.** Every gun has its own fixed spray: the first
+rounds climb, then it wanders side to side, the same every time — learn it and pull down
+against it, or shoot in short bursts and taps; the view kicks up about half as far as the
+bullets go and settles when you let go. The first shot of a gun that is standing still and
+rested goes where the crosshair is; moving, jumping, landing and spraying open the cone, and
+the dynamic crosshair shows how far. Running guns are fastest to stop by tapping the
+opposite key. Crouching and walking steady your aim, and sprinting means you can't hit
+anything. Heads take four times the damage (twice on brutes and the Abomination), the
+stomach a bit more, legs less, and a leg hit slows a zombie for a moment. Rifles and snipers
+punch through fences, doors, thin walls and car bodies at reduced damage; pistols and SMGs
+barely. Snipers are wild unscoped: right click for the scope (twice to zoom further). The
+kill feed marks headshots and kills through cover. A heavy gun takes a moment to bring up
+after a switch.
 Every device starts on the **Ultra** graphics preset with **Auto** resolution: on a desktop
 screen with room to spare it renders *above* your screen's resolution (up to 150%, then
 shrinks the picture back for very smooth edges) and lowers it only when a big fight would
@@ -328,7 +353,10 @@ frame-time percentiles and the GPU time, ready to copy.
   from the next game), field of view (60–120 horizontal degrees on a 4:3 screen, 80 by
   default; wider screens see more at the sides), mouse sensitivity, stick and touch look
   speed, invert Y, aim assist and raw mouse input (skips the OS pointer acceleration where
-  the browser supports it).
+  the browser supports it); the keys for crouch, walk and inspect; and the crosshair, with a
+  live preview: dynamic (opens with your movement and spray) or static, colour, length,
+  thickness, gap, opacity, centre dot and outline (and a developer view of the zombies' hit
+  volumes).
 - **Audio**: master, effects and music volume, and mute. The soundtrack is an adaptive
   orchestral score (choir, strings, horns, harp, war drums) synthesised in the browser:
   calm while you shop and get ready, building as the wave comes, full battle music as

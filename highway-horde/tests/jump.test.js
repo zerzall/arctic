@@ -264,7 +264,7 @@ test('prediction: a client replaying from any snapshot mid-jump lands where the 
     assert.equal(d.z, s.z, 'z follows from it');
     if (s.vzq !== 0) airborneAcks++;
     if (s.jumpCd > 0) cooldownAcks++;
-    const c = player(d.x, d.y, { stamina: d.stamina, sprintLock: d.sprintLock, zq: d.zq, vzq: d.vzq, jumpCd: d.jumpCd, climbT: d.climbT, climbTo: d.climbTo });
+    const c = player(d.x, d.y, { stamina: d.stamina, sprintLock: d.sprintLock, zq: d.zq, vzq: d.vzq, jumpCd: d.jumpCd, climbT: d.climbT, climbTo: d.climbTo, mvx: d.mvx, mvy: d.mvy, duckT: d.duckT });
     for (let i = k + 1; i < cmds.length; i++) {
       stepPlayerMovement(c, cmds[i], DT, world);
       assert.equal(c.zq, states[i].zq, `ack ${k}: height at tick ${i}`);

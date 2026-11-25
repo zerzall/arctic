@@ -15,9 +15,19 @@
 // they stay crisp. Blood on the lens: hits on the local player and kills at arm's length
 // splatter the screen (a small fixed pool of splats that hang, run down and fade; dark ash
 // with the gore setting off, none on 'low' gore).
+//
+// Gunplay (SPEC §3.4, §7.5): the crosshair is ui/crosshair.js (the player's style, colour and
+// sizes from Settings; 'dynamic' opens with the gun's inaccuracy cone and the part of the
+// spray the view punch doesn't show). Through a scope (local.scope > 0) a scope picture
+// replaces it: black outside the lens, a fine reticle with mil ticks, and a ring that shows
+// the cone while the shot isn't settled. Headshots get a gold hit marker, headshot kills a
+// gold kill marker. settings.hitboxes (dev) draws every zombie's hit volumes (shared/hitbox.js).
 
 import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS, BLEEDOUT_TIME } from '../shared/constants.js';
+import { handlingOf, scopeFov, ZONE } from '../shared/handling.js';
+import { worldVolumes } from '../shared/hitbox.js';
+import { crosshairSettings, dynamicGap, drawCrosshair } from '../ui/crosshair.js';
 import { angleDiff } from './actor-kit.js';
 
 const TAU = Math.PI * 2;
@@ -67,6 +77,9 @@ export function createOverlay3D(ctx) {
   const g = ctx.overlay;
   let localId = 0;
   let hitT = 9, killT = 9, hitHeavy = 0, bloom = 0, dmgPulse = 0, now = 0;
+  // the last confirmed hit / kill was a headshot (gold markers)
+  let hitHead = false, killHead = false;
+  let xhFor = null, xh = crosshairSettings(null);
   let objHitAt = -99;         // frame.now of the last 'objhit' (the objective pointer shows a while)
   const arcs = [];            // { a (world angle from the player to the source), age, amount }
   let goreMode = 'on';
@@ -119,9 +132,14 @@ export function createOverlay3D(ctx) {
           // predicted hits are guesses: the echo (client) or the plain host event confirms
           if (e.predicted) break;
           const rays = e.rays || [];
-          let n = 0;
-          for (const r of rays) if (r && r.hit === 1) n++;
-          if (n) { hitT = 0; hitHeavy = Math.min(1, n / 4 + (w && w.damage > 80 ? 0.5 : 0)); }
+          let n = 0, head = false;
+          for (const r of rays) {
+            if (r && r.hit === 1) {
+              n++;
+              if (r.zone === ZONE.HEAD) head = true;
+            }
+          }
+          if (n) { hitT = 0; hitHeavy = Math.min(1, n / 4 + (w && w.damage > 80 ? 0.5 : 0)); hitHead = head; }
           break;
         }
         case 'chain':
@@ -133,6 +151,7 @@ export function createOverlay3D(ctx) {
         case 'zdie': {
           if (e.by && e.by === localId) {
             killT = 0;
+            killHead = !!e.hs;
             // a kill at arm's length spatters the lens
             const lp = lastLocal;
             if (lp && lp.state !== 'dead' && Math.hypot(e.x - lp.x, e.y - lp.y) < 90) lensSplat(0.8, true);
@@ -177,53 +196,45 @@ export function createOverlay3D(ctx) {
 
     screenTint(local, W, H);
     lensBlood(dt, W, H);
+    if (settings.hitboxes) hitboxes(view, frame, W, H);
     teammates(view, frame, W, H, settings, yaw);
     objectiveArrow(view, frame, W, H, yaw);
     damageArcs(local, dt, W, H, yaw);
-    if (settings.crosshair !== false) crosshair(local, W, H);
+    if (settings.crosshair !== false) crosshair(local, W, H, settings);
     g.restore();
   }
 
   // ---- crosshair ------------------------------------------------------------------------
-  function crosshair(local, W, H) {
+  function crosshair(local, W, H, settings) {
     if (!local || local.state === 'dead') return;
     const cx = W / 2, cy = H / 2;
     let wid = local.slots ? local.slots[local.slot] : null;
     if (local.state === 'downed') wid = 'pistol';
     const w = WEAPONS[wid];
+    if (settings.xh !== xhFor) {
+      xhFor = settings.xh;
+      xh = crosshairSettings(settings.xh);
+    }
     const fovY = ((ctx.camera && ctx.camera.fov) || 80) * Math.PI / 180;
     const pxPerRad = (H / 2) / Math.tan(fovY / 2);
-    const spread = w ? w.spread : 0.05;
-    const sprint = local.sprinting ? 1 : 0;
-    // The gap follows the gun's real spread, capped: a shotgun's full cone is a ~140 px
-    // ring at 1600x900 that frames half the target instead of pointing at it.
-    const gap = Math.min(H * 0.075, Math.max(5 * ui, Math.tan(spread) * pxPerRad * 0.9)) + (bloom * 14 + sprint * 10) * ui;
-    const len = 7 * ui;
-    const alpha = sprint ? 0.35 : 0.95;
-    const reloading = local.reloading > 0;
-    g.globalAlpha = alpha;
-    // dark outline under a white core so it reads on bright fire and dark sky alike
-    for (const pass of [0, 1]) {
-      g.strokeStyle = pass ? '#ffffff' : 'rgba(0,0,0,0.75)';
-      g.lineWidth = (pass ? 2 : 4) * ui;
-      g.beginPath();
-      if (w && w.category === 'shotgun') {
-        // four short arcs: reads as a spread ring without a heavy circle over the target
-        for (let q = 0; q < 4; q++) {
-          const a0 = q * Math.PI / 2 + Math.PI / 4 - 0.32;
-          g.moveTo(cx + Math.cos(a0) * (gap + 2), cy + Math.sin(a0) * (gap + 2));
-          g.arc(cx, cy, gap + 2, a0, a0 + 0.64);
-        }
-      } else {
-        g.moveTo(cx - gap - len, cy); g.lineTo(cx - gap, cy);
-        g.moveTo(cx + gap, cy); g.lineTo(cx + gap + len, cy);
-        g.moveTo(cx, cy + gap); g.lineTo(cx, cy + gap + len);
-        if (!(w && w.category === 'sniper')) { g.moveTo(cx, cy - gap - len); g.lineTo(cx, cy - gap); }
-      }
-      g.stroke();
+    const h = w ? handlingOf(wid) : null;
+    if (w && local.scope > 0 && scopeFov(wid, local.scope)) {
+      scope(local, W, H, pxPerRad);
+      markers(cx, cy, 4 * ui);
+      return;
     }
-    g.fillStyle = '#ffffff';
-    g.fillRect(cx - ui, cy - ui, 2 * ui, 2 * ui);
+    const sprint = local.sprinting ? 1 : 0;
+    // Dynamic: the gap is the inaccuracy cone on screen (plus a pellet gun's spread), and half
+    // of the spray offset the camera's punch doesn't show; capped so a shotgun's cone doesn't
+    // frame half the target. The predicted record carries inacc / punch (client-session.js).
+    const inacc = Number.isFinite(local.inacc) ? local.inacc : (w ? w.spread : 0.05);
+    const cone = inacc + (h && h.pellets > 1 ? h.spread * 0.5 : 0);
+    const kick = h ? h.viewKick : 0.5;
+    const sprayPx = Math.hypot(local.punchY || 0, local.punchP || 0) * (1 - kick) * pxPerRad;
+    const gap = dynamicGap(xh, ui, Math.tan(Math.min(0.6, cone)) * pxPerRad, sprayPx, H * 0.12) + (xh.xhStyle === 'dynamic' ? sprint * 10 * ui : 0);
+    const len = xh.xhSize * ui;
+    const reloading = local.reloading > 0;
+    drawCrosshair(g, cx, cy, xh, gap, ui, { alpha: sprint ? 0.4 : 1 });
     if (reloading) {
       const r = gap + len + 8 * ui;
       g.lineWidth = 4 * ui;
@@ -234,21 +245,132 @@ export function createOverlay3D(ctx) {
       g.beginPath(); g.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, local.reloading)); g.stroke();
     }
     g.globalAlpha = 1;
-    // hit marker: white X; kill marker: bigger red X that punches in
+    markers(cx, cy, gap);
+  }
+
+  /** Hit marker: a white X (gold on a headshot); kill marker: a bigger red X (gold) that punches in. */
+  function markers(cx, cy, gap) {
     if (hitT < 0.22) {
       const k = 1 - hitT / 0.22;
-      const s = (7 + hitHeavy * 4) * ui, o = gap * 0.5 + 5 * ui;
+      const s = (7 + hitHeavy * 4 + (hitHead ? 2 : 0)) * ui, o = gap * 0.5 + 5 * ui;
       g.globalAlpha = k;
-      xMark(cx, cy, o, s, '#ffffff', 2.2 * ui);
+      xMark(cx, cy, o, s, hitHead ? '#ffd54f' : '#ffffff', (hitHead ? 2.8 : 2.2) * ui);
       g.globalAlpha = 1;
     }
     if (killT < 0.45) {
       const k = 1 - killT / 0.45;
       const pop = 1 + Math.max(0, 0.12 - killT) * 4;
       g.globalAlpha = Math.min(1, k * 1.4);
-      xMark(cx, cy, (gap * 0.5 + 8 * ui) * pop, 11 * ui * pop, '#ff3b30', 3.2 * ui);
+      xMark(cx, cy, (gap * 0.5 + 8 * ui) * pop, 11 * ui * pop, killHead ? '#ffc400' : '#ff3b30', 3.2 * ui);
+      if (killHead) {
+        // a small ring around the head-on kill
+        g.lineWidth = 2 * ui;
+        g.strokeStyle = 'rgba(255,196,0,0.9)';
+        g.beginPath(); g.arc(cx, cy, (gap * 0.5 + 22 * ui) * pop, 0, TAU); g.stroke();
+      }
       g.globalAlpha = 1;
     }
+  }
+
+  // ---- scope ------------------------------------------------------------------------------
+  /**
+   * The picture through a scope: black beyond a round lens with a soft dark rim, a fine
+   * reticle (thick posts toward the rim, thin lines to a small open centre and a red dot), mil
+   * ticks on both lines, and a faint ring sized to the inaccuracy cone while the shot isn't
+   * settled (moving, just zoomed in, just fired).
+   */
+  function scope(local, W, H, pxPerRad) {
+    const cx = W / 2, cy = H / 2;
+    const R = Math.min(W, H) * 0.47;
+    g.save();
+    // the mask: everything but the lens
+    g.fillStyle = '#050505';
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.moveTo(cx + R, cy);
+    g.arc(cx, cy, R, 0, TAU, true);
+    g.fill('evenodd');
+    // the rim: a dark falloff inside the lens, and a thin bright edge
+    const rim = g.createRadialGradient(cx, cy, R * 0.72, cx, cy, R);
+    rim.addColorStop(0, 'rgba(0,0,0,0)');
+    rim.addColorStop(0.8, 'rgba(0,0,0,0.35)');
+    rim.addColorStop(1, 'rgba(0,0,0,0.92)');
+    g.fillStyle = rim;
+    g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(90,110,120,0.35)';
+    g.lineWidth = 1.5 * ui;
+    g.beginPath(); g.arc(cx, cy, R - 0.75 * ui, 0, TAU); g.stroke();
+    // reticle: posts from the rim in to 40%, fine lines in to a small gap
+    g.fillStyle = 'rgba(0,0,0,0.92)';
+    const post = 3.2 * ui, fine = Math.max(1, 1.1 * ui), open = 7 * ui;
+    g.fillRect(cx - R, cy - post / 2, R * 0.6, post);
+    g.fillRect(cx + R * 0.4, cy - post / 2, R * 0.6, post);
+    g.fillRect(cx - post / 2, cy + R * 0.4, post, R * 0.6);
+    g.fillRect(cx - post / 2, cy - R, post, R * 0.6);
+    g.fillRect(cx - R * 0.4, cy - fine / 2, R * 0.4 - open, fine);
+    g.fillRect(cx + open, cy - fine / 2, R * 0.4 - open, fine);
+    g.fillRect(cx - fine / 2, cy + open, fine, R * 0.4 - open);
+    g.fillRect(cx - fine / 2, cy - R * 0.4, fine, R * 0.4 - open);
+    // mil ticks: every 5 mrad on screen through this zoom
+    const step = Math.tan(0.005) * pxPerRad;
+    if (step > 6 * ui) {
+      for (let k = 1; k * step < R * 0.4; k++) {
+        const t = (k % 2 ? 3 : 5) * ui;
+        g.fillRect(cx - k * step - fine / 2, cy - t, fine, t * 2);
+        g.fillRect(cx + k * step - fine / 2, cy - t, fine, t * 2);
+        g.fillRect(cx - t, cy + k * step - fine / 2, t * 2, fine);
+      }
+    }
+    g.fillStyle = '#ff3b30';
+    g.beginPath(); g.arc(cx, cy, 1.4 * ui, 0, TAU); g.fill();
+    // the cone while unsettled
+    const cone = Number.isFinite(local.inacc) ? Math.tan(Math.min(0.6, local.inacc)) * pxPerRad : 0;
+    if (cone > 6 * ui) {
+      g.strokeStyle = `rgba(0,0,0,${Math.min(0.55, cone / R)})`;
+      g.lineWidth = 2 * ui;
+      g.beginPath(); g.arc(cx, cy, Math.min(R * 0.95, cone), 0, TAU); g.stroke();
+    }
+    g.restore();
+  }
+
+  // ---- dev: hit volumes ---------------------------------------------------------------------
+  const ZONE_COLORS = ['#ffffff', '#ff4b4b', '#ffd54f', '#ff9f43', '#4fc3f7'];
+  const BOX_EDGES = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  function hitboxes(view, frame, W, H) {
+    const zs = (view && view.zombies) || [];
+    const camX = frame.camX, camY = frame.camY;
+    const fovY = ((ctx.camera && ctx.camera.fov) || 80) * Math.PI / 180;
+    const pxPerRad = (H / 2) / Math.tan(fovY / 2);
+    g.lineWidth = 1;
+    for (let i = 0; i < zs.length; i++) {
+      const z = zs[i];
+      const d = Math.hypot(z.x - camX, z.y - camY);
+      if (d > 1400 || d < 8) continue;
+      const vols = worldVolumes(z.type, z.id, z.flags | 0, z.x, z.y, z.z || 0, z.angle || 0);
+      for (const v of vols) {
+        g.strokeStyle = ZONE_COLORS[v.zone] || '#ffffff';
+        g.globalAlpha = 0.85;
+        if (v.kind === 'cap') {
+          const a = ctx.project(v.a[0], v.a[2], v.a[1]), b = ctx.project(v.b[0], v.b[2], v.b[1]);
+          if (!a.visible || !b.visible) continue;
+          const rp = Math.max(1, (v.r / Math.max(1, d)) * pxPerRad);
+          g.lineWidth = rp * 2;
+          g.globalAlpha = 0.28;
+          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+          g.lineWidth = 1;
+          g.globalAlpha = 0.9;
+          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+        } else if (v.corners) {
+          const P = v.corners.map((c) => ctx.project(c[0], c[2], c[1]));
+          if (P.some((q) => !q.visible)) continue;
+          g.beginPath();
+          for (const [u, w2] of BOX_EDGES) { g.moveTo(P[u].x, P[u].y); g.lineTo(P[w2].x, P[w2].y); }
+          g.stroke();
+        }
+      }
+    }
+    g.globalAlpha = 1;
+    g.lineWidth = 1;
   }
 
   function xMark(cx, cy, o, s, color, lw) {
@@ -548,7 +670,7 @@ export function createOverlay3D(ctx) {
     addEvents,
     dispose() {},
     /** Test hook. */
-    get state() { return { hitT, killT, arcs: arcs.length, bloom, local: !!lastLocal }; },
+    get state() { return { hitT, killT, hitHead, killHead, arcs: arcs.length, bloom, local: !!lastLocal }; },
   };
 }
 

@@ -232,7 +232,9 @@ test('prediction: a client replaying from any snapshot (mid-mantle, on the roof,
   const states = [];
   let climbs = 0, maxZ = 0, lastX = host.x, lastY = host.y;
   for (let i = 0; i < 480; i++) {
-    const stuck = i > 0 && Math.hypot(host.x - lastX, host.y - lastY) < 0.5;
+    // (stopped against something: barely moved and no speed built up, which the acceleration
+    // model also reads on the first tick of a walk, so that needs the velocity check too)
+    const stuck = i > 0 && Math.hypot(host.x - lastX, host.y - lastY) < 0.5 && Math.hypot(host.mvx, host.mvy) < 5;
     lastX = host.x;
     lastY = host.y;
     const q = quantizeInput({
@@ -254,7 +256,7 @@ test('prediction: a client replaying from any snapshot (mid-mantle, on the roof,
     const d = decodeSnapshot(encodeSnapshot(snap)).players[0];
     if (d.climbT > 0) midClimb++;
     if (d.zq > 0 && d.vzq === 0 && !d.climbT) onTop++;
-    const c = player(d.x, d.y, { stamina: d.stamina, sprintLock: d.sprintLock, zq: d.zq, vzq: d.vzq, jumpCd: d.jumpCd, climbT: d.climbT, climbTo: d.climbTo });
+    const c = player(d.x, d.y, { stamina: d.stamina, sprintLock: d.sprintLock, zq: d.zq, vzq: d.vzq, jumpCd: d.jumpCd, climbT: d.climbT, climbTo: d.climbTo, mvx: d.mvx, mvy: d.mvy, duckT: d.duckT });
     for (let i = k + 1; i < cmds.length; i++) {
       stepPlayerMovement(c, cmds[i], DT, world);
       assert.equal(c.zq, states[i].zq, `ack ${k}: height at tick ${i}`);

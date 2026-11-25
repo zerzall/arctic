@@ -386,6 +386,8 @@ export class HostSession extends Emitter {
     }
     const active = now - this.lastUpdateAt <= STALE_INPUT;
     for (let i = 0; i < due && this.game === game && !this.held; i++) {
+      // (the host sees the newest tick: its own shots need no lag compensation)
+      this.builder.viewTick = game.tick;
       game.setInput(1, active ? this.builder.next() : this.builder.idle());
       game.step();
       const send = game.tick % SNAPSHOT_EVERY === 0;

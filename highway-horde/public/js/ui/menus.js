@@ -13,6 +13,8 @@ import { resolutionHint } from './display.js';
 import { currentUiScale } from './uiscale.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 import { speechSupported } from './story-voice.js';
+import { BIND_ACTIONS, DEFAULT_BINDS, RESERVED_KEYS, keyLabel, validBinds } from './input.js';
+import { crosshairSettings, drawCrosshair, baseGap } from './crosshair.js';
 
 // ---- modal stack ------------------------------------------------------------------------
 
@@ -49,6 +51,8 @@ export function createModals() {
 
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !stack.length) return;
+    // (a key binding waiting for its key takes Esc as "cancel", not "close")
+    if (document.querySelector('.key-btn.listening')) return;
     const m = stack[stack.length - 1];
     if (!m.dismissable) return;
     e.preventDefault();
@@ -421,6 +425,7 @@ export function createStatusDialogs(ctx) {
  */
 export function rangeLabel(unit, raw) {
   if (unit === 'deg') return `${raw}°`;
+  if (unit === 'px10') return `${(raw / 10).toFixed(1)}`;
   if (unit === 'x') return `${(raw / 100).toFixed(2)}×`;
   return `${raw}%`;
 }
@@ -463,7 +468,12 @@ export function createSettingsDialog(ctx) {
   const cineBox = $('#set-cine', dlg);
   const refreshNow = $('#set-refresh-now', dlg);
   const calibReset = $('#set-calib-reset', dlg);
+  const keyBtns = $$('.key-btn[data-bind]', dlg);
+  const keysReset = $('#set-keys-reset', dlg);
+  const xhPreview = $('#set-xh-preview', dlg);
   let tab = SETTINGS_TABS[0];
+  // the binding waiting for its new key (Settings → Controls → Keys), or null
+  let listening = null;
   // Sliders store value / data-scale (default 100: 0..100 % ↦ 0..1).
   const scaleOf = (r) => Number(r.dataset.scale) || 100;
 
@@ -533,6 +543,65 @@ export function createSettingsDialog(ctx) {
     uiNow.textContent = `· ${Math.round(currentUiScale() * 100)}% now`;
   }
 
+  // ---- keys -------------------------------------------------------------------------------
+  function syncKeys() {
+    const b = validBinds(s.keys);
+    for (const btn of keyBtns) {
+      const a = btn.dataset.bind;
+      const on = listening === a;
+      btn.textContent = on ? 'Press a key…' : b[a] ? keyLabel(b[a]) : 'Unbound';
+      btn.classList.toggle('listening', on);
+    }
+  }
+
+  /** The next key pressed becomes `action`'s (Esc cancels; a key another binding had swaps). */
+  function onBindKey(e) {
+    if (!listening) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const code = e.code;
+    const action = listening;
+    if (code === 'Escape') {
+      stopListening();
+      return;
+    }
+    if (!code || RESERVED_KEYS.has(code)) {
+      ctx.audio.ui('deny');
+      return;
+    }
+    const b = validBinds(s.keys);
+    const other = BIND_ACTIONS.find((x) => x !== action && b[x] === code);
+    if (other) b[other] = b[action];
+    b[action] = code;
+    s.keys = validBinds(b);
+    listening = null;
+    window.removeEventListener('keydown', onBindKey, true);
+    ctx.audio.ui('click');
+    syncKeys();
+    changed();
+  }
+
+  function stopListening() {
+    if (!listening) return;
+    listening = null;
+    window.removeEventListener('keydown', onBindKey, true);
+    syncKeys();
+  }
+
+  // ---- crosshair preview ----------------------------------------------------------------
+  function drawPreview() {
+    if (!xhPreview || !xhPreview.getContext) return;
+    const g = xhPreview.getContext('2d');
+    if (!g) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const W = xhPreview.clientWidth || 132, H = xhPreview.clientHeight || 96;
+    if (xhPreview.width !== Math.round(W * dpr)) { xhPreview.width = Math.round(W * dpr); xhPreview.height = Math.round(H * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const o = crosshairSettings(s);
+    drawCrosshair(g, W / 2, H / 2, o, baseGap(o), 1);
+  }
+
   function sync() {
     for (const r of ranges) {
       const v = s[r.dataset.setting];
@@ -547,11 +616,14 @@ export function createSettingsDialog(ctx) {
     syncGraphics();
     syncView();
     syncUiScale();
+    syncKeys();
+    drawPreview();
   }
 
   function changed() {
     ctx.applySettings();
     ctx.savePrefs();
+    drawPreview();
   }
 
   function selectTab(name, focus = false) {
@@ -616,6 +688,24 @@ export function createSettingsDialog(ctx) {
       changed();
     });
   }
+  for (const btn of keyBtns) {
+    btn.addEventListener('click', () => {
+      ctx.audio.ui('click');
+      if (listening === btn.dataset.bind) { stopListening(); return; }
+      if (!listening) window.addEventListener('keydown', onBindKey, true);
+      listening = btn.dataset.bind;
+      syncKeys();
+    });
+  }
+  if (keysReset) {
+    keysReset.addEventListener('click', () => {
+      stopListening();
+      s.keys = { ...DEFAULT_BINDS };
+      ctx.audio.ui('click');
+      syncKeys();
+      changed();
+    });
+  }
   calibReset.addEventListener('click', () => {
     s.displayBrightness = 1; s.displayContrast = 1; s.displaySaturation = 1;
     ctx.audio.ui('click');
@@ -648,7 +738,12 @@ export function createSettingsDialog(ctx) {
     open(onClose) {
       sync();
       selectTab(tab);
-      ctx.modals.open(dlg, { onClose });
+      ctx.modals.open(dlg, {
+        onClose: (...a) => {
+          stopListening();
+          if (onClose) onClose(...a);
+        },
+      });
       // The modal focuses its first button (the first tab); start on the open tab instead.
       requestAnimationFrame(() => {
         const t = tabs.find((b) => b.dataset.tab === tab);

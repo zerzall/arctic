@@ -432,11 +432,12 @@ test('prediction: local player moves immediately and converges with the host', a
   await frames(env, 10);
   const start = a.getPredictedLocal();
   assert.ok(start, 'prediction starts with the first snapshot');
-  // One frame of input moves the predicted player before any snapshot can confirm it.
+  // One frame of input moves the predicted player before any snapshot can confirm it (the
+  // first tick of acceleration from a standstill: a fraction of a pixel, but at once).
   env.clock.advance(1 / 60);
   a.update(1 / 60, input({ moveX: 1 }), 0);
   const moved = a.getPredictedLocal();
-  assert.ok(moved.x > start.x + 2, `predicted immediately (${start.x} → ${moved.x})`);
+  assert.ok(moved.x > start.x + 0.2, `predicted immediately (${start.x} → ${moved.x})`);
   await frames(env, 90, (s, i) => (s === a ? input({ moveX: 1, moveY: i % 20 < 10 ? 0.5 : -0.5, sprint: i < 60 }) : null));
   await frames(env, 30);
   const hp = hostPlayer(env, a.localId);

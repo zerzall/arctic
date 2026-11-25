@@ -232,6 +232,8 @@ export function spawnZombie(game, type, x, y, elite = false) {
     flank: rng.range(-1, 1), phase: rng.range(0, TAU), wobble: rng.range(0.5, 1.3),
     stuckT: 0, progT: rng.range(0, 1), lastProg: Infinity, unstickT: 0, udx: 0, udy: 0,
     bumpB: null, bumpT: 0, hurtT: 0, flashT: 0, lastBy: 0, touched: 0, holding: false,
+    // leg-hit slow (tagT s left, tagK share) and the pose history of lag compensation (combat.js)
+    tagT: 0, tagK: 0, lagH: null,
     // height: feet z (0 on the ground), fall speed, and a climb in progress
     z: game.world.terrainH(x, y), vz: 0, climbWait: 0, climbT: 0, climbDur: 0, climbO: null, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0,
   };
@@ -396,6 +398,8 @@ function updateZombie(game, z) {
   if (z.bumpT > 0) z.bumpT -= DT;
   if (z.flashT > 0) z.flashT -= DT;
   if (z.unstickT > 0) z.unstickT -= DT;
+  // (a bullet in the leg slows it for a moment: tagging, sim/combat.js)
+  if (z.tagT > 0) z.tagT -= DT;
   if (z.burnT > 0) {
     z.burnT -= DT;
     damageZombie(game, z, z.burnDps * DT, z.burnBy, false);
@@ -527,7 +531,7 @@ function stepNormal(game, z) {
   if (inReach) move = 0;
   const speed = z.speed * (z.buffT > 0 ? ZOMBIES.screamer.special.speedBuff : 1) * (z.burnT > 0 ? BURN_SPEED : 1)
     * (z.chill > 0 ? 1 - FROST.slow * z.chill : 1) * move * (game.campaign ? game.campaign.slowMult(z) : 1)
-    * (game.horde ? game.horde.travelMult(z) : 1);
+    * (game.horde ? game.horde.travelMult(z) : 1) * (z.tagT > 0 ? 1 - (z.tagK || 0) : 1);
   moveZombie(game, z, dirX * speed, dirY * speed, true);
   // Pressed against the perch of a survivor out of reach: climb up after them.
   if (needUp && def.climb && z.tgtDist < CLIMB_NEAR) {

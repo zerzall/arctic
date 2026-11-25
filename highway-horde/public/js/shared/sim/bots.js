@@ -11,18 +11,22 @@
 // every buffer is allocated once per brain.
 
 import {
-  DT, PLAYER_RADIUS, REVIVE_RADIUS, INTERACT_RADIUS, PICKUP_RADIUS, SUPPLY_RADIUS, MELEE_RANGE,
+  DT, PLAYER_RADIUS, PLAYER_SPEED, REVIVE_RADIUS, INTERACT_RADIUS, PICKUP_RADIUS, SUPPLY_RADIUS, MELEE_RANGE,
   FRAG_MAX, ARMOR_MAX, TURRET, BARRICADE, BLEEDOUT_TIME, WEAPON_SLOTS,
 } from '../constants.js';
 import { WEAPONS, effectiveRate } from '../weapons.js';
 import { ITEMS } from '../items.js';
 import { FlowField, BARRICADE_COST } from '../flowfield.js';
 import { angleDiff, turnTowards, TAU } from '../math.js';
-import { activeWeapon, priceFor, shopWave, findPlacement } from './players.js';
+import { activeWeapon, priceFor, shopWave, findPlacement, aimNow } from './players.js';
 import { MODE_CHARGE } from './zombies.js';
 import { walkComponents, componentAt } from './zone.js';
 import { nearestSupply } from '../level.js';
 import { HS_BREATHER, HS_HOLD } from '../horde.js';
+import { aimPoint, hash01 } from '../hitbox.js';
+import { eyeHeight, groundSpeed } from '../movement.js';
+import { handlingOf, ACCURATE_SPEED } from '../handling.js';
+import { poseFlags } from './combat.js';
 
 /** Horde Elimination: a hold with at most this many zombies alive is calm enough for a trip to the shop. */
 const HORDE_SHOP_ALIVE = 6;
@@ -59,6 +63,18 @@ const WALK_PAD = PLAYER_RADIUS - 1;
 const ERR_DECAY = 3.2;
 const AIM_TURN_BASE = 4;
 const AIM_TURN_GAIN = 11;
+/** 3D aim (SPEC §3.6): pitch limit, and how far off a skilled bot's first pitch is (rad). */
+const PITCH_MAX = 1.4;
+const PITCH_ERR = 0.03;
+/** Modes in which a bot stops (counter-strafes) to shoot at range instead of firing on the move. */
+const STOP_MODES = new Set(['defend', 'hunt', 'clear']);
+/** Closer than this the bot fires on the move (the target is big enough). */
+const STOP_RANGE = 140;
+/** Counter-strafe until the ground speed is below this (px/s); then let go of the keys. */
+const STOP_PUSH = 30;
+/** Scoped guns: zoom in for targets farther than this, with nothing closer than SCOPE_CLEAR. */
+const SCOPE_RANGE = 170;
+const SCOPE_CLEAR = 150;
 const HUNT_AFTER = 3;
 /** Zombies seen chewing on the objective before a bot treats them as the top priority. */
 const OBJ_ALARM = 4;
@@ -314,6 +330,8 @@ export function createBrain(game, p, level = 1) {
       seq: 0, moveX: 0, moveY: 0, angle: 0, fire: false, melee: false, sprint: false, interact: false,
       reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
       slot: -1, cycle: 0,
+      // 3D aim like a human's (the host's own players see the present: no view tick)
+      pitch: 0, aim3d: true, alt: false, crouch: false, walk: false, vt: -1,
     },
     // senses
     buf: [], buf2: [],
@@ -322,6 +340,7 @@ export function createBrain(game, p, level = 1) {
     nearestAdj: Infinity, nearestZ: null, tvx: 0, tvy: 0, crowd: 0, seenAny: false, objAlarm: 0,
     // aim
     aim: p.angle, target: null, reactT: 0, aimErr: 0, lastSeenT: -100, burstT: 0, pauseT: 0,
+    pitch: 0, pitchErr: 0, aimPart: 'chest', altT: 0, kiting: false,
     // intent
     mode: 'defend', goalX: p.x, goalY: p.y, goalR: 30, reviveRef: null, pickRef: null, storyUse: null,
     ax: p.x, ay: p.y, anchorHuman: false,
@@ -359,6 +378,7 @@ function resetCmd(c) {
   c.moveX = 0;
   c.moveY = 0;
   c.fire = false;
+  c.alt = false;
   c.melee = false;
   c.sprint = false;
   c.interact = false;
@@ -378,6 +398,7 @@ function think(game, b, index) {
   resetCmd(cmd);
   cmd.seq = ++b.seq;
   cmd.angle = b.aim;
+  cmd.pitch = b.pitch;
   b.holding = false;
   if (p.state === 'dead' || game.over || p.escaped || p.riding > 0) {
     b.target = null;
@@ -589,6 +610,16 @@ function acquire(game, b, z) {
   b.reactT = (jump < 0.35 ? rng.range(0.08, 0.16) : rng.range(0.18, 0.32)) * b.skill * pr.react;
   const mag = (0.05 + 0.1 * Math.min(1, jump / 1.5)) * b.skill * pr.aimErr;
   b.aimErr = (rng.next() < 0.5 ? -1 : 1) * mag * rng.range(0.6, 1.2);
+  // Where on the body (no rng draws: a hash of who, what and when): the torso, and now and
+  // then the head for a skilled shooter with a precise gun at a target worth it.
+  const u = hash01(z.id * 7919 + p.id * 104729 + game.tick * 31);
+  const aw = activeWeapon(p);
+  const w = aw.id ? WEAPONS[aw.id] : null;
+  const precise = w && !(w.pellets > 1) && (w.kind === 'hitscan' || w.kind === 'rail' || !w.kind);
+  const dz = Math.hypot(z.x - p.x, z.y - p.y);
+  const headChance = (pr.level >= 0.5 ? 0.12 + 0.36 * (pr.level - 0.5) * 2 : 0.04) * (dz < 380 || p.scope > 0 ? 1 : 0.25);
+  b.aimPart = precise && u < headChance ? 'head' : 'chest';
+  b.pitchErr = (hash01(z.id * 131 + p.id * 17 + game.tick) * 2 - 1) * PITCH_ERR * b.skill * pr.aimErr;
 }
 
 /** Look for a dense pack worth a frag or a molotov (never near a teammate). */
@@ -1215,11 +1246,13 @@ function steer(game, b) {
   }
   const downed = p.state === 'downed';
   let dx = 0, dy = 0, kiting = false;
+  b.kiting = false;
   const hz = hazardAt(game, p.x, p.y);
   if (!downed) {
     const reviving = b.mode === 'revive' && b.reviveRef && Math.hypot(b.reviveRef.x - p.x, b.reviveRef.y - p.y) <= REVIVE_RADIUS * 0.85;
     if (b.nearestAdj < kiteRadius(b) && !(reviving && b.nearestAdj > 40) && game.time >= b.lapseT) {
       kiting = true;
+      b.kiting = true;
       dx = b.tvx;
       dy = b.tvy;
       let l = Math.hypot(dx, dy);
@@ -1432,11 +1465,16 @@ function danger(b, x, y) {
 // -------------------------------------------------------------------------------------
 // Aim and fire
 
+const _ap = { f: 0, side: 0, h: 0 };
+const _an = { py: 0, pp: 0, inacc: 0, spread: 0 };
+
 function aimAndFire(game, b, cmd) {
   const p = b.p;
   const z = b.target;
   const aw = activeWeapon(p);
   const w = aw.id ? WEAPONS[aw.id] : null;
+  const sec = w ? handlingOf(aw.id).secondary : null;
+  const scoped = !!(sec && sec.type === 'scope');
   if (!z || z.dead || !w) {
     // Look toward the danger, or where we are going, or out from the team.
     let la = b.aim;
@@ -1445,9 +1483,16 @@ function aimAndFire(game, b, cmd) {
     else if (Math.hypot(p.x - b.ax, p.y - b.ay) > 20) la = Math.atan2(p.y - b.ay, p.x - b.ax);
     b.aim = turnTowards(b.aim, la, 5 * DT);
     cmd.angle = b.aim;
+    b.pitch *= Math.max(0, 1 - 4 * DT);
+    cmd.pitch = b.pitch;
+    // (nothing to look at through a scope)
+    if (scoped && p.scope > 0) toggleScope(game, b, cmd);
     return;
   }
-  let tx = z.x, ty = z.y;
+  // The aim point on the 3D body (the hit volumes): the torso, or the head (acquire).
+  aimPoint(z.type, z.id, poseFlags(z), b.aimPart, _ap);
+  const zc = Math.cos(z.angle || 0), zs = Math.sin(z.angle || 0);
+  let tx = z.x + _ap.f * zc - _ap.side * zs, ty = z.y + _ap.f * zs + _ap.side * zc;
   const dx0 = tx - p.x, dy0 = ty - p.y;
   const d = Math.hypot(dx0, dy0);
   if (w.projectile && w.projectile.speed > 0) {
@@ -1458,36 +1503,107 @@ function aimAndFire(game, b, cmd) {
   }
   const trueA = Math.atan2(ty - p.y, tx - p.x);
   const pr = b.prof;
-  b.aimErr *= Math.exp(-ERR_DECAY * pr.decay * DT);
+  const errK = Math.exp(-ERR_DECAY * pr.decay * DT);
+  b.aimErr *= errK;
+  b.pitchErr *= errK;
   if ((game.tick + b.stagger) % 20 === 0) b.aimErr += game.rng.range(-0.012, 0.012) * b.skill * pr.jitter;
   const goal = trueA + b.aimErr;
   const diff = Math.abs(angleDiff(b.aim, goal));
   b.aim = turnTowards(b.aim, goal, (AIM_TURN_BASE + AIM_TURN_GAIN * diff) * pr.turn * DT);
-  cmd.angle = b.aim;
+  // Pitch: from the eye to the aim point's height.
+  const eye = (p.z || 0) + eyeHeight(p);
+  const pg = clampPitch(Math.atan2((z.z || 0) + _ap.h - eye, Math.max(1, d)) + b.pitchErr);
+  const pd = pg - b.pitch, pt = (AIM_TURN_BASE + AIM_TURN_GAIN * Math.abs(pd)) * pr.turn * DT;
+  b.pitch += Math.abs(pd) <= pt ? pd : Math.sign(pd) * pt;
+  // Recoil control: pull against the punch (nearly all of it at full skill).
+  const a = p.aim;
+  const comp = a ? Math.min(1, (0.35 + 0.6 * pr.level) / b.skill) : 0;
+  cmd.angle = a ? b.aim - a.py * comp : b.aim;
+  cmd.pitch = clampPitch(a ? b.pitch - a.pp * comp : b.pitch);
+  // Scoped guns: zoom in for a target at range, back out when things get close.
+  const wantScope = scoped && d > SCOPE_RANGE && b.nearestAdj > SCOPE_CLEAR;
+  if (scoped && wantScope !== (p.scope > 0) && !(wantScope && p.scopeBack > 0)) toggleScope(game, b, cmd);
   if (b.reactT > 0) {
     b.reactT -= DT;
     return;
   }
-  const tol = (Math.atan2(z.radius * 0.8, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0) + 0.015) * pr.trigger;
+  // (on target: within the aimed-at part, the head being the small one)
+  const partR = z.radius * (b.aimPart === 'head' ? 0.3 : 0.6);
+  const tol = (Math.atan2(partR, Math.max(1, d)) + (w.pellets > 1 ? w.spread * 0.4 : 0) + (d > STOP_RANGE && !(w.pellets > 1) ? 0.003 : 0.008)) * pr.trigger;
   if (Math.abs(angleDiff(b.aim, trueA)) > tol) return;
-  if (d > w.range * 0.95) return;
+  if (Math.hypot(z.x - p.x, z.y - p.y) > w.range * 0.95) return;
   if (!safeToFire(game, b, w, trueA, d, tx, ty)) return;
   // Let a round-by-round reload run unless something is getting close.
   if (w.reloadOne && p.reloadT > 0 && b.nearestAdj > 220) return;
-  // Bursts with automatic guns at range; hold the trigger up close (and on spin-up guns).
+  // A scope settles before the shot.
+  if (wantScope && (p.scope === 0 || p.scopeT < sec.settle)) return;
+  // Stop first (a counter-strafe), then shoot: a skilled bot waits until it is accurate.
+  if (!stopToShoot(game, b, cmd, aw.id, w, d)) return;
+  // Pace the shots at range: wait for the cone (movement, the last shots) to close to about
+  // the size of what it aims at, as a good player taps instead of spamming; an average one
+  // waits less. Up close, and with pellet guns, it just fires.
+  // (heavy guns and spin-up guns just hold the trigger: a belt-fed gun is a hose, not a rifle)
+  const hh = handlingOf(aw.id);
+  if (d > STOP_RANGE && !(w.pellets > 1) && p.aim && (w.kind === 'hitscan' || w.kind === 'rail') && !w.spinup && hh.category !== 'heavy') {
+    aimNow(p, aw.id, w, _an);
+    const room = Math.atan2(partR, d) * (pr.level >= 0.5 ? 1.3 : 2.6) + 0.004;
+    if (_an.inacc > room && (b.burstT <= 0 || _an.inacc > room * 2)) return;
+  }
+  // Bursts with automatic guns at range, shorter the smaller the target looks (taps at a far
+  // walker, long bursts into a brute), with pauses that let the spray recover; hold the trigger
+  // up close (and on spin-up guns).
   if (w.rate >= 8 && !w.spinup && !w.burst && d > 260) {
+    const far = Math.max(0, Math.min(1, (0.035 - Math.atan2(partR, d)) / 0.025));
     if (b.burstT > 0) {
       b.burstT -= DT;
-      if (b.burstT <= 0) b.pauseT = game.rng.range(0.08, 0.22);
+      if (b.burstT <= 0) b.pauseT = game.rng.range(0.08, 0.22) + handlingOf(aw.id).recovery * 0.6 * far;
     } else if (b.pauseT > 0) {
       b.pauseT -= DT;
-      if (b.pauseT <= 0) b.burstT = game.rng.range(0.25, 0.6);
+      if (b.pauseT <= 0) b.burstT = game.rng.range(0.25, 0.6) * (1 - 0.6 * far);
       return;
     } else {
-      b.burstT = game.rng.range(0.25, 0.6);
+      b.burstT = game.rng.range(0.25, 0.6) * (1 - 0.6 * far);
     }
   }
   cmd.fire = true;
+}
+
+function clampPitch(v) {
+  return v > PITCH_MAX ? PITCH_MAX : v < -PITCH_MAX ? -PITCH_MAX : v;
+}
+
+/** One press of the secondary-fire key (an edge: at most every few ticks). */
+function toggleScope(game, b, cmd) {
+  if (game.tick < b.altT || b.p.reloadT > 0) return;
+  cmd.alt = true;
+  b.altT = game.tick + 6;
+}
+
+/**
+ * Stop before a shot at range, as a good player does: counter-strafe (push against the
+ * current velocity) until nearly still, then let go. On the move (kiting, errands), up close
+ * and with shotguns it just fires. Returns false while a skilled bot is still too fast to be
+ * accurate (an average one shoots anyway).
+ */
+function stopToShoot(game, b, cmd, id, w, d) {
+  const p = b.p;
+  if (p.state !== 'alive' || p.reloadT > 0 || b.kiting || d < STOP_RANGE || !STOP_MODES.has(b.mode) || w.pellets > 1) return true;
+  // (never stand still in fire or acid)
+  if (hazardAt(game, p.x, p.y)) return true;
+  const h = handlingOf(id);
+  if (!(h.inacc.move > 2.5 * h.inacc.stand)) return true;
+  const vx = p.mvx || 0, vy = p.mvy || 0, v = Math.hypot(vx, vy);
+  if (v > STOP_PUSH) {
+    cmd.moveX = -vx / v;
+    cmd.moveY = -vy / v;
+  } else {
+    cmd.moveX = 0;
+    cmd.moveY = 0;
+  }
+  cmd.sprint = false;
+  b.holding = true;
+  if (b.prof.level < 0.5) return true;
+  return groundSpeed(p) <= ACCURATE_SPEED * PLAYER_SPEED * (p.speedMult || 1) * (p.moveMult || 1);
 }
 
 /** Never shoot through teammates with friendly fire on; never blow up a teammate. */

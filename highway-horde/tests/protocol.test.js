@@ -66,6 +66,13 @@ function checkPlayer(d, s) {
   for (const k of ['zq', 'vzq', 'jumpCd', 'climbT']) assert.equal(d[k], s[k] || 0, `${w} ${k}`);
   assert.equal(d.climbTo, s.climbT > 0 ? s.climbTo : -1, `${w} climbTo`);
   near(d.z, s.z || 0, 1e-6, `${w} z`);
+  // first-person gunplay (protocol 14): walking velocity (f32), crouch, scope, pitch, weapon modes
+  near(d.mvx, s.mvx || 0, 1e-3, `${w} mvx`);
+  near(d.mvy, s.mvy || 0, 1e-3, `${w} mvy`);
+  assert.equal(d.duckT, s.duckT || 0, `${w} duckT`);
+  assert.equal(d.scope, s.scope || 0, `${w} scope`);
+  near(d.pitch, s.pitch || 0, 0.5e-4 + 1e-9, `${w} pitch`);
+  assert.deepEqual(d.modes, (s.slots || []).map((_, i) => (s.modes && s.modes[i]) || 0), `${w} modes`);
 }
 
 function checkEvent(d, s) {
@@ -81,6 +88,9 @@ function checkEvent(d, s) {
         near(d[k][i].x, pt.x, 0.26, `${s.type}.${k}[${i}].x`);
         near(d[k][i].y, pt.y, 0.26, `${s.type}.${k}[${i}].y`);
         if ('hit' in pt) assert.equal(d[k][i].hit, pt.hit);
+        if ('z' in pt) near(d[k][i].z, pt.z, 0.26, `${s.type}.${k}[${i}].z`);
+        if ('zone' in pt) assert.equal(d[k][i].zone, pt.zone, `${s.type}.${k}[${i}].zone`);
+        if ('pen' in pt) assert.equal(d[k][i].pen, pt.pen, `${s.type}.${k}[${i}].pen`);
       });
     } else assert.deepEqual(d[k], v, `${s.type}.${k}`);
   }
@@ -224,8 +234,8 @@ test('the new guns: weapon ids, frost flags, flare/frost/harpoon projectiles, fl
     pickups: [{ id: 5, kind: 'crate', x: 1, y: 2, weapon: 'chainsaw' }],
     events: [
       { type: 'freeze', id: 2, x: 300, y: 200 },
-      { type: 'shot', pid: 1, turret: 0, weapon: 'chainsaw', x: 10, y: 20, angle: Math.PI / 2, rays: [{ x: 40, y: 22, hit: 1 }] },
-      { type: 'shot', pid: 2, turret: 0, weapon: 'amr', x: 10, y: 20, angle: 0, rays: [{ x: 1040, y: 20, hit: 1 }] },
+      { type: 'shot', pid: 1, turret: 0, weapon: 'chainsaw', x: 10, y: 20, angle: Math.PI / 2, rays: [{ x: 40, y: 22, hit: 1, z: 0, zone: 0, pen: 0 }], z: 38, pitch: 0, fl: 0 },
+      { type: 'shot', pid: 2, turret: 0, weapon: 'amr', x: 10, y: 20, angle: 0, rays: [{ x: 1040, y: 20, hit: 1, z: 48.5, zone: 1, pen: 2 }], z: 43, pitch: 0, fl: 6 },
       { type: 'reload', pid: 3, weapon: 'lever', time: 0.42 },
       { type: 'switch', pid: 4, weapon: 'burst_rifle' },
       { type: 'pickup', pid: 5, kind: 'crate', x: 1, y: 2, weapon: 'harpoon' },
@@ -378,32 +388,41 @@ function cmd(seq, over = {}) {
   return {
     seq, moveX: 0.6, moveY: -0.8, angle: 2.5, fire: true, melee: false, sprint: true, interact: false,
     reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
-    slot: -1, cycle: 0, jump: false, ...over,
+    slot: -1, cycle: 0, jump: false, crouch: false, walk: false, alt: false, aim3d: false, pitch: 0, vt: -1, ...over,
   };
 }
 
 test('inputs round-trip every InputCmd field', () => {
-  const edges = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'fire', 'melee', 'sprint', 'interact', 'jump'];
-  const cmds = edges.map((e, i) => {
-    const c = cmd(1000 + i, { fire: false, sprint: false, slot: i % 4 - 1, cycle: (i % 3) - 1, moveX: -1 + i * 0.2, moveY: 0.1 * i - 0.5, angle: -3 + i * 0.6 });
+  const edges = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'fire', 'melee', 'sprint', 'interact', 'jump',
+    'crouch', 'walk', 'alt', 'aim3d'];
+  const all = edges.map((e, i) => {
+    const c = cmd(1000 + i, {
+      fire: false, sprint: false, slot: i % 4 - 1, cycle: (i % 3) - 1, moveX: -1 + i * 0.13, moveY: 0.07 * i - 0.5, angle: -3 + i * 0.4,
+      pitch: -1.3 + i * 0.17, vt: i % 3 === 0 ? -1 : 65000 + i * 9,
+    });
     c[e] = true;
     return c;
-  }).slice(-4);
-  const buf = encodeInputs(cmds);
-  assert.equal(messageType(buf), MSG.INPUTS);
-  const d = decodeInputs(buf);
-  assert.equal(d.length, cmds.length);
-  cmds.forEach((c, i) => {
-    const e = d[i];
-    assert.equal(e.seq, c.seq);
-    near(e.moveX, c.moveX, 0.5 / 127 + 1e-9, 'moveX');
-    near(e.moveY, c.moveY, 0.5 / 127 + 1e-9, 'moveY');
-    nearAngle(e.angle, c.angle, ANG16, 'angle');
-    for (const k of edges) assert.equal(e[k], c[k], k);
-    assert.equal(e.slot, c.slot);
-    assert.equal(e.cycle, c.cycle);
   });
-  assert.ok(buf.byteLength <= 3 + 4 * 12);
+  for (let from = 0; from < all.length; from += 4) {
+    const cmds = all.slice(from, from + 4);
+    const buf = encodeInputs(cmds);
+    assert.equal(messageType(buf), MSG.INPUTS);
+    const d = decodeInputs(buf);
+    assert.equal(d.length, cmds.length);
+    cmds.forEach((c, i) => {
+      const e = d[i];
+      assert.equal(e.seq, c.seq);
+      near(e.moveX, c.moveX, 0.5 / 127 + 1e-9, 'moveX');
+      near(e.moveY, c.moveY, 0.5 / 127 + 1e-9, 'moveY');
+      nearAngle(e.angle, c.angle, ANG16, 'angle');
+      near(e.pitch, c.pitch, 0.5e-4 + 1e-9, 'pitch');
+      assert.equal(e.vt, c.vt < 0 ? -1 : Math.min(0xfffe, c.vt & 0xffff), 'vt');
+      for (const k of edges) assert.equal(e[k], c[k], k);
+      assert.equal(e.slot, c.slot);
+      assert.equal(e.cycle, c.cycle);
+    });
+    assert.ok(buf.byteLength <= 3 + 4 * 16);
+  }
 });
 
 test('inputs: at most MAX_INPUTS_PER_MESSAGE newest cmds, extremes, empty list', () => {
@@ -423,12 +442,13 @@ test('inputs: at most MAX_INPUTS_PER_MESSAGE newest cmds, extremes, empty list',
 
 test('quantizeInput matches what the host decodes exactly', () => {
   for (let i = 0; i < 200; i++) {
-    const c = cmd(i + 1, { moveX: Math.sin(i * 1.7), moveY: Math.cos(i * 2.3), angle: i * 0.37 - 30 });
+    const c = cmd(i + 1, { moveX: Math.sin(i * 1.7), moveY: Math.cos(i * 2.3), angle: i * 0.37 - 30, pitch: Math.sin(i * 0.9) * 1.35 });
     const [host] = decodeInputs(encodeInputs([c]));
     const local = quantizeInput({ ...c });
     assert.equal(local.moveX, host.moveX);
     assert.equal(local.moveY, host.moveY);
     assert.equal(local.angle, host.angle);
+    assert.equal(local.pitch, host.pitch);
     // Idempotent: quantising twice changes nothing.
     const again = quantizeInput({ ...local });
     assert.equal(again.moveX, local.moveX);

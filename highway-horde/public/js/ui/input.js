@@ -13,6 +13,12 @@
 // equivalent delta per frame), in CSS px since the last sample. Clicking the canvas
 // requests pointer lock (that click doesn't fire); the owner hears about lock changes
 // through opts.onLockChange. View 'topdown' keeps the cursor aim of §7.2 unchanged.
+//
+// Gunplay (SPEC §3.4, §7.2): crouch and walk are held, on rebindable keys (setBinds; the
+// defaults are browser-safe, Ctrl/Alt are allowed with guards); `alt` (secondary fire: scope,
+// burst, silencer) is an edge. While the gun in hand has a secondary mode (setRightAlt), the
+// right mouse button fires it instead of shoving (V always shoves); on a pad LT and on touch
+// the SHOVE button do the same with a tap, and still shove when held. `inspect` is an edge.
 
 import { createTouchControls, isTouchDevice } from './touch.js';
 import { isTypingTarget } from './dom.js';
@@ -37,12 +43,76 @@ const EDGE_KEYS = {
 /** Keys that jump (held; a tap between two samples still counts once). */
 const JUMP_KEYS = ['Space'];
 const SLOT_KEYS = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 };
+
+/**
+ * Rebindable actions (Settings → Controls) and their defaults (KeyboardEvent.code). Browser-safe:
+ * Ctrl (Counter-Strike's crouch) would turn Ctrl+W into "close the tab" mid-fight, so it is
+ * offered as a rebind only (with the guards in createInput), never the default.
+ */
+export const BIND_ACTIONS = ['crouch', 'walk', 'inspect'];
+export const DEFAULT_BINDS = Object.freeze({ crouch: 'KeyZ', walk: 'KeyX', inspect: 'KeyY' });
+/** Keys a binding may not take: the fixed controls. */
+export const RESERVED_KEYS = new Set([
+  ...KEY_UP, ...KEY_DOWN, ...KEY_LEFT, ...KEY_RIGHT, ...Object.keys(HELD_KEYS), ...Object.keys(EDGE_KEYS),
+  ...Object.keys(SLOT_KEYS), 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight', 'ContextMenu', 'F5', 'F11', 'F12',
+]);
+const CTRL_KEYS = new Set(['ControlLeft', 'ControlRight']);
+const ALT_KEYS = new Set(['AltLeft', 'AltRight']);
+
+/** A key code as a short label ('KeyZ' → 'Z', 'ControlLeft' → 'L-Ctrl'). */
+export function keyLabel(code) {
+  if (typeof code !== 'string' || !code) return '—';
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^Numpad[0-9]$/.test(code)) return `Num ${code.slice(6)}`;
+  const named = {
+    ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'L-Alt', AltRight: 'R-Alt', ShiftLeft: 'L-Shift',
+    ShiftRight: 'R-Shift', CapsLock: 'Caps', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[',
+    BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+    IntlBackslash: '<>', Backspace: 'Backspace', Insert: 'Ins', Delete: 'Del', Home: 'Home', End: 'End',
+    PageUp: 'PgUp', PageDown: 'PgDn',
+  };
+  return named[code] || code;
+}
+
+/**
+ * A complete, valid binding table: the player's own keys where valid ('' = unbound), the
+ * default for the rest unless one of the player's keys took it (then unbound).
+ */
+export function validBinds(b) {
+  const src = b && typeof b === 'object' ? b : {};
+  const mine = {};
+  const used = new Set();
+  for (const a of BIND_ACTIONS) {
+    const v = src[a];
+    if (v === '') mine[a] = '';
+    else if (typeof v === 'string' && /^[A-Za-z0-9]{2,20}$/.test(v) && !RESERVED_KEYS.has(v) && !used.has(v)) {
+      mine[a] = v;
+      used.add(v);
+    }
+  }
+  const out = {};
+  for (const a of BIND_ACTIONS) {
+    if (a in mine) out[a] = mine[a];
+    else {
+      const d = DEFAULT_BINDS[a];
+      out[a] = used.has(d) ? '' : d;
+      used.add(d);
+    }
+  }
+  return out;
+}
+
+/** A tap of the pad's LT / the touch SHOVE button shorter than this fires the secondary mode. */
+const ALT_TAP_S = 0.25;
+/** A tap of the pad's Back shorter than this opens the shop (held: the scoreboard). */
+const BACK_TAP_S = 0.3;
 /** Keys whose browser default (scrolling, focus moves) must not happen during play. */
 const PREVENT = new Set([
   'Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyF', 'KeyG', 'Quote', 'Slash',
 ]);
 
-const GAMEPLAY_EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon'];
+const GAMEPLAY_EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'alt', 'inspect'];
 const UI_EDGES = ['shop', 'chat', 'ready', 'pause'];
 const NAV_EDGES = ['up', 'down', 'left', 'right', 'accept', 'back', 'tabPrev', 'tabNext'];
 
@@ -112,6 +182,11 @@ export function createInput(canvas, opts = {}) {
   let padPrev = [];
   let padIndex = -1;
   let padSprintToggle = false;
+  let padCrouchToggle = false;
+  let ltDownAt = -1, backDownAt = -1;
+  // rebindable keys, and whether right click / LT / the SHOVE button fire the secondary mode
+  let binds = validBinds(opts.binds);
+  let rightAlt = false;
   let aimAngle = 0;
   let aimDist = AIM_MIN;
   let aimIdle = 99;
@@ -148,6 +223,13 @@ export function createInput(canvas, opts = {}) {
 
   // ---- keyboard ---------------------------------------------------------------------
 
+  function boundTo(code) {
+    for (const a of BIND_ACTIONS) if (binds[a] === code) return a;
+    return null;
+  }
+  const bindsCtrl = () => BIND_ACTIONS.some((a) => CTRL_KEYS.has(binds[a]));
+  const bindsAlt = () => BIND_ACTIONS.some((a) => ALT_KEYS.has(binds[a]));
+
   function onKeyDown(e) {
     if (destroyed) return;
     if (isTypingTarget(e.target)) return;
@@ -157,10 +239,16 @@ export function createInput(canvas, opts = {}) {
     const onControl = t && t !== doc.body && t !== canvas && t.closest && t.closest('button, a, [role="button"], input, select');
     if (onControl && (code === 'Enter' || code === 'NumpadEnter' || code === 'Space')) return;
     if (enabled && PREVENT.has(code)) e.preventDefault();
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const bound = boundTo(code);
+    // Browser shortcuts stay the browser's, unless the modifier is one of the game's keys
+    // (crouch on Ctrl): then Ctrl+S, Ctrl+D... are kept from the browser while playing.
+    if (e.metaKey || (e.ctrlKey && !bindsCtrl()) || (e.altKey && !bindsAlt())) return;
+    if (enabled && (bound || e.ctrlKey || e.altKey)) e.preventDefault();
     mode = 'kbm';
     keys.add(code);
     if (e.repeat) return;
+    if (bound === 'inspect') edges.inspect++;
+    if (bound) return;
     if (JUMP_KEYS.includes(code)) jumpTaps++;
     const edge = EDGE_KEYS[code];
     if (edge) edges[edge]++;
@@ -171,6 +259,16 @@ export function createInput(canvas, opts = {}) {
     // Never filtered: a key released inside the chat box must still stop the player.
     keys.delete(e.code);
     if (e.key === 'Meta') keys.clear(); // macOS swallows keyups while Cmd is held
+    // (a lone Alt press must not open the browser's menu bar when Alt is a game key)
+    if (enabled && ALT_KEYS.has(e.code) && boundTo(e.code)) e.preventDefault();
+  }
+
+  // With crouch or walk on Ctrl, Ctrl+W (which no page can catch outside fullscreen) asks
+  // before closing the tab mid-match instead of closing it.
+  function onBeforeUnload(e) {
+    if (!enabled || destroyed || !(bindsCtrl() && (keys.has('ControlLeft') || keys.has('ControlRight')))) return;
+    e.preventDefault();
+    e.returnValue = '';
   }
 
   // ---- mouse --------------------------------------------------------------------------
@@ -187,8 +285,11 @@ export function createInput(canvas, opts = {}) {
       return;
     }
     if (e.button === 0) mouse.left = true;
-    else if (e.button === 2) mouse.right = true;
-    else if (e.button === 1) {
+    else if (e.button === 2) {
+      // (the gun's secondary mode: an edge on the press; otherwise the held shove)
+      if (rightAlt) edges.alt++;
+      else mouse.right = true;
+    } else if (e.button === 1) {
       edges.lastWeapon++;
       e.preventDefault();
     }
@@ -314,6 +415,8 @@ export function createInput(canvas, opts = {}) {
     keys.clear();
     mouse.left = mouse.right = false;
     padSprintToggle = false;
+    padCrouchToggle = false;
+    ltDownAt = backDownAt = -1;
     if (touch) touch.reset();
   }
 
@@ -331,14 +434,17 @@ export function createInput(canvas, opts = {}) {
   on(win, 'blur', releaseAll);
   on(doc, 'visibilitychange', onVisibility);
   on(doc, 'pointerlockchange', onLockChange);
+  on(win, 'beforeunload', onBeforeUnload);
 
   // ---- touch --------------------------------------------------------------------------
 
   let touch = null;
+  let altLabel = null;
   function ensureTouch() {
     if (touch || destroyed) return;
     touch = createTouchControls(opts.touchRoot || canvas.parentElement);
     touch.setLookMode(view === 'fps');
+    if (altLabel) touch.setAltLabel(altLabel);
     mode = 'touch';
   }
   if (opts.forceTouch || isTouchDevice()) ensureTouch();
@@ -396,6 +502,8 @@ export function createInput(canvas, opts = {}) {
     let interact = keys.has('KeyE');
     let jump = anyKey(JUMP_KEYS);
     let scoreboard = keys.has('Tab');
+    let crouch = keys.has(binds.crouch);
+    let walk = keys.has(binds.walk);
     let aimX = cursor.x, aimY = cursor.y;
     let aiming = false;
 
@@ -415,9 +523,18 @@ export function createInput(canvas, opts = {}) {
           moveX = ls.x;
           moveY = ls.y;
         }
-        if (pressed(PAD.L3)) padSprintToggle = !padSprintToggle;
+        if (pressed(PAD.L3)) {
+          padSprintToggle = !padSprintToggle;
+          if (padSprintToggle) padCrouchToggle = false;
+        }
         if (ls.m < 0.3) padSprintToggle = false;
         if (padSprintToggle) sprint = true;
+        // R3 toggles crouch (a light push on the stick walks)
+        if (pressed(PAD.R3)) {
+          padCrouchToggle = !padCrouchToggle;
+          if (padCrouchToggle) padSprintToggle = false;
+        }
+        if (padCrouchToggle) crouch = true;
         if (view === 'fps') {
           if (rs.m > 0) {
             padLookDelta(rs.x, rs.y, dt, padLook);
@@ -430,11 +547,24 @@ export function createInput(canvas, opts = {}) {
           aiming = true;
         }
         if (cur[PAD.RT]) fire = true;
-        if (cur[PAD.LT]) melee = true;
+        // LT: shove; with a secondary mode on the gun, a tap fires that and a hold still shoves
+        if (pressed(PAD.LT)) ltDownAt = now;
+        if (cur[PAD.LT]) {
+          if (!rightAlt || (ltDownAt >= 0 && now - ltDownAt >= ALT_TAP_S)) melee = true;
+        } else if (ltDownAt >= 0) {
+          if (rightAlt && now - ltDownAt < ALT_TAP_S) edges.alt++;
+          ltDownAt = -1;
+        }
         if (cur[PAD.RB]) interact = true;
         if (cur[PAD.A]) jump = true;
         if (pressed(PAD.A)) jumpTaps++;
+        // Back: held = scoreboard, a tap = the shop
+        if (pressed(PAD.BACK)) backDownAt = now;
         if (cur[PAD.BACK]) scoreboard = true;
+        else if (backDownAt >= 0) {
+          if (now - backDownAt < BACK_TAP_S) edges.shop++;
+          backDownAt = -1;
+        }
         if (pressed(PAD.X)) edges.reload++;
         if (pressed(PAD.Y)) cycle++;
         if (pressed(PAD.LB)) edges.frag++;
@@ -443,7 +573,6 @@ export function createInput(canvas, opts = {}) {
         if (pressed(PAD.DOWN)) edges.barricade++;
         if (pressed(PAD.RIGHT)) edges.lastWeapon++;
         if (pressed(PAD.LEFT)) edges.ready++;
-        if (pressed(PAD.R3)) edges.shop++;
         if (pressed(PAD.START)) edges.pause++;
       }
       // Menu navigation edges are reported regardless of mode (the shop reads them).
@@ -521,8 +650,9 @@ export function createInput(canvas, opts = {}) {
 
     const out = {
       moveX: 0, moveY: 0, aimScreenX: aimX, aimScreenY: aimY,
-      fire: false, melee: false, sprint: false, interact: false, jump: false,
+      fire: false, melee: false, sprint: false, interact: false, jump: false, crouch: false, walk: false,
       reload: false, frag: false, molotov: false, turret: false, barricade: false, lastWeapon: false,
+      alt: false, inspect: false,
       slot: -1, cycle: 0,
       shop: edges.shop > 0, scoreboard, chat: edges.chat > 0, ready: edges.ready > 0, pause: edges.pause > 0,
       mode,
@@ -539,6 +669,8 @@ export function createInput(canvas, opts = {}) {
       out.sprint = sprint;
       out.interact = interact;
       out.jump = jump || jumpTaps > 0;
+      out.crouch = crouch;
+      out.walk = walk;
       for (const e of GAMEPLAY_EDGES) out[e] = edges[e] > 0;
       out.slot = slot;
       out.cycle = Math.sign(cycle);
@@ -575,7 +707,30 @@ export function createInput(canvas, opts = {}) {
       wheelAcc = 0;
       lookDX = lookDY = 0;
       mouse.left = mouse.right = false;
+      ltDownAt = -1;
       if (touch) touch.setEnabled(nb);
+    },
+    /** Rebindable keys ({ crouch, walk, inspect } → KeyboardEvent.code; see validBinds). */
+    setBinds(b) {
+      binds = validBinds(b);
+      keys.clear();
+    },
+    get binds() {
+      return { ...binds };
+    },
+    /**
+     * The gun in hand has a secondary mode (its short label, e.g. 'ZOOM') or not (null): right
+     * click, a tap of LT and a tap of the touch SHOVE button fire it.
+     */
+    setRightAlt(label) {
+      const on = !!label;
+      altLabel = label || null;
+      if (on !== rightAlt) {
+        rightAlt = on;
+        mouse.right = false;
+        ltDownAt = -1;
+      }
+      if (touch) touch.setAltLabel(label || null);
     },
     get enabled() {
       return enabled;

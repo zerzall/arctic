@@ -330,7 +330,18 @@ export function stepPlayerMovement(p, cmd, dt, world);  // → 1 took off, -1 la
 `p` needs `{ x, y, state, stamina, sprintLock, speedMult, moveMult }` (+ optional
 `staminaMult`, class perk: drain ÷ it, regen × it, and the vertical state below) and is
 mutated (x, y, stamina, sprintLock, sprinting, zq, vzq, jumpCd, climbT, climbTo, z).
-`speedMult` comes from the class perk, `moveMult` from the held weapon. Players collide with
+`speedMult` comes from the class perk, `moveMult` from the held weapon (its handling's
+`speed`, × the scope's `speed` while scoped, §3.4 Gunplay). **Velocity** (`mvx`, `mvy`,
+px/s, in the snapshot): Counter-Strike-style ground movement — each tick friction slows the
+velocity by `max(speed, STOP_SPEED 60) × GROUND_FRICTION 6 × dt` (just the speed itself while a
+key is held, so slow movement still gets going), then the wanted direction accelerates it by
+up to `GROUND_ACCEL 6.5 × (the running speed) × dt` toward the wanted speed (`AIR_ACCEL 4` in
+the air); what the walls let through is kept (a wall zeroes the part into it). Letting go
+stops in about 0.2 s; pressing the opposite key (a counter-strafe) in about 0.07 s, which is
+what makes stopping to shoot quick. **Crouch** (`cmd.crouch`) ducks over `DUCK_TICKS` 8
+(`duckT`, in the snapshot): × `CROUCH_MULT` 0.36 speed, the eye from `EYE_HEIGHT` 52 down to
+`CROUCH_EYE` 36 (`eyeHeight(p)`; downed: `DOWNED_EYE` 16); **walk** (`cmd.walk`) × `WALK_MULT`
+0.52, quiet; neither sprints (sprint needs `!walk && duckT === 0`). Players collide with
 static obstacles (solid or not), water, the objective, barricades and the map bounds —
 **not** with zombies or other players (so client prediction can be exact) — except
 obstacles their feet are above. Downed players move at DOWNED_SPEED and cannot sprint. The
@@ -411,6 +422,12 @@ InputCmd = {
   slot,             // -1 = no change, 0..2 = switch to slot
   cycle,            // 0, +1 (next weapon), -1 (previous)
   jump,             // jump button held (or tapped since the last cmd); see §3.2
+  // first person / gunplay (§3.4 Gunplay):
+  pitch,            // aim pitch, radians (+ looks up), clamped ±1.4
+  aim3d,            // the shot resolves in 3D (heads, legs, roofs); false = the 2D rule, body ×1
+  crouch, walk,     // held
+  alt,              // edge: secondary fire (scope / burst / suppressor)
+  vt,               // the tick (low 16 bits) the shooter's view showed: lag compensation; -1 = now
 }
 ```
 Host applies one cmd per player per tick. If a player's queue is empty it repeats the
@@ -524,6 +541,61 @@ spot of a fixed set of nearby distances/small turns (`findPlacement()`), require
 owned unit (bought in the shop). Turrets auto-target the nearest zombie in range with
 line of sight, have `ammo`, hp, can be destroyed. Medic heal aura regenerates teammates.
 
+**Gunplay** (first person; `shared/handling.js`, `shared/hitbox.js`, `shared/ballistics.js`,
+`sim/combat.js` `fireHitscan3D`). A cmd with `aim3d` resolves its hitscan / rail shots in 3D:
+- **Aim.** From the eye (`p.z + eyeHeight(p)`) along yaw `angle`, pitch `pitch`, offset by the
+  recoil (`p.aim.py`, `pp`: the spray pattern so far) plus a random point of the
+  **inaccuracy cone** (`inaccuracyOf`, uniform in radius, two draws from the host rng, shared by
+  every pellet) plus each pellet's own spread (shotguns).
+- **Inaccuracy** per gun (handling `inacc`, radians): `stand`, `crouch` (blended by the duck),
+  `move` scaled by ground speed above `ACCURATE_SPEED` 0.34 of the gun's own top speed (below
+  that a mover is as accurate as standing still), `air` (airborne or climbing), `land` fading
+  over LAND_TICKS 20 after landing, sprinting × the gun's `sprint`; plus the added part
+  (`fire` per shot, capped at `fireMax`, decaying 10× every `recover` s, a quarter faster
+  ducked). A standing, rested gun's first shot goes inside `stand` (a few px at 500 px).
+- **Recoil** (`p.aim`: spray index, offset, added inaccuracy). Every shot moves the offset to
+  the next step of the gun's fixed **spray pattern** (`sprayOffset(spray, k)`: `climb`
+  rounds rising to `up` in all, then `tail` a round and a triangle-wave sway `side` wide over
+  `sway` rounds starting toward `first`, with a fixed per-round jitter `jit` from `seed`): the
+  same every spray. An automatic holds its pattern while the shots keep coming (one cycle +
+  2 ticks); a gun that kicks once a shot (a one-step pattern) and any gun let go recover:
+  the index (and the offset with it) decays by `dt × (3s + 2) / recovery`, back to rest in
+  about `recovery` s. The camera shows `viewKick` (about half) of the offset (renderer).
+- **Hit volumes** (`hitbox.js`): per zombie type and id the capsules / tilted boxes of its 3D
+  model in the type's average gait (`zombieBody` the build from the id, the same table the
+  renderer draws; variant from the snapshot flags: lunging, a brute's charge), zones head,
+  chest (arms too), stomach, legs. `rayZombie` tests a ray in the model's frame; `aimPoint`
+  gives a part's centre (bots, tests); `worldVolumes` the dev overlay.
+- **Damage**: base × falloff × perks × penetration loss × the zone: head ×4 (TYPE_ZONES:
+  ×2 for the brute and the boss), stomach ×1.25, chest / arms ×1, legs ×0.75 (handling
+  `zones` may override per gun). A leg hit **tags**: × (1 − TAG_SLOW 0.45) speed for TAG_TIME
+  0.45 s (heavies a third of that, the boss never). Kill flags on `zdie`: `hs` (the killing
+  hit was a head), `wb` (it passed through cover), `pop` (a head hit of ≥ 60 base damage on a
+  walker, runner, crawler, spitter or screamer: the head bursts; never with `gib`).
+- **Ballistics** (`traceShot`): a 3D grid walk; a shot passes over an obstacle whose shot
+  height (`shotTop`: cars 44, vans 72, fences 40, walls 90, …) is below it, lands on its top
+  face, stops at the ground (the terrain on campaign maps) and **penetrates** while its
+  power (handling `pen`: pistols / SMGs 1, rifles 2, the DMR 2.5, snipers 3, the .50 5,
+  shotguns 0.5) lasts: each obstacle costs `penCost` (fence 0.25, thin wall 0.8 + 0.04 / px,
+  car 1.2, truck 2.2, …; buildings and the objective ∞) and keeps
+  `max(PEN_MIN 0.2, 1 − 0.1 − 0.45 × cost / power)` of the damage, at most MAX_PEN 4 walls.
+  The railgun stops at walls (`pen` 0) but pierces every zombie, and its beam is thick
+  (handling `beam` 9 px: `rayZombieBeam` also takes a ray passing that close to the body).
+- **Lag compensation**: zombies keep 32 ticks of pose history; a client's cmd names the tick
+  its view showed (`vt`); the shot tests the zombies where they were then (at most MAX_UNLAG
+  0.3 s back). The host's own cmds and bots send -1 (now).
+- **Deploy**: a switch holds the first shot for the gun's `deploy` time (0.4 pistol … 1.2 the
+  minigun); the reload, switch and fire timing is mirrored by client prediction.
+- **Secondary fire** (`cmd.alt`, the gun's `secondary`, from weapons.js or the handling
+  defaults): `{ type: 'scope', levels: [fov…], speed, inacc }` cycles the zoom levels (the
+  scoped `inacc` replaces the gun's once settled after `settle` 0.12 s; `speed` × move speed;
+  a bolt gun leaves the scope while it cycles and goes back); `{ type: 'burst', count, delay }`
+  toggles bursts / automatic (`p.modes[slot]` MODE_BURST); `{ type: 'silencer' }` screws a
+  suppressor on / off (MODE_SIL; `time` s without firing; × `damage` 0.9; the shot flag tells
+  renderer and audio). Each change emits `alt`. Sniper and .50 have scopes by default. A gun
+  without a secondary ignores `alt` (the UI keeps right click as the shove).
+- Shots without `aim3d` (the top-down view, turrets, NPCs) keep the 2D rule above: body, ×1.
+
 **Downed / revive.** hp ≤ 0 → 'downed' (emit 'down'), BLEEDOUT_TIME countdown, can move
 at DOWNED_SPEED and fire only the pistol (slot 0 if it holds a pistol-category gun with
 any ammo left, otherwise a free infinite pistol) and reload it. A living teammate holding `interact` within
@@ -588,7 +660,18 @@ every random choice from `game.rng` (a game with bots stays deterministic). `bot
 larger and slower-settling aim error, looser trigger, less threat awareness, zombies let closer,
 fewer throws, moments of tunnel vision mid-wave (no backing off), reloading whenever low and
 plain shopping (best gun affordable now, no saving). `BOT_SKILL.AVERAGE` stands in for an
-average human in `scripts/balance.js` (docs/BALANCE.md). Behaviour:
+average human in `scripts/balance.js` (docs/BALANCE.md). **Gunplay** (§3.4): bots shoot in 3D
+(`aim3d`, `vt` -1) at `aimPoint` of the target's torso — now and then the head (12–48 % by skill,
+a quarter of that past 380 px unless scoped; never with pellet guns; a hash of who / what / when,
+no rng draw) — with a pitch error that settles like the yaw's, and pull against the recoil
+(`(0.35 + 0.6 × level) / skill` of the punch, at most all of it). In defend / hunt / clear,
+before a shot past 140 px with a gun that moving spoils (`move` > 2.5 × `stand`; not
+shotguns) they counter-strafe (push against the velocity, then let go) and a skilled one waits
+until it is below the accurate speed; past 140 px they pace their shots until the cone is
+about the size of the aimed-at part (× 1.3 skilled, × 2.6 average; heavy and spin-up guns just
+hold the trigger), and automatic bursts get shorter and the pauses longer with the range.
+Scoped guns zoom in for a target past 170 px with nothing within 150 px and wait for the
+scope to settle; they zoom out when things get close. Behaviour:
 - **Anchor**: a living human (bots spread over the humans), or the objective when no human is
   alive, when the humans are holding the objective anyway (within 260 px of it) or there are
   none. Each bot takes a free, reachable defend spot on its own bearing around the anchor,
@@ -1083,6 +1166,9 @@ Snapshot = {
                             //   height on a campaign map (§2); 0 on the ground of the other maps
     esc, ride,              // Campaign: escaped down the zip line / 0..1 progress of a ride (0 = not riding)
     zq, vzq, jumpCd, climbT, climbTo,  // vertical state (§3.2), exact integers — for exact prediction
+    mvx, mvy, duckT,        // walking velocity (px/s) and duck ticks (§3.2) — for exact prediction
+    scope, modes, pitch,    // scope level (0 = none), per-slot weapon modes (MODE_BURST | MODE_SIL), aim pitch
+    // host-only (not on the wire; clients predict their own): punchY, punchP (recoil offset), inacc, spray
   } ],
   zombies: [ { id, type, x, y, angle, hp /*0..1*/, flags /*ZFLAG bits*/, z /*feet height, 0 on the ground*/ } ],
   projectiles: [ { id, kind /*PROJECTILE_KINDS*/, x, y, angle } ],
@@ -1102,11 +1188,12 @@ All events carry the fields listed; consumers ignore unknown types.
 
 | type | fields | meaning |
 |---|---|---|
-| `shot` | pid, turret, weapon, x, y, angle, rays: [{x, y, hit}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer: its last victim once its `pierce` budget is spent, else the first solid obstacle or max range; hit: 1 flesh (it hit at least one target), else 2 obstacle, 0 nothing/max range. Projectile/flame/cryo/chain weapons send `rays: []`; the chainsaw (kind 'melee') sends one ray per zombie cut (at most 6, hit 1), or none. |
+| `shot` | pid, turret, weapon, x, y, angle, z, pitch, fl, rays: [{x, y, hit, z, zone, pen}] (+ `predicted` / `echo`, see below) | a gun fired. `pid` = shooter (0 if turret), `turret` = turret id (0 if player; turret shots use weapon 'rifle'). rays = end point of every pellet/beam/tracer: its last victim once its `pierce` budget is spent, else the first solid obstacle or max range; hit: 1 flesh (it hit at least one target), else 2 obstacle, 0 nothing/max range. Projectile/flame/cryo/chain weapons send `rays: []`; the chainsaw (kind 'melee') sends one ray per zombie cut (at most 6, hit 1), or none. First person (§3.4 Gunplay): z = the muzzle height (the eye − 9), pitch the aim; fl bits 1 suppressed, 2 a 3D shot (a ray's `z` = the height it stopped at, `zone` the hit volume of its first victim, `pen` the walls it passed), 4 through a scope. |
 | `placefail` | pid, kind | turret/barricade could not be placed (spot blocked) |
 | `chain` | pid, points: [{x, y}] | tesla arc path (muzzle → first zombie → …) |
 | `melee` | pid, x, y, angle, hits | shove swing (hits = zombies struck) |
-| `zdie` | id, ztype, x, y, angle, by, gib | zombie died; by = killer pid (0 = none/turret owner unknown); gib = blown apart by explosion/rail |
+| `zdie` | id, ztype, x, y, angle, by, gib, hs, wb, pop | zombie died; by = killer pid (0 = none/turret owner unknown); gib = blown apart by explosion/rail; hs = killed by a headshot, wb = through cover, pop = the head burst (§3.4 Gunplay) |
+| `alt` | pid, what, n | a gun's secondary mode changed: what 'zoom' \| 'unzoom' (n = the level) \| 'burst' \| 'auto' \| 'silencer_on' \| 'silencer_off' |
 | `zattack` | id, ztype, x, y, angle | zombie swung |
 | `spit` | id, x, y, angle | spitter lobbed acid |
 | `scream` | id, x, y | screamer buff |
@@ -1166,7 +1253,11 @@ export function encodeInputs(cmds)   → ArrayBuffer // last N (≤ 4) InputCmds
 export function decodeInputs(buf)    → InputCmd[]
 ```
 Binary (DataView), positions quantised to 0.25–0.5 px, angles to u8/u16, 0..1 values to
-u8. PROTOCOL_VERSION 13 (the open maps' walk-in buildings, §2: the wire is unchanged, but the maps every peer
+u8. PROTOCOL_VERSION 14 (first-person gunplay, §3.4: InputCmd button bits crouch 2048, walk 4096, alt 8192,
+aim3d 16384 and, per cmd, the pitch i16 (×1e4) and the view tick u16 (0xffff = none); each snapshot player
+appends mvx, mvy f32, duckT u8, scope u8, pitch i16 and a modes u8 per slot; the `shot` event's height,
+pitch and flags, its rays' height (i16 at 0.5) and one byte of hit | zone << 2 | pen << 5; `zdie`'s hs /
+wb / pop; the binary `alt` event). 13 was the open maps' walk-in buildings, §2: the wire is unchanged, but the maps every peer
 builds from (id, seed) are not the same as 12's, so 12 and 13 must not meet); 12 was Horde Elimination (header flag `H_HORDE` 64 and, after the level block, a
 20-byte horde block — total, left, alive u16, surge, surges, tier, stage u8, the breather timer at 0.01 s
 u16, the lane mask u16, the round's clock f32 — and the binary `surge` event; 11 was the story levels'
@@ -1373,15 +1464,30 @@ input.sample() → InputState      // call once per frame; edges reported once
 input.setEnabled(bool)           // false while typing in chat / in menus
 input.cursor                     // {x, y} screen px
 InputState = { moveX, moveY, aimScreenX, aimScreenY, fire, melee, sprint, interact, jump,
-               reload, frag, molotov, turret, barricade, lastWeapon, slot, cycle,
+               crouch, walk,                            // held (rebindable keys)
+               reload, frag, molotov, turret, barricade, lastWeapon, alt, inspect, slot, cycle,
                shop, scoreboard, chat, ready, pause }   // last five are UI edges/helds
+input.setBinds({ crouch, walk, inspect })   // KeyboardEvent.code per action (validBinds)
+input.setRightAlt(label | null)  // the gun in hand has a secondary mode ('ZOOM' | 'BURST' | 'SIL')
 ```
-Keyboard + mouse (WASD/arrows, mouse aim, LMB fire, RMB/V melee, Shift sprint, Space
-jump, E interact, R reload, 1/2/3 slots, wheel cycle, Q last weapon, G frag, F molotov,
-T turret, C barricade, B shop, Tab scoreboard (held), Enter chat, N ready, Esc menu),
-gamepad (standard mapping, right stick aim; A jump, RB interact, LT melee, RT fire, X
-reload, Y next weapon, LB frag, B molotov, D-pad ▲ turret / ▼ barricade / ▶ last weapon /
-◀ ready, L3 sprint toggle, R3 shop, Back scoreboard, Start menu; A also accepts in menus),
+**Gunplay keys** (§3.4): crouch (held) **Z**, walk (held) **X**, inspect **Y** — browser-safe
+defaults, rebindable in Settings → Controls → Keys (`validBinds`: the fixed keys are
+refused, a key another action had is swapped). Ctrl (Counter-Strike's crouch) may be chosen:
+Ctrl+letter shortcuts are kept from the browser while playing, fullscreen claims every key
+(Keyboard Lock) so Ctrl+W reaches the game, and outside fullscreen a `beforeunload` guard asks
+before the tab closes while Ctrl is held. With `setRightAlt(label)` the right mouse button
+fires the secondary mode (an edge on the press) instead of shoving (V still shoves); on a pad
+a tap of LT (< 0.25 s) fires it and a hold shoves; on touch the SHOVE button shows the label
+and does the same. Pad: R3 toggles crouch (a light push on the stick walks), a tap of Back
+opens the shop (held: the scoreboard). Shift stays sprint.
+Keyboard + mouse (WASD/arrows, mouse aim, LMB fire, RMB/V melee (RMB: the secondary mode on
+a gun that has one), Shift sprint, Space jump, Z crouch, X walk, Y inspect, E interact, R
+reload, 1/2/3 slots, wheel cycle, Q last weapon, G frag, F molotov, T turret, C barricade, B
+shop, Tab scoreboard (held), Enter chat, N ready, Esc menu), gamepad (standard mapping, right
+stick aim; A jump, RB interact, LT melee (a tap: the secondary mode), RT fire, X reload, Y
+next weapon, LB frag, B molotov, D-pad ▲ turret / ▼ barricade / ▶ last weapon / ◀ ready, L3
+sprint toggle, R3 crouch toggle, Back scoreboard (a tap: the shop), Start menu; A also
+accepts in menus),
 touch (twin virtual sticks + buttons, JUMP next to FIRE in first person). `jump` is held
 like `sprint`, and is also true in the one sample after a press too short to be seen held
 (a tap between frames is never lost); the cmd builder carries such a tap into the next cmd.
@@ -1461,7 +1567,10 @@ are final ("out for the round", "DEAD — SPECTATING", the team row says DEAD), 
 marks the entrances of the surge on its way (red triangles) and neither it nor the minimap shows
 an objective; the lobby greys out the waves and objective rows.
 HUD: health/armour/stamina, weapon slots with ammo, cash, wave + remaining + phase timer,
-objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed, chat,
+objective hp, boss hp bar, teammate list (hp, state, bleedout), minimap, kill feed (a
+headshot kill and a kill through cover carry their own marks, drawn for this game as inline
+SVG: a head with a burst over it, bricks with the bullet's line through them; `hud.js`
+KF_ICONS — no damage numbers anywhere), chat,
 interaction prompts ("Hold E to revive Doc"), shop hint, notices (wave start, wave
 cleared +$250, "Sparks is down!"), ping/fps (toggle).
 `window.__HH = { session, renderer, hud, input, getView, getLocal, view, look(dx, dy),
@@ -1512,6 +1621,12 @@ audio.unlock()                               // on first user gesture
 audio.addEvents(events, { x, y, localId })   // positional (pan + distance falloff)
 audio.update(view, { localId, dt })          // loops: minigun spin, flamethrower, horde
                                              // ambience by nearby zombie count, low-hp heartbeat
+// gunplay (§3.4): a headshot cracks ('headshot', loud for the shooter); impacts by what was hit
+// ('impact_metal' / ricochet, 'impact_wood', 'impact' stone, 'impact_dirt' the ground: the nearest
+// obstacle's kind); other players' shots passing within 46 px of the listener whiz by ('whiz');
+// shots past 650 px add the far roll ('gun_far'); a suppressed shot plays 'suppressed' instead
+// of its gun; `alt` events: 'scope_in' / 'scope_out', 'mode_switch', 'silencer';
+// audio.local('inspect') with the inspect animation.
 audio.ui(name)  // 'click'|'hover'|'buy'|'deny'|'chat'|'join'|'leave'|'wave'|'waveclear'
                 //  |'gameover'|'victory'|'countdown'|'ready'
                 //  |'zone' (a new safe zone / the shrink: radio click + bright two-note call)
@@ -1973,8 +2088,30 @@ it is being hit (4 s after an `objhit`) or below 30 % hp — the compass and rad
 rest; they sit on a ring around the crosshair ("behind" clamped to the lower sides) so
 they never cover the HUD panels, the prompt or the gun. Name tags fade out within 70–160
 units of the camera and in the outer 13–21 % of the screen width (the HUD columns); a
-teammate within 30 units of the camera is not drawn at all. The shotgun crosshair gap is
-capped at 7.5 % of the screen height (a design cap, not the exact spread).
+teammate within 30 units of the camera is not drawn at all.
+
+**Crosshair, scope, markers** (`ui/crosshair.js`, overlay.js; §3.4 Gunplay). Four lines round a
+gap with an optional centre dot and a dark outline, in the player's colour (green, yellow,
+cyan, white, pink, red), length 1–14 px, thickness 0.5–4, gap −3–10 (+ 4 px), opacity —
+Settings → Controls → Crosshair (with a live preview): `xhStyle` 'dynamic' opens the gap by
+the inaccuracy cone on screen (the predicted `inacc`, a pellet gun's spread too) plus half the
+spray offset the view punch doesn't show (capped at 12 % of the height); 'static' keeps it
+fixed. Through a scope (`local.scope > 0`) a scope picture replaces it: black outside a round
+lens with a soft rim, a fine reticle (posts to 40 %, a small open centre, a red dot), mil ticks
+every 5 mrad, a ring sized to the cone while unsettled. Hit marker: white X, gold on a head
+hit; kill marker: red X, gold with a ring on a headshot kill. `settings.hitboxes` (dev) draws
+every zombie's hit volumes. The camera adds the view punch (`punchY / punchP × viewKick`,
+smoothed), narrows to the scope's field of view (degrees on 4:3, like the FOV setting; the
+mouse turns slower by the zoom) and hides the viewmodel while scoped; the eye follows the
+duck. **Viewmodel**: low on the right, each shot kicks back and up by the gun's spray step
+(less suppressed), the muzzle climbs with the punch and settles with it, the bob grows with
+the square of the speed (steady at a walk) and halves ducked, the raise after a switch takes
+the gun's deploy time, `renderer.inspect()` (the inspect key) turns the gun over.
+**Effects**: 3D shots draw their tracers and impacts at the ray's height (others' tracers
+always, your own one shot in `tracer`: every third from automatics), impacts by surface (metal
+sparks and ricochets, wood splinters, concrete chips and dust, dirt, glass, water) with holes
+on walls and cars, blood with exit spray and mist; a `pop` bursts the head (mist, skull
+fragments, the corpse falls without it); a suppressed shot shows a small flash.
 
 **Audio orientation.** `audio.addEvents/update(…, { x, y, yaw })`: when `yaw` is given,
 pan by the angle between the sound and the facing direction and muffle/soften sounds
@@ -2238,6 +2375,13 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
 
 ## 9. Testing & CI
 - `npm test`: unit tests (`node --test`, Node built-ins and project files only, see §0).
+  Gunplay (§3.4): `tests/gunplay.test.js` — hit zones on every type's volumes (and from a roof),
+  zone multipliers, spray determinism and recovery, the inaccuracy states, penetration (thin
+  walls, car bodies, never buildings) and wallbang kills, headshots (×4, ×2 on brutes, the
+  pop), stomach / legs and leg tagging, roofs, the 2D rule without a pitch, deploy times, host-rng
+  determinism, the scope / burst / suppressor, lag compensation, bots shooting in 3D, the
+  protocol fields, key bindings and crosshair settings; `tests/movement.test.js` the
+  acceleration, friction, counter-strafe, walk and crouch.
 - `npm run e2e` (`scripts/e2e.js`, plain Node): starts `server/relay-server.js` and a local
   PeerJS server on free ports (`E2E_PORT` / `E2E_PEER_PORT` to pin them), then drives headless
   Chromium through twelve scenarios in fresh browser contexts (a–f force the classic
@@ -2259,7 +2403,8 @@ one and recompiles the lit materials once (a hitch, at the settings change only)
   local z and the camera rise, then land), W + Space into the nearest car / van /
   container with a clear run climbs onto it (the climb shows in the view, the player
   stays on the roof and the camera sits ~52 above it), losing the lock opens the
-  pause menu, turn toward the nearest zombie through `__HH.look` and kill it, End Game and
+  pause menu, turn toward the nearest zombie's chest through `__HH.look` (yaw and pitch from
+  `hitbox.js` `aimPoint`: first-person shots resolve in 3D) and kill it with short bursts, End Game and
   a second game (no leaked overlay canvases). Scenario h (fps-relay): 2 players over the
   relay in first person — each camera sees the other, the client's W moves it along
   its own yaw on the host, and the host sees the client jump. Headless Chromium renders WebGL with SwiftShader (software), so

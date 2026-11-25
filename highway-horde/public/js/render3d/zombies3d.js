@@ -32,7 +32,8 @@ import { col, hash01, angleDiff, damp } from './actor-kit.js';
 import { RigPool, Pose, B, T_FX, T_FX2, T_SKIN, T_CLOTH, T_CLOTH2, T_ACCENT, T_VAR2, TEX_W } from './actor-rig.js';
 import { buildZombie, zombieSkeleton, faceAnchors } from './actor-zmodels.js';
 import { loadZombieTextures, SPECIAL } from './actor-ztex.js';
-import { zombieLook, packLook } from './actor-zlook.js';
+import { zombieLook as baseLook, packLook } from './actor-zlook.js';
+import { zombieBody, ZOMBIE_SCALE } from '../shared/hitbox.js';
 import { geometryFromArrays, ShapeBuilder, SLOT, MAT } from './actor-shape.js';
 import { actorTextures, actorTexturesAsync } from './actor-tex.js';
 import { tierAtLeast, tierRow, tierRank, anisoFor } from './tier.js';
@@ -47,8 +48,22 @@ const CORPSE_SINK = 4;
 const GIB_CAP = 160;
 
 // Height scale per type (look.scale is a top-down sprite scale; giants would be absurd
-// at 3.2× in first person).
-const SCALE = { walker: 1, runner: 0.95, crawler: 0.9, bloater: 1.12, spitter: 1, screamer: 1.02, brute: 1.55, boss: 2.5 };
+// at 3.2× in first person). Shared with the hit volumes (shared/hitbox.js).
+const SCALE = ZOMBIE_SCALE;
+
+/**
+ * A zombie's look with its build (height, girth, hunch, how far the neck juts) from the sim's
+ * own table (shared/hitbox.js zombieBody), so the body drawn is the body the bullets hit.
+ */
+function zombieLook(type, id, theme) {
+  const look = baseLook(type, id, theme);
+  const b = zombieBody(look.type, id | 0);
+  look.height = b.h;
+  look.girthW = b.gw;
+  look.girthD = b.gd;
+  if (look.gait) { look.gait.hunch = b.hunch; look.gait.jut = b.jut; }
+  return look;
+}
 // stride length (units per gait cycle at scale 1) — sets how fast legs cycle for a speed
 const STRIDE = { walker: 44, runner: 74, crawler: 36, bloater: 36, spitter: 46, screamer: 50, brute: 58, boss: 72 };
 // LOD distances (units) per quality; scaled by the zombie's size
@@ -778,6 +793,8 @@ export function createZombies3D(ctx) {
       type, x: e.x, y: e.y, a: facing, t: 0, id: e.id | 0, seed, kind, side: rel > 0 ? 1 : -1, spin, look,
       char: s ? s.char : 0, burn: s ? s.burn : 0, elite: false, lod: -1, spd: s ? Math.min(1, s.spd / 120) : 0,
       armsUp: [0, 2, 3].includes(look.gait.armsMode), tilt: s ? s.tilt : 0, cache: null,
+      // a high-damage headshot burst the head (zdie.pop): the corpse falls without it
+      pop: !!e.pop,
       h: s && s.zh > 0 ? s.zh : gnd(e.x, e.y),     // killed up on a roof: it drops there
     });
   }
@@ -912,8 +929,8 @@ export function createZombies3D(ctx) {
       poseCorpse(c, T);
       const lk = c.look;
       pose.place(c.x, sink + (c.h || 0), c.y, c.a, T.scale * lk.girthD, T.scale * lk.height, T.scale * lk.girthW);
-      pose.scale(B.HEAD, lk.headK, lk.headK, lk.headK);
-      if (lk.missing.jaw) pose.scale(B.JAW, 0.02, 0.02, 0.02);
+      pose.scale(B.HEAD, c.pop ? 0.02 : lk.headK, c.pop ? 0.02 : lk.headK, c.pop ? 0.02 : lk.headK);
+      if (lk.missing.jaw || c.pop) pose.scale(B.JAW, 0.02, 0.02, 0.02);
       if (lk.missing.armL) pose.scale(B.FARM_L, 0.02, 0.02, 0.02);
       if (lk.missing.armR) pose.scale(B.FARM_R, 0.02, 0.02, 0.02);
       if (lk.missing.handL) pose.scale(B.HAND_L, 0.02, 0.02, 0.02);

@@ -23,7 +23,7 @@ import {
   revivePlayer, playerSnapshot, dropCrate, spawnPointFor, queueCmd, departRecord, restoreDeparted,
 } from './players.js';
 import {
-  updateProjectiles, updateHazards, updateTurrets, rebuildBarricades,
+  updateProjectiles, updateHazards, updateTurrets, rebuildBarricades, recordLagHistory,
 } from './combat.js';
 import {
   updateZombies, updateSpawning, startWaveSpawns, removeDeadZombies, spawnZombie, pickType, HEAVY_BODY_RADIUS,
@@ -356,6 +356,8 @@ export class GameCore {
     if (this.story) this.story.update();
     // Zombie positions as of the end of last tick: shots this tick hit where they are drawn.
     this.zgrid.rebuild(this.zombies, this.zombies.length);
+    // (and remembered a while: clients' first-person shots are judged where they saw them)
+    recordLagHistory(this);
     // AI survivors decide now and queue their cmds like everyone else's input.
     if (this.bots.length) this._runBots();
     updatePlayers(this);
@@ -481,10 +483,14 @@ export class GameCore {
    * Merge every hitscan ray a shooter fires in one tick into one 'shot' event.
    * @param {string|number} key shooter key (pid or 't'+turretId)
    */
-  shotEvent(key, pid, turret, weapon, x, y, angle) {
+  /**
+   * The 'shot' event of shooter `key` this tick (one per shooter per tick, rays appended).
+   * z: the muzzle's height (world units), pitch: the aim pitch, fl: SHOT_* flags (SPEC §4.1).
+   */
+  shotEvent(key, pid, turret, weapon, x, y, angle, z = 38, pitch = 0, fl = 0) {
     let ev = this._tickShots.get(key);
     if (!ev) {
-      ev = { type: 'shot', pid, turret, weapon, x: round1(x), y: round1(y), angle, rays: [] };
+      ev = { type: 'shot', pid, turret, weapon, x: round1(x), y: round1(y), angle, rays: [], z: round1(z), pitch, fl };
       this._tickShots.set(key, ev);
       this.emit(ev);
     }
@@ -711,7 +717,7 @@ function zombieFlags(z) {
 
 // `jump` is held (hold to keep hopping), but a repeated cmd must not jump again and a
 // dropped one must not lose a tap, so the queue treats it like the one-shot presses.
-const EDGE_KEYS = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'jump'];
+const EDGE_KEYS = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'jump', 'alt'];
 
 /** Defensive copy of an InputCmd with every field normalised. */
 export function copyCmd(c) {
@@ -723,6 +729,7 @@ export function copyCmd(c) {
   }
   const slot = Number.isInteger(c.slot) && c.slot >= 0 && c.slot <= 2 ? c.slot : -1;
   const cycle = c.cycle > 0 ? 1 : c.cycle < 0 ? -1 : 0;
+  const pitch = Number.isFinite(c.pitch) ? Math.max(-1.4, Math.min(1.4, c.pitch)) : 0;
   return {
     seq: (c.seq >>> 0) || 0,
     moveX: mx, moveY: my,
@@ -731,6 +738,10 @@ export function copyCmd(c) {
     reload: !!c.reload, frag: !!c.frag, molotov: !!c.molotov, turret: !!c.turret,
     barricade: !!c.barricade, lastWeapon: !!c.lastWeapon,
     slot, cycle, jump: !!c.jump,
+    // first person (SPEC §3.3): aim pitch, crouch / walk held, secondary fire pressed, the
+    // shooter aims in 3D (else today's flat shots), the view tick its shots are judged at
+    pitch, crouch: !!c.crouch, walk: !!c.walk, alt: !!c.alt, aim3d: !!c.aim3d,
+    vt: Number.isInteger(c.vt) && c.vt >= 0 ? c.vt & 0xffff : -1,
   };
 }
 

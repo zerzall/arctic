@@ -23,15 +23,16 @@ export function sampleEvents(rng = createRng(7)) {
   const a = () => rng.range(-Math.PI, Math.PI);
   return [
     {
-      type: 'shot', pid: 2, turret: 0, weapon: 'shotgun', x: x(), y: x(), angle: a(),
-      rays: Array.from({ length: 8 }, (_, i) => ({ x: x(), y: x(), hit: i % 3 })),
+      type: 'shot', pid: 2, turret: 0, weapon: 'shotgun', x: x(), y: x(), angle: a(), z: 43.5, pitch: -0.21, fl: 2,
+      rays: Array.from({ length: 8 }, (_, i) => ({ x: x(), y: x(), hit: i % 3, z: 30.5, zone: i % 5, pen: i % 2 })),
     },
-    { type: 'shot', pid: 0, turret: 7, weapon: 'rifle', x: x(), y: x(), angle: a(), rays: [{ x: x(), y: x(), hit: 1 }] },
-    { type: 'shot', pid: 3, turret: 0, weapon: 'rocket', x: x(), y: x(), angle: a(), rays: [] },
+    { type: 'shot', pid: 0, turret: 7, weapon: 'rifle', x: x(), y: x(), angle: a(), z: 34, pitch: 0, fl: 0, rays: [{ x: x(), y: x(), hit: 1, z: 34, zone: 0, pen: 0 }] },
+    { type: 'shot', pid: 3, turret: 0, weapon: 'rocket', x: x(), y: x(), angle: a(), z: 38, pitch: 0.4, fl: 0, rays: [] },
     { type: 'chain', pid: 4, points: [{ x: x(), y: x() }, { x: x(), y: x() }, { x: x(), y: x() }] },
     { type: 'melee', pid: 1, x: x(), y: x(), angle: a(), hits: 3 },
-    { type: 'zdie', id: 812, ztype: 'bloater', x: x(), y: x(), angle: a(), by: 2, gib: true },
-    { type: 'zdie', id: 813, ztype: 'walker', x: x(), y: x(), angle: a(), by: 0, gib: false },
+    { type: 'zdie', id: 812, ztype: 'bloater', x: x(), y: x(), angle: a(), by: 2, gib: true, hs: false, wb: false, pop: false },
+    { type: 'zdie', id: 813, ztype: 'walker', x: x(), y: x(), angle: a(), by: 0, gib: false, hs: true, wb: true, pop: true },
+    { type: 'alt', pid: 2, what: 'zoom', n: 2 },
     { type: 'zattack', id: 44, ztype: 'runner', x: x(), y: x(), angle: a() },
     { type: 'spit', id: 45, x: x(), y: x(), angle: a() },
     { type: 'scream', id: 46, x: x(), y: x() },
@@ -86,6 +87,9 @@ export function samplePlayer(id, rng = createRng(id)) {
     respawn: rng.chance(0.3), ready: rng.chance(0.5), lastSeq: rng.int(0, 1e6), sprintLock: rng.chance(0.3),
     // vertical state (jump.js): mid-jump, on a roof, on a cooldown or mid-climb
     ...vertState(rng),
+    // first-person gunplay: walking velocity, crouch, scope, aim pitch, weapon modes per slot
+    mvx: rng.range(-250, 250), mvy: rng.range(-250, 250), duckT: rng.int(0, 8), scope: rng.int(0, 2),
+    pitch: Math.round(rng.range(-1.3, 1.3) * 1e4) / 1e4, modes: [rng.int(0, 3), rng.int(0, 3), 0],
   };
 }
 
@@ -121,12 +125,16 @@ export function bigSnapshot(nEvents = 60, seed = 3) {
       events.push({
         type: 'shot', pid: rng.int(1, 6), turret: 0, weapon: 'shotgun', x: rng.range(0, 4000), y: rng.range(0, 3000),
         angle: rng.range(-3, 3),
-        rays: Array.from({ length: 8 }, () => ({ x: rng.range(0, 4000), y: rng.range(0, 3000), hit: rng.int(0, 2) })),
+        rays: Array.from({ length: 8 }, () => ({ x: rng.range(0, 4000), y: rng.range(0, 3000), hit: rng.int(0, 2), z: rng.range(0, 90), zone: rng.int(0, 4), pen: 0 })),
+        z: rng.range(20, 60), pitch: rng.range(-0.5, 0.5), fl: 2,
       });
     } else if (r < 0.55) {
       events.push({ type: 'zattack', id: rng.int(1, 2000), ztype: rng.pick(ZOMBIE_IDS), x: rng.range(0, 4000), y: rng.range(0, 3000), angle: rng.range(-3, 3) });
     } else if (r < 0.8) {
-      events.push({ type: 'zdie', id: rng.int(1, 2000), ztype: rng.pick(ZOMBIE_IDS), x: rng.range(0, 4000), y: rng.range(0, 3000), angle: rng.range(-3, 3), by: rng.int(0, 6), gib: rng.chance(0.2) });
+      events.push({
+        type: 'zdie', id: rng.int(1, 2000), ztype: rng.pick(ZOMBIE_IDS), x: rng.range(0, 4000), y: rng.range(0, 3000), angle: rng.range(-3, 3),
+        by: rng.int(0, 6), gib: rng.chance(0.2), hs: rng.chance(0.3), wb: rng.chance(0.05), pop: false,
+      });
     } else {
       events.push(samples[i % samples.length]);
     }
@@ -258,8 +266,8 @@ export class FakeGame {
       stepPlayerMovement(p, cmd, DT, this.world);
       if (cmd.fire && this.tick % 6 === 0) {
         this.events.push({
-          type: 'shot', pid: p.id, turret: 0, weapon: w || 'pistol', x: p.x, y: p.y, angle: p.angle,
-          rays: [{ x: p.x + Math.cos(p.angle) * 400, y: p.y + Math.sin(p.angle) * 400, hit: 0 }],
+          type: 'shot', pid: p.id, turret: 0, weapon: w || 'pistol', x: p.x, y: p.y, angle: p.angle, z: 38, pitch: 0, fl: 0,
+          rays: [{ x: p.x + Math.cos(p.angle) * 400, y: p.y + Math.sin(p.angle) * 400, hit: 0, z: 38, zone: 0, pen: 0 }],
         });
       }
       if (cmd.reload) this.events.push({ type: 'reload', pid: p.id, weapon: w || 'pistol', time: WEAPONS[w || 'pistol'].reload });
@@ -295,6 +303,7 @@ export class FakeGame {
         barricades: 0, selfRevive: false, bleedout: 0, revive: 0, reviver: 0, respawn: p.state === 'dead',
         ready: p.ready, lastSeq: p.lastSeq, sprintLock: p.sprintLock, z: p.z || 0,
         zq: p.zq | 0, vzq: p.vzq | 0, jumpCd: p.jumpCd | 0, climbT: p.climbT | 0, climbTo: p.climbT ? p.climbTo : -1,
+        mvx: p.mvx || 0, mvy: p.mvy || 0, duckT: p.duckT | 0, scope: 0, modes: [0, 0, 0], pitch: 0,
       })),
       zombies,
       projectiles: [{ id: 1, kind: 'rocket', x: cx + (t * 300) % 800, y: cy, angle: 0 }],

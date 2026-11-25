@@ -1078,21 +1078,21 @@ async function waitFpsGame(pl, nPlayers, what) {
  * `wait` it feeds at most one correction per game frame (a second one before the frame
  * applies the first would overshoot).
  */
-async function turnTo(pl, yaw, { wait = true } = {}) {
-  await pl.page.evaluate(({ target, k }) => {
+async function turnTo(pl, yaw, { wait = true, pitch = 0 } = {}) {
+  await pl.page.evaluate(({ target, k, tp }) => {
     const H = window.__HH;
     const L = H.getLook();
     if (window.__e2eLookFrame === L.frames) return;
     window.__e2eLookFrame = L.frames;
     const d = Math.atan2(Math.sin(target - L.yaw), Math.cos(target - L.yaw));
-    // +dy looks down: dy = pitch / k levels the camera
-    H.look(d / k, L.pitch / k);
-  }, { target: yaw, k: LOOK_RAD_PER_PX });
+    // +dy looks down: dy = (pitch - wanted) / k brings the camera to the wanted pitch (0 = level)
+    H.look(d / k, (L.pitch - tp) / k);
+  }, { target: yaw, k: LOOK_RAD_PER_PX, tp: pitch });
   if (!wait) return;
-  await waitFor(pl, (t) => {
+  await waitFor(pl, ({ t, tp }) => {
     const L = window.__HH.getLook();
-    return Math.abs(Math.atan2(Math.sin(t - L.yaw), Math.cos(t - L.yaw))) < 0.02 && Math.abs(L.pitch) < 0.02;
-  }, yaw, `the camera to turn to ${yaw.toFixed(2)} rad`, 20e3);
+    return Math.abs(Math.atan2(Math.sin(t - L.yaw), Math.cos(t - L.yaw))) < 0.02 && Math.abs(L.pitch - tp) < 0.02;
+  }, { t: yaw, tp: pitch }, `the camera to turn to ${yaw.toFixed(2)} rad`, 20e3);
 }
 
 /**
@@ -1297,11 +1297,14 @@ async function scenarioFpsSolo(sc) {
   await pl.page.click('#pause-resume');
   await waitFor(pl, () => document.querySelector('#pause').hidden && window.__HH.getLook().locked, null, 'the lock back after Click to Resume', 8000);
 
-  // Fight: turn toward the nearest zombie using the view data, hold the trigger.
-  let kills = 0, aimed = 0, seen = 0, maxZ = 0;
+  // Fight: turn toward the nearest zombie's chest (the 3D shot needs the pitch too: the hit
+  // volumes of shared/hitbox.js), fire in short bursts like a player taming the spray.
+  let kills = 0, aimed = 0, seen = 0, maxZ = 0, burst = 0;
   const t0 = Date.now();
   while (Date.now() - t0 < 90e3) {
-    const t = await pl.page.evaluate(() => {
+    const t = await pl.page.evaluate(async () => {
+      const { aimPoint } = await import('/js/shared/hitbox.js');
+      const { eyeHeight } = await import('/js/shared/movement.js');
       const H = window.__HH;
       const v = H.getView();
       const me = v.players.find((p) => p.id === H.session.localId);
@@ -1317,10 +1320,17 @@ async function scenarioFpsSolo(sc) {
       const L = H.getLook();
       // is the target where the camera looks? (projected by the 3D renderer)
       const sp = best ? H.renderer.worldToScreen(best.x, best.y, 30) : null;
+      let want = null, pitch = 0;
+      if (best) {
+        const ap = aimPoint(best.type, best.id, best.flags | 0, 'chest');
+        const a = best.angle || 0;
+        const tx = best.x + Math.cos(a) * ap.f, ty = best.y + Math.sin(a) * ap.f;
+        want = Math.atan2(ty - at.y, tx - at.x);
+        pitch = Math.atan2((best.z || 0) + ap.h - ((me.z || 0) + eyeHeight(me)), Math.max(1, Math.hypot(tx - at.x, ty - at.y)));
+      }
       return {
-        kills: me.kills, n: v.zombies.length, dist: bd, yaw: L.yaw,
-        want: best ? Math.atan2(best.y - at.y, best.x - at.x) : null,
-        onScreen: !!(sp && sp.visible), locked: L.locked,
+        kills: me.kills, n: v.zombies.length, dist: bd, yaw: L.yaw, pitch,
+        want, onScreen: !!(sp && sp.visible), locked: L.locked,
       };
     });
     kills = t.kills;
@@ -1333,16 +1343,21 @@ async function scenarioFpsSolo(sc) {
         aimed++;
         if (t.onScreen) seen++;
       }
-      await turnTo(pl, t.want, { wait: false });
+      await turnTo(pl, t.want, { wait: false, pitch: t.pitch });
       // Wave 1 spawns far away: walk at the nearest zombie (W, we face it) until in range.
       if (facing && t.dist > 650) {
         want.add('w');
         want.add('Shift');
       }
-      if (t.dist < 1050 && !pl.mouseDown) {
+      // bursts: hold the trigger a moment, let the spray recover, again (standing still)
+      burst++;
+      if (t.dist < 1050 && facing && t.dist <= 650 && burst % 3 !== 0 && !pl.mouseDown) {
         if (!t.locked) await pl.page.mouse.click(width / 2, height / 2);
         await pl.page.mouse.down();
         pl.mouseDown = true;
+      } else if (pl.mouseDown && (burst % 3 === 0 || !facing)) {
+        await pl.page.mouse.up();
+        pl.mouseDown = false;
       }
     } else if (pl.mouseDown) {
       await pl.page.mouse.up();
