@@ -217,7 +217,7 @@ export const WEAPONS = {
   },
   lmg: {
     name: 'Light Machine Gun', short: 'LMG', category: 'heavy',
-    price: 3800, unlockWave: 3,
+    price: 4400, unlockWave: 4,
     kind: 'hitscan', damage: 36, rate: 12, mag: 100, reserve: 400, reload: 4.0,
     pellets: 1, spread: 0.07, range: 1100, pierce: 2, falloff: 0.75, knockback: 50,
     moveMult: 0.82, recoil: 0.14, sound: 'lmg', tracer: '#ffcc66',
@@ -234,7 +234,7 @@ export const WEAPONS = {
   },
   rocket: {
     name: 'Rocket Launcher', short: 'RPG', category: 'explosive',
-    price: 6200, unlockWave: 5,
+    price: 6200, unlockWave: 6,
     kind: 'projectile', damage: 120, rate: 0.9, mag: 1, reserve: 14, reload: 1.8,
     pellets: 1, spread: 0.01, range: 1600, pierce: 1, falloff: 1, knockback: 0,
     projectile: { kind: 'rocket', speed: 900, radius: 7, life: 2.0, explodeRadius: 180, explodeDamage: 600 },
@@ -243,7 +243,7 @@ export const WEAPONS = {
   },
   tesla: {
     name: 'Tesla Gun', short: 'TSLA', category: 'special',
-    price: 6800, unlockWave: 5,
+    price: 6800, unlockWave: 6,
     kind: 'chain', damage: 45, rate: 6, mag: 40, reserve: 200, reload: 2.5,
     pellets: 1, spread: 0.05, range: 600, pierce: 1, falloff: 1, knockback: 30,
     chains: 5, chainRange: 180,
@@ -252,7 +252,7 @@ export const WEAPONS = {
   },
   minigun: {
     name: 'Minigun', short: 'MINI', category: 'heavy',
-    price: 8000, unlockWave: 5,
+    price: 8000, unlockWave: 7,
     kind: 'hitscan', damage: 30, rate: 30, mag: 300, reserve: 600, reload: 5.0,
     pellets: 1, spread: 0.07, range: 1000, pierce: 1, falloff: 0.7, knockback: 35,
     spinup: 0.7,
@@ -261,7 +261,7 @@ export const WEAPONS = {
   },
   railgun: {
     name: 'Railgun', short: 'RAIL', category: 'special',
-    price: 9500, unlockWave: 6,
+    price: 9500, unlockWave: 8,
     kind: 'rail', damage: 900, rate: 0.85, mag: 4, reserve: 28, reload: 2.6,
     pellets: 1, spread: 0, range: 3000, pierce: 999, falloff: 1, knockback: 300,
     moveMult: 0.9, recoil: 0.7, sound: 'rail', tracer: '#b388ff',
@@ -269,7 +269,7 @@ export const WEAPONS = {
   },
   amr: {
     name: '.50 Anti-Materiel Rifle', short: '.50', category: 'sniper',
-    price: 10000, unlockWave: 6,
+    price: 10000, unlockWave: 8,
     kind: 'hitscan', damage: 1200, rate: 0.55, mag: 5, reserve: 30, reload: 3.4,
     pellets: 1, spread: 0, range: 3000, pierce: 20, falloff: 1, knockback: 420, gib: true,
     penetrate: { walls: 2, thick: 90, loss: 0.25 },
@@ -280,7 +280,7 @@ export const WEAPONS = {
   // minigun, a slower but harder-hitting stream, and a long belt change.
   hmg: {
     name: 'Belt-Fed Heavy MG', short: 'HMG', category: 'heavy',
-    price: 7400, unlockWave: 4,
+    price: 7400, unlockWave: 6,
     kind: 'hitscan', damage: 40, rate: 16, mag: 500, reserve: 1000, reload: 6.0,
     pellets: 1, spread: 0.075, range: 1100, pierce: 2, falloff: 0.75, knockback: 55,
     moveMult: 0.7, recoil: 0.16, sound: 'hmg', tracer: '#ffb74d',
@@ -436,7 +436,7 @@ export const WEAPONS = {
   // Semi-automatic sniper: twenty heavy rounds as fast as you can pull.
   autosniper: {
     name: 'Semi-Auto Sniper', short: 'SAS', category: 'sniper',
-    price: 5000, unlockWave: 4,
+    price: 5000, unlockWave: 6,
     kind: 'hitscan', damage: 150, rate: 4, mag: 20, reserve: 100, reload: 3.0,
     pellets: 1, spread: 0.008, range: 2200, pierce: 4, falloff: 1, knockback: 110,
     moveMult: 0.82, recoil: 0.3, sound: 'autosniper', tracer: '#ffffff',
@@ -448,7 +448,7 @@ export const WEAPONS = {
   // General-purpose MG with a 100-round belt: slower than the LMG, every round hits harder.
   m60: {
     name: 'M60 Machine Gun', short: 'M60', category: 'heavy',
-    price: 5200, unlockWave: 3,
+    price: 5200, unlockWave: 4,
     kind: 'hitscan', damage: 48, rate: 9.5, mag: 100, reserve: 300, reload: 4.8,
     pellets: 1, spread: 0.065, range: 1150, pierce: 2, falloff: 0.78, knockback: 70,
     moveMult: 0.83, recoil: 0.17, sound: 'm60', tracer: '#ffc46a',
@@ -458,7 +458,7 @@ export const WEAPONS = {
   // laser the longer you hold the trigger.
   barrage: {
     name: 'Barrage MG', short: 'BRG', category: 'heavy',
-    price: 6000, unlockWave: 4,
+    price: 6000, unlockWave: 5,
     kind: 'hitscan', damage: 30, rate: 15, mag: 150, reserve: 450, reload: 5.2,
     pellets: 1, spread: 0.11, range: 1100, pierce: 1, falloff: 0.75, knockback: 35,
     tighten: { to: 0.02, time: 1.4 },
@@ -496,7 +496,7 @@ export const WEAPONS = {
 };
 
 /** Chance that a boss leaves the super weapon in its crate instead of an ordinary gun (from SUPER_DROP.wave). */
-export const SUPER_DROP = { chance: 0.3, wave: 5 };
+export const SUPER_DROP = { chance: 0.1, wave: 10 };
 
 // Stable order — the wire protocol sends weapons as indices into this array.
 export const WEAPON_IDS = Object.keys(WEAPONS);

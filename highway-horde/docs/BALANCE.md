@@ -174,6 +174,77 @@ how far they get.
 | Cryo Blaster | $3200, wave 5 | 9 dmg puffs at 20/s, pierce all, chill 0.07 per hit (slows up to 60%), frozen at full chill for 1.6 s taking ×1.3 damage | Support, not damage: 133 DPS for $3200, but a frozen pack neither moves nor bites, and every other gun hits it 30% harder. Damage 7 → 9 (it was 104 DPS, below the $900 flare gun). Bosses cap at half chill. |
 | .50 AMR | $10000, wave 10 | 1200 dmg, pierce 20, through 2 obstacles ≤ 90 px thick (−25% each), 0.55/s, 5 rounds, 3.4 s reload, gibs | The most expensive gun, one-shot kills on a whole line of anything but the boss. 480 sustained DPS sits just under the railgun (493): it pays for the cover penetration with a slow bolt and 18% slower movement. |
 
+### The arsenal (27 → 46 guns)
+Nineteen guns were appended (wire indices 27-45: four pistols, three SMGs, two shotguns,
+three rifles, three sniper rifles, two machine guns, the saw-blade launcher and the Hollow
+Star), and the unlock schedule was pulled forward so the variety is there from the first
+waves: 28 of the 45 guns for sale are on the shelf by wave 2 (most pistols, SMGs, rifles and
+shotguns and the scout from wave 1), 36 by wave 4, the most powerful guns two waves earlier
+than before (wave 6-8), and the super weapon waits for wave 10. Prices did not move; the
+machine guns climb $4400 (LMG) → $5200 (M60) → $6000 (Barrage) → $7400 (HMG) → $8000 (minigun).
+
+| gun | unlock before → after | | gun | unlock before → after |
+|---|---|---|---|---|
+| flare gun, Tommy gun, burst rifle | 2 → 1 | | auto shotgun, flamethrower, harpoon, cryo | 5 → 3 |
+| lever-action | 3 → 1 | | LMG, grenade launcher | 6 → 4 |
+| twin vipers, crossbow, battle rifle | 3 → 2 | | HMG, rocket, tesla | 8 → 6 |
+| sniper rifle, chainsaw | 4 → 2 | | minigun | 9 → 7 |
+| | | | railgun, .50 AMR | 10 → 8 |
+
+Weapon crates hold any gun unlocked by the wave after next (`crateWeaponPool`), so the unlock
+waves of the strongest guns set when crates start handing them out: a first pass that put the
+HMG, minigun, tesla, railgun and .50 at waves 4-6 (and the LMG at $3800 on wave 3, the super
+weapon in 30% of boss crates from wave 5) had the quick sweep's average 4-player teams finish
+wave 15 in 80% of runs (60% on the same sweep before the arsenal), average 4p on hard clear
+wave 10 in 60% (0% before), and banks of $6000 per player by wave 15, with railguns and .50s
+coming out of wave-4 crates. The schedule above and a rarer super drop (10% of boss crates,
+from wave 10) took that back (check run below).
+
+| gun | price, unlock | key numbers | why these numbers |
+|---|---|---|---|
+| Compact 9mm | $300, wave 1 | 22 dmg, 6.5/s, 18 rounds, 1.05 s reload; right click: 3-round bursts | The first upgrade from the free M9: 143 burst DPS for pocket money, a bigger magazine. |
+| Tactical .45 | $500, wave 1 | 37 dmg, 4.2/s, 12 rounds, spread 0.022; right click: suppressor | The accurate sidearm (155 DPS); the suppressor is about sound, not numbers. |
+| Machine Pistol | $650, wave 1 | 16 dmg, 17/s, 20 rounds, 1.25 s reload | A sidearm that sprays: 272 burst DPS, but 20 rounds last 1.2 s. |
+| Hand Cannon | $750, wave 1 | 88 dmg, pierce 2, 2.6/s, 7 rounds, 1.5 s reload | The cheap step to the $900 magnum (110 dmg, pierce 3, 6 rounds, slower reload). |
+| Compact SMG | $1250, wave 1 | 22 dmg, 12.5/s, 30 rounds, 1.6 s reload | Between the uzi ($900, 270 burst) and the Tommy gun: steadier, 275 burst DPS. |
+| .45 SMG | $1500, wave 1 | 31 dmg, 10.5/s, 25 rounds, 1.8 s reload | Fewer, heavier rounds: 326 burst DPS, falls off sooner than the rifles. |
+| Bullpup PDW | $2350, wave 2 | 20 dmg, pierce 2, 15/s, 50-round top magazine, 2.3 s reload | The SMG for crowds: pierce 2 and a long magazine; costs as much as a rifle. |
+| Combat Shotgun | $2200, wave 1 | 16 × 8 pellets, 3.2/s semi-auto, 7 shells loaded one at a time | The semi-auto between the pump ($1100, 1.4/s) and the auto shotgun ($3600). |
+| Box-Mag Shotgun | $2700, wave 2 | 13 × 8 pellets, 4.2/s, 10-round box, 2.3 s reload | Faster than the combat shotgun with a whole-box reload; still below the auto shotgun's 448. |
+| M4 Carbine | $2300, wave 1 | 33 dmg, 11.5/s, 30 rounds, 2.0 s reload; right click: suppressor | The handy rifle: 380 burst DPS, the lightest of the three. |
+| AK-Pattern Rifle | $2500, wave 1 | 45 dmg, pierce 2, 9.5/s, 30 rounds, 2.4 s reload | Hits harder and pierces, but kicks more (recoil 0.15 against 0.10) and spreads wider than the M4. |
+| Scoped Bullpup | $3100, wave 2 | 38 dmg, 9/s, spread 0.028, range 1350, 30 rounds; right click: scope | The long-range assault rifle, priced next to the battle rifle and sniper rifle. |
+| Scout Rifle | $1700, wave 1 | 185 dmg, pierce 4, 1.3/s, 10 rounds; right click: scope | A light bolt-action for the early waves, between the lever-action and the sniper rifle. |
+| Magnum Sniper | $4750, wave 3 | 720 dmg, pierce 12, 0.75/s, 5 rounds, 3.0 s reload | The step between the sniper rifle ($3200, 450) and the .50 ($10000, 1200): kills a brute in one hit. |
+| Semi-Auto Sniper | $5000, wave 6 | 150 dmg, pierce 4, 4/s, 20 rounds, 3.0 s reload | Precision at volume: 600 burst DPS at range, but $5000 and slower movement. |
+| M60 Machine Gun | $5200, wave 4 | 48 dmg, pierce 2, 9.5/s, 100-round belt, 4.8 s reload | The harder-hitting, slower belt-fed between the LMG and the HMG. |
+| Barrage MG | $6000, wave 5 | 30 dmg, 15/s, 150-round box, 5.2 s reload; spread 0.11 tightens to 0.02 over 1.4 s of fire | Wild at first, a laser once wound up: rewards holding a lane. |
+| Saw-Blade Launcher | $3000, wave 2 | 80 dmg per cut, pierce 10, 2/s, 8 blades; blades ricochet 4 times keeping 86% speed, lose 5% per cut, gib | A crowd tool for corridors and walls: one blade can cut a line both ways. 160 paper DPS (one target) is far below what it does to a line. |
+| Hollow Star (super) | $16000, wave 10; 10% of boss crates from wave 10 | 0.75 s charge, 3 orbs, 3.6 s reload; the orb pulls zombies within 260 px for 1.5 s, crushes its core (700 dps), collapses for 1600 within 220 px; never hurts players; bosses are not pulled | The rare top tier: a wave-ending shot, priced so a team buys it once in a late game; bosses resist it, so boss waves still need everything else. |
+
+**Check run** (`--quick`, 5 runs per cell, so ±20 points of noise on a share): the same sweep
+on the code before the arsenal, the first pass described above, and the final numbers.
+
+| team (normal unless noted) | before: clear 10 / 15, median | first pass | final |
+|---|---|---|---|
+| average 1p | 0% / 0%, 8 | 0% / 0%, 7 | 20% / 0%, 6 |
+| average 2p | 40% / 0%, 9 | 100% / 0%, 11 | 60% / 20%, 10 |
+| average 4p | 100% / 60%, 15 | 100% / 80%, 15 | 100% / 40%, 13 |
+| average 6p | 100% / 60%, 15 | 100% / 80%, 15 | 100% / 80%, 15 |
+| average 4p, hard | 0% / 0%, 7 | 60% / 0%, 10 | 40% / 0%, 9 |
+| average 4p, nightmare | 20% / 0%, 6 | 0% / 0%, 5 | 0% / 0%, 5 |
+| skilled 4p | 100% / 100%, 15 | 100% / 100%, 15 | 100% / 100%, 15 |
+
+The final schedule sits on the targets at the top of this page (average 4p: all clear 10,
+30-50% finish 15; hard: 4p median 9). Bank per player at wave 15 (average 4p) is back to
+about $4000-5000. In average teams' hands the LMG (10% of kills, 34.6 kills/min), rifle,
+battle rifle and HMG still lead; the AK (29.0 kills/min) and M60 (33.6) took their place
+next to them; the semi-auto sniper has the highest rate of any gun on sale (45 kills/min,
+mostly from crates: bots rate it below the LMG and never buy it), so it is the one to watch.
+The Hollow Star came out of 14 boss crates in 55 games and did 0.4% of the killing. The
+chainsaw is still not measured (bots never pick it), and neither are the right-button modes
+(bots do not use them).
+
 ### Classes (teams of 4 average bots of one class, normal)
 | class | change | why |
 |---|---|---|
@@ -214,39 +285,67 @@ freeze bonus and the flare left on the ground are not counted.
 | uzi | 900 | 1 | 270 | 163 | 750 | 1 | 5.5 | 250 | 23 | 1 |
 | shotgun | 1100 | 1 | 224 | 150 | 480 | 1 | 7.3 | 300 | 29 | 0.97 |
 | rifle | 1900 | 1 | 360 | 220 | 1100 | 1 | 8.6 | 500 | 22 | 0.95 |
-| flare | 900 | 2 | 315 | 126 | 1000 | 1 | 7.1 | 250 | 26 | 1 |
-| tommy | 1300 | 2 | 299 | 178 | 650 | 1 | 7.3 | 350 | 26 | 0.97 |
-| burst_rifle | 1500 | 2 | 277 | 189 | 1200 | 1 | 7.9 | 400 | 30 | 0.96 |
-| dual_smg | 2100 | 3 | 408 | 224 | 700 | 1 | 9.4 | 550 | 16 | 1 |
-| crossbow | 2400 | 3 | 288 | 188 | 1400 | 8 | 12.8 | 600 | 20 | 1 |
-| dmr | 2800 | 3 | 298 | 215 | 1300 | 3 | 13.0 | 700 | 22 | 0.95 |
-| lever | 1800 | 3 | 320 | 174 | 1400 | 2 | 10.3 | 450 | 26 | 1 |
-| sniper | 3200 | 4 | 405 | 269 | 2400 | 10 | 11.9 | 800 | 25 | 0.9 |
-| chainsaw | 2400 | 4 | 240 | 200 | 64 | all | 12.0 | - | inf | 0.92 |
-| auto_shotgun | 3600 | 5 | 448 | 272 | 450 | 1 | 13.3 | 900 | 16 | 0.93 |
-| flamethrower | 4200 | 5 | 295 | 203 | 330 | all | 20.6 | 1050 | 6 | 0.9 |
-| harpoon | 2800 | 5 | 300 | 187 | 1100 | 5 | 14.9 | 700 | 13 | 0.94 |
-| cryo | 3200 | 5 | 180 | 133 | 300 | all | 24.0 | 800 | 5 | 0.92 |
-| lmg | 4400 | 6 | 432 | 292 | 1100 | 2 | 15.1 | 1100 | 16 | 0.82 |
-| grenade_launcher | 4600 | 6 | 420 | 240 | 900 | 1 | 19.2 | 1150 | 10 | 0.93 |
-| rocket | 6200 | 8 | 648 | 247 | 1600 | 1 | 25.1 | 1550 | 7 | 0.85 |
-| tesla | 6800 | 8 | 270 | 196 | 600 | 1 | 34.6 | 1700 | 6 | 0.95 |
-| minigun | 8000 | 9 | 900 | 600 | 1000 | 1 | 13.3 | 2000 | 14 | 0.62 |
-| railgun | 9500 | 10 | 765 | 493 | 3000 | all | 19.3 | 2400 | 12 | 0.9 |
-| amr | 10000 | 10 | 660 | 480 | 3000 | 20 | 20.8 | 2500 | 17 | 0.82 |
-| hmg | 7400 | 8 | 640 | 537 | 1100 | 2 | 13.8 | 1850 | 32 | 0.7 |
+| flare | 900 | 1 | 315 | 126 | 1000 | 1 | 7.1 | 250 | 26 | 1 |
+| tommy | 1300 | 1 | 299 | 178 | 650 | 1 | 7.3 | 350 | 26 | 0.97 |
+| burst_rifle | 1500 | 1 | 277 | 189 | 1200 | 1 | 7.9 | 400 | 30 | 0.96 |
+| dual_smg | 2100 | 2 | 408 | 224 | 700 | 1 | 9.4 | 550 | 16 | 1 |
+| crossbow | 2400 | 2 | 288 | 188 | 1400 | 8 | 12.8 | 600 | 20 | 1 |
+| dmr | 2800 | 2 | 298 | 215 | 1300 | 3 | 13.0 | 700 | 22 | 0.95 |
+| lever | 1800 | 1 | 320 | 174 | 1400 | 2 | 10.3 | 450 | 26 | 1 |
+| sniper | 3200 | 2 | 405 | 269 | 2400 | 10 | 11.9 | 800 | 25 | 0.9 |
+| chainsaw | 2400 | 2 | 240 | 200 | 64 | all | 12.0 | - | inf | 0.92 |
+| auto_shotgun | 3600 | 3 | 448 | 272 | 450 | 1 | 13.3 | 900 | 16 | 0.93 |
+| flamethrower | 4200 | 3 | 295 | 203 | 330 | all | 20.6 | 1050 | 6 | 0.9 |
+| harpoon | 2800 | 3 | 300 | 187 | 1100 | 5 | 14.9 | 700 | 13 | 0.94 |
+| cryo | 3200 | 3 | 180 | 133 | 300 | all | 24.0 | 800 | 5 | 0.92 |
+| lmg | 4400 | 4 | 432 | 292 | 1100 | 2 | 15.1 | 1100 | 16 | 0.82 |
+| grenade_launcher | 4600 | 4 | 420 | 240 | 900 | 1 | 19.2 | 1150 | 10 | 0.93 |
+| rocket | 6200 | 6 | 648 | 247 | 1600 | 1 | 25.1 | 1550 | 7 | 0.85 |
+| tesla | 6800 | 6 | 270 | 196 | 600 | 1 | 34.6 | 1700 | 6 | 0.95 |
+| minigun | 8000 | 7 | 900 | 600 | 1000 | 1 | 13.3 | 2000 | 14 | 0.62 |
+| railgun | 9500 | 8 | 765 | 493 | 3000 | all | 19.3 | 2400 | 12 | 0.9 |
+| amr | 10000 | 8 | 660 | 480 | 3000 | 20 | 20.8 | 2500 | 17 | 0.82 |
+| hmg | 7400 | 6 | 640 | 537 | 1100 | 2 | 13.8 | 1850 | 32 | 0.7 |
+| compact9 | 300 | 1 | 143 | 104 | 850 | 1 | 2.9 | 100 | 32 | 1 |
+| tac45 | 500 | 1 | 155 | 108 | 950 | 1 | 4.6 | 150 | 27 | 1 |
+| handcannon | 750 | 1 | 229 | 147 | 1150 | 2 | 5.1 | 200 | 25 | 1 |
+| mpistol | 650 | 1 | 272 | 132 | 650 | 1 | 4.9 | 150 | 23 | 1 |
+| smg9 | 1250 | 1 | 275 | 165 | 820 | 1 | 7.6 | 300 | 22 | 1 |
+| pdw | 2350 | 2 | 300 | 178 | 850 | 2 | 13.2 | 600 | 12 | 1 |
+| smg45 | 1500 | 1 | 326 | 185 | 720 | 1 | 8.1 | 400 | 19 | 0.99 |
+| combat_sg | 2200 | 1 | 410 | 168 | 500 | 1 | 13.1 | 550 | 15 | 0.96 |
+| box_sg | 2700 | 2 | 437 | 222 | 580 | 1 | 12.2 | 700 | 10 | 0.95 |
+| ak | 2500 | 1 | 428 | 243 | 1100 | 2 | 10.3 | 650 | 19 | 0.95 |
+| m4 | 2300 | 1 | 380 | 215 | 1100 | 1 | 10.7 | 600 | 17 | 0.97 |
+| bullpup | 3100 | 2 | 342 | 206 | 1350 | 1 | 15.0 | 800 | 13 | 0.95 |
+| scout | 1700 | 1 | 241 | 191 | 2000 | 4 | 8.9 | 450 | 29 | 1 |
+| magsniper | 4750 | 3 | 540 | 372 | 2600 | 12 | 12.8 | 1200 | 21 | 0.85 |
+| autosniper | 5000 | 6 | 600 | 375 | 2200 | 4 | 13.3 | 1250 | 14 | 0.82 |
+| m60 | 5200 | 4 | 456 | 313 | 1150 | 2 | 16.6 | 1300 | 15 | 0.83 |
+| barrage | 6000 | 5 | 450 | 296 | 1100 | 1 | 20.3 | 1500 | 12 | 0.8 |
+| sawblade | 3000 | 2 | 160 | 97 | 1300 | 10 | 30.9 | 750 | 6 | 0.94 |
+| hollowstar | 16000 | 10 | 623 | 425 | 600 | all | 37.7 | 4000 | 4 | 0.82 |
 
 Every gun has a niche at its price:
-* **Close-range bursts:** sawed-off and shotgun.
-* **Cheap all-rounders:** uzi and magnum; the Tommy gun sprays a 50-round drum and the
-  burst rifle is the accurate step up; the flare gun sets a spot on fire and lights it.
-* **Mid-price:** the rifle is accurate; the dual SMGs spray hardest; the crossbow, DMR and
-  lever-action pierce lines; the sniper rifle kills bosses; the harpoon skewers and pins a
-  line; the chainsaw never runs dry but only works up close.
-* **Late:** the LMG, the belt-fed HMG (500 rounds, no spin-up) and the minigun give
-  sustained fire, the auto shotgun is a close-range
+* **Sidearms ($300-900):** the compact 9mm (bursts on the right button), the suppressed .45,
+  the machine pistol that sprays, the hand cannon and the magnum that pierce.
+* **Close-range bursts:** sawed-off and pump shotgun; the combat shotgun (semi-auto, loads
+  by hand) and the box-mag shotgun (faster, a whole box per reload) between them and the
+  auto shotgun.
+* **Cheap all-rounders:** uzi, compact SMG and .45 SMG; the Tommy gun sprays a 50-round drum
+  and the burst rifle is the accurate step up; the flare gun sets a spot on fire and lights
+  it; the scout rifle pierces 4 at range for $1700.
+* **Mid-price:** the rifle, M4 and AK (light, silenced / hard-hitting, piercing), the scoped
+  bullpup at range; the dual SMGs spray hardest, the bullpup PDW pierces crowds; the
+  crossbow, DMR and lever-action pierce lines; the sniper rifle kills bosses; the harpoon
+  skewers and pins a line; the saw-blade launcher cuts lines and corridors; the chainsaw
+  never runs dry but only works up close.
+* **Late:** the LMG, M60, Barrage MG (tightens as it fires), the belt-fed HMG (500 rounds,
+  no spin-up) and the minigun give sustained fire; the magnum sniper one-shots brutes and
+  the semi-auto sniper fires precision at volume; the auto shotgun is a close-range
   shredder, the tesla and flamethrower clear crowds, the cryo blaster stops them, and the
   .50 kills whole lines through cover.
+* **Super:** the Hollow Star ends a wave with one shot, but not a boss.
 
 Late guns have the highest DPS but cost 25% of their price to refill, so their damage per
 refill dollar is 2-5× worse than early guns'.
