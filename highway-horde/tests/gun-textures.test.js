@@ -226,8 +226,10 @@ describe('renderer (source)', () => {
 
   test('the one-file build embeds the gun textures and the loader reads them', () => {
     const build = readFileSync(join(ROOT, 'scripts', 'build-standalone.js'), 'utf8');
-    assert.match(build, /embedFiles\('textures\/guns'/);
-    assert.match(tex, /globalThis\.__HH_FILES/);
+    // (every file under public/textures/ goes in: build-standalone.js listPNGs / texturePlan)
+    assert.match(build, /listPNGs\(TEX_DIR\)/);
+    assert.match(tex, /textureBlob\('guns\/' \+ file, size\)/, 'through tex-files.js (embedded store or next to the game)');
+    assert.match(tex, /textureSource\('guns\/' \+ f\.name, f\.size\)/, 'the worker path too');
   });
 
   test('the indoor mask can chain on (onBeforeCompile set once, stable program key)', () => {

@@ -56,6 +56,12 @@ export function hideLoading() {
   hideTimer = setTimeout(() => { e.hidden = true; e.classList.remove('fade', 'run'); hideTimer = null; }, FADE_MS);
 }
 
+/** Does the loading screen cover the game (up and not fading out)? Nothing behind it needs drawing. */
+export function loadingCoverUp() {
+  const e = el();
+  return !!e && !e.hidden && !e.classList.contains('fade');
+}
+
 /** Is the loading screen up? */
 export function isLoading() {
   const e = el();

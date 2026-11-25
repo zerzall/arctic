@@ -6,7 +6,7 @@
 import { deflateSync, inflateSync, crc32 as zcrc32, constants } from 'node:zlib';
 
 const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const CHANNELS_OF = { 0: 1, 2: 3, 6: 4 };
+const CHANNELS_OF = { 0: 1, 4: 2, 2: 3, 6: 4 };
 const TYPE_OF = { 1: 0, 3: 2, 4: 6 };
 
 // (zlib.crc32 exists from node 20.15 / 22.2; a table otherwise)
@@ -113,7 +113,7 @@ export function encodePNG(px, w, h, ch, opt = {}) {
 }
 
 /**
- * Decode an 8-bit, non-interlaced grey / RGB / RGBA PNG (what encodePNG writes).
+ * Decode an 8-bit, non-interlaced grey, grey + alpha, RGB or RGBA PNG (what encodePNG writes).
  * @param {Buffer|Uint8Array} buf
  * @returns {{ width: number, height: number, channels: number, data: Uint8Array }}
  */

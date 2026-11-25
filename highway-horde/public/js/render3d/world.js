@@ -19,6 +19,7 @@ import { makeDetailArray, makeDetailArrayAsync, DET } from './world-surf.js';
 import { createWorldMaterials } from './world-mat.js';
 import { createDetailUniforms, loadBaked, usedSurfaceIds, bakedDisabled, bakedState, bakedSize } from './world-surf-bake.js';
 import { beginLoadTask } from '../ui/loading.js';
+import { holdTextureQueue } from './tex-files.js';
 import { buildVehicle, buildSemiCab, buildTrailer, buildTanker, buildBus, buildApc } from './world-veh.js';
 import { building, buildingHeight, diner, radio, beam } from './world-bld.js';
 import { setDetailLevel } from './world-arch.js';
@@ -826,7 +827,8 @@ export function createWorld(ctx, deps) {
     const task = beginLoadTask('Loading textures…');
     bakedState.state = 'loading';
     const t0 = performance.now();
-    loadBaked({
+    // (the decals, zombie and gun sets queue behind it: tex-files.js)
+    const load = loadBaked({
       renderer: deps.renderer, mapId: map.id, usedIds: usedSurfaceIds(root), tier: full, anisotropy: anisoFor(full, maxAniso),
       onProgress: (d, n) => task.progress(d / n, `Loading textures… ${d} / ${n}`),
       cancelled: () => gone || run !== bakedLoad,
@@ -844,6 +846,7 @@ export function createWorld(ctx, deps) {
       // (silently: the procedural layers keep drawing)
       if (typeof console !== 'undefined' && console.info) console.info('world: baked textures unavailable —', bakedState.error);
     }).finally(() => task.done());
+    holdTextureQueue(load);
   }
   startBaked();
 

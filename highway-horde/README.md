@@ -148,8 +148,8 @@ Double-click `Highway-Horde.html` to play. Online games work from it too: the ho
 the file, or the website) use **Join Game** with that code. Invite links point at the
 host's own disk, so use the code.
 
-The file carries the game's own texture library (about 250 MB; the page is up while the
-browser is still reading the rest). `HH_NO_TEXTURES=1 npm run standalone` builds a ~5 MB file
+The file carries every texture (their download copies, about 430 MB; the menu is up while
+the browser is still reading the rest). `HH_NO_TEXTURES=1 npm run standalone` builds a ~5 MB file
 that draws the surfaces with the procedural layers instead.
 
 ## The texture library
@@ -161,6 +161,16 @@ code, not downloaded: `node scripts/bake-textures.js` renders them at 2048² and
 1024² (`--only brick_red --preview <dir>` re-bakes one material and writes lit previews). The
 game uses them on High and up; Low keeps the procedural layers, and so does any page where
 they fail to load (or the address has `?textures=procedural`).
+
+The PNGs under `public/textures/` (world sets, guns, zombies, decals) are the lossless source;
+the game downloads smaller copies of them: `npm run textures:compress` (needs ImageMagick)
+writes a JPEG 4:4:4 copy of every opaque colour, normal and packed map, a lossless WebP of every
+mask and of anything with an alpha channel, and halved copies of the maps above 1024² for the
+tiers that never use them at full size, and lists them in `public/textures/compressed.json`
+(with each PNG's SHA-1). **Run it after re-baking or replacing any PNG** — `npm test` fails while
+a copy is stale, and the one-file build ships a stale copy's PNG instead. The files are decoded
+off the main thread (render3d/tex-worker.js); `npm run timing` measures the load times
+(scripts/load-timing.js).
 
 ## Playing with friends
 

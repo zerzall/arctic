@@ -10,16 +10,19 @@
 // disk, so friends join with the room code; and the audio bake worker (a separate module
 // file) is unavailable, so the sounds bake on the main thread (bank.js falls back itself).
 //
-// The baked texture library (public/textures/, scripts/bake-textures.js) goes in too: its manifest
-// as a JSON script element and every PNG as base64 in a script element of its own, placed after the
-// game's code. The browser parses them as raw text (nothing runs), the menu is up while the rest of
-// the file is still being read, and render3d/world-surf-bake.js turns one element at a time into a
-// Blob (a data: URL fetch, no giant string built in script) through window.__HH_TEX, then drops the
-// element's text. HH_NO_TEXTURES=1 builds without them (the game then keeps the procedural layers).
+// Every texture file goes in too (public/textures/: the world library, the guns, the zombies, the
+// decals), as its download copy (scripts/compress-textures.js: compressed.json lists them; a PNG
+// whose copy is stale or missing goes in itself) in a script element of its own, placed after the
+// game's code, plus the library's manifest and the copies' index as JSON elements. The browser
+// parses them as raw text (nothing runs, no script heap): the menu is up while the rest of the file
+// is still being read, and render3d/tex-files.js turns one element at a time into a Blob (a data:
+// URL fetch, no giant string built in script) through window.__HH_TEX, then drops the element's
+// text. HH_NO_TEXTURES=1 builds without them (the game then keeps the procedural layers).
 
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, openSync, writeSync, closeSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { readFileSync, mkdirSync, readdirSync, existsSync, statSync, openSync, writeSync, closeSync } from 'node:fs';
+import { dirname, join, resolve, relative, sep } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -56,26 +59,75 @@ const inline = (s) => s.replace(/<\/(script)/gi, '<\\/$1');
 
 let html = readFileSync(join(PUB, 'index.html'), 'utf8');
 const css = readFileSync(join(PUB, 'css/game.css'), 'utf8') + '\n' + readFileSync(join(PUB, 'css/story.css'), 'utf8');
-// the texture library's store: script elements holding the manifest and every PNG (see above)
+// the texture files' store: script elements holding the manifest, the index and every file (see above)
 const TEX_DIR = process.env.HH_TEX_DIR ? resolve(process.env.HH_TEX_DIR) : join(PUB, 'textures');
-const texOn = !process.env.HH_NO_TEXTURES && existsSync(join(TEX_DIR, 'manifest.json'));
-const texManifest = texOn ? JSON.parse(readFileSync(join(TEX_DIR, 'manifest.json'), 'utf8')) : null;
-const texFiles = texManifest ? Object.values(texManifest.sets).flatMap((e) => Object.values(e.files)) : [];
+const texOn = !process.env.HH_NO_TEXTURES && existsSync(TEX_DIR);
+const texManifest = texOn && existsSync(join(TEX_DIR, 'manifest.json')) ? JSON.parse(readFileSync(join(TEX_DIR, 'manifest.json'), 'utf8')) : null;
+
+/** Every PNG under the texture folder ('set/albedo.png'). */
+function listPNGs(dir, base = dir) {
+  const out = [];
+  for (const name of readdirSync(dir).sort()) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...listPNGs(p, base));
+    else if (name.endsWith('.png')) out.push(relative(base, p).split(sep).join('/'));
+  }
+  return out;
+}
+/**
+ * What goes in: the copies of every PNG whose entry in compressed.json is fresh (its SHA-1 matches,
+ * its files are there), else the PNG; and the index of the copies that went in.
+ */
+function texturePlan() {
+  const ixPath = join(TEX_DIR, 'compressed.json');
+  const ix = existsSync(ixPath) ? JSON.parse(readFileSync(ixPath, 'utf8')) : { files: {} };
+  const files = [], index = { version: ix.version || 1, files: {} };
+  const stale = [];
+  for (const rel of listPNGs(TEX_DIR)) {
+    const e = ix.files && ix.files[rel];
+    const all = e ? [e.file, ...(e.variants || []).map((v) => v.file)] : [];
+    const fresh = e && all.every((f) => existsSync(join(TEX_DIR, f))) && createHash('sha1').update(readFileSync(join(TEX_DIR, rel))).digest('hex') === e.sha1;
+    if (fresh) {
+      files.push(...all);
+      index.files[rel] = { file: e.file, ...(e.la ? { la: true } : {}), ...(e.variants ? { variants: e.variants.map((v) => ({ size: v.size, file: v.file })) } : {}) };
+    } else {
+      files.push(rel);
+      if (e) stale.push(rel);
+    }
+  }
+  if (stale.length) console.warn(`textures: ${stale.length} download copies are stale (${stale.slice(0, 3).join(', ')}${stale.length > 3 ? ', …' : ''}): their PNGs go in instead — run npm run textures:compress`);
+  return { files, index };
+}
+const texPlan = texOn ? texturePlan() : null;
+const MIME_OF = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif' };
 export const TEX_STORE = `window.__HH_TEX = (function () {
-  var cache = {};
+  var cache = {}, text = {};
   function ready() {
     return document.readyState !== 'loading' ? Promise.resolve() : new Promise(function (r) { document.addEventListener('DOMContentLoaded', r, { once: true }); });
   }
+  function json(id) {
+    return ready().then(function () { var e = document.getElementById(id); return e ? JSON.parse(e.textContent) : null; });
+  }
+  // a file's base64 text, moved out of its element (the element's copy is dropped) and kept here
+  function take(p) {
+    if (text[p]) return text[p];
+    if (document.readyState === 'loading') return null;
+    var e = document.querySelector('script[data-hh-tex="' + p + '"]');
+    if (!e || !e.textContent) return null;
+    text[p] = { b64: e.textContent, type: e.getAttribute('data-type') };
+    e.textContent = '';
+    return text[p];
+  }
   return {
-    manifest: function () {
-      return ready().then(function () { var e = document.getElementById('hh-tex-manifest'); return e ? JSON.parse(e.textContent) : null; });
-    },
+    manifest: function () { return json('hh-tex-manifest'); },
+    index: function () { return json('hh-tex-index'); },
+    take: take,
     blob: function (p) {
       if (cache[p]) return cache[p];
       cache[p] = ready().then(function () {
-        var e = document.querySelector('script[data-hh-tex="' + p + '"]');
-        if (!e) throw new Error('textures: ' + p + ' is not in this file');
-        return fetch('data:image/png;base64,' + e.textContent).then(function (r) { return r.blob(); }).then(function (b) { e.textContent = ''; return b; });
+        var t = take(p);
+        if (!t) throw new Error('textures: ' + p + ' is not in this file');
+        return fetch('data:' + t.type + ';base64,' + t.b64).then(function (r) { return r.blob(); });
       });
       cache[p].catch(function () { delete cache[p]; });
       return cache[p];
@@ -89,25 +141,6 @@ const scripts = [
   readFileSync(join(PUB, 'config.js'), 'utf8'),
   res.outputFiles[0].text,
 ];
-
-// ---- embedded asset files (the decal sheets) ----------------------------------------------
-// Files under public/<dir> become data: URLs in window.__HH_FILES['<dir>/<name>'], which the
-// renderer reads before it would fetch the file next to the game (render3d/decals.js decalFileURL).
-function embedFiles(dir, pattern) {
-  const files = {};
-  let bytes = 0;
-  for (const name of readdirSync(join(PUB, dir)).sort()) {
-    if (!pattern.test(name)) continue;
-    const buf = readFileSync(join(PUB, dir, name));
-    bytes += buf.length;
-    files[`${dir}/${name}`] = `data:image/png;base64,${buf.toString('base64')}`;
-  }
-  console.log(`embedding ${Object.keys(files).length} files of ${dir} (${(bytes / 1e6).toFixed(1)} MB)`);
-  return `window.__HH_FILES = Object.assign(window.__HH_FILES || {}, ${JSON.stringify(files)});`;
-}
-scripts.splice(1, 0, embedFiles('textures/decals', /\.png$/));
-scripts.splice(1, 0, embedFiles('textures/guns', /\.png$/));
-scripts.splice(1, 0, embedFiles('textures/zombies', /\.png$/));
 
 const swap = (from, to) => {
   if (!from.test(html)) throw new Error(`index.html no longer contains ${from}`);
@@ -131,15 +164,19 @@ const fd = openSync(OUT, 'w');
 let bytes = 0;
 const put = (str) => { const b = Buffer.from(str, 'utf8'); writeSync(fd, b); bytes += b.length; };
 put(html.slice(0, at));
+let texBytes = 0;
 if (texOn) {
-  put(`<script type="application/json" id="hh-tex-manifest">${JSON.stringify(texManifest).replace(/<\//g, '<\\/')}</script>\n`);
-  for (const f of texFiles) {
-    const b64 = readFileSync(join(TEX_DIR, f)).toString('base64');
-    put(`<script type="application/x-hh-tex" data-hh-tex="${f}">`);
-    put(b64);
+  const json = (id, o) => put(`<script type="application/json" id="${id}">${JSON.stringify(o).replace(/<\//g, '<\\/')}</script>\n`);
+  if (texManifest) json('hh-tex-manifest', texManifest);
+  json('hh-tex-index', texPlan.index);
+  for (const f of texPlan.files) {
+    const buf = readFileSync(join(TEX_DIR, f));
+    texBytes += buf.length;
+    put(`<script type="application/x-hh-tex" data-hh-tex="${f}" data-type="${MIME_OF[f.split('.').pop()] || 'application/octet-stream'}">`);
+    put(buf.toString('base64'));
     put('</script>\n');
   }
 }
 put(html.slice(at));
 closeSync(fd);
-console.log(`wrote ${OUT} (${(bytes / 1e6).toFixed(1)} MB${texOn ? `, ${texFiles.length} texture files embedded` : ''})`);
+console.log(`wrote ${OUT} (${(bytes / 1e6).toFixed(1)} MB${texOn ? `, ${texPlan.files.length} texture files embedded: ${(texBytes / 1e6).toFixed(1)} MB` : ''})`);
