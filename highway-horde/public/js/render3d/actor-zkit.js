@@ -166,7 +166,7 @@ function hair(sb, P, L, has, headDef, cin = false, near = false) {
       // at the back, the temples at the front
       const latX = 0.05 - 0.35 * sideK * (1 - frontK) - 0.45 * backK + 0.12 * frontK;
       const ref = dir(lon, lat0);
-      const w0 = (0.72 + h3 * 0.36) * hk, t0 = (0.32 + h1 * 0.12) * hk;
+      const w0 = (0.6 + h3 * 0.32) * hk, t0 = (0.3 + h1 * 0.12) * hk;
       const pts = [];
       for (let k = 0; k <= lvl.ks; k++) {
         const t = k / lvl.ks;
@@ -186,7 +186,9 @@ function hair(sb, P, L, has, headDef, cin = false, near = false) {
           z = Math.max(-4.4, Math.min(4.4, z));
           x = Math.min(x, back(y, z) - 0.3 - t0);
         }
-        pts.push({ c: [x, y, z], rx: t0 * (1.3 - 0.85 * t), rz: w0 * (1.05 - 0.7 * t), bone: t < 0.2 ? B.HEAD : y > P.neck ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+        // (lumpy and twisting as it hangs: matted, not a tube)
+        const lump = 1 + 0.18 * Math.sin(t * 9 + i * 1.7);
+        pts.push({ c: [x, y, z], rx: t0 * (1.3 - 0.85 * t) * lump, rz: w0 * (1.05 - 0.7 * t) * (2 - lump), tw: (h1 - 0.5) * 2.4 * t, bone: t < 0.2 ? B.HEAD : y > P.neck ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
       }
       clump(sb, pts, i, { ...S, opt: 'hair_strands', seg: lvl.seg, subdiv: cin ? 2 : 1, ref });
     }

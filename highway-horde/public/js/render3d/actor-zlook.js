@@ -108,7 +108,7 @@ const TOPS = {
 };
 /** Neckline of a top kind (actor-zmat.js): 0 crew, 1 v-neck / open collar, 2 scoop, 3 tank straps, 4 a gown's open back. */
 const NECK = { polo: 1, long: 1, jacket: 1, coat: 1, lab: 1, flannel: 1, scrubs: 1, rags: 2, tank: 3, crop: 3, dress: 2, gown: 4 };
-const LEGS = { jeans: -1, trousers: -1, track: -1, shorts: 20.0, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
+const LEGS = { jeans: -1, trousers: -1, track: -1, shorts: 17.5, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
 
 // ---------------------------------------------------------------------------------------
 // archetypes: who the zombie was. Fields: w weight; top/bot kind; topC/botC colour lists;
@@ -215,7 +215,8 @@ const ARCH = {
     A('shirtless', 5, { top: 'bare', topC: DARK, bot: 'trousers', botC: [...DARK, ...JEANS], shoe: 'boot', shoeC: BOOT, gear: [['chains', 0.6], ['spikes', 0.4], ['cuffs', 0.3]], tearMul: 1.2, big: true }),
     A('welded', 24, { top: 'long', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
   ],
-  boss: [A('abomination', 1, { top: 'coat', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'torn', botC: ['#2a2420', '#3a3230', '#2a2a2e'], shoe: 'bare', big: true, tearMul: 1.3 })],
+  // (the boss: the rags of a shirt over its shoulders and chest, torn trousers; its growths and tumours show)
+  boss: [A('abomination', 1, { top: 'rags', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'torn', botC: ['#2a2420', '#3a3230', '#2a2a2e'], shoe: 'bare', big: true, tearMul: 1.3 })],
 };
 
 /**
@@ -360,11 +361,13 @@ export function zombieLook(type, id, theme = '') {
   const grime = (c, lo, hi, cap) => {
     let q = mixRgb(c, [0.045, 0.038, 0.03], range(r, lo, hi) * fresh);
     const gy = luma(q);
-    q = mixRgb(q, [gy * 1.02, gy, gy * 0.94], range(r, 0.22, 0.5) * fresh);
+    // (greyed, but a garment keeps enough of its colour to read as cloth against the grey skin)
+    q = mixRgb(q, [gy * 1.02, gy, gy * 0.94], range(r, 0.12, 0.32) * fresh);
     return capL(q, cap);
   };
-  look.top = grime(topC, 0.25, 0.55, 0.2);
-  look.bottom = grime(botC, 0.25, 0.55, 0.17);
+  // (no brighter than the skin: a pale shirt under the flashlight read as bare skin)
+  look.top = grime(topC, 0.25, 0.55, 0.15);
+  look.bottom = grime(botC, 0.25, 0.55, 0.13);
   // (torn and holed, but still clothes: the holes open with the tear, actor-zmat.js)
   const tearBase = T === 'brute' || T === 'boss' ? 0.55 : T === 'runner' ? 0.1 + r() * 0.3 : 0.2 + r() * 0.5;
   look.tear = Math.min(0.85, tearBase * (arch.tearMul || 1));

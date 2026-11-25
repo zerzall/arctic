@@ -36,13 +36,16 @@ float zDry = 0.0;
 float zCav = 0.0;
 float zSheen = 0.0;
 vec3 zSheenCol = vec3(0.0);
-// hair: zHair 1 on hair (0..1 on the painted scalp: no rim, a soft edge to its sheen), zHairH the
-// scalp hair's bump, the clumps' run from root to tip and their strand pattern
+// hair: zHair 1 on hair (0..1 on the painted scalp: no rim, a soft edge to its sheen); zBumpH a
+// relief in model units of the scalp's hair and the cloth's folds (Z_TEX_NORMAL); the clumps' run
+// from root to tip and their strand pattern
 float zHair = 0.0;
-float zHairH = 0.0;
+float zBumpH = 0.0;
 float zAlong = 0.0;
 float zStrand = 0.5;
 float zHash(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
+// interleaved gradient noise over the screen (a fine, even dither for soft cut-out edges)
+float zDither() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
 // bump from a height field in view units (Mikkelsen's surface gradient, unnormalised so a
 // relief in model units keeps its slope whatever the distance)
 vec3 zPerturb(vec3 N, vec3 pos, float h) {
@@ -168,13 +171,17 @@ export const Z_CUTS = /* glsl */`
       float hid = floor(hu.x + 0.001);
       zAlong = clamp(hu.y, 0.0, 1.0);
       if (zHash(hid * 3.17 + seed * 1.31) < fract(v3.y)) discard;
-      float sp = fract(hu.x) * 11.0 + zHash(hid + 0.5) * 7.0;
+      float sp = fract(hu.x) * 23.0 + zHash(hid + 0.5) * 7.0;
       float sh = zHash(floor(sp) * 1.93 + hid * 5.1);
       zStrand = clamp(0.5 + 0.3 * sin(sp * 6.2832) + (sh - 0.5) * 0.7 + (hhD.r - 0.5) * 0.3, 0.0, 1.0);
+      // (grooves between the strands: a bump of their own, Z_TEX_NORMAL)
+      zBumpH = (0.5 + 0.5 * sin(sp * 6.2832)) * 0.035;
       float endD = min((1.0 - zAlong) * 14.0 * (0.75 + sh * 0.5), vMP.y - v3.x - (sh - 0.5) * 2.4);
-      if (endD < 0.0) discard;
       float fray = smoothstep(2.8, 0.0, endD);
-      if (abs(fract(sp) - 0.5) > 0.5 - 0.44 * fray * (0.5 + sh)) discard;
+      // (soft: each strand's edge and its end fade out through a fine screen dither)
+      float halfW = 0.5 - 0.44 * fray * (0.5 + sh);
+      float cov = mix(1.0, smoothstep(halfW + 0.05, halfW - 0.07, abs(fract(sp) - 0.5)), smoothstep(0.0, 0.15, fray)) * smoothstep(-0.25, 0.35, endD);
+      if (cov < 0.999 && cov <= zDither()) discard;
     }
   }
 `;
@@ -400,6 +407,10 @@ export const Z_NORMAL_DETAIL = /* glsl */`
     normal = hhPerturb(normal, -vViewPosition, vDUv, nxy);
   }`;
 
+/** The relief of the scalp's hair (per zombie: the bald show the bare scalp's) and the cloth's folds (after Z_TEX_NORMAL). */
+const Z_BUMP = /* glsl */`
+  if (zHHk > 0.0 && (zHHx != 0.0 || zHHy != 0.0)) normal = zBumpD(normal, zHHx * zHHk, zHHy * zHHk);`;
+
 /** The anatomy relief (after the detail normal), faded out where it would alias. */
 export const Z_NORMAL = /* glsl */`
   if (hhM == 0 && hhPart == 15 && uZLite < 0.5) {
@@ -621,7 +632,7 @@ const SKIN_TEX = /* glsl */`
         rough = mix(rough, 0.44 + 0.26 * (1.0 - sv), hk);
         thick = mix(thick, 0.1, hk);
         zHair = hk;
-        zHairH = hk * (0.3 + 0.7 * sv);
+        zBumpH = hk * (0.3 + 0.7 * sv) * 0.06;
       }
     }
     if (hhPart == 17) {
@@ -733,9 +744,9 @@ const CLOTH_TEX = /* glsl */`
     float th = 1.0 - tear * 0.34;
     if (GB.w > th) discard;
     c *= mix(1.0, 0.5, smoothstep(th - 0.05, th, GB.w));
-    // dinginess: everything they wear has gone a dirty yellow-grey, sun-faded where it was bright
+    // dinginess: everything they wear has gone a dirtier, duller colour, sun-faded where it was bright
     float dl = dot(c, ZLUMA);
-    c = mix(c, vec3(dl) * vec3(1.02, 0.98, 0.9), 0.18 + 0.2 * smoothstep(0.1, 0.4, dl));
+    c = mix(c, vec3(dl) * vec3(1.02, 0.98, 0.9), 0.1 + 0.14 * smoothstep(0.1, 0.4, dl));
     c *= mix(1.0, 0.62, smoothstep(0.05, 0.3, dl));
     // grime worked into the cloth in blotches, wiped hands, dragged through the dirt
     c *= mix(vec3(1.0), vec3(0.42, 0.37, 0.3), smoothstep(0.4, 0.68, zG.b * 0.55 + hhD.b * 0.45) * 0.85);
@@ -748,6 +759,27 @@ const CLOTH_TEX = /* glsl */`
     c = mix(c, vec3(dot(c, ZLUMA)) * vec3(1.05, 1.02, 0.95), (topG ? smoothstep(uBody.y, uBody.z + 1.0, vMP.y) * 0.3 : 0.0));
     // (filthy, but still its own colour: a garment must not go the dirty yellow-grey of the skin)
     c *= mix(vec3(1.0), vec3(0.7, 0.64, 0.54), 0.35 + 0.4 * zG.b);
+    // folds: the cloth hangs and bunches (round the waist and the small of the back, from the
+    // armpits, at the elbows, the knees and over the shoes) in low ridges that catch the light, a
+    // little of each zombie's own (the bump is Z_TEX_NORMAL's)
+    {
+      float ang = atan(vMP.z, vMP.x - 0.3);
+      float wob = sin(ang * 3.0 + zSeed) * 0.7 + sin(ang * 5.0 - zSeed * 1.7) * 0.35 + (hhD.g - 0.5) * 0.6;
+      float fh = 0.0, y = vMP.y;
+      if (topG) {
+        float waistK = smoothstep(uBody.x + 6.0, uBody.x, y) * smoothstep(v1.x - 0.5, v1.x + 2.5, y);
+        fh += sin(y * 2.2 + wob) * 0.17 * waistK;
+        float pitK = smoothstep(uBody.z - 8.0, uBody.z - 3.5, y) * smoothstep(uBody.z + 0.5, uBody.z - 2.0, y) * smoothstep(2.5 * W, 5.0 * W, abs(vMP.z));
+        fh += sin((y + abs(vMP.z) * 0.9) * 2.5 + wob) * 0.15 * pitK;
+        if (hhPart == 2) fh += sin(y * 3.0 + wob) * 0.16 * smoothstep(4.5, 0.0, abs(y - (uBody.z - 8.2)));
+      } else if (botG) {
+        float kn = smoothstep(4.5, 0.0, abs(y - 16.2)), an = smoothstep(6.0, 1.5, y);
+        fh += sin(y * 2.7 + wob) * (0.16 * kn + 0.2 * an);
+        fh += sin(y * 1.5 + vMP.z * 0.7 + wob) * 0.07;
+      }
+      zBumpH = fh;
+      c *= 1.0 - 0.3 * smoothstep(0.02, -0.15, fh);
+    }
     diffuseColor.rgb = c;
     float rough = mix(0.93, 0.74, sk * (1.0 - fresh));
     rough = mix(rough, 0.3, sk * fresh);
@@ -775,8 +807,9 @@ export const Z_SHADE_TEX = TEX_PRE + '  if (hhM == 0) {\n' + SKIN_TEX + '  } els
 
 /** Normals with the baked sets: the per-plane accumulators through each plane's frame; else the detail map. */
 export const Z_TEX_NORMAL = /* glsl */`
-  // (the scalp hair's height, differentiated here in uniform control flow; faded out where it would alias)
-  float zHHx = dFdx(zHairH), zHHy = dFdy(zHairH), zHHk = smoothstep(0.5, 0.12, length(fwidth(vMP))) * 0.06;
+  // (the scalp hair's and the folds' height, differentiated here in uniform control flow; faded out
+  // where it would alias)
+  float zHHx = dFdx(zBumpH), zHHy = dFdy(zBumpH), zHHk = smoothstep(0.6, 0.15, length(fwidth(vMP)));
   if (zUV) {
     // the atlas' tangent-space normal through the UV's own screen-space frame (+ the wounds' planes)
     vec3 N0 = normal;
@@ -788,12 +821,10 @@ export const Z_TEX_NORMAL = /* glsl */`
       else acc = zPerturb2(N0, zDpx.xy, zDpy.xy, zNP[2]) - N0;
       normal = normalize(normal + acc);
     }
-    // the scalp's hair: its own relief, per zombie (the bald show the bare scalp's)
-    if (zHHk > 0.0 && (zHairH > 0.0 || zHHx != 0.0 || zHHy != 0.0)) normal = zBumpD(normal, zHHx * zHHk, zHHy * zHHk);
   } else if (zW.x + zW.y + zW.z > 0.0) {
     vec3 N0 = normal, acc = vec3(0.0);
     if (zW.x > 0.0) acc += zW.x * (zPerturb2(N0, zDpx.zy, zDpy.zy, zNP[0]) - N0);
     if (zW.y > 0.0) acc += zW.y * (zPerturb2(N0, zDpx.xz, zDpy.xz, zNP[1]) - N0);
     if (zW.z > 0.0) acc += zW.z * (zPerturb2(N0, zDpx.xy, zDpy.xy, zNP[2]) - N0);
     normal = normalize(N0 + acc);
-  } else ` + Z_NORMAL_DETAIL.trimStart();
+  } else ` + Z_NORMAL_DETAIL.trimStart() + Z_BUMP;

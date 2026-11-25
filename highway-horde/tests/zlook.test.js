@@ -119,7 +119,8 @@ test('most of the dead are dressed: bare chests, vests and shorts are a minority
       assert.ok(l.tear >= 0 && l.tear <= 0.85, `${t} ${id}: tear ${l.tear}`);
     }
     assert.ok(bare / N < 0.08, `${t}: ${bare} of ${N} bare-chested`);
-    assert.ok(vest / N < 0.08, `${t}: ${vest} of ${N} in vests`);
+    // (the boss alone wears rags over its shoulders: its growths are the point of it)
+    if (t !== 'boss') assert.ok(vest / N < 0.08, `${t}: ${vest} of ${N} in vests`);
     assert.ok(shorts / N < 0.15, `${t}: ${shorts} of ${N} in shorts`);
   }
 });
