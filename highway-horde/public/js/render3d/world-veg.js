@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { T, shadeHex, seededRng, lin } from './world-geo.js';
 import { DET } from './world-surf.js';
 import { LEAF_CELLS } from './world-tex.js';
-import { cardList, card, listGeo, PINE, LEAF, desertPiece, setBiome } from './world-flora.js';
+import { cardList, card, listGeo, pineLeader, PINE, LEAF, desertPiece, setBiome } from './world-flora.js';
 import { DETAIL } from './world-arch.js';
 import { normTier, tierRow } from './tier.js';
 
@@ -103,23 +103,32 @@ export function buildTreeLine(B, map, waters) {
     const top = rng.range(220, 330) * s;
     B.cyl('std', 0, 0, 0, 5 * s, 70 * s, '#5a4a3e', 5, 0.7, null, { surf: [DET.pinebark, 0.9, 0] });
     const cinL = DETAIL.level >= 3;
-    // a slender dark core (it only fills the gaps between the boughs: the silhouette is the cards', not a cone's)
-    B.cyl('std', 0, 40 * s, 0, (cinL ? 20 : 26) * s, top - 60 * s, shadeHex(col, -0.62), cinL ? 9 : 6, 0.04, null, { surf: [0, 0.95, 0], noAO: true });
+    // a slender dark core that ends well below the top, inside the boughs (no bare spike over
+    // the crown); each tree leans a little and has its own density and top, so the line is uneven
+    const lean = rng.range(-0.06, 0.06) * top, leanA = rng.range(0, 6.28);
+    const lx = Math.cos(leanA) * lean, lz = Math.sin(leanA) * lean;
+    const dens = rng.range(0.8, 1.2);
+    B.cyl('std', 0, 40 * s, 0, (cinL ? 17 : 22) * s, (top - 40 * s) * 0.68, shadeHex(col, -0.62), cinL ? 9 : 6, 0.1, null, { surf: [0, 0.95, 0], noAO: true });
     // whorls of drooping bough cards (photo needles, world-tex.js): a ragged, needled silhouette
     const cards = cardList();
-    // (cards by detail level: 'high' keeps close to the old count of alpha-tested quads, ultra adds a whorl)
-    const rings = cinL ? 7 : DETAIL.level >= 2 ? 5 : 4;
+    // (cards by detail level: 'high' keeps close to the old count of alpha-tested quads, ultra adds a whorl;
+    // the top whorl is the leader below)
+    const rings = (cinL ? 7 : DETAIL.level >= 2 ? 5 : 4) - 1;
     const per = cinL ? 7 : DETAIL.level >= 2 ? 6 : 5;
     for (let k = 0; k < rings; k++) {
-      const t = k / rings;
-      const y = 46 * s + t * (top - 84 * s);
-      const rad = (64 - t * 36) * s * rng.range(0.85, 1.12);
-      for (let m = 0; m < per; m++) {
-        const a = (m / per) * Math.PI * 2 + k * 0.9 + rng.range(-0.35, 0.35);
+      const t = k / (rings - 1);
+      const y = (46 * s + t * (top - 120 * s)) * rng.range(0.96, 1.04);
+      const rad = (64 - t * 34) * s * rng.range(0.85, 1.15);
+      const bx = lx * t * t, bz = lz * t * t;
+      const n = Math.max(3, Math.round(per * dens + rng.range(-0.5, 0.5)));
+      for (let m = 0; m < n; m++) {
+        const a = (m / n) * Math.PI * 2 + k * 0.9 + rng.range(-0.35, 0.35);
         const f = new THREE.Vector3(Math.cos(a) * 0.55, 0.75, Math.sin(a) * 0.55).normalize();
-        card(cards, [Math.cos(a) * rad * 0.58, y - rad * 0.1, Math.sin(a) * rad * 0.58], f, a + Math.PI / 2 + rng.range(-0.3, 0.3), rad * 1.3, rad * 1.0, [0, y + 20, 0], LEAF_CELLS.pine);
+        card(cards, [bx + Math.cos(a) * rad * 0.58, y - rad * 0.1, bz + Math.sin(a) * rad * 0.58], f, a + Math.PI / 2 + rng.range(-0.3, 0.3), rad * 1.3, rad * 1.0, [bx, y + 20, bz], LEAF_CELLS.pine);
       }
     }
+    // the leader: a soft, uneven tuft of upright cards, its tallest a little above or below the others
+    pineLeader(cards, rng, lx, lz, top + rng.range(-12, 8) * s, 60 * s, [lx, top - 60 * s, lz], cinL ? 5 : DETAIL.level >= 2 ? 4 : 3);
     B.add('leaves', listGeo(cards), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });
   };
   const band = [60, 700];

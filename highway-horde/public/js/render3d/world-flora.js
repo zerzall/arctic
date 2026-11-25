@@ -106,6 +106,21 @@ export function listGeo(list) {
   return g;
 }
 
+/**
+ * The soft, uneven leader of a conifer: `n` upright needle cards of different sizes round the axis
+ * at (x, z), the tallest reaching `yTop` and the others stepping down (so the top is a ragged tuft,
+ * never a bare spike: every core must end below the first of these).
+ */
+export function pineLeader(list, r, x, z, yTop, size, cc, n) {
+  for (let q = 0; q < n; q++) {
+    const a = r.range(0, Math.PI * 2);
+    const sz = size * (q === 0 ? r.range(0.85, 1) : r.range(0.55, 0.85));
+    const y = yTop - sz * 0.62 - (q === 0 ? 0 : r.range(0.15, 0.55) * size);
+    const f = new THREE.Vector3(Math.cos(a) * 0.8, r.range(0.28, 0.6), Math.sin(a) * 0.8).normalize();
+    card(list, [x + Math.cos(a) * size * 0.1, y, z + Math.sin(a) * size * 0.1], f, r.range(0, 6.28), sz, sz * r.range(1, 1.3), cc, LEAF_CELLS.pine, 0);
+  }
+}
+
 export const randDir = (r) => {
   const u = r.next() * 2 - 1, a = r.next() * Math.PI * 2, s = Math.sqrt(1 - u * u);
   return new THREE.Vector3(Math.cos(a) * s, u, Math.sin(a) * s);
@@ -255,35 +270,37 @@ function pineCrownCin(B, R, r, layers, k) {
   const col = r.pick(PINE);
   const cards = cardList();
   const cards2 = cardList();
-  B.cyl('std', 0, 60, 0, R * 0.2, top - 62, shadeHex(col, -0.5), 8, 0.04, null, { surf: [DET.bark, 0.95, 0], noAO: true });
-  const nW = layers * 2 + 5;
+  // (the core ends well below the top, inside the boughs: the top is the leader's needles)
+  const lean = r.range(-0.05, 0.05) * top, leanA = r.range(0, 6.28);
+  const lx = Math.cos(leanA) * lean, lz = Math.sin(leanA) * lean;
+  B.cyl('std', 0, 60, 0, R * 0.2, (top - 60) * 0.72, shadeHex(col, -0.5), 8, 0.1, null, { surf: [DET.bark, 0.95, 0], noAO: true });
+  const nW = layers * 2 + 3;
+  const dens = r.range(0.8, 1.15);
   for (let m = 0; m < nW; m++) {
     const t = m / (nW - 1);
-    const y = 72 + t * (top - 100);
-    const rad = R * (k - t * 0.92);
-    const nb = Math.max(5, Math.round(10 - t * 5));
+    const y = 72 + t * (top - 110) * r.range(0.97, 1.03);
+    const rad = R * (k - t * 0.92) * r.range(0.88, 1.1);
+    const bx = lx * t * t, bz = lz * t * t;
+    const nb = Math.max(4, Math.round((10 - t * 5) * dens));
     const a0 = r.range(0, 6.28);
     for (let q = 0; q < nb; q++) {
       const a = a0 + (q / nb) * Math.PI * 2 + r.range(-0.22, 0.22);
       const len = rad * r.range(0.8, 1.05);
       const droop = -0.16 - t * 0.05 - r.range(0, 0.08);
       const dir = new THREE.Vector3(Math.cos(a), droop, Math.sin(a)).normalize();
-      limb(B, 0, y, 0, dir, len, 1.3 - t * 0.7, '#3a2c20', 0.2, 5);
+      limb(B, bx, y, bz, dir, len, 1.3 - t * 0.7, '#3a2c20', 0.2, 5);
       for (let c = 0; c < 3; c++) {
         const s = 0.42 + c * 0.27;
         const droopY = -len * s * 0.06 * (0.5 + c * 0.7);
-        const p = [dir.x * len * s, y + dir.y * len * s + droopY, dir.z * len * s];
+        const p = [bx + dir.x * len * s, y + dir.y * len * s + droopY, bz + dir.z * len * s];
         const f = new THREE.Vector3(dir.x * 0.4, 0.85, dir.z * 0.4).normalize();
         const w = rad * (0.62 - c * 0.13) * r.range(0.9, 1.15);
-        card(c % 2 ? cards : cards2, p, f, a + Math.PI / 2 + r.range(-0.4, 0.4), w, w * r.range(0.85, 1.15), [0, y + 14, 0], LEAF_CELLS.pine, -0.12);
+        card(c % 2 ? cards : cards2, p, f, a + Math.PI / 2 + r.range(-0.4, 0.4), w, w * r.range(0.85, 1.15), [bx, y + 14, bz], LEAF_CELLS.pine, -0.12);
       }
     }
   }
-  // the leader: a tuft of upright needles
-  for (let q = 0; q < 6; q++) {
-    const a = q * 1.05 + r.range(-0.2, 0.2);
-    card(cards, [Math.cos(a) * 3, top - 26, Math.sin(a) * 3], new THREE.Vector3(Math.cos(a) * 0.45, 0.85, Math.sin(a) * 0.45).normalize(), a, 16, 34, [0, top - 40, 0], LEAF_CELLS.pine, 0);
-  }
+  // the leader: a soft, uneven tuft of upright needle cards (leaning with the crown)
+  pineLeader(cards, r, lx, lz, top + r.range(-8, 6), 40, [lx, top - 60, lz], 6);
   B.add('leaves', listGeo(cards), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });
   B.add('leaves', listGeo(cards2), [0, 0, 0], [1, 1, 1], null, shadeHex(col, 0.12), { noAO: true });
 }
@@ -294,21 +311,28 @@ function pineCrown(B, R, r, layers, k) {
   const top = 200 + R * 1.4;
   const col = r.pick(PINE);
   // a slim dark core behind the boughs (not a cone the cards sit on)
-  B.cyl('std', 0, 60, 0, R * 0.32, top - 80, shadeHex(col, -0.6), 7, 0.05, null, { surf: [0, 0.95, 0], noAO: true });
-  for (let m = 0; m < layers; m++) {
-    const t = m / (layers - 1);
-    const y = 70 + t * (top - 95);
-    const rad = R * (k - t * 0.9);
-    const n = DETAIL.level >= 2 ? Math.max(6, Math.round(14 - t * 7)) : Math.max(5, Math.round(12 - t * 6));
+  // (it ends well below the top, inside the boughs: the top is the leader's needles)
+  const lean = r.range(-0.05, 0.05) * top, leanA = r.range(0, 6.28);
+  const lx = Math.cos(leanA) * lean, lz = Math.sin(leanA) * lean;
+  B.cyl('std', 0, 60, 0, R * 0.26, (top - 60) * 0.7, shadeHex(col, -0.6), 7, 0.1, null, { surf: [0, 0.95, 0], noAO: true });
+  const dens = r.range(0.8, 1.15);
+  for (let m = 0; m < layers - 1; m++) {
+    const t = m / (layers - 2);
+    const y = 70 + t * (top - 130) * r.range(0.97, 1.03);
+    const rad = R * (k - t * 0.9) * r.range(0.88, 1.1);
+    const n = Math.max(4, Math.round((DETAIL.level >= 2 ? Math.max(6, 14 - t * 7) : Math.max(5, 12 - t * 6)) * dens));
+    const bx = lx * t * t, bz = lz * t * t;
     for (let q = 0; q < n; q++) {
       const a = (q / n) * Math.PI * 2 + r.range(-0.25, 0.25) + m * 0.7;
       const out = rad * r.range(0.45, 0.7);
-      const c = [Math.cos(a) * out, y - rad * 0.15, Math.sin(a) * out];
+      const c = [bx + Math.cos(a) * out, y - rad * 0.15, bz + Math.sin(a) * out];
       // boughs droop: the card faces up and out
       const f = new THREE.Vector3(Math.cos(a) * 0.55, 0.8, Math.sin(a) * 0.55).normalize();
-      card(cards, c, f, a + Math.PI / 2 + r.range(-0.3, 0.3), rad * 1.15, rad * 0.8, [0, y + 10, 0], LEAF_CELLS.pine, -0.1);
+      card(cards, c, f, a + Math.PI / 2 + r.range(-0.3, 0.3), rad * 1.15, rad * 0.8, [bx, y + 10, bz], LEAF_CELLS.pine, -0.1);
     }
   }
+  // the leader replaces the top whorl: a soft, uneven tuft of upright needle cards
+  pineLeader(cards, r, lx, lz, top + r.range(-8, 6), 46, [lx, top - 50, lz], 5);
   B.add('leaves', listGeo(cards), [0, 0, 0], [1, 1, 1], null, col, { noAO: true });
 }
 

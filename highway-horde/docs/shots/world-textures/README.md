@@ -48,6 +48,7 @@ is not reachable from the build environment, so nothing came from it.)
 | `sandstone-supply-day`, `sandstone-objective-day` / `-night` | crates in rough lumber instead of the town's blue shutter boards, drums |
 | `hospital-parking-day` | the parking lot's dressing |
 | `vehicles-day` | car paint (subtle: the paint material keeps its own clear coat) |
+| `pines-edge-day`, `pines-objective-day`, `pines-treeline-day` / `-night`, `pines-edge-low` | the pine fix: no black core spike over the crowns, a soft uneven leader, leaning trees of different density (`treeline` is an elevated view over the forest; `edge` the tree line close up; `low` the cheap tier) |
 | `props-boxes-cones`, `props-drums-crates`, `props-street`, `props-military`, `props-nature` | the prop galleries: models and new surfaces side by side |
 
 ## Budget, performance and load time
