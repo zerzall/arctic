@@ -1630,7 +1630,8 @@ world-dress.js  set dressing (§7.5.2): the props of shared/dress.js as merged m
                 -apoc.js, helpers dress-kit.js, text atlas dress-atlas.js; the kinds drawn by the
                 photo-scanned models in dress-models.js
 props3d.js      the photo-scanned prop models (§7.5.2): models/props.bin + props.json, two LODs per
-                model drawn instanced, texture layers in two arrays decoded by the texture worker
+                model, every instance in one BatchedMesh, texture layers in two arrays decoded by the
+                texture worker
 world-veh-extras.js  vehicle jobs (taxi, police, ambulance, delivery, news, tow, contractor,
                 fire engine), lettering, damage (open hood, flat tyre, dents)
 campaign3d.js   the Campaign (built whenever the map has `campaign`; ctx.mode 'campaign'): an
@@ -2129,9 +2130,10 @@ The photo-scanned **prop models** (`props3d.js`, `dress-models.js`; 22 Poly Have
 by `scripts/fetch-models.js`: three steel drums, two wooden crates, a military crate, a cardboard box, a
 propane cylinder, a jerrycan, two trash cans, a hydrant, a bench, a generator, a tyre, a trash bag, a picnic
 table, a garden chair, a stump, a fallen trunk, a boulder, a wheelchair) replace the procedural models of
-those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles) drawn as two
-InstancedMeshes per model (LOD 0 within 420 / 620 / 900 units on high / ultra / cinematic, LOD 1 to 2200 /
-2800 / 3200, none past it; refilled from the camera's position every 24 units or 30 frames), one patched
+those dressing kinds on 'high' and up: two LODs (≈ 600–4000 and 100–600 triangles), every instance of every
+model in ONE BatchedMesh (one draw call with WEBGL_multi_draw; each instance shows LOD 0 within 420 / 620 /
+900 units on high / ultra / cinematic, LOD 1 to 2200 / 2800 / 3200, nothing past it, switched from the
+camera's position every 24 units or 30 frames; no per-instance frustum walk), one patched
 MeshStandardMaterial for all (layer per vertex, tangent-free normal mapping from the uv derivatives, AO /
 roughness / metalness maps), a per-instance tint (± 14 % brightness, a little warmth) and random turns so
 copies never look cloned; a kind's builder may decline a variant the models do not cover (wire baskets,

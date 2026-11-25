@@ -3,9 +3,9 @@
 // cans, a fire hydrant, a park bench, a generator, tyres, trash bags, a picnic table, a garden chair, a
 // stump, a fallen trunk, a boulder, a wheelchair.
 //
-// The geometry (models/props.bin + props.json: two levels of detail per model) is drawn instanced — two
-// InstancedMeshes per model (LOD 0 near, LOD 1 farther), refilled from the camera's distance every few
-// frames, none past FAR. Every model's maps are a layer of two texture arrays (A: sRGB albedo + AO, B:
+// The geometry (models/props.bin + props.json: two levels of detail per model) is drawn as one
+// BatchedMesh — every instance shows LOD 0 near, LOD 1 farther, nothing past FAR (switched from the
+// camera's distance every few frames), culled per instance: one draw call. Every model's maps are a layer of two texture arrays (A: sRGB albedo + AO, B:
 // normal xy + roughness + metalness) decoded and packed by the texture worker (tex-worker.js) off the
 // main thread, uploaded once with mipmaps; one material (a patched MeshStandardMaterial: the layer per
 // vertex, a normal map without tangents) draws them all, tinted per instance.
@@ -241,20 +241,29 @@ const _s = new THREE.Vector3();
 const _c = new THREE.Color();
 
 /**
- * The prop models of one world: placements collected while the set dressing builds, drawn instanced.
+ * The prop models of one world: placements collected while the set dressing builds, drawn as ONE
+ * BatchedMesh (every model's two levels are geometries of it; each instance shows LOD 0, LOD 1 or
+ * nothing by its distance): a single draw call with
+ * WEBGL_multi_draw.
  * @param {object} ctx renderer ctx
  * @param {{ root: THREE.Object3D, tier: string }} deps
  */
 export function createPropModels(ctx, deps) {
   const { root } = deps;
   let tier = deps.tier;
-  /** name → { mats: number[] (16 per instance), cols: number[] (3 per instance), n } */
-  const sets = new Map();
-  /** name → [lod0, lod1] InstancedMesh */
-  const meshes = new Map();
+  /** placements: { name, m: Float32Array(16), c: [r, g, b] } */
+  let list = [];
+  let bm = null;
+  /** instance → { id, name, x, z, lod } */
+  let insts = [];
+  let geoIds = null;
   let material = null;
   let lastX = Infinity, lastZ = Infinity, frame = 0;
-  let instances = 0;
+
+  function drop() {
+    if (bm) { root.remove(bm); bm.dispose(); }
+    bm = null; insts = []; geoIds = null;
+  }
 
   return {
     /** The library is in and this tier draws models: world-dress may place them. */
@@ -264,90 +273,75 @@ export function createPropModels(ctx, deps) {
     /** Size (metres: x, y, z) of a model. */
     size(name) { return lib.man.models[name].size; },
     /** Start over (the dressing rebuilds). */
-    clear() {
-      sets.clear();
-      instances = 0;
-      for (const ms of meshes.values()) for (const m of ms) { root.remove(m); m.dispose(); }
-      meshes.clear();
-    },
+    clear() { list = []; drop(); },
     /**
      * One instance: model `name` at world (x, y, z) with euler rotation `rot` ([x, y, z], radians, order
-     * YXZ: the heading first), scale `s` (units per metre × a factor, a number or [x, y, z]) and a tint
-     * (linear colour multiplier, default white).
+     * YXZ: the heading first), scale `s` (a number or [x, y, z]) and a tint (linear colour multiplier).
      */
     add(name, x, y, z, rot, s, tint) {
-      let set = sets.get(name);
-      if (!set) { set = { mats: [], cols: [], n: 0 }; sets.set(name, set); }
       _e.set(rot[0] || 0, rot[1] || 0, rot[2] || 0, 'YXZ');
       _q.setFromEuler(_e);
       if (typeof s === 'number') _s.set(s, s, s); else _s.set(s[0], s[1], s[2]);
       _m.compose(_p.set(x, y, z), _q, _s);
-      for (let k = 0; k < 16; k++) set.mats.push(_m.elements[k]);
-      if (tint) set.cols.push(tint[0], tint[1], tint[2]); else set.cols.push(1, 1, 1);
-      set.n++;
-      instances++;
+      list.push({ name, m: Float32Array.from(_m.elements), c: tint ? [tint[0], tint[1], tint[2]] : [1, 1, 1] });
     },
-    /** Make the meshes for what was placed. */
+    /** Make the batch for what was placed. */
     finish() {
-      if (!lib.geos) return;
+      drop();
+      if (!lib.geos || !list.length) return;
       if (!material) material = propMaterial();
-      for (const [name, set] of sets) {
-        const geos = lib.geos[name];
-        if (!geos) continue;
-        const pair = geos.map((g, li) => {
-          const m = new THREE.InstancedMesh(g, material, set.n);
-          m.count = 0;
-          m.name = `props-${name}-lod${li}`;
-          m.frustumCulled = false;
-          m.castShadow = false;
-          m.receiveShadow = true;
-          m.matrixAutoUpdate = false;
-          m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-          m.setColorAt(0, _c.setRGB(1, 1, 1));
-          root.add(m);
-          return m;
-        });
-        meshes.set(name, pair);
+      const used = [...new Set(list.map((p) => p.name))].filter((n) => lib.geos[n]);
+      let nv = 0, ni = 0;
+      for (const n of used) for (const g of lib.geos[n]) { nv += g.attributes.position.count; ni += g.index.count; }
+      bm = new THREE.BatchedMesh(list.length, nv, ni, material);
+      bm.name = 'props';
+      bm.frustumCulled = false;
+      // (no per-instance frustum test: three would walk every instance every frame; the levels' switch is the culling)
+      bm.perObjectFrustumCulled = false;
+      bm.sortObjects = false;
+      bm.castShadow = false;
+      bm.receiveShadow = true;
+      geoIds = {};
+      for (const n of used) geoIds[n] = lib.geos[n].map((g) => bm.addGeometry(g));
+      for (const p of list) {
+        const ids = geoIds[p.name];
+        if (!ids) continue;
+        const id = bm.addInstance(ids[1]);
+        _m.fromArray(p.m);
+        bm.setMatrixAt(id, _m);
+        bm.setColorAt(id, _c.setRGB(p.c[0], p.c[1], p.c[2]));
+        bm.setVisibleAt(id, false);
+        insts.push({ id, name: p.name, x: p.m[12], z: p.m[14], lod: -1 });
       }
+      root.add(bm);
       lastX = Infinity;
     },
-    /** Assign the instances to their levels by the camera's distance (every few frames or after a move). */
+    /** Each instance's level by the camera's distance (after a move of 24 units, or every 30 frames). */
     update(camera) {
-      if (!meshes.size) return;
+      if (!bm) return;
       frame++;
       const cx = camera.position.x, cz = camera.position.z;
       if (Math.hypot(cx - lastX, cz - lastZ) < 24 && frame % 30) return;
       lastX = cx; lastZ = cz;
       const [near, far] = tierRow(PROP_LOD, tier);
       const n2 = near * near, f2 = far * far;
-      for (const [name, set] of sets) {
-        const pair = meshes.get(name);
-        if (!pair) continue;
-        const [m0, m1] = pair;
-        const a0 = m0.instanceMatrix.array, a1 = m1.instanceMatrix.array;
-        let k0 = 0, k1 = 0;
-        for (let i = 0; i < set.n; i++) {
-          const dx = set.mats[i * 16 + 12] - cx, dz = set.mats[i * 16 + 14] - cz;
-          const d2 = dx * dx + dz * dz;
-          if (d2 > f2) continue;
-          const near0 = d2 < n2;
-          const a = near0 ? a0 : a1, k = near0 ? k0++ : k1++;
-          for (let j = 0; j < 16; j++) a[k * 16 + j] = set.mats[i * 16 + j];
-          _c.setRGB(set.cols[i * 3], set.cols[i * 3 + 1], set.cols[i * 3 + 2]);
-          (near0 ? m0 : m1).setColorAt(k, _c);
+      for (const it of insts) {
+        const dx = it.x - cx, dz = it.z - cz, d2 = dx * dx + dz * dz;
+        const lod = d2 < n2 ? 0 : d2 < f2 ? 1 : -1;
+        if (lod === it.lod) continue;
+        if (lod < 0) bm.setVisibleAt(it.id, false);
+        else {
+          if (it.lod < 0) bm.setVisibleAt(it.id, true);
+          bm.setGeometryIdAt(it.id, geoIds[it.name][lod]);
         }
-        m0.count = k0; m1.count = k1;
-        m0.visible = k0 > 0; m1.visible = k1 > 0;
-        m0.instanceMatrix.needsUpdate = true; m1.instanceMatrix.needsUpdate = true;
-        if (m0.instanceColor) m0.instanceColor.needsUpdate = true;
-        if (m1.instanceColor) m1.instanceColor.needsUpdate = true;
+        it.lod = lod;
       }
     },
     setQuality(q) { tier = q; lastX = Infinity; },
     get stats() {
-      let tris = 0, draws = 0;
-      for (const [name, pair] of meshes) pair.forEach((m, li) => { if (m.visible && m.count) { draws++; tris += m.count * lib.man.models[name].lods[li].tris; } });
-      return { instances, models: sets.size, draws, triangles: tris, ...propModelsState() };
+      let tris = 0, shown = 0;
+      for (const it of insts) if (it.lod >= 0) { shown++; tris += lib.man.models[it.name].lods[it.lod].tris; }
+      return { instances: list.length, shown, models: geoIds ? Object.keys(geoIds).length : 0, draws: shown ? 1 : 0, triangles: tris, ...propModelsState() };
     },
     dispose() {
       this.clear();
