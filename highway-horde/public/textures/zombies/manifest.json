@@ -1,0 +1,629 @@
+{
+ "size": 2048,
+ "sets": [
+  {
+   "name": "body-fresh",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-fresh-albedo.png",
+     "size": 2048,
+     "bytes": 2642743
+    },
+    "normal": {
+     "file": "body-fresh-normal.png",
+     "size": 2048,
+     "bytes": 3298485
+    },
+    "pack": {
+     "file": "body-fresh-pack.png",
+     "size": 1024,
+     "bytes": 1096089
+    }
+   },
+   "hashes": {
+    "albedo": "71af3fdd07bbc5e8",
+    "normal": "a3bb55491ba944b7",
+    "pack": "81d106a5c11cf791"
+   }
+  },
+  {
+   "name": "body-weeks",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-weeks-albedo.png",
+     "size": 2048,
+     "bytes": 2706222
+    },
+    "normal": {
+     "file": "body-weeks-normal.png",
+     "size": 2048,
+     "bytes": 3396677
+    },
+    "pack": {
+     "file": "body-weeks-pack.png",
+     "size": 1024,
+     "bytes": 1142149
+    }
+   },
+   "hashes": {
+    "albedo": "348ee76f7904c746",
+    "normal": "ae29a5356b889044",
+    "pack": "8584391eb0e17daa"
+   }
+  },
+  {
+   "name": "body-months",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-months-albedo.png",
+     "size": 2048,
+     "bytes": 2846233
+    },
+    "normal": {
+     "file": "body-months-normal.png",
+     "size": 2048,
+     "bytes": 3577748
+    },
+    "pack": {
+     "file": "body-months-pack.png",
+     "size": 1024,
+     "bytes": 1254124
+    }
+   },
+   "hashes": {
+    "albedo": "27b232807ac3b969",
+    "normal": "4b7aebd9d0d5a28d",
+    "pack": "87f48e44117894e3"
+   }
+  },
+  {
+   "name": "body-bloater",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-bloater-albedo.png",
+     "size": 2048,
+     "bytes": 2703338
+    },
+    "normal": {
+     "file": "body-bloater-normal.png",
+     "size": 2048,
+     "bytes": 3372513
+    },
+    "pack": {
+     "file": "body-bloater-pack.png",
+     "size": 1024,
+     "bytes": 1124061
+    }
+   },
+   "hashes": {
+    "albedo": "c26e1437ef8dcb62",
+    "normal": "9c44e54e88322e4f",
+    "pack": "75e5882a4b1222e2"
+   }
+  },
+  {
+   "name": "body-spitter",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-spitter-albedo.png",
+     "size": 2048,
+     "bytes": 2688713
+    },
+    "normal": {
+     "file": "body-spitter-normal.png",
+     "size": 2048,
+     "bytes": 3375010
+    },
+    "pack": {
+     "file": "body-spitter-pack.png",
+     "size": 1024,
+     "bytes": 1159840
+    }
+   },
+   "hashes": {
+    "albedo": "1f63260d13cf2741",
+    "normal": "a092ecab9cfa4ac5",
+    "pack": "395067c89928b1e4"
+   }
+  },
+  {
+   "name": "body-brute",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-brute-albedo.png",
+     "size": 2048,
+     "bytes": 2716810
+    },
+    "normal": {
+     "file": "body-brute-normal.png",
+     "size": 2048,
+     "bytes": 3917882
+    },
+    "pack": {
+     "file": "body-brute-pack.png",
+     "size": 1024,
+     "bytes": 1267102
+    }
+   },
+   "hashes": {
+    "albedo": "0821e12294bea562",
+    "normal": "01ff8b81ca81adf0",
+    "pack": "3bd13c7a1c7352c1"
+   }
+  },
+  {
+   "name": "body-screamer",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-screamer-albedo.png",
+     "size": 2048,
+     "bytes": 2780617
+    },
+    "normal": {
+     "file": "body-screamer-normal.png",
+     "size": 2048,
+     "bytes": 3361264
+    },
+    "pack": {
+     "file": "body-screamer-pack.png",
+     "size": 1024,
+     "bytes": 1127310
+    }
+   },
+   "hashes": {
+    "albedo": "7029caddb6e7c424",
+    "normal": "a8ba344c409e7f75",
+    "pack": "92438895cb3883bc"
+   }
+  },
+  {
+   "name": "body-boss",
+   "kind": "body",
+   "files": {
+    "albedo": {
+     "file": "body-boss-albedo.png",
+     "size": 2048,
+     "bytes": 2693089
+    },
+    "normal": {
+     "file": "body-boss-normal.png",
+     "size": 2048,
+     "bytes": 3958064
+    },
+    "pack": {
+     "file": "body-boss-pack.png",
+     "size": 1024,
+     "bytes": 1280433
+    }
+   },
+   "hashes": {
+    "albedo": "dee54ed6da14c93f",
+    "normal": "bed58f390de9f168",
+    "pack": "7542a37a410c46c6"
+   }
+  },
+  {
+   "name": "skin-fresh",
+   "kind": "skin",
+   "files": {
+    "albedo": {
+     "file": "skin-fresh-albedo.png",
+     "size": 1024,
+     "bytes": 1249083
+    },
+    "normal": {
+     "file": "skin-fresh-normal.png",
+     "size": 1024,
+     "bytes": 1757519
+    },
+    "pack": {
+     "file": "skin-fresh-pack.png",
+     "size": 1024,
+     "bytes": 990334
+    }
+   },
+   "hashes": {
+    "albedo": "0462241a420063e9",
+    "normal": "edd379404c6869b8",
+    "pack": "8a305ca422b558b5"
+   }
+  },
+  {
+   "name": "skin-weeks",
+   "kind": "skin",
+   "files": {
+    "albedo": {
+     "file": "skin-weeks-albedo.png",
+     "size": 1024,
+     "bytes": 1353014
+    },
+    "normal": {
+     "file": "skin-weeks-normal.png",
+     "size": 1024,
+     "bytes": 1851510
+    },
+    "pack": {
+     "file": "skin-weeks-pack.png",
+     "size": 1024,
+     "bytes": 1175062
+    }
+   },
+   "hashes": {
+    "albedo": "f43b0982fa08140a",
+    "normal": "34bf7c2ddc32e187",
+    "pack": "90de57ed68d7726e"
+   }
+  },
+  {
+   "name": "skin-months",
+   "kind": "skin",
+   "files": {
+    "albedo": {
+     "file": "skin-months-albedo.png",
+     "size": 1024,
+     "bytes": 1168514
+    },
+    "normal": {
+     "file": "skin-months-normal.png",
+     "size": 1024,
+     "bytes": 1869943
+    },
+    "pack": {
+     "file": "skin-months-pack.png",
+     "size": 1024,
+     "bytes": 1130513
+    }
+   },
+   "hashes": {
+    "albedo": "4d4d3d3208ff2eff",
+    "normal": "37899c752bf583ca",
+    "pack": "17f95635b8240bbd"
+   }
+  },
+  {
+   "name": "cloth-denim",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-denim-albedo.png",
+     "size": 1024,
+     "bytes": 1025577
+    },
+    "normal": {
+     "file": "cloth-denim-normal.png",
+     "size": 1024,
+     "bytes": 807983
+    },
+    "pack": {
+     "file": "cloth-denim-pack.png",
+     "size": 1024,
+     "bytes": 736888
+    }
+   },
+   "hashes": {
+    "albedo": "e0b5448020b60cef",
+    "normal": "0450853497978de3",
+    "pack": "bfb0ce78e2f0d930"
+   }
+  },
+  {
+   "name": "cloth-flannel",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-flannel-albedo.png",
+     "size": 1024,
+     "bytes": 1843304
+    },
+    "normal": {
+     "file": "cloth-flannel-normal.png",
+     "size": 1024,
+     "bytes": 1539878
+    },
+    "pack": {
+     "file": "cloth-flannel-pack.png",
+     "size": 1024,
+     "bytes": 1451648
+    }
+   },
+   "hashes": {
+    "albedo": "4c8912c3e0553ded",
+    "normal": "55e78c8ce0308fee",
+    "pack": "697b6908dbfd4e8a"
+   }
+  },
+  {
+   "name": "cloth-tee",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-tee-albedo.png",
+     "size": 1024,
+     "bytes": 378596
+    },
+    "normal": {
+     "file": "cloth-tee-normal.png",
+     "size": 1024,
+     "bytes": 621448
+    },
+    "pack": {
+     "file": "cloth-tee-pack.png",
+     "size": 1024,
+     "bytes": 665813
+    }
+   },
+   "hashes": {
+    "albedo": "9c0d0920e9f4c023",
+    "normal": "6abd6a380d70bcc5",
+    "pack": "5c1513bd0f92db11"
+   }
+  },
+  {
+   "name": "cloth-gown",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-gown-albedo.png",
+     "size": 1024,
+     "bytes": 522603
+    },
+    "normal": {
+     "file": "cloth-gown-normal.png",
+     "size": 1024,
+     "bytes": 725017
+    },
+    "pack": {
+     "file": "cloth-gown-pack.png",
+     "size": 1024,
+     "bytes": 918538
+    }
+   },
+   "hashes": {
+    "albedo": "7b85a7f132b47a6e",
+    "normal": "f4ae3625124264cb",
+    "pack": "6a46e0c57f39379e"
+   }
+  },
+  {
+   "name": "cloth-police",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-police-albedo.png",
+     "size": 1024,
+     "bytes": 391114
+    },
+    "normal": {
+     "file": "cloth-police-normal.png",
+     "size": 1024,
+     "bytes": 656496
+    },
+    "pack": {
+     "file": "cloth-police-pack.png",
+     "size": 1024,
+     "bytes": 669541
+    }
+   },
+   "hashes": {
+    "albedo": "7027ad0721f69c30",
+    "normal": "0630e4d0372b8468",
+    "pack": "352b593d097bf006"
+   }
+  },
+  {
+   "name": "cloth-military",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-military-albedo.png",
+     "size": 1024,
+     "bytes": 1231632
+    },
+    "normal": {
+     "file": "cloth-military-normal.png",
+     "size": 1024,
+     "bytes": 702607
+    },
+    "pack": {
+     "file": "cloth-military-pack.png",
+     "size": 1024,
+     "bytes": 967279
+    }
+   },
+   "hashes": {
+    "albedo": "c083b5383aad5c8a",
+    "normal": "4b5c1bcde43d874c",
+    "pack": "6b5ccd9f72d4ac98"
+   }
+  },
+  {
+   "name": "cloth-work",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-work-albedo.png",
+     "size": 1024,
+     "bytes": 1002670
+    },
+    "normal": {
+     "file": "cloth-work-normal.png",
+     "size": 1024,
+     "bytes": 918879
+    },
+    "pack": {
+     "file": "cloth-work-pack.png",
+     "size": 1024,
+     "bytes": 784945
+    }
+   },
+   "hashes": {
+    "albedo": "ab73841c3e052696",
+    "normal": "801ef77e8ca73515",
+    "pack": "e4f99f145f3c6aa7"
+   }
+  },
+  {
+   "name": "cloth-shirt",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-shirt-albedo.png",
+     "size": 1024,
+     "bytes": 284391
+    },
+    "normal": {
+     "file": "cloth-shirt-normal.png",
+     "size": 1024,
+     "bytes": 503874
+    },
+    "pack": {
+     "file": "cloth-shirt-pack.png",
+     "size": 1024,
+     "bytes": 566714
+    }
+   },
+   "hashes": {
+    "albedo": "85a8a64b489389bf",
+    "normal": "9f12b1b7f38566ba",
+    "pack": "6c7a2b274cb459de"
+   }
+  },
+  {
+   "name": "cloth-suit",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-suit-albedo.png",
+     "size": 1024,
+     "bytes": 777068
+    },
+    "normal": {
+     "file": "cloth-suit-normal.png",
+     "size": 1024,
+     "bytes": 769058
+    },
+    "pack": {
+     "file": "cloth-suit-pack.png",
+     "size": 1024,
+     "bytes": 810525
+    }
+   },
+   "hashes": {
+    "albedo": "877a5b16e4c418f6",
+    "normal": "491705f542885f6b",
+    "pack": "894f40fb67596fce"
+   }
+  },
+  {
+   "name": "cloth-hoodie",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-hoodie-albedo.png",
+     "size": 1024,
+     "bytes": 548432
+    },
+    "normal": {
+     "file": "cloth-hoodie-normal.png",
+     "size": 1024,
+     "bytes": 700695
+    },
+    "pack": {
+     "file": "cloth-hoodie-pack.png",
+     "size": 1024,
+     "bytes": 695253
+    }
+   },
+   "hashes": {
+    "albedo": "fdf412bc7b4dd92a",
+    "normal": "2ff9cd0089cf34be",
+    "pack": "389989b18826d20b"
+   }
+  },
+  {
+   "name": "cloth-dress",
+   "kind": "cloth",
+   "files": {
+    "albedo": {
+     "file": "cloth-dress-albedo.png",
+     "size": 1024,
+     "bytes": 239678
+    },
+    "normal": {
+     "file": "cloth-dress-normal.png",
+     "size": 1024,
+     "bytes": 520810
+    },
+    "pack": {
+     "file": "cloth-dress-pack.png",
+     "size": 1024,
+     "bytes": 554361
+    }
+   },
+   "hashes": {
+    "albedo": "532ea5a9d8bd4322",
+    "normal": "3dba8a9068761358",
+    "pack": "3e3925b826534d45"
+   }
+  },
+  {
+   "name": "wounds",
+   "kind": "wound",
+   "files": {
+    "albedo": {
+     "file": "wounds-albedo.png",
+     "size": 1024,
+     "bytes": 500111
+    },
+    "normal": {
+     "file": "wounds-normal.png",
+     "size": 1024,
+     "bytes": 235748
+    },
+    "pack": {
+     "file": "wounds-pack.png",
+     "size": 1024,
+     "bytes": 261221
+    }
+   },
+   "hashes": {
+    "albedo": "3e31ad01a21c4672",
+    "normal": "d38d38e1ee9064c9",
+    "pack": "03d9d5f830b254c5"
+   }
+  },
+  {
+   "name": "grime",
+   "kind": "grime",
+   "files": {
+    "albedo": {
+     "file": "grime-albedo.png",
+     "size": 1024,
+     "bytes": 876289
+    },
+    "normal": {
+     "file": "grime-normal.png",
+     "size": 1024,
+     "bytes": 1371665
+    },
+    "pack": {
+     "file": "grime-pack.png",
+     "size": 1024,
+     "bytes": 1119602
+    }
+   },
+   "hashes": {
+    "albedo": "03e871443fea4363",
+    "normal": "5b60020f6dcedec6",
+    "pack": "f9a4c5c7f01dd919"
+   }
+  }
+ ]
+}

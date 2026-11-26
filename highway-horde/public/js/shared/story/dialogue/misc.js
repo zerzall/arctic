@@ -1,0 +1,266 @@
+// Everything that is not a mission or a hideout topic tree: campfire banter, station flavour,
+// pre-mission pep talks, retry quips, loading tips, the title tagline and the credits.
+// Tokens allowed in any text: {day} (world day), {crew} (crew name), {scrap} (stash scrap).
+
+const b = (id, a, x, opts = {}) => ({ id, lines: [{ who: a[0], text: a[1] }, { who: x[0], text: x[1] }], ...opts });
+
+// ---- campfire banter: two-liners. The campfire picks a pair whose speakers are both in the hideout
+// and whose `when` holds (done = completed missions and side jobs, flags = world flags).
+export const BANTER = [
+  b('b01', ['deke', "This soup is exactly the temperature of a lukewarm apology."], ['roz', "Then eat it like you mean it."]),
+  b('b02', ['june', "Ozzy, what's a megahertz?"], ['ozzy', "It's how many times per second the sky goes ping. Roughly. Metaphorically. Sort of."]),
+  b('b03', ['mara', "You've been staring at that wrench for an hour."], ['deke', "It's staring back."]),
+  b('b04', ['priya', "Your map has the river on the wrong side."], ['ozzy', "It's the river's fault."], { when: { done: ['m3_1'] } }),
+  b('b05', ['roz', "You eating that?"], ['dutch', "It's invoiced."], { when: { done: ['sj_hauler'] } }),
+  b('b06', ['quill', "I have a rumor about your truck."], ['deke', "Don't."], { when: { done: ['sj_diner'] } }),
+  b('b07', ['june', "Miss Mara, if you were a bottle cap, what kind would you be?"], ['mara', "The kind at the bottom of the drawer."]),
+  b('b08', ['danny', "Sarge, permission to say something?"], ['okafor', "Denied."], { when: { done: ['m4_2'] } }),
+  b('b09', ['wendell', "Ever had a dog, June?"], ['june', "I had a goldfish."], { when: { done: ['sj_cargo'] } }),
+  b('b10', ['deke', "Where's next on the map?"], ['priya', "Somewhere with fewer bridges."], { when: { done: ['m3_1'] } }),
+  b('b11', ['ozzy', "Do you think the Warden gets tired?"], ['mara', "Yes. Say goodnight to her."], { when: { flags: ['warden_contact'] } }),
+  b('b12', ['roz', "Why the top hat, Mr. Quill?"], ['quill', "Gravitas, madam."], { when: { done: ['sj_diner'] } }),
+  b('b13', ['danny', "Mr. Dutch, what's it like driving a big rig?"], ['dutch', "Like herding a building. Don't tell anyone I love it."], { when: { done: ['m4_2', 'sj_hauler'] } }),
+  b('b14', ['okafor', "How many did you lose, Doc?"], ['mara', "I stopped counting."], { when: { done: ['m4_2'] } }),
+  b('b15', ['june', "Danny, do you have a mom?"], ['danny', "She once fought a raccoon for a sandwich."], { when: { done: ['m4_2'] } }),
+  b('b16', ['ozzy', "Deke, tell me about cars."], ['deke', "They go."], { when: { done: ['m1_2'] } }),
+  b('b17', ['june', "Miss Roz, the peaches are looking at me."], ['roz', "Then you eat them first."]),
+  b('b18', ['priya', "Do you ever stop looking for him?"], ['wendell', "No. Do you ever stop drawing where you've been?"], { when: { done: ['sj_cargo'] } }),
+  b('b19', ['okafor', "Sergeant Okafor requests seconds."], ['roz', "Sergeant Okafor requests a bigger plate."], { when: { done: ['m4_2'] } }),
+  b('b20', ['danny', "Ozzy, what's your favorite frequency?"], ['ozzy', "Seven-oh-seven-four. It sounds like a nice place to be lonely. It's hers."], { when: { done: ['m4_2'] } }),
+  b('b21', ['dutch', "You owe me for that hat, Quill."], ['quill', "I have never worn your hat."], { when: { done: ['sj_hauler'] } }),
+  b('b22', ['june', "Miss Mara, do the sad ones count too?"], ['mara', "The sad ones count the most."]),
+  b('b23', ['priya', "You keep patting your pocket, Deke."], ['deke', "It's nothing."], { when: { done: ['m3_1'] } }),
+  b('b24', ['deke', "I fixed your stove, Roz."], ['roz', "It wasn't broken."]),
+  b('b25', ['ozzy', "Danny, what does 'Ruiz' mean in army radio?"], ['danny', "It means the person you call when everyone else is busy."], { when: { done: ['m4_2'] } }),
+  b('b26', ['quill', "Anyone need a lucky compass?"], ['priya', "It points at your wagon."], { when: { done: ['m3_1', 'sj_diner'] } }),
+  b('b27', ['deke', "Want to blow the train whistle again, kid?"], ['june', "I already did. Twice. A bird fell over."], { when: { done: ['m4_1'] } }),
+  b('b28', ['mara', "You mapped Saint Mercy from my description?"], ['priya', "It has a lot of doors marked NO. I drew them all."], { when: { done: ['m3_1'] } }),
+  b('b29', ['ozzy', "June, want to say goodnight to the Warden?"], ['june', "Goodnight, Warden! She said it back! She said it FIRST!"], { when: { flags: ['warden_contact'] } }),
+  b('b30', ['okafor', "Mr. Harlan, your locomotive is on my parade ground."], ['deke', "It's a rail yard, Sergeant. The locomotive is the parade."], { when: { done: ['m4_2'] } }),
+];
+
+// ---- station flavour: what the hideout stations say when you step up. `{day}`, `{scrap}` tokens.
+export const STATIONS = {
+  board: {
+    name: 'Mission Board',
+    lines: [
+      "Pick a mission. Ozzy will pretend to be calm.",
+      "Pins in the map. Don't move the pins.",
+      "Radio's warm. Whenever you're ready.",
+      "The road is on the left. Side jobs are on the right: they pay, and nobody minds if you skip them.",
+      "Who's going? Everyone in the ready circle goes.",
+    ],
+  },
+  workbench: {
+    name: 'Workbench',
+    lines: [
+      "Scrap in, damage out. You have {scrap}.",
+      "Deke's rule: never upgrade a gun you don't trust. Trust it first.",
+      "Tier one is cheap. Tier five costs more than you've got. It's a good tier.",
+      "Bring it here broken, leave it better. That's the deal.",
+    ],
+  },
+  armory: {
+    name: 'Armory',
+    lines: [
+      "Three weapons. Choose like you mean it.",
+      "Long gun, short gun, and something for the big ones.",
+      "Take what you need. Leave what you don't. Ammo's counted.",
+      "Every rifle here has a name written inside. Try to bring them back.",
+    ],
+  },
+  infirmary: {
+    name: 'Infirmary',
+    lines: [
+      "Sit. Breathe. This won't take long, and I'll only be a little rude.",
+      "Mara's rule: no one leaves hurt. Perks reset once a chapter.",
+      "First aid is a conversation. You're supposed to answer.",
+      "Everyone gets patched. Even Dutch. Especially Dutch.",
+    ],
+  },
+  upgrades: {
+    name: 'Upgrade Board',
+    lines: [
+      "Priya drew this to scale. Everything is to scale.",
+      "Generator, watchtower, infirmary, armory, mast, garden, palisade. Pick one.",
+      "Every upgrade shows up in the yard. Look around after.",
+      "Supplies and points in. Geometry out.",
+    ],
+  },
+  bed: {
+    name: 'Bed',
+    prompt: ["Rest until morning? Day {day}", "Sleep on it? Day {day}", "Turn in for the night? Day {day}"],
+    morning: [
+      "Day {day}. The sun's up. The dead aren't in a hurry.",
+      "Day {day}. Coffee is a rumor. Roz says it's a rumor with eggs.",
+      "Day {day}. Somebody made the bed. It wasn't you. It was June.",
+      "Day {day}. Ozzy's already on the radio, saying good morning to a harbor.",
+    ],
+  },
+  range: {
+    name: 'Shooting Range',
+    lines: [
+      "Cans on a fence. Honest targets.",
+      "Shoot, watch the numbers, get better. It's the same as training a dog.",
+      "Walk backward while you shoot. It's a habit worth having.",
+      "No ammo is used up on the range. Only pride.",
+    ],
+  },
+  campfire: {
+    name: 'Campfire',
+    lines: [
+      "Sit. The fire won't bite. Roz might.",
+      "Somebody's telling a story. Listen for the punchline.",
+      "It's warm here. That's the whole point.",
+    ],
+  },
+};
+
+// ---- pre-mission pep talks (at the board / on the radio, right before the briefing) -------
+export const PEP = {
+  m1_1: [{ who: 'mara', text: "Sunrise is the finish line. Stay on your feet." }],
+  m1_2: [{ who: 'mara', text: "Two miles of cars and a gas station at the end. Check every car. Come back." }],
+  m2_1: [{ who: 'mara', text: "Anything that ends in 'cillin.' And come back with all your fingers." }],
+  m2_2: [{ who: 'mara', text: "My hospital. My doors. Stay close to me and don't touch the lollipops. Those are June's." }],
+  m3_1: [{ who: 'priya', text: "Don't stand next to the fat ones when they pop. I've learned this the hard way." }],
+  m3_2: [{ who: 'priya', text: "Hold the railing. Hold your breath. Hold my map. In that order." }],
+  m4_1: [{ who: 'deke', text: "Sixteen cylinders, kid. Sixteen. Try not to get between me and that engine." }],
+  m4_2: [{ who: 'mara', text: "Someone out there is saying 'Delta' every ten minutes. Let's answer in person." }],
+  m5_1: [{ who: 'priya', text: "Walk between the rails, never on them. And say goodbye to the daylight at the third step." }],
+  m5_2: [{ who: 'okafor', text: "Fog, pines and the dead. Stay within sight of each other. That is the whole plan." }],
+  m6_1: [{ who: 'okafor', text: "Hold the hill. Give them something to climb." }],
+  m6_2: [{ who: 'ozzy', text: "See you on the deck. KD9-OZZ, out. Wait, that's the wrong way to say it. See you on the deck." }],
+  sj_fuel: [{ who: 'deke', text: "Six cans and a bowser. Try not to set off any more alarms than strictly necessary." }],
+  sj_beacon: [{ who: 'ozzy', text: "Ten minutes. It's only ten minutes. It's probably ten minutes." }],
+  sj_diner: [{ who: 'roz', text: "Bring back the pie people. I'll hold supper." }, { who: 'ozzy', text: "And the CB radios. I mean the people. Mostly the people." }],
+  sj_radio: [{ who: 'ozzy', text: "Anything with a dial. If it beeps, it's mine." }],
+  sj_hauler: [{ who: 'dutch', text: "Keep my barrels upright and my ankles intact. It's an invoice." }],
+  sj_crossing: [{ who: 'priya', text: "Be a good cork. Corks don't wander off." }],
+  sj_cargo: [{ who: 'wendell', text: "If you hear a bark, follow it. Good crew." }],
+  sj_tower: [{ who: 'okafor', text: "Hold the tower. Do not let anything touch its base. Move fast, aim slow." }],
+  sj_line: [{ who: 'danny', text: "Hold the crank and think about spring, ma'am! Everyone!" }],
+  sj_ghosts: [{ who: 'okafor', text: "Bring them home. That's the whole order." }],
+  sj_interstate: [{ who: 'priya', text: "Keep inside the circle. It moves. So do you." }],
+  sj_hospital: [{ who: 'mara', text: "Don't stop moving. And breathe out when you reload." }],
+};
+
+// ---- retry screen quips (mission failed). `general` for any; `byMission` when the mission has its own.
+export const RETRY = {
+  general: [
+    { who: 'deke', text: "Well, that's a problem." },
+    { who: 'mara', text: "Breathe. Reload. Again." },
+    { who: 'ozzy', text: "Technically that wasn't a win. But it was interesting." },
+    { who: 'okafor', text: "Noted. Try again." },
+    { who: 'june', text: "That's okay! You can count to ten and try again." },
+    { who: 'roz', text: "Eat something, then go back out." },
+    { who: 'quill', text: "A setback is only a sale you haven't closed yet." },
+    { who: 'dutch', text: "That's going to cost you." },
+    { who: 'priya', text: "Adjust the route. Try again." },
+    { who: 'wendell', text: "Good crew. Again." },
+    { who: 'danny', text: "Ma'am! We can do this, ma'am!" },
+    { who: 'narrator', text: "The dead are slow. The dead are patient. So are you." },
+    { who: 'deke', text: "Nobody ever fixed anything on the first try. I've been fixing this truck for thirty years." },
+    { who: 'mara', text: "Nobody's counting. Well. I'm not." },
+    { who: 'ozzy', text: "I've heard worse. Once I heard a dial tone for an hour." },
+    { who: 'okafor', text: "Retreat is a plan, if you planned it." },
+  ],
+  byMission: {
+    m1_1: [{ who: 'june', text: "The bus is my home. Please save it." }],
+    m1_2: [{ who: 'deke', text: "I'll keep the shutter oiled. Figuratively. It still squeaks." }],
+    m2_1: [{ who: 'mara', text: "Tobias is still hot. Go back. Please." }],
+    m2_2: [{ who: 'mara', text: "It's my hospital. I know every door. Let's try a different one." }],
+    m3_1: [{ who: 'priya', text: "Camera nine saw that. Camera nine is disappointed. Again." }],
+    m3_2: [{ who: 'priya', text: "The dam is still there. It's very patient. Dams are like that." }],
+    m4_1: [{ who: 'deke', text: "She didn't want to start. She'll want to next time. Engines are like that." }],
+    m4_2: [{ who: 'danny', text: "Sarge is still saying Delta, ma'am. Let's go back and say it back." }],
+    m5_1: [{ who: 'priya', text: "Tunnels don't move. Neither do we. Again." }],
+    m5_2: [{ who: 'okafor', text: "The forest is still there. So are we. Fall in." }],
+    m6_2: [{ who: 'june', text: "I'm counting! I'm at three hundred! Hurry!" }],
+    sj_diner: [{ who: 'quill', text: "The diner was a lovely place. Please try to keep it." }],
+    sj_crossing: [{ who: 'priya', text: "The APC needs its cork. Be a better cork." }],
+    sj_tower: [{ who: 'okafor', text: "The tower is standing or it is not. Go back and make it standing." }],
+    sj_ghosts: [{ who: 'danny', text: "Kip's still up there, Sarge. Let's go back." }],
+  },
+};
+
+// ---- loading-screen tips (real gameplay advice) ---------------------------------------------
+export const TIPS = [
+  "Zombies are slow and you are not. Walk backward while you shoot and you'll rarely be touched.",
+  "Reload behind cover, not in the open. Breathe out on R; steady hands are everything.",
+  "Sprint (Shift) drains stamina. Use it to reposition, not to run forever.",
+  "Shoot the fat ones from far away. Bloaters burst and hurt everything nearby, including your feet.",
+  "Screamers make the whole crowd faster. Shoot the pale one first.",
+  "A Brute charges once you're close. Sidestep at the last second and hit it in the back.",
+  "Spitters keep their distance. Break their line of sight and stay out of the green puddles.",
+  "Crawlers stay low. Jump (Space) and they can't reach you while you're in the air.",
+  "Runners are rare but quick. Meet them at a corner with a shotgun, not in the open with a pistol.",
+  "Hold E next to a downed teammate to revive them. They have 30 seconds. Never leave anyone behind.",
+  "Climb onto a car roof with Space. It buys time, not safety: walkers climb up after a few seconds.",
+  "Turrets (T) cover your back and barricades (C) buy you seconds. The Engineer places both at half price.",
+  "Stick near your Medic. The heal aura only works while you're close.",
+  "Frags (G) and molotovs (F) are for crowds in doorways and for anything big.",
+  "Slow zombies walk in lines. Kite them along a wall and one shotgun blast hits five.",
+  "Switch guns with 1, 2, 3 or Q for the last one. Swapping is quicker than reloading.",
+  "Every mission hides bonus objectives. Collect the notes to learn who the Warden really is.",
+  "The compass ◆ always points at your current objective. Trust it.",
+  "Three stars: finish fast, keep everyone standing, grab the optional pickups.",
+  "Hold your ground on hills. Zombies climbing a slope move slower and take more damage.",
+  "In an Evac Run leave for the next zone as soon as it's announced. The fog hurts more the longer you wait outside.",
+  "Spend scrap at Deke's workbench. Tier 1 upgrades are cheap, and they add up.",
+  "The armory holds three weapons. Bring a long gun, a short gun and something for Brutes.",
+  "Sleep at the bed to advance the day. The radio chatter changes with it.",
+  "Talk to everyone at the hideout. Half the funniest lines are in the third conversation.",
+  "Friendly fire is off by default. Still, never stand in front of the rocket launcher.",
+  "On the road, a gate opens when the job beside it is done. Whatever waited behind it comes through: be ready before you finish.",
+  "A new area's title card moves your checkpoint. Fall after it and you come back there, not at the start.",
+  "Holding E together is faster. Two survivors on one crank finish half again as quick; three finish twice as quick.",
+  "Side jobs on the hideout board are optional and replayable. They pay scrap and loot, and some bring new friends home.",
+  "Dark rooms stay dark by day. Keep your flashlight on inside, and let your eyes adjust at the door.",
+];
+
+// ---- title screen ------------------------------------------------------------------------------
+export const TITLE = {
+  name: 'ROAD TO HAVEN',
+  tagline: "Two hundred miles. One radio. Slow dead, fast friends.",
+  alt: [
+    "Bring what you can carry.",
+    "The dead are slow. The road is long.",
+    "Everybody's counting something.",
+    "Haven is open. Somebody has to get there.",
+  ],
+  menuButton: 'Story',
+  menuBlurb: "A story campaign for 1 to 6 friends. Twelve missions across a county, twelve side jobs, three hideouts, one boat.",
+  newCampaign: "Start a new campaign",
+  continueCampaign: "Continue the road",
+};
+
+// ---- credits --------------------------------------------------------------------------------------
+export const CREDITS = [
+  { type: 'title', text: 'ROAD TO HAVEN' },
+  { type: 'heading', text: 'THE CREW' },
+  { type: 'line', text: 'You, and whoever you brought' },
+  { type: 'heading', text: 'FEATURING' },
+  { type: 'line', text: 'Mara Voss, Field Medic' },
+  { type: 'line', text: 'Deke Harlan, Mechanic, Mill Road Gas' },
+  { type: 'line', text: 'Ozzy, Radio Operator, Shady Acres' },
+  { type: 'line', text: 'Sgt. Amara Okafor, Checkpoint Delta' },
+  { type: 'line', text: 'Priya Nair, Scout and Engineer' },
+  { type: 'line', text: 'June, of the School Bus' },
+  { type: 'line', text: 'Roz Pruitt, the Roadhouse Kitchen' },
+  { type: 'line', text: 'Silas Quill, Fine Goods and Rare Rumors' },
+  { type: 'line', text: 'Dutch Kessler, Mile Marker Crew' },
+  { type: 'line', text: 'Wendell Pike, and Biscuit' },
+  { type: 'line', text: 'Pvt. Danny Ruiz, Radio' },
+  { type: 'line', text: 'Wren Alcott, the Warden' },
+  { type: 'heading', text: 'IN MEMORY' },
+  { type: 'line', text: 'Cpl. Ramos, Pfc. Adeyemi, Pfc. Kip Marlowe, Ghost Squad' },
+  { type: 'line', text: 'The sexton of St. Anne\'s, who rang for help' },
+  { type: 'line', text: 'Everyone who was counted' },
+  { type: 'heading', text: 'FOR' },
+  { type: 'line', text: 'Captain Elias Alcott, who wrote it first' },
+  { type: 'line', text: 'Ruth Delaney, who went for boats' },
+  { type: 'line', text: 'Everyone who kept counting' },
+  { type: 'heading', text: 'A HIGHWAY HORDE STORY' },
+  { type: 'line', text: 'Bring what you can carry.' },
+  { type: 'title', text: 'Haven is open.' },
+];

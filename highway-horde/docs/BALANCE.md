@@ -1,0 +1,753 @@
+# Highway Horde — balance
+
+How the game is tuned, the numbers it is tuned to, and why each number changed. The
+figures come from `scripts/balance.js`, a headless harness that plays whole games with AI
+survivors. Re-run it after touching any number in `constants.js`, `weapons.js`, `zombies.js`,
+`classes.js`, `items.js` or `handling.js` (the guns' recoil, inaccuracy and penetration).
+
+## The harness
+
+```
+node scripts/balance.js --quick        # ~2 min on 4 cores: normal × 1/2/4/6 players × both
+                                       #   profiles + 4 average players on easy/hard/nightmare
+node scripts/balance.js                # full sweep, ~17 min: 4 maps × 4 difficulties × 2 profiles
+                                       #   × 1/2/4/6 players × 3 seeds + mono-class teams
+node scripts/balance.js --diffs normal --sizes 4 --profiles average --seeds 8
+node scripts/balance.js --set 'WEAPONS.uzi.damage=20;ZOMBIES.boss.hp=9000' ...   # try numbers
+```
+Other options: `--maps`, `--waves N` (game length, default 15), `--workers N`, `--mono`,
+`--detail all|none`, `--out report.md`, `--json runs.json`. It runs the real `Game` with only
+bots, no rendering, on `worker_threads`. It reports:
+
+* **per team setup:** how many runs clear waves 5, 10 and 15, how they are lost (wiped or
+  objective), downs and revives per player per wave, wave length and hit rate;
+* **per wave:** reached and cleared, time, damage taken, downs, deaths, revives, cash banked,
+  earned and spent, objective hp, zombies alive at the peak, boss fight length;
+* **overall:** guns bought, held and taken from crates, kills per weapon and kills per minute in
+  hand, damage taken by source per wave band, objective damage by zombie type, per-class stats,
+  mono-class teams, and a paper gun table (DPS, $/DPS, refill cost).
+
+**Profiles.** `skilled` is the lobby bot (`botSkill` 1). `average` is `BOT_SKILL.AVERAGE` (0.4),
+a stand-in for an average human, built from `skillProfile()` in `sim/bots.js`:
+* about 2× slower reactions and about 1.8× the first aim error, which settles more slowly;
+* a slower crosshair and trigger-happy firing: about 57% hits against 75% before this was added;
+* less attention to priority threats, and lets zombies closer before backing off;
+* moments of tunnel vision mid-wave, when it keeps shooting instead of backing off;
+* reloads whenever the magazine is low, throws less;
+* shops plainly: the best gun it can afford now, no saving up, armour when below 50.
+
+**Read with care.**
+* Bots ring the objective and see everything within 1000 px, so they never get cornered the
+  way people do. The first four waves deal almost no damage to any bot team, however busy
+  they look to a human (35-40 zombies alive at once with 4 players).
+* Bots rate the grenade launcher and rocket low and never use them, so neither those two guns
+  nor the demo class's explosives perk are measured.
+* With 12 runs per cell a share has about ±14 points of noise. Decisions were made on 16-32
+  run samples.
+
+## Targets and results (normal unless noted; before = the numbers this pass started from)
+
+The before column uses the same bot brain with the original numbers (8 runs per cell); after
+is the full sweep (12 runs per cell; 32 runs for average 4 players on normal).
+
+| target | before | after |
+|---|---|---|
+| Average 4p: waves 1-2 warm-up, no downs | 0 downs | 0 downs, 0 damage |
+| Average 4p: waves 3-4 busy | 0 damage, ~33 alive at once | ~0 damage (bot limit, see above), 34-37 alive, waves ~70 s |
+| Average 2-4p usually survive the first boss (wave 5) | 4p 75% / 2p 88% | 4p 100% / 2p 100%; 0.15 downs per player on the wave |
+| Average 4p: waves 10+ tense, with downs and revives | 25% cleared 10; revives ~0 (a mauled downed player died in 3-5 s) | 92% clear 10; waves 12-15: 0.45-1.1 downs and 0.1-0.2 revives per player per wave |
+| Average 4p: 30-50% finish 15 | 0% | 33% (12 runs); 31% and 38% in two 32-run samples |
+| Average solo reaches wave 5-8 | median 6 | median 7.5 |
+| Easy: most average teams finish 10 | 2-6p 88-100% | 2-6p 100% (solo: median 12) |
+| Hard: average teams rarely pass 10 | 0%, all dead by wave 4-5 | 4p median 9, 25% clear 10 (6% in a 16-run sample) |
+| Nightmare: brutal | median wave 4 | median wave 4 (skilled 4p: 9) |
+| Skilled noticeably better | skilled 4p lost 7/8 to the objective (median 9) | skilled 4p 92% finish 15; hard 58% |
+| 4p wave length 1.5-3 min | 50-80 s (boss waves 110-140 s) | waves 1-4 60-73 s; 6-15 83-112 s (lower edge, see open issues) |
+| Objective threatened only when the team over-extends | lost in boss waves while the team kited bosses (skilled 4p: 7 of 8 games) | no average 4-6p run on normal lost it (2 of 96 on any difficulty); a team camping 600-800 px away loses it by wave 4-5 |
+
+All difficulties and team sizes, average profile (share that cleared wave 10 / 15, and median waves cleared):
+
+| diff | 1p | 2p | 4p | 6p |
+|---|---|---|---|---|
+| easy | 100% / 17%, 12 | 100% / 100%, 15 | 100% / 100%, 15 | 100% / 100%, 15 |
+| normal | 8% / 0%, 7.5 | 83% / 8%, 11 | 92% / 33%, 14 | 100% / 75%, 15 |
+| hard | 0% / 0%, 4.5 | 8% / 0%, 7 | 25% / 0%, 9 | 42% / 0%, 9 |
+| nightmare | 0% / 0%, 3.5 | 0% / 0%, 4 | 0% / 0%, 4 | 0% / 0%, 4.5 |
+
+### Per wave: average 4 players, normal (final)
+
+| wave | reached | cleared | time s | dmg taken/pl | downs/pl | revives/pl | bank/pl $ | earned/pl $ | spent/pl $ | obj hp end | peak alive | boss s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 100% | 100% | 60 | 0 | 0 | 0 | 500 | 509 | 13 | 100% | 37 | |
+| 2 | 100% | 100% | 66 | 0 | 0 | 0 | 146 | 569 | 850 | 100% | 34 | |
+| 3 | 100% | 100% | 71 | 0 | 0 | 0 | 534 | 615 | 181 | 100% | 32 | |
+| 4 | 100% | 100% | 73 | 0.3 | 0 | 0 | 750 | 708 | 403 | 100% | 37 | |
+| 5B | 100% | 100% | 69 | 37 | 0.15 | 0.04 | 1101 | 1185 | 358 | 99% | 45 | 54 |
+| 6 | 100% | 100% | 83 | 6 | 0.02 | 0.02 | 864 | 920 | 1423 | 99% | 42 | |
+| 7 | 100% | 100% | 88 | 7 | 0 | 0 | 1346 | 965 | 438 | 99% | 43 | |
+| 8 | 100% | 92% | 87 | 20 | 0.13 | 0.02 | 1720 | 1018 | 592 | 99% | 49 | |
+| 9 | 92% | 92% | 87 | 20 | 0.05 | 0.02 | 1871 | 1138 | 861 | 99% | 50 | |
+| 10B | 92% | 92% | 80 | 60 | 0.23 | 0.11 | 2253 | 1424 | 757 | 97% | 63 | 63 |
+| 11 | 92% | 92% | 99 | 50 | 0.27 | 0.11 | 2254 | 1298 | 1423 | 96% | 55 | |
+| 12 | 92% | 75% | 98 | 73 | 0.45 | 0.11 | 2679 | 1261 | 877 | 95% | 65 | |
+| 13 | 75% | 67% | 103 | 110 | 0.72 | 0.22 | 3155 | 1434 | 908 | 90% | 72 | |
+| 14 | 67% | 58% | 102 | 95 | 0.66 | 0.22 | 2444 | 1497 | 2174 | 95% | 68 | |
+| 15B | 58% | 33% | 112 | 137 | 1.14 | 0.11 | 3080 | 1292 | 954 | 84% | 74 | 95 |
+
+Before, the same table ran 50-80 s regular waves with no damage at all until the first boss,
+lost 25% of teams at wave 5 and 50% at wave 10 (bosses fought for 100-130 s), and nobody got
+past 13.
+
+**Economy.** Players earn about $500-700 per wave early (the $300 clear bonus plus kills) and
+$1300-1500 late. The first gun is bought after wave 1 (uzi or magnum); after that a real
+upgrade comes about every 1.5-2 waves (rifle or dual SMG around wave 4-6, DMR or LMG around
+7-9, tesla or minigun late). Late banks settle at $2.5-3k, down from $3-5k (skilled) that sat
+unspent. The sinks are the $2000-2400 refills of late guns, armour, and a $1500
+Self-Revive Kit (330 bought across the sweep).
+
+## Changes and why
+
+Each row was one step followed by a re-run.
+
+### Survival
+| change | before → after | why |
+|---|---|---|
+| Bleedout cost of hits on a downed player | 0.12 s per damage point, uncapped → 0.05 s, drained at most 1 s per s on top of the clock, at most 3 s pending (`DOWNED_HIT_BLEED`, `_RATE`, `_BANK`) | A downed player in a swarm lost all 30 s in 3-5 s, so revives never happened (0.00-0.02 per player per wave) and every down became a death. A mauled player now lasts at least 15 s: 0.1-0.2 revives per player per wave from wave 10. |
+| Zombies' preference for standing players over downed ones | 80 px → 150 px (`DOWNED_BIAS`, sim/zombies.js) | Same goal: the pack moves on to the reviver instead of finishing off the downed player. |
+
+### Bosses
+| change | before → after | why |
+|---|---|---|
+| Boss hp split between the wave's bosses | each boss got `hpBase + hpPerPlayer·n` → the bosses share it | A 4-player team met 2 bosses at 1.7× hp each (3.4× in total), against 1.4× for 3 players. Wave 10 was a wall. |
+| hpBase / hpPerPlayer | 0.5 / 0.3 → 0.4 / 0.25 | Total boss hp for 4 players on wave 10: 41k → 13k. |
+| Boss base hp, own hp growth, speed | 7000, +8%/wave (the zombie rate), 58 px/s → 8500, +4%/wave (`special.hpGrowth`), 62 px/s | Flatter across waves 5/10/15: a tougher first boss, and the wave-15 boss stopped being a wall (in that step: 38% of teams reached wave 15 and 13% cleared it before; 19% reached and 19% cleared after). |
+| Regular zombies on boss waves | ×1 → ×0.65 (`WAVE_ZOMBIES.bossWave`) | The boss is the fight. A full wave plus bosses stacked the two hardest things (wave-10 clear rate 38% → 56% in that step). |
+
+### Waves
+| change | before → after | why |
+|---|---|---|
+| Zombies per wave | 12 + 6w → 22 + 5w (`WAVE_ZOMBIES`, ×(1 + 0.6(n−1)) as before) | Early waves were short and empty. Flatter: more zombies early, about the same at wave 10, fewer late. |
+| Spawn pacing | groups of 3 to 5+w/3 every clamp(3.6 − 0.12(w−1), 1.2) s → groups of 4 to 6+w/4 every clamp(4.4 − 0.09(w−1), 2.2) s, both ÷ √crowd (`SPAWN_PACING`) | Bigger groups early and a longer spawn phase late. Waves last 60-110 s instead of 45-80 s, and late waves have fewer zombies alive at once (the chance of surviving each wave from 10 to 15 went from 0.64 to about 0.8). |
+| HP growth per wave | 0.08 (tried 0.11 and 0.09, kept 0.08) | Higher growth made waves 9-12 a cliff for average teams. |
+| Runner weight | 18 + 2.5w from wave 2 → 28 + 1.8w | More fast zombies early (they are the ones that reach players), the same share late. |
+| Spitter | from wave 5, weight 5 + 0.5w, pool 14 dps, spit every 3.2 s → from wave 4, 4 + 0.4w, 10 dps, 3.8 s | Acid was 40-43% of the damage average teams took in the first tuning runs (it is the only ranged attack). Now 31%, starting a wave earlier. |
+| Brute weight | 1 + 0.15w → 1.6 + 0.08w | The same number mid-game and fewer late (brutes did a quarter of late damage). |
+| Hard difficulty | hp ×1.3, damage ×1.35 → ×1.25, ×1.3 | Average teams were dead by wave 4-5. Now median wave 9, rarely past 10. |
+
+### Objective
+| change | before → after | why |
+|---|---|---|
+| Objective hp by team size | the map's hp → map hp × (1 + 0.25(n−1)) (`OBJECTIVE_HP_PER_PLAYER`) | The horde grows with the team (×2.8 with 4 players); the objective did not. |
+| Zombie damage to the objective | ×1 → ×0.5 (`OBJECTIVE_DAMAGE_MULT`) | Skilled teams lost 5-7 of 8 games to the objective during boss waves: about 20 walkers destroyed it in about 20 s while the team kited the bosses 800-1200 px away. Now a few stragglers barely scratch it, and a team that camps 600-800 px away still loses it by wave 4-5. |
+
+### Guns
+Judged on the paper table below plus kills per minute in hand.
+
+| gun | change | why |
+|---|---|---|
+| Magnum | $750 → $900 | Best $/DPS in the game (5.1) with pierce 3; 16-22% of average teams' kills. |
+| Micro SMG | damage 16 → 18, spread 0.11 → 0.09 | No better than the free pistol in hand (15 vs 14 kills/min). |
+| Pump shotgun | damage 18 → 20, rate 1.25 → 1.4, reload 2.4 → 2.1 | 120 sustained DPS for $1100, below the $900 SMG: strictly dominated. Now 150. (Pierce 2 was tried and dropped: a piercing pellet that hits a single zombie reports a miss, so hit markers vanished.) |
+| Assault rifle | damage 34 → 36 | Behind the DMR for $700 less. |
+| Twin Vipers | damage 15 → 17, spread 0.15 → 0.12 | 16 kills/min for $2100, the lowest of the mid-price guns. |
+| Battle rifle (DMR) | $2600 → $2800 | The best mid-price gun (35 kills/min, pierce 3). |
+| Tesla | damage 55 → 45, chains 6 → 5 | 57 kills/min, twice any other gun (48 now). |
+| Minigun | spread 0.10 → 0.07 | 22 kills/min for $8000, below the $4400 LMG. |
+| Railgun | rate 0.7 → 0.85, reload 3.0 → 2.6 | 29 kills/min for $9500, below the tesla. |
+
+### New guns (18 → 26)
+Eight guns were added after this pass, each slotted into a price gap and held to the $/DPS
+curve of its neighbours (paper table below; `effectiveRate()` and `fullReloadTime()` in
+weapons.js give the burst and one-round-reload guns their real rate). A 32-run check
+(average 4p, normal) afterwards: 94% clear 10, 28% finish 15, median 14 — the same as
+before the new guns (92% / 31-38% / 14), so the new guns shifted what teams use, not
+how far they get.
+
+| gun | price, unlock | key numbers | why these numbers |
+|---|---|---|---|
+| Flare Gun | $900, wave 2 | 70 hit + ignite (35 dps × 4 s); lands as a burning flare: 52 px, 30 dps, 8 s, lights the area; 1 round, 1.0 s reload | A cheap crowd tool in the uzi/magnum bracket: 126 sustained DPS on paper, more in practice from the flare on the ground. Too slow to carry a team alone. |
+| Tommy Gun | $1300, wave 2 | 23 dmg, 13/s, 50-round drum, 2.6 s reload, spread 0.12, falloff 0.55 | Between the $900 uzi (163) and the $2100 twin vipers (224): 178 sustained DPS, a long drum paid for with a long reload and wild spread. |
+| Burst Rifle | $1500, wave 2 | 40 dmg, 3-round bursts at 15/s then 0.3 s, 30 rounds, 2.0 s reload | An accurate step to the $1900 rifle: 6.9 shots/s averaged, 189 sustained DPS, $7.9 per DPS. Rate 16 → 15 so a burst lands on whole ticks (the test checks the average rate). |
+| Lever-Action | $1800, wave 3 | 160 dmg, pierce 2, 2/s, 8 rounds loaded one at a time (0.42 s each) | Hits like the magnum's big brother at range. Sustained DPS (174) counts a full 3.4 s reload; topping up between fights makes it better than that. |
+| Chainsaw | $2400, wave 4 | 24 dmg × 10/s to every zombie in a 64 px, 1.5 rad cone (line of sight), knockback 70, 100 fuel (10 s), free 2 s refuel, gibs | Unlimited ammo is the price: it only works in melee, where the zombies are. Players move at 92%. Bots never buy it (their melee range logic would walk them into brutes). |
+| Harpoon Gun | $2800, wave 5 | 250 dmg, pierce 5, drags up to 3 zombies and pins them 1.2 s, 4 rounds, 2.0 s reload | Tuned up from 220 dmg / 3 rounds / $3000 (140 sustained DPS, $21 per DPS). Now 187 DPS at $14.9 per DPS, next to the crossbow and DMR it competes with; bots took 28.6 kills/min with it. |
+| Cryo Blaster | $3200, wave 5 | 9 dmg puffs at 20/s, pierce all, chill 0.07 per hit (slows up to 60%), frozen at full chill for 1.6 s taking ×1.3 damage | Support, not damage: 133 DPS for $3200, but a frozen pack neither moves nor bites, and every other gun hits it 30% harder. Damage 7 → 9 (it was 104 DPS, below the $900 flare gun). Bosses cap at half chill. |
+| .50 AMR | $10000, wave 10 | 1200 dmg, pierce 20, through 2 obstacles ≤ 90 px thick (−25% each), 0.55/s, 5 rounds, 3.4 s reload, gibs | The most expensive gun, one-shot kills on a whole line of anything but the boss. 480 sustained DPS sits just under the railgun (493): it pays for the cover penetration with a slow bolt and 18% slower movement. |
+
+### The arsenal (27 → 46 guns)
+Nineteen guns were appended (wire indices 27-45: four pistols, three SMGs, two shotguns,
+three rifles, three sniper rifles, two machine guns, the saw-blade launcher and the Hollow
+Star), and the unlock schedule was pulled forward so the variety is there from the first
+waves: 28 of the 45 guns for sale are on the shelf by wave 2 (most pistols, SMGs, rifles and
+shotguns and the scout from wave 1), 36 by wave 4, the most powerful guns two waves earlier
+than before (wave 6-8), and the super weapon waits for wave 10. Prices did not move; the
+machine guns climb $4400 (LMG) → $5200 (M60) → $6000 (Barrage) → $7400 (HMG) → $8000 (minigun).
+
+| gun | unlock before → after | | gun | unlock before → after |
+|---|---|---|---|---|
+| flare gun, Tommy gun, burst rifle | 2 → 1 | | auto shotgun, flamethrower, harpoon, cryo | 5 → 3 |
+| lever-action | 3 → 1 | | LMG, grenade launcher | 6 → 4 |
+| twin vipers, crossbow, battle rifle | 3 → 2 | | HMG, rocket, tesla | 8 → 6 |
+| sniper rifle, chainsaw | 4 → 2 | | minigun | 9 → 7 |
+| | | | railgun, .50 AMR | 10 → 8 |
+
+Weapon crates hold any gun unlocked by the wave after next (`crateWeaponPool`), so the unlock
+waves of the strongest guns set when crates start handing them out: a first pass that put the
+HMG, minigun, tesla, railgun and .50 at waves 4-6 (and the LMG at $3800 on wave 3, the super
+weapon in 30% of boss crates from wave 5) had the quick sweep's average 4-player teams finish
+wave 15 in 80% of runs (60% on the same sweep before the arsenal), average 4p on hard clear
+wave 10 in 60% (0% before), and banks of $6000 per player by wave 15, with railguns and .50s
+coming out of wave-4 crates. The schedule above and a rarer super drop (10% of boss crates,
+from wave 10) took that back (check run below).
+
+| gun | price, unlock | key numbers | why these numbers |
+|---|---|---|---|
+| Compact 9mm | $300, wave 1 | 22 dmg, 6.5/s, 18 rounds, 1.05 s reload; right click: 3-round bursts | The first upgrade from the free M9: 143 burst DPS for pocket money, a bigger magazine. |
+| Tactical .45 | $500, wave 1 | 37 dmg, 4.2/s, 12 rounds, spread 0.022; right click: suppressor | The accurate sidearm (155 DPS); the suppressor is about sound, not numbers. |
+| Machine Pistol | $650, wave 1 | 16 dmg, 17/s, 20 rounds, 1.25 s reload | A sidearm that sprays: 272 burst DPS, but 20 rounds last 1.2 s. |
+| Hand Cannon | $750, wave 1 | 88 dmg, pierce 2, 2.6/s, 7 rounds, 1.5 s reload | The cheap step to the $900 magnum (110 dmg, pierce 3, 6 rounds, slower reload). |
+| Compact SMG | $1250, wave 1 | 22 dmg, 12.5/s, 30 rounds, 1.6 s reload | Between the uzi ($900, 270 burst) and the Tommy gun: steadier, 275 burst DPS. |
+| .45 SMG | $1500, wave 1 | 31 dmg, 10.5/s, 25 rounds, 1.8 s reload | Fewer, heavier rounds: 326 burst DPS, falls off sooner than the rifles. |
+| Bullpup PDW | $2350, wave 2 | 20 dmg, pierce 2, 15/s, 50-round top magazine, 2.3 s reload | The SMG for crowds: pierce 2 and a long magazine; costs as much as a rifle. |
+| Combat Shotgun | $2200, wave 1 | 16 × 8 pellets, 3.2/s semi-auto, 7 shells loaded one at a time | The semi-auto between the pump ($1100, 1.4/s) and the auto shotgun ($3600). |
+| Box-Mag Shotgun | $2700, wave 2 | 13 × 8 pellets, 4.2/s, 10-round box, 2.3 s reload | Faster than the combat shotgun with a whole-box reload; still below the auto shotgun's 448. |
+| M4 Carbine | $2300, wave 1 | 33 dmg, 11.5/s, 30 rounds, 2.0 s reload; right click: suppressor | The handy rifle: 380 burst DPS, the lightest of the three. |
+| AK-Pattern Rifle | $2500, wave 1 | 45 dmg, pierce 2, 9.5/s, 30 rounds, 2.4 s reload | Hits harder and pierces, but kicks more (recoil 0.15 against 0.10) and spreads wider than the M4. |
+| Scoped Bullpup | $3100, wave 2 | 38 dmg, 9/s, spread 0.028, range 1350, 30 rounds; right click: scope | The long-range assault rifle, priced next to the battle rifle and sniper rifle. |
+| Scout Rifle | $1700, wave 1 | 185 dmg, pierce 4, 1.3/s, 10 rounds; right click: scope | A light bolt-action for the early waves, between the lever-action and the sniper rifle. |
+| Magnum Sniper | $4750, wave 3 | 720 dmg, pierce 12, 0.75/s, 5 rounds, 3.0 s reload | The step between the sniper rifle ($3200, 450) and the .50 ($10000, 1200): kills a brute in one hit. |
+| Semi-Auto Sniper | $5000, wave 6 | 150 dmg, pierce 4, 4/s, 20 rounds, 3.0 s reload | Precision at volume: 600 burst DPS at range, but $5000 and slower movement. |
+| M60 Machine Gun | $5200, wave 4 | 48 dmg, pierce 2, 9.5/s, 100-round belt, 4.8 s reload | The harder-hitting, slower belt-fed between the LMG and the HMG. |
+| Barrage MG | $6000, wave 5 | 30 dmg, 15/s, 150-round box, 5.2 s reload; spread 0.11 tightens to 0.02 over 1.4 s of fire | Wild at first, a laser once wound up: rewards holding a lane. |
+| Saw-Blade Launcher | $3000, wave 2 | 80 dmg per cut, pierce 10, 2/s, 8 blades; blades ricochet 4 times keeping 86% speed, lose 5% per cut, gib | A crowd tool for corridors and walls: one blade can cut a line both ways. 160 paper DPS (one target) is far below what it does to a line. |
+| Hollow Star (super) | $16000, wave 10; 10% of boss crates from wave 10 | 0.75 s charge, 3 orbs, 3.6 s reload; the orb pulls zombies within 260 px for 1.5 s, crushes its core (700 dps), collapses for 1600 within 220 px; never hurts players; bosses are not pulled | The rare top tier: a wave-ending shot, priced so a team buys it once in a late game; bosses resist it, so boss waves still need everything else. |
+
+**Check run** (`--quick`, 5 runs per cell, so ±20 points of noise on a share): the same sweep
+on the code before the arsenal, the first pass described above, and the final numbers.
+
+| team (normal unless noted) | before: clear 10 / 15, median | first pass | final |
+|---|---|---|---|
+| average 1p | 0% / 0%, 8 | 0% / 0%, 7 | 20% / 0%, 6 |
+| average 2p | 40% / 0%, 9 | 100% / 0%, 11 | 60% / 20%, 10 |
+| average 4p | 100% / 60%, 15 | 100% / 80%, 15 | 100% / 40%, 13 |
+| average 6p | 100% / 60%, 15 | 100% / 80%, 15 | 100% / 80%, 15 |
+| average 4p, hard | 0% / 0%, 7 | 60% / 0%, 10 | 40% / 0%, 9 |
+| average 4p, nightmare | 20% / 0%, 6 | 0% / 0%, 5 | 0% / 0%, 5 |
+| skilled 4p | 100% / 100%, 15 | 100% / 100%, 15 | 100% / 100%, 15 |
+
+The final schedule sits on the targets at the top of this page (average 4p: all clear 10,
+30-50% finish 15; hard: 4p median 9). Bank per player at wave 15 (average 4p) is back to
+about $4000-5000. In average teams' hands the LMG (10% of kills, 34.6 kills/min), rifle,
+battle rifle and HMG still lead; the AK (29.0 kills/min) and M60 (33.6) took their place
+next to them; the semi-auto sniper has the highest rate of any gun on sale (45 kills/min,
+mostly from crates: bots rate it below the LMG and never buy it), so it is the one to watch.
+The Hollow Star came out of 14 boss crates in 55 games and did 0.4% of the killing. The
+chainsaw is still not measured (bots never pick it), and neither are the right-button modes
+(bots do not use them).
+
+### Classes (teams of 4 average bots of one class, normal)
+| class | change | why |
+|---|---|---|
+| Engineer (Sparks) | turret damage ×1.5 → ×1.25 | Four free turrets at 231 DPS each: mean wave 14.4, and 63% finished 15. |
+| Scout (Swift) | kill cash ×1.15 → ×1.25 | Weakest (mean wave 11.1); now gears up sooner. |
+| Soldier (Sarge) | gun damage ×1.15 → ×1.2 | None of the soldier teams finished 15 (mean wave 12.1). |
+
+The class descriptions in `classes.js` were updated to match.
+
+### Economy
+| change | before → after | why |
+|---|---|---|
+| Wave clear bonus | $250 → $300 | Upgrades came every 2-3 waves early; now every 1.5-2. |
+
+### Bots (sim/bots.js)
+* `botSkill` 0..1 and `skillProfile()` (described above). The lobby's bots stay at 1, so they
+  play exactly as before except for the next two points.
+* Objective alarm: after seeing 4 or more zombies chewing on the objective, bots rank them
+  above everything else, even far away.
+* With spare cash, bots buy a Self-Revive Kit: skilled bots at $3000, average bots at $3500.
+  Average bots also keep their armour topped up (they buy a vest when below 50 armour and
+  $300 would still be left); the first version of the profile never bought armour and died
+  of attrition.
+
+## Final tables
+
+### Guns: paper numbers
+`sustained` includes reloads. Tesla chains, shotgun spread and explosions are not modelled:
+pellets are counted as all hitting, and explosive damage as landing once. Burst guns use
+their average rate, the flare gun and flamethrower add their burn, and the cryo blaster's
+freeze bonus and the flare left on the ground are not counted.
+
+| gun | price | unlock | burst dps | sustained dps | range | pierce | $ per sust. dps | refill $ | dmg per refill $ | move |
+|---|---|---|---|---|---|---|---|---|---|---|
+| pistol | 0 | 1 | 125 | 86 | 900 | 1 | - | - | inf | 1 |
+| magnum | 900 | 1 | 242 | 146 | 1100 | 3 | 6.2 | 250 | 24 | 1 |
+| sawedoff | 700 | 1 | 680 | 162 | 360 | 1 | 4.3 | 200 | 36 | 1 |
+| uzi | 900 | 1 | 270 | 163 | 750 | 1 | 5.5 | 250 | 23 | 1 |
+| shotgun | 1100 | 1 | 224 | 150 | 480 | 1 | 7.3 | 300 | 29 | 0.97 |
+| rifle | 1900 | 1 | 360 | 220 | 1100 | 1 | 8.6 | 500 | 22 | 0.95 |
+| flare | 900 | 1 | 315 | 126 | 1000 | 1 | 7.1 | 250 | 26 | 1 |
+| tommy | 1300 | 1 | 299 | 178 | 650 | 1 | 7.3 | 350 | 26 | 0.97 |
+| burst_rifle | 1500 | 1 | 277 | 189 | 1200 | 1 | 7.9 | 400 | 30 | 0.96 |
+| dual_smg | 2100 | 2 | 408 | 224 | 700 | 1 | 9.4 | 550 | 16 | 1 |
+| crossbow | 2400 | 2 | 288 | 188 | 1400 | 8 | 12.8 | 600 | 20 | 1 |
+| dmr | 2800 | 2 | 298 | 215 | 1300 | 3 | 13.0 | 700 | 22 | 0.95 |
+| lever | 1800 | 1 | 320 | 174 | 1400 | 2 | 10.3 | 450 | 26 | 1 |
+| sniper | 3200 | 2 | 405 | 269 | 2400 | 10 | 11.9 | 800 | 25 | 0.9 |
+| chainsaw | 2400 | 2 | 240 | 200 | 64 | all | 12.0 | - | inf | 0.92 |
+| auto_shotgun | 3600 | 3 | 448 | 272 | 450 | 1 | 13.3 | 900 | 16 | 0.93 |
+| flamethrower | 4200 | 3 | 295 | 203 | 330 | all | 20.6 | 1050 | 6 | 0.9 |
+| harpoon | 2800 | 3 | 300 | 187 | 1100 | 5 | 14.9 | 700 | 13 | 0.94 |
+| cryo | 3200 | 3 | 180 | 133 | 300 | all | 24.0 | 800 | 5 | 0.92 |
+| lmg | 4400 | 4 | 432 | 292 | 1100 | 2 | 15.1 | 1100 | 16 | 0.82 |
+| grenade_launcher | 4600 | 4 | 420 | 240 | 900 | 1 | 19.2 | 1150 | 10 | 0.93 |
+| rocket | 6200 | 6 | 648 | 247 | 1600 | 1 | 25.1 | 1550 | 7 | 0.85 |
+| tesla | 6800 | 6 | 270 | 196 | 600 | 1 | 34.6 | 1700 | 6 | 0.95 |
+| minigun | 8000 | 7 | 900 | 600 | 1000 | 1 | 13.3 | 2000 | 14 | 0.62 |
+| railgun | 9500 | 8 | 765 | 493 | 3000 | all | 19.3 | 2400 | 12 | 0.9 |
+| amr | 10000 | 8 | 660 | 480 | 3000 | 20 | 20.8 | 2500 | 17 | 0.82 |
+| hmg | 7400 | 6 | 640 | 537 | 1100 | 2 | 13.8 | 1850 | 32 | 0.7 |
+| compact9 | 300 | 1 | 143 | 104 | 850 | 1 | 2.9 | 100 | 32 | 1 |
+| tac45 | 500 | 1 | 155 | 108 | 950 | 1 | 4.6 | 150 | 27 | 1 |
+| handcannon | 750 | 1 | 229 | 147 | 1150 | 2 | 5.1 | 200 | 25 | 1 |
+| mpistol | 650 | 1 | 272 | 132 | 650 | 1 | 4.9 | 150 | 23 | 1 |
+| smg9 | 1250 | 1 | 275 | 165 | 820 | 1 | 7.6 | 300 | 22 | 1 |
+| pdw | 2350 | 2 | 300 | 178 | 850 | 2 | 13.2 | 600 | 12 | 1 |
+| smg45 | 1500 | 1 | 326 | 185 | 720 | 1 | 8.1 | 400 | 19 | 0.99 |
+| combat_sg | 2200 | 1 | 410 | 168 | 500 | 1 | 13.1 | 550 | 15 | 0.96 |
+| box_sg | 2700 | 2 | 437 | 222 | 580 | 1 | 12.2 | 700 | 10 | 0.95 |
+| ak | 2500 | 1 | 428 | 243 | 1100 | 2 | 10.3 | 650 | 19 | 0.95 |
+| m4 | 2300 | 1 | 380 | 215 | 1100 | 1 | 10.7 | 600 | 17 | 0.97 |
+| bullpup | 3100 | 2 | 342 | 206 | 1350 | 1 | 15.0 | 800 | 13 | 0.95 |
+| scout | 1700 | 1 | 241 | 191 | 2000 | 4 | 8.9 | 450 | 29 | 1 |
+| magsniper | 4750 | 3 | 540 | 372 | 2600 | 12 | 12.8 | 1200 | 21 | 0.85 |
+| autosniper | 5000 | 6 | 600 | 375 | 2200 | 4 | 13.3 | 1250 | 14 | 0.82 |
+| m60 | 5200 | 4 | 456 | 313 | 1150 | 2 | 16.6 | 1300 | 15 | 0.83 |
+| barrage | 6000 | 5 | 450 | 296 | 1100 | 1 | 20.3 | 1500 | 12 | 0.8 |
+| sawblade | 3000 | 2 | 160 | 97 | 1300 | 10 | 30.9 | 750 | 6 | 0.94 |
+| hollowstar | 16000 | 10 | 623 | 425 | 600 | all | 37.7 | 4000 | 4 | 0.82 |
+
+Every gun has a niche at its price:
+* **Sidearms ($300-900):** the compact 9mm (bursts on the right button), the suppressed .45,
+  the machine pistol that sprays, the hand cannon and the magnum that pierce.
+* **Close-range bursts:** sawed-off and pump shotgun; the combat shotgun (semi-auto, loads
+  by hand) and the box-mag shotgun (faster, a whole box per reload) between them and the
+  auto shotgun.
+* **Cheap all-rounders:** uzi, compact SMG and .45 SMG; the Tommy gun sprays a 50-round drum
+  and the burst rifle is the accurate step up; the flare gun sets a spot on fire and lights
+  it; the scout rifle pierces 4 at range for $1700.
+* **Mid-price:** the rifle, M4 and AK (light, silenced / hard-hitting, piercing), the scoped
+  bullpup at range; the dual SMGs spray hardest, the bullpup PDW pierces crowds; the
+  crossbow, DMR and lever-action pierce lines; the sniper rifle kills bosses; the harpoon
+  skewers and pins a line; the saw-blade launcher cuts lines and corridors; the chainsaw
+  never runs dry but only works up close.
+* **Late:** the LMG, M60, Barrage MG (tightens as it fires), the belt-fed HMG (500 rounds,
+  no spin-up) and the minigun give sustained fire; the magnum sniper one-shots brutes and
+  the semi-auto sniper fires precision at volume; the auto shotgun is a close-range
+  shredder, the tesla and flamethrower clear crowds, the cryo blaster stops them, and the
+  .50 kills whole lines through cover.
+* **Super:** the Hollow Star ends a wave with one shot, but not a boss.
+
+Late guns have the highest DPS but cost 25% of their price to refill, so their damage per
+refill dollar is 2-5× worse than early guns'.
+
+### Guns in the hands of average teams (full sweep)
+| gun | kill share | kills/min in hand | | gun | kill share | kills/min in hand |
+|---|---|---|---|---|---|---|
+| rifle | 16% | 24.5 | | uzi | 4% | 14.2 |
+| lmg | 14% | 31.4 | | minigun | 3% | 20.2 |
+| dmr | 13% | 29.5 | | railgun | 2% | 29.9 |
+| tesla | 8% | 47.5 | | auto_shotgun | 1% | 25.8 |
+| pistol | 7% | 12.4 | | flamethrower | 1% | 36.5 |
+| dual_smg | 6% | 18.6 | | sawedoff | 1% | 22.5 |
+| turret | 5% | — | | shotgun | 0.5% | 14.6 |
+| crossbow | 5% | 32.1 | | frag | 1% | — |
+| magnum | 4% | 24.2 | | sniper | 4% | 25.0 |
+
+Kills per minute favour late guns (more zombies on screen) and bots barely use shotguns
+(they fight at range), so the shotgun rows understate them.
+
+The new guns in the 32-run check (average 4p, normal; kill share, kills/min in hand):
+harpoon 5%, 28.6; lever-action 4%, 29.8; burst rifle 4%, 25.1; .50 AMR 2%, 28.5; flare gun
+1%, 23.2; cryo blaster 0.5%, 28.3; Tommy gun 0.3%, 12.1 (a stop-gap bots swap out within a
+wave, like the uzi at 14.2). The older guns kept their numbers (LMG 32.8, DMR 33.9, rifle
+25.9, tesla 47.8). The chainsaw is not measured: bots never pick it.
+
+### Classes
+Per player per wave played, in mixed teams:
+
+| class | kills | dmg dealt | dmg taken | downs | earned $ |
+|---|---|---|---|---|---|
+| soldier | 44.1 | 7027 | 14.3 | 0.07 | 1074 |
+| medic | 34.5 | 5658 | 16.8 | 0.06 | 912 |
+| engineer | 51.0 | 7905 | 13.3 | 0.07 | 1205 |
+| scout | 38.2 | 6031 | 14.4 | 0.09 | 1117 |
+| demo | 36.3 | 5839 | 15.2 | 0.09 | 941 |
+| heavy | 35.2 | 5709 | 18.3 | 0.07 | 929 |
+
+Mono-class teams (4 average bots, normal, 8 runs each), mean waves cleared, before → after the class changes:
+
+| class | before → after |
+|---|---|
+| soldier | 12.1 → 13.5 |
+| medic | 13.3 → 14.0 |
+| engineer | 14.4 → 14.5 |
+| scout | 11.1 → 11.6 |
+| demo | 12.6 → 11.6 |
+| heavy | 13.1 → 11.8 |
+
+The spread is about 3 waves, and about ±1 of that is noise at 8 runs. No class dominates.
+Demo is understated because bots don't use its explosives.
+
+### Where the damage comes from (all runs, share of damage taken)
+| source | before | after | waves 1-4 | waves 5-9 | waves 10+ |
+|---|---|---|---|---|---|
+| acid pools | 33% | 31% | (tiny) | 29% | 32% |
+| boss | 30% | 17% | — | 23% | 15% |
+| brute | 14% | 22% | — | 23% | 23% |
+| bloater burst | 6% | 8% | | 7% | 9% |
+| runner, walker, crawler | 12% | 15% | | 13% | 15% |
+
+The objective takes 59% of its damage from walkers, 18% from runners and 10% from crawlers,
+which is the small fry by design: heavies hunt people.
+
+## Evac Run (the moving safe zone, SPEC §3.7)
+
+```
+node scripts/balance.js --mode zone --maps harlan --diffs normal --sizes 1,4 --profiles average,skilled --seeds 3 --no-mono
+node scripts/balance.js --mode zone --maps highway,truckstop --diffs normal --sizes 1,4 --profiles average --seeds 4 --no-mono
+```
+
+The per-wave tables get zone columns: `move s` = the break before the wave (it ends early
+once everyone is inside and ready), `all in s` = when the whole team was inside the circle,
+`harassers` / `move kills` / `move dmg/pl` = the zombies sent at the team on the way, and
+`blight dmg/pl` = damage taken outside the circle during the wave (also a `blight` row in
+the damage-by-source table). Defend on normal for comparison: average solo median 7.5,
+average 4p 33% finish 15.
+
+| team (normal) | first pass (Harlan) | Harlan County, final | highway + truck stop, final |
+|---|---|---|---|
+| average 1p | median 4, 33% clear 5 | median 7, 100% clear 5, 33% clear 10 | median 9, 75% clear 5, 25% clear 10 |
+| average 4p | median 14, 33% finish 15 | median 15, 67% finish 15 | median 14.5, 50% finish 15 |
+| skilled 1p | median 4 | median 11, 67% clear 10 | |
+| skilled 4p | 67% finish 15 | median 15, 67% finish 15 | |
+
+* **Travel.** Hops between zones (20 seeds × 15 waves): Harlan County 3200-5700 px (median
+  4500, ~140 m), countdown 31-45 s; highway 2200-5700 px, 25-46 s; the small maps 1000-2700
+  px, 22-28 s. Bot teams were all inside after 11-13 s on the first move (from the town) and
+  13-31 s after that on Harlan, so a walking team makes it with 10-20 s to spare and a team
+  that stops to shop or fight still does.
+* **Harassment on the way:** 4-7 zombies on the first move, 10-20 from wave 10, the first
+  group 4 s after the announcement and then one every 3.5-6.5 s (walkers, runners and
+  crawlers in groups of 2-5, 620-950 px ahead of a random survivor, a third of the groups
+  from a flank; count = (4 + 1.4 × wave) × team and difficulty scaling, capped at 20). Bot
+  teams kill most of them before the wave (70-90%; fewer on the short first move) and take
+  ~0 damage on the way; they stop the team, pull it off the road and follow it into the
+  circle, which is what they are for.
+* **The blight** is ~3-11% of the damage taken (the rest is the usual acid, bosses and
+  brutes) and shows up on boss waves and late waves: 0-5 hp per player on most waves, 10-80
+  on a few boss waves when a bot is pushed out while kiting.
+* **What changed from the first pass:**
+  - The solo boss fight: in a small circle the Abomination got a lone bot (100+ blight
+    damage per boss wave, and cornered: solo median 4 on Harlan, 4 on the highway). Boss
+    waves now shrink only to 75% and never below `ZONE.bossMinR` (480 px), the highway's
+    zones grew from 440 to 520 px and the small maps' from 380 to 440 px, and bots near the
+    edge slide along it (circle-kite) instead of backing into the blight. Highway solo went
+    from median 4 to 9.
+  - Bots stop hunting, looting and reviving deep in the blight and score steps out of the
+    circle as bad.
+  - The harassers: groups straight ahead were shot down at range before they mattered; now
+    half of each group are runners and a third of the groups flank.
+  - Small maps: with no POI 3000+ px away, the next zone was any other one, often the
+    neighbour (3 s moves on the truck stop); it is now drawn from the farther half, and
+    never straight back to the one before.
+  - A stall (one of 16 truck stop runs): two walkers wedged by the motel, 450 px out in the
+    blight, never came in, and the bots won't go out for them. A zombie stuck for 12 s out
+    in the blight now re-enters from a spawn box unless a survivor is within 300 px.
+
+## Campaign (Highway Horde, SPEC §3.8)
+
+```
+node scripts/balance.js --mode campaign --diffs normal --sizes 1,2,3,4,6 --profiles average,skilled --seeds 4 --no-mono
+node scripts/balance.js --mode campaign --diffs easy,hard,nightmare --sizes 4 --profiles average --seeds 4 --no-mono
+node scripts/balance.js --mode campaign --sizes 1,2 --seeds 4 --set 'CAMPAIGN.bossDelay.roof=45'   # try a number
+```
+
+`--mode campaign` runs the three extended maps (checkpoint, highway, harlan; `--waves` 10 by
+default: 6 hill waves, the breakout, three floors, the roof = 11 waves). The per-wave tables name
+each stage (`1 hilltop` ... `7 breakout`, `8 F1`, `11 rooftop`); the summary adds `escaped` (share
+of runs won) and `esc/pl` (survivors out per player); the damage table has a `horde front` row.
+`CAMPAIGN` (shared/campaign.js) is in the `--set` tables.
+
+| team (normal, 12 runs each) | average bots | skilled bots |
+|---|---|---|
+| 1 player | 17% escape | 42% |
+| 2 players | 83% | 67% |
+| 3 players | 67% | 92% |
+| 4 players | 58% | 100% |
+| 6 players | 83% | 100% |
+| 4 players, easy / hard / nightmare | 100% / 8% / 0% (dead by wave 5 on nightmare) | |
+
+Target: average 4p about 55%, small teams lower but not hopeless, skilled bots at least as good.
+Read with the usual care (12 runs, +-14 points; the pair's 83% against three's 67% is noise).
+
+* **Where the run is decided.** Bots walk through the hill waves (0-40 hp per player a wave,
+  no downs), the breakout (20 s, ~3 hp) and floors 1-2; the damage is on the last floor (boss),
+  and above all on the roof: 100-160 hp per player and 0.7-1.4 downs per player, in ~45 s.
+  Average solo teams also lose to floors 1-3 (42% of runs). Humans will be hurt earlier on
+  the hill than bots (see the open issues of the base game).
+* **The roof boss decides the roof.** With the Abomination walking in 26 s after the start, the
+  quota (44 + 26 per extra player) is reached in 30-60 s, so it always arrives in the middle of
+  the fight: solo and pair teams (skilled too) won 0-33%. Delaying it (`bossDelay.roof`) 45 s
+  made the pair 56-67% but 4-6 players 89-100%, so instead the delay is 26 s plus 12 s per
+  survivor short of three (`bossDelay.small`), and the roof gets ceil(n/2) bosses (was ceil(n/3),
+  `bossPlayers.roof`): big teams keep meeting them mid-quota.
+* **Not the levers:** the roof's alive cap (16 against 30 changed nothing: bots kill as fast as
+  the queue spawns), the spawn pace (0.75).
+* **Breakout.** Bots outrun the front (it walks 54-70 px/s; the route is 3300-4500 px, 17-25 s
+  at a run), so it costs ~3 hp: a human fighting through the street is the case it is
+  tuned for (anyone who loiters 10 s behind takes ~150 hp). Bots had parked outside the
+  door circle on Harlan (the whole team died to the front in 60 s); they now aim inside it.
+  A bug found on the way: `front.max` was defined twice (speed and damage), so the front's speed
+  was always the minimum; now `speedMax` / `dpsMax`.
+* **Perf** (250 zombies + 6 bots, `tests/campaign.test.js`): avg host tick highway 1.64 ms,
+  Checkpoint 1.50, Highway campaign 1.48, Harlan campaign 1.73 (flow-field rebuild ticks 3.0 /
+  3.0 / 4.2 ms against 3.4 on the highway; `maxDist` 2800 on all three).
+
+## Horde Elimination (one round, SPEC §3.12)
+
+```
+node scripts/balance.js --mode horde --maps sandstone --diffs easy,normal,hard --sizes 1,2,4 --profiles average,skilled --seeds 3 --no-mono --detail none
+node scripts/balance.js --mode horde --maps highway,truckstop,bridge,checkpoint --diffs normal --sizes 1,4 --profiles average --seeds 2 --no-mono
+```
+
+`--mode horde` runs the maps that play the mode (Sandstone only runs in it). A "wave" row is a
+surge (from the moment it is let loose to the next one); the **Horde Elimination** table gives the
+horde's size, the share of rounds won, the round's length (from the end of the buy time), the
+zombies left on a loss and downs / deaths per player. `HORDE` (shared/horde.js) is frozen: edit it
+to try numbers.
+
+Horde sizes (`hordeTotal`, bots count as players): Normal 150 solo, 240 for 2, 420 for 4, 600
+for 6; Easy 0.8x (120 / 192 / 336), Hard 1.25x (188 / 300 / 525), Nightmare 1.5x.
+
+| Sandstone, two-site layout (4 runs each) | average bots | skilled bots |
+|---|---|---|
+| easy 1 / 2 / 4 | 100% / 100% / 100% | 100% / 100% / 100% |
+| normal 1 player | 75% (lost with ~18 left, last surge) | 75% |
+| normal 2 / 4 | 75% / 100% | 100% / 100% |
+| hard 1 player | 25% (~50 left) | 50% |
+| hard 2 / 4 | 25% / 100% | 75% / 100% |
+| other maps, normal 1 / 4 (8 runs) | 75% / 100% | |
+
+Round length with bots: 5.5-6.5 min on Sandstone (Normal: 340-385 s after a 25 s buy time; bigger
+teams the same, the pacing is the surges' breathers and lulls), about 5 min on the other maps.
+Losses come in the last surge (the bosses plus the biggest, toughest surge). A solo average bot is
+the hardest case (one gun, no reviver); a human playing alone usually brings bots.
+
+* **The two-site layout** (Sandstone rebuilt like the classic desert map: CT spawn, A up the ramp,
+  B behind its doors, the horde from the four T-side entrances) left the numbers where the walled
+  town had them (the old table: normal solo average 25%, skilled 100%; hard solo 25% / 75%; teams
+  of 2 and 4 50-100%), within the noise of 4 runs, so nothing was retuned. The walks in are
+  2500-3700 px from the entrances to CT spawn (the town's gates were 2000-3800 px). One thing did
+  matter: letting a lone bot move to the site a surge's entrances call for (`hordeHoldFor`: long →
+  A, tunnels → B, top mid → CT mid) cost solo Hard skilled 3 wins in 5 (it dies crossing the map
+  between surges), so only teams of three or more split to the sites; one or two hold CT spawn.
+* **The walk in.** (the walled town) Sandstone's gates were 2000-3800 px from Fountain Square and a walker does
+  34-48 px/s, so the first zombies arrived ~50-85 s into the round. Now the first surge uses one of
+  the nearer entrances and a zombie far from its survivor strides out (`HORDE.travel`: up to 1.8x
+  beyond 1100-1600 px): first contact at 20-26 s. It made solo rounds harder (the surges arrive
+  bunched): solo average Normal 67% -> 25%, teams unchanged.
+* **Team scaling** follows the defend waves: `total.perPlayer` 0.6 (was 0.5) and the alive cap's
+  `cap.perPlayer` 0.55 (was 0.45). With 0.5 / 0.45 average 4p teams won 100% even on Hard with
+  no downs; they are still easier than solo (as in every mode, see below), the gap is structural.
+* **Bots shop between surges.** Without an intermission bots never spent mid-round (a solo
+  average bot died on surge 7 with $1660 banked). They now walk to the supply station in a
+  surge's breather or a calm hold (≤ 6 alive, the station within 1400 px), once per surge;
+  solo average Normal went from losing at surge 7 to 67% won.
+* **Levers**: `HORDE.total` (size), `cap` (pressure at once), `tier` (how tough the last surges
+  play), `gap` (breathers and lulls: the round's length), `surgeBonus` and `startCash` (economy).
+
+## First-person gunplay (Counter-Strike style, SPEC §3.4)
+
+Shots aimed in first person resolve in 3D: the zombie bodies (`shared/hitbox.js`) are about
+half as wide as the 2D circles they replace (a walker's chest 14 px across against a 28 px
+circle), every gun has a spray pattern and an inaccuracy cone that opens with movement and
+fire, and a head takes ×4 (×2 for the brute and the Abomination), the stomach ×1.25, legs
+×0.75. Bots shoot this way too (`aim3d`), so the harness measures it. Quick sweep (5 runs a
+cell; median waves cleared and share clearing 10 / 15), before and after the pass:
+
+| profile, diff, team | before | 3D gunplay, old numbers | after (this pass) |
+|---|---|---|---|
+| average, easy, 4p | 15.0 (100% / 100%), hits 50% | 15.0 (100% / 100%), hits 37% | 15.0 (100% / 100%), hits 40% |
+| average, normal, 1p | 8.0 (0% / 0%), hits 55% | 5.0 (0% / 0%), hits 44% | 6.0 (0% / 0%), hits 44% |
+| average, normal, 2p | 9.0 (40% / 0%), hits 58% | 5.0 (0% / 0%), hits 42% | 9.0 (40% / 0%), hits 47% |
+| average, normal, 4p | 15.0 (100% / 60%), hits 55% | 10.0 (60% / 20%), hits 40% | 11.0 (100% / 0%), hits 46% |
+| average, normal, 6p | 15.0 (100% / 60%), hits 53% | 10.0 (80% / 0%), hits 41% | 13.0 (100% / 0%), hits 42% |
+| average, hard, 4p | 7.0 (0% / 0%), hits 58% | 7.0 (0% / 0%), hits 44% | 8.0 (40% / 0%), hits 47% |
+| average, nightmare, 4p | 6.0 (20% / 0%), hits 60% | 4.0 (0% / 0%), hits 44% | 4.0 (0% / 0%), hits 47% |
+| skilled, normal, 1p | 10.0 (60% / 20%), hits 65% | 7.0 (20% / 20%), hits 53% | 8.0 (40% / 20%), hits 59% |
+| skilled, normal, 2p | 15.0 (100% / 80%), hits 58% | 15.0 (80% / 80%), hits 56% | 15.0 (100% / 80%), hits 69% |
+| skilled, normal, 4p | 15.0 (100% / 100%), hits 60% | 15.0 (100% / 80%), hits 55% | 15.0 (100% / 80%), hits 64% |
+| skilled, normal, 6p | 15.0 (100% / 100%), hits 56% | 15.0 (100% / 80%), hits 57% | 15.0 (100% / 80%), hits 65% |
+
+**What dropped and why.** With the old numbers the average bot's hit rate fell from 55% to
+41% (smaller targets, spray, shooting on the move) and the one-shot precision guns lost the
+most: the DMR, lever-action, magnum, sniper and .50 killed 40-60% fewer zombies a minute in
+hand, because a thin body lines up with the next one behind it far less often than a fat
+circle did (their pierce) and because the bots spammed them as fast as they cycle.
+
+**Changes.**
+* **Zombie health** (zombies.js), the body shots were the bulk of the loss: walker 70 → 54,
+  runner 45 → 35, crawler 35 → 27, bloater 160 → 130, spitter 90 → 70, screamer 110 → 88,
+  brute 1100 → 950, Abomination 8500 → 7400 (two steps, 58 / 38 / 29 / 140 / 78 / 95 / 1000 /
+  7700 first). A rifle kills a walker with any two hits (even two in the legs: 27 + 27 ≥ 54)
+  or one in the head; a pistol with three body hits, two in the stomach or one in the head.
+* **The railgun's beam** is 9 px thick (handling `beam`): a beam that only killed what its
+  hairline crossed lost most of the line it used to cut through (35.9 → 20.8 kills a minute);
+  with the beam it is back to 31.
+* **Weapon damage** stays as it was: the drop is in hitting, not in damage per hit, and the
+  guns that lost most kill a walker with one round anyway. What changed for the guns is
+  their handling (`shared/handling.js`): the heavy machine guns kick less (spray climb 0.07 →
+  0.055 rad, sway 0.048 → 0.034; per-shot cone 0.004 → 0.003, cap 0.075 → 0.05) — a belt-fed
+  gun hosing a crowd, not a rifle to tap; semi-automatics recover between shots instead of
+  climbing for as long as they are tapped.
+* **Bots** (sim/bots.js): stop (counter-strafe) before shooting at range and wait until they
+  are accurate, pace precise guns until the cone fits the target, burst automatics shorter
+  at small, far targets and longer into big ones, hold the trigger with heavy and spin-up
+  guns, zoom scopes in at range, and pull against the recoil (all of it at full skill, about
+  60% for the average profile). The stop planted them in acid: see the follow-up below.
+
+**Guns in the hands of average teams** (kills per minute in hand, quick sweep):
+
+| gun | before | after |
+|---|---|---|
+| pistol | 13.8 | 15.1 |
+| uzi | 14.5 | 17.6 |
+| dual_smg | 18.1 | 20.7 |
+| tommy | 16.7 | 21.7 |
+| rifle | 25.3 | 21.0 |
+| burst_rifle | 27.0 | 20.4 |
+| dmr | 33.4 | 27.6 |
+| lever | 34.2 | 24.7 |
+| magnum | 28.2 | 21.8 |
+| sniper | 26.7 | 14.9 |
+| amr | 30.2 | 15.5 |
+| lmg | 32.8 | 25.4 |
+| hmg | 43.4 | 30.9 |
+| minigun | 22.9 | 20.1 |
+| shotgun | 5.2 | 15.1 |
+| auto_shotgun | 28.3 | 31.5 |
+| sawedoff | 18.9 | 22.3 |
+| railgun | 35.9 | 31.1 |
+| crossbow | 33.0 | 39.3 |
+| tesla | 57.7 | 73.0 |
+
+**Where it lands.** Teams of 2-6 average players clear wave 10 as often as before (2p 40%,
+4p and 6p 100%), and hard and easy are where they were. The last waves are harder: no
+average 4p / 6p run finished 15 in this sample (60% before), and solo dies a wave or two
+earlier (median 6 against 8). Spitter acid is the difference: 375 hp a run against 245 —
+spitters at range take longer to hit and lob more acid at a bot standing to shoot. Skilled
+teams of 2-6 still finish 15 (80%+). See the open issue below.
+
+**Read with care.** The average profile models aim error, reaction and spraying as before;
+how much worse an average human gets at a 14 px target at 600 px is a playtest question.
+Headshots (×4) reward good players far more than they reward bots (12-48% head picks by skill,
+rarer past 380 px). If playtests find the waves too easy for people who aim well, the lever is
+the zombie health above; if too hard for casual players, `inacc.stand` / `spray.up` per
+category in `shared/handling.js`.
+
+### Follow-up: the bots' stop to shoot, hazards and acid
+
+The stop before every shot past 140 px (in defend, hunt and clear) planted the bots. Standing
+still they took every spitter glob (a glob leads its target by 60% of its speed, so a still
+target is always under it), stopped next to pools and walked back into them, stopped instead
+of walking back to the team or to a downed teammate, and with the shot pacing a bot on the
+move hardly fired at all (backing off, getting out of acid). What the bots do now
+(sim/bots.js, SPEC §3.6):
+* they stop only where they mean to stand anyway (their spot, the ground round a downed
+  teammate, a revive) or when a hunt finds its zombie; never in or within 8 px of a pool,
+  under a glob of acid they have seen coming (0.12 s × their reaction), within a bloater's
+  burst + 30 px, with a zombie within 100 px, or while backing off or walking somewhere. Then
+  they fire on the move with the movement penalty (the pacing applies only when stopped);
+* they get out first: away from every pool, landing glob and bloater at once (the deeper in
+  one, the more it counts), weighing the zombies around as when backing off;
+* they back off from slow zombies at a walk (a steady aim, still faster than a walker), from
+  fast ones at a run; scopes zoom in only to stand and shoot;
+* a bloater within its burst of anyone is no target and is never fired at (they back off);
+* the range discipline (pacing, short bursts at far targets) scales with skill: none for the
+  average profile, which pulls the trigger once roughly on the body, as the 2D bots did.
+
+20 runs of average 4-player teams on normal (5 maps × seeds 1-4), the combined game (the
+arsenal and the new zombies merged) before and after the fix, and the old game for reference:
+
+| average 4p, normal | old game (before the gunplay) | combined, before the fix | combined, after the fix |
+|---|---|---|---|
+| median / mean waves cleared | 14.5 / 13.75 | 11 / 11.75 | 14 / 13.05 |
+| clear 10 / clear 15 | 100% / 50% | 85% / 20% | 90% / 35% |
+| damage taken a wave (team; acid) | 99 (43) | 126 (59) | 91 (31) |
+| downs a wave (team) | 0.58 | 0.75 | 0.57 |
+| bloater bursts a wave | 6.5 | 12.1 | 3.5 |
+
+The quick sweep (`--quick`: 5 maps, seed 1, so 5 runs a cell and ±20 points of noise on a
+share), median waves cleared (share clearing 10 / 15):
+
+| profile, diff, team | old game, before the gunplay | combined, before the fix | combined, after the fix |
+|---|---|---|---|
+| average, easy, 4p | 15.0 (100% / 100%) | 15.0 (100% / 80%) | 15.0 (100% / 100%) |
+| average, normal, 1p | 8.0 (0% / 0%) | 5.0 (0% / 0%) | 6.0 (0% / 0%) |
+| average, normal, 2p | 9.0 (40% / 0%) | 10.0 (60% / 0%) | 9.0 (40% / 0%) |
+| average, normal, 4p | 15.0 (100% / 60%) | 11.0 (80% / 0%) | 14.0 (100% / 20%) |
+| average, normal, 6p | 15.0 (100% / 60%) | 12.0 (100% / 0%) | 14.0 (100% / 40%) |
+| average, hard, 4p | 7.0 (0% / 0%) | 7.0 (20% / 0%) | 8.0 (40% / 0%) |
+| average, nightmare, 4p | 6.0 (20% / 0%) | 6.0 (0% / 0%) | 4.0 (0% / 0%) |
+| skilled, normal, 1p | 10.0 (60% / 20%) | 9.0 (40% / 0%) | 8.0 (0% / 0%) |
+| skilled, normal, 2p | 15.0 (100% / 80%) | 13.0 (80% / 20%) | 12.0 (100% / 40%) |
+| skilled, normal, 4p | 15.0 (100% / 100%) | 15.0 (100% / 60%) | 15.0 (100% / 60%) |
+| skilled, normal, 6p | 15.0 (100% / 100%) | 15.0 (100% / 100%) | 15.0 (100% / 100%) |
+| damage taken a run (acid) | 615 (245) | 856 (409) | 689 (218) |
+
+**What is left** is the 3D hit volumes, not behaviour. The same fixed bots shooting at the old
+2D circles (an experiment with `aim3d` off, old code) clear 14.45 waves on average, take 34
+damage a wave and let the objective take 69; with 3D shots, 12.95, 89 and 266. An average
+bot's aim wobble (~0.018 rad) is about the half-width of a walker's chest at 400 px (13.5 px
+across, half the old 28 px circle): it hits 30-45% standing against 45-70% in 2D, and in the
+late waves more walkers reach the objective (its damage a wave: 159 in the old game, 290-330
+in the combined one), which is how most of the remaining lost runs end. A third zombie-health step (−11% on every type: walker 48, runner 31,
+crawler 24, spitter 62, screamer 78, bloater 115, brute 840, Abomination 6500) did not move it
+(35% clear 15 with or without, 20 runs each), so the health stays where the gunplay pass left it.
+
+## Open issues
+* **First-person gunplay: the last waves** (wave 11-15) are still a little harder for average
+  bot teams than before the gunplay (20 runs of 4p: 35% finish 15 against 50%; mean 13.05
+  against 13.75). The acid part is fixed (the bots no longer stand under it: acid damage is
+  below the old game's); what remains is their hit rate on the thinner 3D bodies and the
+  objective (walkers reach it more often). Zombie health did not move it (above). Levers to
+  try next: the objective's health or the walkers' damage to it, or the average profile's aim
+  wobble if playtests show people hit the 3D bodies better than the bots. A human who aims for
+  heads (×4) is not modelled by the bots; playtest before moving more numbers.
+* **Evac Run with bots is a little easy for 4 players** (50-67% of average 4p teams finish
+  15, against 33% in defend) and the harassers never really hurt a bot team. Human players,
+  who walk and shoot worse at the same time, should feel them more; if playtests agree it is
+  easy, the levers are `ZONE.harass` (group size, cap) and `ZONE.fog` (blight damage) in
+  shared/zone.js. Samples are small (3-4 runs per cell).
+* **6-player teams have it easiest:** 75% of average 6p teams finish 15, against 33% for 4p.
+  More zombies per player (0.7) and faster spawns for big crowds (`SPAWN_PACING.crowdExp`
+  0.75) didn't change it; the edge is structural (every class including the medic, and six
+  revivers). If human playtests agree, scaling zombie hp per player (as Left 4 Dead does) is
+  the next lever.
+* **Hard at 6 players:** 42% clear wave 10, against the target of rarely.
+* **Waves 1-4 and 6-9 are near-damage-free for bot teams.** Whether they feel busy needs a human
+  playtest, looking at wave length (60-90 s) and 35-50 zombies alive at once with 4 players.
+* **Wave length** sits at the lower edge of 1.5-3 min (83-112 s from wave 6 with 4 players).
+  Slowing spawns further also makes waves easier; waves should run longer with human
+  players, who kill more slowly than bots.
+* **Skilled bots are strong** (hard 4p: 58% finish 15). That is fine for teammates. A lobby
+  setting for bot skill could use `botSkill` (not exposed in the UI).
+* **Hit reporting on piercing guns:** a pierce > 1 ray that hits fewer zombies than its
+  pierce reports `hit: 0` or `2`, so the magnum, DMR, LMG and sniper show no hit marker on a
+  single target (combat.js `fireHitscan`). This is the reason the shotgun buff avoided pierce.
+* **Campaign, hill and floors 1-2 are easy for bot teams** (the same limit as the base game's
+  early waves); the roof and the last floor carry the tension. If human playtests find the
+  hill too gentle, raise `CAMPAIGN.hillRing.dirs` (more attack directions) or add hill waves;
+  if the roof is too hard, `bossDelay.roof` / `quota`.
+* **Solo campaign** is about 17% (average) / 42% (skilled): a downed solo survivor cannot be
+  revived. Only the self-revive kit saves the run.

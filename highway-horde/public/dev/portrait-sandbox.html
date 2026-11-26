@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Portrait sandbox</title>
+<style>
+  body { margin: 0; background: #111418; color: #ccd; font: 12px system-ui, sans-serif; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; align-items: flex-start; }
+  figure { margin: 0; text-align: center; }
+  canvas { display: block; background: #000; }
+</style>
+<div class="row" id="row"></div>
+<script type="module">
+  // ?size=320 (fine detail from 140 px up), ?small=1 also draws the 96 px card next to each, ?color=0..5
+  import { renderClassPortrait } from '../js/render/renderer.js';
+  import { CLASS_IDS } from '../js/shared/classes.js';
+  const q = new URLSearchParams(location.search);
+  const size = +(q.get('size') || 320), color = +(q.get('color') || 0);
+  const row = document.getElementById('row');
+  for (const cls of CLASS_IDS) {
+    for (const px of q.get('small') ? [96, size] : [size]) {
+      const fig = document.createElement('figure');
+      const c = document.createElement('canvas');
+      c.width = c.height = px;
+      renderClassPortrait(c, cls, color);
+      fig.append(c, cls + ' ' + px);
+      row.append(fig);
+    }
+  }
+  window.__done = true;
+</script>

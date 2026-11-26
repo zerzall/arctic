@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPS Sandbox</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>
+  :root { color-scheme: dark; --bg: #050608; --panel: rgba(12,14,18,0.82); --text: #d8dee6; --muted: #8a96a3; --accent: #ffb74d; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 12px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; }
+  #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; top: 8px; left: 8px; background: var(--panel); border-radius: 6px; padding: 8px 10px; max-width: calc(100vw - 16px); z-index: 10; }
+  #hud .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  #stats { font: 600 12px ui-monospace, monospace; color: var(--accent); white-space: pre; }
+  #help { color: var(--muted); }
+  button, select { font: inherit; background: #0d1014; color: var(--text); border: 1px solid #333b45; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  body.clean #hud { display: none; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: rgba(255,255,255,0.8); border-radius: 50%; z-index: 9; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<div id="cross"></div>
+<div id="hud">
+  <div id="stats">loading…</div>
+  <div class="row">
+    <select id="map" aria-label="Map">
+      <option value="highway">highway</option>
+      <option value="truckstop">truckstop</option>
+      <option value="bridge">bridge</option>
+      <option value="checkpoint">checkpoint</option>
+      <option value="harlan">harlan</option>
+      <option value="roadhouse">roadhouse</option>
+      <option value="depot">depot</option>
+      <option value="farmstead">farmstead</option>
+    </select>
+    <button id="quality">quality</button>
+    <button id="tour">tour</button>
+    <button id="clean">hide hud (H)</button>
+  </div>
+  <div class="row" id="help">Click to lock the mouse · WASD move · Shift sprint · LMB fire · RMB melee · R reload · 1-3 slots · G frag · F molotov · E interact · Q quality (cinematic → ultra → high → low) · Y tour · H hide hud · URL: scale=auto|0.5..2, bloom=0, ao=0, aa=smaa|fxaa|off, grain=0, vignette=0, vol=0, refl=0, q=cinematic|ultra|high|low, msaa=0|2|4|8, shadows=0|1, contact=0|1, aofull=0|1, fxhigh=0|1, mb=0|1, dof=0|1, lens=0|1, lightshadows=0|1, timing=1</div>
+</div>
+<script type="module" src="./fps-sandbox.js"></script>
+</body>
+</html>

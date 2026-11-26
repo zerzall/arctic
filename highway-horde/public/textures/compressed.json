@@ -1,0 +1,5454 @@
+{
+ "version": 1,
+ "about": "The download copies of the PNGs here (scripts/compress-textures.js): PNG path → the file the game loads, the SHA-1 of the PNG it was made from. Generated: do not edit.",
+ "files": {
+  "adobe/albedo.png": {
+   "file": "adobe/albedo.jpg",
+   "sha1": "e6f130c07f2ea2b2ee23ca5a3f669b3c3513bf18",
+   "rules": 2,
+   "bytes": 545889,
+   "png": 2177882,
+   "q": 93,
+   "psnr": 37.5,
+   "size": 1024
+  },
+  "adobe/mask.png": {
+   "file": "adobe/mask.webp",
+   "sha1": "6fad05b8f184ea367309f37ccf2825880d627ade",
+   "rules": 2,
+   "bytes": 147558,
+   "png": 293377,
+   "size": 1024
+  },
+  "adobe/normal.png": {
+   "file": "adobe/normal.jpg",
+   "sha1": "b9c187d0f0ffd5d33765f18ee2f39e2e03ea4204",
+   "rules": 2,
+   "bytes": 363958,
+   "png": 1133676,
+   "q": 95,
+   "psnr": 42.6,
+   "size": 1024
+  },
+  "adobe/rah.png": {
+   "file": "adobe/rah.jpg",
+   "sha1": "85fa8cd955a596d5596b68922ca1038c2aa83c35",
+   "rules": 2,
+   "bytes": 792299,
+   "png": 1621075,
+   "q": 95,
+   "psnr": 37.2,
+   "size": 1024
+  },
+  "asphalt/albedo.png": {
+   "file": "asphalt/albedo.jpg",
+   "sha1": "346340c5be8074e409e194cbb8289aa9d1cafa30",
+   "rules": 2,
+   "bytes": 640795,
+   "png": 2098802,
+   "q": 93,
+   "psnr": 36,
+   "size": 1024
+  },
+  "asphalt/mask.png": {
+   "file": "asphalt/mask.webp",
+   "sha1": "24ef4bdf231898e4abfd9e41c930948765639112",
+   "rules": 2,
+   "bytes": 6810,
+   "png": 19884,
+   "size": 1024
+  },
+  "asphalt/normal.png": {
+   "file": "asphalt/normal.jpg",
+   "sha1": "0f7f254e3e36952afe9aa6c4378ba8ce7d34722a",
+   "rules": 2,
+   "bytes": 1723667,
+   "png": 2776871,
+   "q": 95,
+   "psnr": 35.9,
+   "size": 1024
+  },
+  "asphalt/rah.png": {
+   "file": "asphalt/rah.jpg",
+   "sha1": "7266bef35ff2bbb4d54f217ea367e10c8fc9c27c",
+   "rules": 2,
+   "bytes": 1508099,
+   "png": 2157289,
+   "q": 95,
+   "psnr": 35.8,
+   "size": 1024
+  },
+  "ballast/albedo.png": {
+   "file": "ballast/albedo.jpg",
+   "sha1": "fd2dbd7adf5eeeb16cb46d0d50727e8f07d3b5bf",
+   "rules": 2,
+   "bytes": 748654,
+   "png": 2585231,
+   "q": 93,
+   "psnr": 37.5,
+   "size": 1024
+  },
+  "ballast/mask.png": {
+   "file": "ballast/mask.webp",
+   "sha1": "4b4737423c8558131ee832208b0dea874838f1e3",
+   "rules": 2,
+   "bytes": 73654,
+   "png": 211299,
+   "size": 1024
+  },
+  "ballast/normal.png": {
+   "file": "ballast/normal.jpg",
+   "sha1": "acb2a785ffa429fd4f2cc0a698e2a2c319a275e4",
+   "rules": 2,
+   "bytes": 1681630,
+   "png": 2722936,
+   "q": 95,
+   "psnr": 35.9,
+   "size": 1024
+  },
+  "ballast/rah.png": {
+   "file": "ballast/rah.jpg",
+   "sha1": "25ae7ce2a32d54123ac4a299c73eb80fc97e1310",
+   "rules": 2,
+   "bytes": 1287155,
+   "png": 2172470,
+   "q": 95,
+   "psnr": 37,
+   "size": 1024
+  },
+  "bark/albedo.png": {
+   "file": "bark/albedo.jpg",
+   "sha1": "e22ed6e076aad2c65b17ea5ba7820af7e2ea3cdc",
+   "rules": 2,
+   "bytes": 565480,
+   "png": 2151343,
+   "q": 93,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "bark/mask.png": {
+   "file": "bark/mask.webp",
+   "sha1": "45aa51f5888d16861870522f5165f01790b89623",
+   "rules": 2,
+   "bytes": 24170,
+   "png": 55542,
+   "size": 1024
+  },
+  "bark/normal.png": {
+   "file": "bark/normal.jpg",
+   "sha1": "8f06085102304b21d3a6187b7bf7d0a1061c889a",
+   "rules": 2,
+   "bytes": 1219036,
+   "png": 2198663,
+   "q": 95,
+   "psnr": 36.5,
+   "size": 1024
+  },
+  "bark/rah.png": {
+   "file": "bark/rah.jpg",
+   "sha1": "9a5bc1d416bafd58ad9e224e9a2117aa24d20ed4",
+   "rules": 2,
+   "bytes": 794247,
+   "png": 1288751,
+   "q": 95,
+   "psnr": 39.1,
+   "size": 1024
+  },
+  "bark_pine/albedo.png": {
+   "file": "bark_pine/albedo.jpg",
+   "sha1": "24d6ef69020d62838a516ddafba64b0c944cb9e8",
+   "rules": 2,
+   "bytes": 124504,
+   "png": 466310,
+   "q": 93,
+   "psnr": 38.4,
+   "size": 512
+  },
+  "bark_pine/mask.png": {
+   "file": "bark_pine/mask.webp",
+   "sha1": "939e584c4cea849aaf3c05f5667b794b97cbb80f",
+   "rules": 2,
+   "bytes": 808,
+   "png": 3221,
+   "size": 512
+  },
+  "bark_pine/normal.png": {
+   "file": "bark_pine/normal.jpg",
+   "sha1": "966f569f298f80137f2f89b82e7da932e85915d5",
+   "rules": 2,
+   "bytes": 313056,
+   "png": 568528,
+   "q": 95,
+   "psnr": 36.5,
+   "size": 512
+  },
+  "bark_pine/rah.png": {
+   "file": "bark_pine/rah.jpg",
+   "sha1": "bcdde011a047003041e654bb8b82c2a03fe6d061",
+   "rules": 2,
+   "bytes": 247200,
+   "png": 382803,
+   "q": 95,
+   "psnr": 37,
+   "size": 512
+  },
+  "brick_red/albedo.png": {
+   "file": "brick_red/albedo.jpg",
+   "sha1": "5a48cc24f89ec6382d118f60ffc3405785f67284",
+   "rules": 2,
+   "bytes": 356037,
+   "png": 1597447,
+   "q": 93,
+   "psnr": 39.7,
+   "size": 1024
+  },
+  "brick_red/mask.png": {
+   "file": "brick_red/mask.webp",
+   "sha1": "eea0c9f5f8cf1e58d0b026e58b207044062f3dc8",
+   "rules": 2,
+   "bytes": 161702,
+   "png": 233669,
+   "size": 1024
+  },
+  "brick_red/normal.png": {
+   "file": "brick_red/normal.jpg",
+   "sha1": "9101bb58fecd4451485dd685165d73cf8feb6aa3",
+   "rules": 2,
+   "bytes": 1098432,
+   "png": 2124636,
+   "q": 95,
+   "psnr": 36.8,
+   "size": 1024
+  },
+  "brick_red/rah.png": {
+   "file": "brick_red/rah.jpg",
+   "sha1": "1c8209888c4453292cc8dcf53b389a9b71d595f7",
+   "rules": 2,
+   "bytes": 802687,
+   "png": 1340727,
+   "q": 95,
+   "psnr": 37.2,
+   "size": 1024
+  },
+  "brick_yellow/albedo.png": {
+   "file": "brick_yellow/albedo.jpg",
+   "sha1": "311d535969472eee66458e42aca879bac2c11a0b",
+   "rules": 2,
+   "bytes": 609847,
+   "png": 2182546,
+   "q": 93,
+   "psnr": 37.1,
+   "size": 1024
+  },
+  "brick_yellow/mask.png": {
+   "file": "brick_yellow/mask.webp",
+   "sha1": "5ed43eb9fcafab54eb9321c6b2f728dbbd7b4150",
+   "rules": 2,
+   "bytes": 66488,
+   "png": 94863,
+   "size": 1024
+  },
+  "brick_yellow/normal.png": {
+   "file": "brick_yellow/normal.jpg",
+   "sha1": "8bae630fe26ec964771352e0ec0d27eafd641750",
+   "rules": 2,
+   "bytes": 514521,
+   "png": 1316194,
+   "q": 95,
+   "psnr": 41.9,
+   "size": 1024
+  },
+  "brick_yellow/rah.png": {
+   "file": "brick_yellow/rah.jpg",
+   "sha1": "ff69846462aa0d890cc088cda4cd33e668a9466f",
+   "rules": 2,
+   "bytes": 484590,
+   "png": 774708,
+   "q": 95,
+   "psnr": 40.1,
+   "size": 1024
+  },
+  "burlap/albedo.png": {
+   "file": "burlap/albedo.jpg",
+   "sha1": "df9f501103184101810782997186c609e79b3249",
+   "rules": 2,
+   "bytes": 162121,
+   "png": 451905,
+   "q": 93,
+   "psnr": 37.9,
+   "size": 512
+  },
+  "burlap/mask.png": {
+   "file": "burlap/mask.webp",
+   "sha1": "375af0dc1634701655bf955baa1340a8ee2f85bb",
+   "rules": 2,
+   "bytes": 117178,
+   "png": 238912,
+   "size": 512
+  },
+  "burlap/normal.png": {
+   "file": "burlap/normal.jpg",
+   "sha1": "fa95d7a3b90f0e17f1b99d8f2cbd4eea7f1e4ad1",
+   "rules": 2,
+   "bytes": 240951,
+   "png": 464563,
+   "q": 95,
+   "psnr": 37.4,
+   "size": 512
+  },
+  "burlap/rah.png": {
+   "file": "burlap/rah.jpg",
+   "sha1": "a1ea67ef8f28873d94fa86982a0e64d9d4a770d6",
+   "rules": 2,
+   "bytes": 272370,
+   "png": 422392,
+   "q": 95,
+   "psnr": 36.5,
+   "size": 512
+  },
+  "canvas/albedo.png": {
+   "file": "canvas/albedo.jpg",
+   "sha1": "ad7df4dd02febe83af9d8d9e13cd08ec7c738be2",
+   "rules": 2,
+   "bytes": 316176,
+   "png": 1111184,
+   "q": 93,
+   "psnr": 43.7,
+   "size": 1024
+  },
+  "canvas/mask.png": {
+   "file": "canvas/mask.webp",
+   "sha1": "940a776426ee32c0eb539f414ce7a5ccbe594395",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4545,
+   "size": 1024
+  },
+  "canvas/normal.png": {
+   "file": "canvas/normal.jpg",
+   "sha1": "12612224c83a2000dfd3f02538d234e5a88c2632",
+   "rules": 2,
+   "bytes": 910246,
+   "png": 1879856,
+   "q": 95,
+   "psnr": 37.8,
+   "size": 1024
+  },
+  "canvas/rah.png": {
+   "file": "canvas/rah.jpg",
+   "sha1": "1ef8c2f9f66f6be905b69e0da4a782bd6246a057",
+   "rules": 2,
+   "bytes": 449627,
+   "png": 731304,
+   "q": 95,
+   "psnr": 42.9,
+   "size": 1024
+  },
+  "car_paint/albedo.png": {
+   "file": "car_paint/albedo.jpg",
+   "sha1": "97ac07f49a51c33836f2faa0ec1410eb81078e5c",
+   "rules": 2,
+   "bytes": 121481,
+   "png": 607992,
+   "q": 93,
+   "psnr": 47.2,
+   "size": 1024
+  },
+  "car_paint/mask.png": {
+   "file": "car_paint/mask.webp",
+   "sha1": "0f23e640373c689a0922c6d024f27eb54afddf35",
+   "rules": 2,
+   "bytes": 278,
+   "png": 4848,
+   "size": 1024
+  },
+  "car_paint/normal.png": {
+   "file": "car_paint/normal.jpg",
+   "sha1": "34c319572782db824698e6381bde131d1614570f",
+   "rules": 2,
+   "bytes": 350114,
+   "png": 1488152,
+   "q": 95,
+   "psnr": 40.3,
+   "size": 1024
+  },
+  "car_paint/rah.png": {
+   "file": "car_paint/rah.jpg",
+   "sha1": "8fccaf5b91720f1552e9a05cecc8f61b35d80b7a",
+   "rules": 2,
+   "bytes": 408179,
+   "png": 594837,
+   "q": 95,
+   "psnr": 40,
+   "size": 1024
+  },
+  "carpet/albedo.png": {
+   "file": "carpet/albedo.jpg",
+   "sha1": "cfa8ad77ddd5c4075780ee59a54fb3e4293a5232",
+   "rules": 2,
+   "bytes": 618347,
+   "png": 1032514,
+   "q": 93,
+   "psnr": 37.9,
+   "size": 1024
+  },
+  "carpet/mask.png": {
+   "file": "carpet/mask.webp",
+   "sha1": "64a54957195d76fb06a3afc2a3d2786e069f21ba",
+   "rules": 2,
+   "bytes": 146,
+   "png": 4677,
+   "size": 1024
+  },
+  "carpet/normal.png": {
+   "file": "carpet/normal.png",
+   "sha1": "52c4e566c5b7c280ae279893f9016be75e039cce",
+   "rules": 2,
+   "bytes": 908791,
+   "size": 1024
+  },
+  "carpet/rah.png": {
+   "file": "carpet/rah.png",
+   "sha1": "16a9d8f87a85d46cb2bc876b72b48f681b4c0402",
+   "rules": 2,
+   "bytes": 924933,
+   "size": 1024
+  },
+  "ceiling_tile/albedo.png": {
+   "file": "ceiling_tile/albedo.jpg",
+   "sha1": "e5330c23ef9130e2614655db7fde722c7545d75c",
+   "rules": 2,
+   "bytes": 515400,
+   "png": 864098,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "ceiling_tile/mask.png": {
+   "file": "ceiling_tile/mask.webp",
+   "sha1": "145644ecaded97d0564516284fb4f0249bd6e131",
+   "rules": 2,
+   "bytes": 228,
+   "png": 4700,
+   "size": 1024
+  },
+  "ceiling_tile/normal.png": {
+   "file": "ceiling_tile/normal.jpg",
+   "sha1": "665b0a258e7573949b1186e08ee906b34665fc55",
+   "rules": 2,
+   "bytes": 1264871,
+   "png": 1711092,
+   "q": 95,
+   "psnr": 36.8,
+   "size": 1024
+  },
+  "ceiling_tile/rah.png": {
+   "file": "ceiling_tile/rah.png",
+   "sha1": "20de7158c03912e46e119446fd8998c387e29c91",
+   "rules": 2,
+   "bytes": 776944,
+   "size": 1024
+  },
+  "char/albedo.png": {
+   "file": "char/albedo.jpg",
+   "sha1": "12f50e8ecca22860b611256560e6fc5283bd61e9",
+   "rules": 2,
+   "bytes": 195091,
+   "png": 701868,
+   "q": 93,
+   "psnr": 46.5,
+   "size": 1024
+  },
+  "char/mask.png": {
+   "file": "char/mask.webp",
+   "sha1": "3e9afe150c4dc62a4f1c13c965d8f5b8243875a3",
+   "rules": 2,
+   "bytes": 38360,
+   "png": 62326,
+   "size": 1024
+  },
+  "char/normal.png": {
+   "file": "char/normal.jpg",
+   "sha1": "9b3b11b3aa32fef023a9ae7dfbebdb57f13422e6",
+   "rules": 2,
+   "bytes": 982078,
+   "png": 1967308,
+   "q": 95,
+   "psnr": 38.3,
+   "size": 1024
+  },
+  "char/rah.png": {
+   "file": "char/rah.jpg",
+   "sha1": "95233917e887e2794699861bc26db784c05a6baf",
+   "rules": 2,
+   "bytes": 608063,
+   "png": 968342,
+   "q": 95,
+   "psnr": 40.1,
+   "size": 1024
+  },
+  "cinder_block/albedo.png": {
+   "file": "cinder_block/albedo.jpg",
+   "sha1": "99899a7fee0e3efc01964f2592556a27691e64ac",
+   "rules": 2,
+   "bytes": 518434,
+   "png": 2133099,
+   "q": 93,
+   "psnr": 37.4,
+   "size": 1024
+  },
+  "cinder_block/mask.png": {
+   "file": "cinder_block/mask.webp",
+   "sha1": "b2c56f802c1c2dde7e257238f2303c634b1b6b79",
+   "rules": 2,
+   "bytes": 38786,
+   "png": 57766,
+   "size": 1024
+  },
+  "cinder_block/normal.png": {
+   "file": "cinder_block/normal.jpg",
+   "sha1": "9fdb12fa8c05e18ee7eb46807d319ae34c5ededa",
+   "rules": 2,
+   "bytes": 711418,
+   "png": 1756213,
+   "q": 95,
+   "psnr": 37.8,
+   "size": 1024
+  },
+  "cinder_block/rah.png": {
+   "file": "cinder_block/rah.jpg",
+   "sha1": "9736968b84feb639d3cb5aee5fe96b7b5d3e35b2",
+   "rules": 2,
+   "bytes": 496046,
+   "png": 573419,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 1024
+  },
+  "concrete/albedo.png": {
+   "file": "concrete/albedo.jpg",
+   "sha1": "56f25398d47a6a6088e855b41e2468d017c3a650",
+   "rules": 2,
+   "bytes": 575148,
+   "png": 2236532,
+   "q": 93,
+   "psnr": 37.1,
+   "size": 1024
+  },
+  "concrete/mask.png": {
+   "file": "concrete/mask.webp",
+   "sha1": "9a9e414cffe689810e8748cb5c0fcefdc621bf00",
+   "rules": 2,
+   "bytes": 3246,
+   "png": 11781,
+   "size": 1024
+  },
+  "concrete/normal.png": {
+   "file": "concrete/normal.jpg",
+   "sha1": "29b1404b06a28b295e6f1c6e9f4a2a41654a4f80",
+   "rules": 2,
+   "bytes": 1084327,
+   "png": 2296710,
+   "q": 95,
+   "psnr": 38,
+   "size": 1024
+  },
+  "concrete/rah.png": {
+   "file": "concrete/rah.jpg",
+   "sha1": "766cc74e818a0516ac4ee647927477b08bc6ce32",
+   "rules": 2,
+   "bytes": 558752,
+   "png": 1326642,
+   "q": 95,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "concrete_dam/albedo.png": {
+   "file": "concrete_dam/albedo.jpg",
+   "sha1": "190ec0b019d902824ce4802cb391b8fd106bf39e",
+   "rules": 2,
+   "bytes": 491237,
+   "png": 2142738,
+   "q": 93,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "concrete_dam/mask.png": {
+   "file": "concrete_dam/mask.webp",
+   "sha1": "41c65b53a0ed82686c984fa5122ab31c96ead721",
+   "rules": 2,
+   "bytes": 30362,
+   "png": 67047,
+   "size": 1024
+  },
+  "concrete_dam/normal.png": {
+   "file": "concrete_dam/normal.jpg",
+   "sha1": "6c7748d1ee8568f05916bcd1f38cd6473e22f4a5",
+   "rules": 2,
+   "bytes": 382839,
+   "png": 1334883,
+   "q": 95,
+   "psnr": 42.4,
+   "size": 1024
+  },
+  "concrete_dam/rah.png": {
+   "file": "concrete_dam/rah.jpg",
+   "sha1": "2f3a4460526d1c04c60d69fb4017c493137d0a92",
+   "rules": 2,
+   "bytes": 526340,
+   "png": 1181195,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "concrete_slab/albedo.png": {
+   "file": "concrete_slab/albedo.jpg",
+   "sha1": "0e699c5bd0bb15c1c76c8a49e6b85625cf7be72b",
+   "rules": 2,
+   "bytes": 290623,
+   "png": 1521118,
+   "q": 93,
+   "psnr": 41.6,
+   "size": 1024
+  },
+  "concrete_slab/mask.png": {
+   "file": "concrete_slab/mask.webp",
+   "sha1": "2ab8f29ca9b45ef490ebce4f459579c4a17e3c5d",
+   "rules": 2,
+   "bytes": 18054,
+   "png": 42545,
+   "size": 1024
+  },
+  "concrete_slab/normal.png": {
+   "file": "concrete_slab/normal.jpg",
+   "sha1": "31f2c69f9060dea1b2d2fe066fe50a60840fd1fa",
+   "rules": 2,
+   "bytes": 418963,
+   "png": 1443764,
+   "q": 95,
+   "psnr": 40.9,
+   "size": 1024
+  },
+  "concrete_slab/rah.png": {
+   "file": "concrete_slab/rah.jpg",
+   "sha1": "d19c7e3a16e6a717bffa24797ef450afc6e44a4a",
+   "rules": 2,
+   "bytes": 826657,
+   "png": 1716935,
+   "q": 95,
+   "psnr": 36.8,
+   "size": 1024
+  },
+  "corrugated/albedo.png": {
+   "file": "corrugated/albedo.jpg",
+   "sha1": "17c544ed5697d5da44793c5d1940ec01ac66fdc9",
+   "rules": 2,
+   "bytes": 305413,
+   "png": 1555377,
+   "q": 93,
+   "psnr": 42,
+   "size": 1024
+  },
+  "corrugated/mask.png": {
+   "file": "corrugated/mask.webp",
+   "sha1": "9cd1f0543bb278ae2b9d5508283367ec7a082f5b",
+   "rules": 2,
+   "bytes": 43354,
+   "png": 80349,
+   "size": 1024
+  },
+  "corrugated/normal.png": {
+   "file": "corrugated/normal.jpg",
+   "sha1": "4069de1c1cb2614b7eb8c8fdc287105676ff88fb",
+   "rules": 2,
+   "bytes": 648679,
+   "png": 1782624,
+   "q": 95,
+   "psnr": 37.4,
+   "size": 1024
+  },
+  "corrugated/rah.png": {
+   "file": "corrugated/rah.jpg",
+   "sha1": "79d734153588711fca2fefcf7a8202621e471619",
+   "rules": 2,
+   "bytes": 308772,
+   "png": 347109,
+   "q": 95,
+   "psnr": 43.4,
+   "size": 1024
+  },
+  "corrugated_rust/albedo.png": {
+   "file": "corrugated_rust/albedo.jpg",
+   "sha1": "658a0b42d37f3c0a2b0d60b23d73efb9b2121731",
+   "rules": 2,
+   "bytes": 462637,
+   "png": 1464933,
+   "q": 93,
+   "psnr": 38,
+   "size": 1024
+  },
+  "corrugated_rust/mask.png": {
+   "file": "corrugated_rust/mask.webp",
+   "sha1": "2281f3b3ddadb07a7fefc80d8be8ba5bbb488ccf",
+   "rules": 2,
+   "bytes": 448,
+   "png": 4991,
+   "size": 1024
+  },
+  "corrugated_rust/normal.png": {
+   "file": "corrugated_rust/normal.jpg",
+   "sha1": "2d218cda9d870a36af6aa1a2c26e6e1c057ac797",
+   "rules": 2,
+   "bytes": 494165,
+   "png": 1397200,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 1024
+  },
+  "corrugated_rust/rah.png": {
+   "file": "corrugated_rust/rah.jpg",
+   "sha1": "d146e7c51f96dbfbb7c353d6e519e528b9517ae2",
+   "rules": 2,
+   "bytes": 466342,
+   "png": 528858,
+   "q": 95,
+   "psnr": 42,
+   "size": 1024
+  },
+  "cracked_earth/albedo.png": {
+   "file": "cracked_earth/albedo.jpg",
+   "sha1": "fa333dbebbb33e7851641c35124ce608593b5fb8",
+   "rules": 2,
+   "bytes": 471068,
+   "png": 992690,
+   "q": 93,
+   "psnr": 38.2,
+   "size": 1024
+  },
+  "cracked_earth/mask.png": {
+   "file": "cracked_earth/mask.webp",
+   "sha1": "a2668e08a010fce70dd30ae407271eb856ecacf0",
+   "rules": 2,
+   "bytes": 342,
+   "png": 4963,
+   "size": 1024
+  },
+  "cracked_earth/normal.png": {
+   "file": "cracked_earth/normal.png",
+   "sha1": "7f50cadbdffaa31af90bdf74aae3ea6e9a871564",
+   "rules": 2,
+   "bytes": 1278290,
+   "size": 1024
+  },
+  "cracked_earth/rah.png": {
+   "file": "cracked_earth/rah.png",
+   "sha1": "ef819ab5a1c8cc4c54675e3217d2d146afbcab69",
+   "rules": 2,
+   "bytes": 841261,
+   "size": 1024
+  },
+  "crate_wood/albedo.png": {
+   "file": "crate_wood/albedo.jpg",
+   "sha1": "63d3caf4df994e6bb61570a4a764923f135ef831",
+   "rules": 2,
+   "bytes": 105740,
+   "png": 183563,
+   "q": 93,
+   "psnr": 39.9,
+   "size": 512
+  },
+  "crate_wood/mask.png": {
+   "file": "crate_wood/mask.webp",
+   "sha1": "31224a3dbd1833ceeb754e798ec440daee18897d",
+   "rules": 2,
+   "bytes": 52,
+   "png": 1490,
+   "size": 512
+  },
+  "crate_wood/normal.png": {
+   "file": "crate_wood/normal.jpg",
+   "sha1": "423e6761f61b1bec39acfb2f6b3abb0b51fd493a",
+   "rules": 2,
+   "bytes": 141538,
+   "png": 195765,
+   "q": 95,
+   "psnr": 39.3,
+   "size": 512
+  },
+  "crate_wood/rah.png": {
+   "file": "crate_wood/rah.png",
+   "sha1": "4405e02a71645fe0ec369b627296dd70fee282fd",
+   "rules": 2,
+   "bytes": 130003,
+   "size": 512
+  },
+  "decals/decals-a-n.png": {
+   "file": "decals/decals-a-n.webp",
+   "sha1": "acddc474ec848e970fd08337005f9b219fb0dca6",
+   "rules": 2,
+   "bytes": 2043380,
+   "png": 3012226,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-a-n@2048.webp",
+     "bytes": 741312
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-a-n@1024.webp",
+     "bytes": 252188
+    }
+   ]
+  },
+  "decals/decals-a.png": {
+   "file": "decals/decals-a.webp",
+   "sha1": "7cd86aafdf1e80fabb7949baccc708c537043df3",
+   "rules": 2,
+   "bytes": 3358026,
+   "png": 5378160,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-a@2048.webp",
+     "bytes": 1272960
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-a@1024.webp",
+     "bytes": 478634
+    }
+   ]
+  },
+  "decals/decals-b-n.png": {
+   "file": "decals/decals-b-n.webp",
+   "sha1": "8747fe468f6379ad667e4e5f950d878c763fccf4",
+   "rules": 2,
+   "bytes": 3287254,
+   "png": 4594800,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-b-n@2048.webp",
+     "bytes": 1221328
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-b-n@1024.webp",
+     "bytes": 416386
+    }
+   ]
+  },
+  "decals/decals-b.png": {
+   "file": "decals/decals-b.webp",
+   "sha1": "33ad1bb7c1e2c9ff9bf1792ca66a15201caf19f6",
+   "rules": 2,
+   "bytes": 6645362,
+   "png": 10211016,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-b@2048.webp",
+     "bytes": 2140758
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-b@1024.webp",
+     "bytes": 729084
+    }
+   ]
+  },
+  "decals/decals-c-n.png": {
+   "file": "decals/decals-c-n.webp",
+   "sha1": "9dd3cbcd79595f416ffee452a744100c4ea34561",
+   "rules": 2,
+   "bytes": 2951638,
+   "png": 4172351,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-c-n@2048.webp",
+     "bytes": 1103100
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-c-n@1024.webp",
+     "bytes": 381334
+    }
+   ]
+  },
+  "decals/decals-c.png": {
+   "file": "decals/decals-c.webp",
+   "sha1": "f5bd79fd4a982032ba05044c496e31415ab16b65",
+   "rules": 2,
+   "bytes": 6944400,
+   "png": 10724616,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-c@2048.webp",
+     "bytes": 2255596
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-c@1024.webp",
+     "bytes": 758032
+    }
+   ]
+  },
+  "decals/decals-d-n.png": {
+   "file": "decals/decals-d-n.webp",
+   "sha1": "efc13f8b559d08a766d27b2e3ec646e23895cc80",
+   "rules": 2,
+   "bytes": 2242888,
+   "png": 3186710,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-d-n@2048.webp",
+     "bytes": 861226
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-d-n@1024.webp",
+     "bytes": 293816
+    }
+   ]
+  },
+  "decals/decals-d.png": {
+   "file": "decals/decals-d.webp",
+   "sha1": "7da4f58892c1fecc047b663a5121397e99a52cab",
+   "rules": 2,
+   "bytes": 6179914,
+   "png": 9246835,
+   "size": 4096,
+   "variants": [
+    {
+     "size": 2048,
+     "file": "decals/decals-d@2048.webp",
+     "bytes": 2040192
+    },
+    {
+     "size": 1024,
+     "file": "decals/decals-d@1024.webp",
+     "bytes": 657148
+    }
+   ]
+  },
+  "diamond_plate/albedo.png": {
+   "file": "diamond_plate/albedo.jpg",
+   "sha1": "8304960ca8ccdef9b37db71bfebf19434489a259",
+   "rules": 2,
+   "bytes": 592288,
+   "png": 988902,
+   "q": 93,
+   "psnr": 37.2,
+   "size": 1024
+  },
+  "diamond_plate/mask.png": {
+   "file": "diamond_plate/mask.webp",
+   "sha1": "142228e7bdfcd8ab9c4ab63e94604292591cea74",
+   "rules": 2,
+   "bytes": 10224,
+   "png": 27429,
+   "size": 1024
+  },
+  "diamond_plate/normal.png": {
+   "file": "diamond_plate/normal.jpg",
+   "sha1": "c5fc2ae0107ada5e58fd09af9b3298a0e88c92e0",
+   "rules": 2,
+   "bytes": 680585,
+   "png": 875593,
+   "q": 95,
+   "psnr": 38.5,
+   "size": 1024
+  },
+  "diamond_plate/rah.png": {
+   "file": "diamond_plate/rah.png",
+   "sha1": "7cd2b2014272e07510be7e940a10cbaf01e7f36a",
+   "rules": 2,
+   "bytes": 819029,
+   "size": 1024
+  },
+  "dirt/albedo.png": {
+   "file": "dirt/albedo.jpg",
+   "sha1": "051764d87fb2e8137b30fdd5f33a5fa9326355f2",
+   "rules": 2,
+   "bytes": 687086,
+   "png": 2382608,
+   "q": 93,
+   "psnr": 37.1,
+   "size": 1024
+  },
+  "dirt/mask.png": {
+   "file": "dirt/mask.webp",
+   "sha1": "821361ace9c91e17c4d13c879361e6e06ed591e7",
+   "rules": 2,
+   "bytes": 41502,
+   "png": 99961,
+   "size": 1024
+  },
+  "dirt/normal.png": {
+   "file": "dirt/normal.jpg",
+   "sha1": "f871b06df6f138aeb8d18bda7d6042a522417db9",
+   "rules": 2,
+   "bytes": 1626926,
+   "png": 2661107,
+   "q": 95,
+   "psnr": 36,
+   "size": 1024
+  },
+  "dirt/rah.png": {
+   "file": "dirt/rah.jpg",
+   "sha1": "55e9a7941ac338daf362929d1a5493b5e3d89fd0",
+   "rules": 2,
+   "bytes": 924094,
+   "png": 1814405,
+   "q": 95,
+   "psnr": 38,
+   "size": 1024
+  },
+  "drywall/albedo.png": {
+   "file": "drywall/albedo.jpg",
+   "sha1": "679dc421b8de2cde13265685d22b9915557ebb66",
+   "rules": 2,
+   "bytes": 398483,
+   "png": 1872256,
+   "q": 93,
+   "psnr": 39.5,
+   "size": 1024
+  },
+  "drywall/mask.png": {
+   "file": "drywall/mask.webp",
+   "sha1": "7923037d54ff7b946abf29c842b4834a8f20f8d6",
+   "rules": 2,
+   "bytes": 240,
+   "png": 4757,
+   "size": 1024
+  },
+  "drywall/normal.png": {
+   "file": "drywall/normal.jpg",
+   "sha1": "4afd5fd34c1bdafaa159378aa24ef6876df2d9ef",
+   "rules": 2,
+   "bytes": 1370156,
+   "png": 2389984,
+   "q": 95,
+   "psnr": 36.3,
+   "size": 1024
+  },
+  "drywall/rah.png": {
+   "file": "drywall/rah.jpg",
+   "sha1": "92e412946b034edbc9c8389b7a26f0def0d8f875",
+   "rules": 2,
+   "bytes": 738867,
+   "png": 1460166,
+   "q": 95,
+   "psnr": 37.7,
+   "size": 1024
+  },
+  "foliage/leaves.png": {
+   "file": "foliage/leaves.webp",
+   "sha1": "542edda44f010d10f8abc7f40fe9a8eaa97eefde",
+   "rules": 2,
+   "bytes": 1431390,
+   "png": 2221860,
+   "size": 2048
+  },
+  "glass_cracked/albedo.png": {
+   "file": "glass_cracked/albedo.jpg",
+   "sha1": "48d43af2f0a16a42df603f3e33de8888dc485d51",
+   "rules": 2,
+   "bytes": 140723,
+   "png": 338579,
+   "q": 93,
+   "psnr": 48.1,
+   "size": 1024
+  },
+  "glass_cracked/mask.png": {
+   "file": "glass_cracked/mask.webp",
+   "sha1": "07521393efd0f3bb8448e07a875a9faca5fd3c5f",
+   "rules": 2,
+   "bytes": 21530,
+   "png": 41921,
+   "size": 1024
+  },
+  "glass_cracked/normal.png": {
+   "file": "glass_cracked/normal.jpg",
+   "sha1": "336de03c459c779106cd718fe6da4b3287a1b880",
+   "rules": 2,
+   "bytes": 40024,
+   "png": 61518,
+   "q": 95,
+   "psnr": 51.6,
+   "size": 1024
+  },
+  "glass_cracked/rah.png": {
+   "file": "glass_cracked/rah.png",
+   "sha1": "aaf36e62e433dc5c1c7181edc6d63ddaf6e5ca5c",
+   "rules": 2,
+   "bytes": 205391,
+   "size": 1024
+  },
+  "grass/albedo.png": {
+   "file": "grass/albedo.jpg",
+   "sha1": "5dd2be59fe1be4e75f74f82decbe355affbf51bf",
+   "rules": 2,
+   "bytes": 799509,
+   "png": 2276208,
+   "q": 93,
+   "psnr": 34.4,
+   "size": 1024
+  },
+  "grass/mask.png": {
+   "file": "grass/mask.webp",
+   "sha1": "d913ad2fbdd4ca0948f2436fd4161b93f613626d",
+   "rules": 2,
+   "bytes": 5300,
+   "png": 16345,
+   "size": 1024
+  },
+  "grass/normal.png": {
+   "file": "grass/normal.jpg",
+   "sha1": "df15f302309517f3408a2f65451b3c32f1f87561",
+   "rules": 2,
+   "bytes": 1662220,
+   "png": 2727068,
+   "q": 95,
+   "psnr": 36.1,
+   "size": 1024
+  },
+  "grass/rah.png": {
+   "file": "grass/rah.jpg",
+   "sha1": "a59dd30defd1ddacba7d262f4d131ebfa6dd8d28",
+   "rules": 2,
+   "bytes": 1305964,
+   "png": 2071688,
+   "q": 95,
+   "psnr": 36,
+   "size": 1024
+  },
+  "gravel/albedo.png": {
+   "file": "gravel/albedo.jpg",
+   "sha1": "513ec714925aa63cb115040985629f7a82aff805",
+   "rules": 2,
+   "bytes": 571240,
+   "png": 2414164,
+   "q": 93,
+   "psnr": 38.9,
+   "size": 1024
+  },
+  "gravel/mask.png": {
+   "file": "gravel/mask.webp",
+   "sha1": "2017b0a7dc8ede7290b139dd014c6bf62bdb5a14",
+   "rules": 2,
+   "bytes": 155052,
+   "png": 367488,
+   "size": 1024
+  },
+  "gravel/normal.png": {
+   "file": "gravel/normal.jpg",
+   "sha1": "24763deca9c7ea1558061a18e03b6e03d90ebb8b",
+   "rules": 2,
+   "bytes": 1274256,
+   "png": 2517026,
+   "q": 95,
+   "psnr": 37.2,
+   "size": 1024
+  },
+  "gravel/rah.png": {
+   "file": "gravel/rah.jpg",
+   "sha1": "d4d1126321ccd732e2cdda3324663d34fc180aa8",
+   "rules": 2,
+   "bytes": 1200952,
+   "png": 2115429,
+   "q": 95,
+   "psnr": 36.9,
+   "size": 1024
+  },
+  "guns/anod_black_albedo.png": {
+   "file": "guns/anod_black_albedo.jpg",
+   "sha1": "c73749100748d1196e619d64a82e882cf702fe47",
+   "rules": 2,
+   "bytes": 212315,
+   "png": 1327430,
+   "q": 93,
+   "psnr": 54.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_black_albedo@1024.jpg",
+     "bytes": 65696,
+     "q": 93,
+     "psnr": 53
+    }
+   ]
+  },
+  "guns/anod_black_normal.png": {
+   "file": "guns/anod_black_normal.jpg",
+   "sha1": "171064ce8624b22426bc5299d2f62f3688fe9dd8",
+   "rules": 2,
+   "bytes": 1377630,
+   "png": 2372940,
+   "q": 95,
+   "psnr": 46.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_black_normal@1024.jpg",
+     "bytes": 448317,
+     "q": 95,
+     "psnr": 43.5
+    }
+   ]
+  },
+  "guns/anod_black_orm.png": {
+   "file": "guns/anod_black_orm.jpg",
+   "sha1": "94269f5c666f69c61f5d195ddae7c4210374796b",
+   "rules": 2,
+   "bytes": 963249,
+   "png": 1398132,
+   "q": 95,
+   "psnr": 47.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_black_orm@1024.jpg",
+     "bytes": 295005,
+     "q": 95,
+     "psnr": 47
+    }
+   ]
+  },
+  "guns/anod_od_albedo.png": {
+   "file": "guns/anod_od_albedo.jpg",
+   "sha1": "03f4515afbcd6abedad52acbeb70ee001ac77dbd",
+   "rules": 2,
+   "bytes": 229064,
+   "png": 1684178,
+   "q": 93,
+   "psnr": 52.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_od_albedo@1024.jpg",
+     "bytes": 72323,
+     "q": 93,
+     "psnr": 51.5
+    }
+   ]
+  },
+  "guns/anod_od_normal.png": {
+   "file": "guns/anod_od_normal.jpg",
+   "sha1": "bb8c08d11e4c965faf91e5df3a87853bc8d30b8d",
+   "rules": 2,
+   "bytes": 1378307,
+   "png": 2372456,
+   "q": 95,
+   "psnr": 46.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_od_normal@1024.jpg",
+     "bytes": 448515,
+     "q": 95,
+     "psnr": 43.5
+    }
+   ]
+  },
+  "guns/anod_od_orm.png": {
+   "file": "guns/anod_od_orm.jpg",
+   "sha1": "9169035aec2a524e9643100f9e0afd587957d8c1",
+   "rules": 2,
+   "bytes": 978134,
+   "png": 1398945,
+   "q": 95,
+   "psnr": 47.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_od_orm@1024.jpg",
+     "bytes": 297439,
+     "q": 95,
+     "psnr": 47.1
+    }
+   ]
+  },
+  "guns/anod_tan_albedo.png": {
+   "file": "guns/anod_tan_albedo.jpg",
+   "sha1": "5a93b6db43dc5dde6848c90716e160c5827311d3",
+   "rules": 2,
+   "bytes": 314998,
+   "png": 2177169,
+   "q": 93,
+   "psnr": 52.1,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_tan_albedo@1024.jpg",
+     "bytes": 111701,
+     "q": 93,
+     "psnr": 50.7
+    }
+   ]
+  },
+  "guns/anod_tan_normal.png": {
+   "file": "guns/anod_tan_normal.jpg",
+   "sha1": "520f781674462b5ab17cd1a40994dc8ead34bbf7",
+   "rules": 2,
+   "bytes": 1378719,
+   "png": 2373315,
+   "q": 95,
+   "psnr": 46.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_tan_normal@1024.jpg",
+     "bytes": 448518,
+     "q": 95,
+     "psnr": 43.5
+    }
+   ]
+  },
+  "guns/anod_tan_orm.png": {
+   "file": "guns/anod_tan_orm.jpg",
+   "sha1": "8af3735ed2ee1610543645f4e6e7b7a264ea969d",
+   "rules": 2,
+   "bytes": 978409,
+   "png": 1401408,
+   "q": 95,
+   "psnr": 47.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/anod_tan_orm@1024.jpg",
+     "bytes": 297444,
+     "q": 95,
+     "psnr": 47
+    }
+   ]
+  },
+  "guns/birch_albedo.png": {
+   "file": "guns/birch_albedo.jpg",
+   "sha1": "918a0a7d8c36dcb57e2e282b88bb30859f05d428",
+   "rules": 2,
+   "bytes": 394932,
+   "png": 1466388,
+   "q": 93,
+   "psnr": 50.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/birch_albedo@1024.jpg",
+     "bytes": 137673,
+     "q": 93,
+     "psnr": 49.2
+    }
+   ]
+  },
+  "guns/birch_normal.png": {
+   "file": "guns/birch_normal.png",
+   "sha1": "473c918a3332e1d2b09ce68aef59f376d83a4406",
+   "rules": 2,
+   "bytes": 894827,
+   "size": 2048
+  },
+  "guns/birch_orm.png": {
+   "file": "guns/birch_orm.png",
+   "sha1": "cd75e0cd8fce311b501d15489acde313861c9fe4",
+   "rules": 2,
+   "bytes": 330314,
+   "size": 2048
+  },
+  "guns/blued_albedo.png": {
+   "file": "guns/blued_albedo.jpg",
+   "sha1": "414206f2233cc3e07cdf3699f42e9d4cbcc00cd1",
+   "rules": 2,
+   "bytes": 244727,
+   "png": 1047883,
+   "q": 93,
+   "psnr": 51.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/blued_albedo@1024.jpg",
+     "bytes": 78025,
+     "q": 93,
+     "psnr": 50.8
+    }
+   ]
+  },
+  "guns/blued_normal.png": {
+   "file": "guns/blued_normal.jpg",
+   "sha1": "16fe7f6fd1da16e52e3b656ff74b17339717affe",
+   "rules": 2,
+   "bytes": 1148781,
+   "png": 1733751,
+   "q": 95,
+   "psnr": 46.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/blued_normal@1024.jpg",
+     "bytes": 303312,
+     "q": 95,
+     "psnr": 44.4
+    }
+   ]
+  },
+  "guns/blued_orm.png": {
+   "file": "guns/blued_orm.png",
+   "sha1": "e3b0b348b39402f3a0ed32026059cbc9313f0025",
+   "rules": 2,
+   "bytes": 597860,
+   "size": 2048
+  },
+  "guns/brass_albedo.png": {
+   "file": "guns/brass_albedo.jpg",
+   "sha1": "5e717739912fcf3170019b28746443a6c71440cb",
+   "rules": 2,
+   "bytes": 158113,
+   "png": 737613,
+   "q": 93,
+   "psnr": 49.2,
+   "size": 1024
+  },
+  "guns/brass_normal.png": {
+   "file": "guns/brass_normal.jpg",
+   "sha1": "fa9366d87b5eec8352bf35ebb5e939defb3bdab8",
+   "rules": 2,
+   "bytes": 336660,
+   "png": 704008,
+   "q": 95,
+   "psnr": 47,
+   "size": 1024
+  },
+  "guns/brass_orm.png": {
+   "file": "guns/brass_orm.png",
+   "sha1": "46ccbc4fa87bc569e60c5a572b53d931384ec979",
+   "rules": 2,
+   "bytes": 211504,
+   "size": 1024
+  },
+  "guns/brushed_albedo.png": {
+   "file": "guns/brushed_albedo.jpg",
+   "sha1": "69b171cda94f9d633eba2a372e7c29a97339ad8c",
+   "rules": 2,
+   "bytes": 233213,
+   "png": 828451,
+   "q": 93,
+   "psnr": 48.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/brushed_albedo@1024.jpg",
+     "bytes": 76152,
+     "q": 93,
+     "psnr": 48.3
+    }
+   ]
+  },
+  "guns/brushed_normal.png": {
+   "file": "guns/brushed_normal.jpg",
+   "sha1": "3b61cedc787fb52baa180637c51ddb20f8f646d3",
+   "rules": 2,
+   "bytes": 1079646,
+   "png": 1289530,
+   "q": 95,
+   "psnr": 47.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/brushed_normal@1024.jpg",
+     "bytes": 333112,
+     "q": 95,
+     "psnr": 45.5
+    }
+   ]
+  },
+  "guns/brushed_orm.png": {
+   "file": "guns/brushed_orm.png",
+   "sha1": "fe3111b3994f38f9ef8aa6946324fbea086130cd",
+   "rules": 2,
+   "bytes": 326902,
+   "size": 2048
+  },
+  "guns/cerakote_albedo.png": {
+   "file": "guns/cerakote_albedo.jpg",
+   "sha1": "cd91d29f4edc2c522b8c56e81d71d7497d86e474",
+   "rules": 2,
+   "bytes": 111710,
+   "png": 466085,
+   "q": 93,
+   "psnr": 59.2,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/cerakote_albedo@1024.jpg",
+     "bytes": 37060,
+     "q": 93,
+     "psnr": 57
+    }
+   ]
+  },
+  "guns/cerakote_normal.png": {
+   "file": "guns/cerakote_normal.jpg",
+   "sha1": "37de21546251aaa6c559613e570eb4b4fa4422e9",
+   "rules": 2,
+   "bytes": 1239464,
+   "png": 2072857,
+   "q": 95,
+   "psnr": 46.2,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/cerakote_normal@1024.jpg",
+     "bytes": 389987,
+     "q": 95,
+     "psnr": 44.2
+    }
+   ]
+  },
+  "guns/cerakote_orm.png": {
+   "file": "guns/cerakote_orm.jpg",
+   "sha1": "19368e0d59e4a6d74f42d316d3c3a0355dd919fc",
+   "rules": 2,
+   "bytes": 704126,
+   "png": 819744,
+   "q": 95,
+   "psnr": 49.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/cerakote_orm@1024.jpg",
+     "bytes": 212267,
+     "q": 95,
+     "psnr": 49.7
+    }
+   ]
+  },
+  "guns/checker_albedo.png": {
+   "file": "guns/checker_albedo.jpg",
+   "sha1": "55877b861584dac345c1d3e998a45c15c1b73a05",
+   "rules": 2,
+   "bytes": 156196,
+   "png": 182077,
+   "q": 93,
+   "psnr": 52.2,
+   "size": 1024
+  },
+  "guns/checker_normal.png": {
+   "file": "guns/checker_normal.png",
+   "sha1": "0000059c44a74cdcc19f8d7f8ab8e0aa0f8c215e",
+   "rules": 2,
+   "bytes": 313290,
+   "size": 1024
+  },
+  "guns/checker_orm.png": {
+   "file": "guns/checker_orm.png",
+   "sha1": "72780e9865e72991b32e87cf7ceb1b473c6ed182",
+   "rules": 2,
+   "bytes": 205488,
+   "size": 1024
+  },
+  "guns/knurl_albedo.png": {
+   "file": "guns/knurl_albedo.jpg",
+   "sha1": "71a1c2a354435b80414faf206ce58b36894a9865",
+   "rules": 2,
+   "bytes": 133792,
+   "png": 630275,
+   "q": 93,
+   "psnr": 49.7,
+   "size": 1024
+  },
+  "guns/knurl_normal.png": {
+   "file": "guns/knurl_normal.jpg",
+   "sha1": "7ea571436dee98e6692ba5bb2e9da995b7ce6afc",
+   "rules": 2,
+   "bytes": 500130,
+   "png": 1047030,
+   "q": 95,
+   "psnr": 44.4,
+   "size": 1024
+  },
+  "guns/knurl_orm.png": {
+   "file": "guns/knurl_orm.jpg",
+   "sha1": "543654ceb3fbdf8bf229d444f9ac93ba0a8c23be",
+   "rules": 2,
+   "bytes": 431793,
+   "png": 642520,
+   "q": 95,
+   "psnr": 44.1,
+   "size": 1024
+  },
+  "guns/paint_albedo.png": {
+   "file": "guns/paint_albedo.jpg",
+   "sha1": "8d5c9e71dbe9ff45df037b3a0db5b35b77bd5f47",
+   "rules": 2,
+   "bytes": 40853,
+   "png": 134715,
+   "q": 93,
+   "psnr": 58.4,
+   "size": 1024
+  },
+  "guns/paint_normal.png": {
+   "file": "guns/paint_normal.jpg",
+   "sha1": "69a7964cc8a7231ae6931efa156618306d232b21",
+   "rules": 2,
+   "bytes": 231376,
+   "png": 490022,
+   "q": 95,
+   "psnr": 48.6,
+   "size": 1024
+  },
+  "guns/paint_orm.png": {
+   "file": "guns/paint_orm.png",
+   "sha1": "c874bc995a4f70596eb7385ee81c32f8133cb653",
+   "rules": 2,
+   "bytes": 194680,
+   "size": 1024
+  },
+  "guns/parkerized_albedo.png": {
+   "file": "guns/parkerized_albedo.jpg",
+   "sha1": "9e8e882cecc9b94ab69286e6a3b9a5614bee47c5",
+   "rules": 2,
+   "bytes": 394736,
+   "png": 2666546,
+   "q": 93,
+   "psnr": 49.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/parkerized_albedo@1024.jpg",
+     "bytes": 113753,
+     "q": 93,
+     "psnr": 48
+    }
+   ]
+  },
+  "guns/parkerized_normal.png": {
+   "file": "guns/parkerized_normal.jpg",
+   "sha1": "b75c6bb696f272fbdd69027c2e06e49a58a1d372",
+   "rules": 2,
+   "bytes": 2997791,
+   "png": 5570196,
+   "q": 95,
+   "psnr": 39.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/parkerized_normal@1024.jpg",
+     "bytes": 905643,
+     "q": 95,
+     "psnr": 37.2
+    }
+   ]
+  },
+  "guns/parkerized_orm.png": {
+   "file": "guns/parkerized_orm.jpg",
+   "sha1": "e50543e4cac0996ca3842df725eff0c49f895bd6",
+   "rules": 2,
+   "bytes": 1207730,
+   "png": 1897505,
+   "q": 95,
+   "psnr": 46.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/parkerized_orm@1024.jpg",
+     "bytes": 378909,
+     "q": 95,
+     "psnr": 44.1
+    }
+   ]
+  },
+  "guns/phosphate_albedo.png": {
+   "file": "guns/phosphate_albedo.jpg",
+   "sha1": "77c1ec1f8203e5199165a32c227582a7b37c8c5b",
+   "rules": 2,
+   "bytes": 464256,
+   "png": 2796527,
+   "q": 93,
+   "psnr": 50.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/phosphate_albedo@1024.jpg",
+     "bytes": 141225,
+     "q": 93,
+     "psnr": 48.4
+    }
+   ]
+  },
+  "guns/phosphate_normal.png": {
+   "file": "guns/phosphate_normal.jpg",
+   "sha1": "0c6fafd4ca5f108897752f5b8bc38b3e4c678246",
+   "rules": 2,
+   "bytes": 2976335,
+   "png": 5569663,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/phosphate_normal@1024.jpg",
+     "bytes": 949786,
+     "q": 95,
+     "psnr": 37.2
+    }
+   ]
+  },
+  "guns/phosphate_orm.png": {
+   "file": "guns/phosphate_orm.jpg",
+   "sha1": "083cbfd2b2c97126893b2d662b0c0ed35930b556",
+   "rules": 2,
+   "bytes": 1231565,
+   "png": 1964725,
+   "q": 95,
+   "psnr": 46.2,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/phosphate_orm@1024.jpg",
+     "bytes": 389563,
+     "q": 95,
+     "psnr": 43.8
+    }
+   ]
+  },
+  "guns/poly_black_albedo.png": {
+   "file": "guns/poly_black_albedo.jpg",
+   "sha1": "baf85d5f93f52c795a17cdd649d4c61c41a17317",
+   "rules": 2,
+   "bytes": 218989,
+   "png": 1425165,
+   "q": 93,
+   "psnr": 50.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_black_albedo@1024.jpg",
+     "bytes": 60634,
+     "q": 93,
+     "psnr": 49.3
+    }
+   ]
+  },
+  "guns/poly_black_normal.png": {
+   "file": "guns/poly_black_normal.jpg",
+   "sha1": "63e1c5e58f782b8e80a08526cae9b07a3c209863",
+   "rules": 2,
+   "bytes": 2601282,
+   "png": 5016728,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_black_normal@1024.jpg",
+     "bytes": 943880,
+     "q": 95,
+     "psnr": 38
+    }
+   ]
+  },
+  "guns/poly_black_orm.png": {
+   "file": "guns/poly_black_orm.jpg",
+   "sha1": "0a363f2641084b557286f2afe986688b84d9d41e",
+   "rules": 2,
+   "bytes": 1274028,
+   "png": 2055802,
+   "q": 95,
+   "psnr": 46,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_black_orm@1024.jpg",
+     "bytes": 348179,
+     "q": 95,
+     "psnr": 43.2
+    }
+   ]
+  },
+  "guns/poly_fde_albedo.png": {
+   "file": "guns/poly_fde_albedo.jpg",
+   "sha1": "f912d92eebdd2b954519f69a355eaf6ad05d791d",
+   "rules": 2,
+   "bytes": 422070,
+   "png": 2580143,
+   "q": 93,
+   "psnr": 49.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_fde_albedo@1024.jpg",
+     "bytes": 133039,
+     "q": 93,
+     "psnr": 47.9
+    }
+   ]
+  },
+  "guns/poly_fde_normal.png": {
+   "file": "guns/poly_fde_normal.jpg",
+   "sha1": "3a08e9d6be4d1a8c4dc42eaa98094bdbd1820d08",
+   "rules": 2,
+   "bytes": 2601068,
+   "png": 5016634,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_fde_normal@1024.jpg",
+     "bytes": 944260,
+     "q": 95,
+     "psnr": 38
+    }
+   ]
+  },
+  "guns/poly_fde_orm.png": {
+   "file": "guns/poly_fde_orm.jpg",
+   "sha1": "117db0ebeb5d9733fcdaac2345c5c588c6cd4138",
+   "rules": 2,
+   "bytes": 1255005,
+   "png": 2056737,
+   "q": 95,
+   "psnr": 45.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_fde_orm@1024.jpg",
+     "bytes": 349563,
+     "q": 95,
+     "psnr": 43.2
+    }
+   ]
+  },
+  "guns/poly_grip_albedo.png": {
+   "file": "guns/poly_grip_albedo.jpg",
+   "sha1": "4de42973d39b2b15863c5345afd47d04b57bbc49",
+   "rules": 2,
+   "bytes": 134752,
+   "png": 361106,
+   "q": 93,
+   "psnr": 52.3,
+   "size": 1024
+  },
+  "guns/poly_grip_normal.png": {
+   "file": "guns/poly_grip_normal.jpg",
+   "sha1": "4523553c1301839af28cb2c91105a8b30ba5abf3",
+   "rules": 2,
+   "bytes": 920693,
+   "png": 1876044,
+   "q": 95,
+   "psnr": 39.1,
+   "size": 1024
+  },
+  "guns/poly_grip_orm.png": {
+   "file": "guns/poly_grip_orm.jpg",
+   "sha1": "34f8043f7cd6dab44f307c72120cff12f18e8f1b",
+   "rules": 2,
+   "bytes": 447784,
+   "png": 504273,
+   "q": 95,
+   "psnr": 43.9,
+   "size": 1024
+  },
+  "guns/poly_od_albedo.png": {
+   "file": "guns/poly_od_albedo.jpg",
+   "sha1": "b872942c3166fe613124c1371403897e4bcd497c",
+   "rules": 2,
+   "bytes": 327353,
+   "png": 2157415,
+   "q": 93,
+   "psnr": 50.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_od_albedo@1024.jpg",
+     "bytes": 99348,
+     "q": 93,
+     "psnr": 48.9
+    }
+   ]
+  },
+  "guns/poly_od_normal.png": {
+   "file": "guns/poly_od_normal.jpg",
+   "sha1": "f56b0263830e3bc19d1932caf1b7c0ed78d5f9f3",
+   "rules": 2,
+   "bytes": 2599516,
+   "png": 5014334,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_od_normal@1024.jpg",
+     "bytes": 943751,
+     "q": 95,
+     "psnr": 38
+    }
+   ]
+  },
+  "guns/poly_od_orm.png": {
+   "file": "guns/poly_od_orm.jpg",
+   "sha1": "914255934e867889f2be1c9641b266902ec4f8cb",
+   "rules": 2,
+   "bytes": 1267543,
+   "png": 2057312,
+   "q": 95,
+   "psnr": 45.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/poly_od_orm@1024.jpg",
+     "bytes": 348719,
+     "q": 95,
+     "psnr": 43.2
+    }
+   ]
+  },
+  "guns/rubber_albedo.png": {
+   "file": "guns/rubber_albedo.jpg",
+   "sha1": "3b0c8eaa67017e1586ba803e614970349fda1114",
+   "rules": 2,
+   "bytes": 149013,
+   "png": 837280,
+   "q": 93,
+   "psnr": 49,
+   "size": 1024
+  },
+  "guns/rubber_normal.png": {
+   "file": "guns/rubber_normal.jpg",
+   "sha1": "827a1bff5879aa6c82efaa3ede18ee2f07c11171",
+   "rules": 2,
+   "bytes": 858196,
+   "png": 1606729,
+   "q": 95,
+   "psnr": 39.1,
+   "size": 1024
+  },
+  "guns/rubber_orm.png": {
+   "file": "guns/rubber_orm.jpg",
+   "sha1": "86664bec3b19892092b5cc5f71ae29e9645e448a",
+   "rules": 2,
+   "bytes": 412803,
+   "png": 683164,
+   "q": 95,
+   "psnr": 44.3,
+   "size": 1024
+  },
+  "guns/sight_albedo.png": {
+   "file": "guns/sight_albedo.jpg",
+   "sha1": "5d2becde9c3d31ce63c97053547aa0166fcfcb95",
+   "rules": 2,
+   "bytes": 67184,
+   "png": 439079,
+   "q": 93,
+   "psnr": 50.6,
+   "size": 1024
+  },
+  "guns/sight_normal.png": {
+   "file": "guns/sight_normal.jpg",
+   "sha1": "7a29b6c775aad758ba857f5dfd6f5c5087742017",
+   "rules": 2,
+   "bytes": 452859,
+   "png": 728623,
+   "q": 95,
+   "psnr": 45.3,
+   "size": 1024
+  },
+  "guns/sight_orm.png": {
+   "file": "guns/sight_orm.jpg",
+   "sha1": "ed36fa72518b96f064420bda228f677e0a76c049",
+   "rules": 2,
+   "bytes": 315578,
+   "png": 386342,
+   "q": 95,
+   "psnr": 46,
+   "size": 1024
+  },
+  "guns/skin_arctic_albedo.png": {
+   "file": "guns/skin_arctic_albedo.jpg",
+   "sha1": "e018937fed2495d7640085add10059feb28bd045",
+   "rules": 2,
+   "bytes": 126332,
+   "png": 589857,
+   "q": 93,
+   "psnr": 49.9,
+   "size": 1024
+  },
+  "guns/skin_arctic_normal.png": {
+   "file": "guns/skin_arctic_normal.jpg",
+   "sha1": "baee3d6daffa0aec8ffd9b5e38652984c44756e4",
+   "rules": 2,
+   "bytes": 344608,
+   "png": 761597,
+   "q": 95,
+   "psnr": 46.3,
+   "size": 1024
+  },
+  "guns/skin_arctic_orm.png": {
+   "file": "guns/skin_arctic_orm.jpg",
+   "sha1": "187bd3ddec6e01f75fab671909c4899f634e3738",
+   "rules": 2,
+   "bytes": 198117,
+   "png": 293947,
+   "q": 95,
+   "psnr": 48.9,
+   "size": 1024
+  },
+  "guns/skin_blood_albedo.png": {
+   "file": "guns/skin_blood_albedo.webp",
+   "sha1": "173209bf7ed44db6d6fec73a2f45d99b056b0374",
+   "rules": 2,
+   "bytes": 605250,
+   "png": 836035,
+   "size": 1024
+  },
+  "guns/skin_blood_normal.png": {
+   "file": "guns/skin_blood_normal.jpg",
+   "sha1": "4d74cbe5f5180ace1a43afad866fcba38470916e",
+   "rules": 2,
+   "bytes": 279189,
+   "png": 608990,
+   "q": 95,
+   "psnr": 47.3,
+   "size": 1024
+  },
+  "guns/skin_blood_orm.png": {
+   "file": "guns/skin_blood_orm.jpg",
+   "sha1": "2bf273af2b3ea370a38a16fa0750db014d66eec2",
+   "rules": 2,
+   "bytes": 174499,
+   "png": 221072,
+   "q": 95,
+   "psnr": 49.7,
+   "size": 1024
+  },
+  "guns/skin_carbon_albedo.png": {
+   "file": "guns/skin_carbon_albedo.jpg",
+   "sha1": "8c364a35436571cf0605b1c22959933f4ff118e9",
+   "rules": 2,
+   "bytes": 107138,
+   "png": 665408,
+   "q": 93,
+   "psnr": 49.3,
+   "size": 1024
+  },
+  "guns/skin_carbon_normal.png": {
+   "file": "guns/skin_carbon_normal.png",
+   "sha1": "e84aace2bc649d64126fe7cd1be216cd7d9679b4",
+   "rules": 2,
+   "bytes": 44882,
+   "size": 1024
+  },
+  "guns/skin_carbon_orm.png": {
+   "file": "guns/skin_carbon_orm.png",
+   "sha1": "1ed123245ce6b5518fbad0c569b7a2b060fa9daa",
+   "rules": 2,
+   "bytes": 39935,
+   "size": 1024
+  },
+  "guns/skin_damascus_albedo.png": {
+   "file": "guns/skin_damascus_albedo.jpg",
+   "sha1": "0813680e5ed5c1d8eb78e658b75d1bf8ef0817a2",
+   "rules": 2,
+   "bytes": 275935,
+   "png": 772566,
+   "q": 93,
+   "psnr": 46.6,
+   "size": 1024
+  },
+  "guns/skin_damascus_normal.png": {
+   "file": "guns/skin_damascus_normal.jpg",
+   "sha1": "ed79c138433c57b984b97a351821198d36283049",
+   "rules": 2,
+   "bytes": 353699,
+   "png": 671783,
+   "q": 95,
+   "psnr": 45.5,
+   "size": 1024
+  },
+  "guns/skin_damascus_orm.png": {
+   "file": "guns/skin_damascus_orm.jpg",
+   "sha1": "228acf879056d85729e880eefc90c3abf022eefc",
+   "rules": 2,
+   "bytes": 332487,
+   "png": 370285,
+   "q": 95,
+   "psnr": 48.1,
+   "size": 1024
+  },
+  "guns/skin_desert_albedo.png": {
+   "file": "guns/skin_desert_albedo.jpg",
+   "sha1": "d2c8aa7f6cd3dc122e1d19cf0f19ca4d32cc13f0",
+   "rules": 2,
+   "bytes": 103399,
+   "png": 687155,
+   "q": 93,
+   "psnr": 49.6,
+   "size": 1024
+  },
+  "guns/skin_desert_normal.png": {
+   "file": "guns/skin_desert_normal.jpg",
+   "sha1": "4528e00a59bd9c9c7950d53dcfd9ab169cb3564b",
+   "rules": 2,
+   "bytes": 335327,
+   "png": 735394,
+   "q": 95,
+   "psnr": 46.4,
+   "size": 1024
+  },
+  "guns/skin_desert_orm.png": {
+   "file": "guns/skin_desert_orm.jpg",
+   "sha1": "5f0b1eed298ec50cbff714ad4b93e605e8b277f2",
+   "rules": 2,
+   "bytes": 200410,
+   "png": 295045,
+   "q": 95,
+   "psnr": 48.6,
+   "size": 1024
+  },
+  "guns/skin_gold_albedo.png": {
+   "file": "guns/skin_gold_albedo.jpg",
+   "sha1": "abcb9042a2066095afd8d6548590e9b4e537c46f",
+   "rules": 2,
+   "bytes": 100547,
+   "png": 257850,
+   "q": 93,
+   "psnr": 48.8,
+   "size": 1024
+  },
+  "guns/skin_gold_normal.png": {
+   "file": "guns/skin_gold_normal.jpg",
+   "sha1": "780db84e99b00296f6e5338c0fd0783b9f3337c2",
+   "rules": 2,
+   "bytes": 189865,
+   "png": 373093,
+   "q": 95,
+   "psnr": 45.7,
+   "size": 1024
+  },
+  "guns/skin_gold_orm.png": {
+   "file": "guns/skin_gold_orm.png",
+   "sha1": "3c261057ce1ed7082bfb6aaf67c6642d17d7ada1",
+   "rules": 2,
+   "bytes": 129271,
+   "size": 1024
+  },
+  "guns/skin_hazard_albedo.png": {
+   "file": "guns/skin_hazard_albedo.webp",
+   "sha1": "f3ee0b74f908a758f4e808570f8e4bfe7c7d2919",
+   "rules": 2,
+   "bytes": 218712,
+   "png": 391301,
+   "size": 1024
+  },
+  "guns/skin_hazard_normal.png": {
+   "file": "guns/skin_hazard_normal.png",
+   "sha1": "083ddd4ad697a44cd98ad7a988a1544e7d1bdd38",
+   "rules": 2,
+   "bytes": 126104,
+   "size": 1024
+  },
+  "guns/skin_hazard_orm.png": {
+   "file": "guns/skin_hazard_orm.png",
+   "sha1": "85e25599259209e1668a63f6ba185cb79f7d05bb",
+   "rules": 2,
+   "bytes": 81371,
+   "size": 1024
+  },
+  "guns/skin_tiger_albedo.png": {
+   "file": "guns/skin_tiger_albedo.jpg",
+   "sha1": "7717bf8ab2f2ad4d5751eb960ae3e0a9b18ddd77",
+   "rules": 2,
+   "bytes": 323542,
+   "png": 936270,
+   "q": 93,
+   "psnr": 44.2,
+   "size": 1024
+  },
+  "guns/skin_tiger_normal.png": {
+   "file": "guns/skin_tiger_normal.jpg",
+   "sha1": "d11c39e66e45f82d7b851660ba4c204c31c024ca",
+   "rules": 2,
+   "bytes": 467945,
+   "png": 1060362,
+   "q": 95,
+   "psnr": 43.8,
+   "size": 1024
+  },
+  "guns/skin_tiger_orm.png": {
+   "file": "guns/skin_tiger_orm.jpg",
+   "sha1": "a0515c4469fb713e4d663276bde0b5e66c6d92bf",
+   "rules": 2,
+   "bytes": 252116,
+   "png": 355720,
+   "q": 95,
+   "psnr": 47.3,
+   "size": 1024
+  },
+  "guns/skin_urban_albedo.png": {
+   "file": "guns/skin_urban_albedo.png",
+   "sha1": "f30f222dc295495f1488da8b105df4e7daaed605",
+   "rules": 2,
+   "bytes": 46520,
+   "size": 1024
+  },
+  "guns/skin_urban_normal.png": {
+   "file": "guns/skin_urban_normal.png",
+   "sha1": "20b9d26223992f34c3702f2754a9e42137544ec8",
+   "rules": 2,
+   "bytes": 51417,
+   "size": 1024
+  },
+  "guns/skin_urban_orm.png": {
+   "file": "guns/skin_urban_orm.png",
+   "sha1": "3470c0801d0d641cce648be3c7e68b58c6f26982",
+   "rules": 2,
+   "bytes": 46256,
+   "size": 1024
+  },
+  "guns/skin_woodland_albedo.png": {
+   "file": "guns/skin_woodland_albedo.jpg",
+   "sha1": "ba20f6f2ee7ca736d676b60591e2620e1fbf7fbd",
+   "rules": 2,
+   "bytes": 123704,
+   "png": 561784,
+   "q": 93,
+   "psnr": 49.6,
+   "size": 1024
+  },
+  "guns/skin_woodland_normal.png": {
+   "file": "guns/skin_woodland_normal.jpg",
+   "sha1": "319a0463d86bc9b55b32800e677bcaeae3f5c651",
+   "rules": 2,
+   "bytes": 360205,
+   "png": 805601,
+   "q": 95,
+   "psnr": 46,
+   "size": 1024
+  },
+  "guns/skin_woodland_orm.png": {
+   "file": "guns/skin_woodland_orm.jpg",
+   "sha1": "6d8066a24978eee1c60b6d14b651619a0bc40cf1",
+   "rules": 2,
+   "bytes": 222936,
+   "png": 310912,
+   "q": 95,
+   "psnr": 47.9,
+   "size": 1024
+  },
+  "guns/stainless_albedo.png": {
+   "file": "guns/stainless_albedo.jpg",
+   "sha1": "ba64771fdf063b5fcfe0c7d79f798fc675c6a489",
+   "rules": 2,
+   "bytes": 290812,
+   "png": 1928291,
+   "q": 93,
+   "psnr": 48.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/stainless_albedo@1024.jpg",
+     "bytes": 99542,
+     "q": 93,
+     "psnr": 47.8
+    }
+   ]
+  },
+  "guns/stainless_normal.png": {
+   "file": "guns/stainless_normal.jpg",
+   "sha1": "5c82e2296af7353ff99ab8493045ee68f7c1555b",
+   "rules": 2,
+   "bytes": 1567674,
+   "png": 2809104,
+   "q": 95,
+   "psnr": 45.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/stainless_normal@1024.jpg",
+     "bytes": 516713,
+     "q": 95,
+     "psnr": 42.1
+    }
+   ]
+  },
+  "guns/stainless_orm.png": {
+   "file": "guns/stainless_orm.jpg",
+   "sha1": "529a6dc6bca5e300fb9f62f8d396debff533e506",
+   "rules": 2,
+   "bytes": 933992,
+   "png": 1309990,
+   "q": 95,
+   "psnr": 48.6,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/stainless_orm@1024.jpg",
+     "bytes": 288934,
+     "q": 95,
+     "psnr": 48.9
+    }
+   ]
+  },
+  "guns/walnut_albedo.png": {
+   "file": "guns/walnut_albedo.jpg",
+   "sha1": "a383f897596e04b53c4ae066a1dc3276dab3f155",
+   "rules": 2,
+   "bytes": 369142,
+   "png": 1200543,
+   "q": 93,
+   "psnr": 51.1,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/walnut_albedo@1024.jpg",
+     "bytes": 131915,
+     "q": 93,
+     "psnr": 49.6
+    }
+   ]
+  },
+  "guns/walnut_normal.png": {
+   "file": "guns/walnut_normal.jpg",
+   "sha1": "44406105f4f6c8231ea3519aec8a4d09ac74141b",
+   "rules": 2,
+   "bytes": 903360,
+   "png": 1037947,
+   "q": 95,
+   "psnr": 47.5,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/walnut_normal@1024.jpg",
+     "bytes": 262688,
+     "q": 95,
+     "psnr": 45.6
+    }
+   ]
+  },
+  "guns/walnut_orm.png": {
+   "file": "guns/walnut_orm.png",
+   "sha1": "ffa0ecf41d39b8afc557adac1bbec1aa587b72fd",
+   "rules": 2,
+   "bytes": 356455,
+   "size": 2048
+  },
+  "guns/wear.png": {
+   "file": "guns/wear.webp",
+   "sha1": "7c2a09c4efd836b8b4c64056be7aaff24550edd0",
+   "rules": 2,
+   "bytes": 4313790,
+   "png": 5892126,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "guns/wear@1024.webp",
+     "bytes": 1614672
+    }
+   ]
+  },
+  "hesco/albedo.png": {
+   "file": "hesco/albedo.jpg",
+   "sha1": "2f533359132092bee131f26655732b2bdebc9bb9",
+   "rules": 2,
+   "bytes": 310614,
+   "png": 1032593,
+   "q": 93,
+   "psnr": 42.7,
+   "size": 1024
+  },
+  "hesco/mask.png": {
+   "file": "hesco/mask.webp",
+   "sha1": "4300d4d7875ea3f6d7e5bf9421bf8489f9142c5c",
+   "rules": 2,
+   "bytes": 5278,
+   "png": 13677,
+   "size": 1024
+  },
+  "hesco/normal.png": {
+   "file": "hesco/normal.jpg",
+   "sha1": "35108a84f4c1ba3427a0e3a806eec7e80a0a2d4a",
+   "rules": 2,
+   "bytes": 1594216,
+   "png": 2435213,
+   "q": 95,
+   "psnr": 36,
+   "size": 1024
+  },
+  "hesco/rah.png": {
+   "file": "hesco/rah.png",
+   "sha1": "aa9c5b99d50dd8c461f5227c36d34d11bdd09b36",
+   "rules": 2,
+   "bytes": 535965,
+   "size": 1024
+  },
+  "kraft/albedo.png": {
+   "file": "kraft/albedo.jpg",
+   "sha1": "869c27fb212719141b268a4f13cffd283efe5d2b",
+   "rules": 2,
+   "bytes": 74794,
+   "png": 231168,
+   "q": 93,
+   "psnr": 39.6,
+   "size": 512
+  },
+  "kraft/mask.png": {
+   "file": "kraft/mask.webp",
+   "sha1": "60e13fd4d6c86da11aad98fd4b2c2413ec2085ad",
+   "rules": 2,
+   "bytes": 9106,
+   "png": 36495,
+   "size": 512
+  },
+  "kraft/normal.png": {
+   "file": "kraft/normal.jpg",
+   "sha1": "3e8152ad2bdcad147230f4b30d0195c15715012a",
+   "rules": 2,
+   "bytes": 194587,
+   "png": 256732,
+   "q": 95,
+   "psnr": 37.6,
+   "size": 512
+  },
+  "kraft/rah.png": {
+   "file": "kraft/rah.png",
+   "sha1": "f1bb26a95dd5b7011b3a72ffafb6d10047a5c0a1",
+   "rules": 2,
+   "bytes": 270694,
+   "size": 512
+  },
+  "leather/albedo.png": {
+   "file": "leather/albedo.jpg",
+   "sha1": "7eada76ce7240b13e94194a721bb3caa5ff01a48",
+   "rules": 2,
+   "bytes": 79277,
+   "png": 428564,
+   "q": 93,
+   "psnr": 39.3,
+   "size": 512
+  },
+  "leather/mask.png": {
+   "file": "leather/mask.webp",
+   "sha1": "dc3c58d97f917b2a531383a8ea2509fb1ad6a49d",
+   "rules": 2,
+   "bytes": 47622,
+   "png": 94604,
+   "size": 512
+  },
+  "leather/normal.png": {
+   "file": "leather/normal.jpg",
+   "sha1": "e47f3ad8a6e5f316a57d2c1625d7144c22e0e3bd",
+   "rules": 2,
+   "bytes": 102676,
+   "png": 407950,
+   "q": 95,
+   "psnr": 39.3,
+   "size": 512
+  },
+  "leather/rah.png": {
+   "file": "leather/rah.jpg",
+   "sha1": "ad81786a16456ea27057cf69befff6a37abb7ea8",
+   "rules": 2,
+   "bytes": 257415,
+   "png": 454091,
+   "q": 95,
+   "psnr": 35.8,
+   "size": 512
+  },
+  "linen/albedo.png": {
+   "file": "linen/albedo.jpg",
+   "sha1": "0d9da99ab2591633a1c3afee7438d6eddcfa1735",
+   "rules": 2,
+   "bytes": 65257,
+   "png": 400204,
+   "q": 93,
+   "psnr": 40.8,
+   "size": 512
+  },
+  "linen/mask.png": {
+   "file": "linen/mask.webp",
+   "sha1": "5ff1d1553d53b44cba32d755dc68f72b77e84fd2",
+   "rules": 2,
+   "bytes": 4668,
+   "png": 11230,
+   "size": 512
+  },
+  "linen/normal.png": {
+   "file": "linen/normal.jpg",
+   "sha1": "5703cbdcc3ca97597c998d26a7b70b1164b570be",
+   "rules": 2,
+   "bytes": 161958,
+   "png": 451572,
+   "q": 95,
+   "psnr": 38.3,
+   "size": 512
+  },
+  "linen/rah.png": {
+   "file": "linen/rah.jpg",
+   "sha1": "5b179aef95b7aaaee29cb611e662160ad6be0de3",
+   "rules": 2,
+   "bytes": 347253,
+   "png": 618512,
+   "q": 95,
+   "psnr": 35.7,
+   "size": 512
+  },
+  "linoleum/albedo.png": {
+   "file": "linoleum/albedo.jpg",
+   "sha1": "ccf047ef8ada736f0601b476ae2827e924dfe154",
+   "rules": 2,
+   "bytes": 409334,
+   "png": 1682665,
+   "q": 93,
+   "psnr": 38.6,
+   "size": 1024
+  },
+  "linoleum/mask.png": {
+   "file": "linoleum/mask.webp",
+   "sha1": "c08fab78c0a086fa35382fd2c2f531b4628db4c5",
+   "rules": 2,
+   "bytes": 106,
+   "png": 4567,
+   "size": 1024
+  },
+  "linoleum/normal.png": {
+   "file": "linoleum/normal.jpg",
+   "sha1": "858896c1e8861b197d25aa99dad5442a972ff074",
+   "rules": 2,
+   "bytes": 221701,
+   "png": 1118365,
+   "q": 95,
+   "psnr": 43.4,
+   "size": 1024
+  },
+  "linoleum/rah.png": {
+   "file": "linoleum/rah.jpg",
+   "sha1": "be0c5f306f84df869fd0f4b1345772e01502af37",
+   "rules": 2,
+   "bytes": 668437,
+   "png": 1327172,
+   "q": 95,
+   "psnr": 37.7,
+   "size": 1024
+  },
+  "linoleum_hospital/albedo.png": {
+   "file": "linoleum_hospital/albedo.jpg",
+   "sha1": "573952c959ae98b3c8cffd8338da664be6de15cc",
+   "rules": 2,
+   "bytes": 231946,
+   "png": 399907,
+   "q": 93,
+   "psnr": 41.5,
+   "size": 1024
+  },
+  "linoleum_hospital/mask.png": {
+   "file": "linoleum_hospital/mask.webp",
+   "sha1": "a697a9d301338233b36a2c7f2a992ce532cb407d",
+   "rules": 2,
+   "bytes": 5922,
+   "png": 15158,
+   "size": 1024
+  },
+  "linoleum_hospital/normal.png": {
+   "file": "linoleum_hospital/normal.png",
+   "sha1": "b44bf7bfc8222a6483c511852c235be1e15302e2",
+   "rules": 2,
+   "bytes": 63035,
+   "size": 1024
+  },
+  "linoleum_hospital/rah.png": {
+   "file": "linoleum_hospital/rah.png",
+   "sha1": "f4f89833dbc290efbb37bbf00476bdfee63a8d08",
+   "rules": 2,
+   "bytes": 171259,
+   "size": 1024
+  },
+  "marble/albedo.png": {
+   "file": "marble/albedo.jpg",
+   "sha1": "ee528bd15bc0f6b72723d71ac908d98160aa6784",
+   "rules": 2,
+   "bytes": 264578,
+   "png": 759269,
+   "q": 93,
+   "psnr": 41.6,
+   "size": 1024
+  },
+  "marble/mask.png": {
+   "file": "marble/mask.webp",
+   "sha1": "ea0a887367af21cb657026ec4411e0b8c2b51c9b",
+   "rules": 2,
+   "bytes": 246,
+   "png": 4840,
+   "size": 1024
+  },
+  "marble/normal.png": {
+   "file": "marble/normal.jpg",
+   "sha1": "4bd6fa51b28fe4e020163c66cb1ebbbcc998b696",
+   "rules": 2,
+   "bytes": 94508,
+   "png": 211729,
+   "q": 95,
+   "psnr": 48.7,
+   "size": 1024
+  },
+  "marble/rah.png": {
+   "file": "marble/rah.png",
+   "sha1": "b840853e5c72c6cf733f040861eb68339fc7f19e",
+   "rules": 2,
+   "bytes": 279852,
+   "size": 1024
+  },
+  "metal_camo/albedo.png": {
+   "file": "metal_camo/albedo.jpg",
+   "sha1": "bed447a457df28734f23188d59ac4e9b25ae67d9",
+   "rules": 2,
+   "bytes": 167418,
+   "png": 358919,
+   "q": 93,
+   "psnr": 44.7,
+   "size": 1024
+  },
+  "metal_camo/mask.png": {
+   "file": "metal_camo/mask.webp",
+   "sha1": "f7dea10c29597273fc2587c6bbdda53a9de43eea",
+   "rules": 2,
+   "bytes": 12220,
+   "png": 31417,
+   "size": 1024
+  },
+  "metal_camo/normal.png": {
+   "file": "metal_camo/normal.jpg",
+   "sha1": "6b77b548d2f3402be7204d82dd817f3a7c225c6d",
+   "rules": 2,
+   "bytes": 260066,
+   "png": 631457,
+   "q": 95,
+   "psnr": 46.1,
+   "size": 1024
+  },
+  "metal_camo/rah.png": {
+   "file": "metal_camo/rah.jpg",
+   "sha1": "f899468329bf46c6f2221c98baebccfb59539c6c",
+   "rules": 2,
+   "bytes": 152788,
+   "png": 237047,
+   "q": 95,
+   "psnr": 47,
+   "size": 1024
+  },
+  "metal_painted/albedo.png": {
+   "file": "metal_painted/albedo.jpg",
+   "sha1": "6d821f26f629be0b71cb930e9d6dd4776f65f533",
+   "rules": 2,
+   "bytes": 223817,
+   "png": 1184752,
+   "q": 93,
+   "psnr": 43,
+   "size": 1024
+  },
+  "metal_painted/mask.png": {
+   "file": "metal_painted/mask.webp",
+   "sha1": "fe1ec089d6245aaf1ac859512031cec9569b306f",
+   "rules": 2,
+   "bytes": 4792,
+   "png": 14231,
+   "size": 1024
+  },
+  "metal_painted/normal.png": {
+   "file": "metal_painted/normal.jpg",
+   "sha1": "39d2c993554b447fca5acdb4b7ad0c9fd998fe5e",
+   "rules": 2,
+   "bytes": 168313,
+   "png": 561301,
+   "q": 95,
+   "psnr": 46.6,
+   "size": 1024
+  },
+  "metal_painted/rah.png": {
+   "file": "metal_painted/rah.jpg",
+   "sha1": "97b22c2e0723813606ff1a52cdd106f8c6d66567",
+   "rules": 2,
+   "bytes": 231027,
+   "png": 270592,
+   "q": 95,
+   "psnr": 43.7,
+   "size": 1024
+  },
+  "metal_roof/albedo.png": {
+   "file": "metal_roof/albedo.jpg",
+   "sha1": "d0dc2dd0384f4b84cfe0305754eb40081219fb3b",
+   "rules": 2,
+   "bytes": 233496,
+   "png": 1119568,
+   "q": 93,
+   "psnr": 42.5,
+   "size": 1024
+  },
+  "metal_roof/mask.png": {
+   "file": "metal_roof/mask.webp",
+   "sha1": "6944dbefa6350a86f625943f2e48b3d4497a0374",
+   "rules": 2,
+   "bytes": 1348,
+   "png": 7097,
+   "size": 1024
+  },
+  "metal_roof/normal.png": {
+   "file": "metal_roof/normal.jpg",
+   "sha1": "61c16fc1041092764061bd66ef682f735f2df9ee",
+   "rules": 2,
+   "bytes": 409517,
+   "png": 1269569,
+   "q": 95,
+   "psnr": 40.9,
+   "size": 1024
+  },
+  "metal_roof/rah.png": {
+   "file": "metal_roof/rah.jpg",
+   "sha1": "82f87883bacd35ced867aa52a581633357defaea",
+   "rules": 2,
+   "bytes": 463941,
+   "png": 624386,
+   "q": 95,
+   "psnr": 39.5,
+   "size": 1024
+  },
+  "models/boulder/albedo.png": {
+   "file": "models/boulder/albedo.jpg",
+   "sha1": "ffab79c973931a66bb88da17b78ada4e3139e88b",
+   "rules": 2,
+   "bytes": 164692,
+   "png": 539432,
+   "q": 93,
+   "psnr": 36.1,
+   "size": 512
+  },
+  "models/boulder/normal.png": {
+   "file": "models/boulder/normal.jpg",
+   "sha1": "43b90725a1ea20099cfd0a9930c3663ee4f3f5cf",
+   "rules": 2,
+   "bytes": 314363,
+   "png": 580355,
+   "q": 95,
+   "psnr": 36,
+   "size": 512
+  },
+  "models/boulder/orm.png": {
+   "file": "models/boulder/orm.jpg",
+   "sha1": "fe0afc3a2bab95f3bf28a3565392b9679aedab1d",
+   "rules": 2,
+   "bytes": 154013,
+   "png": 399663,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 512
+  },
+  "models/cardboard/albedo.png": {
+   "file": "models/cardboard/albedo.jpg",
+   "sha1": "7b6d1ea36d4a9f7116dc79007ea457077fd77085",
+   "rules": 2,
+   "bytes": 88067,
+   "png": 379737,
+   "q": 93,
+   "psnr": 40.2,
+   "size": 512
+  },
+  "models/cardboard/normal.png": {
+   "file": "models/cardboard/normal.jpg",
+   "sha1": "82c7e9b4c83c622ee06657c9926b32e40354fed9",
+   "rules": 2,
+   "bytes": 206498,
+   "png": 477118,
+   "q": 95,
+   "psnr": 38,
+   "size": 512
+  },
+  "models/cardboard/orm.png": {
+   "file": "models/cardboard/orm.jpg",
+   "sha1": "e37b0547c0cb3a854f0623ea26fe3cbed5bb1e91",
+   "rules": 2,
+   "bytes": 89299,
+   "png": 265654,
+   "q": 95,
+   "psnr": 44,
+   "size": 512
+  },
+  "models/chair/albedo.png": {
+   "file": "models/chair/albedo.jpg",
+   "sha1": "8e147b3cf82452fe1e06032c7cfe043cbf141ada",
+   "rules": 2,
+   "bytes": 90298,
+   "png": 330074,
+   "q": 93,
+   "psnr": 41.8,
+   "size": 512
+  },
+  "models/chair/normal.png": {
+   "file": "models/chair/normal.jpg",
+   "sha1": "4683d3d3b36a73b90a30277e86e80ce1fe0f1ac1",
+   "rules": 2,
+   "bytes": 161036,
+   "png": 397131,
+   "q": 95,
+   "psnr": 40,
+   "size": 512
+  },
+  "models/chair/orm.png": {
+   "file": "models/chair/orm.jpg",
+   "sha1": "221a06f6a211964633cb3f696dd659c381685dfd",
+   "rules": 2,
+   "bytes": 161383,
+   "png": 345921,
+   "q": 95,
+   "psnr": 41.4,
+   "size": 512
+  },
+  "models/crate_a/albedo.png": {
+   "file": "models/crate_a/albedo.jpg",
+   "sha1": "b9c4a98fbc4a8f9786a57c807f960824dfb5d417",
+   "rules": 2,
+   "bytes": 102698,
+   "png": 418948,
+   "q": 93,
+   "psnr": 40,
+   "size": 512
+  },
+  "models/crate_a/normal.png": {
+   "file": "models/crate_a/normal.jpg",
+   "sha1": "aedecc5f9c4f1faba2adf583f8bcb06c236cbf42",
+   "rules": 2,
+   "bytes": 116478,
+   "png": 363522,
+   "q": 95,
+   "psnr": 41,
+   "size": 512
+  },
+  "models/crate_a/orm.png": {
+   "file": "models/crate_a/orm.jpg",
+   "sha1": "451b21d63828aa16fec12db743b657c6c2faacb3",
+   "rules": 2,
+   "bytes": 174574,
+   "png": 387701,
+   "q": 95,
+   "psnr": 38.9,
+   "size": 512
+  },
+  "models/crate_b/albedo.png": {
+   "file": "models/crate_b/albedo.jpg",
+   "sha1": "40bde89e20d4f07b378bb7963f9152b605247807",
+   "rules": 2,
+   "bytes": 106780,
+   "png": 422835,
+   "q": 93,
+   "psnr": 40,
+   "size": 512
+  },
+  "models/crate_b/normal.png": {
+   "file": "models/crate_b/normal.jpg",
+   "sha1": "d7e1f3bcc352cf8e6add1bd6ea5effa42a255056",
+   "rules": 2,
+   "bytes": 117619,
+   "png": 341223,
+   "q": 95,
+   "psnr": 41.3,
+   "size": 512
+  },
+  "models/crate_b/orm.png": {
+   "file": "models/crate_b/orm.jpg",
+   "sha1": "6361ee85441f8d3c38b406ac2423b033b9ed8b04",
+   "rules": 2,
+   "bytes": 195101,
+   "png": 410446,
+   "q": 95,
+   "psnr": 39.5,
+   "size": 512
+  },
+  "models/drum_a/albedo.png": {
+   "file": "models/drum_a/albedo.jpg",
+   "sha1": "3e8117787c8581bc3bf1eef4b1fa84223634ee6a",
+   "rules": 2,
+   "bytes": 101612,
+   "png": 387791,
+   "q": 93,
+   "psnr": 42.5,
+   "size": 512
+  },
+  "models/drum_a/normal.png": {
+   "file": "models/drum_a/normal.jpg",
+   "sha1": "006d523e131e16d84dda3edb818bcf72739d1818",
+   "rules": 2,
+   "bytes": 118128,
+   "png": 373393,
+   "q": 95,
+   "psnr": 43.9,
+   "size": 512
+  },
+  "models/drum_a/orm.png": {
+   "file": "models/drum_a/orm.jpg",
+   "sha1": "faa8efffa2c4d5b94db355ce48a6f448588f53fa",
+   "rules": 2,
+   "bytes": 169504,
+   "png": 444492,
+   "q": 95,
+   "psnr": 41.9,
+   "size": 512
+  },
+  "models/drum_b/albedo.png": {
+   "file": "models/drum_b/albedo.jpg",
+   "sha1": "5bb89ab6204079f3377de0ceea2e801ea36781c8",
+   "rules": 2,
+   "bytes": 49948,
+   "png": 190793,
+   "q": 93,
+   "psnr": 47.3,
+   "size": 512
+  },
+  "models/drum_b/normal.png": {
+   "file": "models/drum_b/normal.jpg",
+   "sha1": "43c9cad4dd816c48ba97958ab42feb53d479781d",
+   "rules": 2,
+   "bytes": 77304,
+   "png": 235855,
+   "q": 95,
+   "psnr": 46.8,
+   "size": 512
+  },
+  "models/drum_b/orm.png": {
+   "file": "models/drum_b/orm.jpg",
+   "sha1": "ad6986c5da783c565c3a6b51fe5762482f885991",
+   "rules": 2,
+   "bytes": 128932,
+   "png": 314514,
+   "q": 95,
+   "psnr": 43.6,
+   "size": 512
+  },
+  "models/drum_c/albedo.png": {
+   "file": "models/drum_c/albedo.jpg",
+   "sha1": "3194bfc157f56dd7dd41d7d857dabca834fe27b3",
+   "rules": 2,
+   "bytes": 76334,
+   "png": 319197,
+   "q": 93,
+   "psnr": 43.2,
+   "size": 512
+  },
+  "models/drum_c/normal.png": {
+   "file": "models/drum_c/normal.jpg",
+   "sha1": "b92270f22901a57d08e49ec3265e5f6ab3cd6e67",
+   "rules": 2,
+   "bytes": 88877,
+   "png": 314580,
+   "q": 95,
+   "psnr": 45.9,
+   "size": 512
+  },
+  "models/drum_c/orm.png": {
+   "file": "models/drum_c/orm.jpg",
+   "sha1": "06f5e64054f10be84a2a157a5bd92fbe092d9d72",
+   "rules": 2,
+   "bytes": 165784,
+   "png": 450330,
+   "q": 95,
+   "psnr": 41.9,
+   "size": 512
+  },
+  "models/generator/albedo.png": {
+   "file": "models/generator/albedo.jpg",
+   "sha1": "10fd6686e24cda8e2d25577ae8a6c00e97b540d6",
+   "rules": 2,
+   "bytes": 128689,
+   "png": 451282,
+   "q": 93,
+   "psnr": 38.8,
+   "size": 512
+  },
+  "models/generator/normal.png": {
+   "file": "models/generator/normal.jpg",
+   "sha1": "dbae737f018c6bafe840f8bd46cbfbde519defc1",
+   "rules": 2,
+   "bytes": 214389,
+   "png": 436871,
+   "q": 95,
+   "psnr": 38.5,
+   "size": 512
+  },
+  "models/generator/orm.png": {
+   "file": "models/generator/orm.jpg",
+   "sha1": "c0d104b36c6b1bed1e91260932de1c751b5a79dc",
+   "rules": 2,
+   "bytes": 239418,
+   "png": 479830,
+   "q": 95,
+   "psnr": 37.8,
+   "size": 512
+  },
+  "models/hydrant/albedo.png": {
+   "file": "models/hydrant/albedo.jpg",
+   "sha1": "21b6a2be361ff414d35aa6ca537b2c00bb790b01",
+   "rules": 2,
+   "bytes": 93619,
+   "png": 368311,
+   "q": 93,
+   "psnr": 40.1,
+   "size": 512
+  },
+  "models/hydrant/normal.png": {
+   "file": "models/hydrant/normal.jpg",
+   "sha1": "bbe15e70ee55bb179dce790fae3233e0d42ff1dc",
+   "rules": 2,
+   "bytes": 116151,
+   "png": 339720,
+   "q": 95,
+   "psnr": 41.2,
+   "size": 512
+  },
+  "models/hydrant/orm.png": {
+   "file": "models/hydrant/orm.jpg",
+   "sha1": "809d5ab513714ab9f089d4f705f452679eb6fe69",
+   "rules": 2,
+   "bytes": 172320,
+   "png": 421284,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 512
+  },
+  "models/jerrycan/albedo.png": {
+   "file": "models/jerrycan/albedo.jpg",
+   "sha1": "41aef8024656e374cdc5a08ed9edf9965232f4c4",
+   "rules": 2,
+   "bytes": 108259,
+   "png": 417698,
+   "q": 93,
+   "psnr": 37.6,
+   "size": 512
+  },
+  "models/jerrycan/normal.png": {
+   "file": "models/jerrycan/normal.jpg",
+   "sha1": "921286f96f4db01c4d342f6f1c21fd45321f1d94",
+   "rules": 2,
+   "bytes": 192198,
+   "png": 480584,
+   "q": 95,
+   "psnr": 37.6,
+   "size": 512
+  },
+  "models/jerrycan/orm.png": {
+   "file": "models/jerrycan/orm.jpg",
+   "sha1": "8abb8e3ea1f337ee7e73a7ad751e9b2ee3f9eb3a",
+   "rules": 2,
+   "bytes": 255241,
+   "png": 448350,
+   "q": 95,
+   "psnr": 38,
+   "size": 512
+  },
+  "models/log/albedo.png": {
+   "file": "models/log/albedo.jpg",
+   "sha1": "f35ed16dd433ebe184a94604581b5bb821638135",
+   "rules": 2,
+   "bytes": 103293,
+   "png": 429073,
+   "q": 93,
+   "psnr": 39.7,
+   "size": 512
+  },
+  "models/log/normal.png": {
+   "file": "models/log/normal.jpg",
+   "sha1": "70a2166212d68cf44428cd0168bd333c839fa4e2",
+   "rules": 2,
+   "bytes": 275662,
+   "png": 543172,
+   "q": 95,
+   "psnr": 36.8,
+   "size": 512
+  },
+  "models/log/orm.png": {
+   "file": "models/log/orm.jpg",
+   "sha1": "7c62ed635214ee338d2648c28e6cca11507592c4",
+   "rules": 2,
+   "bytes": 163881,
+   "png": 416754,
+   "q": 95,
+   "psnr": 39.5,
+   "size": 512
+  },
+  "models/milcrate/albedo.png": {
+   "file": "models/milcrate/albedo.jpg",
+   "sha1": "3c412ae53c4fc6f260ff3338239a299c0cce6297",
+   "rules": 2,
+   "bytes": 100175,
+   "png": 415452,
+   "q": 93,
+   "psnr": 39.5,
+   "size": 512
+  },
+  "models/milcrate/normal.png": {
+   "file": "models/milcrate/normal.jpg",
+   "sha1": "98c596c17fcd5c751aa318b8c1fb59b160a7babb",
+   "rules": 2,
+   "bytes": 136231,
+   "png": 403088,
+   "q": 95,
+   "psnr": 39.6,
+   "size": 512
+  },
+  "models/milcrate/orm.png": {
+   "file": "models/milcrate/orm.jpg",
+   "sha1": "0f2da2788ab70e8e211bdcd9500464a9f1f926fb",
+   "rules": 2,
+   "bytes": 144287,
+   "png": 364856,
+   "q": 95,
+   "psnr": 41,
+   "size": 512
+  },
+  "models/picnic_0/albedo.png": {
+   "file": "models/picnic_0/albedo.jpg",
+   "sha1": "86142f4d9d4c2d64a2158a720d22d4a8570aa18b",
+   "rules": 2,
+   "bytes": 96475,
+   "png": 396179,
+   "q": 93,
+   "psnr": 40.6,
+   "size": 512
+  },
+  "models/picnic_0/normal.png": {
+   "file": "models/picnic_0/normal.jpg",
+   "sha1": "087cb78c0b45f863757b0814dace994fcdd48ed7",
+   "rules": 2,
+   "bytes": 72706,
+   "png": 342658,
+   "q": 95,
+   "psnr": 42.5,
+   "size": 512
+  },
+  "models/picnic_0/orm.png": {
+   "file": "models/picnic_0/orm.jpg",
+   "sha1": "d8346de36ff0e305f6098ac9e9b9fcf59bc19675",
+   "rules": 2,
+   "bytes": 151109,
+   "png": 357597,
+   "q": 95,
+   "psnr": 40.8,
+   "size": 512
+  },
+  "models/picnic_1/albedo.png": {
+   "file": "models/picnic_1/albedo.jpg",
+   "sha1": "3ba726eefe0385ea14fa1321158698124ff3c54a",
+   "rules": 2,
+   "bytes": 98294,
+   "png": 403550,
+   "q": 93,
+   "psnr": 40.1,
+   "size": 512
+  },
+  "models/picnic_1/normal.png": {
+   "file": "models/picnic_1/normal.jpg",
+   "sha1": "2d093fba48995b103f5866a247479aacc3d6b7ed",
+   "rules": 2,
+   "bytes": 72353,
+   "png": 353936,
+   "q": 95,
+   "psnr": 41.2,
+   "size": 512
+  },
+  "models/picnic_1/orm.png": {
+   "file": "models/picnic_1/orm.jpg",
+   "sha1": "c8c3d11d7c0b166b8f7db906a041dfea0f3185f0",
+   "rules": 2,
+   "bytes": 153951,
+   "png": 363569,
+   "q": 95,
+   "psnr": 40.6,
+   "size": 512
+  },
+  "models/propane/albedo.png": {
+   "file": "models/propane/albedo.jpg",
+   "sha1": "6a20651b16007cd5fa903525cfe34b6bf571fcb7",
+   "rules": 2,
+   "bytes": 114936,
+   "png": 424092,
+   "q": 93,
+   "psnr": 38.1,
+   "size": 512
+  },
+  "models/propane/normal.png": {
+   "file": "models/propane/normal.jpg",
+   "sha1": "cb971e11381a974a6db7c068e2d45e44ed0aeeca",
+   "rules": 2,
+   "bytes": 126150,
+   "png": 393898,
+   "q": 95,
+   "psnr": 40.4,
+   "size": 512
+  },
+  "models/propane/orm.png": {
+   "file": "models/propane/orm.jpg",
+   "sha1": "c0785aab8f060a211371bcae6ccca0a97b8b10fa",
+   "rules": 2,
+   "bytes": 151686,
+   "png": 388339,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 512
+  },
+  "models/stump/albedo.png": {
+   "file": "models/stump/albedo.jpg",
+   "sha1": "5fabb2fc4d7d8b47825ca6ea00775f9ca83f4a7c",
+   "rules": 2,
+   "bytes": 140421,
+   "png": 529311,
+   "q": 93,
+   "psnr": 38,
+   "size": 512
+  },
+  "models/stump/normal.png": {
+   "file": "models/stump/normal.jpg",
+   "sha1": "4eae961b4b28d2a2aa76606077a9851b1585a415",
+   "rules": 2,
+   "bytes": 353464,
+   "png": 617810,
+   "q": 95,
+   "psnr": 36.2,
+   "size": 512
+  },
+  "models/stump/orm.png": {
+   "file": "models/stump/orm.jpg",
+   "sha1": "5219195285988032ffcdead9fe06b81b532f2672",
+   "rules": 2,
+   "bytes": 208346,
+   "png": 441558,
+   "q": 95,
+   "psnr": 38.4,
+   "size": 512
+  },
+  "models/trashbag/albedo.png": {
+   "file": "models/trashbag/albedo.jpg",
+   "sha1": "c64fe153129fb11252ef36a67f867a2f5f27f7fe",
+   "rules": 2,
+   "bytes": 46498,
+   "png": 176025,
+   "q": 93,
+   "psnr": 46.1,
+   "size": 512
+  },
+  "models/trashbag/normal.png": {
+   "file": "models/trashbag/normal.jpg",
+   "sha1": "d264a75fa313f1ada94ec2b3f5d4b7177ea737b6",
+   "rules": 2,
+   "bytes": 163376,
+   "png": 377085,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 512
+  },
+  "models/trashbag/orm.png": {
+   "file": "models/trashbag/orm.jpg",
+   "sha1": "3c5d1b101ebcb16ec24837730cb78b6230f2fc11",
+   "rules": 2,
+   "bytes": 179835,
+   "png": 357636,
+   "q": 95,
+   "psnr": 39.7,
+   "size": 512
+  },
+  "models/trashcan/albedo.png": {
+   "file": "models/trashcan/albedo.jpg",
+   "sha1": "b7188e87ef8cc97cf2e0bbb123f45aa84bfab6a7",
+   "rules": 2,
+   "bytes": 78789,
+   "png": 351834,
+   "q": 93,
+   "psnr": 42.4,
+   "size": 512
+  },
+  "models/trashcan/normal.png": {
+   "file": "models/trashcan/normal.jpg",
+   "sha1": "84e99adf1d4031e033749bf07261e2abc71c0ec2",
+   "rules": 2,
+   "bytes": 206996,
+   "png": 451885,
+   "q": 95,
+   "psnr": 38.3,
+   "size": 512
+  },
+  "models/trashcan/orm.png": {
+   "file": "models/trashcan/orm.jpg",
+   "sha1": "4a2d5952fc82935996196888e986c0819b4d8e5b",
+   "rules": 2,
+   "bytes": 179656,
+   "png": 425474,
+   "q": 95,
+   "psnr": 38.5,
+   "size": 512
+  },
+  "models/trashcan_rust/albedo.png": {
+   "file": "models/trashcan_rust/albedo.jpg",
+   "sha1": "390f1c2f5fb68fa136ff1b74834ded44af0dd81b",
+   "rules": 2,
+   "bytes": 125620,
+   "png": 473508,
+   "q": 93,
+   "psnr": 38.9,
+   "size": 512
+  },
+  "models/trashcan_rust/normal.png": {
+   "file": "models/trashcan_rust/normal.jpg",
+   "sha1": "71badaffb4b092e705324fc61b7e2e27f6153990",
+   "rules": 2,
+   "bytes": 294797,
+   "png": 560561,
+   "q": 95,
+   "psnr": 36.5,
+   "size": 512
+  },
+  "models/trashcan_rust/orm.png": {
+   "file": "models/trashcan_rust/orm.jpg",
+   "sha1": "ccfb7e861c54a4a112a76fc02da065694617c5bb",
+   "rules": 2,
+   "bytes": 158293,
+   "png": 386085,
+   "q": 95,
+   "psnr": 39.2,
+   "size": 512
+  },
+  "models/tyre/albedo.png": {
+   "file": "models/tyre/albedo.jpg",
+   "sha1": "3eb70e95e38d34d23dd16e5e05c94356c4367e1c",
+   "rules": 2,
+   "bytes": 86657,
+   "png": 377356,
+   "q": 93,
+   "psnr": 40.8,
+   "size": 512
+  },
+  "models/tyre/normal.png": {
+   "file": "models/tyre/normal.jpg",
+   "sha1": "deb9cfcc225ca2ce1f09560ec752ddfce671a192",
+   "rules": 2,
+   "bytes": 155737,
+   "png": 395983,
+   "q": 95,
+   "psnr": 39.2,
+   "size": 512
+  },
+  "models/tyre/orm.png": {
+   "file": "models/tyre/orm.jpg",
+   "sha1": "19a36f676552427ef3288a76b7c513c062ed2a62",
+   "rules": 2,
+   "bytes": 190247,
+   "png": 397883,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 512
+  },
+  "models/wheelchair/albedo.png": {
+   "file": "models/wheelchair/albedo.jpg",
+   "sha1": "bf6f61b29e529090fb3abb6f61b4cb8c3dcc2505",
+   "rules": 2,
+   "bytes": 64795,
+   "png": 197821,
+   "q": 93,
+   "psnr": 44.7,
+   "size": 512
+  },
+  "models/wheelchair/normal.png": {
+   "file": "models/wheelchair/normal.jpg",
+   "sha1": "29e9934aa100f163d5b5a19fd95c482497cb0b03",
+   "rules": 2,
+   "bytes": 146639,
+   "png": 341547,
+   "q": 95,
+   "psnr": 44.1,
+   "size": 512
+  },
+  "models/wheelchair/orm.png": {
+   "file": "models/wheelchair/orm.jpg",
+   "sha1": "c3dfa1d738488173b86ff35165c57ad84fb47044",
+   "rules": 2,
+   "bytes": 169298,
+   "png": 438234,
+   "q": 95,
+   "psnr": 42.7,
+   "size": 512
+  },
+  "mud/albedo.png": {
+   "file": "mud/albedo.jpg",
+   "sha1": "d11bcbf0560ff997bae8d370aa121aebd99c7f56",
+   "rules": 2,
+   "bytes": 420655,
+   "png": 1819672,
+   "q": 93,
+   "psnr": 39.7,
+   "size": 1024
+  },
+  "mud/mask.png": {
+   "file": "mud/mask.webp",
+   "sha1": "a6dff3e4af4fcf9a198870bf7d80a29d616af7e6",
+   "rules": 2,
+   "bytes": 70400,
+   "png": 162980,
+   "size": 1024
+  },
+  "mud/normal.png": {
+   "file": "mud/normal.jpg",
+   "sha1": "965ecd1a79cfa261a325fd245541d6a95f8878a6",
+   "rules": 2,
+   "bytes": 1454121,
+   "png": 2505273,
+   "q": 95,
+   "psnr": 36.2,
+   "size": 1024
+  },
+  "mud/rah.png": {
+   "file": "mud/rah.jpg",
+   "sha1": "d27efcd0889c3904e51290591a01436f2a7d84b3",
+   "rules": 2,
+   "bytes": 826312,
+   "png": 1639359,
+   "q": 95,
+   "psnr": 38.1,
+   "size": 1024
+  },
+  "osb/albedo.png": {
+   "file": "osb/albedo.jpg",
+   "sha1": "4d2d02057685b3a5c00526ac6f62c67af2dd715e",
+   "rules": 2,
+   "bytes": 155285,
+   "png": 545954,
+   "q": 93,
+   "psnr": 36.9,
+   "size": 512
+  },
+  "osb/mask.png": {
+   "file": "osb/mask.webp",
+   "sha1": "6dafed745fde540122e631ea7dab4d220f741322",
+   "rules": 2,
+   "bytes": 14910,
+   "png": 38989,
+   "size": 512
+  },
+  "osb/normal.png": {
+   "file": "osb/normal.jpg",
+   "sha1": "5685c04415e3c7b4af875d3769b2f23fffb35702",
+   "rules": 2,
+   "bytes": 83339,
+   "png": 345401,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 512
+  },
+  "osb/rah.png": {
+   "file": "osb/rah.jpg",
+   "sha1": "800110ea5c52d3c32890c5ff19ddb003a76abb2b",
+   "rules": 2,
+   "bytes": 343856,
+   "png": 571425,
+   "q": 95,
+   "psnr": 35.7,
+   "size": 512
+  },
+  "paint_metal/albedo.png": {
+   "file": "paint_metal/albedo.jpg",
+   "sha1": "1a91305b2b09cd95f450aed1b4fc8163fcbc74eb",
+   "rules": 2,
+   "bytes": 36063,
+   "png": 245317,
+   "q": 93,
+   "psnr": 45.9,
+   "size": 512
+  },
+  "paint_metal/mask.png": {
+   "file": "paint_metal/mask.webp",
+   "sha1": "4dc2f8f1da11cc8980b3e7eb063f7d521ed62d86",
+   "rules": 2,
+   "bytes": 292,
+   "png": 2018,
+   "size": 512
+  },
+  "paint_metal/normal.png": {
+   "file": "paint_metal/normal.jpg",
+   "sha1": "689939e173d49533bcd99edb3aeeed66324b91e9",
+   "rules": 2,
+   "bytes": 43925,
+   "png": 116670,
+   "q": 95,
+   "psnr": 47.5,
+   "size": 512
+  },
+  "paint_metal/rah.png": {
+   "file": "paint_metal/rah.jpg",
+   "sha1": "ee800ac05c20cc63d3b80baec1aeb4ac0ec0aee0",
+   "rules": 2,
+   "bytes": 197488,
+   "png": 421658,
+   "q": 95,
+   "psnr": 36.6,
+   "size": 512
+  },
+  "paint_rust/albedo.png": {
+   "file": "paint_rust/albedo.jpg",
+   "sha1": "ca17def67336740a085c202e896b9344530df253",
+   "rules": 2,
+   "bytes": 59612,
+   "png": 198837,
+   "q": 93,
+   "psnr": 43.7,
+   "size": 512
+  },
+  "paint_rust/mask.png": {
+   "file": "paint_rust/mask.webp",
+   "sha1": "34b33a1e2eb848e7108740b320c70088954cf541",
+   "rules": 2,
+   "bytes": 52,
+   "png": 1488,
+   "size": 512
+  },
+  "paint_rust/normal.png": {
+   "file": "paint_rust/normal.jpg",
+   "sha1": "de612f09b6d170199778225299769d203f0e991e",
+   "rules": 2,
+   "bytes": 69124,
+   "png": 218611,
+   "q": 95,
+   "psnr": 44.5,
+   "size": 512
+  },
+  "paint_rust/rah.png": {
+   "file": "paint_rust/rah.jpg",
+   "sha1": "60be9f07e5da32479fd5e5c0f92a97040f1ec500",
+   "rules": 2,
+   "bytes": 89029,
+   "png": 98933,
+   "q": 95,
+   "psnr": 42.5,
+   "size": 512
+  },
+  "planks/albedo.png": {
+   "file": "planks/albedo.jpg",
+   "sha1": "ecb01598902395a3d359d9bc719435e3fb607d81",
+   "rules": 2,
+   "bytes": 415578,
+   "png": 1493595,
+   "q": 93,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "planks/mask.png": {
+   "file": "planks/mask.webp",
+   "sha1": "d02c2384f1eb4daf25930561d5b12bab0d27acfb",
+   "rules": 2,
+   "bytes": 752,
+   "png": 5853,
+   "size": 1024
+  },
+  "planks/normal.png": {
+   "file": "planks/normal.jpg",
+   "sha1": "62018bb21e8759d2015b909ce1bb8a2aebb6560c",
+   "rules": 2,
+   "bytes": 570876,
+   "png": 1590090,
+   "q": 95,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "planks/rah.png": {
+   "file": "planks/rah.jpg",
+   "sha1": "d420cf6d239cc88452b4c8b3abb7d298fb7a166c",
+   "rules": 2,
+   "bytes": 534222,
+   "png": 710128,
+   "q": 95,
+   "psnr": 38.8,
+   "size": 1024
+  },
+  "plaster/albedo.png": {
+   "file": "plaster/albedo.jpg",
+   "sha1": "28f3b6001804ae4becaaf53e884f8ad39ecc2580",
+   "rules": 2,
+   "bytes": 513061,
+   "png": 2150725,
+   "q": 93,
+   "psnr": 38.6,
+   "size": 1024
+  },
+  "plaster/mask.png": {
+   "file": "plaster/mask.webp",
+   "sha1": "1be2301ff6fc771babb70585f75d561b2ad35c08",
+   "rules": 2,
+   "bytes": 2624,
+   "png": 8877,
+   "size": 1024
+  },
+  "plaster/normal.png": {
+   "file": "plaster/normal.jpg",
+   "sha1": "563d0170b89451f7238b21ca02d0cdfb5d661715",
+   "rules": 2,
+   "bytes": 562953,
+   "png": 1540944,
+   "q": 95,
+   "psnr": 39.2,
+   "size": 1024
+  },
+  "plaster/rah.png": {
+   "file": "plaster/rah.jpg",
+   "sha1": "baf9da1a85e6f5f753f51486c65c9074ad9e44eb",
+   "rules": 2,
+   "bytes": 393292,
+   "png": 610271,
+   "q": 95,
+   "psnr": 40.6,
+   "size": 1024
+  },
+  "plaster_bleached/albedo.png": {
+   "file": "plaster_bleached/albedo.jpg",
+   "sha1": "d707f33893719f2fc0412e21e952958a5d621f23",
+   "rules": 2,
+   "bytes": 659433,
+   "png": 2283703,
+   "q": 93,
+   "psnr": 36.7,
+   "size": 1024
+  },
+  "plaster_bleached/mask.png": {
+   "file": "plaster_bleached/mask.webp",
+   "sha1": "fd354d8d9d2f5bfefc4c233a5405d77acc98a318",
+   "rules": 2,
+   "bytes": 4510,
+   "png": 15145,
+   "size": 1024
+  },
+  "plaster_bleached/normal.png": {
+   "file": "plaster_bleached/normal.jpg",
+   "sha1": "c8056b6a193243b17a154dc60e2c97c7c89f603a",
+   "rules": 2,
+   "bytes": 1462292,
+   "png": 2513053,
+   "q": 95,
+   "psnr": 36.1,
+   "size": 1024
+  },
+  "plaster_bleached/rah.png": {
+   "file": "plaster_bleached/rah.jpg",
+   "sha1": "a67115bb0f2062ed1e77f58072200de56356a86b",
+   "rules": 2,
+   "bytes": 909887,
+   "png": 1711785,
+   "q": 95,
+   "psnr": 36.9,
+   "size": 1024
+  },
+  "plastic_worn/albedo.png": {
+   "file": "plastic_worn/albedo.jpg",
+   "sha1": "1a74aacb517edf423228dc150a6aca15f50cbcd9",
+   "rules": 2,
+   "bytes": 43541,
+   "png": 209700,
+   "q": 93,
+   "psnr": 44.5,
+   "size": 512
+  },
+  "plastic_worn/mask.png": {
+   "file": "plastic_worn/mask.webp",
+   "sha1": "e4d3dbb3fceb8a7c089128ac08dcafa8c910f403",
+   "rules": 2,
+   "bytes": 52,
+   "png": 1490,
+   "size": 512
+  },
+  "plastic_worn/normal.png": {
+   "file": "plastic_worn/normal.jpg",
+   "sha1": "52f5dd24667a0a1f3c15e615cdc3980e7d7b9076",
+   "rules": 2,
+   "bytes": 49339,
+   "png": 203782,
+   "q": 95,
+   "psnr": 45.2,
+   "size": 512
+  },
+  "plastic_worn/rah.png": {
+   "file": "plastic_worn/rah.jpg",
+   "sha1": "244afe93bc6e09225446d1ed9d1d5251ddf9ae2c",
+   "rules": 2,
+   "bytes": 63797,
+   "png": 99871,
+   "q": 95,
+   "psnr": 44.5,
+   "size": 512
+  },
+  "plywood/albedo.png": {
+   "file": "plywood/albedo.jpg",
+   "sha1": "b16302322746a516b019285b0b3c53fe3495e062",
+   "rules": 2,
+   "bytes": 77366,
+   "png": 167515,
+   "q": 93,
+   "psnr": 40.8,
+   "size": 512
+  },
+  "plywood/mask.png": {
+   "file": "plywood/mask.webp",
+   "sha1": "34b33a1e2eb848e7108740b320c70088954cf541",
+   "rules": 2,
+   "bytes": 52,
+   "png": 1488,
+   "size": 512
+  },
+  "plywood/normal.png": {
+   "file": "plywood/normal.jpg",
+   "sha1": "f87805efd7dbe74a074e82ebb86bc6a066f3ec03",
+   "rules": 2,
+   "bytes": 57771,
+   "png": 123131,
+   "q": 95,
+   "psnr": 44,
+   "size": 512
+  },
+  "plywood/rah.png": {
+   "file": "plywood/rah.png",
+   "sha1": "8093c8ea2a12c4041afba3b0693b59bf9f7c2db4",
+   "rules": 2,
+   "bytes": 220786,
+   "size": 512
+  },
+  "rail_rust/albedo.png": {
+   "file": "rail_rust/albedo.jpg",
+   "sha1": "cc0e5d1ff91a3471784d88ab94fc27399030006e",
+   "rules": 2,
+   "bytes": 383653,
+   "png": 1785928,
+   "q": 93,
+   "psnr": 38.4,
+   "size": 1024
+  },
+  "rail_rust/mask.png": {
+   "file": "rail_rust/mask.webp",
+   "sha1": "ea1264eaf83f1744c4d1b30b2449d1c452cf3415",
+   "rules": 2,
+   "bytes": 724,
+   "png": 6125,
+   "size": 1024
+  },
+  "rail_rust/normal.png": {
+   "file": "rail_rust/normal.jpg",
+   "sha1": "d3035a741ee8aa8f3bf463d57baf256757eea264",
+   "rules": 2,
+   "bytes": 717206,
+   "png": 1842980,
+   "q": 95,
+   "psnr": 37.5,
+   "size": 1024
+  },
+  "rail_rust/rah.png": {
+   "file": "rail_rust/rah.jpg",
+   "sha1": "6f392a89db6c067decc7298a61ae6cccb20cd9f7",
+   "rules": 2,
+   "bytes": 941452,
+   "png": 1901811,
+   "q": 95,
+   "psnr": 36.1,
+   "size": 1024
+  },
+  "road_paint/albedo.png": {
+   "file": "road_paint/albedo.jpg",
+   "sha1": "82dc1fad3e1312f59d8c09cd54526f5cfe1c0f38",
+   "rules": 2,
+   "bytes": 224649,
+   "png": 767195,
+   "q": 93,
+   "psnr": 43.9,
+   "size": 1024
+  },
+  "road_paint/mask.png": {
+   "file": "road_paint/mask.webp",
+   "sha1": "f3da28bf98354e41f56fb3fd9edb3acc110b2335",
+   "rules": 2,
+   "bytes": 51002,
+   "png": 91177,
+   "size": 1024
+  },
+  "road_paint/normal.png": {
+   "file": "road_paint/normal.jpg",
+   "sha1": "4b9c65845bddcbb6642dd3ca64d8b35dc87e4b7c",
+   "rules": 2,
+   "bytes": 1018702,
+   "png": 2113538,
+   "q": 95,
+   "psnr": 37.4,
+   "size": 1024
+  },
+  "road_paint/rah.png": {
+   "file": "road_paint/rah.jpg",
+   "sha1": "56c21fa5937a36325c15a0db463be7093e946b20",
+   "rules": 2,
+   "bytes": 358820,
+   "png": 548276,
+   "q": 95,
+   "psnr": 41.3,
+   "size": 1024
+  },
+  "road_wear/albedo.png": {
+   "file": "road_wear/albedo.jpg",
+   "sha1": "062f69c7d2932be263b533c670b4c4feddae0a98",
+   "rules": 2,
+   "bytes": 208555,
+   "png": 1068626,
+   "q": 93,
+   "psnr": 43.4,
+   "size": 1024
+  },
+  "road_wear/mask.png": {
+   "file": "road_wear/mask.webp",
+   "sha1": "5597c218b2d03ba1dade4866ab8f152d74555fa2",
+   "rules": 2,
+   "bytes": 84846,
+   "png": 154885,
+   "size": 1024
+  },
+  "road_wear/normal.png": {
+   "file": "road_wear/normal.jpg",
+   "sha1": "49d9606fad5fa3cf5c2caf769c29ddeed3dc9905",
+   "rules": 2,
+   "bytes": 561476,
+   "png": 1553315,
+   "q": 95,
+   "psnr": 39.3,
+   "size": 1024
+  },
+  "road_wear/rah.png": {
+   "file": "road_wear/rah.jpg",
+   "sha1": "e7990d7f413c5debc5606900aa36e6e3309b5a8d",
+   "rules": 2,
+   "bytes": 370726,
+   "png": 684221,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 1024
+  },
+  "rock/albedo.png": {
+   "file": "rock/albedo.jpg",
+   "sha1": "bc8ab468595d9c16d71ac8f2cca4c4322e40b4c1",
+   "rules": 2,
+   "bytes": 426902,
+   "png": 1850455,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "rock/mask.png": {
+   "file": "rock/mask.webp",
+   "sha1": "e9a3a0c8a800920c511db4e758f98b70a114c23a",
+   "rules": 2,
+   "bytes": 5282,
+   "png": 16461,
+   "size": 1024
+  },
+  "rock/normal.png": {
+   "file": "rock/normal.jpg",
+   "sha1": "54676fead334aa36a56a5c9bcaff21539b17a327",
+   "rules": 2,
+   "bytes": 673074,
+   "png": 1723581,
+   "q": 95,
+   "psnr": 38.4,
+   "size": 1024
+  },
+  "rock/rah.png": {
+   "file": "rock/rah.jpg",
+   "sha1": "a7d4ef680839a10cb48caebd5e9a04a29c86ba57",
+   "rules": 2,
+   "bytes": 610784,
+   "png": 1374737,
+   "q": 95,
+   "psnr": 38.2,
+   "size": 1024
+  },
+  "rubber/albedo.png": {
+   "file": "rubber/albedo.jpg",
+   "sha1": "88bf6a6a51346f89be3b46e444e26ef83b269148",
+   "rules": 2,
+   "bytes": 128302,
+   "png": 284221,
+   "q": 93,
+   "psnr": 50.2,
+   "size": 1024
+  },
+  "rubber/mask.png": {
+   "file": "rubber/mask.webp",
+   "sha1": "d07ea5e9ddebd74bf564ab0ad2d402059e8a1cc5",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4545,
+   "size": 1024
+  },
+  "rubber/normal.png": {
+   "file": "rubber/normal.jpg",
+   "sha1": "13e3f47e3190e9c0ad5c1271ba9160a86e409f5d",
+   "rules": 2,
+   "bytes": 1323106,
+   "png": 2199760,
+   "q": 95,
+   "psnr": 36.7,
+   "size": 1024
+  },
+  "rubber/rah.png": {
+   "file": "rubber/rah.png",
+   "sha1": "b5dd03d443d92a5d96c3462f0ed6e2f445a8ecfa",
+   "rules": 2,
+   "bytes": 382135,
+   "size": 1024
+  },
+  "runway/albedo.png": {
+   "file": "runway/albedo.jpg",
+   "sha1": "66333ae4a7a644f0a7e19f7ab29f3cd8246790f8",
+   "rules": 2,
+   "bytes": 493738,
+   "png": 1043461,
+   "q": 93,
+   "psnr": 38,
+   "size": 1024
+  },
+  "runway/mask.png": {
+   "file": "runway/mask.webp",
+   "sha1": "3865d556aec85bcf3f2cdb65112c5a2699f364ac",
+   "rules": 2,
+   "bytes": 236,
+   "png": 4713,
+   "size": 1024
+  },
+  "runway/normal.png": {
+   "file": "runway/normal.jpg",
+   "sha1": "01b28c60defeb4ea4e8abc1209cd853f34568167",
+   "rules": 2,
+   "bytes": 658310,
+   "png": 858106,
+   "q": 95,
+   "psnr": 38.6,
+   "size": 1024
+  },
+  "runway/rah.png": {
+   "file": "runway/rah.png",
+   "sha1": "5d903328da1314dd630c824127156f9ab5159b80",
+   "rules": 2,
+   "bytes": 845583,
+   "size": 1024
+  },
+  "sand/albedo.png": {
+   "file": "sand/albedo.jpg",
+   "sha1": "35d913001fb79965ea164853a0373e7c66c7b6dd",
+   "rules": 2,
+   "bytes": 444713,
+   "png": 1908921,
+   "q": 93,
+   "psnr": 39.1,
+   "size": 1024
+  },
+  "sand/mask.png": {
+   "file": "sand/mask.webp",
+   "sha1": "8d579877d565b90e325b20c568f4abc7231a8698",
+   "rules": 2,
+   "bytes": 14410,
+   "png": 36182,
+   "size": 1024
+  },
+  "sand/normal.png": {
+   "file": "sand/normal.jpg",
+   "sha1": "f49bc1756ccad06e630f1fac785380cd66fb2e8e",
+   "rules": 2,
+   "bytes": 903561,
+   "png": 1991280,
+   "q": 95,
+   "psnr": 37.9,
+   "size": 1024
+  },
+  "sand/rah.png": {
+   "file": "sand/rah.jpg",
+   "sha1": "b32d02437b679ab428abda01350e80e794ea8c07",
+   "rules": 2,
+   "bytes": 480817,
+   "png": 786636,
+   "q": 95,
+   "psnr": 41.6,
+   "size": 1024
+  },
+  "sandstone/albedo.png": {
+   "file": "sandstone/albedo.jpg",
+   "sha1": "c005ea31efc208e25c3893fa9e8e60e838b24210",
+   "rules": 2,
+   "bytes": 604123,
+   "png": 2077470,
+   "q": 93,
+   "psnr": 36.3,
+   "size": 1024
+  },
+  "sandstone/mask.png": {
+   "file": "sandstone/mask.webp",
+   "sha1": "7582c3e7de2bd69048e88b11f1e91bd4fab1c226",
+   "rules": 2,
+   "bytes": 278,
+   "png": 4916,
+   "size": 1024
+  },
+  "sandstone/normal.png": {
+   "file": "sandstone/normal.jpg",
+   "sha1": "7770fa287270e6e5fdc1de15114b29070b77f5cb",
+   "rules": 2,
+   "bytes": 966275,
+   "png": 1955319,
+   "q": 95,
+   "psnr": 37.5,
+   "size": 1024
+  },
+  "sandstone/rah.png": {
+   "file": "sandstone/rah.jpg",
+   "sha1": "6868e66a4f13de97e9b91d9bc3462f3ca1243989",
+   "rules": 2,
+   "bytes": 476737,
+   "png": 673134,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 1024
+  },
+  "shingles/albedo.png": {
+   "file": "shingles/albedo.jpg",
+   "sha1": "82b62ca6a30e59b8acfcb0db80d084ff6fca6ced",
+   "rules": 2,
+   "bytes": 278104,
+   "png": 1050352,
+   "q": 93,
+   "psnr": 41.6,
+   "size": 1024
+  },
+  "shingles/mask.png": {
+   "file": "shingles/mask.webp",
+   "sha1": "8617dedc5bdc91338d5f985bb254c8219e881bda",
+   "rules": 2,
+   "bytes": 104786,
+   "png": 141480,
+   "size": 1024
+  },
+  "shingles/normal.png": {
+   "file": "shingles/normal.jpg",
+   "sha1": "4d4c6899979e2dea6863c15e2a7510de2d2d9710",
+   "rules": 2,
+   "bytes": 673309,
+   "png": 1616629,
+   "q": 95,
+   "psnr": 38.7,
+   "size": 1024
+  },
+  "shingles/rah.png": {
+   "file": "shingles/rah.jpg",
+   "sha1": "190ba7a61aeb4e1d0516b0d832e8996677c121e6",
+   "rules": 2,
+   "bytes": 580271,
+   "png": 958389,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "shutter_blue/albedo.png": {
+   "file": "shutter_blue/albedo.jpg",
+   "sha1": "c7387390107ea34f8284c8294ae079362387bb28",
+   "rules": 2,
+   "bytes": 487956,
+   "png": 1402134,
+   "q": 93,
+   "psnr": 39,
+   "size": 1024
+  },
+  "shutter_blue/mask.png": {
+   "file": "shutter_blue/mask.webp",
+   "sha1": "16070db7669425edf1cc7525e08d6eb0c6814a4c",
+   "rules": 2,
+   "bytes": 8774,
+   "png": 22931,
+   "size": 1024
+  },
+  "shutter_blue/normal.png": {
+   "file": "shutter_blue/normal.jpg",
+   "sha1": "a52ce8245d68292ee47dde8eca39d71d16f52b06",
+   "rules": 2,
+   "bytes": 733374,
+   "png": 1642809,
+   "q": 95,
+   "psnr": 38.2,
+   "size": 1024
+  },
+  "shutter_blue/rah.png": {
+   "file": "shutter_blue/rah.jpg",
+   "sha1": "64ceef54354bc4e27fc7b9153ac13c0329a40a26",
+   "rules": 2,
+   "bytes": 531022,
+   "png": 761222,
+   "q": 95,
+   "psnr": 40.2,
+   "size": 1024
+  },
+  "sidewalk/albedo.png": {
+   "file": "sidewalk/albedo.jpg",
+   "sha1": "13fcfa126e181e61c13cdb3b529ffee318a8b271",
+   "rules": 2,
+   "bytes": 598183,
+   "png": 2205316,
+   "q": 93,
+   "psnr": 36.5,
+   "size": 1024
+  },
+  "sidewalk/mask.png": {
+   "file": "sidewalk/mask.webp",
+   "sha1": "90f049f879ec8cb5fd75a7b325e5a15633732bee",
+   "rules": 2,
+   "bytes": 258,
+   "png": 4762,
+   "size": 1024
+  },
+  "sidewalk/normal.png": {
+   "file": "sidewalk/normal.jpg",
+   "sha1": "7e1cacc4a7f47154724e83cd9ebb662f1c338bcf",
+   "rules": 2,
+   "bytes": 1340957,
+   "png": 2470852,
+   "q": 95,
+   "psnr": 36.4,
+   "size": 1024
+  },
+  "sidewalk/rah.png": {
+   "file": "sidewalk/rah.jpg",
+   "sha1": "16959fdbbec18ecdba092fdc3ae7e7401a3c5207",
+   "rules": 2,
+   "bytes": 1095063,
+   "png": 1916688,
+   "q": 95,
+   "psnr": 36,
+   "size": 1024
+  },
+  "siding/albedo.png": {
+   "file": "siding/albedo.jpg",
+   "sha1": "65c608f86f4a62a776236c75ad1ac8c851ce47fc",
+   "rules": 2,
+   "bytes": 476563,
+   "png": 992918,
+   "q": 93,
+   "psnr": 39.2,
+   "size": 1024
+  },
+  "siding/mask.png": {
+   "file": "siding/mask.webp",
+   "sha1": "b626e5d77e63afd6429e616be72a69dd34ccb413",
+   "rules": 2,
+   "bytes": 928,
+   "png": 6116,
+   "size": 1024
+  },
+  "siding/normal.png": {
+   "file": "siding/normal.jpg",
+   "sha1": "c87edc188b916195d29b28b48196f2c7a290c926",
+   "rules": 2,
+   "bytes": 431614,
+   "png": 776945,
+   "q": 95,
+   "psnr": 39.7,
+   "size": 1024
+  },
+  "siding/rah.png": {
+   "file": "siding/rah.png",
+   "sha1": "b513a9194c5ec994eda6ed4cb05ec604665c12c4",
+   "rules": 2,
+   "bytes": 261440,
+   "size": 1024
+  },
+  "steel_rusted/albedo.png": {
+   "file": "steel_rusted/albedo.jpg",
+   "sha1": "6b30bf6dc3b983f76b6d27e16ab85545d7ba744e",
+   "rules": 2,
+   "bytes": 529267,
+   "png": 1852947,
+   "q": 93,
+   "psnr": 37.8,
+   "size": 1024
+  },
+  "steel_rusted/mask.png": {
+   "file": "steel_rusted/mask.webp",
+   "sha1": "a264bdef15d0b6084c972bdab8ed48f64c9739e5",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4544,
+   "size": 1024
+  },
+  "steel_rusted/normal.png": {
+   "file": "steel_rusted/normal.jpg",
+   "sha1": "eef624b2cdb23461a127df13a5fe3fd4e084d22a",
+   "rules": 2,
+   "bytes": 435182,
+   "png": 1444395,
+   "q": 95,
+   "psnr": 39.6,
+   "size": 1024
+  },
+  "steel_rusted/rah.png": {
+   "file": "steel_rusted/rah.jpg",
+   "sha1": "df1cce95a4e016eb934321b1c91f2447f0d5a875",
+   "rules": 2,
+   "bytes": 486075,
+   "png": 1250144,
+   "q": 95,
+   "psnr": 38.8,
+   "size": 1024
+  },
+  "stucco/albedo.png": {
+   "file": "stucco/albedo.jpg",
+   "sha1": "a8b763175ac93db425daba5c4e41271bc1c818b8",
+   "rules": 2,
+   "bytes": 333351,
+   "png": 1708256,
+   "q": 93,
+   "psnr": 40.1,
+   "size": 1024
+  },
+  "stucco/mask.png": {
+   "file": "stucco/mask.webp",
+   "sha1": "abab2ce333766c2340584e2eadd51f32878e9bdd",
+   "rules": 2,
+   "bytes": 586,
+   "png": 5613,
+   "size": 1024
+  },
+  "stucco/normal.png": {
+   "file": "stucco/normal.jpg",
+   "sha1": "dfe515eccec47102f5aa94b3a80e43d851d1070a",
+   "rules": 2,
+   "bytes": 1328639,
+   "png": 2345743,
+   "q": 95,
+   "psnr": 36.4,
+   "size": 1024
+  },
+  "stucco/rah.png": {
+   "file": "stucco/rah.jpg",
+   "sha1": "1e007bd6d9a633d3d709bf289b2022566cfb00c6",
+   "rules": 2,
+   "bytes": 1092967,
+   "png": 1834714,
+   "q": 95,
+   "psnr": 36.5,
+   "size": 1024
+  },
+  "tarp/albedo.png": {
+   "file": "tarp/albedo.jpg",
+   "sha1": "66479757ab974f73818f88443d36dca510ba9807",
+   "rules": 2,
+   "bytes": 105702,
+   "png": 530801,
+   "q": 93,
+   "psnr": 47.8,
+   "size": 1024
+  },
+  "tarp/mask.png": {
+   "file": "tarp/mask.webp",
+   "sha1": "940a776426ee32c0eb539f414ce7a5ccbe594395",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4545,
+   "size": 1024
+  },
+  "tarp/normal.png": {
+   "file": "tarp/normal.jpg",
+   "sha1": "ade0f8bdfd7b6e4de63fba3f3b5528a999408e93",
+   "rules": 2,
+   "bytes": 552040,
+   "png": 1142892,
+   "q": 95,
+   "psnr": 42,
+   "size": 1024
+  },
+  "tarp/rah.png": {
+   "file": "tarp/rah.jpg",
+   "sha1": "1fdc50c8dd9fd390a7fc770d424e2870b8baa459",
+   "rules": 2,
+   "bytes": 116278,
+   "png": 240565,
+   "q": 95,
+   "psnr": 50.4,
+   "size": 1024
+  },
+  "terracotta/albedo.png": {
+   "file": "terracotta/albedo.jpg",
+   "sha1": "6107c7578fc11dd074aba7a09a5b31c1c983db65",
+   "rules": 2,
+   "bytes": 437170,
+   "png": 1340649,
+   "q": 93,
+   "psnr": 40.7,
+   "size": 1024
+  },
+  "terracotta/mask.png": {
+   "file": "terracotta/mask.webp",
+   "sha1": "80b9a51bb7216ce53348e17a8fed17de903d05ad",
+   "rules": 2,
+   "bytes": 133848,
+   "png": 160944,
+   "size": 1024
+  },
+  "terracotta/normal.png": {
+   "file": "terracotta/normal.jpg",
+   "sha1": "fc11f4ddec851acf674caa43bc860d4d8c89e0c1",
+   "rules": 2,
+   "bytes": 559112,
+   "png": 1373343,
+   "q": 95,
+   "psnr": 40.6,
+   "size": 1024
+  },
+  "terracotta/rah.png": {
+   "file": "terracotta/rah.jpg",
+   "sha1": "b93edcedea819eca79db680245376d35195c334e",
+   "rules": 2,
+   "bytes": 587349,
+   "png": 865810,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 1024
+  },
+  "terrazzo/albedo.png": {
+   "file": "terrazzo/albedo.jpg",
+   "sha1": "6e24e327683d510fd07d1b9cbd44472fb1eddcfb",
+   "rules": 2,
+   "bytes": 926020,
+   "png": 2574855,
+   "q": 93,
+   "psnr": 34.1,
+   "size": 1024
+  },
+  "terrazzo/mask.png": {
+   "file": "terrazzo/mask.webp",
+   "sha1": "d07ea5e9ddebd74bf564ab0ad2d402059e8a1cc5",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4545,
+   "size": 1024
+  },
+  "terrazzo/normal.png": {
+   "file": "terrazzo/normal.jpg",
+   "sha1": "bc113d1c5cf6a384ff3780d45b39541ca46dcc37",
+   "rules": 2,
+   "bytes": 61607,
+   "png": 256951,
+   "q": 95,
+   "psnr": 48.2,
+   "size": 1024
+  },
+  "terrazzo/rah.png": {
+   "file": "terrazzo/rah.jpg",
+   "sha1": "e08ea363ce60a69daf8d09f624ca7b847cc84d47",
+   "rules": 2,
+   "bytes": 793436,
+   "png": 922279,
+   "q": 95,
+   "psnr": 37.4,
+   "size": 1024
+  },
+  "tile_ceramic/albedo.png": {
+   "file": "tile_ceramic/albedo.jpg",
+   "sha1": "e4a886922b8b5d1d95f23d8650a0c77217e41061",
+   "rules": 2,
+   "bytes": 436633,
+   "png": 1894495,
+   "q": 93,
+   "psnr": 38.9,
+   "size": 1024
+  },
+  "tile_ceramic/mask.png": {
+   "file": "tile_ceramic/mask.webp",
+   "sha1": "6bb0c909d0ef1331f77ce48fe77022ac661c07ed",
+   "rules": 2,
+   "bytes": 1192,
+   "png": 7028,
+   "size": 1024
+  },
+  "tile_ceramic/normal.png": {
+   "file": "tile_ceramic/normal.jpg",
+   "sha1": "e1e1a710c0c38a32e98717726b8e7eefc6d291e7",
+   "rules": 2,
+   "bytes": 279168,
+   "png": 1333521,
+   "q": 95,
+   "psnr": 41.5,
+   "size": 1024
+  },
+  "tile_ceramic/rah.png": {
+   "file": "tile_ceramic/rah.jpg",
+   "sha1": "ce649156660fabb9d80a5b6a7632c088644023c9",
+   "rules": 2,
+   "bytes": 375311,
+   "png": 713235,
+   "q": 95,
+   "psnr": 40.7,
+   "size": 1024
+  },
+  "tile_hospital/albedo.png": {
+   "file": "tile_hospital/albedo.jpg",
+   "sha1": "aa4e266547140e7f853bd6947433df77a9ed24da",
+   "rules": 2,
+   "bytes": 440997,
+   "png": 1916496,
+   "q": 93,
+   "psnr": 38.4,
+   "size": 1024
+  },
+  "tile_hospital/mask.png": {
+   "file": "tile_hospital/mask.webp",
+   "sha1": "b7da3b07e8c46c021b5795df37a8f6e55383097f",
+   "rules": 2,
+   "bytes": 86,
+   "png": 4545,
+   "size": 1024
+  },
+  "tile_hospital/normal.png": {
+   "file": "tile_hospital/normal.jpg",
+   "sha1": "5a4edba01ef79a24d9eecd5984a071db67e14b5f",
+   "rules": 2,
+   "bytes": 242521,
+   "png": 1202113,
+   "q": 95,
+   "psnr": 42.8,
+   "size": 1024
+  },
+  "tile_hospital/rah.png": {
+   "file": "tile_hospital/rah.jpg",
+   "sha1": "76da3081fc9d86903b31a6d966c77f5033fa93e4",
+   "rules": 2,
+   "bytes": 351978,
+   "png": 995046,
+   "q": 95,
+   "psnr": 41,
+   "size": 1024
+  },
+  "tile_metro/albedo.png": {
+   "file": "tile_metro/albedo.jpg",
+   "sha1": "e76a6f603a46542d8def74d42ef50108c2a1b13b",
+   "rules": 2,
+   "bytes": 316570,
+   "png": 1146062,
+   "q": 93,
+   "psnr": 41.3,
+   "size": 1024
+  },
+  "tile_metro/mask.png": {
+   "file": "tile_metro/mask.webp",
+   "sha1": "8d479aa87aee8ebc3ddf8f918bb677aa3dc557f8",
+   "rules": 2,
+   "bytes": 518,
+   "png": 5432,
+   "size": 1024
+  },
+  "tile_metro/normal.png": {
+   "file": "tile_metro/normal.jpg",
+   "sha1": "5fc847cc2a5f83d3483dbe4f64dd77a3fe2aa205",
+   "rules": 2,
+   "bytes": 531596,
+   "png": 1329609,
+   "q": 95,
+   "psnr": 40.1,
+   "size": 1024
+  },
+  "tile_metro/rah.png": {
+   "file": "tile_metro/rah.jpg",
+   "sha1": "8eb898b50d8e72194b42112c1de760a086de6ea3",
+   "rules": 2,
+   "bytes": 552823,
+   "png": 807758,
+   "q": 95,
+   "psnr": 40.4,
+   "size": 1024
+  },
+  "veneer/albedo.png": {
+   "file": "veneer/albedo.jpg",
+   "sha1": "c8a7fda587e43b451fd110c0dfad6179f106c7fe",
+   "rules": 2,
+   "bytes": 113484,
+   "png": 393792,
+   "q": 93,
+   "psnr": 39.2,
+   "size": 512
+  },
+  "veneer/mask.png": {
+   "file": "veneer/mask.webp",
+   "sha1": "a50e50a5002d9e7169570e7278166c2b490ca45a",
+   "rules": 2,
+   "bytes": 966,
+   "png": 3368,
+   "size": 512
+  },
+  "veneer/normal.png": {
+   "file": "veneer/normal.jpg",
+   "sha1": "bdc4ff3cafae7556f7d30b4cf175e993c0c6c78b",
+   "rules": 2,
+   "bytes": 94437,
+   "png": 332193,
+   "q": 95,
+   "psnr": 41,
+   "size": 512
+  },
+  "veneer/rah.png": {
+   "file": "veneer/rah.jpg",
+   "sha1": "6235a257ae82d6f5e905ed4cb279b31911234374",
+   "rules": 2,
+   "bytes": 345567,
+   "png": 518275,
+   "q": 95,
+   "psnr": 35.7,
+   "size": 512
+  },
+  "wallpaper/albedo.png": {
+   "file": "wallpaper/albedo.jpg",
+   "sha1": "b93b1ffcd11631119614977387307740b221b8b2",
+   "rules": 2,
+   "bytes": 576173,
+   "png": 1988138,
+   "q": 93,
+   "psnr": 37,
+   "size": 1024
+  },
+  "wallpaper/mask.png": {
+   "file": "wallpaper/mask.webp",
+   "sha1": "08baebe545cdaa1890526db6ffe8cd70fb93ec7f",
+   "rules": 2,
+   "bytes": 432,
+   "png": 5097,
+   "size": 1024
+  },
+  "wallpaper/normal.png": {
+   "file": "wallpaper/normal.jpg",
+   "sha1": "dcf8b2b3075ca2a57713a149eddba36b0af754d8",
+   "rules": 2,
+   "bytes": 552082,
+   "png": 1572357,
+   "q": 95,
+   "psnr": 39,
+   "size": 1024
+  },
+  "wallpaper/rah.png": {
+   "file": "wallpaper/rah.jpg",
+   "sha1": "99266293fd59bad28ae65afd68972d7b0f862c74",
+   "rules": 2,
+   "bytes": 589388,
+   "png": 1024204,
+   "q": 95,
+   "psnr": 37.6,
+   "size": 1024
+  },
+  "zombies/body-bloater-albedo.png": {
+   "file": "zombies/body-bloater-albedo.jpg",
+   "sha1": "a8c7b307a34ad702a8a1b3444431690399643e13",
+   "rules": 2,
+   "bytes": 667290,
+   "png": 2703338,
+   "q": 93,
+   "psnr": 46.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-bloater-albedo@1024.jpg",
+     "bytes": 214787,
+     "q": 93,
+     "psnr": 45.1
+    }
+   ]
+  },
+  "zombies/body-bloater-normal.png": {
+   "file": "zombies/body-bloater-normal.jpg",
+   "sha1": "93a3ce47734a32324be91413c2156dec9e67c81f",
+   "rules": 2,
+   "bytes": 2091588,
+   "png": 3372513,
+   "q": 95,
+   "psnr": 41.8,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-bloater-normal@1024.jpg",
+     "bytes": 634981,
+     "q": 95,
+     "psnr": 39.7
+    }
+   ]
+  },
+  "zombies/body-bloater-pack.png": {
+   "file": "zombies/body-bloater-pack.jpg",
+   "sha1": "6817621c2bf997c706d035666989180fa6204275",
+   "rules": 2,
+   "bytes": 686167,
+   "png": 1124061,
+   "q": 95,
+   "psnr": 39.8,
+   "size": 1024
+  },
+  "zombies/body-boss-albedo.png": {
+   "file": "zombies/body-boss-albedo.jpg",
+   "sha1": "4eea8bd36e4344c5f86c9905e467a75f5f1c0b1b",
+   "rules": 2,
+   "bytes": 704616,
+   "png": 2693089,
+   "q": 93,
+   "psnr": 46.3,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-boss-albedo@1024.jpg",
+     "bytes": 234484,
+     "q": 93,
+     "psnr": 44.7
+    }
+   ]
+  },
+  "zombies/body-boss-normal.png": {
+   "file": "zombies/body-boss-normal.jpg",
+   "sha1": "14fa2fe6db8d37e4c2318006dfb0f9a27e57deca",
+   "rules": 2,
+   "bytes": 3118117,
+   "png": 3958064,
+   "q": 95,
+   "psnr": 39.8,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-boss-normal@1024.jpg",
+     "bytes": 972843,
+     "q": 95,
+     "psnr": 38.4
+    }
+   ]
+  },
+  "zombies/body-boss-pack.png": {
+   "file": "zombies/body-boss-pack.jpg",
+   "sha1": "94fa8923350ed69bb199b8068006c6d4d33e8071",
+   "rules": 2,
+   "bytes": 784486,
+   "png": 1280433,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/body-brute-albedo.png": {
+   "file": "zombies/body-brute-albedo.jpg",
+   "sha1": "2dd5f425fcd7e62dcfd04eb190dfd42f9243a3f6",
+   "rules": 2,
+   "bytes": 657654,
+   "png": 2716810,
+   "q": 93,
+   "psnr": 46.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-brute-albedo@1024.jpg",
+     "bytes": 214281,
+     "q": 93,
+     "psnr": 45.1
+    }
+   ]
+  },
+  "zombies/body-brute-normal.png": {
+   "file": "zombies/body-brute-normal.jpg",
+   "sha1": "a1756b315ee2f1f5c45727a4a4399d4653dd8dc3",
+   "rules": 2,
+   "bytes": 3033339,
+   "png": 3917882,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-brute-normal@1024.jpg",
+     "bytes": 949360,
+     "q": 95,
+     "psnr": 38.5
+    }
+   ]
+  },
+  "zombies/body-brute-pack.png": {
+   "file": "zombies/body-brute-pack.jpg",
+   "sha1": "d5b5c83c53dfe2a306ba30b3e86379cb73e351fb",
+   "rules": 2,
+   "bytes": 762457,
+   "png": 1267102,
+   "q": 95,
+   "psnr": 39.5,
+   "size": 1024
+  },
+  "zombies/body-fresh-albedo.png": {
+   "file": "zombies/body-fresh-albedo.jpg",
+   "sha1": "403de1c4f4607937055a8ce60a03c2dfce1a2c45",
+   "rules": 2,
+   "bytes": 616923,
+   "png": 2642743,
+   "q": 93,
+   "psnr": 47.4,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-fresh-albedo@1024.jpg",
+     "bytes": 196298,
+     "q": 93,
+     "psnr": 45.6
+    }
+   ]
+  },
+  "zombies/body-fresh-normal.png": {
+   "file": "zombies/body-fresh-normal.jpg",
+   "sha1": "84f7f575865851dba5ea9365f3fcaac95b31273b",
+   "rules": 2,
+   "bytes": 1993627,
+   "png": 3298485,
+   "q": 95,
+   "psnr": 42,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-fresh-normal@1024.jpg",
+     "bytes": 601320,
+     "q": 95,
+     "psnr": 39.8
+    }
+   ]
+  },
+  "zombies/body-fresh-pack.png": {
+   "file": "zombies/body-fresh-pack.jpg",
+   "sha1": "0b6b3f3b4f747e29bba284da01894788b8578644",
+   "rules": 2,
+   "bytes": 664026,
+   "png": 1096089,
+   "q": 95,
+   "psnr": 39.9,
+   "size": 1024
+  },
+  "zombies/body-months-albedo.png": {
+   "file": "zombies/body-months-albedo.jpg",
+   "sha1": "087d85ecd471ecaf9e9e7dfa1df80bd194b93d8f",
+   "rules": 2,
+   "bytes": 755039,
+   "png": 2846233,
+   "q": 93,
+   "psnr": 46,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-months-albedo@1024.jpg",
+     "bytes": 250486,
+     "q": 93,
+     "psnr": 44.4
+    }
+   ]
+  },
+  "zombies/body-months-normal.png": {
+   "file": "zombies/body-months-normal.jpg",
+   "sha1": "be082d1f970f9ab808ffe5b3684ee8dbc1879190",
+   "rules": 2,
+   "bytes": 2428984,
+   "png": 3577748,
+   "q": 95,
+   "psnr": 41.1,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-months-normal@1024.jpg",
+     "bytes": 760794,
+     "q": 95,
+     "psnr": 39.2
+    }
+   ]
+  },
+  "zombies/body-months-pack.png": {
+   "file": "zombies/body-months-pack.jpg",
+   "sha1": "11b40c15fa8df14ddb0825b51d3c6289e8a67bb9",
+   "rules": 2,
+   "bytes": 824027,
+   "png": 1254124,
+   "q": 95,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/body-screamer-albedo.png": {
+   "file": "zombies/body-screamer-albedo.jpg",
+   "sha1": "a16ac26c0282f64e0b111246cf3cb376602cd025",
+   "rules": 2,
+   "bytes": 661332,
+   "png": 2780617,
+   "q": 93,
+   "psnr": 46.9,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-screamer-albedo@1024.jpg",
+     "bytes": 209877,
+     "q": 93,
+     "psnr": 45.1
+    }
+   ]
+  },
+  "zombies/body-screamer-normal.png": {
+   "file": "zombies/body-screamer-normal.jpg",
+   "sha1": "73279e2b1befd60b0e1a5f1f54efafcd08d719f6",
+   "rules": 2,
+   "bytes": 2077497,
+   "png": 3361264,
+   "q": 95,
+   "psnr": 41.8,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-screamer-normal@1024.jpg",
+     "bytes": 628972,
+     "q": 95,
+     "psnr": 39.7
+    }
+   ]
+  },
+  "zombies/body-screamer-pack.png": {
+   "file": "zombies/body-screamer-pack.jpg",
+   "sha1": "c4d6e2f0773926e919ce1b768b1b944f3590c10e",
+   "rules": 2,
+   "bytes": 682224,
+   "png": 1127310,
+   "q": 95,
+   "psnr": 39.8,
+   "size": 1024
+  },
+  "zombies/body-spitter-albedo.png": {
+   "file": "zombies/body-spitter-albedo.jpg",
+   "sha1": "0c98382a8dd57441ad477be0a19c656c019d9368",
+   "rules": 2,
+   "bytes": 648809,
+   "png": 2688713,
+   "q": 93,
+   "psnr": 47,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-spitter-albedo@1024.jpg",
+     "bytes": 207343,
+     "q": 93,
+     "psnr": 45.3
+    }
+   ]
+  },
+  "zombies/body-spitter-normal.png": {
+   "file": "zombies/body-spitter-normal.jpg",
+   "sha1": "609f8ab886ccb87dec8957df6bda0a34d6849057",
+   "rules": 2,
+   "bytes": 2084955,
+   "png": 3375010,
+   "q": 95,
+   "psnr": 41.8,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-spitter-normal@1024.jpg",
+     "bytes": 631205,
+     "q": 95,
+     "psnr": 39.7
+    }
+   ]
+  },
+  "zombies/body-spitter-pack.png": {
+   "file": "zombies/body-spitter-pack.jpg",
+   "sha1": "b6b0f09fcf000ef88e623521ad2b5a2dff64dd6f",
+   "rules": 2,
+   "bytes": 689556,
+   "png": 1159840,
+   "q": 95,
+   "psnr": 39.8,
+   "size": 1024
+  },
+  "zombies/body-weeks-albedo.png": {
+   "file": "zombies/body-weeks-albedo.jpg",
+   "sha1": "fb3462403ba08e86cdea6b233a40c8f4f7759555",
+   "rules": 2,
+   "bytes": 661103,
+   "png": 2706222,
+   "q": 93,
+   "psnr": 46.8,
+   "size": 2048,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-weeks-albedo@1024.jpg",
+     "bytes": 213096,
+     "q": 93,
+     "psnr": 45.1
+    }
+   ]
+  },
+  "zombies/body-weeks-normal.png": {
+   "file": "zombies/body-weeks-normal.jpg",
+   "sha1": "c5e679a3202caa68deacfd3d4132ecab8e3e9908",
+   "rules": 2,
+   "bytes": 2112828,
+   "png": 3396677,
+   "q": 95,
+   "psnr": 41.7,
+   "size": 2048,
+   "la": true,
+   "variants": [
+    {
+     "size": 1024,
+     "file": "zombies/body-weeks-normal@1024.jpg",
+     "bytes": 638579,
+     "q": 95,
+     "psnr": 39.6
+    }
+   ]
+  },
+  "zombies/body-weeks-pack.png": {
+   "file": "zombies/body-weeks-pack.jpg",
+   "sha1": "c80d61584218056e1d15097858731ad58dfa7f71",
+   "rules": 2,
+   "bytes": 691748,
+   "png": 1142149,
+   "q": 95,
+   "psnr": 39.8,
+   "size": 1024
+  },
+  "zombies/cloth-denim-albedo.png": {
+   "file": "zombies/cloth-denim-albedo.jpg",
+   "sha1": "6555848d7c65068386a12bf587b4bbfac26b5476",
+   "rules": 2,
+   "bytes": 593681,
+   "png": 1025577,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/cloth-denim-normal.png": {
+   "file": "zombies/cloth-denim-normal.png",
+   "sha1": "895e20ea8b1b37019a413bb5b1399ee46826265b",
+   "rules": 2,
+   "bytes": 807983,
+   "size": 1024
+  },
+  "zombies/cloth-denim-pack.png": {
+   "file": "zombies/cloth-denim-pack.jpg",
+   "sha1": "f72a7d3e943eac0a5030175dfd242146b894a309",
+   "rules": 2,
+   "bytes": 335776,
+   "png": 736888,
+   "q": 95,
+   "psnr": 40.9,
+   "size": 1024
+  },
+  "zombies/cloth-dress-albedo.png": {
+   "file": "zombies/cloth-dress-albedo.jpg",
+   "sha1": "522b70407bec2ae824e87c7fc867850ce6ddd3f2",
+   "rules": 2,
+   "bytes": 35250,
+   "png": 239678,
+   "q": 93,
+   "psnr": 49.7,
+   "size": 1024
+  },
+  "zombies/cloth-dress-normal.png": {
+   "file": "zombies/cloth-dress-normal.jpg",
+   "sha1": "cf3ecdc312528f0b5a929171c1f70d2232187704",
+   "rules": 2,
+   "bytes": 114341,
+   "png": 520810,
+   "q": 95,
+   "psnr": 44.6,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-dress-pack.png": {
+   "file": "zombies/cloth-dress-pack.jpg",
+   "sha1": "1960812b8b1aec9852da4fca1aedda4bd54b4aff",
+   "rules": 2,
+   "bytes": 108179,
+   "png": 554361,
+   "q": 95,
+   "psnr": 46.1,
+   "size": 1024
+  },
+  "zombies/cloth-flannel-albedo.png": {
+   "file": "zombies/cloth-flannel-albedo.jpg",
+   "sha1": "f3b612461da943e477e48413fee43002006d9fda",
+   "rules": 2,
+   "bytes": 678946,
+   "png": 1843304,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/cloth-flannel-normal.png": {
+   "file": "zombies/cloth-flannel-normal.jpg",
+   "sha1": "8331729dc407ac1b802567cfaeda3c131689e940",
+   "rules": 2,
+   "bytes": 1077405,
+   "png": 1539878,
+   "q": 95,
+   "psnr": 37.5,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-flannel-pack.png": {
+   "file": "zombies/cloth-flannel-pack.jpg",
+   "sha1": "b741d3f3fb6430e75b355f23829580294066d739",
+   "rules": 2,
+   "bytes": 654087,
+   "png": 1451648,
+   "q": 95,
+   "psnr": 39.5,
+   "size": 1024
+  },
+  "zombies/cloth-gown-albedo.png": {
+   "file": "zombies/cloth-gown-albedo.jpg",
+   "sha1": "d02a7e8e42b9b25685070ba1cae26e48f8783c50",
+   "rules": 2,
+   "bytes": 338755,
+   "png": 522603,
+   "q": 93,
+   "psnr": 40.2,
+   "size": 1024
+  },
+  "zombies/cloth-gown-normal.png": {
+   "file": "zombies/cloth-gown-normal.png",
+   "sha1": "598946a322d9bbf0b86618931f368eda7b45b279",
+   "rules": 2,
+   "bytes": 725017,
+   "size": 1024
+  },
+  "zombies/cloth-gown-pack.png": {
+   "file": "zombies/cloth-gown-pack.jpg",
+   "sha1": "7997dd2466568ac8f3cf2154fd706c09a6677826",
+   "rules": 2,
+   "bytes": 763908,
+   "png": 918538,
+   "q": 95,
+   "psnr": 37.7,
+   "size": 1024
+  },
+  "zombies/cloth-hoodie-albedo.png": {
+   "file": "zombies/cloth-hoodie-albedo.jpg",
+   "sha1": "44f1433a8242a90747e2e11f620dfdc9c0450b2f",
+   "rules": 2,
+   "bytes": 415716,
+   "png": 548432,
+   "q": 93,
+   "psnr": 39.7,
+   "size": 1024
+  },
+  "zombies/cloth-hoodie-normal.png": {
+   "file": "zombies/cloth-hoodie-normal.png",
+   "sha1": "11ec65350f1ba61f30e383d93bebb4d51e80c1a2",
+   "rules": 2,
+   "bytes": 700695,
+   "size": 1024
+  },
+  "zombies/cloth-hoodie-pack.png": {
+   "file": "zombies/cloth-hoodie-pack.jpg",
+   "sha1": "77e921888bf46adb4fe6ff29d94c9a179513e9d8",
+   "rules": 2,
+   "bytes": 303746,
+   "png": 695253,
+   "q": 95,
+   "psnr": 41.2,
+   "size": 1024
+  },
+  "zombies/cloth-military-albedo.png": {
+   "file": "zombies/cloth-military-albedo.jpg",
+   "sha1": "53f8696c8a205afcdefd9161636557f50fc5d84a",
+   "rules": 2,
+   "bytes": 674863,
+   "png": 1231632,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/cloth-military-normal.png": {
+   "file": "zombies/cloth-military-normal.jpg",
+   "sha1": "b8d60b7112ac04d5ef3c973dae530f53b7e9898e",
+   "rules": 2,
+   "bytes": 587692,
+   "png": 702607,
+   "q": 95,
+   "psnr": 38.7,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-military-pack.png": {
+   "file": "zombies/cloth-military-pack.jpg",
+   "sha1": "28671ce5104509b1a4e3a5d53707fc4d87d84ad5",
+   "rules": 2,
+   "bytes": 860863,
+   "png": 967279,
+   "q": 95,
+   "psnr": 37.5,
+   "size": 1024
+  },
+  "zombies/cloth-police-albedo.png": {
+   "file": "zombies/cloth-police-albedo.jpg",
+   "sha1": "1e8521539e9dea597e2bfdd86fb1580b00997621",
+   "rules": 2,
+   "bytes": 161203,
+   "png": 391114,
+   "q": 93,
+   "psnr": 42.1,
+   "size": 1024
+  },
+  "zombies/cloth-police-normal.png": {
+   "file": "zombies/cloth-police-normal.jpg",
+   "sha1": "e80b9a224ca56549bbec4a2d16223719279cb92f",
+   "rules": 2,
+   "bytes": 430259,
+   "png": 656496,
+   "q": 95,
+   "psnr": 38.8,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-police-pack.png": {
+   "file": "zombies/cloth-police-pack.jpg",
+   "sha1": "8c88758e72c6a9466e04cc99e287a44f91048deb",
+   "rules": 2,
+   "bytes": 195780,
+   "png": 669541,
+   "q": 95,
+   "psnr": 42.4,
+   "size": 1024
+  },
+  "zombies/cloth-shirt-albedo.png": {
+   "file": "zombies/cloth-shirt-albedo.jpg",
+   "sha1": "4b6bb162a4f7447d86ace789bd313a507a9b7301",
+   "rules": 2,
+   "bytes": 93202,
+   "png": 284391,
+   "q": 93,
+   "psnr": 47.5,
+   "size": 1024
+  },
+  "zombies/cloth-shirt-normal.png": {
+   "file": "zombies/cloth-shirt-normal.jpg",
+   "sha1": "7df314b11ecd554200fb73b3df7ae4362a554ba2",
+   "rules": 2,
+   "bytes": 231297,
+   "png": 503874,
+   "q": 95,
+   "psnr": 44.1,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-shirt-pack.png": {
+   "file": "zombies/cloth-shirt-pack.jpg",
+   "sha1": "d3ce75a7f6213caba89055964f4f24f7d78360ae",
+   "rules": 2,
+   "bytes": 177679,
+   "png": 566714,
+   "q": 95,
+   "psnr": 44.7,
+   "size": 1024
+  },
+  "zombies/cloth-suit-albedo.png": {
+   "file": "zombies/cloth-suit-albedo.jpg",
+   "sha1": "3ed43705b6d0cf510a80c12530d0291b3f1a7436",
+   "rules": 2,
+   "bytes": 554226,
+   "png": 777068,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/cloth-suit-normal.png": {
+   "file": "zombies/cloth-suit-normal.png",
+   "sha1": "d4954cc196113876df2937d0046bb52ce664f93d",
+   "rules": 2,
+   "bytes": 769058,
+   "size": 1024
+  },
+  "zombies/cloth-suit-pack.png": {
+   "file": "zombies/cloth-suit-pack.jpg",
+   "sha1": "3e62e13b00d781eb972d895d135cd09f9f675923",
+   "rules": 2,
+   "bytes": 632032,
+   "png": 810525,
+   "q": 95,
+   "psnr": 38.5,
+   "size": 1024
+  },
+  "zombies/cloth-tee-albedo.png": {
+   "file": "zombies/cloth-tee-albedo.jpg",
+   "sha1": "3319d9c705f12295ea49a1c55aae87f2e8e24cd4",
+   "rules": 2,
+   "bytes": 187301,
+   "png": 378596,
+   "q": 93,
+   "psnr": 43.4,
+   "size": 1024
+  },
+  "zombies/cloth-tee-normal.png": {
+   "file": "zombies/cloth-tee-normal.jpg",
+   "sha1": "185be7406065b49ac7b147dcb58864adbdbe68df",
+   "rules": 2,
+   "bytes": 351542,
+   "png": 621448,
+   "q": 95,
+   "psnr": 40.6,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/cloth-tee-pack.png": {
+   "file": "zombies/cloth-tee-pack.jpg",
+   "sha1": "1ec8137d6dab7ab95407d0e4851ad8ce4d414175",
+   "rules": 2,
+   "bytes": 253005,
+   "png": 665813,
+   "q": 95,
+   "psnr": 42.4,
+   "size": 1024
+  },
+  "zombies/cloth-work-albedo.png": {
+   "file": "zombies/cloth-work-albedo.jpg",
+   "sha1": "4f43ee7976a7087b9e3e1e2b50378a8ba728710e",
+   "rules": 2,
+   "bytes": 617046,
+   "png": 1002670,
+   "q": 93,
+   "psnr": 39.4,
+   "size": 1024
+  },
+  "zombies/cloth-work-normal.png": {
+   "file": "zombies/cloth-work-normal.png",
+   "sha1": "fb4ea31361935c0861b6c7b4f7ee5073f3c5b36b",
+   "rules": 2,
+   "bytes": 918879,
+   "size": 1024
+  },
+  "zombies/cloth-work-pack.png": {
+   "file": "zombies/cloth-work-pack.jpg",
+   "sha1": "83369ad98524d27d30a5789969a61fb6617ef9a1",
+   "rules": 2,
+   "bytes": 441402,
+   "png": 784945,
+   "q": 95,
+   "psnr": 39.2,
+   "size": 1024
+  },
+  "zombies/grime-albedo.png": {
+   "file": "zombies/grime-albedo.webp",
+   "sha1": "84f7ea24709c896cdd9964505c82c3014a6b9706",
+   "rules": 2,
+   "bytes": 673898,
+   "png": 876289,
+   "size": 1024
+  },
+  "zombies/grime-normal.png": {
+   "file": "zombies/grime-normal.jpg",
+   "sha1": "9d3d5aefca2518c4f84f1d3f6968cf61cd639baf",
+   "rules": 2,
+   "bytes": 817061,
+   "png": 1371665,
+   "q": 95,
+   "psnr": 38.8,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/grime-pack.png": {
+   "file": "zombies/grime-pack.jpg",
+   "sha1": "19e16d767fdd0c090d9f5f2a1675b204ac6ebbfa",
+   "rules": 2,
+   "bytes": 527574,
+   "png": 1119602,
+   "q": 95,
+   "psnr": 41.9,
+   "size": 1024
+  },
+  "zombies/skin-fresh-albedo.png": {
+   "file": "zombies/skin-fresh-albedo.jpg",
+   "sha1": "05688c875bca292af7766696e36a2dfa96c39ea4",
+   "rules": 2,
+   "bytes": 266812,
+   "png": 1249083,
+   "q": 93,
+   "psnr": 42.8,
+   "size": 1024
+  },
+  "zombies/skin-fresh-normal.png": {
+   "file": "zombies/skin-fresh-normal.jpg",
+   "sha1": "ad3d902f5cb46cda05a427c52d67b55949ba8bab",
+   "rules": 2,
+   "bytes": 1331979,
+   "png": 1757519,
+   "q": 95,
+   "psnr": 36.9,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/skin-fresh-pack.png": {
+   "file": "zombies/skin-fresh-pack.jpg",
+   "sha1": "e80f76f6f5af5c2ccffd8567e66343c4d4b61ada",
+   "rules": 2,
+   "bytes": 409911,
+   "png": 990334,
+   "q": 95,
+   "psnr": 40.7,
+   "size": 1024
+  },
+  "zombies/skin-months-albedo.png": {
+   "file": "zombies/skin-months-albedo.jpg",
+   "sha1": "ac6da4ad3fc6aca100c1ef31f189ae731bc66459",
+   "rules": 2,
+   "bytes": 262422,
+   "png": 1168514,
+   "q": 93,
+   "psnr": 44,
+   "size": 1024
+  },
+  "zombies/skin-months-normal.png": {
+   "file": "zombies/skin-months-normal.jpg",
+   "sha1": "21d1cf30f6f52f7e2952fc08a70e80dfec44019e",
+   "rules": 2,
+   "bytes": 1615088,
+   "png": 1869943,
+   "q": 95,
+   "psnr": 36.9,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/skin-months-pack.png": {
+   "file": "zombies/skin-months-pack.jpg",
+   "sha1": "a74eb0a5ae9e8f31cabb3a86f6bc7f3adfc290d0",
+   "rules": 2,
+   "bytes": 753243,
+   "png": 1130513,
+   "q": 95,
+   "psnr": 39.6,
+   "size": 1024
+  },
+  "zombies/skin-weeks-albedo.png": {
+   "file": "zombies/skin-weeks-albedo.jpg",
+   "sha1": "b98412bd591ef3ebd9c7f9323c4ceed40e678922",
+   "rules": 2,
+   "bytes": 296204,
+   "png": 1353014,
+   "q": 93,
+   "psnr": 43.6,
+   "size": 1024
+  },
+  "zombies/skin-weeks-normal.png": {
+   "file": "zombies/skin-weeks-normal.jpg",
+   "sha1": "d1a5fed95d7d1cdbd18105928286fb5f60fa3001",
+   "rules": 2,
+   "bytes": 1528597,
+   "png": 1851510,
+   "q": 95,
+   "psnr": 36.9,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/skin-weeks-pack.png": {
+   "file": "zombies/skin-weeks-pack.jpg",
+   "sha1": "d38ff5ac324efbfb02b2111ae5f619a52f45d604",
+   "rules": 2,
+   "bytes": 614109,
+   "png": 1175062,
+   "q": 95,
+   "psnr": 39.1,
+   "size": 1024
+  },
+  "zombies/wounds-albedo.png": {
+   "file": "zombies/wounds-albedo.webp",
+   "sha1": "f9feeea7de9537d71603af16703ead1b7c0e758b",
+   "rules": 2,
+   "bytes": 339178,
+   "png": 500111,
+   "size": 1024
+  },
+  "zombies/wounds-normal.png": {
+   "file": "zombies/wounds-normal.jpg",
+   "sha1": "590d3971dddabff4011536bf9acc8e9d3ebb262d",
+   "rules": 2,
+   "bytes": 156273,
+   "png": 235748,
+   "q": 95,
+   "psnr": 46.9,
+   "size": 1024,
+   "la": true
+  },
+  "zombies/wounds-pack.png": {
+   "file": "zombies/wounds-pack.jpg",
+   "sha1": "0dc8ff15f74dc72bc3947f7c6876826ac452294b",
+   "rules": 2,
+   "bytes": 132849,
+   "png": 261221,
+   "q": 95,
+   "psnr": 47.7,
+   "size": 1024
+  }
+ }
+}
