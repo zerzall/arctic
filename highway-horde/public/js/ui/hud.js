@@ -29,12 +29,14 @@ import { createCampaignHud } from './campaignhud.js';
 import { createHordeHud } from './hordehud.js';
 import { createStoryHud } from './storyhud.js';
 import { createLevelHud } from './levelhud.js';
+import { createHints } from './hints.js';
 
 /** Key names shown in prompts, per input mode. */
 export const KEY_LABELS = {
-  kbm: { interact: 'E', shop: 'B', ready: 'N', jump: 'SPACE', frag: 'G', molotov: 'F', turret: 'T', barricade: 'C', reload: 'R', scoreboard: 'TAB' },
-  pad: { interact: 'RB', shop: 'R3', ready: '◀', jump: 'A', frag: 'LB', molotov: 'B', turret: '▲', barricade: '▼', reload: 'X', scoreboard: 'BACK' },
-  touch: { interact: 'USE', shop: 'SHOP', ready: 'READY', jump: 'JUMP', frag: 'FRAG', molotov: 'MOLO', turret: 'TURRET', barricade: 'WALL', reload: 'RELOAD', scoreboard: 'SCORES' },
+  // (frag and molotov share the throwable key, turret and barricade the buildable key: tap uses the selection, hold switches it)
+  kbm: { interact: 'E', shop: 'B', ready: 'N', jump: 'SPACE', frag: 'G', molotov: 'G', turret: 'T', barricade: 'T', reload: 'R', scoreboard: 'TAB' },
+  pad: { interact: 'RB', shop: 'BACK', ready: '◀', jump: 'A', frag: 'LB', molotov: 'LB', turret: '▲', barricade: '▲', reload: 'X', scoreboard: 'BACK' },
+  touch: { interact: 'USE', shop: 'SHOP', ready: 'READY', jump: 'JUMP', frag: 'GADGET', molotov: 'GADGET', turret: 'GADGET', barricade: 'GADGET', reload: 'RELOAD', scoreboard: 'SCORES' },
 };
 
 const COMMON_ZOMBIES = new Set(['walker', 'runner', 'crawler']);
@@ -142,8 +144,13 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const promptProg = h('span.prompt-progress', { hidden: true }, promptBar);
   const prompt = h('div.hud-prompt', { hidden: true }, [promptText, promptProg]);
   const hint = h('div.hud-hint', { hidden: true });
+  // the contextual key hint (hints.js): a small pill with the key and what it does
+  const tipKey = h('kbd.tip-key');
+  const tipText = h('span.tip-text');
+  const tip = h('div.hud-tip', { hidden: true, role: 'status' }, [tipKey, tipText]);
+  const hints = createHints();
   // First person: the prompt goes under the crosshair, the standing shop hint stays low.
-  const bottomCentre = h('div.hud-bottom-centre', null, fps ? [prompt] : [prompt, hint]);
+  const bottomCentre = h('div.hud-bottom-centre', null, fps ? [prompt, tip] : [prompt, tip, hint]);
   const bottomHint = fps ? h('div.hud-bottom-hint', null, hint) : null;
 
   // vitals + cash (bottom-left)
@@ -183,14 +190,22 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     slots.push({ el, name, ammo });
     slotWrap.appendChild(el);
   }
+  // Utility gear: two groups, each on one key. The selected item of a group shows the key; a hold of
+  // the key switches the selection and opens the group's small picker for a moment (both items lit).
   const equip = {};
+  const equipGroups = {};
   const equipWrap = h('div.equip');
-  for (const [id, label] of [['frag', 'FRAG'], ['molotov', 'MOLO'], ['turret', 'TURRET'], ['barricade', 'WALL']]) {
-    const key = h('kbd');
-    const count = h('span.equip-count');
-    const el = h('div.equip-item', { dataset: { id } }, [key, h('span.equip-label', { text: label }), count]);
-    equip[id] = { el, key, count };
-    equipWrap.appendChild(el);
+  for (const [kind, items] of [['throw', [['frag', 'FRAG'], ['molotov', 'MOLO']]], ['build', [['turret', 'TURRET'], ['barricade', 'WALL']]]]) {
+    const groupEl = h('div.equip-group', { dataset: { kind }, title: kind === 'throw' ? 'Throwables: tap to throw, hold to switch' : 'Buildables: tap to place, hold to switch' });
+    equipGroups[kind] = { el: groupEl, ids: items.map(([id]) => id) };
+    for (const [id, label] of items) {
+      const key = h('kbd');
+      const count = h('span.equip-count');
+      const el = h('div.equip-item', { dataset: { id } }, [key, h('span.equip-label', { text: label }), count]);
+      equip[id] = { el, key, count };
+      groupEl.appendChild(el);
+    }
+    equipWrap.appendChild(groupEl);
   }
   const weaponBox = h('div.hud-weapon.hud-box', null, [
     h('div.weapon-top', null, [wName, h('div.ammo', null, [wMag, wRes])]),
@@ -250,6 +265,9 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
   const teamRows = new Map();
   let keys = KEY_LABELS.kbm;
   let keyMode = '';
+  // true while something is in reach that the interact key does (touch shows USE only then)
+  let canUse = false;
+  let tipShown = '';
   let touchLayoutT = 0;
   let statsAcc = 0;
   const touchVars = {};
@@ -561,7 +579,6 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     if (info.mode !== keyMode) {
       keyMode = info.mode;
       keys = KEY_LABELS[keyMode] || KEY_LABELS.kbm;
-      for (const id of Object.keys(equip)) setText(equip[id].key, keys[id]);
       root.dataset.input = keyMode;
       touchLayoutT = 0;
       if (keyMode !== 'touch') clearTouchLayout();
@@ -816,12 +833,18 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     const perks = perksFor(r ? r.cls : 'soldier');
     const counts = { frag: me.frags, molotov: me.molotovs, turret: me.turrets, barricade: me.barricades };
     const maxes = { frag: FRAG_MAX + (perks.extraFrags || 0), molotov: MOLOTOV_MAX };
+    const gs = info.gadgets || { selected: { throw: 'frag', build: 'turret' }, picker: {} };
     for (const id of Object.keys(equip)) {
       const n = counts[id] | 0;
       setText(equip[id].count, String(n));
       setClass(equip[id].el, 'none', n <= 0);
       setClass(equip[id].el, 'full', maxes[id] !== undefined && n >= maxes[id]);
+      const kind = equipGroups.throw.ids.includes(id) ? 'throw' : 'build';
+      const on = gs.selected[kind] === id;
+      setClass(equip[id].el, 'sel', on);
+      setText(equip[id].key, on ? keys[id] : '');
     }
+    for (const kind of Object.keys(equipGroups)) setClass(equipGroups[kind].el, 'pick', !!(gs.picker && gs.picker[kind]));
   }
 
   function setPrompt(text, progress) {
@@ -851,6 +874,9 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     let text = '';
     let prog = null;
     let hintText = '';
+    let usable = false;
+    // which contextual key hints (hints.js) apply right now, in priority order
+    const wanted = [];
     const pos = info.localPos || me;
     if (storyHud) storyHud.resetRing();
     let sp = null;
@@ -881,7 +907,9 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
         }
       }
       if (target) {
+        usable = true;
         if (target.reviver === localId) {
+          hints.learn('revive');
           text = `Reviving ${nameOf(target.id)}…`;
           prog = target.revive;
         } else if (target.reviver) {
@@ -891,6 +919,13 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
           text = `Hold ${keys.interact} to revive ${nameOf(target.id)}`;
         }
       } else {
+        // a teammate is down somewhere near, but not yet in reach: teach the key early
+        for (const p of v.players) {
+          if (p.id !== localId && p.state === 'downed' && !p.reviver && Math.hypot(p.x - pos.x, p.y - pos.y) <= REVIVE_RADIUS * 3.5) {
+            wanted.push('revive');
+            break;
+          }
+        }
         // weapon crate?
         let crate = null, cb = INTERACT_RADIUS + 1;
         for (const p of v.pickups || []) {
@@ -902,13 +937,17 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
           }
         }
         if (crate) {
+          usable = true;
           text = `Press ${keys.interact} to take the ${crate.weapon && WEAPONS[crate.weapon] ? WEAPONS[crate.weapon].name : 'weapon crate'}`;
         } else if (storyHud && (sp = storyHud.prompt(v, me, pos, keys, localId))) {
           // (a station, a terminal, an NPC to talk to or revive)
+          usable = true;
           text = sp.text;
           prog = sp.ring ? null : sp.prog;
         } else if (campaignHud && (text = campaignHud.prompt(v, me, pos, keys))) {
           // (the zip gantry)
+          usable = true;
+          wanted.push('zip');
         } else if (v.phase === 'wave' && nearSupply(map, v.zone || v.campaign, pos.x, pos.y, SUPPLY_RADIUS)) {
           const drop = v.zone || v.campaign;
           const atDrop = !!drop && Math.hypot(pos.x - drop.sx, pos.y - drop.sy) <= SUPPLY_RADIUS;
@@ -919,9 +958,26 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
       if (!text && canClimbAhead(me, pos, Number.isFinite(info.yaw) ? info.yaw : me.angle)) text = `${keys.jump} — climb`;
       if ((v.phase === 'prep' || v.phase === 'intermission') && !info.shopOpen) {
         const st = shopState(v, me, map);
-        if (st.open) hintText = `Shop open — press ${keys.shop}`;
+        if (st.open) {
+          hintText = `Shop open — press ${keys.shop}`;
+          wanted.push('buy');
+        }
       }
+      if (info.shopOpen) hints.learn('buy');
+      if (me.ride > 0) hints.learn('zip');
     }
+    canUse = usable;
+    // (the shop hint is the standing one's first lessons: it takes the line while it teaches)
+    const tipId = hints.update(me && me.state === 'alive' ? wanted : [], info.dt || 0);
+    if (tipId) {
+      const tk = tipId === 'buy' ? keys.shop : keys.interact;
+      setText(tipKey, tk);
+      setText(tipText, tipId === 'revive' ? 'Hold to revive' : tipId === 'buy' ? 'buy menu' : 'zip line');
+      if (tipId === 'buy') hintText = '';
+      if (tipId === 'zip') text = '';
+    }
+    setShown(tip, !!tipId);
+    tipShown = tipId;
     setPrompt(text, prog);
     setShown(hint, !!hintText);
     if (hintText) setText(hint, hintText);
@@ -954,6 +1010,14 @@ export function createHud(root, { map, renderClassPortrait, audio, invite = null
     toast,
     banner: showBanner,
     scoreboard,
+    /** Something is in reach that the interact key does (a downed teammate, a crate, a story prompt, the zip gantry). */
+    get canInteract() {
+      return canUse;
+    },
+    /** The id of the contextual key hint on screen ('revive' | 'buy' | 'zip'), or ''. */
+    get tip() {
+      return tipShown;
+    },
     /** First person: rotating radar (true) or the whole map north-up (false). */
     setMinimapRotate(on) {
       if (fps) minimap.setRadar(!!on);

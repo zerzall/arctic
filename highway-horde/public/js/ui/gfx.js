@@ -80,6 +80,39 @@ export function presetMatches(settings) {
   return PRESET_KEYS.every((k) => settings[k] === p[k]);
 }
 
+/** MSAA samples never go above this while the resolution scale is above 100% (supersampling already smooths edges). */
+export const MSAA_CAP_SUPERSAMPLED = 2;
+
+/** Is the resolution fixed above 100% (supersampling)? 'auto' is not: it picks its own scale per frame. */
+export function supersampled(s) {
+  return Number.isFinite(s && s.renderScale) && s.renderScale > 1 + 1e-9;
+}
+
+/** The MSAA samples the renderer is given: the setting, capped at MSAA_CAP_SUPERSAMPLED while supersampling. */
+export function effectiveMsaa(s) {
+  const m = MSAA_MODES.includes(s && s.msaa) ? s.msaa : 0;
+  return supersampled(s) ? Math.min(m, MSAA_CAP_SUPERSAMPLED) : m;
+}
+
+/** Did the cap lower the player's MSAA choice (the settings say so)? */
+export function msaaCapped(s) {
+  return effectiveMsaa(s) < (MSAA_MODES.includes(s && s.msaa) ? s.msaa : 0);
+}
+
+/**
+ * The costliest settings, flagged "Heavy GPU" in the Graphics tab: which of them are on in `s`.
+ * @returns {string[]} any of 'resolution' (a fixed scale above 100%), 'msaa' (8x), 'shadows' (Cinematic's
+ *   cascaded 4K shadows), 'volumetrics'
+ */
+export function heavySettings(s) {
+  const out = [];
+  if (supersampled(s)) out.push('resolution');
+  if (effectiveMsaa(s) >= 8) out.push('msaa');
+  if (s && s.quality === 'cinematic' && s.shadowsHigh) out.push('shadows');
+  if (s && s.volumetrics) out.push('volumetrics');
+  return out;
+}
+
 /** Label for a render scale choice. */
 export function renderScaleLabel(v) {
   if (v === 'auto') return 'Auto';
@@ -109,7 +142,7 @@ export function rendererSettings(s, out = {}) {
   out.volumetrics = s.volumetrics !== false;
   out.reflections = s.reflections !== false;
   out.gore = GORE_MODES.includes(s.gore) ? s.gore : 'on';
-  out.msaa = MSAA_MODES.includes(s.msaa) ? s.msaa : 0;
+  out.msaa = effectiveMsaa(s);
   out.shadowsHigh = s.shadowsHigh === true;
   out.contactShadows = s.contactShadows === true;
   out.aoFull = s.aoFull === true;

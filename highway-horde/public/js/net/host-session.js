@@ -113,6 +113,8 @@ export class HostSession extends Emitter {
     this.story = story ? new StoryHost(this, story) : null;
     /** Story stages: the game is frozen behind the result screen. */
     this.held = false;
+    /** Solo true pause (setPaused): the clock reading when the sim was stopped, or null while it runs. */
+    this.pausedAt = null;
     /** The story part of the running game's start message. */
     this.storyStart = null;
 
@@ -313,13 +315,48 @@ export class HostSession extends Emitter {
     return true;
   }
 
+  /**
+   * Can the pause menu really stop this game? Only a local-only game can: the host on the 'local'
+   * transport with no remote human in the room (bots are fine: they run inside the sim). An online room,
+   * even with nobody in it yet, keeps running (a friend may join any second); so do story rooms (their
+   * director has timers of its own).
+   */
+  canPause() {
+    return !this.left && this.transport === 'local' && !this.story && this.peers.size === 0;
+  }
+
+  /** Is the simulation stopped by setPaused(true)? */
+  get paused() {
+    return this.pausedAt !== null;
+  }
+
+  /**
+   * True pause (solo): stop stepping the game, and on resume shift the sim clock by the time spent paused so
+   * the ticks that "would have happened" are not caught up. No-op where canPause() is false.
+   * @param {boolean} on
+   * @returns {boolean} whether the game is paused now
+   */
+  setPaused(on) {
+    if (!on) {
+      if (this.pausedAt !== null) {
+        const now = this.clock();
+        if (this.t0 !== null) this.t0 += now - this.pausedAt;
+        this.pausedAt = null;
+        this.lastUpdateAt = now;
+      }
+      return false;
+    }
+    if (this.pausedAt === null && this.inGame && this.game && this.canPause()) this.pausedAt = this.clock();
+    return this.pausedAt !== null;
+  }
+
   update(frameDt, input, aimAngle) {
     if (this.left) return;
     const now = this.clock();
     this.netStats.addFrame();
-    this.lastUpdateAt = now;
+    if (this.pausedAt === null) this.lastUpdateAt = now;
     // Keys pressed in the lobby must not fire on the first tick of the game.
-    if (this.inGame) this.builder.feed(input, aimAngle);
+    if (this.inGame && this.pausedAt === null) this.builder.feed(input, aimAngle);
     // Pumping here as well as from the worker ticker keeps the sim exactly up to date at
     // render time while the tab is visible.
     this._pump();
@@ -334,7 +371,8 @@ export class HostSession extends Emitter {
       view = interpolateSnapshots(null, cur, 1);
     } else {
       // Render one tick in the past so there is always a newer tick to blend towards.
-      const renderTick = (this.clock() - this.t0) / DT - 1;
+      // (a paused game stands still at the moment it was stopped)
+      const renderTick = ((this.pausedAt !== null ? this.pausedAt : this.clock()) - this.t0) / DT - 1;
       const u = Math.min(1, Math.max(0, (renderTick - prev.tick) / (cur.tick - prev.tick)));
       view = interpolateSnapshots(prev, cur, u);
     }
@@ -374,7 +412,7 @@ export class HostSession extends Emitter {
 
   _pump() {
     const game = this.game;
-    if (!game || this.left || this.held) return;
+    if (!game || this.left || this.held || this.pausedAt !== null) return;
     const now = this.clock();
     if (this.t0 === null) this.t0 = now - game.tick * DT;
     let due = Math.floor((now - this.t0) / DT + 1e-9) - game.tick;
@@ -450,6 +488,7 @@ export class HostSession extends Emitter {
     this.game = null;
     this.inGame = false;
     this.held = false;
+    this.pausedAt = null;
     this.prevSnap = this.curSnap = this.lastView = null;
     this.netEvents = [];
     this.localEvents = [];

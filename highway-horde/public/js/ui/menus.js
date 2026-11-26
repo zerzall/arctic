@@ -4,10 +4,11 @@
 
 import { CLASSES, CLASS_IDS, perksFor } from '../shared/classes.js';
 import { WEAPONS } from '../shared/weapons.js';
+import { ZOMBIES } from '../shared/zombies.js';
 import { PLAYER_COLORS, PLAYER_COLOR_NAMES, ROOM_CODE_LENGTH, ROOM_CODE_ALPHABET } from '../shared/constants.js';
 import { $, $$, h, fitCanvas } from './dom.js';
 import { cleanName, isCoarsePointer } from './storage.js';
-import { applyPreset, presetMatches, PRESET_KEYS } from './gfx.js';
+import { applyPreset, presetMatches, PRESET_KEYS, heavySettings, msaaCapped } from './gfx.js';
 import { gpuLabel, recommendedTier } from './gpu.js';
 import { resolutionHint } from './display.js';
 import { currentUiScale } from './uiscale.js';
@@ -465,6 +466,10 @@ export function createSettingsDialog(ctx) {
   const gfxNote = $('#set-gfx-note', dlg);
   const gpuNote = $('#set-gpu', dlg);
   const resHint = $('#set-res-hint', dlg);
+  const resHeavy = $('#set-res-heavy', dlg);
+  const heavyRes = $('#heavy-res', dlg);
+  const heavyMsaa = $('#heavy-msaa', dlg);
+  const msaaCap = $('#set-msaa-cap', dlg);
   const cineBox = $('#set-cine', dlg);
   const refreshNow = $('#set-refresh-now', dlg);
   const calibReset = $('#set-calib-reset', dlg);
@@ -537,6 +542,12 @@ export function createSettingsDialog(ctx) {
     resHint.textContent = hint.text;
     resHint.hidden = !hint.text;
     refreshNow.textContent = hz ? `· ${hz} Hz display` : '';
+    // the costliest settings carry a "Heavy GPU" badge; MSAA is held down while the resolution is above 100%
+    const heavy = heavySettings(s);
+    heavyRes.hidden = !heavy.includes('resolution');
+    resHeavy.hidden = !heavy.includes('resolution');
+    heavyMsaa.hidden = !heavy.includes('msaa');
+    msaaCap.hidden = !msaaCapped(s);
   }
 
   function syncUiScale() {
@@ -793,10 +804,83 @@ export function bindFullscreenButtons() {
   return { sync };
 }
 
+export const HOWTO_TABS = ['modes', 'controls', 'classes', 'zombies'];
+
+/** What each zombie does, for the How to Play Zombies tab (and from which wave it can show up). */
+export const ZOMBIE_NOTES = [
+  ['walker', 'From wave 1', 'The bulk of every horde. Slow, and tough enough to soak a few rounds; it climbs onto cars and over low cover given time.'],
+  ['runner', 'From wave 2', 'Fast and fragile. Closes the gap while you reload; a headshot or a short burst puts it down.'],
+  ['crawler', 'From wave 3', 'Low and quick to get under your feet; it cannot reach you while you are in the air. Aim down.'],
+  ['bloater', 'From wave 4', 'A swollen sack of bile that bursts when it dies, hurting everything close by, zombies included. Pop it at range, or next to a crowd.'],
+  ['spitter', 'From wave 4', 'Keeps its distance and lobs acid that pools on the ground. Break line of sight or kill it first, and never stand in the green.'],
+  ['brute', 'From wave 5', 'Huge, then it charges and knocks you flat. Sidestep the charge and keep the damage coming.'],
+  ['screamer', 'From wave 6', 'Its scream sends the zombies around it running faster. Silence it before the rest arrive.'],
+  ['boss', 'Every 5th wave', 'The Abomination slams the ground around it and soaks enormous damage. Keep your distance, focus fire, and revive fast.'],
+];
+
 export function createHowTo(ctx) {
   const dlg = $('#dlg-howto');
+  const tabs = $$('.set-tab', dlg);
+  const panes = $$('.howto-pane', dlg);
+  let tab = HOWTO_TABS[0];
+
+  // Classes and zombies come from the game's own data, so the text can't drift from the numbers.
+  const classBox = $('#howto-classes', dlg);
+  if (classBox) {
+    classBox.replaceChildren(...CLASS_IDS.map((id) => {
+      const c = CLASSES[id];
+      const w = WEAPONS[c.startWeapon];
+      return h('div.howto-card-item', null, [
+        h('div.hc-head', null, [h('strong', { text: c.name }), h('span.hc-tag', { text: c.role })]),
+        h('p', { text: c.line || c.desc }),
+        h('ul', null, perkLines(id).map((t) => h('li', { text: t }))),
+        h('div.hc-foot', { text: `Starts with: ${w ? w.name : c.startWeapon}` }),
+      ]);
+    }));
+  }
+  const zombieBox = $('#howto-zombies', dlg);
+  if (zombieBox) {
+    zombieBox.replaceChildren(...ZOMBIE_NOTES.map(([id, when, text]) => {
+      const z = ZOMBIES[id];
+      return h('div.howto-card-item', null, [
+        h('div.hc-head', null, [h('strong', { text: z ? z.name : id }), h('span.hc-tag', { text: when })]),
+        h('p', { text }),
+      ]);
+    }));
+  }
+
+  function selectTab(name, focus = false) {
+    tab = HOWTO_TABS.includes(name) ? name : HOWTO_TABS[0];
+    for (const t of tabs) {
+      const on = t.dataset.tab === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    }
+    for (const p of panes) p.hidden = p.dataset.pane !== tab;
+    const body = dlg.querySelector('.howto-body');
+    if (body) body.scrollTop = 0;
+  }
+  for (const t of tabs) {
+    t.addEventListener('click', () => {
+      if (t.dataset.tab !== tab) ctx.audio.ui('click');
+      selectTab(t.dataset.tab);
+    });
+  }
+  $('.howto-tabs', dlg).addEventListener('keydown', (e) => {
+    const i = HOWTO_TABS.indexOf(tab);
+    let j = -1;
+    if (e.key === 'ArrowRight') j = (i + 1) % HOWTO_TABS.length;
+    else if (e.key === 'ArrowLeft') j = (i - 1 + HOWTO_TABS.length) % HOWTO_TABS.length;
+    if (j < 0) return;
+    e.preventDefault();
+    selectTab(HOWTO_TABS[j], true);
+  });
+  selectTab(tab);
+
   return {
-    open(onClose) {
+    /** @param {Function} [onClose] @param {string} [which] a tab to open on (default: the last one) */
+    open(onClose, which) {
       ctx.modals.open(dlg, {
         onClose: () => {
           if (!ctx.prefs.seenHowTo) {
@@ -806,9 +890,9 @@ export function createHowTo(ctx) {
           if (onClose) onClose();
         },
       });
-      const body = dlg.querySelector('.howto-body');
-      if (body) body.scrollTop = 0;
+      selectTab(which || tab);
     },
+    selectTab,
   };
 }
 

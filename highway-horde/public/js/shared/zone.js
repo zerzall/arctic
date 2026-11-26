@@ -11,24 +11,28 @@ export const MODE_LIST = [
     id: 'defend',
     name: 'Defend',
     short: 'Defend the objective',
+    line: 'Hold one spot against every wave and guard the objective.',
     description: 'Hold one spot against every wave. Guard the objective (or just survive with it off).',
   },
   {
     id: 'zone',
     name: 'Evac Run',
     short: 'Move to each new safe zone',
+    line: 'Chase the moving safe zone each wave. Harlan County plays only this mode and the Campaign.',
     description: 'Every wave the safe zone moves to a new spot on the map. Get there before the blight rolls in, grab the supply drop, and hold the circle while it shrinks.',
   },
   {
     id: 'campaign',
     name: 'Campaign',
     short: 'Hilltop stand, breakout, tower, zip line',
+    line: 'Four daylit stages: hold the hill, break out, climb the tower, ride the zip line.',
     description: 'A four-stage campaign on a daylit map: hold the hilltop against the horde, break out across the wrecked street to the tall tower, fight up floor by floor to the roof, kill the quota and escape down the zip line.',
   },
   {
     id: 'horde',
     name: 'Horde',
     short: 'Horde Elimination: kill them all',
+    line: 'One round, no respawns: kill the whole horde as it surges in.',
     description: 'Horde Elimination: one round, no respawns. Buy your gear, take your positions, then the whole horde comes in surges from every entrance. Kill every last one of them before they kill all of you. Downed survivors can still be revived.',
     // (picking the mode on a map that doesn't play it goes to this map first, shared/zone.js fixModeCombo)
     map: 'sandstone',

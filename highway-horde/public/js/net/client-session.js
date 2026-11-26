@@ -403,6 +403,15 @@ export class ClientSession extends Emitter {
     return p ? { x: p.x, y: p.y, angle: this.builder.angle } : null;
   }
 
+  /** A client can't stop the host's game: the pause menu is a plain overlay online (HostSession.canPause). */
+  canPause() {
+    return false;
+  }
+
+  setPaused() {
+    return false;
+  }
+
   leave() {
     if (this.left) return;
     this._sendCtl({ t: 'bye' });

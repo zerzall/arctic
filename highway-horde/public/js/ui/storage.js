@@ -5,7 +5,7 @@
 import { DEFAULT_SKIN, sanitizeSkin } from '../shared/gun-finish.js';
 import { CLASS_IDS } from '../shared/classes.js';
 import { SENS_MIN, SENS_MAX } from './look.js';
-import { DEFAULT_BINDS, validBinds } from './input.js';
+import { DEFAULT_BINDS, KEYS_VERSION, migrateBinds, validBinds } from './input.js';
 import { XH_DEFAULTS, crosshairSettings } from './crosshair.js';
 import { NAME_MAX_LENGTH, DEFAULT_SETTINGS, DIFFICULTY_IDS, WAVE_OPTIONS } from '../shared/constants.js';
 import { MODE_IDS } from '../shared/zone.js';
@@ -74,6 +74,7 @@ export const DEFAULT_CLIENT_SETTINGS = {
   rawMouse: true,     // pointer lock with unadjustedMovement (no OS acceleration) where supported
   // Rebindable keys (input.js BIND_ACTIONS → KeyboardEvent.code): crouch, walk, inspect.
   keys: { ...DEFAULT_BINDS },
+  keysVer: KEYS_VERSION,
   // Crosshair (crosshair.js): style 'dynamic' | 'static', colour, line length, thickness,
   // gap, centre dot, outline, opacity.
   ...XH_DEFAULTS,
@@ -278,7 +279,8 @@ export function validateSettings(s) {
     aimAssist: bool(s.aimAssist, ds.aimAssist),
     minimapRotate: bool(s.minimapRotate, ds.minimapRotate),
     rawMouse: bool(s.rawMouse, ds.rawMouse),
-    keys: validBinds(s.keys),
+    keys: validBinds(migrateBinds(s.keys, s.keysVer)),
+    keysVer: KEYS_VERSION,
     ...crosshairSettings(s),
     hitboxes: bool(s.hitboxes, ds.hitboxes),
   };

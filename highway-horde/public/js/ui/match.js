@@ -322,9 +322,14 @@ export function startMatch(ctx, session) {
 
   // ---- pause ---------------------------------------------------------------------------------
 
-  $('#pause-note').textContent = solo
-    ? 'The game keeps running — the horde doesn\'t wait. Your survivor stands still while this menu is open.'
-    : 'The game keeps running in multiplayer — your survivor stands still while this menu is open.';
+  // Solo (the host with nobody else in the room) really stops the simulation while this menu is open;
+  // online games keep running (your survivor stands still, the horde doesn't wait).
+  const truePause = () => !!(session.canPause && session.canPause());
+  $('#pause-note').textContent = truePause()
+    ? 'The game is paused — the horde is frozen until you resume.'
+    : solo
+      ? 'The game keeps running — the horde doesn\'t wait. Your survivor stands still while this menu is open.'
+      : 'The game keeps running in multiplayer — your survivor stands still while this menu is open.';
   // First person: resuming captures the mouse again (the click is the gesture it needs).
   $('#pause-resume').textContent = fps ? 'Click to Resume' : 'Resume';
 
@@ -334,6 +339,8 @@ export function startMatch(ctx, session) {
     if (chat.isOpen) chat.close();
     pauseOpen = true;
     pauseEl.hidden = false;
+    if (truePause() && session.setPaused) session.setPaused(true);
+    pauseEl.classList.toggle('is-paused', truePause());
     if (story) story.suspend(true);
     audio.ui('click');
     refreshEnabled();
@@ -346,6 +353,7 @@ export function startMatch(ctx, session) {
     if (!pauseOpen) return;
     pauseOpen = false;
     pauseEl.hidden = true;
+    if (session.setPaused) session.setPaused(false);
     if (story) story.suspend(false);
     if (document.activeElement && pauseEl.contains(document.activeElement)) document.activeElement.blur();
     refreshEnabled();
@@ -650,7 +658,10 @@ export function startMatch(ctx, session) {
       fpsN = 0;
     }
     const cam = listenerPos();
+    const gadgetCounts = me ? { frag: me.frags | 0, molotov: me.molotovs | 0, turret: me.turrets | 0, barricade: me.barricades | 0 } : null;
+    const gadgets = input.gadgetState(gadgetCounts);
     hud.update(view, {
+      gadgets,
       dt, mode: input.mode, stats: session.stats, fps: fpsRate, showStats: prefs.settings.showStats, isHost: session.isHost,
       renderStats: fps ? renderer.stats : null,
       localPos: local, shopOpen: shop.isOpen,
@@ -665,8 +676,12 @@ export function startMatch(ctx, session) {
     const t = input.touch;
     if (t && lastView) {
       const between = lastView.phase === 'prep' || lastView.phase === 'intermission';
+      // Situational buttons show only while they do something: READY between waves, SHOP while the
+      // shop is open to you, USE while something is in reach (a teammate to revive, a crate, the zip gantry)
       t.showButton('ready', between && !(me && me.ready) && !storyHub());
-      t.showButton('shop', !storyHub());
+      t.showButton('shop', !storyHub() && (shop.isOpen || shopState(lastView, me, map).open));
+      t.showButton('interact', !!story || !!hud.canInteract || (!!me && me.state === 'downed' && !!me.reviver));
+      t.setGadgets(gadgetCounts, gadgets.selected);
       if (!hud.scoreboard.visible) t.setToggle('scoreboard', false);
     }
 
@@ -788,6 +803,11 @@ export function startMatch(ctx, session) {
         audio.setMap(null);
       } catch {
         // audio is best-effort
+      }
+      try {
+        if (session.setPaused) session.setPaused(false);
+      } catch {
+        // the session is already gone
       }
       pauseOpen = false;
       endShown = false;

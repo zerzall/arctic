@@ -27,7 +27,7 @@ import { WEAPONS } from '../shared/weapons.js';
 import { PLAYER_COLORS, BLEEDOUT_TIME } from '../shared/constants.js';
 import { handlingOf, scopeFov, ZONE } from '../shared/handling.js';
 import { worldVolumes } from '../shared/hitbox.js';
-import { crosshairSettings, dynamicGap, drawCrosshair } from '../ui/crosshair.js';
+import { crosshairSettings, dynamicGap, easeBloom, drawCrosshair } from '../ui/crosshair.js';
 import { angleDiff } from './actor-kit.js';
 
 const TAU = Math.PI * 2;
@@ -200,12 +200,14 @@ export function createOverlay3D(ctx) {
     teammates(view, frame, W, H, settings, yaw);
     objectiveArrow(view, frame, W, H, yaw);
     damageArcs(local, dt, W, H, yaw);
-    if (settings.crosshair !== false) crosshair(local, W, H, settings);
+    if (settings.crosshair !== false) crosshair(local, W, H, settings, dt);
+    else xhGap = NaN;
     g.restore();
   }
 
   // ---- crosshair ------------------------------------------------------------------------
-  function crosshair(local, W, H, settings) {
+  let xhGap = NaN;
+  function crosshair(local, W, H, settings, dt = 0) {
     if (!local || local.state === 'dead') return;
     const cx = W / 2, cy = H / 2;
     let wid = local.slots ? local.slots[local.slot] : null;
@@ -231,7 +233,10 @@ export function createOverlay3D(ctx) {
     const cone = inacc + (h && h.pellets > 1 ? h.spread * 0.5 : 0);
     const kick = h ? h.viewKick : 0.5;
     const sprayPx = Math.hypot(local.punchY || 0, local.punchP || 0) * (1 - kick) * pxPerRad;
-    const gap = dynamicGap(xh, ui, Math.tan(Math.min(0.6, cone)) * pxPerRad, sprayPx, H * 0.12) + (xh.xhStyle === 'dynamic' ? sprint * 10 * ui : 0);
+    const target = dynamicGap(xh, ui, Math.tan(Math.min(0.6, cone)) * pxPerRad, sprayPx, H * 0.16) + (xh.xhStyle === 'dynamic' ? sprint * 10 * ui : 0);
+    // (blooms at once, settles back a little slower: the movement penalty reads from the first mag)
+    xhGap = xh.xhStyle === 'dynamic' ? easeBloom(xhGap, target, dt) : target;
+    const gap = xhGap;
     const len = xh.xhSize * ui;
     const reloading = local.reloading > 0;
     drawCrosshair(g, cx, cy, xh, gap, ui, { alpha: sprint ? 0.4 : 1 });

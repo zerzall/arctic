@@ -50,7 +50,28 @@ export function baseGap(o) {
 export function dynamicGap(o, ui, inaccPx, sprayPx, maxPx) {
   const g = baseGap(o) * ui;
   if (o.xhStyle !== 'dynamic') return g;
-  return Math.min(maxPx, g + Math.max(0, inaccPx) * 0.9 + Math.max(0, sprayPx) * 0.5);
+  return Math.min(maxPx, g + (Math.max(0, inaccPx) * 0.9 + Math.max(0, sprayPx) * 0.5) * BLOOM_GAIN);
+}
+
+/**
+ * How much louder than the true cone the dynamic gap grows. Even a pistol's small moving
+ * penalty (about 5x its standing cone) must be plainly visible in the first magazine, so the
+ * crosshair exaggerates the cone; the relative sizes between guns and states are unchanged.
+ */
+export const BLOOM_GAIN = 2.2;
+/** Open / close speeds (1/s) of the smoothed gap: it blooms almost at once and settles back more slowly. */
+const BLOOM_OPEN = 28;
+const BLOOM_CLOSE = 7;
+
+/**
+ * Move the displayed gap toward `target` over `dt` seconds: fast out (the penalty is felt the moment
+ * you move, jump or fire), slower back (the bloom lingers a beat, so a tap-fire rhythm reads).
+ * @returns {number} the new displayed gap
+ */
+export function easeBloom(prev, target, dt) {
+  if (!Number.isFinite(prev)) return target;
+  const k = 1 - Math.exp(-(target > prev ? BLOOM_OPEN : BLOOM_CLOSE) * Math.max(0, dt));
+  return prev + (target - prev) * k;
 }
 
 /**
