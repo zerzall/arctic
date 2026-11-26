@@ -145,7 +145,7 @@ test('the sets load into texture arrays laid out as the tier says', async () => 
     assert.equal(t.image.depth, L.groups[i].layers.length);
     assert.equal(t.colorSpace, THREE.NoColorSpace);
   });
-  // a body layer's alpha is the hair's coverage: the scalp has it, most of the body none
+  // a body layer's alpha is the hair's rank (scripts/zbake/body.js): the scalp has it, most of the body none
   const g = L.slot.bodyA, data = r.textures[g.g].image.data, n = L.groups[g.g].size ** 2 * 4;
   let hair = 0, cnt = 0;
   for (let i = g.base * n + 3; i < (g.base + 1) * n; i += 64) { cnt++; if (data[i] > 128) hair++; }

@@ -19,7 +19,7 @@
 //   <set>-albedo.png   sRGB colour (RGBA where the set has a coverage: wounds, grime); the fabrics'
 //                      is a linear relative brightness
 //   <set>-normal.png   tangent-space normal x, y (grey + alpha; z = √(1 − x² − y²)), +v up
-//   <set>-pack.png     R roughness · G ambient occlusion · B per kind (body: hair coverage; skin:
+//   <set>-pack.png     R roughness · G ambient occlusion · B per kind (body: the hair's rank; skin:
 //                      subsurface thickness; cloth: bleach; wound: wetness; grime: holes)
 // Everything is painted at --size (2048); a map is written at the largest size the runtime ever
 // samples it at (actor-ztex.js ZTEX_TIERS, box-filtered down: supersampled): the body atlases' colour

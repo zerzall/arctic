@@ -8,23 +8,23 @@
     "albedo": {
      "file": "body-fresh-albedo.png",
      "size": 2048,
-     "bytes": 1942111
+     "bytes": 2642743
     },
     "normal": {
      "file": "body-fresh-normal.png",
      "size": 2048,
-     "bytes": 3259218
+     "bytes": 3298485
     },
     "pack": {
      "file": "body-fresh-pack.png",
      "size": 1024,
-     "bytes": 505686
+     "bytes": 1096089
     }
    },
    "hashes": {
-    "albedo": "158a6037ddb0367a",
-    "normal": "a5739aceab35291e",
-    "pack": "33083a6bad5a6cd2"
+    "albedo": "71af3fdd07bbc5e8",
+    "normal": "a3bb55491ba944b7",
+    "pack": "81d106a5c11cf791"
    }
   },
   {
@@ -34,23 +34,23 @@
     "albedo": {
      "file": "body-weeks-albedo.png",
      "size": 2048,
-     "bytes": 2085582
+     "bytes": 2706222
     },
     "normal": {
      "file": "body-weeks-normal.png",
      "size": 2048,
-     "bytes": 3346628
+     "bytes": 3396677
     },
     "pack": {
      "file": "body-weeks-pack.png",
      "size": 1024,
-     "bytes": 527995
+     "bytes": 1142149
     }
    },
    "hashes": {
-    "albedo": "8781a5e142ac7dfa",
-    "normal": "d5663efa64615248",
-    "pack": "921105c5a126fe92"
+    "albedo": "348ee76f7904c746",
+    "normal": "ae29a5356b889044",
+    "pack": "8584391eb0e17daa"
    }
   },
   {
@@ -60,23 +60,23 @@
     "albedo": {
      "file": "body-months-albedo.png",
      "size": 2048,
-     "bytes": 2159402
+     "bytes": 2846233
     },
     "normal": {
      "file": "body-months-normal.png",
      "size": 2048,
-     "bytes": 3515171
+     "bytes": 3577748
     },
     "pack": {
      "file": "body-months-pack.png",
      "size": 1024,
-     "bytes": 543486
+     "bytes": 1254124
     }
    },
    "hashes": {
-    "albedo": "852b191bebc6aca8",
-    "normal": "918a40ac30767dcc",
-    "pack": "bc37c6a710f44f94"
+    "albedo": "27b232807ac3b969",
+    "normal": "4b7aebd9d0d5a28d",
+    "pack": "87f48e44117894e3"
    }
   },
   {
@@ -86,23 +86,23 @@
     "albedo": {
      "file": "body-bloater-albedo.png",
      "size": 2048,
-     "bytes": 2091000
+     "bytes": 2703338
     },
     "normal": {
      "file": "body-bloater-normal.png",
      "size": 2048,
-     "bytes": 3353942
+     "bytes": 3372513
     },
     "pack": {
      "file": "body-bloater-pack.png",
      "size": 1024,
-     "bytes": 543470
+     "bytes": 1124061
     }
    },
    "hashes": {
-    "albedo": "c800e0773edfe06d",
-    "normal": "fb03d3496bd1009e",
-    "pack": "ea3187c9f41fea67"
+    "albedo": "c26e1437ef8dcb62",
+    "normal": "9c44e54e88322e4f",
+    "pack": "75e5882a4b1222e2"
    }
   },
   {
@@ -112,23 +112,23 @@
     "albedo": {
      "file": "body-spitter-albedo.png",
      "size": 2048,
-     "bytes": 2103526
+     "bytes": 2688713
     },
     "normal": {
      "file": "body-spitter-normal.png",
      "size": 2048,
-     "bytes": 3359769
+     "bytes": 3375010
     },
     "pack": {
      "file": "body-spitter-pack.png",
      "size": 1024,
-     "bytes": 550219
+     "bytes": 1159840
     }
    },
    "hashes": {
-    "albedo": "8c42d092c1aa7b60",
-    "normal": "f6110dade59ad0ea",
-    "pack": "138d3d164ef9e3e6"
+    "albedo": "1f63260d13cf2741",
+    "normal": "a092ecab9cfa4ac5",
+    "pack": "395067c89928b1e4"
    }
   },
   {
@@ -138,23 +138,23 @@
     "albedo": {
      "file": "body-brute-albedo.png",
      "size": 2048,
-     "bytes": 2146761
+     "bytes": 2732344
     },
     "normal": {
      "file": "body-brute-normal.png",
      "size": 2048,
-     "bytes": 3378921
+     "bytes": 3430539
     },
     "pack": {
      "file": "body-brute-pack.png",
      "size": 1024,
-     "bytes": 550019
+     "bytes": 1187430
     }
    },
    "hashes": {
-    "albedo": "278185c63aa3a5b5",
-    "normal": "497c8d2d1bda6a6e",
-    "pack": "98beed9b5fe3008c"
+    "albedo": "e7ece5794d1eee79",
+    "normal": "742b86e2665fb3f6",
+    "pack": "f4ce6e871fe86794"
    }
   },
   {
@@ -164,23 +164,23 @@
     "albedo": {
      "file": "body-screamer-albedo.png",
      "size": 2048,
-     "bytes": 2245059
+     "bytes": 2780617
     },
     "normal": {
      "file": "body-screamer-normal.png",
      "size": 2048,
-     "bytes": 3350242
+     "bytes": 3361264
     },
     "pack": {
      "file": "body-screamer-pack.png",
      "size": 1024,
-     "bytes": 521494
+     "bytes": 1127310
     }
    },
    "hashes": {
-    "albedo": "0f76d9cde6706857",
-    "normal": "8741ed51c9e27a31",
-    "pack": "54c88d1614f1eea4"
+    "albedo": "7029caddb6e7c424",
+    "normal": "a8ba344c409e7f75",
+    "pack": "92438895cb3883bc"
    }
   },
   {
@@ -190,23 +190,23 @@
     "albedo": {
      "file": "body-boss-albedo.png",
      "size": 2048,
-     "bytes": 2296506
+     "bytes": 2819559
     },
     "normal": {
      "file": "body-boss-normal.png",
      "size": 2048,
-     "bytes": 3527613
+     "bytes": 3559745
     },
     "pack": {
      "file": "body-boss-pack.png",
      "size": 1024,
-     "bytes": 559471
+     "bytes": 1274627
     }
    },
    "hashes": {
-    "albedo": "caee1fec420004dc",
-    "normal": "1fd080d0704100ee",
-    "pack": "dc0f8949cb67feb6"
+    "albedo": "b0635fa9e44e84b9",
+    "normal": "40e4c92a4e1605ae",
+    "pack": "45194439f7b2f0be"
    }
   },
   {

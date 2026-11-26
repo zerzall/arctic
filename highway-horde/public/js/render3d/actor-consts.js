@@ -47,6 +47,8 @@ export const PART = {
   // torn strips that hang below a garment's per-instance hem, and the trouser shell of the
   // near models (over a modelled leg: cut away below the hem instead of turning into skin)
   TORSO: 15, LIMB: 16, HEAD: 17, TATTER: 18, LTATTER: 19, FOOT: 20, TROUSER: 21,
+  // zombies: a clump of hair (uv.x = clump number + the way round it, uv.y = root 0 → tip 1)
+  HCLUMP: 22,
 };
 
 export const WOUND = { GASH: 0, BONE: 1, BITE: 2, BULLET: 3, BURN: 4, ACID: 5 };

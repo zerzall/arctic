@@ -1,16 +1,20 @@
-// The zombies' body atlases (scripts/bake-zbody.js): skin painted in the MakeHuman UV layout from the
+// The zombies' body atlases (scripts/bake-zombies.js): skin painted in the MakeHuman UV layout from the
 // body itself. Every texel knows where it is on the body (the posed full-resolution mesh rasterised
-// into UV space: rest-pose position, normal, bone, ambient occlusion), so the paint follows anatomy:
-// pores and fine wrinkles everywhere, creases at the knuckles, the eyes and the neck, veins where
-// they show (temples, throat, inner arms, the backs of the hands, the chest), the sunken sockets
-// bruised dark, the lips shrunk and cracked, nails gone grey and dirty, the scalp's hair matted and
-// falling out, livor and marbling where the blood settled and rotted, bruises, scrapes, slipped skin
-// (the long dead), dried blood round the mouth and nose. Eight sets: three stages of decay (the
-// walkers, runners and crawlers) and the five specials' own skins.
+// into UV space: rest-pose position, normal, bone, ambient occlusion), so the paint follows anatomy
+// and reads at a distance as well as up close: three skin tones blotched at the body's scale with a
+// strong value breakup, marbling (the rotting veins' dark web), veins under thin skin, livor where the
+// blood settled (the back, the backs of the legs, the hands and feet), bruises, sores and lesions,
+// scrapes on the knees, elbows and knuckles, dirt in patches and runs and worked into every crease,
+// old blood smeared on the hands and arms, slipped skin and leathery cracks on the long dead; the
+// face's sunken, near-black sockets, red-rimmed lids, cracked lips, crusted nostrils and the blood run
+// from the mouth; nails, palms, soles, the navel, the folds at the joints; and per special its own
+// (stretch marks, blisters, acid burns, keloid scars, ulcers, necrosis). Eight sets: three stages of
+// decay (the walkers, runners and crawlers) and the five specials' own skins.
 //
 // Maps (as the other zombie sets, scripts/bake-zombies.js encodeSet): albedo (sRGB), normal (tangent
-// space in the UV frame, x along +u, y along +v), pack R roughness · G ambient occlusion · B hair
-// coverage (tinted per zombie with its hair colour by the shader).
+// space in the UV frame, x along +u, y along +v), pack R roughness · G ambient occlusion (the body's,
+// times the paint's creases) · B the hair's rank (paintBody: the shader keeps the hair where the rank
+// is over the zombie's own threshold and tints it with its hair colour).
 
 import { buildBody } from '../build-zbody.js';
 import { Rgb, smooth, clamp01, mix } from './lib.js';
@@ -135,32 +139,89 @@ const mixc = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a
 const mulc = (a, b) => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
 const g2 = (x, s) => Math.exp(-(x * x) / (s * s));
 
+/** Cellular noise with the nearest cell's own random value: out.d (F1 distance), out.id (0..1). */
+function cellId(x, y, z, out) {
+  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+  let d = 9, id = 0;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+    const h = PERM[(PERM[(PERM[(X + i) & 255] + Y + j) & 255] + Z + k) & 255];
+    const h2 = PERM[(h + 71) & 255], h3 = PERM[(h + 151) & 255];
+    const dx = i + h / 255 - (x - X), dy = j + h2 / 255 - (y - Y), dz = k + h3 / 255 - (z - Z);
+    const q = dx * dx + dy * dy + dz * dz;
+    if (q < d) { d = q; id = PERM[(h + 37) & 255] / 255; }
+  }
+  out.d = Math.sqrt(d); out.id = id;
+  return out;
+}
+
+/** Box blur of a field over the atlas (three passes, clamped at the edges). */
+function blurField(src, N, r) {
+  let a = Float32Array.from(src), b = new Float32Array(src.length);
+  const inv = 1 / (2 * r + 1);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let y = 0; y < N; y++) {
+      let s = 0;
+      for (let k = -r; k <= r; k++) s += a[y * N + Math.min(N - 1, Math.max(0, k))];
+      for (let x = 0; x < N; x++) {
+        b[y * N + x] = s * inv;
+        s += a[y * N + Math.min(N - 1, x + r + 1)] - a[y * N + Math.max(0, x - r)];
+      }
+    }
+    for (let x = 0; x < N; x++) {
+      let s = 0;
+      for (let k = -r; k <= r; k++) s += b[Math.min(N - 1, Math.max(0, k)) * N + x];
+      for (let y = 0; y < N; y++) {
+        a[y * N + x] = s * inv;
+        s += b[Math.min(N - 1, y + r + 1) * N + x] - b[Math.max(0, y - r) * N + x];
+      }
+    }
+  }
+  return a;
+}
+
 /**
- * Per set: the base skin and its variation, the extremities' colour, marbling (rot in the veins),
- * how much the veins, bruises and slipped skin show, wetness, cracks, scars, stretch marks, acid
- * burns, the eye sockets, lips and nails.
+ * Per set (sRGB hex colours, multipliers as linear factors): three skin tones blended by warped
+ * fields at the body's scale (tones), the strength of the mottling, marbling (rot in the veins), the
+ * superficial veins, livor (settled blood: the back, the hands and feet), bruises, sores, scrapes,
+ * dirt, dried blood, slipped skin, cracked leathery skin, and per type its own: stretch marks, blisters,
+ * acid burns, keloid scars, ulcers and necrosis. `rough` is the dry skin's roughness (the dead are matte).
  */
 export const BODY_LOOKS = {
-  'body-fresh': { base: '#a7a39b', base2: '#9da6aa', ext: '#7c8494', lip: '#5c5058', sock: '#4a3a44', vein: '#5a6680', veins: 0.75, marble: 0.1, bruise: 0.55, slip: 0, rough: 0.56, crack: 0, nail: '#8e8a86', blood: 0.65, liv: '#7a5468' },
-  'body-weeks': { base: '#8e937a', base2: '#9a8e72', ext: '#5e6050', lip: '#3c3432', sock: '#2e2a26', vein: '#38452c', veins: 0.55, marble: 0.85, bruise: 0.7, slip: 0.35, rough: 0.6, crack: 0.1, nail: '#6e6450', blood: 0.55, liv: '#5a4a50', wet: 0.35 },
-  'body-months': { base: '#7a6c58', base2: '#6c6a58', ext: '#3c3026', lip: '#2a1e1a', sock: '#1e1612', vein: '#3a3020', veins: 0.3, marble: 0.5, bruise: 0.4, slip: 0.75, rough: 0.76, crack: 0.75, nail: '#4a3a28', blood: 0.45, liv: '#4a3a34' },
-  'body-bloater': { base: '#97976a', base2: '#8a9a60', ext: '#5e6040', lip: '#3a3428', sock: '#2e2a20', vein: '#2e4020', veins: 0.6, marble: 1.0, bruise: 0.6, slip: 0.3, rough: 0.42, crack: 0, nail: '#6a6448', blood: 0.4, liv: '#5a5040', wet: 0.55, stretch: 1, blister: 1 },
-  'body-spitter': { base: '#99946a', base2: '#a0965e', ext: '#6a6440', lip: '#3a3020', sock: '#2e2618', vein: '#3c4a1e', veins: 0.7, marble: 0.6, bruise: 0.4, slip: 0.25, rough: 0.55, crack: 0.15, nail: '#6e6640', blood: 0.35, liv: '#5a5030', acid: 1 },
-  'body-brute': { base: '#a09496', base2: '#958c92', ext: '#62545c', lip: '#3a2a2e', sock: '#2a1e22', vein: '#3a3048', veins: 0.6, marble: 0.35, bruise: 0.8, slip: 0.1, rough: 0.66, crack: 0.2, nail: '#5a5048', blood: 0.6, liv: '#5a3a48', scars: 1 },
-  'body-screamer': { base: '#b4b6b8', base2: '#a9b0ba', ext: '#7a8090', lip: '#4a3a48', sock: '#2e2232', vein: '#4a5a8a', veins: 1.0, marble: 0.2, bruise: 0.35, slip: 0.15, rough: 0.54, crack: 0.1, nail: '#8a8890', blood: 0.8, liv: '#6a4a62' },
-  'body-boss': { base: '#946a60', base2: '#86645a', ext: '#4e3028', lip: '#2a1414', sock: '#1a0c0c', vein: '#3a1418', veins: 0.6, marble: 0.4, bruise: 0.5, slip: 0.6, rough: 0.6, crack: 0.9, nail: '#4a3028', blood: 0.6, liv: '#4a2a2a', ulcer: 1 },
+  // turned within hours or days (the runners): grey pallor with a cold cast, waxy patches, violet livor,
+  // the veins showing blue through thin skin, dark sockets, blood still bright round the mouth
+  'body-fresh': { tones: ['#8e8c88', '#7b8392', '#988c7e'], third: '#8a7f8c', mottle: 0.3, marble: 0.25, marbleK: [0.62, 0.62, 0.86], veins: 0.95, veinK: [0.55, 0.58, 0.82], liv: 0.8, livK: [0.78, 0.46, 0.66], bruise: 0.75, sores: 0.12, scrape: 0.85, dirt: 0.7, blood: 0.85, slip: 0, crack: 0, rough: 0.62, wet: 0.25, sock: '#2e2430', lip: '#463844', nail: '#787686' },
+  // weeks gone (walkers, crawlers): grey-green with purple-grey patches, marbled green-black, slipping
+  'body-weeks': { tones: ['#7e826c', '#6c745e', '#8a7c66'], third: '#776a78', mottle: 0.36, marble: 0.95, marbleK: [0.42, 0.5, 0.3], veins: 0.55, veinK: [0.5, 0.58, 0.42], liv: 0.6, livK: [0.72, 0.5, 0.6], bruise: 0.8, sores: 0.6, scrape: 0.9, dirt: 0.85, blood: 0.6, slip: 0.45, crack: 0.12, rough: 0.7, wet: 0.4, sock: '#221c18', lip: '#352a28', nail: '#62584a' },
+  // months: dried to a brown-grey leather, split into plates, dark rot patches, sheets of skin gone
+  'body-months': { tones: ['#6e6352', '#5e5c4c', '#7a6a52'], third: '#4f4a44', mottle: 0.42, marble: 0.5, marbleK: [0.5, 0.44, 0.34], veins: 0.25, veinK: [0.55, 0.5, 0.42], liv: 0.4, livK: [0.72, 0.56, 0.56], bruise: 0.4, sores: 0.5, scrape: 0.7, dirt: 0.9, blood: 0.45, slip: 0.8, crack: 0.85, mould: 0.6, rough: 0.8, wet: 0.25, sock: '#18120e', lip: '#261b16', nail: '#45382a' },
+  // swollen with gas: taut, green-yellow, marbled black-green, blisters, stretch marks, a wet sheen
+  'body-bloater': { tones: ['#7f8768', '#74845c', '#8c8662'], third: '#6c6878', mottle: 0.34, marble: 1.0, marbleK: [0.38, 0.48, 0.26], veins: 0.7, veinK: [0.42, 0.52, 0.36], liv: 0.55, livK: [0.7, 0.5, 0.58], bruise: 0.5, sores: 0.6, scrape: 0.6, dirt: 0.75, blood: 0.45, slip: 0.3, crack: 0, stretch: 1, blister: 1, rough: 0.58, wet: 0.55, sock: '#221e14', lip: '#3a3226', nail: '#5e5840' },
+  // sallow yellow-green, chemical burns from what it brings up (the chin, the throat, the chest)
+  'body-spitter': { tones: ['#8a866a', '#8e865e', '#7a7e68'], third: '#7a6e70', mottle: 0.34, marble: 0.6, marbleK: [0.46, 0.52, 0.32], veins: 0.75, veinK: [0.48, 0.56, 0.38], liv: 0.55, livK: [0.72, 0.52, 0.56], bruise: 0.45, sores: 0.5, scrape: 0.7, dirt: 0.75, blood: 0.4, slip: 0.25, crack: 0.15, acid: 1, rough: 0.66, wet: 0.35, sock: '#221c12', lip: '#382e20', nail: '#5e5840' },
+  // the brute: grey with a bruised purple-brown cast (no pink), battered and scarred, the skin split by
+  // the growth in stretch marks over the shoulders, arms and chest, bulging dark veins, filthy
+  'body-brute': { tones: ['#7a7472', '#6a6e6b', '#83756b'], third: '#6c5a68', mottle: 0.36, marble: 0.4, marbleK: [0.56, 0.5, 0.52], veins: 1.0, veinK: [0.46, 0.42, 0.56], veinH: 1.8, liv: 0.6, livK: [0.72, 0.5, 0.6], bruise: 0.95, sores: 0.45, scrape: 1.0, dirt: 0.95, blood: 0.65, slip: 0.1, crack: 0.2, scars: 1, stretchArms: 1, rough: 0.72, wet: 0.3, sock: '#1e1418', lip: '#33242a', nail: '#504840' },
+  // the screamer: starved, a bloodless blue-grey, dark veins standing out all over, bruised sockets
+  'body-screamer': { tones: ['#96989c', '#868d99', '#9b948b'], third: '#8a8094', mottle: 0.3, marble: 0.3, marbleK: [0.55, 0.58, 0.82], veins: 1.0, veinK: [0.38, 0.42, 0.66], veinH: 1.2, liv: 0.6, livK: [0.74, 0.5, 0.68], bruise: 0.55, sores: 0.25, scrape: 0.7, dirt: 0.6, blood: 0.85, slip: 0.15, crack: 0.1, rough: 0.62, wet: 0.3, sock: '#1e1626', lip: '#3e3040', nail: '#7a7686' },
+  // the boss: necrotic, grey-brown mottled with purple-black dead flesh, ulcers and raw muscle, split
+  'body-boss': { tones: ['#6d6460', '#5c5a58', '#7a695d'], third: '#4a3842', mottle: 0.42, marble: 0.45, marbleK: [0.5, 0.42, 0.46], veins: 0.8, veinK: [0.42, 0.36, 0.42], veinH: 1.6, liv: 0.5, livK: [0.7, 0.48, 0.56], bruise: 0.6, sores: 0.5, scrape: 0.8, dirt: 0.8, blood: 0.6, slip: 0.5, crack: 0.85, ulcer: 1, necro: 1, scars: 0.6, rough: 0.72, wet: 0.4, sock: '#140a0c', lip: '#24141a', nail: '#40302a' },
 };
 
 /**
- * Paint one body set at N² → the encodeSet record (alb, nx/ny, rough, ao, b = hair coverage,
- * linear: false). R from raster(N).
+ * Paint one body set at N² → the encodeSet record (alb, nx/ny, rough, ao, b, linear: false). R from
+ * raster(N). The B channel is the hair's rank, not its coverage: 0 where no hair grows, on the scalp
+ * the density (thinnest on the crown and the temples, where hair goes first) times the strands and
+ * clumps, the brows near 1. The runtime keeps the hair where the rank is over the zombie's own
+ * threshold, so one atlas serves a full head of hair, thinning, patchy and bald (brows only).
  */
 export function paintBody(name, R) {
   const S = BODY_LOOKS[name];
   const { N, pos, nrm, bone, cover, near } = R;
   const n = N * N;
-  const col = { base: lin(S.base), base2: lin(S.base2), ext: lin(S.ext), lip: lin(S.lip), sock: lin(S.sock), vein: lin(S.vein), nail: lin(S.nail), liv: lin(S.liv) };
-  const BLOOD_OLD = lin('#2a0c08'), BLOOD = lin('#4a0a08'), DIRT = lin('#3a3024'), RAW = lin('#7a4a40'), BRUISE = lin('#4a3050'), BRUISE2 = lin('#5e6a3a'), SCAR = lin('#8a6a66'), ACID = lin('#8a9a2a'), NIPPLE = lin('#6a4a44');
+  const T = S.tones.map(lin), T3 = lin(S.third);
+  const SOCK = lin(S.sock), LIP = lin(S.lip), NAIL = lin(S.nail);
+  const BLOOD_OLD = lin('#2a0d08'), BLOOD = lin('#4a0b08'), DIRT = [0.34, 0.29, 0.22], RAW = lin('#5e2e28'), SCAB = lin('#34170f'), PUS = lin('#7a7046');
+  const SCAR = lin('#8a7474'), ACID = lin('#7e8c2a'), NIPPLE = [0.72, 0.56, 0.58], MOULD = lin('#9a9a86'), NECRO = lin('#2a1a22');
   const J = R.piv;
   const EL = J.EYE_L, ER = J.EYE_R;
   const eye = [(EL[0] + ER[0]) / 2, (EL[1] + ER[1]) / 2, Math.abs(EL[2])];
@@ -170,208 +231,391 @@ export function paintBody(name, R) {
   let noseX = -1e9;
   for (let i = 0; i < n; i++) if (cover[i] && bone[i] === B.HEAD && Math.abs(pos[i * 3 + 2]) < 0.3 && Math.abs(pos[i * 3 + 1] - (eye[1] - 1.1)) < 0.5) noseX = Math.max(noseX, pos[i * 3]);
   const wristL = J.HAND_L, wristR = J.HAND_R;
-  let reachL = 0, reachR = 0, toeX = -1e9;
+  let reachL = 0, reachR = 0, toeX = -1e9, headTop = -1e9;
   for (let i = 0; i < n; i++) {
     if (!cover[i]) continue;
     const b = bone[i], y = pos[i * 3 + 1];
     if (b === B.HAND_L) reachL = Math.max(reachL, wristL[1] - y);
     if (b === B.HAND_R) reachR = Math.max(reachR, wristR[1] - y);
     if (b === B.FOOT_L || b === B.FOOT_R) toeX = Math.max(toeX, pos[i * 3]);
+    if (b === B.HEAD) headTop = Math.max(headTop, y);
   }
+  // the hair's whorl (a little off the crown's centre) and the skull's centre
+  const skull = [eye[0] - 2.3, eye[1] - 0.55, 0];
+  const whorl = [skull[0] - 1.1, headTop - 0.35, 0.35];
   const alb = new Rgb(N), h = new Float32Array(n), rough = new Float32Array(n), ao = new Float32Array(n), hair = new Float32Array(n);
+  const dirtK = new Float32Array(n);    // how much the creases collect dirt here (second pass)
+  const cid = { d: 0, id: 0 }, cid2 = { d: 0, id: 0 };
   for (let i = 0; i < n; i++) {
-    const s = cover[i] ? i : near[i];
-    if (s < 0) { alb.r[i] = alb.g[i] = alb.b[i] = 0.3; rough[i] = 0.7; ao[i] = 1; continue; }
-    const x = pos[s * 3], y = pos[s * 3 + 1], z = pos[s * 3 + 2];
-    const nx = nrm[s * 3], ny = nrm[s * 3 + 1], nz = nrm[s * 3 + 2];
-    const b = bone[s], az = Math.abs(z);
+    if (!cover[i]) continue;
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+    const nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
+    const b = bone[i], az = Math.abs(z);
     const isHead = b === B.HEAD || b === B.JAW;
     const isHand = b === B.HAND_L || b === B.HAND_R, isFoot = b === B.FOOT_L || b === B.FOOT_R;
     const isArm = b === B.UARM_L || b === B.UARM_R || b === B.FARM_L || b === B.FARM_R;
+    const isFarm = b === B.FARM_L || b === B.FARM_R;
     const isLeg = b === B.THIGH_L || b === B.THIGH_R || b === B.SHIN_L || b === B.SHIN_R;
-    // ---- base colour: two skin hues blotched at a body scale, a finer mottle, pallor ----
-    const m1 = fbm3(x * 0.09, y * 0.09, z * 0.09, 3), m2 = fbm3(x * 0.45 + 11, y * 0.45, z * 0.45, 3), m3 = pnoise(x * 2.1, y * 2.1, z * 2.1);
-    let c = mixc(col.base, col.base2, clamp01(0.5 + m1 * 1.2));
-    c = c.map((v) => v * (0.9 + m2 * 0.16 + m3 * 0.04));
-    let hgt = 0, r = S.rough + m2 * 0.06, hk = 0, wet = 0;
-    // pores and skin grain: cells at ~1.5 mm, a crease network at ~5 mm
-    const pore = cell3(x * 7.5, y * 7.5, z * 7.5);
-    const grain = ridge3(x * 1.9, y * 1.9, z * 1.9, 2);
-    hgt += smooth(0.05, 0.45, pore) * 0.012 - grain * 0.01;
-    c = c.map((v) => v * (0.97 + 0.05 * smooth(0.1, 0.5, pore)));
-    // extremities: cyanotic or dark (fingers, toes, ears, nose, lips) — from the reach of the limb
+    const isTrunk = b === B.CHEST || b === B.SPINE || b === B.HIPS;
+    // ---- the fields every layer shares: blotches at the body's scale, at a hand's, at a finger's ----
+    const L1 = fbm3(x * 0.055 + 3.1, y * 0.055, z * 0.055 - 1.7, 3);
+    const L2 = fbm3(x * 0.17 - 4.3, y * 0.17 + 2.2, z * 0.17, 3);
+    const L3 = fbm3(x * 0.52 + 9.4, y * 0.52, z * 0.52 + 5.1, 3);
+    const F1 = pnoise(x * 1.9, y * 1.9, z * 1.9);
+    // ---- base: three tones in warped patches, a strong multi-scale value breakup ----
+    let c = mixc(T[0], T[1], smooth(-0.3, 0.3, L1 + L3 * 0.15));
+    c = mixc(c, T[2], smooth(0.02, 0.42, L2 + L1 * 0.3) * 0.75);
+    c = mixc(c, T3, smooth(0.18, 0.5, fbm3(x * 0.11 + 21, y * 0.11, z * 0.11, 3)) * 0.65);
+    const val = 1 + (L2 * 0.55 + L3 * 0.45) * S.mottle * 1.5 + F1 * 0.05;
+    c = c.map((v) => v * Math.max(0.35, val));
+    let hgt = 0, r = S.rough + L3 * 0.05, wet = 0, hk = 0, occ = 1, dk = isFoot ? 0.9 : isHand ? 0.8 : isLeg ? 0.45 : isArm ? 0.4 : isHead ? 0.35 : 0.3;
+    // pores and grain: cells at ~2 mm, a crease network at ~6 mm (older skin creases more)
+    const pore = cell3(x * 6.5, y * 6.5, z * 6.5);
+    const grain = ridge3(x * 1.7, y * 1.7, z * 1.7, 2);
+    hgt += smooth(0.05, 0.5, pore) * 0.014 - grain * 0.014;
+    c = c.map((v) => v * (0.96 + 0.06 * smooth(0.1, 0.55, pore) - grain * 0.04));
+    // ---- extremities: cyanotic, darker (fingers, toes, ears, the nose's tip) ----
     let ext = 0;
-    if (isHand) { const reach = (b === B.HAND_L ? wristL[1] : wristR[1]) - y; ext = smooth(0.25, 1.0, reach / (b === B.HAND_L ? reachL : reachR)); }
-    if (isFoot) ext = smooth(toeX - 3.5, toeX - 0.5, x) * 0.9 + 0.2;
+    if (isHand) { const reach = (b === B.HAND_L ? wristL[1] : wristR[1]) - y; ext = smooth(0.2, 1.0, reach / (b === B.HAND_L ? reachL : reachR)); }
+    if (isFoot) ext = smooth(toeX - 4.0, toeX - 0.5, x) * 0.9 + 0.25;
     if (isHead) {
-      ext = Math.max(ext, g2(az - 2.8, 0.5) * smooth(eye[0] - 1.5, eye[0] - 3.5, x) * 0.7);     // the ears
-      ext = Math.max(ext, g2(z, 0.35) * smooth(noseX - 0.7, noseX, x) * g2(y - (eye[1] - 1.15), 0.5) * 0.6);   // the nose's tip
+      ext = Math.max(ext, g2(az - 2.8, 0.55) * smooth(eye[0] - 1.5, eye[0] - 3.5, x) * 0.8);
+      ext = Math.max(ext, g2(z, 0.35) * smooth(noseX - 0.7, noseX, x) * g2(y - (eye[1] - 1.15), 0.5) * 0.6);
     }
-    c = mixc(c, mulc(c, col.ext.map((v) => v / Math.max(0.05, (col.base[0] + col.base[1] + col.base[2]) / 3))), ext * 0.55);
-    // ---- veins: a network under the skin, where it is thin ----
-    let vk = S.veins * (0.25 + 0.75 * (isArm || isHand ? 1 : isLeg ? 0.7 : isHead ? 0.6 : 0.55));
-    if (isHead) vk *= 0.4 + g2(Math.hypot(az - 2.0, y - (eye[1] + 0.6)), 0.9) * 1.5;            // the temples
-    if (b === B.NECK) vk *= 1.4;
-    const vr = ridge3(x * 0.55 + 3, y * 0.32, z * 0.55, 3);
-    const vein = smooth(0.62, 0.86, vr) * vk;
-    c = mixc(c, mulc(c, col.vein.map((v) => v * 2.2)), vein * 0.6);
-    hgt += vein * 0.035;
-    // ---- marbling: rot in the superficial veins (dark green-brown branching), worst on the trunk and thighs ----
+    c = mixc(c, mulc(c, S.livK.map((v) => v * 0.85)), ext * 0.6);
+    // ---- marbling: rot in the superficial veins, a dark branching web, worst on the trunk and thighs ----
     if (S.marble > 0) {
-      const mk = S.marble * (b === B.CHEST || b === B.SPINE || b === B.HIPS ? 1 : isLeg || isArm ? 0.75 : 0.4);
-      const mr = ridge3(x * 0.3 - 5, y * 0.24, z * 0.3 + 2, 3);
-      const marble = smooth(0.55, 0.85, mr) * mk;
-      c = mixc(c, mulc(c, [0.42, 0.48, 0.28]), marble * 0.75);
-      // the green discoloration of the belly (where rot starts)
-      const belly = g2(y - (J.SPINE[1] - 2), 4) * smooth(0, 3, x) * S.marble;
-      c = mixc(c, mulc(c, [0.72, 0.85, 0.52]), belly * 0.45 * clamp01(0.5 + m1));
+      const mk = S.marble * (isTrunk ? 1 : isLeg || b === B.UARM_L || b === B.UARM_R ? 0.8 : b === B.NECK ? 0.7 : isHead ? 0.3 : 0.5);
+      const m1 = ridge3(x * 0.2 + 5, y * 0.15, z * 0.2 - 2, 3), m2 = ridge3(x * 0.6 - 7, y * 0.48, z * 0.6, 2);
+      const patch = smooth(-0.25, 0.25, L2 + 0.15);
+      const marble = clamp01(smooth(0.55, 0.8, m1) * 0.85 + smooth(0.62, 0.86, m2) * 0.5) * mk * patch;
+      c = mixc(c, mulc(c, S.marbleK), marble * 0.85);
+      hgt += marble * 0.012;
+      // the green belly (where the rot starts) and patches of it elsewhere
+      const belly = g2(y - (J.SPINE[1] - 2.5), 4.5) * smooth(-0.5, 3, x) * (isTrunk ? 1 : 0);
+      c = mixc(c, mulc(c, [0.7, 0.84, 0.5]), clamp01(belly * 0.6 + smooth(0.25, 0.55, L1) * 0.3) * S.marble * 0.6);
     }
-    // ---- bruises: purple going green-yellow at the edges ----
-    const bz = fbm3(x * 0.22 + 40, y * 0.22, z * 0.22, 3);
-    const bruise = smooth(0.32, 0.58, bz) * S.bruise * (isArm || isLeg || isHand ? 1 : 0.6);
-    c = mixc(c, mixc(mulc(c, BRUISE.map((v) => v * 2.4)), mulc(c, BRUISE2.map((v) => v * 2.2)), smooth(0.5, 0.32, bz)), bruise * 0.6);
-    // ---- livor in the hands and feet (the shader adds the legs' by height) ----
-    if (isHand || isFoot) c = mixc(c, mulc(c, col.liv.map((v) => v * 2.4)), 0.35 * (isHand ? ext : 0.7));
+    // ---- veins under thin skin (temples, throat, inner arms, the backs of hands, chest, feet), raised ----
+    {
+      let vk = S.veins * (isArm || isHand ? 1 : isFoot ? 0.9 : isLeg ? 0.65 : b === B.NECK ? 1.3 : isHead ? 0.25 : b === B.CHEST ? 0.7 : 0.45);
+      if (isHead) vk *= 1 + g2(Math.hypot(az - 2.1, y - (eye[1] + 0.7)), 0.9) * 3;      // the temples
+      if (isArm) vk *= 0.6 + 0.6 * smooth(0.2, -0.6, nz * Math.sign(z));                  // the inner arm
+      const vr = ridge3(x * 0.42 + 3, y * 0.26, z * 0.42, 3);
+      const vein = smooth(0.66, 0.88, vr) * vk;
+      c = mixc(c, mulc(c, S.veinK), clamp01(vein) * 0.75);
+      hgt += vein * 0.04 * (S.veinH || 1);
+    }
+    // ---- livor: settled blood in the back (the body lay on it), the buttocks, the backs of the legs ----
+    {
+      const back = smooth(-0.1, -0.7, nx) * (isTrunk || b === B.THIGH_L || b === B.THIGH_R || b === B.UARM_L || b === B.UARM_R ? 1 : 0.4);
+      const low = isLeg || isFoot ? smooth(16, 2, y) * 0.8 : 0;
+      const blot = smooth(-0.2, 0.3, L2 * 0.8 + L3 * 0.5 + 0.1);
+      const liv = clamp01((back * 0.9 + low) * blot + (isHand || isFoot ? ext * 0.5 : 0)) * S.liv;
+      c = mixc(c, mulc(c, S.livK), liv * 0.85);
+    }
+    // ---- bruises: purple-black cores going green-yellow at the edges ----
+    {
+      const bz = fbm3(x * 0.21 + 40, y * 0.21, z * 0.21, 3);
+      const bw = S.bruise * (isArm || isLeg || isHand ? 1 : isHead ? 0.55 : 0.7);
+      const br = smooth(0.24, 0.48, bz) * bw;
+      const core = smooth(0.32, 0.5, bz);
+      const col = mixc([0.82, 0.86, 0.5], [0.52, 0.36, 0.56], core);
+      c = mixc(c, mulc(c, col), br * 0.8);
+      hgt += br * 0.006;
+    }
     // ---- the face ----
     if (isHead) {
-      // sunken sockets: a bruised dark ring round the eyes, red-rimmed lids
       for (const E of [EL, ER]) {
-        const d = Math.hypot((y - E[1]) * 1.25, (z - E[2]) * 0.95, Math.max(0, E[0] - 0.3 - x) * 0.6);
-        const ring = smooth(1.55, 0.6, d);
-        c = mixc(c, mulc(c, col.sock.map((v) => v * 3)), ring * 0.7);
-        const lid = g2(d - 0.55, 0.12) * smooth(E[0] - 0.6, E[0] + 0.2, x);
-        c = mixc(c, mulc(c, [1.25, 0.55, 0.55]), lid * 0.5);
-        hgt -= ring * 0.04;
-        wet = Math.max(wet, lid * 0.4);
+        const d = Math.hypot((y - E[1]) * 1.2, (z - E[2]) * 0.95, Math.max(0, E[0] - 0.3 - x) * 0.6);
+        // sunken sockets: a bruised, near-black ring round the eye; red-rimmed wet lids; bags under it
+        const ring = smooth(1.9, 0.55, d);
+        c = mixc(c, mulc(c, SOCK.map((v) => v * 3.2)), ring * 0.82);
+        occ *= 1 - ring * 0.45;
+        const lid = g2(d - 0.55, 0.13) * smooth(E[0] - 0.6, E[0] + 0.2, x);
+        c = mixc(c, mulc(c, [1.3, 0.5, 0.5]), lid * 0.55);
+        hgt -= ring * 0.045;
+        wet = Math.max(wet, lid * 0.5);
+        const bag = g2(y - (E[1] - 0.95), 0.32) * g2(z - E[2], 0.75) * smooth(E[0] - 1.4, E[0] - 0.2, x);
+        c = mixc(c, mulc(c, [0.62, 0.52, 0.6]), bag * 0.6);
+        hgt += bag * 0.02 - g2(y - (E[1] - 1.3), 0.12) * g2(z - E[2], 0.7) * 0.02;
         // crow's feet
-        const cf = g2(d - 1.05, 0.35) * smooth(0.3, 1.0, az - Math.abs(E[2]) + 0.4);
-        hgt -= cf * Math.max(0, Math.sin(Math.atan2(y - E[1], az - Math.abs(E[2])) * 9)) * 0.02;
+        const cf = g2(d - 1.15, 0.35) * smooth(0.3, 1.0, az - Math.abs(E[2]) + 0.4);
+        hgt -= cf * Math.max(0, Math.sin(Math.atan2(y - E[1], az - Math.abs(E[2])) * 9)) * 0.022;
       }
-      // brows: sparse hair over the brow ridge
+      // the brows: sparse, ragged hair over the brow ridge (they outlast the scalp: a rank near 1)
       const browY = eye[1] + 0.68 + 0.12 * g2(az - 1.0, 0.5) - 0.18 * smooth(1.1, 1.8, az);
-      const brow = g2(y - browY, 0.16) * smooth(0.15, 0.4, az) * smooth(1.95, 1.5, az) * smooth(eye[0] - 0.5, eye[0] + 0.3, x);
-      hk = Math.max(hk, brow * smooth(0.35, 0.6, 0.5 + pnoise(x * 9, y * 22, z * 9) * 0.7));
-      // forehead creases
-      const fh = smooth(eye[1] + 1.0, eye[1] + 1.4, y) * smooth(eye[1] + 2.6, eye[1] + 2.1, y) * smooth(eye[0] - 0.4, eye[0] + 0.3, x) * smooth(2.0, 1.2, az);
-      hgt -= fh * smooth(0.6, 0.95, Math.sin(y * 6.5 + pnoise(z, y, 0) * 1.5) * 0.5 + 0.5) * 0.025;
+      const brow = g2(y - browY, 0.17) * smooth(0.15, 0.4, az) * smooth(1.95, 1.5, az) * smooth(eye[0] - 0.5, eye[0] + 0.3, x);
+      const bs = smooth(0.3, 0.6, 0.5 + pnoise(x * 9, y * 26, z * 9) * 0.7);
+      if (brow * bs > 0.15) hk = Math.max(hk, (0.9 + 0.09 * bs) * smooth(0.15, 0.45, brow * bs));
+      // forehead creases, the folds from the nose to the mouth
+      const fh = smooth(eye[1] + 1.0, eye[1] + 1.4, y) * smooth(eye[1] + 2.7, eye[1] + 2.1, y) * smooth(eye[0] - 0.4, eye[0] + 0.3, x) * smooth(2.0, 1.2, az);
+      hgt -= fh * smooth(0.55, 0.95, Math.sin(y * 6.5 + pnoise(z, y, 0) * 1.5) * 0.5 + 0.5) * 0.03;
+      const nlT = clamp01((eye[1] - 1.45 - y) / 1.0);
+      const nl = g2(az - (0.55 + nlT * 0.45), 0.09) * (nlT > 0 && nlT < 1 ? 1 : 0) * smooth(noseX - 2.2, noseX - 1.2, x);
+      hgt -= nl * 0.035; occ *= 1 - nl * 0.3;
+      // the cheeks sunk under the cheekbones
+      const hollow = g2(y - (eye[1] - 1.55), 0.55) * g2(az - (eye[2] + 0.45), 0.6) * smooth(eye[0] - 2.4, eye[0] - 0.8, x);
+      c = mixc(c, mulc(c, [0.72, 0.68, 0.7]), hollow * 0.5);
       // lips: shrunk back, dark, cracked
       const lip = g2(y - mouthY, 0.33) * g2(z, 0.95) * smooth(noseX - 1.6, noseX - 0.8, x);
-      c = mixc(c, col.lip.map((v) => v * (0.9 + 0.2 * m3)), lip * 0.85);
-      hgt -= lip * smooth(0.7, 0.95, Math.abs(Math.sin(z * 18 + pnoise(z * 4, y * 4, 0) * 2))) * 0.02;
-      r = mix(r, 0.45, lip);
-      // the mouth's corners and the nostrils: dried blood, crusted dark
+      c = mixc(c, LIP.map((v) => v * (0.85 + 0.25 * L3)), lip * 0.88);
+      hgt -= lip * smooth(0.65, 0.95, Math.abs(Math.sin(z * 18 + pnoise(z * 4, y * 4, 0) * 2))) * 0.025;
+      r = mix(r, 0.5, lip);
+      // the nostrils and the mouth's corners: dark, crusted with dried blood; a run of it down the chin
       const corner = g2(y - (mouthY - 0.15), 0.5) * g2(az - 0.85, 0.35) * smooth(noseX - 2.0, noseX - 1.0, x);
       const nostril = g2(y - (eye[1] - 1.55), 0.25) * g2(az - 0.32, 0.22) * smooth(noseX - 1.0, noseX - 0.4, x);
-      // a run of it down the chin from the mouth
+      c = mixc(c, mulc(c, [0.35, 0.28, 0.28]), nostril * 0.8);
+      occ *= 1 - nostril * 0.5;
       const run = g2(z - pnoise(y * 0.5, 3, 0) * 0.6, 0.55 + 0.2 * pnoise(y * 2, 0, 1)) * smooth(mouthY, mouthY - 0.3, y) * smooth(noseX - 1.6, noseX - 0.6, x);
-      const bl = clamp01(corner * 0.9 + nostril + run * 0.8) * S.blood;
-      c = mixc(c, mixc(BLOOD_OLD, BLOOD, 0.3 + 0.3 * m3), smooth(0.15, 0.45, bl + m2 * 0.15) * 0.9);
-      hgt += smooth(0.2, 0.5, bl) * 0.01;
-      // the scalp: hair from the hairline (forehead, temples, the nape), matted into clumps with bald patches
+      const nrun = g2(z * 1.3 - 0.3 * pnoise(y, 5, 0), 0.4) * smooth(eye[1] - 1.5, eye[1] - 1.9, y) * smooth(mouthY - 0.2, mouthY + 0.3, y) * smooth(noseX - 1.3, noseX - 0.4, x);
+      const bl = clamp01(corner * 0.9 + nostril + run * 0.85 + nrun * 0.6) * S.blood;
+      const bm = smooth(0.15, 0.45, bl + L3 * 0.15);
+      c = mixc(c, mixc(BLOOD_OLD, BLOOD, 0.3 + 0.3 * F1), bm * 0.92);
+      hgt += smooth(0.2, 0.5, bl) * 0.012; r = mix(r, 0.55, bm);
+      // the ears: dark in their folds
+      const ear = g2(az - 2.9, 0.45) * smooth(eye[0] - 2.0, eye[0] - 3.2, x) * g2(y - (eye[1] - 0.4), 1.4);
+      occ *= 1 - ear * 0.35;
+      // ---- the scalp: hair combed out from the whorl, in clumps of strands, thinning in the
+      // places hair goes first (the crown and the temples); its rank goes to the B channel ----
       const front = smooth(eye[0] - 2.4, eye[0] - 0.8, x);
-      const line = mix(eye[1] - 2.1, eye[1] + 1.9, front) + (front > 0.1 && front < 0.9 ? 0.6 * g2(front - 0.5, 0.25) : 0) - 0.5 * g2(az - 2.6, 0.5) * smooth(eye[0] - 4.5, eye[0] - 2.5, x);
-      const scalp = smooth(line - 0.1, line + 0.45, y) * (1 - g2(az - 3.0, 0.45) * smooth(eye[1] + 0.6, eye[1] - 0.6, y));
-      const clump = 0.5 + 0.5 * fbm3(x * 1.6, y * 1.6, z * 1.6, 3), strands = 0.5 + 0.5 * pnoise(x * 6, y * 14, z * 6);
-      const bald = smooth(0.62, 0.48, fbm3(x * 0.35 + 9, y * 0.35, z * 0.35, 2) + 0.5);
-      hk = Math.max(hk, scalp * smooth(0.35, 0.6, clump * 0.7 + strands * 0.4) * (0.35 + 0.65 * bald));
-      c = mixc(c, mulc(c, [0.8, 0.78, 0.76]), scalp * 0.3);
-      hgt += scalp * strands * 0.01;
+      const line = mix(eye[1] - 2.1, eye[1] + 1.9, front) + (front > 0.1 && front < 0.9 ? 0.6 * g2(front - 0.5, 0.25) : 0) - 0.5 * g2(az - 2.6, 0.5) * smooth(eye[0] - 4.5, eye[0] - 2.5, x)
+        + 0.25 * pnoise(x * 2.2, z * 2.2, 3.3);
+      const scalp = smooth(line - 0.15, line + 0.35, y) * (1 - g2(az - 3.0, 0.45) * smooth(eye[1] + 0.6, eye[1] - 0.6, y));
+      if (scalp > 0.001) {
+        const vx = x - whorl[0], vy = y - whorl[1], vz = z - whorl[2];
+        const hl = Math.hypot(vx, vz) || 1e-3, dist = Math.hypot(vx, vy, vz);
+        // azimuth round the whorl (strands run along lines of constant azimuth), waved a little
+        const wv = pnoise(vx / hl * 1.3 + 4, vz / hl * 1.3, dist * 0.45) * 0.28;
+        const ca = vx / hl * Math.cos(wv) - vz / hl * Math.sin(wv), sa = vx / hl * Math.sin(wv) + vz / hl * Math.cos(wv);
+        const clump = pnoise(ca * 7.5 + 11, sa * 7.5, dist * 0.32 + 2.5);
+        const strand = pnoise(ca * 34 + 3, sa * 34, dist * 0.75 + 7.5);
+        const sv = clamp01(0.5 + clump * 0.75 + strand * 0.45);
+        // where hair goes first: the crown and the top of the head, the temples
+        const top = smooth(eye[1] + 1.2, eye[1] + 3.4, y) * smooth(eye[0] - 4.6, eye[0] - 1.6, x);
+        const temple = g2(az - 2.0, 0.6) * smooth(eye[0] - 2.8, eye[0] - 0.8, x) * g2(y - (eye[1] + 2.0), 1.1);
+        const dens = clamp01(1 - 0.36 * top - 0.32 * temple + 0.08 * L3);
+        const fringe = smooth(line - 0.1, line + 0.9, y);
+        hk = Math.max(hk, scalp * dens * (0.28 + 0.72 * sv) * (0.5 + 0.5 * fringe));
+        // the scalp itself: paler, greasy, a little relief from the hair lying on it
+        c = mixc(c, mulc(c, [0.82, 0.8, 0.78]), scalp * 0.35);
+        hgt += scalp * (clump * 0.006 + strand * 0.004);
+      }
+      // the beard: a low band of the rank (0.06 .. 0.2), which the shader shows on the bearded and as
+      // a shadow of stubble on the other men: the jaw and under it, the chin, the upper lip, the
+      // cheeks below the bone, up the sideburns to the ear (not the lips)
+      {
+        const top = mix(eye[1] + 0.2, eye[1] - 1.45, smooth(eye[0] - 3.1, eye[0] - 1.1, x));
+        const reg = smooth(top + 0.25, top - 0.2, y) * smooth(eye[1] - 4.9, eye[1] - 4.1, y) * smooth(eye[0] - 3.6, eye[0] - 3.0, x) * smooth(3.1, 2.6, az) * (1 - smooth(0.25, 0.6, lip));
+        if (reg > 0.02 && hk < 0.25) {
+          const stub = 0.5 + 0.5 * pnoise(x * 16 + 2, y * 16, z * 16);
+          hk = Math.max(hk, reg * (0.07 + 0.13 * stub));
+        }
+      }
     }
-    // ---- nails: grey-yellow, dirty under the tips, glossy ----
+    // ---- nails: grey-yellow, dirty under the tips; the fingertips gone dark ----
     let nail = 0;
     if (isHand) {
       const reach = ((b === B.HAND_L ? wristL[1] : wristR[1]) - y) / (b === B.HAND_L ? reachL : reachR);
       const side = b === B.HAND_L ? -1 : 1;
       const dors = nz * side;                     // the backs of the fingers face out
       nail = smooth(0.84, 0.9, reach) * smooth(0.15, 0.55, dors);
-      // knuckle creases
+      // knuckle creases and the palm's lines
       const kn = smooth(0.35, 0.55, reach) * smooth(0.75, 0.6, reach) * smooth(0.0, 0.5, dors);
-      hgt -= kn * smooth(0.55, 0.9, Math.sin(reach * 60) * 0.5 + 0.5) * 0.02;
-      c = mixc(c, mulc(c, DIRT.map((v) => v * 2.5)), smooth(0.7, 1.0, reach) * 0.5);
+      hgt -= kn * smooth(0.55, 0.9, Math.sin(reach * 60) * 0.5 + 0.5) * 0.024;
+      const palm = smooth(0.0, -0.5, dors) * smooth(0.1, 0.4, reach) * smooth(0.7, 0.5, reach);
+      hgt -= palm * smooth(0.82, 0.96, ridge3(x * 1.4, y * 1.4, z * 1.4, 1)) * 0.02;
+      // grime: black in the creases, under the nails, on the palms and fingertips
+      c = mixc(c, mulc(c, DIRT), smooth(0.65, 1.0, reach) * 0.65 + palm * 0.35);
+      dk = 1;
     }
-    if (isFoot) nail = smooth(toeX - 0.9, toeX - 0.5, x) * smooth(0.2, 0.6, ny);
+    if (isFoot) {
+      nail = smooth(toeX - 0.9, toeX - 0.5, x) * smooth(0.2, 0.6, ny);
+      // the soles: black with the road
+      const sole = smooth(-0.3, -0.75, ny);
+      c = mixc(c, mulc(c, [0.25, 0.22, 0.18]), sole * 0.85);
+      r = mix(r, 0.92, sole);
+    }
     if (nail > 0) {
-      c = mixc(c, col.nail.map((v) => v * (0.85 + m3 * 0.2)), nail * 0.85);
-      r = mix(r, 0.32, nail);
+      c = mixc(c, NAIL.map((v) => v * (0.85 + F1 * 0.2)), nail * 0.85);
+      r = mix(r, 0.4, nail);
       hgt += nail * 0.02;
     }
     // ---- nipples and the navel ----
     if (b === B.CHEST && x > 1) for (const sz of [-1, 1]) {
       const d = Math.hypot(y - (J.UARM_L[1] - 5.6), z - sz * 2.6);
-      c = mixc(c, mulc(c, NIPPLE.map((v) => v * 2)), smooth(0.75, 0.45, d) * 0.6);
+      c = mixc(c, mulc(c, NIPPLE), smooth(0.8, 0.4, d) * 0.7);
+      hgt += smooth(0.35, 0.1, d) * 0.03;
     }
-    // ---- scrapes on the knees, the elbows and the knuckles (dragged along the road) ----
-    let scrape = 0;
-    if (isLeg) scrape = g2(y - J.SHIN_L[1], 1.6) * smooth(J.SHIN_L[0] + 0.5, J.SHIN_L[0] + 2.0, x);
-    if (isArm) scrape = g2(y - J.FARM_L[1], 1.4) * smooth(J.FARM_L[0] - 0.5, J.FARM_L[0] - 2.0, x);
-    if (scrape > 0) {
-      const sc = scrape * smooth(0.45, 0.7, 0.5 + fbm3(x * 2, y * 0.6, z * 2, 3));
-      c = mixc(c, mixc(RAW, BLOOD_OLD, 0.5 + 0.5 * m3), sc * 0.8);
-      hgt -= sc * 0.02; r = mix(r, 0.7, sc);
+    if (isTrunk && x > 0) {
+      const nv = Math.hypot(y - (J.SPINE[1] - 3.2), z * 1.3);
+      occ *= 1 - smooth(0.45, 0.1, nv) * 0.6;
+      hgt -= smooth(0.45, 0.05, nv) * 0.06;
     }
-    // ---- slipped skin: the epidermis gone in ragged sheets, raw moist dermis under it ----
+    // ---- joints: folds at the elbow's crook, the back of the knee, the neck's rings, the armpits ----
+    if (b === B.NECK || (isHead && y < mouthY - 0.6)) {
+      const ringN = smooth(0.62, 0.95, Math.sin(y * 4.2 + pnoise(x, z, 4) * 0.8) * 0.5 + 0.5) * smooth(-0.3, 0.5, nx);
+      hgt -= ringN * 0.022; occ *= 1 - ringN * 0.12;
+    }
+    if (isLeg) {
+      const kneeY = J.SHIN_L[1], kd = y - kneeY;
+      const fold = g2(kd, 1.2) * smooth(J.SHIN_L[0] - 0.5, J.SHIN_L[0] - 2.0, x);
+      hgt -= fold * smooth(0.6, 0.9, Math.sin(kd * 7) * 0.5 + 0.5) * 0.03; occ *= 1 - fold * 0.25;
+      const kw = g2(kd, 1.3) * smooth(J.SHIN_L[0] + 0.5, J.SHIN_L[0] + 2.0, x);
+      hgt -= kw * smooth(0.7, 0.95, Math.sin(kd * 9 + az * 2) * 0.5 + 0.5) * 0.02;
+    }
+    if (isArm) {
+      const ed = y - J.FARM_L[1];
+      const crook = g2(ed, 1.0) * smooth(J.FARM_L[0] + 0.3, J.FARM_L[0] + 1.6, x);
+      hgt -= crook * 0.025; occ *= 1 - crook * 0.25;
+      const elbow = g2(ed, 1.2) * smooth(J.FARM_L[0] - 0.4, J.FARM_L[0] - 1.8, x);
+      hgt -= elbow * smooth(0.65, 0.95, Math.sin(ed * 8 + az) * 0.5 + 0.5) * 0.025;
+    }
+    // ---- scrapes on the knees, the elbows, the knuckles, a cheekbone (dragged along the road) ----
+    {
+      let scrape = 0;
+      if (isLeg) scrape = g2(y - J.SHIN_L[1], 1.8) * smooth(J.SHIN_L[0] + 0.5, J.SHIN_L[0] + 2.0, x) + smooth(12, 4, y) * smooth(0.2, 0.8, nx) * 0.45;
+      if (isArm) scrape = g2(y - J.FARM_L[1], 1.6) * smooth(J.FARM_L[0] - 0.5, J.FARM_L[0] - 2.0, x);
+      if (isHand) scrape = 0.6 * smooth(0.2, 0.6, nz * (b === B.HAND_L ? -1 : 1));
+      if (isHead) scrape = g2(y - (eye[1] - 0.8), 0.7) * g2(az - 2.2, 0.6) * smooth(eye[0] - 2.0, eye[0] - 0.4, x) * 0.7 + g2(y - (eye[1] + 1.8), 0.8) * g2(z - 0.8, 0.9) * 0.5;
+      if (scrape > 0) {
+        const sc = clamp01(scrape) * smooth(0.42, 0.66, 0.5 + fbm3(x * 2, y * 0.7, z * 2, 3)) * S.scrape;
+        c = mixc(c, mixc(RAW, SCAB, 0.45 + 0.45 * F1), sc * 0.85);
+        hgt -= sc * 0.02 - sc * smooth(0.3, 0.7, 0.5 + F1) * 0.012; r = mix(r, 0.78, sc);
+      }
+    }
+    // ---- sores and lesions: dark scabbed cores, a yellow crust, a raised rim; some weep ----
+    if (S.sores > 0) {
+      cellId(x * 0.36 + 11, y * 0.36, z * 0.36 - 3, cid);
+      const sel = cid.id < S.sores * (isHead ? 0.1 : 0.16);
+      if (sel) {
+        const rad = 0.16 + cid.id * 0.18;
+        const core = smooth(rad, rad * 0.45, cid.d), rim = g2(cid.d - rad * 1.08, rad * 0.25);
+        c = mixc(c, mixc(SCAB, mixc(RAW, PUS, 0.3), smooth(0.4, 0.8, F1 + 0.5) * 0.6), core * 0.92);
+        c = mixc(c, mulc(c, [1.05, 0.96, 0.62]), rim * 0.55);
+        hgt += rim * 0.035 - core * 0.025;
+        wet = Math.max(wet, core * (cid.id < S.sores * 0.3 ? 0.75 : 0.15));
+        r = mix(r, 0.6, core);
+      }
+    }
+    // ---- slipped skin: the epidermis gone in ragged sheets, moist dermis under it, white rims ----
     if (S.slip > 0) {
       const sl = fbm3(x * 0.3 + 70, y * 0.3, z * 0.3, 4) + 0.2 * pnoise(x * 3, y * 3, z * 3);
-      const edge = 0.42 - S.slip * 0.2;
-      const raw = smooth(edge, edge + 0.04, sl) * (isHead ? 0.5 : 1);
+      const edge = 0.46 - S.slip * 0.24;
+      const raw = smooth(edge, edge + 0.04, sl) * (isHead ? 0.45 : 1) * smooth(0, 0.3, S.slip);
       const rim = g2(sl - edge, 0.02);
-      c = mixc(c, mixc(RAW, mulc(RAW, [0.7, 0.55, 0.5]), 0.5 + m3 * 0.5), raw * 0.85);
-      c = mixc(c, mulc(c, [1.25, 1.2, 1.05]), rim * 0.6);
-      hgt -= raw * 0.03; hgt += rim * 0.015;
+      c = mixc(c, mixc(RAW, mulc(RAW, [0.62, 0.5, 0.46]), 0.5 + F1 * 0.5), raw * 0.85);
+      c = mixc(c, mulc(c, [1.3, 1.25, 1.1]), rim * 0.65);
+      hgt -= raw * 0.035; hgt += rim * 0.018;
       wet = Math.max(wet, raw * (S.wet ?? 0.2));
-      r = mix(r, 0.48, raw);
+      r = mix(r, 0.5, raw);
     }
     // ---- cracks: dried, leathery skin split into plates ----
     if (S.crack > 0) {
       const cr = cell3(x * 0.9 + 5, y * 0.9, z * 0.9 - 3);
-      const ck = smooth(0.12, 0.03, Math.abs(cr - 0.55)) * S.crack * (0.4 + 0.6 * clamp01(0.5 + m1));
-      c = mixc(c, mulc(c, [0.45, 0.35, 0.3]), ck * 0.7);
-      hgt -= ck * 0.035;
+      const ck = smooth(0.12, 0.03, Math.abs(cr - 0.55)) * S.crack * (0.4 + 0.6 * clamp01(0.5 + L1));
+      c = mixc(c, mulc(c, [0.42, 0.33, 0.28]), ck * 0.75);
+      hgt -= ck * 0.04; occ *= 1 - ck * 0.3;
+      r = mix(r, 0.9, ck * 0.5);
+    }
+    if (S.mould > 0) {
+      const mo = smooth(0.62, 0.78, 0.5 + fbm3(x * 0.8 + 33, y * 0.8, z * 0.8, 3) * 0.8) * smooth(-0.2, 0.3, L2) * S.mould;
+      c = mixc(c, mixc(c, MOULD, 0.6), mo * smooth(0.3, 0.7, 0.5 + F1));
+      hgt += mo * 0.01; r = mix(r, 0.92, mo);
     }
     // ---- per set extras ----
     if (S.stretch) {
-      // stretch marks round the swollen belly and the flanks
-      const zone = g2(y - (J.SPINE[1] - 1), 5) * (b === B.SPINE || b === B.HIPS || b === B.CHEST ? 1 : 0);
-      const st = smooth(0.7, 0.95, Math.sin((y + pnoise(x * 0.6, z * 0.6, 0) * 1.2) * 4.5 + az * 0.9) * 0.5 + 0.5) * zone;
-      c = mixc(c, mulc(c, [1.18, 0.95, 1.05]), st * 0.5);
-      hgt -= st * 0.015; r = mix(r, 0.35, zone * 0.5);
+      // stretch marks round the swollen belly, the flanks and the thighs
+      const zone = (isTrunk ? g2(y - (J.SPINE[1] - 1), 5.5) : b === B.THIGH_L || b === B.THIGH_R ? smooth(J.SHIN_L[1] + 4, J.THIGH_L[1] - 2, y) * 0.7 : 0);
+      const st = smooth(0.72, 0.95, Math.sin((y + pnoise(x * 0.6, z * 0.6, 0) * 1.2) * 4.5 + az * 0.9) * 0.5 + 0.5) * zone;
+      c = mixc(c, mulc(c, [1.15, 0.92, 1.08]), st * 0.6);
+      hgt -= st * 0.018;
+    }
+    if (S.stretchArms) {
+      // the brute's growth split its skin over the shoulders, the biceps, the chest and the armpits
+      const zone = (b === B.UARM_L || b === B.UARM_R ? 1 : b === B.CHEST ? smooth(3.5, 6.5, az) * smooth(J.CHEST[1], J.UARM_L[1], y) : 0);
+      const st = smooth(0.74, 0.95, Math.sin((x * 0.4 + y + pnoise(x * 0.5, z * 0.5, 2) * 1.4) * 3.6 + az * 0.3) * 0.5 + 0.5) * zone;
+      c = mixc(c, mulc(c, [1.18, 0.9, 1.08]), st * 0.55);
+      hgt -= st * 0.02;
     }
     if (S.blister) {
-      const bc = cell3(x * 0.8, y * 0.8, z * 0.8 + 4), bk = smooth(0.32, 0.2, bc) * smooth(0.55, 0.7, 0.5 + m1);
-      c = mixc(c, [0.42, 0.42, 0.18], bk * 0.6);
+      cellId(x * 0.8, y * 0.8, z * 0.8 + 4, cid2);
+      const bk = smooth(0.32, 0.18, cid2.d) * (cid2.id < 0.35 ? 1 : 0) * smooth(0.5, 0.7, 0.5 + L1);
+      c = mixc(c, [0.38, 0.38, 0.17], bk * 0.6);
       hgt += bk * 0.06; wet = Math.max(wet, bk * 0.7);
     }
     if (S.acid) {
       // chemical burns from what it brings up: the chin, the throat, down the chest
       const zone = (isHead ? g2(y - (mouthY - 1), 1.6) : b === B.NECK ? 1 : b === B.CHEST ? smooth(J.CHEST[1] + 3, J.UARM_L[1] + 2, y) : 0) * smooth(-1, 1.5, x);
       const ak = smooth(0.4, 0.62, 0.5 + fbm3(x * 0.8 + 3, y * 0.5, z * 0.8, 3)) * zone;
-      c = mixc(c, mixc(ACID, RAW, 0.4 + 0.3 * m3), ak * 0.75);
-      hgt -= ak * 0.03; wet = Math.max(wet, ak * 0.6); r = mix(r, 0.4, ak);
+      c = mixc(c, mixc(ACID, RAW, 0.4 + 0.3 * F1), ak * 0.75);
+      hgt -= ak * 0.03; wet = Math.max(wet, ak * 0.6); r = mix(r, 0.42, ak);
     }
     if (S.scars) {
-      // old keloid scars: raised, pale, shiny lines
+      // old keloid scars: raised, pale, shiny lines, a few stitched
       const sr = ridge3(x * 0.18 + 2, y * 0.12, z * 0.18 - 4, 1);
-      const sk = smooth(0.9, 0.97, sr) * (isHead ? 0.4 : 1);
+      const sk = smooth(0.93, 0.98, sr) * smooth(0.05, 0.35, L1 + 0.25) * (isHead ? 0.4 : 1) * S.scars;
       c = mixc(c, SCAR, sk * 0.7);
-      hgt += sk * 0.05; r = mix(r, 0.38, sk);
+      const stitch = sk * smooth(0.6, 0.9, Math.sin((x + y * 0.3 + z) * 9) * 0.5 + 0.5);
+      c = mixc(c, mulc(c, [0.35, 0.3, 0.3]), stitch * 0.5);
+      hgt += sk * 0.05; r = mix(r, 0.45, sk);
     }
     if (S.ulcer) {
-      const uc = cell3(x * 0.5 + 8, y * 0.5, z * 0.5), uk = smooth(0.3, 0.18, uc) * smooth(0.5, 0.65, 0.5 + m1 * 0.8);
-      c = mixc(c, mixc(RAW, [0.3, 0.12, 0.05], 0.4), uk * 0.85);
-      hgt -= uk * 0.05; wet = Math.max(wet, uk * 0.6); r = mix(r, 0.4, uk);
+      cellId(x * 0.5 + 8, y * 0.5, z * 0.5, cid2);
+      const uk = smooth(0.34, 0.16, cid2.d) * (cid2.id < 0.55 ? 1 : 0) * smooth(0.45, 0.6, 0.5 + L1 * 0.8);
+      c = mixc(c, mixc(RAW, [0.26, 0.1, 0.05], 0.35 + 0.3 * F1), uk * 0.9);
+      c = mixc(c, mulc(c, [0.8, 0.7, 0.45]), g2(cid2.d - 0.36, 0.06) * (cid2.id < 0.55 ? 1 : 0) * 0.6);
+      hgt -= uk * 0.06; wet = Math.max(wet, uk * 0.65); r = mix(r, 0.45, uk);
     }
-    // ---- dirt: on the feet, the shins, the hands, worked into the creases ----
-    const dz = (isFoot ? 0.9 : isLeg ? smooth(J.SHIN_L[1] + 3, 3, y) * 0.6 : isHand ? 0.4 : 0.08) * smooth(0.4, 0.65, 0.5 + fbm3(x * 0.7 + 30, y * 0.7, z * 0.7, 3));
-    c = mixc(c, mulc(c, DIRT.map((v) => v * 2.2)), clamp01(dz) * 0.7);
-    r = mix(r, 0.85, clamp01(dz) * 0.5);
-    r = mix(r, 0.3, wet);
-    // occlusion: the body's (vertex) and the paint's own creases
-    const occ = R.ao[s];
+    if (S.necro) {
+      // dead flesh: purple-black patches with a bruised rim
+      const nk = fbm3(x * 0.16 - 12, y * 0.16, z * 0.16 + 6, 4);
+      const core = smooth(0.18, 0.34, nk), rim = smooth(0.05, 0.2, nk) * (1 - core);
+      c = mixc(c, mulc(NECRO, [1 + F1 * 0.3, 1, 1]), core * 0.85);
+      c = mixc(c, mulc(c, [0.7, 0.5, 0.62]), rim * 0.6);
+      hgt -= core * 0.02; r = mix(r, 0.62, core);
+    }
+    // ---- dirt: dragged through the road, wiped hands: patches and streaks running down ----
+    {
+      const dn = fbm3(x * 0.24 + 30, y * 0.24, z * 0.24, 3), streak = fbm3(x * 0.7 - 2, y * 0.11, z * 0.7, 2);
+      const zone = isFoot ? 0.95 : isLeg ? 0.35 + smooth(18, 4, y) * 0.55 : isHand ? 0.75 : isFarm ? 0.5 : isArm ? 0.3 : isHead ? 0.22 : 0.3;
+      const front = isTrunk ? 0.7 + 0.3 * smooth(-0.3, 0.6, nx) : 1;
+      const dirt = smooth(0.42, 0.72, 0.5 + dn * 0.75 + streak * 0.4 + L3 * 0.15) * zone * front * S.dirt;
+      c = mixc(c, mulc(c, DIRT), clamp01(dirt) * 0.85);
+      r = mix(r, 0.9, clamp01(dirt) * 0.7);
+      dk *= 0.6 + S.dirt * 0.5;
+      // old blood smeared on the hands, the forearms, the front of the chest
+      const smear = (isHand ? 0.85 : isFarm ? 0.55 * smooth(-0.2, 0.5, nx) : b === B.CHEST ? 0.3 * smooth(0.2, 0.8, nx) : isHead ? 0.15 : 0.08) * S.blood;
+      const sm = smooth(0.62, 0.78, 0.5 + fbm3(x * 0.45 + 50, y * 0.3, z * 0.45, 3) * 0.8 + F1 * 0.1) * smear;
+      c = mixc(c, mixc(BLOOD_OLD, BLOOD, 0.25 + F1 * 0.2), clamp01(sm) * 0.88);
+      r = mix(r, 0.62, clamp01(sm));
+    }
+    r = mix(r, 0.32, wet);
     alb.r[i] = c[0]; alb.g[i] = c[1]; alb.b[i] = c[2];
     h[i] = hgt;
     rough[i] = clamp01(r);
-    ao[i] = clamp01(0.35 + 0.65 * occ);
+    ao[i] = clamp01(0.22 + 0.78 * R.ao[i]) * occ;
     hair[i] = clamp01(hk);
+    dirtK[i] = dk;
+  }
+  // padding: every texel outside the islands copies its nearest one inside (before the blurs, so the
+  // islands' edges blur with their own skin)
+  for (let i = 0; i < n; i++) {
+    if (cover[i]) continue;
+    const s = near[i];
+    if (s < 0) { alb.r[i] = alb.g[i] = alb.b[i] = 0.2; rough[i] = 0.75; ao[i] = 1; continue; }
+    alb.r[i] = alb.r[s]; alb.g[i] = alb.g[s]; alb.b[i] = alb.b[s];
+    h[i] = h[s]; rough[i] = rough[s]; ao[i] = ao[s]; hair[i] = hair[s]; dirtK[i] = dirtK[s];
+  }
+  // ---- creases: grime and shadow collect where the skin dips below its surroundings ----
+  {
+    const hb = blurField(h, N, Math.max(1, Math.round(N / 400)));
+    for (let i = 0; i < n; i++) {
+      const cav = clamp01((hb[i] - h[i]) * 55);
+      const k = cav * dirtK[i];
+      alb.mul(i, [0.42, 0.37, 0.31], k * 0.85);
+      ao[i] *= 1 - cav * 0.45;
+      rough[i] = Math.min(1, rough[i] + k * 0.1);
+    }
   }
   // normals from the height in model units (each texel's footprint on the body: no island looks flatter)
   const nxa = new Float32Array(n), nya = new Float32Array(n);

@@ -321,6 +321,11 @@ const COLOR_CLOTH = /* glsl */`
     hhM = 0;
   }`;
 
+// zombies: hair is cut by its own strands (actor-zmat.js Z_CUTS), and a torn top keeps most of itself
+const COLOR_CLOTH_Z = COLOR_CLOTH
+  .replace('float lim = 1.02 - tear * 0.5;', 'float lim = 1.1 - tear * 0.3;')
+  .replace(/  if \(hhM == 5\) \{\n    \/\/ thinning, matted hair[^}]*\}\n/, '');
+
 const SHADE_BASE = /* glsl */`
   if (hhM == 0) {
     vec3 rotTint = mix(vec3(1.0), vec3(0.8, 0.76, 0.6), rot);
@@ -410,9 +415,13 @@ const RIM_BASE = /* glsl */`
 // zombies: no warm "living" rim on the skin, and no cold outline by day
 const RIM_ZOMBIE = /* glsl */`
   hhRimCol = (uRimColor * uRimStrength * (1.0 - uDay) + vec3(1.0, 0.06, 0.02) * tFx.x * 0.9 + vec3(1.0, 0.45, 0.1) * tFx2.x * 0.5) * tFx.w;
-  if (hhSlot == 6) hhGlow += baseCol * tFx2.y;
+  // (a growth's light comes through its skin, not off a lamp: through the thin places between the
+  //  veins, brightest where it faces the eye, dim toward its rim; by day hardly a glow at all)
+  if (hhSlot == 6) hhGlow += baseCol * tFx2.y * (0.15 + 0.85 * smoothstep(0.3, 0.75, hhD2.r * 0.7 + hhD.g * 0.5)) * (0.3 + 0.7 * abs(normalize(vNormal).z)) * (1.0 - 0.7 * uDay);
   // (a real eyeball is bigger than the old bead: its glow is spread thinner; elites still burn)
-  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK * (tAcc.w > 3.0 ? 0.6 : 0.3);`;
+  if (hhM == 7) hhGlow += tAcc.rgb * tAcc.w * hhEyeK * (tAcc.w > 3.0 ? 0.6 : 0.06);
+  // (hair takes no rim: an outline round every clump read as glowing tape)
+  hhRimCol *= 1.0 - zHair;`;
 
 const ROUGH_BASE = /* glsl */`
   float roughnessFactor = 0.8;
@@ -499,12 +508,13 @@ export function makeMaterials(shared, opts = {}) {
     let frag = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_HEAD + (Z ? Z_HEAD : '') + (zt ? ztexGLSL(zt) + Z_TEX_HEAD : ''))
       .replace('#include <lights_physical_pars_fragment>', withSSS(THREE.ShaderChunk.lights_physical_pars_fragment, !!Z))
-      .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + COLOR_CLOTH + (Z ? (zt ? Z_SHADE_TEX : Z_SHADE) : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
+      .replace('#include <color_fragment>', COLOR_CUTS + (Z ? Z_CUTS : '') + (Z ? COLOR_CLOTH_Z : COLOR_CLOTH) + (Z ? (zt ? Z_SHADE_TEX : Z_SHADE) : SHADE_BASE) + (Z ? Z_BLOOD : BLOOD_BASE) + COLOR_FX + (Z ? RIM_ZOMBIE : RIM_BASE))
       .replace('#include <roughnessmap_fragment>', Z ? Z_ROUGH : ROUGH_BASE)
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = hhM == 9 ? 0.8 : 0.0;')
       .replace('#include <normal_fragment_maps>', Z ? (zt ? Z_TEX_NORMAL : Z_NORMAL_DETAIL) + Z_NORMAL : NORMAL_BASE);
     if (Z) frag = frag.replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n' + Z_SPEC);
-    // (dev: window.__HH_ZDBG = 1 raw baked albedo, 2 the triplanar weights, 3 the tile coordinates)
+    // (dev: window.__HH_ZDBG = 1 raw baked albedo, 2 the triplanar weights, 3 the tile coordinates,
+    //  4 the garments: tops red, bottoms blue, skin near black)
     if (zt && globalThis.__HH_ZDBG) frag = `#define ZDBG ${globalThis.__HH_ZDBG | 0}\n` + frag;
     sh.fragmentShader = frag
       .replace('#include <emissivemap_fragment>', /* glsl */`
@@ -604,6 +614,10 @@ vec3 rigShadowPos() {
       q.y = max(q.y, prt >= 18 && prt <= 19 ? cut - 2.0 : cut);
       if (prt == 18 || prt == 19) q.y = min(q.y, cut);
     }
+  } else if (prt == 22) {
+    // (hair clumps: cut to the zombie's length)
+    float cut = rigT(${T_VAR3}).x;
+    if (cut > 0.0) q.y = max(q.y, cut);
   }
   return q;
 }

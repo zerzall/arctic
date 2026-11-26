@@ -10,8 +10,10 @@
 // still wear theirs over the skull's rotted cavity.
 //
 // Several looks share one group and differ by a per-instance parameter the shader reads:
-// the cap is a visor when its crown is cut away, hair strands are long, shoulder-length,
-// a bob or shaggy by their cut height, and one shoe is a dress shoe, a sneaker or a boot.
+// the cap is a visor when its crown is cut away, the hair's clumps are long, shoulder-length,
+// a bob or shaggy by their cut height (thinner hair drops whole clumps), and one shoe is a
+// dress shoe, a sneaker or a boot. The scalp's hair and the beards are painted (the body
+// atlas' hair rank, actor-zmat.js): no shell over the skull, no blob on the jaw.
 // Hidden groups still cost their vertices, so everything here is low-poly.
 
 import { SLOT, MAT, PART, lineRings } from './actor-shape.js';
@@ -122,57 +124,98 @@ function hats(sb, P, L, has) {
 // ---------------------------------------------------------------------------------------
 // hair
 
-function hair(sb, P, L, has, headDef, cin = false) {
+/**
+ * One clump of hair (PART.HCLUMP) along `pts` (rings { c, rx, rz, bone }): its uv carries the clump's
+ * number and the way round it (x) and the run from the root to the tip (y), which the corpse
+ * material splits into strands, frays toward the end and cuts to the zombie's length.
+ */
+function clump(sb, pts, k, o) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].c[0] - pts[i - 1].c[0], pts[i].c[1] - pts[i - 1].c[1], pts[i].c[2] - pts[i - 1].c[2]);
+  const v0 = sb.vertexCount;
+  sb.tube(pts, { ...o, part: PART.HCLUMP, paint: 0, cap1: 'round', capRings: 1, uvTile: Math.max(1, len) });
+  for (let i = v0; i < sb.vertexCount; i++) {
+    sb.UV[i * 2] = k + 0.02 + 0.96 * Math.min(1, sb.UV[i * 2]);
+    sb.UV[i * 2 + 1] = Math.min(1, sb.UV[i * 2 + 1]);
+  }
+}
+
+function hair(sb, P, L, has, headDef, cin = false, near = false) {
   const c = P.headC, r = P.headR;
-  const on = (x, y, z, inset) => {
-    const l = Math.hypot(x, y, z);
-    const p = { x: x / l, y: y / l, z: z / l };
+  const hk = r[1] / 4.5;
+  const S = { slot: SLOT.HAIR, mat: MAT.HAIR, color: '#ffffff', bone: B.HEAD };
+  // a point on the skull along a unit direction (the head's frame), pushed out by `inset`
+  const on = (d, inset) => {
+    const l = Math.hypot(d[0], d[1], d[2]) || 1;
+    const p = { x: d[0] / l, y: d[1] / l, z: d[2] / l };
     headDef(p);
     return [c[0] + p.x * r[0] * inset, c[1] + p.y * r[1] * inset, c[2] + p.z * r[2] * inset];
   };
-  const S = { slot: SLOT.HAIR, mat: MAT.HAIR, color: '#ffffff', bone: B.HEAD };
-  if (has('hair_scalp')) {
-    // a thin, matted scalp layer (the hair material thins it into bald patches)
-    sb.ellipsoid([c[0] - 0.15, c[1] + 0.05, 0], cin ? [r[0] * 1.03, r[1] * 1.026, r[2] * 1.035] : [r[0] * 1.012, r[1] * 1.01, r[2] * 1.018], {
-      ...S, opt: 'hair_scalp', segW: L ? 8 : cin ? 40 : 14, segH: L ? 5 : cin ? 28 : 9,
-      deform: (p) => {
-        headDef(p);
-        const hl = 0.25 + Math.max(0, p.x) * 0.3 - Math.max(0, -p.x) * 0.4;
-        if (p.y < hl) { p.x *= 0.94; p.y = hl - (hl - p.y) * 0.2; p.z *= 0.94; }
-      },
-    });
-  }
+  const dir = (lon, lat) => [Math.cos(lon) * Math.cos(lat), Math.sin(lat), Math.sin(lon) * Math.cos(lat)];
+  const back = (y, z) => (P.shellX ? P.shellX(y, z, -1) : c[0] - r[0] * 1.1);
+  const crest = (z) => (P.crestY ? P.crestY(z) : P.sY + 1);
+  // (the scalp itself is painted in the body atlas: these are the clumps of longer hair)
+  const full = L === 0 || near;
+  const lvl = cin ? { n: 30, seg: 7, ks: 3, kh: 6 } : full ? { n: 18, seg: 6, ks: 2, kh: 4 } : { n: 8, seg: 5, ks: 1, kh: 3 };
   if (has('hair_strands')) {
-    // long strands from the crown and the back, lank and thin (the shader splits each into
-    // clumps and the instance cuts them to length)
-    const n = L ? 6 : cin ? 96 : 30;
-    const hk = r[1] / 4.5;
-    for (let i = 0; i < n; i++) {
-      const h1 = ((i * 0.618034) % 1), h2 = ((i * 0.414214 + 0.3) % 1);
-      const lon = Math.PI * (cin ? 0.28 : 0.32) + (i / (n - 1)) * Math.PI * (cin ? 1.44 : 1.36);
-      const lat = cin ? 0.18 + h2 * 0.55 : 0.24 + h2 * 0.45;
-      const ux = Math.cos(lon) * Math.cos(lat), uz = Math.sin(lon) * Math.cos(lat), uy = Math.sin(lat);
-      const root = on(ux, uy, uz, 0.96);
-      const len = 17 * (0.8 + h1 * 0.3);
+    for (let i = 0; i < lvl.n; i++) {
+      const h1 = (i * 0.618034) % 1, h2 = (i * 0.414214 + 0.3) % 1, h3 = (i * 0.732051 + 0.1) % 1;
+      // roots over the crown, the back and the sides; the front ones frame the face
+      const lon = Math.PI * (0.24 + 1.52 * (i + 0.5) / lvl.n) + (h1 - 0.5) * 0.12;    // 0 front (+x), π the back
+      const sideK = Math.abs(Math.sin(lon)), frontK = Math.max(0, Math.cos(lon)), backK = Math.max(0, -Math.cos(lon));
+      const lat0 = 0.5 + h2 * 0.4;
+      // it lies on the scalp down to where it leaves the head: over the ears at the sides, the nape
+      // at the back, the temples at the front
+      const latX = 0.05 - 0.35 * sideK * (1 - frontK) - 0.45 * backK + 0.12 * frontK;
+      const ref = dir(lon, lat0);
+      const w0 = (0.62 + h3 * 0.34) * hk, t0 = (0.22 + h1 * 0.1) * hk;
       const pts = [];
-      const nr = L ? 3 : cin ? 6 : 5;
-      const wob = cin ? Math.sin(i * 2.3) * 0.5 : Math.sin(i * 2.3) * 0.25;
-      const w = L ? 1 : cin ? 0.55 : 0.62;
-      for (let j = 0; j <= nr; j++) {
-        const t = j / nr, sag = t * t;
-        pts.push({ c: [root[0] + ux * 0.22 * t * hk - sag * 1.2, root[1] - len * sag - t * 0.6, root[2] + uz * 0.2 * t * hk + sag * uz * 0.6 + wob * Math.sin(t * 3.1 + i)],
-          rx: (cin ? 0.12 - t * 0.06 : L ? 0.42 - t * 0.16 : 0.16 - t * 0.07) * hk, rz: (1.15 - t * 0.55) * w * (0.8 + h1 * 0.4) * hk, bone: t < 0.3 ? B.HEAD : t < 0.7 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+      for (let k = 0; k <= lvl.ks; k++) {
+        const t = k / lvl.ks;
+        // (on the scalp: thin and wide, overlapping its neighbours into one matted layer, no ridges)
+        const p = on(dir(lon + (h3 - 0.5) * 0.08 * t, lat0 + (latX - lat0) * t), 0.98 + 0.06 * t);
+        pts.push({ c: p, rx: t0 * (0.7 + 0.6 * t), rz: w0 * (1.35 - 0.3 * t), bone: B.HEAD });
       }
-      sb.tube(pts, { ...S, opt: 'hair_strands', part: PART.HAIR, seg: 4, subdiv: cin ? 2 : 1, cap1: 'round', capRings: 1, ref: [ux, uy, uz] });
+      // then it hangs: down the back (behind the shoulders), the side locks to the shoulder, the front ones short
+      const E = pts[pts.length - 1].c;
+      const len = frontK > 0.55 ? 4.5 + h1 * 3 : sideK > 0.75 && backK < 0.35 ? Math.max(4, E[1] - crest(E[2]) - 0.5 + h1 * 2) : 13 + h1 * 6;
+      for (let k = 1; k <= lvl.kh; k++) {
+        const t = k / lvl.kh;
+        const y = E[1] - len * t;
+        let z = E[2] * (1 + 0.12 * t) + (h2 - 0.5) * 0.8 * t;
+        let x = E[0] - (0.6 + backK * 0.6) * t - frontK * 0.2 * t;
+        if (y < P.neck + 1.5 && frontK < 0.55) {
+          // (on the back: a hair off the top's shell, inside the shoulders)
+          z = Math.max(-4.4, Math.min(4.4, z));
+          x = Math.min(x, back(y, z) - 0.3 - t0);
+        }
+        // (lumpy as it hangs: matted, not a tube)
+        const lump = 1 + 0.1 * Math.sin(t * 7 + i * 1.7);
+        pts.push({ c: [x, y, z], rx: t0 * (1.3 - 0.85 * t) * lump, rz: w0 * (1.05 - 0.7 * t) * (2 - lump), bone: t < 0.2 ? B.HEAD : y > P.neck ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+      }
+      clump(sb, pts, i, { ...S, opt: 'hair_strands', seg: lvl.seg, subdiv: cin ? 2 : 1, ref });
     }
   }
-  if (L > 0 && !has('hair_afro')) return;
+  if (L > 1) return;
   if (has('hair_pony')) {
-    const root = [c[0] - r[0] * 0.95, c[1] + r[1] * 0.2, 0];
-    sb.tube([{ c: root, rx: 1.1, rz: 1.1, bone: B.HEAD }, { c: [root[0] - 2.2, root[1] - 1.2, 0], rx: 1.0, rz: 1.1, bone: B.HEAD }, { c: [root[0] - 3.0, root[1] - 5.5, 0.2], rx: 0.9, rz: 1.0, bone: bw(B.HEAD, B.CHEST, 0.5) }, { c: [root[0] - 2.6, root[1] - 10, 0.5], rx: 0.5, rz: 0.6, bone: B.CHEST }],
-      { ...S, opt: 'hair_pony', seg: 5, cap0: 'round', cap1: 'round', capRings: 1 });
+    // a ponytail: three clumps from the tie at the back of the head, down between the shoulder blades
+    const tie = on([-0.95, 0.25, 0], 1.0);
+    for (let k = full ? 0 : 1; k < (full ? 3 : 2); k++) {
+      const s = (k - 1) * 0.45;
+      const pts = [{ c: [tie[0] + 0.3, tie[1] + 0.3, s * 0.4], rx: 0.45, rz: 0.55, bone: B.HEAD }, { c: [tie[0] - 1.2, tie[1] - 0.6, s * 0.6], rx: 0.5, rz: 0.6, bone: B.HEAD }];
+      for (let j = 1; j <= 3; j++) {
+        const t = j / 3, y = tie[1] - 0.6 - (8.5 + k) * t, z = s * (0.8 + t);
+        pts.push({ c: [Math.min(tie[0] - 1.6 - t * 0.6, back(y, z) - 0.6), y, z], rx: 0.5 - 0.3 * t, rz: 0.6 - 0.35 * t, bone: t < 0.4 ? bw(B.HEAD, B.CHEST, 0.5) : B.CHEST });
+      }
+      clump(sb, pts, 40 + k, { ...S, opt: 'hair_pony', seg: full ? 5 : 4, ref: [-1, 0, 0] });
+    }
+    sb.ellipsoid([tie[0] - 0.2, tie[1] + 0.1, 0], [0.55, 0.5, 0.6], { ...S, opt: 'hair_pony', slot: SLOT.FIXED, mat: MAT.RUBBER, color: '#2a2a2e', segW: 6, segH: 4 });
   }
-  if (has('hair_bun')) sb.ellipsoid([c[0] - r[0] * 0.5, c[1] + r[1] * 1.0, 0], [1.5, 1.3, 1.5], { ...S, opt: 'hair_bun', segW: 7, segH: 5 });
+  if (has('hair_bun')) {
+    sb.ellipsoid([c[0] - r[0] * 0.5, c[1] + r[1] * 1.0, 0], [1.5, 1.3, 1.5], { ...S, opt: 'hair_bun', segW: full ? 8 : 6, segH: full ? 6 : 4,
+      deform: (p) => { const k = 1 + 0.12 * Math.sin(p.x * 7 + p.z * 3) * Math.sin(p.y * 6 + p.x * 2); p.x *= k; p.y *= k; p.z *= k; } });
+  }
+  if (L > 0 && !has('hair_afro')) return;
   if (has('hair_mohawk')) {
     const pts = [];
     for (let i = 0; i <= 5; i++) { const t = i / 5; pts.push({ c: [c[0] + (t - 0.5) * 7.4, c[1] + r[1] * 0.88 + Math.sin(t * Math.PI) * 2.6, 0], rx: 0.6, rz: 0.35 + Math.sin(t * Math.PI) * 0.4, bone: B.HEAD }); }
@@ -238,10 +281,7 @@ function face(sb, P, L, has, headDef, cin = false) {
     for (const s of [-1, 1]) g.ell([c[0] + r[0] * 1.02, c[1] + 0.7 * fk, s * 1.5 * fk], [0.3, 1.0 * fk, 1.05 * fk], { segW: 7, segH: 4, mat: MAT.GLASS, color: '#0a1418' });
     g.line([c[0] + r[0] * 1.0, c[1] - 2.2 * fk, 0.9 * fk], [c[0] + r[0] * 1.45, c[1] - 2.5 * fk, 1.4 * fk], 1.0 * fk, 1.0 * fk, 2, { seg: 7, mat: MAT.METAL, color: '#6a6a60' });
   }
-  if (has('face_beard')) {
-    grp(sb, 'face_beard', { bone: B.JAW }).ell([c[0] + r[0] * 0.42, c[1] - r[1] * 0.76, 0], [r[0] * 0.62, r[1] * 0.42, r[2] * 0.9], {
-      segW: 9, segH: 6, slot: SLOT.HAIR, mat: MAT.HAIR, color: '#ffffff', deform: (p) => { if (p.y > 0.25) p.y = 0.25 + (p.y - 0.25) * 0.4; if (p.x < -0.2) p.x *= 0.4; } });
-  }
+  // (the beard is painted on the face: the body atlas' rank band, switched on by this option's bit)
   if (has('face_eyepatch')) {
     const g = grp(sb, 'face_eyepatch', { bone: B.HEAD, slot: SLOT.FIXED, mat: MAT.LEATHER, color: BLACK });
     const e = at(0.95, 0.13, -0.37, 1.0);
@@ -613,11 +653,13 @@ function armour(sb, P, L, has) {
  * @param {number} L level of detail
  * @param {(p: object) => void} headDef the head shape's deform (unit space)
  * @param {(name: string) => boolean} has whether this type's model carries the group at all
+ * @param {boolean} [cin] the cinematic hero model
+ * @param {boolean} [near] the near model of a tier that builds its gear at mid detail (the hair keeps its near clumps)
  */
-export function addAccessories(sb, P, L, headDef, has = () => true, cin = false) {
+export function addAccessories(sb, P, L, headDef, has = () => true, cin = false, near = false) {
   if (L === 2) return;
   hats(sb, P, L, has);
-  hair(sb, P, L, has, headDef, cin);
+  hair(sb, P, L, has, headDef, cin, near);
   face(sb, P, L, has, headDef, cin);
   torsoGear(sb, P, L, has);
   backGear(sb, P, L, has);

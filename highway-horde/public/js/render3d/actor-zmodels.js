@@ -146,7 +146,7 @@ export function buildZombie(type, L, tier = 0) {
   const optSet = optionsForType(type);
   // (the MakeHuman face has its own nose: the old skull's nose option is not built)
   const has = (name) => optSet.has(name) && name !== 'nose';
-  if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDeformOf(type), has, tier < 0 && L === 0);
+  if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDeformOf(type), has, tier < 0 && L === 0, L === 0);
   extras(sb, P, L, type, T);
   transferMorphs(sb, bodyEnd);
   return sb;
