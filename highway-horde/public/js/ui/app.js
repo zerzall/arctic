@@ -524,7 +524,7 @@ export function startApp(deps) {
     const info = probeGpu();
     ctx.gpu = info;
     document.documentElement.dataset.gpu = info.software ? 'software' : 'hardware';
-    if (applyDetectedTier(prefs.settings, recommendedTier(info, { coarse }))) {
+    if (applyDetectedTier(prefs.settings, recommendedTier(info, { coarse, mobile: info.mobile }))) {
       ctx.savePrefs();
       applySettings();
     }

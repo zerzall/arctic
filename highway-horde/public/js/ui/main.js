@@ -12,6 +12,7 @@ import { createAudio } from '../audio/audio.js';
 import { MAP_LIST, buildMap } from '../shared/maps.js';
 import { startApp } from './app.js';
 import { installStoryContent } from './story-content.js';
+import { installContextLostHandler } from './context-lost.js';
 
 const deps = {
   hostGame,
@@ -39,4 +40,5 @@ deps.renderer3dReady = import('../render3d/renderer3d.js')
   });
 
 installStoryContent();
+installContextLostHandler();
 startApp(deps);

@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { DECALS, DECAL_SHEETS, DECAL_SHEET_SIZE } from './decals-manifest.js';
 import { autoDecals } from './decals-auto.js';
-import { tierRow, anisoFor } from './tier.js';
+import { tierRow, anisoFor, phoneProfile } from './tier.js';
 import { textureBlob, textureQueue } from './tex-files.js';
 
 /**
@@ -29,6 +29,14 @@ export const DECAL_TIERS = Object.freeze({
   ultra: { albedo: 4096, normal: 2048, max: 3200, auto: 1 },
   cinematic: { albedo: 4096, normal: 4096, max: 4800, auto: 1 },
 });
+/** The phone profile (tier.js) on every tier: Low's sheets (1024² albedo, no normal sheet), fewer decals. */
+export const DECAL_PHONE = Object.freeze({ albedo: 1024, normal: 0, max: 700, auto: 0.35 });
+/** A tier's row, capped by the phone row on the phone profile. */
+export function decalRow(tier) {
+  const row = tierRow(DECAL_TIERS, tier);
+  if (!phoneProfile()) return row;
+  return { albedo: Math.min(row.albedo, DECAL_PHONE.albedo), normal: 0, max: Math.min(row.max, DECAL_PHONE.max), auto: Math.min(row.auto, DECAL_PHONE.auto) };
+}
 
 const WALL_OFF = 0.55;    // units off a wall (≈ 1.6 cm)
 const FLOOR_OFF = 0.42;   // above the ground
@@ -39,7 +47,7 @@ const FLOOR_OFF = 0.42;   // above the ground
  * @returns {object[]} decal entries (shared/decals.js format)
  */
 export function decalList(map, tier, opts = {}) {
-  const row = tierRow(DECAL_TIERS, tier);
+  const row = decalRow(tier);
   const own = (map.decals || []).filter((d) => DECALS[d.id]);
   let list = own;
   if (row.auto > 0 && map.decalsAuto !== false && map.kind !== 'level') {
@@ -200,7 +208,7 @@ async function fetchBitmap(file, size, normal) {
 export function createDecals(ctx, deps) {
   const map = ctx.map;
   const tier = deps.tier || 'high';
-  const row = tierRow(DECAL_TIERS, tier);
+  const row = decalRow(tier);
   const base = tier === 'low' ? 'low' : 'hi';
   const gy = deps.gy || ctx.groundY || (() => 0);
   const byId = new Map(map.obstacles.map((o) => [o.id, o]));

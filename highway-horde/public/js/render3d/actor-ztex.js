@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { FAB, stageOf } from './actor-zlook.js';
 import { textureSource, textureQueue } from './tex-files.js';
 import { makeTexWorker, decodeRGBA, texBytes } from './tex-worker.js';
+import { phoneProfile } from './tier.js';
 
 export { FAB, stageOf };
 
@@ -68,13 +69,16 @@ export const ZTEX_TIERS = Object.freeze({
   ultra: [[2048, ['bodyA']], [1024, ['bodyB', 'cloth', 'woundA', 'woundB']], [512, ['skinA', 'skinB', 'grimeA', 'grimeB']]],
   cinematic: [[2048, ['bodyA', 'bodyB']], [1024, ['cloth', 'skinA', 'skinB', 'woundA', 'woundB', 'grimeA', 'grimeB']]],
 });
+/** The phone profile (tier.js) on every tier but 'low': the bodies at 512², the rest at 256² (≈ 30 MB). */
+export const ZTEX_PHONE = Object.freeze([[512, ['bodyA', 'bodyB']], [256, ['skinA', 'skinB', 'cloth', 'woundA', 'woundB', 'grimeA', 'grimeB']]]);
 
 /**
  * The layout of a tier: groups [{ size, layers: [[class, set], ...] }] and per class its
  * group index and first layer. null on low (or an unknown table row).
  */
-export function ztexLayout(tier) {
-  const row = ZTEX_TIERS[tier] === undefined ? ZTEX_TIERS.high : ZTEX_TIERS[tier];
+export function ztexLayout(tier, phone = phoneProfile()) {
+  let row = ZTEX_TIERS[tier] === undefined ? ZTEX_TIERS.high : ZTEX_TIERS[tier];
+  if (row && phone) row = ZTEX_PHONE;
   if (!row) return null;
   const groups = [], slot = {};
   row.forEach(([size, classes], g) => {
@@ -300,6 +304,8 @@ function makeDecoder(limit) {
 
 /** Sets decoded at once (each holds its three maps at full size while it is packed). */
 const IN_FLIGHT = 4;
+/** IN_FLIGHT, or one set at a time on the phone profile (tier.js). */
+const inFlight = () => (phoneProfile() ? 1 : IN_FLIGHT);
 
 /**
  * Load a tier's sets and build its texture arrays: the files (their download copies at the size
@@ -319,7 +325,7 @@ export async function loadZombieTextures(tier, opts = {}) {
   if (!opts.fetch) await textureQueue();
   if (opts.signal && opts.signal.gone) return null;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-  const dec = opts.worker === false ? { run: decodeSet, close() {}, worker: false } : makeDecoder(IN_FLIGHT);
+  const dec = opts.worker === false ? { run: decodeSet, close() {}, worker: false } : makeDecoder(inFlight());
   try {
     const kinds = new Map(ZT_SETS);
     const datas = layout.groups.map((g) => new Uint8Array(g.size * g.size * 4 * g.layers.length));
@@ -360,7 +366,7 @@ export async function loadZombieTextures(tier, opts = {}) {
         if (!dec.worker) await tick();
       }
     };
-    await Promise.all(Array.from({ length: dec.worker ? IN_FLIGHT : 1 }, runOne));
+    await Promise.all(Array.from({ length: dec.worker ? inFlight() : 1 }, runOne));
     if (failed) throw failed;
     if (opts.signal && opts.signal.gone) return null;
     const textures = layout.groups.map((g, gi) => {

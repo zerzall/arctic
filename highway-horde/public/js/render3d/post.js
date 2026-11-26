@@ -39,7 +39,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { AtmosPass } from './post-atmos.js';
-import { tierAtLeast } from './tier.js';
+import { tierAtLeast, phoneProfile } from './tier.js';
 import { MsaaWorldPass, ContactShadowPass, DepthCopyPass, MotionBlurPass, DofPass } from './post-cine.js';
 import { HHBloomPass } from './post-bloom.js';
 
@@ -582,6 +582,7 @@ export function createPost(renderer, { scene, camera, getViewmodel, quality, get
 
   /** MSAA samples that fit: the request, cut when the multisampled target would be huge (4K x 2.0 x 8). */
   function msaaFit() {
+    if (phoneProfile()) return 0;   // (a phone's memory: tier.js)
     const px = Math.max(1, Math.floor(cssW * prInner)) * Math.max(1, Math.floor(cssH * prInner));
     let n = MsaaWorldPass.clamp(renderer, msaaWant);
     while (n > 0 && px * n > 90e6) n = n > 4 ? 4 : n > 2 ? 2 : 0;

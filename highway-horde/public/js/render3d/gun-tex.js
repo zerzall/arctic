@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import { GUN_FAMILIES, SKIN_PATTERNS, GUN_WEAR_FILE } from '../shared/gun-finish.js';
-import { tierRow, tierRank, anisoFor } from './tier.js';
+import { tierRow, tierRank, anisoFor, phoneProfile } from './tier.js';
 import { textureBlob, textureQueue, textureSource } from './tex-files.js';
 import { makeTexWorker, decodeRGBA } from './tex-worker.js';
 
@@ -32,6 +32,13 @@ export const GUN_TEX_TIERS = Object.freeze({
   ultra: { family: 1024, skin: 1024, wear: 2048 },
   cinematic: { family: 2048, skin: 1024, wear: 2048 },
 });
+/** The phone profile (tier.js) on every tier but 'low'. */
+export const GUN_TEX_PHONE = Object.freeze({ family: 512, skin: 256, wear: 512 });
+/** A tier's row, the phone row on the phone profile (null stays null). */
+function gunRow(tier) {
+  const row = tierRow(GUN_TEX_TIERS, tier);
+  return row && phoneProfile() ? GUN_TEX_PHONE : row;
+}
 
 function placeholderArray(rgba) {
   const t = new THREE.DataArrayTexture(new Uint8Array(rgba), 1, 1, 1);
@@ -75,7 +82,7 @@ export function gunTexStats() {
 
 /** GPU memory the textures of a tier take (bytes, mips included). */
 export function gunTexBudget(tier) {
-  const row = tierRow(GUN_TEX_TIERS, tier);
+  const row = gunRow(tier);
   if (!row) return 0;
   const mip = 4 / 3;
   return Math.round((2 * GUN_FAMILIES.length * row.family * row.family * 4 + 2 * SKIN_PATTERNS.length * row.skin * row.skin * 4 + row.wear * row.wear * 4) * mip);
@@ -216,7 +223,7 @@ function makeArray(data, size, layers, srgb, aniso) {
 
 /** Will the textures load for this tier and context (else the guns draw the procedural finish only)? */
 export function gunTexEnabled(tier, gl) {
-  return !!tierRow(GUN_TEX_TIERS, tier) && canLoad(gl);
+  return !!gunRow(tier) && canLoad(gl);
 }
 
 /**
@@ -227,7 +234,7 @@ export function gunTexEnabled(tier, gl) {
  * @returns {Promise<boolean>} true once the textures of this call are in use
  */
 export function loadGunTextures(tier, opts = {}) {
-  const row = tierRow(GUN_TEX_TIERS, tier);
+  const row = gunRow(tier);
   if (!row || !canLoad(opts.gl)) return Promise.resolve(false);
   const key = JSON.stringify(row);
   if (state.tier === key && (state.status === 'loading' || state.status === 'ready')) return state.promise;

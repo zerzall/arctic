@@ -5,7 +5,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanGpuName, classifyGpu, recommendedTier, gpuLabel } from '../public/js/ui/gpu.js';
+import { cleanGpuName, classifyGpu, recommendedTier, gpuLabel, detectMobile } from '../public/js/ui/gpu.js';
+import { applyDetectedTier } from '../public/js/ui/gfx.js';
+import { DEFAULT_CLIENT_SETTINGS } from '../public/js/ui/storage.js';
 
 const angle = (vendor, renderer, backend = 'D3D11') => `ANGLE (${vendor}, ${renderer} Direct3D11 vs_5_0 ps_5_0, ${backend})`;
 
@@ -129,4 +131,66 @@ test('the Settings line names the card and the recommendation', () => {
   assert.match(gpuLabel(classifyGpu('llvmpipe (LLVM 15.0.7, 256 bits)')), /software rendering/);
   assert.equal(gpuLabel(null), '');
   assert.equal(gpuLabel(classifyGpu('')), '');
+});
+
+// ---- phones and tablets (the memory of a phone's tab: SPEC §7.5.3) ----
+
+const UA = {
+  iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  ipadDesktop: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+  android: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36',
+  winChrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
+  linuxChrome: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
+};
+
+test('phones and tablets are detected: iOS, iPadOS posing as a Mac, Android, small touch screens', () => {
+  const iphone = detectMobile({ ua: UA.iphone, maxTouchPoints: 5, coarse: true, screenW: 440, screenH: 956, gpu: 'Apple GPU' });
+  assert.deepEqual([iphone.mobile, iphone.ios], [true, true]);
+  // iPadOS Safari in desktop mode: a Mac user agent with several touch points
+  const ipad = detectMobile({ ua: UA.ipadDesktop, platform: 'MacIntel', maxTouchPoints: 5, coarse: true, screenW: 1032, screenH: 1376 });
+  assert.deepEqual([ipad.mobile, ipad.ios], [true, true]);
+  assert.equal(detectMobile({ ua: UA.android, maxTouchPoints: 5, coarse: true, screenW: 412, screenH: 915 }).mobile, true);
+  // an unknown user agent on a small touch-first screen
+  assert.equal(detectMobile({ ua: 'SomeBrowser/1.0', maxTouchPoints: 5, coarse: true, screenW: 400, screenH: 800 }).mobile, true);
+  // the Apple GPU string on a touch device with a non-iOS user agent (a site-specific UA override)
+  assert.equal(detectMobile({ ua: 'SomeBrowser/1.0', maxTouchPoints: 5, coarse: false, screenW: 1920, screenH: 1080, gpu: 'Apple GPU' }).mobile, true);
+});
+
+test('desktops are not phones: Safari on a Mac, a desktop with a touch screen, big touch displays', () => {
+  // macOS Safari also reports "Apple GPU" but has no touch points
+  assert.equal(detectMobile({ ua: UA.ipadDesktop, platform: 'MacIntel', maxTouchPoints: 0, coarse: false, screenW: 1512, screenH: 982, gpu: 'Apple GPU' }).mobile, false);
+  assert.equal(detectMobile({ ua: UA.winChrome, maxTouchPoints: 0, coarse: false, screenW: 2560, screenH: 1440 }).mobile, false);
+  // a touch laptop whose primary pointer is the trackpad
+  assert.equal(detectMobile({ ua: UA.winChrome, maxTouchPoints: 10, coarse: false, screenW: 1920, screenH: 1080 }).mobile, false);
+  // a big touch-first display
+  assert.equal(detectMobile({ ua: UA.linuxChrome, maxTouchPoints: 10, coarse: true, screenW: 3840, screenH: 2160 }).mobile, false);
+  assert.equal(detectMobile({}).mobile, false);
+});
+
+test('phones and tablets start on Low; desktop recommendations are unchanged', () => {
+  const apple = classifyGpu('Apple GPU');
+  assert.equal(apple.tier, null, 'Safari hides the model: no recommendation from the table');
+  assert.equal(recommendedTier(apple, { coarse: true, mobile: true }), 'low');
+  assert.equal(recommendedTier(classifyGpu('Adreno (TM) 750'), { coarse: true, mobile: true }), 'low');
+  // even a strong GPU name on a tablet (an M-series iPad through a Chromium browser) starts on Low
+  assert.equal(recommendedTier(classifyGpu('ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)'), { mobile: true }), 'low');
+  // desktops: exactly as before
+  assert.equal(recommendedTier(classifyGpu(angle('NVIDIA', 'NVIDIA GeForce RTX 4070 Ti SUPER')), { coarse: false, mobile: false }), 'cinematic');
+  assert.equal(recommendedTier(classifyGpu('NVIDIA GeForce RTX 2060'), { mobile: false }), 'ultra');
+  assert.equal(recommendedTier(classifyGpu('Apple GPU'), { mobile: false }), null, 'Safari on a Mac keeps the default');
+  assert.equal(recommendedTier(classifyGpu('Intel(R) UHD Graphics 630'), { mobile: false }), null);
+});
+
+test('a first-run phone profile moves to Low; a quality the player picked stays (with a warning)', () => {
+  const s = { ...DEFAULT_CLIENT_SETTINGS, keys: { ...DEFAULT_CLIENT_SETTINGS.keys } };
+  assert.equal(s.quality, 'ultra');
+  assert.equal(applyDetectedTier(s, recommendedTier(classifyGpu('Apple GPU'), { coarse: true, mobile: true })), true);
+  assert.equal(s.quality, 'low');
+  assert.equal(s.qualityPicked, false, 'the detection does not count as a pick');
+  const picked = { ...DEFAULT_CLIENT_SETTINGS, quality: 'high', qualityPicked: true };
+  assert.equal(applyDetectedTier(picked, 'low'), false);
+  assert.equal(picked.quality, 'high');
+  const g = classifyGpu('Apple GPU');
+  assert.match(gpuLabel(g, { coarse: true, mobile: true, quality: 'low' }), /Low recommended/);
+  assert.match(gpuLabel(g, { coarse: true, mobile: true, quality: 'high' }), /more memory/);
 });

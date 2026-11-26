@@ -16,12 +16,14 @@
 // stand in; world-dress rebuilds once when it is ready.
 
 import * as THREE from 'three';
-import { tierRow, anisoFor, tierRank } from './tier.js';
+import { tierRow, anisoFor, tierRank, phoneProfile } from './tier.js';
 import { textureQueue, textureSource } from './tex-files.js';
 import { makeTexWorker, decodeRGBA } from './tex-worker.js';
 
 /** Texture layer size per tier (null: no models on that tier). */
 export const PROP_TEX_TIERS = Object.freeze({ low: null, high: 512, ultra: 512, cinematic: 512 });
+/** Texture layer size on the phone profile (tier.js). */
+export const PROP_TEX_PHONE = 256;
 /** Distances (world units): LOD 0 inside NEAR, LOD 1 inside FAR, nothing past it. */
 export const PROP_LOD = Object.freeze({ low: [0, 0], high: [420, 1600], ultra: [620, 2800], cinematic: [900, 3200] });
 /** World units per metre (1 unit ≈ 3 cm). */
@@ -128,7 +130,9 @@ function makeArray(data, size, layers, srgb, aniso) {
  * @returns {Promise<boolean>} true once the models can be drawn
  */
 export function loadPropModels(tier, maxAniso = 16) {
-  const size = tierRow(PROP_TEX_TIERS, tier);
+  const row = tierRow(PROP_TEX_TIERS, tier);
+  // (the phone profile, tier.js: half size)
+  const size = row && phoneProfile() ? Math.min(row, PROP_TEX_PHONE) : row;
   if (!size || propsDisabled()) return Promise.resolve(false);
   if (lib.promise && lib.size >= size) return lib.promise;
   lib.size = size;
