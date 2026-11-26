@@ -383,6 +383,8 @@ export function createLobby(ctx) {
     if (nameInput && document.activeElement !== nameInput) nameInput.value = me ? me.name : prefs.name;
     const cls = me ? me.cls : prefs.cls;
     const color = me ? me.color : prefs.color;
+    const classLine = $('#lobby-class-line');
+    if (classLine && CLASSES[cls]) setText(classLine, CLASSES[cls].line || CLASSES[cls].desc);
     for (const b of miniClasses.children) {
       const on = b.dataset.cls === cls;
       b.setAttribute('aria-checked', on ? 'true' : 'false');
@@ -428,7 +430,8 @@ export function createLobby(ctx) {
       drawPreviews();
     }
     const md = MODE_LIST.find((m) => m.id === (s.mode || 'defend'));
-    setText(modeDesc, md ? md.description : '');
+    setText(modeDesc, md ? md.line || md.description : '');
+    if (modeDesc && md) modeDesc.title = md.description;
     setSeg(segTime, campaign ? 'day' : s.time || 'night', editable && !campaign);
     segTime.title = campaign ? 'The Campaign is played by day' : '';
     if (previewTime !== (s.time || 'night')) {

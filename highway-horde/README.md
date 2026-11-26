@@ -265,9 +265,9 @@ survivor, and any of them can host it again. A mission left unfinished simply is
 ## Controls
 
 **Click the game to capture the mouse**, then move the mouse to look around; your aim is
-wherever the crosshair is. **Esc** gives the mouse back and opens the menu (the game
-keeps running, your survivor just stands still); the menu's **Click to Resume** button
-captures it again. On a PC, hit **Fullscreen** on the title screen, in the pause menu or
+wherever the crosshair is. **Esc** gives the mouse back and opens the menu (online the game
+keeps running and your survivor just stands still; in **Play Solo** the menu really pauses the
+game, and says so); the menu's **Click to Resume** button captures the mouse again. On a PC, hit **Fullscreen** on the title screen, in the pause menu or
 in Settings (or tick *Start games in fullscreen*). In Chrome and Edge, Esc then only
 releases the mouse and opens the menu; hold Esc to leave fullscreen.
 
@@ -277,7 +277,7 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 | Look & aim | Mouse (click the game first) | Right stick |
 | Shoot | Left click | RT |
 | Secondary fire: scope / burst / suppressor (guns that have one) | Right click | Tap LT |
-| Crouch (hold: steadier, slower) | Z | Click right stick (toggle) |
+| Crouch (hold: steadier, slower) | C (or Ctrl) | Click right stick (toggle) |
 | Walk (hold: quiet, steady) | X | Push the stick part way |
 | Inspect your gun | Y | — |
 | Release the mouse / menu | Esc | Start |
@@ -287,20 +287,25 @@ releases the mouse and opens the menu; hold Esc to leave fullscreen.
 | Reload | R | X |
 | Revive (hold) / take crate | E | RB |
 | Switch weapon | 1 2 3, wheel, Q for last | Y, D-pad ▶ |
-| Frag / molotov | G / F | LB / B |
-| Turret / barricade | T / C | D-pad ▲ / ▼ |
+| Throwables: frag / molotov | G (tap throws the selected one, hold switches) | LB (tap / hold) |
+| Buildables: turret / barricade | T (tap places the selected one, hold switches) | D-pad ▲ (tap / hold) |
 | Shop | B | Tap Back |
 | Ready up (skip the break) | N | D-pad ◀ |
 | Scoreboard / chat | Tab / Enter | Back / — |
 
 Crouch, walk and inspect sit on browser-safe keys and can be moved in Settings → Controls →
-Keys (click the key, press the new one). Ctrl works for crouch too, as in other shooters:
+Keys (click the key, press the new one; a profile saved with the old crouch key Z moves to C,
+custom keys stay). The utility keys are fixed: **G** throws a frag or a molotov and **T** places a
+turret or a barricade. A quick tap uses the selected item; hold the key a moment to switch to the
+other one (the gear row shows the choice and lights up both while you switch). Ctrl works for crouch too, as in other shooters:
 while you play, Ctrl+letter shortcuts stay in the game, in fullscreen even Ctrl+W does, and
 outside fullscreen the browser asks before closing the tab if you press Ctrl+W by accident.
 
 On phones and tablets the left thumb moves, dragging on the right half of the screen
 looks around, and a big FIRE button shoots (drag it to keep turning while you fire); JUMP
-sits next to it and the other actions have on-screen buttons. With a sniper (or any gun
+sits next to it and the other actions have on-screen buttons. The buttons that only matter
+sometimes (USE, SHOP, READY) appear only while they do something, and FRAG, MOLO, TURRET and WALL
+fold into one GADGET button that opens a small tray. With a sniper (or any gun
 with a secondary mode) the SHOVE button shows ZOOM / BURST / SIL: tap it for that, hold it
 to shove. Gamepads and touch get a light aim assist.
 
@@ -348,8 +353,9 @@ frame-time percentiles and the GPU time, ready to copy.
 **Settings** (title screen or pause menu → Settings) has four tabs:
 
 - **Graphics**: a preset (Cinematic, Ultra, High, Low; the detected graphics card is named
-  under it), the resolution (Auto, 200%, 150%, 125%, 100%, 85%, 70% or 50%; above 100% draws extra pixels for a sharper picture;
-  a *Recommended* hint follows your card, preset and screen size)
+  under it), the resolution (Auto, 200%, 150%, 125%, 100%, 85%, 70% or 50%; above 100% draws extra pixels for a sharper picture
+  and carries a *Heavy GPU* badge, as do 8× MSAA, 4K shadows and volumetric fog; MSAA is held to 2× while the
+  resolution is above 100%, and the tab says so; a *Recommended* hint follows your card, preset and screen size)
   and, under *Advanced*, anti-aliasing (SMAA, FXAA, off), bloom, ambient occlusion, film
   grain, vignette and night lighting, and on Cinematic the extras (MSAA off / 2× / 4× / 8×, 4K
   cascaded shadows, contact shadows, full-resolution occlusion, high-quality reflections

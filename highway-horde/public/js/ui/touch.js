@@ -14,6 +14,10 @@ import { h } from './dom.js';
 
 const STICK_RADIUS = 56;
 const FIRE_AT = 0.55;
+/** The open gadget tray closes by itself after this long (ms) without a pick. */
+const TRAY_OPEN_MS = 6000;
+/** Situational buttons start hidden: the HUD shows them while they can be used (match.js). */
+const SITUATIONAL = ['interact', 'shop', 'ready'];
 /** SHOVE in secondary-fire mode: released sooner than this (ms) = a tap (the secondary mode). */
 const ALT_TAP_MS = 250;
 
@@ -27,10 +31,12 @@ const BUTTONS = [
   ['scoreboard', 'SCORES', 'toggle', 'util'],
   ['chat', 'CHAT', 'edge', 'util'],
   ['shop', 'SHOP', 'edge', 'util'],
-  ['frag', 'FRAG', 'edge', 'gear'],
-  ['molotov', 'MOLO', 'edge', 'gear'],
-  ['turret', 'TURRET', 'edge', 'gear'],
-  ['barricade', 'WALL', 'edge', 'gear'],
+  // one expandable gadget button: its tray holds the throwables and buildables (kind 'ui': it only opens the tray)
+  ['gadget', 'GADGET', 'ui', 'gear'],
+  ['frag', 'FRAG', 'edge', 'tray'],
+  ['molotov', 'MOLO', 'edge', 'tray'],
+  ['turret', 'TURRET', 'edge', 'tray'],
+  ['barricade', 'WALL', 'edge', 'tray'],
   ['melee', 'SHOVE', 'hold', 'main'],
   ['cycle', 'SWAP', 'edge', 'main'],
   ['reload', 'RELOAD', 'edge', 'main'],
@@ -73,8 +79,17 @@ export function createTouchControls(root) {
     jump: h('div.tc.tc-jump'),
     solo: h('div.tc.tc-solo'),
     fire: h('div.tc.tc-fire'),
+    // the gadget tray lives inside the gear cluster, next to the GADGET button
+    tray: h('div.gadget-tray', { hidden: true }),
   };
-  const btnWrap = h('div.touch-buttons', null, Object.values(clusters));
+  clusters.gear.appendChild(clusters.tray);
+  let trayUntil = 0;
+  function setTray(open) {
+    clusters.tray.hidden = !open;
+    if (buttonEls.gadget) buttonEls.gadget.classList.toggle('on', open);
+    trayUntil = open ? performance.now() + TRAY_OPEN_MS : 0;
+  }
+  const btnWrap = h('div.touch-buttons', null, Object.values(clusters).filter((c) => !c.classList.contains('gadget-tray')));
   const el = h('div.touch-layer', { 'aria-hidden': 'true' }, [zoneL, zoneR, btnWrap]);
   const move = createStick(zoneL, 'left');
   const aim = createStick(zoneR, 'right');
@@ -122,6 +137,8 @@ export function createTouchControls(root) {
         firePtr.y = e.clientY;
       }
       if (kind === 'edge' || id === 'jump') edges[id]++;
+      if (id === 'gadget') setTray(clusters.tray.hidden);
+      else if (cluster === 'tray') setTray(false);
       if (id === 'melee') meleeDownAt = performance.now();
       if (kind === 'hold') held[id] = true;
       else if (kind === 'toggle') held[id] = !held[id];
@@ -266,6 +283,7 @@ export function createTouchControls(root) {
   on(el, 'contextmenu', (e) => e.preventDefault());
 
   buttonEls.fire.hidden = true;
+  for (const id of SITUATIONAL) if (buttonEls[id]) buttonEls[id].hidden = true;
   root.appendChild(el);
   // Lets CSS tell touch play apart from a narrow desktop window.
   document.body.classList.add('touch-ui');
@@ -274,6 +292,7 @@ export function createTouchControls(root) {
     el,
     /** Current touch state; edge counters are consumed. */
     read() {
+      if (trayUntil && performance.now() > trayUntil) setTray(false);
       const out = {
         active: move.id !== -1 || aim.id !== -1 || performance.now() < activeUntil,
         moveX: move.x, moveY: move.y, moveM: move.m,
@@ -301,6 +320,7 @@ export function createTouchControls(root) {
       lookPtr.id = firePtr.id = -1;
       lookDX = lookDY = 0;
       for (const b of Object.values(buttonEls)) b.classList.remove('pressed');
+      setTray(false);
     },
     setEnabled(b) {
       enabled = !!b;
@@ -348,6 +368,20 @@ export function createTouchControls(root) {
     showButton(id, shown) {
       const b = buttonEls[id];
       if (b && b.hidden === !!shown) b.hidden = !shown;
+    },
+    /**
+     * The gadget tray's buttons: dim the ones with none left, mark the selected item of each group.
+     * @param {{ frag: number, molotov: number, turret: number, barricade: number }} counts
+     * @param {{ throw: string, build: string }} [selected]
+     */
+    setGadgets(counts, selected) {
+      for (const id of ['frag', 'molotov', 'turret', 'barricade']) {
+        const b = buttonEls[id];
+        if (!b) continue;
+        b.classList.toggle('none', !((counts && counts[id]) > 0));
+        b.classList.toggle('sel', !!selected && (selected.throw === id || selected.build === id));
+        b.dataset.n = counts && counts[id] > 0 ? String(counts[id]) : '';
+      }
     },
     /** Reflect a held toggle that was changed from elsewhere (scoreboard closed by a tap). */
     setToggle(id, on) {

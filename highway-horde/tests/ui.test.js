@@ -61,6 +61,7 @@ test('input: edge fields are true for exactly one sample', () => {
   const input = createInput(canvas);
   key(win, 'keydown', 'KeyR');
   key(win, 'keydown', 'KeyG');
+  key(win, 'keyup', 'KeyG'); // (a tap of G throws the selected throwable on the release)
   key(win, 'keydown', 'KeyB');
   key(win, 'keydown', 'KeyN');
   key(win, 'keydown', 'Escape');
@@ -221,6 +222,7 @@ test('input: disabled input is neutral but UI edges still work; stale presses ar
   assert.equal(s.reload, false);
   assert.equal(s.pause, true, 'Esc must still reach the UI to close menus');
   key(win, 'keydown', 'KeyG');
+  key(win, 'keyup', 'KeyG');
   input.setEnabled(true);
   s = input.sample();
   assert.equal(s.frag, false, 'a press made while a menu was open must not fire afterwards');

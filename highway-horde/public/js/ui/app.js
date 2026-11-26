@@ -3,7 +3,7 @@
 // (main.js) and the dev sandbox (dev/ui-sandbox.js, with a mock session) share this code.
 
 import { $, createScope } from './dom.js';
-import { showLoading, hideLoading, hideWhenDrawn, randomTip } from './loading.js';
+import { showLoading, hideLoading, hideWhenDrawn, randomTip, setLoadStage } from './loading.js';
 import { loadPrefs, savePrefs, randomName, cleanName, isCoarsePointer } from './storage.js';
 import {
   createModals, createTitle, createJoinDialog, createStatusDialogs, createSettingsDialog, createHowTo,
@@ -316,12 +316,24 @@ export function startApp(deps) {
     const map = s.getMap && s.getMap();
     const story = s.story && map && map.kind === 'hideout' ? 'Heading to the hideout…' : s.story ? 'Preparing the mission…' : 'Building the world…';
     showLoading(story, map && map.name ? map.name : '', randomTip());
+    // (the map is in hand: the session has it; the world build below is the next stage)
+    setLoadStage('map', map ? 1 : 0.5);
     afterPaint(() => {
       starting = false;
       if (session !== s || match || !s.inGame) { hideLoading(); return; }
       try {
+        setLoadStage('world', 0, 'Building world');
         match = startMatch(ctx, s);
-        hideWhenDrawn(() => (window.__HH && window.__HH.getLook ? window.__HH.getLook().frames : 0));
+        setLoadStage('world', 1);
+        hideWhenDrawn(
+          () => (window.__HH && window.__HH.getLook ? window.__HH.getLook().frames : 0),
+          undefined,
+          undefined,
+          () => {
+            const st = audio && audio.stats ? audio.stats() : null;
+            return st && Number.isFinite(st.total) ? { done: st.baked, total: st.total } : null;
+          },
+        );
       } catch (err) {
         console.error('[ui] could not start the match', err);
         match = null;

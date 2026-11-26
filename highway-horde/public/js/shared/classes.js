@@ -23,6 +23,7 @@ export const CLASSES = {
   soldier: {
     name: 'Sarge', role: 'Soldier',
     desc: 'Frontline rifleman. +20% gun damage and faster reloads.',
+    line: 'All-rounder: guns hit 20% harder and reload faster.',
     startWeapon: 'rifle',
     perks: { damageMult: 1.2, reloadMult: 0.85, startFrags: 1 },
     look: { outfit: '#4e5b31', vest: '#3b4424', hat: 'helmet' },
@@ -30,6 +31,7 @@ export const CLASSES = {
   medic: {
     name: 'Doc', role: 'Medic',
     desc: 'Revives twice as fast. Nearby teammates slowly heal.',
+    line: 'Support: revives twice as fast and slowly heals teammates nearby.',
     startWeapon: 'uzi',
     perks: { reviveSpeed: 2, healAura: 3, healRadius: 200, maxHp: 100 },
     look: { outfit: '#eceff1', vest: '#c62828', hat: 'cap' },
@@ -37,6 +39,7 @@ export const CLASSES = {
   engineer: {
     name: 'Sparks', role: 'Engineer',
     desc: 'Sentry turrets cost half and hit 25% harder. Starts with one.',
+    line: 'Engineer: turrets cost half and hit harder, and you start with one.',
     startWeapon: 'shotgun',
     perks: { turretDiscount: 0.5, turretDamage: 1.25, startTurrets: 1 },
     look: { outfit: '#f57c00', vest: '#424242', hat: 'hardhat' },
@@ -44,6 +47,7 @@ export const CLASSES = {
   scout: {
     name: 'Swift', role: 'Scout',
     desc: 'Fast and tireless. Earns 25% more cash per kill.',
+    line: 'Scout: the fastest runner, never tires, earns 25% more cash per kill.',
     startWeapon: 'magnum',
     perks: { speedMult: 1.15, staminaMult: 1.6, cashMult: 1.25 },
     look: { outfit: '#00695c', vest: '#004d40', hat: 'bandana' },
@@ -51,6 +55,7 @@ export const CLASSES = {
   demo: {
     name: 'Boom', role: 'Demolitions',
     desc: 'Explosions hit 50% harder and never hurt Boom. Carries extra grenades.',
+    line: 'Demolitions: explosions hit 50% harder, never hurt you, extra grenades.',
     startWeapon: 'sawedoff',
     perks: { explosiveMult: 1.5, startFrags: 3, extraFrags: 3, startMolotovs: 1, selfExplosionImmune: true },
     look: { outfit: '#5d4037', vest: '#212121', hat: 'beanie' },
@@ -58,6 +63,7 @@ export const CLASSES = {
   heavy: {
     name: 'Tank', role: 'Heavy',
     desc: '150 health and a vest, shoves twice as hard, but moves a bit slower.',
+    line: 'Heavy: 150 health and a vest, a brutal shove, slightly slower.',
     startWeapon: 'shotgun',
     perks: { maxHp: 150, startArmor: 50, speedMult: 0.92, meleeMult: 2 },
     look: { outfit: '#37474f', vest: '#263238', hat: 'none' },

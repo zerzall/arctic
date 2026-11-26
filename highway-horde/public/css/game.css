@@ -514,6 +514,15 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .menu-panel .btn-big { width: 100%; }
 .menu-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; }
 .menu-row .btn { width: 100%; }
+/* the title's one clear call to action: Play Solo is big and amber, Host / Join sit together as "Co-op", Story is quieter */
+.menu-panel .btn-play { min-height: 5rem; font-size: 1.875rem; box-shadow: 0 0 1.5rem rgba(255, 196, 0, 0.28); }
+.menu-panel .btn-play .btn-sub { font-size: 0.875rem; opacity: 0.8; }
+.menu-group { display: flex; flex-direction: column; gap: 0.375rem; padding: 0.5rem 0.625rem 0.625rem; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(8, 10, 12, 0.35); }
+.menu-group-label { font-family: var(--font-cond); font-weight: 700; font-size: 0.8125rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--hazard); }
+.menu-group .menu-row .btn-big { min-height: 3.25rem; font-size: 1.125rem; padding: 0.5rem 0.875rem; }
+.menu-group .menu-row .btn-big .btn-sub { font-size: 0.75rem; }
+.menu-panel .btn-story { min-height: 2.75rem; font-size: 1rem; padding: 0.375rem 1rem; --b-fg: var(--text-dim); }
+.menu-panel .btn-story .btn-sub { font-size: 0.75rem; }
 .menu-foot {
   display: flex;
   align-items: center;
@@ -577,6 +586,9 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
     backdrop-filter: none;
   }
   .menu-panel .btn-big { min-height: min(4.75rem, 8.6vh); padding: min(0.75rem, 1.2vh) 1.5rem; font-size: 1.5rem; }
+  .menu-panel .btn-play { min-height: min(6.25rem, 11.5vh); font-size: 2.25rem; }
+  .menu-group .menu-row .btn-big { min-height: min(3.75rem, 7vh); font-size: 1.25rem; padding: 0.5rem 1rem; }
+  .menu-panel .btn-story { min-height: min(3rem, 6vh); font-size: 1.0625rem; }
   .menu-panel .btn-big .btn-sub { font-size: 0.875rem; }
   .menu-panel .btn-big:not(.btn-primary) { --b-bg: rgba(20, 24, 30, 0.72); -webkit-backdrop-filter: blur(0.75rem); backdrop-filter: blur(0.75rem); }
   .menu-row .btn { min-height: 3rem; --b-bg: rgba(20, 24, 30, 0.72); }
@@ -764,7 +776,7 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .my-survivor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'name colors' 'label label' 'classes classes' 'skin skin';
+  grid-template-areas: 'name colors' 'label label' 'classes classes' 'cline cline' 'skin skin';
   column-gap: 0.875rem;
   align-items: end;
   padding-top: 0.75rem;
@@ -773,6 +785,7 @@ html[data-gpu='software'] .hud-box { background: rgba(8, 10, 12, 0.7); }
 .my-survivor .field-inline { grid-area: name; margin-bottom: 0.625rem; }
 .my-survivor > .field-label { grid-area: label; }
 .my-survivor .mini-classes { grid-area: classes; margin-bottom: 0; }
+.my-survivor .class-line { grid-area: cline; margin: 0.375rem 0 0; font-size: 0.8125rem; color: var(--text-dim); min-height: 2.4em; }
 .my-survivor .swatches { grid-area: colors; margin-bottom: 0.75rem; flex-wrap: nowrap; gap: 0.375rem; }
 .my-survivor .gun-skin-field { grid-area: skin; margin: 0.625rem 0 0; }
 .gun-skin-row { display: flex; align-items: center; gap: 0.5rem; }
@@ -1136,7 +1149,25 @@ input[type='range'] { accent-color: var(--hazard); width: 100%; height: 1.625rem
 .check-row { display: flex; align-items: center; gap: 0.625rem; margin: 0.625rem 0; font-weight: 500; cursor: pointer; }
 .check-row input { width: 1.25rem; height: 1.25rem; accent-color: var(--hazard); flex: none; }
 
+/* the Graphics tab flags its costliest settings */
+.heavy-badge { display: inline-block; margin-left: 0.375rem; padding: 0.0625rem 0.4375rem; border: 1px solid rgba(255, 140, 60, 0.75); border-radius: 0.125rem; background: rgba(255, 120, 40, 0.14); color: #ffb27a; font-family: var(--font-cond); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; vertical-align: middle; }
+.heavy-badge[hidden] { display: none; }
+.seg-btn.heavy { position: relative; }
+.seg-btn.heavy::after { content: ''; position: absolute; top: 0.1875rem; right: 0.1875rem; width: 0.3125rem; height: 0.3125rem; border-radius: 50%; background: #ff8c3c; }
+.set-hint-warn { color: #ffb27a; }
 .howto-card { width: min(55rem, 100%); }
+.howto-tabs { margin: 0.25rem 0 0.75rem; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.howto-tabs .set-tab { flex: 1 1 auto; }
+.howto-pane { display: flex; flex-direction: column; gap: 0.5rem; }
+.howto-pane[hidden] { display: none; }
+.howto-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.625rem; }
+.howto-card-item { padding: 0.625rem 0.75rem; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0.25rem; }
+.howto-card-item p { margin: 0.25rem 0 0.375rem; }
+.howto-card-item ul { margin: 0; padding-left: 1.125rem; color: var(--text-dim); font-size: 0.875rem; }
+.hc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; font-size: 1.0625rem; }
+.hc-tag { font-family: var(--font-cond); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--hazard); }
+.hc-foot { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--text-mute); }
+.howto-note { font-size: 0.875rem; }
 .howto-body h3 {
   margin: 1.125rem 0 0.5rem;
   font-family: var(--font-cond);
@@ -2011,6 +2042,24 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 .equip-label { color: var(--text-dim); }
 .equip-count { font-size: 1.0625rem; color: var(--text); min-width: 0.7em; text-align: right; }
 .equip-item.none { opacity: 0.4; }
+/* one key per group: the selected item carries it, the other waits dimmed until a hold opens the picker */
+.equip-group { display: flex; gap: 0.1875rem; padding: 0.0625rem; border-radius: 0.25rem; border: 1px solid transparent; transition: border-color 0.15s, background 0.15s; }
+.equip-item:not(.sel) { opacity: 0.55; padding-left: 0.4375rem; }
+.equip-item:not(.sel).none { opacity: 0.3; }
+.equip-item.sel { border-color: rgba(255, 196, 0, 0.55); }
+.equip-item kbd:empty { display: none; }
+.equip-group.pick { border-color: var(--hazard); background: rgba(255, 196, 0, 0.14); }
+.equip-group.pick .equip-item:not(.sel) { opacity: 1; }
+.equip-group.pick .equip-item.sel { background: rgba(255, 196, 0, 0.28); }
+/* the contextual key hint (ui/hints.js) */
+.hud-tip {
+  display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3125rem; padding: 0.3125rem 0.75rem 0.3125rem 0.5rem;
+  background: rgba(8, 10, 12, 0.82); border: 1px solid rgba(255, 196, 0, 0.7); border-radius: 0.25rem;
+  font-weight: 700; font-size: 0.9375rem; letter-spacing: 0.04em; color: #fff3d0; animation: toast-in 0.2s ease-out;
+}
+.hud-tip .tip-key { font-size: 0.875rem; min-width: 1.6em; text-align: center; }
+.hud-bottom-centre .hud-tip { display: flex; margin: 0.375rem auto 0; width: max-content; }
+
 .equip-item.full .equip-count { color: var(--hazard); }
 .hud-weapon { width: 18.75rem; padding: 0.5rem 0.75rem 0.625rem; border-right: 0.1875rem solid var(--hazard); }
 .weapon-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 0.625rem; }
@@ -2339,6 +2388,17 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
 /* throwables & deployables: under the right HUD column (--touch-gear-top, from hud.js) */
 .tc-gear { right: calc(8px + var(--sa-r)); top: var(--touch-gear-top, calc(212px + var(--sa-t))); }
 .tc-gear .touch-btn { border-radius: 50%; }
+.tc-gear .touch-btn-gadget { width: 56px; border-radius: 22px; border-color: rgba(255, 196, 0, 0.7); color: #ffe7a3; font-size: 10px; }
+/* the gadget tray: the four items, opening to the left of the GADGET button */
+.tc-gear { align-items: center; }
+.gadget-tray { position: absolute; right: calc(100% + 6px); top: 0; display: flex; gap: 6px; pointer-events: none; }
+.gadget-tray .touch-btn { font-size: 9px; }
+.gadget-tray .touch-btn.none { opacity: 0.4; }
+.gadget-tray .touch-btn.sel { border-color: var(--hazard); }
+.gadget-tray .touch-btn[data-n]:not([data-n=''])::after {
+  content: attr(data-n); position: absolute; right: -2px; top: -4px; min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 8px; background: var(--hazard); color: #14120b; font-size: 10px; line-height: 15px; text-align: center;
+}
 /* primary actions: 2x2 above-left of the aim thumb */
 .tc-main {
   right: calc(12px + var(--sa-r));
@@ -2412,7 +2472,7 @@ html[data-quality='low'] .screen-game .panel { --glass: var(--panel); }
   .swatch { width: 2.125rem; height: 2.125rem; }
   .lobby-wrap { padding-left: max(0.75rem, var(--sa-l)); padding-right: max(0.75rem, var(--sa-r)); }
   .lobby-title { font-size: 1.375rem; }
-  .my-survivor { grid-template-columns: 1fr; grid-template-areas: 'name' 'colors' 'label' 'classes'; }
+  .my-survivor { grid-template-columns: 1fr; grid-template-areas: 'name' 'colors' 'label' 'classes' 'cline' 'skin'; }
   .room-panel { grid-template-columns: 1fr; grid-template-areas: 'label' 'code' 'actions' 'hint'; text-align: center; }
   .room-code, .room-code-label { text-align: center; }
   .room-code { letter-spacing: 0.22em; text-indent: 0.22em; }
@@ -2809,6 +2869,14 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd, body.
   background: repeating-linear-gradient(-45deg, #ffc400 0 0.7rem, #14161a 0.7rem 1.4rem);
   animation: ld-slide 1.25s ease-in-out infinite alternate;
 }
+/* determinate form (ui/loading.js setLoadStage): a real fill and the named stages under it */
+.loading-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; display: none; background: repeating-linear-gradient(-45deg, #ffc400 0 0.7rem, #e0a800 0.7rem 1.4rem); transition: width 0.25s ease; }
+.loading.det .loading-bar::before { display: none; }
+.loading.det .loading-fill { display: block; }
+.loading-stages { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1.1rem; margin: -0.35rem 0 0; padding: 0; list-style: none; max-width: 38rem; font-size: 0.8125rem; letter-spacing: 0.1em; text-transform: uppercase; color: #5d6670; }
+.loading-stages li.done { color: #7f8a95; }
+.loading-stages li.done::before { content: '\2713\00a0'; color: #7fdc5a; }
+.loading-stages li.now { color: #ffc400; font-weight: 700; }
 @keyframes ld-slide { from { transform: translateX(-5%); } to { transform: translateX(165%); } }
 .loading-text { margin: 0; font-size: clamp(1.1rem, 2.4vw, 1.6rem); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .loading-sub { margin: -0.5rem 0 0; font-size: 1rem; color: #9aa3ad; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -2818,3 +2886,6 @@ body.touch-ui .card-key, body.touch-ui .shop-foot, body.touch-ui .tab kbd, body.
 .loading-tip { margin: 0.4rem 0 0; max-width: 36rem; font-size: 1rem; line-height: 1.45; color: #b9c0c8; }
 .loading-tip[hidden], .loading-sub[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .loading-bar::before { animation-duration: 3s; } }
+
+/* the GADGET button keeps its width on short phones (the generic .tc-gear sizes above would squeeze its label) */
+.tc-gear .touch-btn-gadget { width: auto; min-width: 40px; padding: 0 7px; border-radius: 20px; font-size: 9px; }

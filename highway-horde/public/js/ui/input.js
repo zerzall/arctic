@@ -19,10 +19,15 @@
 // burst, silencer) is an edge. While the gun in hand has a secondary mode (setRightAlt), the
 // right mouse button fires it instead of shoving (V always shoves); on a pad LT and on touch
 // the SHOVE button do the same with a tap, and still shove when held. `inspect` is an edge.
+//
+// Utility keys (ui/gadgets.js): G = throwables (frag, molotov), T = buildables (turret, barricade), pad LB and
+// D-pad up. A tap uses the selected item, holding past ~0.28 s switches the selection. They still arrive as the
+// sim's usual `frag / molotov / turret / barricade` edges. Crouch defaults to C (Ctrl may be chosen).
 
 import { createTouchControls, isTouchDevice } from './touch.js';
 import { isTypingTarget } from './dom.js';
 import { padLookDelta, TOUCH_LOOK_GAIN } from './look.js';
+import { createGadgets } from './gadgets.js';
 
 /** Keyboard layout (KeyboardEvent.code, so WASD works on AZERTY/Dvorak too). */
 const KEY_UP = ['KeyW', 'ArrowUp'];
@@ -37,9 +42,14 @@ const HELD_KEYS = {
   Space: 'jump',
 };
 const EDGE_KEYS = {
-  KeyR: 'reload', KeyG: 'frag', KeyF: 'molotov', KeyT: 'turret', KeyC: 'barricade', KeyQ: 'lastWeapon',
+  KeyR: 'reload', KeyQ: 'lastWeapon',
   KeyB: 'shop', Enter: 'chat', NumpadEnter: 'chat', KeyN: 'ready', Escape: 'pause',
 };
+/**
+ * The utility keys: G = throwables (frag, molotov), T = buildables (turret, barricade). A tap uses the
+ * selected item, a hold switches the selection (ui/gadgets.js).
+ */
+const GADGET_KEYS = { KeyG: 'throw', KeyT: 'build' };
 /** Keys that jump (held; a tap between two samples still counts once). */
 const JUMP_KEYS = ['Space'];
 const SLOT_KEYS = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 };
@@ -50,11 +60,33 @@ const SLOT_KEYS = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Num
  * offered as a rebind only (with the guards in createInput), never the default.
  */
 export const BIND_ACTIONS = ['crouch', 'walk', 'inspect'];
-export const DEFAULT_BINDS = Object.freeze({ crouch: 'KeyZ', walk: 'KeyX', inspect: 'KeyY' });
+export const DEFAULT_BINDS = Object.freeze({ crouch: 'KeyC', walk: 'KeyX', inspect: 'KeyY' });
+/**
+ * The defaults before the utility keys were consolidated (crouch was Z while C was the barricade).
+ * Profiles saved by those builds carry them as if chosen; `migrateBinds` lets such keys follow the new defaults.
+ */
+export const LEGACY_DEFAULT_BINDS = Object.freeze({ crouch: 'KeyZ', walk: 'KeyX', inspect: 'KeyY' });
+/** Version of the stored binding table (prefs.settings.keysVer): 2 = crouch on C, G / T are the utility keys. */
+export const KEYS_VERSION = 2;
+
+/**
+ * Bring a stored binding table up to date: from before KEYS_VERSION a key equal to the old default of
+ * its action was never a choice (the whole table was saved with every profile), so it is dropped and
+ * the action takes the current default; real customisations are kept (validBinds then settles clashes).
+ * @param {object} saved the stored `keys`
+ * @param {number} [ver] the stored `keysVer` (missing = 1)
+ */
+export function migrateBinds(saved, ver) {
+  const src = saved && typeof saved === 'object' ? saved : {};
+  if (ver >= KEYS_VERSION) return { ...src };
+  const out = { ...src };
+  for (const a of BIND_ACTIONS) if (out[a] === LEGACY_DEFAULT_BINDS[a]) delete out[a];
+  return out;
+}
 /** Keys a binding may not take: the fixed controls. */
 export const RESERVED_KEYS = new Set([
   ...KEY_UP, ...KEY_DOWN, ...KEY_LEFT, ...KEY_RIGHT, ...Object.keys(HELD_KEYS), ...Object.keys(EDGE_KEYS),
-  ...Object.keys(SLOT_KEYS), 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight', 'ContextMenu', 'F5', 'F11', 'F12',
+  ...Object.keys(SLOT_KEYS), ...Object.keys(GADGET_KEYS), 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight', 'ContextMenu', 'F5', 'F11', 'F12',
 ]);
 const CTRL_KEYS = new Set(['ControlLeft', 'ControlRight']);
 const ALT_KEYS = new Set(['AltLeft', 'AltRight']);
@@ -109,10 +141,11 @@ const ALT_TAP_S = 0.25;
 const BACK_TAP_S = 0.3;
 /** Keys whose browser default (scrolling, focus moves) must not happen during play. */
 const PREVENT = new Set([
-  'Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyF', 'KeyG', 'Quote', 'Slash',
+  'Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyF', 'KeyG', 'KeyT', 'Quote', 'Slash',
 ]);
 
 const GAMEPLAY_EDGES = ['reload', 'frag', 'molotov', 'turret', 'barricade', 'lastWeapon', 'alt', 'inspect'];
+const nowSeconds = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 const UI_EDGES = ['shop', 'chat', 'ready', 'pause'];
 const NAV_EDGES = ['up', 'down', 'left', 'right', 'accept', 'back', 'tabPrev', 'tabNext'];
 
@@ -186,6 +219,8 @@ export function createInput(canvas, opts = {}) {
   let ltDownAt = -1, backDownAt = -1;
   // rebindable keys, and whether right click / LT / the SHOVE button fire the secondary mode
   let binds = validBinds(opts.binds);
+  // G / T: tap = use the selected throwable / buildable, hold = switch (ui/gadgets.js)
+  const gadgets = createGadgets();
   let rightAlt = false;
   let aimAngle = 0;
   let aimDist = AIM_MIN;
@@ -249,6 +284,10 @@ export function createInput(canvas, opts = {}) {
     if (e.repeat) return;
     if (bound === 'inspect') edges.inspect++;
     if (bound) return;
+    if (code in GADGET_KEYS) {
+      if (enabled) gadgets.press(GADGET_KEYS[code], nowSeconds());
+      return;
+    }
     if (JUMP_KEYS.includes(code)) jumpTaps++;
     const edge = EDGE_KEYS[code];
     if (edge) edges[edge]++;
@@ -258,6 +297,11 @@ export function createInput(canvas, opts = {}) {
   function onKeyUp(e) {
     // Never filtered: a key released inside the chat box must still stop the player.
     keys.delete(e.code);
+    const gk = GADGET_KEYS[e.code];
+    if (gk) {
+      const item = gadgets.release(gk, nowSeconds());
+      if (item && enabled && !destroyed) edges[item]++;
+    }
     if (e.key === 'Meta') keys.clear(); // macOS swallows keyups while Cmd is held
     // (a lone Alt press must not open the browser's menu bar when Alt is a game key)
     if (enabled && ALT_KEYS.has(e.code) && boundTo(e.code)) e.preventDefault();
@@ -413,6 +457,7 @@ export function createInput(canvas, opts = {}) {
 
   function releaseAll() {
     keys.clear();
+    gadgets.cancel();
     mouse.left = mouse.right = false;
     padSprintToggle = false;
     padCrouchToggle = false;
@@ -506,6 +551,7 @@ export function createInput(canvas, opts = {}) {
     let walk = keys.has(binds.walk);
     let aimX = cursor.x, aimY = cursor.y;
     let aiming = false;
+    gadgets.tick(now);
 
     // gamepad
     const p = readPad();
@@ -567,10 +613,14 @@ export function createInput(canvas, opts = {}) {
         }
         if (pressed(PAD.X)) edges.reload++;
         if (pressed(PAD.Y)) cycle++;
-        if (pressed(PAD.LB)) edges.frag++;
-        if (pressed(PAD.B)) edges.molotov++;
-        if (pressed(PAD.UP)) edges.turret++;
-        if (pressed(PAD.DOWN)) edges.barricade++;
+        // LB = throwables, D-pad ▲ = buildables: a tap uses the selection, a hold switches it
+        for (const [i, kind] of [[PAD.LB, 'throw'], [PAD.UP, 'build']]) {
+          if (pressed(i)) gadgets.press(kind, now);
+          else if (!cur[i] && padPrev[i]) {
+            const item = gadgets.release(kind, now);
+            if (item) edges[item]++;
+          }
+        }
         if (pressed(PAD.RIGHT)) edges.lastWeapon++;
         if (pressed(PAD.LEFT)) edges.ready++;
         if (pressed(PAD.START)) edges.pause++;
@@ -618,7 +668,11 @@ export function createInput(canvas, opts = {}) {
           const n = t.edges[k];
           if (!n) continue;
           if (k === 'cycle') cycle += n;
-          else if (k in edges) edges[k] += n;
+          else if (k in edges) {
+            edges[k] += n;
+            // (the gadget tray picks the item itself: the HUD's selection follows)
+            if (k === 'frag' || k === 'molotov' || k === 'turret' || k === 'barricade') gadgets.select(k, now);
+          }
         }
       }
     }
@@ -701,6 +755,7 @@ export function createInput(canvas, opts = {}) {
       enabled = nb;
       // Presses made while a menu was open must not fire when it closes.
       for (const e of GAMEPLAY_EDGES) edges[e] = 0;
+      gadgets.cancel();
       jumpTaps = 0;
       slot = -1;
       cycle = 0;
@@ -734,6 +789,16 @@ export function createInput(canvas, opts = {}) {
     },
     get enabled() {
       return enabled;
+    },
+    /**
+     * The utility keys' state for the HUD: the selected throwable / buildable and whether each small
+     * picker is open (a hold just switched it). `counts` ({ frag, molotov, turret, barricade }) lets a
+     * tap fall back to the other item when the selected one is out.
+     */
+    gadgetState(counts) {
+      if (counts) gadgets.setCounts(counts);
+      const n = nowSeconds();
+      return { selected: gadgets.selected, picker: { throw: gadgets.pickerOpen('throw', n), build: gadgets.pickerOpen('build', n) } };
     },
     /** Screen position of the local player; pad/touch aim is projected from it. */
     setAnchor(x, y) {

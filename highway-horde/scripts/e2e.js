@@ -1342,7 +1342,22 @@ async function scenarioFpsSolo(sc) {
   await waitFor(pl, () => !document.querySelector('#pause').hidden, null, 'the pause menu after the pointer lock was lost', 8000);
   const resume = (await pl.page.textContent('#pause-resume')).trim();
   expect(/click to resume/i.test(resume), `pause menu should say "Click to Resume", says "${resume}"`);
+  // Solo: the menu is a true pause. The simulation stops (the tick stands still, even with zombies walking in) and
+  // the menu says so; resuming carries on from the same tick instead of catching up.
+  const pauseNote = (await pl.page.textContent('#pause-note')).trim();
+  expect(/paused/i.test(pauseNote), `the solo pause menu should say the game is paused, says "${pauseNote}"`);
+  const simTick = () => pl.page.evaluate(() => window.__HH.session.game.tick);
+  const tickA = await simTick();
+  await sleep(1500);
+  const tickB = await simTick();
+  expect(tickB === tickA, `the sim should not tick while the solo pause menu is open (${tickA} → ${tickB})`);
+  const clickAt = Date.now();
   await pl.page.click('#pause-resume');
+  const tickC = await simTick();
+  // (software GL makes the click itself slow: allow the real time since the click, but not the 1.5 s+ spent paused)
+  const sinceClick = (Date.now() - clickAt) / 1000;
+  expect(tickC - tickB <= sinceClick * 60 + 8, `resuming should not fast-forward the sim (${tickB} → ${tickC} in ${sinceClick.toFixed(2)} s)`);
+  await waitFor(pl, (t) => window.__HH.session.game.tick > t + 10, tickC, 'the sim running again after resuming', 8000);
   await waitFor(pl, () => document.querySelector('#pause').hidden && window.__HH.getLook().locked, null, 'the lock back after Click to Resume', 8000);
 
   // Fight: turn toward the nearest zombie's chest (the 3D shot needs the pitch too: the hit

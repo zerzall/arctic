@@ -1509,11 +1509,15 @@ InputState = { moveX, moveY, aimScreenX, aimScreenY, fire, melee, sprint, intera
                reload, frag, molotov, turret, barricade, lastWeapon, alt, inspect, slot, cycle,
                shop, scoreboard, chat, ready, pause }   // last five are UI edges/helds
 input.setBinds({ crouch, walk, inspect })   // KeyboardEvent.code per action (validBinds)
+input.gadgetState(counts) → { selected: { throw, build }, picker: { throw, build } }   // HUD: the G / T selection
 input.setRightAlt(label | null)  // the gun in hand has a secondary mode ('ZOOM' | 'BURST' | 'SIL')
 ```
-**Gunplay keys** (§3.4): crouch (held) **Z**, walk (held) **X**, inspect **Y** — browser-safe
+**Gunplay keys** (§3.4): crouch (held) **C**, walk (held) **X**, inspect **Y** — browser-safe
 defaults, rebindable in Settings → Controls → Keys (`validBinds`: the fixed keys are
-refused, a key another action had is swapped). Ctrl (Counter-Strike's crouch) may be chosen:
+refused, a key another action had is swapped). Profiles saved before the utility keys were
+consolidated carry the old default crouch key (Z) as if chosen: `migrateBinds(keys, keysVer)`
+(`KEYS_VERSION` = 2, stored as `settings.keysVer`) drops a key equal to its action's old default so it
+follows the new one; real customisations stay. Ctrl (Counter-Strike's crouch) may be chosen:
 Ctrl+letter shortcuts are kept from the browser while playing, fullscreen claims every key
 (Keyboard Lock) so Ctrl+W reaches the game, and outside fullscreen a `beforeunload` guard asks
 before the tab closes while Ctrl is held. With `setRightAlt(label)` the right mouse button
@@ -1521,15 +1525,24 @@ fires the secondary mode (an edge on the press) instead of shoving (V still shov
 a tap of LT (< 0.25 s) fires it and a hold shoves; on touch the SHOVE button shows the label
 and does the same. Pad: R3 toggles crouch (a light push on the stick walks), a tap of Back
 opens the shop (held: the scoreboard). Shift stays sprint.
+**Utility keys** (`ui/gadgets.js`, pure and unit-tested): throwables (frag, molotov) share **G**, buildables (turret,
+barricade) share **T** (pad: LB and D-pad ▲). A TAP (release before 0.28 s) uses the selected item
+(the other one when only that one is in stock); HOLDING the key past 0.28 s switches the selection once and uses
+nothing (the cleaner of the two options: a second tap would have been a second throw). The HUD's gear row
+(`.equip-group`) shows the key on the selected item, dims the other and lights both for 1.4 s after a switch.
+The sim and the wire format are unchanged: `input.js` still reports the `frag / molotov / turret /
+barricade` edges, now resolved from the selection.
 Keyboard + mouse (WASD/arrows, mouse aim, LMB fire, RMB/V melee (RMB: the secondary mode on
-a gun that has one), Shift sprint, Space jump, Z crouch, X walk, Y inspect, E interact, R
-reload, 1/2/3 slots, wheel cycle, Q last weapon, G frag, F molotov, T turret, C barricade, B
-shop, Tab scoreboard (held), Enter chat, N ready, Esc menu), gamepad (standard mapping, right
+a gun that has one), Shift sprint, Space jump, C crouch (or Ctrl), X walk, Y inspect, E interact, R
+reload, 1/2/3 slots, wheel cycle, Q last weapon, G throwables (frag / molotov), T buildables (turret /
+barricade), B shop, Tab scoreboard (held), Enter chat, N ready, Esc menu), gamepad (standard mapping, right
 stick aim; A jump, RB interact, LT melee (a tap: the secondary mode), RT fire, X reload, Y
-next weapon, LB frag, B molotov, D-pad ▲ turret / ▼ barricade / ▶ last weapon / ◀ ready, L3
+next weapon, LB throwables, D-pad ▲ buildables / ▶ last weapon / ◀ ready, L3
 sprint toggle, R3 crouch toggle, Back scoreboard (a tap: the shop), Start menu; A also
-accepts in menus),
-touch (twin virtual sticks + buttons, JUMP next to FIRE in first person). `jump` is held
+accepts in menus; B and D-pad ▼ are free in play),
+touch (twin virtual sticks + buttons, JUMP next to FIRE in first person; FRAG / MOLO / TURRET / WALL fold into one
+GADGET button whose tray opens leftwards for 6 s or until a pick; USE, SHOP and READY are hidden unless
+usable right now — a downed teammate / crate / prompt in reach, the shop open to you, between waves). `jump` is held
 like `sprint`, and is also true in the one sample after a press too short to be seen held
 (a tap between frames is never lost); the cmd builder carries such a tap into the next cmd.
 `session.update(dt, input, aimAngle)` receives the InputState plus the aim angle, which
@@ -1558,7 +1571,13 @@ end screen (victory/game over with per-player stats; host "Back to lobby"), sett
 (view, field of view, mouse sensitivity, stick/touch look, invert Y, aim assist, rotating
 minimap, volume, quality, lighting, screen shake, name tags), how-to-play.
 Pause menu: Resume, Settings, How to Play, **End Game (host only**: confirm "Return everyone
-to the lobby?" → `session.returnToLobby()`), Leave Game. Online games (not solo) show the
+to the lobby?" → `session.returnToLobby()`), Leave Game. **Play Solo really pauses**: when
+`session.canPause()` (the host on the 'local' transport with no remote human in the room, bots allowed,
+not a story room) opening the menu calls `session.setPaused(true)`: the host stops stepping the game and shifts
+its sim clock (`t0`) by the paused time on resume, so nothing is caught up and the wave timers (which are tick
+counts) stand still; the menu says "The game is paused — the horde is frozen until you resume." Online rooms
+(even before anyone joins) and clients keep the old text and behaviour: the game runs on while the menu
+is open. Online games (not solo) show the
 room code + "Copy invite link" (late join works) in the pause menu and in the scoreboard
 header; the scoreboard is mounted on `#screen-game` above the touch layer, letting
 everything but that button through. A touch button that opens the shop or pause menu
@@ -1581,7 +1600,9 @@ the d-pad moves, A picks a section or buys, B goes back (and closes from the sec
 step through the sections. `SECTIONS`, `sectionOf(id)`, `sectionItems(section)` and
 `ITEM_KEYS` are exported (`tests/ui.test.js`); `public/dev/shop-lab.html` shows the real menu
 for a made-up player (`scripts/shop-shot.js` takes screenshots of it).
-Lobby: a Mode row (Defend / Evac Run / Campaign, with the mode's description) above difficulty; a
+Lobby: a Mode row (Defend / Evac Run / Campaign / Horde, with the mode's one-line `line`: Evac Run says that
+Harlan County plays only it and the Campaign) above difficulty; under the class picker a one-line `line` per
+class (what makes Doc, Sparks, Boom, Tank, Swift and Sarge different); a
 map card that does not play both standard modes carries a tag ("Evac Run · Campaign only" on
 Harlan County) and picking it switches the mode; maps with the campaign extension carry a
 CAMPAIGN badge over their preview, and in Campaign mode every such card previews the campaign
@@ -1654,6 +1675,21 @@ Large screens: the stylesheet is in rem and `<html>` font-size is 16px × `--ui-
 (`ui/uiscale.js`: clamp(min(h/1000, w/1200), 1, 3), always 1 on touch; × the "UI size"
 setting 75–150 %), so the HUD and menus keep their proportions from 720p to 4K; with
 `hudSafeArea: '16:9'` (default) the HUD sits in a centred 16:9 box on ultrawide screens.
+**How to Play** has four tabs (Modes, Controls, Classes, Zombies; `createHowTo`, `HOWTO_TABS`): the Classes
+and Zombies cards are built from `CLASSES` / `perkLines` and `ZOMBIE_NOTES`. **Title**: Play Solo is the one
+dominant call to action, Host and Join sit together under "Co-op", Story is visible but quieter (ids unchanged).
+**Contextual hints** (`ui/hints.js`, pure around an injected store): "Hold E to revive" (a teammate downed within
+3.5 revive radii, before the revive prompt takes over), "B — buy menu" (prep / intermission, shop open) and "E — zip
+line" (the campaign gantry) show as a pill under the crosshair, at most 3 showings per player (a showing counts after
+1.2 s up, fades after 7 s), retired at once when the player does the thing, remembered in localStorage
+`highway-horde:hints:v1` (every access wrapped). **Loading** (`ui/loading.js`): while a match is built the bar is
+determinate with named stages `LOAD_STAGES` (Loading map, Building world, Compiling shaders, Textures, Audio) driven by
+the real steps: the map in hand, the synchronous world build, the frames drawn, the texture load tasks (and
+`window.__hhTexLoad` when none is registered) and `audio.stats()` bake progress (at most 1.5 s of waiting).
+**Heavy GPU badges** mark resolution above 100%, MSAA 8×, Cinematic 4K shadows and volumetric fog; with a fixed
+resolution above 100% MSAA is capped to 2× (`gfx.js effectiveMsaa`, applied in `rendererSettings`) and the Graphics
+tab says so. The first-person crosshair gap is exaggerated ×2.2 (`BLOOM_GAIN`) and eased (opens fast, closes slower,
+`easeBloom`).
 Settings dialog tabs: Graphics (preset, the detected GPU, resolution with a "Recommended" hint,
 Advanced effect toggles and the Cinematic extras — §7.5, §7.5.3),
 Display & HUD (UI size, safe area, view, fov, frame-rate limit, display calibration, name tags,
