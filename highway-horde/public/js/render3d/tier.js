@@ -37,6 +37,25 @@ export function tierRow(table, q) {
   return table[t] !== undefined ? table[t] : table[baseTier(t)];
 }
 
+// ---- the phone profile ------------------------------------------------------------------------------
+//
+// Phones and tablets (ui/gpu.js isMobileDevice) run every tier on the phone profile: a tab there gets
+// a few hundred MB to ~1.5 GB before the OS kills it, WebGL textures included. The renderer turns it on
+// at creation; the texture loaders then take the smaller of their tier's row and their PHONE row (the
+// streamed sets at 512² and below, fewer decals, no normal sheets), the pixel ratio is capped
+// (PHONE_PIXEL_RATIO) and MSAA stays off. The player's tier still picks the effects.
+
+let phone = false;
+/** Turn the phone profile on or off (the renderer does, from ui/gpu.js isMobileDevice()). */
+export function setPhoneProfile(on) { phone = !!on; }
+/** Is the phone profile on? */
+export function phoneProfile() { return phone; }
+
+/** Largest canvas pixel ratio per tier on the phone profile (a phone's screen is ~3x). */
+export const PHONE_PIXEL_RATIO = Object.freeze({ low: 1, high: 1.25, ultra: 1.5, cinematic: 1.5 });
+/** Pixels the world pass may cover on the phone profile (render targets are a large share of a phone's memory). */
+export const PHONE_PIXEL_BUDGET = 2.2e6;
+
 /**
  * Texture-atlas resolution multiplier that asset generators may apply (canvas-painted atlases
  * and detail textures): 1 on low / high / ultra, 2 on cinematic.
@@ -44,7 +63,7 @@ export function tierRow(table, q) {
  * @returns {1|2}
  */
 export function texScale(q) {
-  return q === 'cinematic' ? 2 : 1;
+  return q === 'cinematic' && !phone ? 2 : 1;
 }
 
 /**

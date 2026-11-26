@@ -46,7 +46,8 @@ import { releasePropModels } from './props3d.js';
 import { terrainOf } from '../shared/terrain.js';
 import { releaseFxAtlas, peekFx } from './fx-core.js';
 import { createPost, createDynRes, createGpuTimer, normPostSettings, nightGradeFor, RENDER_SCALE_LIMIT, PIXEL_BUDGET } from './post.js';
-import { normTier, tierAtLeast } from './tier.js';
+import { normTier, tierAtLeast, setPhoneProfile, PHONE_PIXEL_RATIO, PHONE_PIXEL_BUDGET } from './tier.js';
+import { isMobileDevice } from '../ui/gpu.js';
 import { prefetchLibrary } from './world-surf-bake.js';
 
 // (the texture library's manifest and the copies' index, asked for while the menus are up: a world
@@ -119,6 +120,10 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   if (map && map.campaign) mode = 'campaign';
   const tCreate = performance.now();
   let q = normQuality(quality);
+  // Phones and tablets: the phone profile (tier.js) caps the pixel ratio, MSAA and the texture sets
+  // at every tier, before anything below loads (SPEC §7.5.3)
+  const phone = isMobileDevice();
+  setPhoneProfile(phone);
   // No MSAA on the canvas: the world is drawn into the post chain's HDR target and only a
   // full-screen quad reaches the canvas (SMAA / FXAA do the anti-aliasing).
   const renderer = new THREE.WebGLRenderer({
@@ -289,6 +294,19 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   let localId = 0;
   let fov = verticalFov(80);
   let destroyed = false;
+  // A lost WebGL context (the OS reclaiming GPU memory, a driver reset): rendering stops and the page
+  // is told ('hh:webglcontextlost' on window: ui/main.js shows a message with a reload button)
+  // instead of a frozen picture. preventDefault lets the browser restore it; the game still asks
+  // for a reload, since the streamed textures are not kept on the CPU.
+  let contextLost = false;
+  const onLost = (e) => {
+    e.preventDefault();
+    if (contextLost || destroyed) return;
+    contextLost = true;
+    console.warn('[renderer3d] the WebGL context was lost');
+    try { window.dispatchEvent(new CustomEvent('hh:webglcontextlost')); } catch { /* (no window) */ }
+  };
+  canvas.addEventListener('webglcontextlost', onLost, false);
 
   const _look = new THREE.Vector3();
   function updateCamera(view, local, look, settings, dt) {
@@ -440,7 +458,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // caps it); phones and hi-dpi screens stay at 1. It aims at 97 % of the display's refresh rate.
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   let hz = Number.isFinite(refreshHz) && refreshHz >= 30 ? refreshHz : 60;
-  const makeDyn = () => createDynRes(coarse || (window.devicePixelRatio || 1) >= 2 ? 1 : tierAtLeast(q, 'cinematic') ? 2 : 1.5, hz * 0.97);
+  const makeDyn = () => createDynRes(coarse || phone || (window.devicePixelRatio || 1) >= 2 ? 1 : tierAtLeast(q, 'cinematic') ? 2 : 1.5, hz * 0.97);
   let dyn = makeDyn();
   let postSet = normPostSettings(null);
   // raw values of the last settings seen: re-normalised only when one of them changes
@@ -454,6 +472,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   /** The tier's pixel-ratio cap (the canvas' resolution; renderScale is a fraction of it). */
   function pixelRatio() {
     const d = window.devicePixelRatio || 1;
+    if (phone) return Math.min(d, PHONE_PIXEL_RATIO[q] || 1);
     // Ultra renders at the screen's native resolution (phones are ~3x): sharp, and hot.
     if (tierAtLeast(q, 'ultra')) return Math.min(d, 3);
     return q === 'high' ? Math.min(d, 2) : Math.min(d, 1) * 0.75;
@@ -462,7 +481,8 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // pixels the world pass may cover: supersampling stops short of exhausting GPU memory
   let effScale = 1;
   function scaleCap() {
-    return Math.max(0.5, Math.sqrt(PIXEL_BUDGET[q] / Math.max(1, cssW * cssH * prFull * prFull)));
+    const budget = phone ? Math.min(PIXEL_BUDGET[q], PHONE_PIXEL_BUDGET) : PIXEL_BUDGET[q];
+    return Math.max(0.5, Math.sqrt(budget / Math.max(1, cssW * cssH * prFull * prFull)));
   }
   function applyScale() {
     effScale = Math.min(renderScale, scaleCap(), RENDER_SCALE_LIMIT);
@@ -533,11 +553,11 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
   // submitMs = three.js render calls (draw submission; includes driver time on software GL)
   // renderScale = fraction of the tier's pixel-ratio cap in use; gpuMs only where the
   // browser exposes GPU timer queries (EXT_disjoint_timer_query_webgl2)
-  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0, renderScale: 1, pixelRatio: 1, post: !!post, tier: q, msaa: 0, width: 0, height: 0, refreshHz: hz };
+  const stats = { drawCalls: 0, triangles: 0, jsMs: 0, updateMs: 0, submitMs: 0, fps: 0, lights: 0, staticTriangles: 0, frames: 0, renderScale: 1, pixelRatio: 1, post: !!post, tier: q, phone, msaa: 0, width: 0, height: 0, refreshHz: hz };
   let fpsAcc = 0, fpsN = 0, jsAvg = 0, updAvg = 0, subAvg = 0;
 
   function render(view, opts = {}) {
-    if (destroyed) return;
+    if (destroyed || contextLost) return;
     const t0 = performance.now();
     try {
       localId = opts.localId || 0;
@@ -795,6 +815,7 @@ export function createRenderer3D(canvas, { map, quality = 'high', mode = 'defend
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      canvas.removeEventListener('webglcontextlost', onLost, false);
       // three.js keeps one module-level DFG lookup texture for every MeshStandardMaterial;
       // each renderer that uploaded it hangs a dispose listener on it, which kept every
       // finished game's WebGLRenderer (and through it its scene) reachable. Find it while

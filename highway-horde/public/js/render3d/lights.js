@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { dayAmbientFor } from './daylight.js';
 import { terrainOf } from '../shared/terrain.js';
-import { normTier, tierAtLeast, tierRow } from './tier.js';
+import { normTier, tierAtLeast, tierRow, phoneProfile } from './tier.js';
 import { HHSunLight } from './sunlight.js';
 import { nearestSection } from '../shared/level.js';
 
@@ -184,8 +184,10 @@ export function createLights({ scene, camera, map, quality, fireBase, time: time
   // or two from the reflector and specks of dust; it also stays soft, never a hard disc.
   const cookie = makeFlashCookie();
   flash.map = null;
-  const sunMapSize = () => (cine && !opts.shadowsHigh ? SUN_MAP.ultra : tierRow(SUN_MAP, tier));
-  const flashMapSize = () => (cine && !opts.shadowsHigh ? FLASH_MAP.ultra : tierRow(FLASH_MAP, tier));
+  // (the phone profile, tier.js: 1024² shadow maps at most)
+  const phoneCap = (n) => (phoneProfile() ? Math.min(n, 1024) : n);
+  const sunMapSize = () => phoneCap(cine && !opts.shadowsHigh ? SUN_MAP.ultra : tierRow(SUN_MAP, tier));
+  const flashMapSize = () => phoneCap(cine && !opts.shadowsHigh ? FLASH_MAP.ultra : tierRow(FLASH_MAP, tier));
   const dropMap = (shadow) => {
     if (shadow.map) {
       shadow.map.depthTexture?.dispose();

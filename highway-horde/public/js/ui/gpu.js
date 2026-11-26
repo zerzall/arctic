@@ -138,13 +138,74 @@ export function classifyGpu(rawName) {
   return out('unknown', null, 'unknown');
 }
 
+// ---- phones and tablets ---------------------------------------------------------------------------
+//
+// A phone's browser tab gets a small fraction of a desktop's memory (iOS kills a WebKit tab at a few
+// hundred MB to ~1.5 GB, and WebGL textures count against it), so phones and tablets start on 'low'
+// and the renderer runs them on the phone profile (render3d/tier.js setPhoneProfile: capped pixel
+// ratio, no MSAA, small texture sets) whatever tier the player picks.
+
+/** Shortest side (CSS px) of a touch-first screen that still counts as a phone or tablet. */
+export const MOBILE_SHORT_SIDE = 1100;
+
+/**
+ * Is this a phone or tablet? Pure: every input is passed in (mobileEnv() reads them in a browser).
+ * iOS / iPadOS (an iPad in desktop mode claims to be a Mac: a "Macintosh" with several touch points),
+ * Android and other mobile user agents, a touch-first (coarse pointer) small screen, and Safari's
+ * "Apple GPU" on a touch device all count. Desktop browsers (also Safari on a Mac: no touch) do not.
+ * @param {{ ua?: string, platform?: string, maxTouchPoints?: number, coarse?: boolean, screenW?: number, screenH?: number, gpu?: string }} e
+ * @returns {{ mobile: boolean, ios: boolean, reason: string }}
+ */
+export function detectMobile(e = {}) {
+  const ua = String(e.ua || '');
+  const tp = Number(e.maxTouchPoints) || 0;
+  const mac = /Macintosh|MacIntel/i.test(ua) || /^MacIntel$/i.test(String(e.platform || ''));
+  const ios = /\b(iPhone|iPad|iPod)\b/i.test(ua) || /^(iPhone|iPad|iPod)/i.test(String(e.platform || '')) || (mac && tp > 1);
+  if (ios) return { mobile: true, ios: true, reason: 'ios' };
+  if (/Android|Mobi|Silk|Kindle|webOS|BlackBerry|Opera Mini|IEMobile/i.test(ua)) return { mobile: true, ios: false, reason: 'ua' };
+  const sw = Number(e.screenW) || 0, sh = Number(e.screenH) || 0;
+  const short = sw > 0 && sh > 0 ? Math.min(sw, sh) : Infinity;
+  if (e.coarse && short <= MOBILE_SHORT_SIDE) return { mobile: true, ios: false, reason: 'touch' };
+  if (tp > 1 && /^Apple GPU$/i.test(String(e.gpu || '').trim())) return { mobile: true, ios: true, reason: 'apple-gpu' };
+  return { mobile: false, ios: false, reason: '' };
+}
+
+/** detectMobile's inputs read from this browser (screen size in CSS px; gpu = the probed renderer string). */
+export function mobileEnv(gpu = '') {
+  const g = typeof globalThis !== 'undefined' ? globalThis : {};
+  const nav = g.navigator || {};
+  let coarse = false;
+  try { coarse = !!(g.matchMedia && g.matchMedia('(pointer: coarse)').matches); } catch { coarse = false; }
+  const scr = g.screen || {};
+  return { ua: nav.userAgent || '', platform: nav.platform || '', maxTouchPoints: nav.maxTouchPoints || 0, coarse, screenW: scr.width || 0, screenH: scr.height || 0, gpu };
+}
+
+let mobileCached = null;
+/**
+ * This browser: a phone or tablet? `?mobile=1` / `?mobile=0` in the page address forces it (tests,
+ * screenshots). Cached; resetGpuProbe() forgets it.
+ */
+export function isMobileDevice() {
+  if (mobileCached) return mobileCached.mobile;
+  let force = null;
+  try {
+    const m = /[?&]mobile=([01])\b/.exec((globalThis.location && globalThis.location.search) || '');
+    if (m) force = m[1] === '1';
+  } catch { force = null; }
+  mobileCached = force !== null ? { mobile: force, ios: false, reason: 'forced' } : detectMobile(mobileEnv(cached ? cached.raw : ''));
+  return mobileCached.mobile;
+}
+
 /**
  * The graphics tier to start a first-time profile on, or null for "keep the existing default".
+ * Phones and tablets get 'low' (their tab's memory, see detectMobile); other touch devices are never
+ * raised; desktops get the table's recommendation.
  * @param {{ tier: 'cinematic'|'ultra'|null }} info classifyGpu() result
- * @param {{ coarse?: boolean }} [o] coarse: a phone or tablet (touch): never raised
- * @returns {'cinematic'|'ultra'|null}
+ * @param {{ coarse?: boolean, mobile?: boolean }} [o] coarse: a touch device: never raised; mobile: a phone or tablet: 'low'
+ * @returns {'cinematic'|'ultra'|'low'|null}
  */
 export function recommendedTier(info, o = {}) {
+  if (o.mobile) return 'low';
   if (!info || o.coarse) return null;
   return info.tier === 'cinematic' || info.tier === 'ultra' ? info.tier : null;
 }
@@ -153,7 +214,12 @@ export function recommendedTier(info, o = {}) {
 export function gpuLabel(info, o = {}) {
   if (!info || !info.name) return '';
   const rec = recommendedTier(info, o);
-  const label = rec === 'cinematic' ? 'Cinematic' : rec === 'ultra' ? 'Ultra' : '';
+  const label = rec === 'cinematic' ? 'Cinematic' : rec === 'ultra' ? 'Ultra' : rec === 'low' ? 'Low' : '';
+  if (o.mobile) {
+    return o.quality && o.quality !== 'low'
+      ? `${info.name} — phone or tablet: presets above Low use much more memory and may make the browser reload the page`
+      : `${info.name} — phone or tablet: Low recommended`;
+  }
   if (info.class === 'software') return `${info.name} — software rendering (no graphics card): the Low preset fits best`;
   return label ? `${info.name} — ${label} recommended` : info.name;
 }
@@ -182,10 +248,14 @@ export function probeGpu() {
   }
   const info = classifyGpu(raw);
   cached = { raw, ...info, software: !webgl || info.class === 'software', webgl };
+  // (the renderer string can now take part in the phone check)
+  if (mobileCached && mobileCached.reason !== 'forced') mobileCached = null;
+  cached.mobile = isMobileDevice();
   return cached;
 }
 
 /** Test hook: forget the cached probe. */
 export function resetGpuProbe() {
   cached = null;
+  mobileCached = null;
 }

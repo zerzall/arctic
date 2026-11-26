@@ -2512,12 +2512,44 @@ bare M1); 'integrated' (Intel UHD / Iris, AMD "Radeon Graphics", Apple "GPU" wit
 Adreno / Mali / PowerVR), 'software' (SwiftShader, llvmpipe, Microsoft Basic Render) and
 unknown or masked strings give no recommendation. Only the FIRST-TIME profile (no quality
 ever chosen: `settings.qualityPicked` false) takes the recommendation, at startup and only on
-non-touch devices: `applyDetectedTier(settings, gpu)` changes an unpicked profile's tier and
+non-touch devices (phones and tablets get Low instead: below): `applyDetectedTier(settings, gpu)` changes an unpicked profile's tier and
 never a picked one (a stored quality other than the old default 'ultra' counts as picked; a
 legacy 'high' without a stored render scale counts as unpicked). Choosing a preset in
 Settings sets `qualityPicked`. Settings names the card under the presets: "Detected: NVIDIA
 GeForce RTX 4070 Ti SUPER — Cinematic recommended" (software: "software rendering: the Low
 preset fits best"). `tests/gpu.test.js`.
+
+**Phones and tablets** (`ui/gpu.js` `detectMobile` / `isMobileDevice`, `render3d/tier.js` phone
+profile). An iOS tab is killed by WebKit at a few hundred MB to ~1.5 GB, WebGL textures included,
+and Safari names every iPhone / iPad GPU just "Apple GPU" (no model, so no table entry). Before
+this, a phone kept the desktop default 'ultra' at the native pixel ratio of 3: in iPhone emulation
+(Chromium, DPR 3, "Apple GPU") the highway game uploaded ≥ 1.4 GB of textures (4096² decal sheets,
+2048² zombie and gun arrays, the 1024² world library) and the browser's processes grew to ~3.9 GB
+RSS, which is the "A problem repeatedly occurred" reload loop on an iPhone. Now:
+- `detectMobile({ ua, platform, maxTouchPoints, coarse, screenW, screenH, gpu })` (pure, tested) is
+  true for an iOS / iPadOS user agent (an iPad in desktop mode, a "Macintosh" with
+  `maxTouchPoints > 1`, included), Android and other mobile user agents, a coarse-pointer screen
+  whose short side is ≤ `MOBILE_SHORT_SIDE` (1100 CSS px), and "Apple GPU" on a multi-touch device;
+  Safari on a Mac (no touch) and touch laptops (fine primary pointer) are desktops. `?mobile=1|0`
+  forces it. `probeGpu()` adds `mobile` to its result.
+- `recommendedTier(info, { coarse, mobile })` returns 'low' for a phone or tablet, so a first-run
+  (unpicked) profile starts on Low; desktops get exactly the recommendations above. A picked
+  quality stays; Settings then warns "presets above Low use much more memory and may make the
+  browser reload the page".
+- The renderer turns the PHONE PROFILE on (`setPhoneProfile(isMobileDevice())`) before anything
+  loads, at every tier: canvas pixel ratio ≤ `PHONE_PIXEL_RATIO` (low 1, high 1.25, ultra /
+  cinematic 1.5), world pass ≤ `PHONE_PIXEL_BUDGET` (2.2 M px), no supersampling, MSAA 0, sun and
+  flashlight shadow maps ≤ 1024²,
+  `texScale` 1; the streamed sets take their PHONE row instead of the tier's: world library
+  `BAKED_PHONE` (≤ 512², ≤ 90 MB), zombies `ZTEX_PHONE` (bodies 512², the rest 256², ≈ 30 MB), guns
+  `GUN_TEX_PHONE` (512 / 256 / 512, ≈ 67 MB), decals `DECAL_PHONE` (1024² albedo, no normal sheet,
+  ≤ 700 decals), prop models `PROP_TEX_PHONE` (256²). The decode workers take one file / set at a
+  time (world library, zombies) so few decoded RGBA buffers are alive at once.
+- Measured in iPhone emulation (`tests/phone-profile.test.js` keeps the budgets): first-run Low
+  peaks at ≈ 150 MB of textures and ~57 MB of JS heap, 12.7 MB fetched (88 MB before). The title
+  screen loads only code, the texture index and manifest, and one idle decode worker.
+- A lost WebGL context stops rendering and dispatches `hh:webglcontextlost` on window;
+  `ui/context-lost.js` covers the page with "The graphics stopped" and a Reload button.
 
 **Refresh-aware Auto resolution** (`post.js` `createDynRes(maxScale, targetFps)`, `ui/display.js`).
 `measureRefresh()` measures the rAF interval (median of ~60 intervals while the page is

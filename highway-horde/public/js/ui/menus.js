@@ -526,13 +526,14 @@ export function createSettingsDialog(ctx) {
     // what GPU this is, and what it is good for
     const coarse = isCoarsePointer();
     const g = ctx.gpu;
-    const label = g && g.name ? gpuLabel(g, { coarse }) : '';
+    const mobile = !!(g && g.mobile);
+    const label = g && g.name ? gpuLabel(g, { coarse, mobile, quality: s.quality }) : '';
     gpuNote.textContent = label ? `Detected: ${label}` : '';
     gpuNote.hidden = !label;
     const hz = ctx.display && ctx.display.refreshHz;
     const sc = typeof screen !== 'undefined' ? screen : { width: window.innerWidth, height: window.innerHeight };
     const hint = resolutionHint({
-      gpuTier: recommendedTier(g, { coarse }), quality: s.quality, width: sc.width, height: sc.height, dpr: window.devicePixelRatio || 1, refreshHz: hz,
+      gpuTier: recommendedTier(g, { coarse, mobile }), quality: s.quality, width: sc.width, height: sc.height, dpr: window.devicePixelRatio || 1, refreshHz: hz,
     });
     resHint.textContent = hint.text;
     resHint.hidden = !hint.text;

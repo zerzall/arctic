@@ -28,6 +28,8 @@ import { DET, DET_COUNT, DET_LAYERS, DET_BASE, DET_PARAMS, DET_CELLS, DET_SHIFT 
 import { planSlots } from './world-surf-sets.js';
 import { embeddedStore, textureBlob, textureURL, textureSource, textureSourceNow, textureIndex } from './tex-files.js';
 import { keptTexWorker } from './tex-worker.js';
+import { phoneProfile } from './tier.js';
+import { isMobileDevice } from '../ui/gpu.js';
 
 /** Per tier: the largest layer size used and the byte budget of both arrays (mips included). */
 export const BAKED_TIERS = Object.freeze({
@@ -36,6 +38,8 @@ export const BAKED_TIERS = Object.freeze({
   ultra: { cap: 1024, budget: 800e6 },
   cinematic: { cap: 2048, budget: 1400e6 },
 });
+/** The phone profile (tier.js) on every tier but 'low': 512² at most, both arrays within 90 MB. */
+export const BAKED_PHONE = Object.freeze({ cap: 512, budget: 90e6 });
 
 /** Bytes of the two arrays (D + C, RGBA8, a full mip chain) for `slots` layers of n². */
 export function bakedBytes(n, slots) {
@@ -46,11 +50,13 @@ export function bakedBytes(n, slots) {
  * The layer size for a tier: the library's stored size, capped by the tier, halved until both
  * arrays fit the tier's budget (never below 256). null on 'low'.
  */
-export function bakedSize(tier, slots, stored = 1024) {
+export function bakedSize(tier, slots, stored = 1024, phone = phoneProfile()) {
   const t = BAKED_TIERS[tier];
   if (!t) return null;
-  let n = Math.min(t.cap, stored);
-  while (n > 256 && bakedBytes(n, slots) > t.budget) n >>= 1;
+  const cap = phone ? Math.min(t.cap, BAKED_PHONE.cap) : t.cap;
+  const budget = phone ? Math.min(t.budget, BAKED_PHONE.budget) : t.budget;
+  let n = Math.min(cap, stored);
+  while (n > 256 && bakedBytes(n, slots) > budget) n >>= 1;
   return n;
 }
 
@@ -205,7 +211,12 @@ export function prefetchLibrary() {
   if (typeof window === 'undefined' || bakedDisabled()) return;
   libraryManifest();
   textureIndex();
-  keptTexWorker(packWorldSet, [], 3);
+  keptTexWorker(packWorldSet, [], decodeLimit());
+}
+
+/** Files the world's worker decodes at once: one on a phone or tablet (each holds a set's decoded maps). */
+function decodeLimit() {
+  try { return isMobileDevice() ? 1 : 3; } catch { return 3; }
 }
 
 // ---- GL packing --------------------------------------------------------------------------------
@@ -420,7 +431,7 @@ export async function loadBaked(o) {
     // The worker path (the files' own source: not a test's): every set's files are fetched, decoded
     // and packed in the worker, all queued at once; the main thread only uploads each set's layers as
     // they come back (one turn of it per set, not one per fetch, decode and pack).
-    const tw = source ? null : keptTexWorker(packWorldSet, [], 3);
+    const tw = source ? null : keptTexWorker(packWorldSet, [], decodeLimit());
     let stop = false;
     if (tw) {
       try {
