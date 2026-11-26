@@ -2039,8 +2039,8 @@ drops whole clumps on thin hair, and gives hair no rim and a damped grazing spec
 high and up, 8 at mid, 30 on the cinematic hero; a three-clump ponytail and a bun). Clothes are dressed on most: tops
 are holed sparingly (the material's rot holes at 1.1 − 0.3 tear, the grime set's rips at 1 − 0.34 tear, tear ≤ 0.85),
 keep more of their own colour and stay off the skin's value (a garment within 0.55–2× the skin's luminance is pushed
-out of it, lighter and dingy if the cloth was light, else darker: a top as light as the skin read as bare skin at
-night), and fold (bunched just above the hem, drawn from the armpits, at the elbows, knees and over the shoes: low,
+out of it, lighter and dingy if the cloth was light and coloured, else darker — a grimed white shirt went the grey of
+the skin and read as bare skin at night), and fold (bunched just above the hem, drawn from the armpits, at the elbows, knees and over the shoes: low,
 broken ridges, a bump and shade from the rest pose, faded out with distance).
 Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
 triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms

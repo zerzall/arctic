@@ -184,7 +184,7 @@ const ARCH = {
   bloater: [
     A('xl_tee', 24, { top: 'tee', topC: TEE, bot: 'jeans', botC: [...JEANS, ...KHAKI], shoeC: SHOE_DARK, shoe: 'sneaker', hat: [['hat_cap', 0.2]], gear: [['watch', 0.2]], gearC: CAP }),
     A('gown', 18, { top: 'gown', topC: ['#bcd4e0', '#a8c8d8', '#c8dce4'], bot: 'bare', botC: ['#bcd4e0'], shoe: 'bare', gear: [['bandage_hand', 0.4]] }),
-    A('sweater', 14, { top: 'sweater', topC: ['#6a4a3a', '#3a4a6a', '#4a6a4a', '#5a4a6a'], bot: 'trousers', botC: KHAKI, shoe: 'dress', shoeC: SHOE_DARK, gear: [['face_glasses', 0.3], ['face_beard', 0.3]] }),
+    A('sweater', 14, { top: 'sweater', topC: ['#6a2a2a', '#3a4a6a', '#4a6a4a', '#2a4a5a'], bot: 'trousers', botC: KHAKI, shoe: 'dress', shoeC: SHOE_DARK, gear: [['face_glasses', 0.3], ['face_beard', 0.3]] }),
     A('cook', 10, { top: 'apron', topC: ['#e8e8e4', '#d8d4c8'], topPat: [[0, 1]], bot: 'trousers', botC: [...DARK, '#8a8a80'], shoe: 'sneaker', shoeC: ['#e8e8e4', '#2a2a2a'], hat: [['hat_cap', 0.5]], gear: [['apron', 0.95]], gearC: ['#e8e8e4'] }),
     A('coverall', 9, { top: 'long', topC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], topPat: [[7, 4], [0, 2]], bot: 'trousers', botC: ['#4a5a3a', '#2a4a7a', '#7a4a22'], sync: true, shoe: 'boot', shoeC: BOOT, hat: [['hat_hard', 0.4]] }),
     A('shirtless', 3, { top: 'bare', topC: TEE, bot: 'trousers', botC: [...JEANS, ...KHAKI, ...DARK], shoe: 'bare', gear: [] }),
@@ -366,11 +366,12 @@ export function zombieLook(type, id, theme = '') {
     return capL(q, cap);
   };
   // a garment the skin's own value reads as bare skin at night: off it, lighter if the cloth was light
-  // (dingy, never white), else darker
+  // and coloured (dingy, never white), else darker (a grimed white shirt went the grey of the skin)
   const offSkin = (q, c0, maxL) => {
     const l = luma(q), s = luma(look.skin);
     if (l <= s * 0.55 || l >= s * 2) return q;
-    const up = luma(c0) > 0.3 && s * 2 <= maxL;
+    const sat = (Math.max(...c0) - Math.min(...c0)) / Math.max(1e-4, Math.max(...c0));
+    const up = luma(c0) > 0.3 && sat > 0.2 && s * 2 <= maxL;
     const k = (up ? s * 2 : s * 0.55) / Math.max(1e-4, l);
     return [q[0] * k, q[1] * k, q[2] * k];
   };

@@ -242,7 +242,11 @@ const SKIN_PROC = /* glsl */`    vec3 c = diffuseColor.rgb;
 `;
 const CLOTH_PROC = /* glsl */`    vec3 c = diffuseColor.rgb;
     int pat = (hhPart == 1 || hhPart == 2 || hhPart == 18) ? int(v1.w + 0.5) : ((hhPart == 3 || hhPart == 4 || hhPart == 19 || hhPart == 21) ? int(v2.x + 0.5) : 0);
-    if (pat > 0) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
+    if (pat == 4) {
+      // hi-vis bands: the reflective tape gone grey with grime and scuffed
+      float bnd = smoothstep(0.1, 0.0, abs(fract(vMP.y * 0.14 + 0.2) - 0.5) - 0.06);
+      c = mix(c, vec3(0.34, 0.35, 0.32) * (0.7 + 0.5 * hhD.r) * (1.0 - 0.45 * hhD.b), bnd);
+    } else if (pat > 0) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
     if (shirtFront) {
       // the shirt under an open jacket: paler, its own weave, a shadowed edge along the lapel
       c = baseCol * vec3(0.4, 0.39, 0.36) * (0.85 + hhD.g * 0.3);
@@ -710,7 +714,11 @@ const CLOTH_TEX = /* glsl */`
     vec4 T = zTriN(ZS_cloth, ZB_cloth + fab, vMP * kC, kC, zOff, 0.9, true, 1.0);
     int pat = (hhPart == 1 || hhPart == 2 || hhPart == 18) ? int(v1.w + 0.5) : ((hhPart == 3 || hhPart == 4 || hhPart == 19 || hhPart == 21) ? int(v2.x + 0.5) : 0);
     // (plaid, camo and prints are woven into their fabrics; pinstripes, hi-vis bands, stripes and grease stay painted)
-    if (pat == 1 || pat == 4 || pat == 6 || pat == 7) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
+    if (pat == 4) {
+      // hi-vis bands: the reflective tape gone grey with grime and scuffed (a clean 0.62 read as paint)
+      float bnd = smoothstep(0.1, 0.0, abs(fract(vMP.y * 0.14 + 0.2) - 0.5) - 0.06);
+      c = mix(c, vec3(0.34, 0.35, 0.32) * (0.7 + 0.5 * hhD.r) * (1.0 - 0.45 * hhD.b), bnd);
+    } else if (pat == 1 || pat == 6 || pat == 7) c = hhPattern(pat, c, vDUv * 2.0, vMP.y);
     if (shirtFront) { c = baseCol * vec3(0.4, 0.39, 0.36); c *= mix(1.0, 0.35, lapelK); }
     float rel = T.x * 2.0;
     c *= rel;
