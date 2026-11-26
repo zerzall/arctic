@@ -147,7 +147,8 @@ export function buildZombie(type, L, tier = 0) {
   // (the MakeHuman face has its own nose: the old skull's nose option is not built)
   const has = (name) => optSet.has(name) && name !== 'nose';
   if (tier < 2) addAccessories(sb, P, tier <= 0 ? L : Math.max(L, 1), headDeformOf(type), has, tier < 0 && L === 0, L === 0);
-  extras(sb, P, L, type, T);
+  // (low: the near model's growths at the mid level's detail)
+  extras(sb, P, tier >= 2 ? Math.max(L, 1) : L, type, T);
   transferMorphs(sb, bodyEnd);
   return sb;
 }
@@ -223,8 +224,24 @@ function surface(T, at, bones = null) {
   return { p, n: bd > 0.01 ? o.map((v) => v / l) : [1, 0, 0] };
 }
 
+// bone that broke out through the skin: yellowed and knobbly (cracked, by the shader's bone branch),
+// darker and blood-soaked toward the base (per-ring colour and paint), curving as it grows, with a
+// collar of torn skin and raw flesh round the break
+const BONE_Y = '#8e7c56', BONE_BASE = '#4e3420', RAWF = '#3a1210';
+function spur(sb, o, dir, len, r0, bone, L, curl = 0.2, seed = 0) {
+  const n = L === 0 ? 6 : 4;
+  const rings = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const bend = t * t * curl * len;
+    rings.push({ c: [o[0] + dir[0] * len * t, o[1] + dir[1] * len * t + bend, o[2] + dir[2] * len * t], r: r0 * Math.pow(1 - t, 0.85) + 0.05, bone, paint: Math.max(0, 0.95 - t * 1.5), color: t < 0.25 ? BONE_BASE : t < 0.55 ? '#6e5a3c' : BONE_Y });
+  }
+  sb.tube(rings, { seg: L === 0 ? 7 : 4, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE_Y, noise: { amp: r0 * 0.3, freq: 1.0, seed } });
+  if (L === 0) sb.ellipsoid(o, [r0 * 1.2, r0 * 1.2, r0 * 1.2], { segW: L === 0 ? 8 : 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: RAWF, bone, paint: 0.4 });
+}
+
 function extras(sb, P, L, type, T) {
-  const GLOWC = { bloater: '#b8c060', spitter: '#9cd83a', boss: '#c8a040' };
+  const GLOWC = { bloater: '#b8c060', spitter: '#9cd83a', boss: '#a86a3c' };
   if (type === 'bloater' && L < 2) {
     // weeping blisters over the swollen gut and its sides (a few glow faintly with the sickness inside)
     const cx = T.pivots[B.X1][0], cy = T.pivots[B.X1][1];
@@ -254,19 +271,19 @@ function extras(sb, P, L, type, T) {
   } else if (type === 'brute' && L < 2) {
     // bone breaking through the back and the club arm's shoulder; bony growths plating that forearm
     const spurs = [[-5, P.sY + 1, -3.5, -0.5, 5], [-5.5, P.chest + 3, 2.5, 0.35, 6], [-5, P.chest - 1, -2, -0.2, 4.5], [-3, P.sY + 3, 5, 0.8, 4], [0, P.sY + 1.5, 11, 1.3, 4.2]];
-    for (const [x, y, z, a, len] of spurs) {
+    spurs.forEach(([x, y, z, a, len], k) => {
       const s = surface(T, [x, y, z], [B.CHEST, B.UARM_R, B.NECK]);
       const bone = s.p[2] > 8 ? B.UARM_R : B.CHEST;
-      const dx = -Math.cos(a) * 0.85, dz = Math.sin(a) * 0.9, dy = 0.45, o = s.p;
-      sb.tube(lineRings([o[0] + dx * 0.3, o[1], o[2] + dz * 0.3], [o[0] + dx * len, o[1] + dy * len, o[2] + dz * len], 0.9, 0.05, 4), { seg: 6, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE, bone });
-      sb.ellipsoid([o[0], o[1], o[2]], [1.2, 1.2, 1.2], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: FLESH, bone, paint: 0.8 });
-    }
+      const d = [-Math.cos(a) * 0.85, 0.45, Math.sin(a) * 0.9], l = Math.hypot(...d);
+      spur(sb, [s.p[0] - d[0] * 0.4, s.p[1], s.p[2] - d[2] * 0.4], d.map((v) => v / l), len * 1.05, 0.95, bone, L, 0.15 + (k % 3) * 0.08, k * 3.7);
+    });
+    // the club arm's forearm plated in bony growths, stained dark where they split out of the skin
     const el = T.pivots[B.FARM_R], wr = T.pivots[B.HAND_R];
     for (let k = 0; k < (L === 0 ? 7 : 3); k++) {
       const t = (k + 0.5) / 7, a = k * 2.1;
       const c = [el[0] + (wr[0] - el[0]) * t + Math.cos(a) * 3, el[1] + (wr[1] - el[1]) * t, el[2] + (wr[2] - el[2]) * t + Math.sin(a) * 3];
       const s = surface(T, c, [B.FARM_R]);
-      sb.ellipsoid([s.p[0], s.p[1], s.p[2]], [1.0, 1.4, 0.9], { segW: 6, segH: 4, rot: [a, 0, 0.3], slot: SLOT.FIXED, mat: MAT.BONE, color: '#bfb190', bone: B.FARM_R,
+      sb.ellipsoid([s.p[0], s.p[1], s.p[2]], [1.0, 1.4, 0.9], { segW: 6, segH: 4, rot: [a, 0, 0.3], slot: SLOT.FIXED, mat: MAT.BONE, color: k % 2 ? BONE_Y : '#9a8662', bone: B.FARM_R, paint: 0.35,
         deform: (p) => { if (p.y > 0) { p.x *= 1 - p.y * 0.6; p.z *= 1 - p.y * 0.6; } } });
     }
   } else if (type === 'boss') {
@@ -280,37 +297,66 @@ function extras(sb, P, L, type, T) {
       for (let i = 0; i < nv; i++) {
         const y = top[1] + 1 - (i / (nv - 1)) * (top[1] - bot[1] + 1);
         const s = surface(T, [-14, y, 0], [B.CHEST, B.X1, B.SPINE]);
-        sb.ellipsoid([s.p[0] - 0.5, y, 0], [1.05, 0.72, 1.25], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE, bone: B.X1 });
-        if (L === 0) for (const z of [-1, 1]) sb.tube(lineRings([s.p[0] - 0.3, y, z * 1.2], [s.p[0] + 1.6, y - 0.9, z * 5.2], 0.28, 0.14, 3), { seg: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE, bone: B.X1 });
+        // (each vertebra a different size and stain, a spinous process up its back, blood in the joints)
+        const vk = 0.85 + ((i * 0.37) % 0.3);
+        sb.ellipsoid([s.p[0] - 0.5, y, 0], [1.05 * vk, 0.72, 1.25 * vk], { segW: 6, segH: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: i % 3 ? BONE_Y : '#9c8862', bone: B.X1, paint: 0.3 });
+        if (L === 0) {
+          sb.tube(lineRings([s.p[0] - 0.9, y, 0], [s.p[0] - 2.0, y - 0.7, 0], 0.4, 0.12, 3), { seg: 4, cap1: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE_Y, bone: B.X1, paint: 0.15 });
+          for (const z of [-1, 1]) sb.tube(lineRings([s.p[0] - 0.3, y, z * 1.2], [s.p[0] + 1.6, y - 0.9, z * 5.2], 0.28, 0.14, 3), { seg: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: '#8e7a56', bone: B.X1, paint: 0.6 });
+        }
         if (i % 2 === 0 && i < 9) {
           const z = (i % 4 ? 1 : -1) * 4.2, sp = surface(T, [-14, y, z], [B.CHEST, B.X1, B.SPINE]).p, a = z > 0 ? 0.45 : -0.45, len = 6 + (i % 3) * 2.2;
-          sb.tube(lineRings(sp, [sp[0] - Math.cos(a) * 0.8 * len, sp[1] + 0.5 * len, sp[2] + Math.sin(a) * 0.95 * len], 1.1, 0.06, 4), { seg: L === 0 ? 7 : 5, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.BONE, color: '#c8bc9c', bone: B.X1 });
+          const d = [-Math.cos(a) * 0.8, 0.5, Math.sin(a) * 0.95], l = Math.hypot(...d);
+          spur(sb, sp, d.map((v) => v / l), len * 1.1, 1.15, B.X1, L, 0.12 + (i % 3) * 0.1, i * 2.3);
         }
       }
       for (const z of [-1, 1]) {
         const sp = surface(T, [-1, P.sY + 4, z * 11], [B.CHEST, B.UARM_L, B.UARM_R]).p;
-        sb.tube(lineRings(sp, [sp[0] - 1, sp[1] + 4.5, sp[2] + z * 5], 1.1, 0.06, 4), { seg: 6, cap0: 'round', capRings: 1, slot: SLOT.FIXED, mat: MAT.BONE, color: '#c8bc9c', bone: B.CHEST });
+        const d = [-1, 4.5, z * 5], l = Math.hypot(...d);
+        spur(sb, sp, d.map((v) => v / l), l * 1.05, 1.15, B.CHEST, L, 0.2, z * 5.1);
       }
       for (let k = 0; k < (L === 0 ? 12 : 5); k++) {
         const a = k * 2.4, s = surface(T, [Math.cos(a) * 12, P.chest - 6 + (k % 4) * 3.5, Math.sin(a) * 12], [B.CHEST, B.SPINE, B.X1]);
-        const r = 0.8 + (k % 3) * 0.45;
+        const r = 0.6 + (k % 3) * 0.35;
         sb.ellipsoid(s.p, [r, r, r], { segW: 6, segH: 4, slot: SLOT.GLOW, mat: MAT.GLOW, color: GLOWC.boss, bone: B.CHEST });
       }
       // third arm: withered, clawed, sprouting from the left shoulder blade
       const sh = surface(T, [-6, P.sY - 3, -9], [B.CHEST, B.X1]).p;
       const X2 = B.X2;
+      // (grown, not born: a lumpy, wasted limb, knotted at the elbow where the bone has come through,
+      // sinews bare down its outside, sewn into a raw seam on the shoulder blade with crude stitches)
       sb.tube([
-        { c: [sh[0] + 0.5, sh[1], sh[2] + 0.4], r: 1.6, bone: B.CHEST },
-        { c: [sh[0] - 0.4, sh[1] - 6, sh[2] - 1.2], r: 1.3, bone: X2 },
-        { c: [sh[0] - 0.2, sh[1] - 12, sh[2] - 1.8], r: 1.0, bone: X2 },
-        { c: [sh[0] + 0.1, sh[1] - 16.5, sh[2] - 2.0], r: 0.8, bone: X2 },
-      ], { seg: L === 0 ? 8 : 5, cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#d8d8d8', paint: 0.5, part: PART.LIMB });
+        { c: [sh[0] + 0.5, sh[1], sh[2] + 0.4], r: 1.7, bone: B.CHEST },
+        { c: [sh[0] - 0.2, sh[1] - 3, sh[2] - 0.6], r: 1.15, bone: X2 },
+        { c: [sh[0] - 0.4, sh[1] - 6, sh[2] - 1.2], r: 1.0, bone: X2 },
+        { c: [sh[0] - 0.4, sh[1] - 8.5, sh[2] - 1.5], r: 1.35, bone: X2 },
+        { c: [sh[0] - 0.2, sh[1] - 12, sh[2] - 1.8], r: 0.75, bone: X2 },
+        { c: [sh[0] + 0.1, sh[1] - 16.5, sh[2] - 2.0], r: 0.85, bone: X2 },
+      ], { seg: L === 0 ? 9 : 5, cap1: 'round', capRings: 1, slot: SLOT.SKIN, mat: MAT.SKIN, color: '#b4aca4', paint: 0.55, part: PART.LIMB, noise: { amp: 0.28, freq: 0.9, seed: 4.2 } });
+      sb.ellipsoid([sh[0] + 0.5, sh[1] - 0.3, sh[2] + 0.4], [2.5, 1.1, 2.5], { segW: L === 0 ? 10 : 6, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: RAWF, bone: B.CHEST, paint: 1 });
+      spur(sb, [sh[0] - 1.3, sh[1] - 8.5, sh[2] - 1.5], [-0.8, -0.35, -0.5], 2.6, 0.55, X2, L, 0, 1.1);
+      if (L === 0) {
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2, cx = sh[0] + 0.5 + Math.cos(a) * 2.35, cz = sh[2] + 0.4 + Math.sin(a) * 2.35;
+          sb.tube(lineRings([cx, sh[1] + 0.9, cz], [cx - Math.cos(a) * 0.3, sh[1] - 1.4, cz - Math.sin(a) * 0.3], 0.1, 0.1, 2), { seg: 3, slot: SLOT.FIXED, mat: MAT.LEATHER, color: '#1a1410', bone: B.CHEST });
+        }
+        for (const o of [-0.7, 0.7]) sb.tube(lineRings([sh[0] - 0.6, sh[1] - 1.5, sh[2] + o], [sh[0] - 1.2, sh[1] - 8, sh[2] - 1.4 + o * 0.6], 0.22, 0.16, 4), { seg: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: '#6a2620', bone: X2, paint: 0.6 });
+      }
       for (let f = 0; f < 3; f++) {
-        sb.tube(lineRings([sh[0] + 0.3, sh[1] - 17, sh[2] - 2 + (f - 1) * 0.7], [sh[0] + 1.5, sh[1] - 20.5, sh[2] - 2 + (f - 1) * 1.1], 0.35, 0.03, 3), { seg: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE, bone: X2 });
+        const z0 = sh[2] - 2 + (f - 1) * 0.7;
+        sb.tube([
+          { c: [sh[0] + 0.3, sh[1] - 17, z0], r: 0.38, bone: X2, color: BONE_BASE, paint: 0.6 },
+          { c: [sh[0] + 1.1, sh[1] - 19.5, z0 + (f - 1) * 0.3], r: 0.24, bone: X2, color: BONE_Y, paint: 0.1 },
+          { c: [sh[0] + 2.4, sh[1] - 21.2, z0 + (f - 1) * 0.5], r: 0.03, bone: X2, color: BONE_Y, paint: 0 },
+        ], { seg: 4, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE_Y });
       }
       // horns
       const c = P.headC, r = P.headR;
-      for (const s of [-1, 1]) sb.tube([{ c: [c[0] - 0.5, c[1] + r[1] * 0.72, s * 2.0], r: 0.8, bone: B.HEAD }, { c: [c[0] - 1.6, c[1] + r[1] + 1.2, s * 3.2], r: 0.62, bone: B.HEAD }, { c: [c[0] - 3.2, c[1] + r[1] + 2.8, s * 3.7], r: 0.36, bone: B.HEAD }, { c: [c[0] - 4.8, c[1] + r[1] + 3.2, s * 3.4], r: 0.05, bone: B.HEAD }], { seg: 6, slot: SLOT.FIXED, mat: MAT.BONE, color: '#bfb496' });
+      for (const s of [-1, 1]) {
+        sb.tube([{ c: [c[0] - 0.5, c[1] + r[1] * 0.72, s * 2.0], r: 0.8, bone: B.HEAD, color: BONE_BASE, paint: 0.9 }, { c: [c[0] - 1.6, c[1] + r[1] + 1.2, s * 3.2], r: 0.62, bone: B.HEAD, color: '#9a8660', paint: 0.35 }, { c: [c[0] - 3.2, c[1] + r[1] + 2.8, s * 3.7], r: 0.36, bone: B.HEAD, color: BONE_Y, paint: 0 }, { c: [c[0] - 4.8, c[1] + r[1] + 3.2, s * 3.4], r: 0.05, bone: B.HEAD, color: BONE_Y, paint: 0 }], { seg: 6, slot: SLOT.FIXED, mat: MAT.BONE, color: BONE_Y, noise: { amp: 0.1, freq: 2.2, seed: s } });
+        // (split out through the scalp: a ring of torn, raw skin round each)
+        if (L === 0) sb.ellipsoid([c[0] - 0.6, c[1] + r[1] * 0.68, s * 1.95], [1.15, 0.5, 1.15], { segW: 7, segH: 4, slot: SLOT.FIXED, mat: MAT.FLESH, color: RAWF, bone: B.HEAD, paint: 1 });
+      }
     }
   } else if (type === 'crawler' && L === 0) {
     // entrails trailing from a torn belly, dragged along the ground

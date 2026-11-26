@@ -297,10 +297,14 @@ const SHADE_REST = /* glsl */`  } else if (hhM == 3 || hhM == 10) {
     }
     zSpec = hhM == 3 ? 0.6 : 0.4;
   } else if (hhM == 4) {
-    // bone: dry, stained ivory with dark pits
-    diffuseColor.rgb *= 0.8 + hhD.r * 0.25;
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.14, 0.08), hhD.b * 0.4);
-    zSpec = 0.6;
+    // bone: dry, yellowed and stained, dark pits, hairline cracks filled with grime (the detail
+    // textures' ridges), blood dried into the porous base (the paint, Z_BLOOD)
+    diffuseColor.rgb *= 0.78 + hhD.r * 0.3;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.14, 0.08), hhD.b * 0.45);
+    float zCrack = smoothstep(0.05, 0.0, abs(hhD2.r - 0.5) - 0.012) * smoothstep(0.35, 0.6, hhD.g);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.025, 0.018), zCrack * 0.85);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.32, 0.22), vI.y * 0.6);
+    zSpec = 0.45 * (1.0 - zCrack);
   } else if (hhM == 5) {
     // matted, greasy, dusty hair: in strands (the clumps' own, Z_CUTS; a weave of them on a bun or a
     // beard), darker at the roots and in the clump's shade, a grey film of dust in places; its sheen
@@ -614,9 +618,11 @@ const SKIN_TEX = /* glsl */`
     }
     // the person's own skin tone: its lightness and a share of its hue (the decay colours stay)
     float tl = max(0.004, dot(tSkin.rgb, ZLUMA));
-    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, 0.15) * clamp(tl / 0.33, 0.42, 1.2);
+    // (the brute's and the boss's own dead colour stays theirs: no warm cast from a living tone)
+    bool zBig = uZTex.x > 1.5 && uZTex.x < 2.5 || uZTex.x > 3.5;
+    vec3 toneK = mix(vec3(1.0), tSkin.rgb / tl, zBig ? 0.0 : 0.15) * clamp(tl / 0.33, zBig ? 0.55 : 0.42, 1.1);
     // (the atlas carries its own occlusion and features: only a share of the vertex shading)
-    vec3 c = zLin(A.rgb) * toneK * (zUV ? mix(vec3(1.0), baseCol, 0.25) : mix(vec3(1.0), baseCol * 1.12, 0.75));
+    vec3 c = zLin(A.rgb) * toneK * (zUV ? mix(vec3(1.0), zBig ? vec3(dot(baseCol, ZLUMA)) : baseCol, 0.25) : mix(vec3(1.0), baseCol * 1.12, 0.75));
     // (a mottle at another scale from the procedural detail, so no two tiles of skin match)
     c *= 0.84 + 0.28 * hhD.r;
     // (dead skin is a drained colour: the atlas' decay tints stay, a little greyed; dark skin goes ashen)
@@ -759,7 +765,10 @@ const CLOTH_TEX = /* glsl */`
     c = mix(c, c * vec3(0.6, 0.55, 0.34), fl * 0.6);
     // holes: opened wider the more torn the clothes (frayed, dirty rims)
     vec4 GB = zTriN(ZS_grimeB, ZB_grimeB, vMP * gk, gk, zOff, 1.0, false, clamp(max(sk * (1.0 - fresh * 0.6), md) * 0.85, 0.0, 1.0));
-    float th = 1.0 - tear * 0.34;
+    // (the brute's and the boss's clothes burst open over the muscle: wider rips over the chest, the
+    // shoulders, the back and the thighs)
+    float zBurst = (uZTex.x > 1.5 && uZTex.x < 2.5 || uZTex.x > 3.5) ? (topG ? 0.6 + 0.4 * smoothstep(uBody.y, uBody.z, vMP.y) : botG ? smoothstep(10.0, 20.0, vMP.y) * smoothstep(31.0, 25.0, vMP.y) : 0.0) : 0.0;
+    float th = 1.0 - tear * 0.34 - zBurst * 0.16;
     if (GB.w > th) discard;
     c *= mix(1.0, 0.5, smoothstep(th - 0.05, th, GB.w));
     // dinginess: everything they wear has gone a dirtier, duller colour, sun-faded where it was bright
