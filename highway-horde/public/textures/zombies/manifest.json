@@ -138,23 +138,23 @@
     "albedo": {
      "file": "body-brute-albedo.png",
      "size": 2048,
-     "bytes": 2732344
+     "bytes": 2716810
     },
     "normal": {
      "file": "body-brute-normal.png",
      "size": 2048,
-     "bytes": 3430539
+     "bytes": 3917882
     },
     "pack": {
      "file": "body-brute-pack.png",
      "size": 1024,
-     "bytes": 1187430
+     "bytes": 1267102
     }
    },
    "hashes": {
-    "albedo": "e7ece5794d1eee79",
-    "normal": "742b86e2665fb3f6",
-    "pack": "f4ce6e871fe86794"
+    "albedo": "0821e12294bea562",
+    "normal": "01ff8b81ca81adf0",
+    "pack": "3bd13c7a1c7352c1"
    }
   },
   {
@@ -190,23 +190,23 @@
     "albedo": {
      "file": "body-boss-albedo.png",
      "size": 2048,
-     "bytes": 2819559
+     "bytes": 2693089
     },
     "normal": {
      "file": "body-boss-normal.png",
      "size": 2048,
-     "bytes": 3559745
+     "bytes": 3958064
     },
     "pack": {
      "file": "body-boss-pack.png",
      "size": 1024,
-     "bytes": 1274627
+     "bytes": 1280433
     }
    },
    "hashes": {
-    "albedo": "b0635fa9e44e84b9",
-    "normal": "40e4c92a4e1605ae",
-    "pack": "45194439f7b2f0be"
+    "albedo": "dee54ed6da14c93f",
+    "normal": "bed58f390de9f168",
+    "pack": "7542a37a410c46c6"
    }
   },
   {

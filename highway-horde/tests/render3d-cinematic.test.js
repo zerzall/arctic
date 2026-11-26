@@ -128,7 +128,8 @@ test('the ultra and lower actor models are unchanged by the cinematic code (regr
   // triangle counts measured before the V2 pass (de88dae): the tiers below cinematic must not move;
   // the zombies' were re-measured after the MakeHuman bodies (actor-zbody.js: tests/zombie-models.test.js
   // keeps their budgets per tier) and again after the hair / clothing pass (actor-zkit.js accessories)
-  const expect = { walker: [21174, 5889, 778], runner: [17360, 5124, 778], brute: [15398, 4950, 778], boss: [15101, 5032, 778] };
+  // and the brute's and boss's muscle, bone growths and grafted arm (actor-zbody.js brawn, actor-zmodels.js spur)
+  const expect = { walker: [21174, 5889, 778], runner: [17360, 5124, 778], brute: [16093, 4818, 778], boss: [16257, 5065, 778] };
   for (const [type, e] of Object.entries(expect)) {
     for (let L = 0; L < 3; L++) assert.equal(zm.buildZombie(type, L, 0).I.length / 3, e[L], `${type} L${L}`);
   }

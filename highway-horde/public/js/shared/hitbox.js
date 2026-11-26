@@ -45,8 +45,8 @@ const PARAMS = {
   bloater: { hip: 29.76, knee: 16.14, ankle: 2.36, legGap: 3.45, thighR: 2.88, calfR: 1.7, waist: 34.99, sY: 44.67, sw: 5.97, uarm: 8.19, farm: 7.86, armR: 1.8, neck: 48.38, headC: [1.71, 52.47], headR: [3.3, 4.16, 3.03], bulk: 1.3, depth: 1.32, neckR: 1.45 },
   spitter: { hip: 29.78, knee: 16.13, ankle: 2.37, legGap: 3.46, thighR: 1.99, calfR: 1.25, waist: 35.03, chest: 37.59, sY: 44.71, sw: 5.57, farm: 7.87, armR: 1.12, neck: 48.42, headC: [1.55, 52.99], headR: [3.04, 4.67, 2.79], bulk: 0.95, depth: 0.95, neckR: 1.1 },
   screamer: { hip: 29.75, knee: 16.17, thighR: 1.59, calfR: 1.05, waist: 35.03, chest: 37.59, sY: 44.69, sw: 5.55, uarm: 8.67, farm: 8.9, armR: 0.9, neck: 48.39, headC: [1.56, 52.44], headR: [3, 4.19, 2.78], bulk: 0.86, depth: 0.85, neckR: 0.9 },
-  brute: { hip: 29.76, knee: 16.68, ankle: 3.72, legGap: 3.45, thighR: 3.71, calfR: 2.31, waist: 34.99, sY: 44.5, sw: 6.85, uarm: 8.07, farm: 8.06, armR: 2.52, neck: 48.24, headC: [4.43, 51.37], headR: [3.7, 4.27, 2.71], bulk: 1.3, depth: 1.45, upper: 1.28, neckR: 1.9, rArmK: 1.45 },
-  boss: { hip: 29.76, knee: 16.54, ankle: 3.45, legGap: 3.45, thighR: 3.8, calfR: 2.42, waist: 34.99, sY: 44.48, sw: 7.07, uarm: 8.21, farm: 8.42, armR: 2.81, neck: 48.22, headC: [4.71, 51.2], headR: [3.68, 4.26, 2.66], bulk: 1.35, depth: 1.55, upper: 1.3, neckR: 2.0 },
+  brute: { hip: 29.76, knee: 16.68, ankle: 3.72, legGap: 3.45, thighR: 4.05, calfR: 2.57, waist: 34.99, sY: 44.5, sw: 6.85, uarm: 8.07, farm: 8.06, armR: 3.37, neck: 48.24, headC: [4.43, 51.37], headR: [3.7, 4.27, 2.71], bulk: 1.3, depth: 1.45, upper: 1.28, neckR: 1.9, rArmK: 1.45 },
+  boss: { hip: 29.76, knee: 16.54, ankle: 3.45, legGap: 3.45, thighR: 4.22, calfR: 2.74, waist: 34.99, sY: 44.48, sw: 7.07, uarm: 8.21, farm: 8.42, armR: 3.9, neck: 48.22, headC: [4.71, 51.2], headR: [3.68, 4.26, 2.66], bulk: 1.35, depth: 1.55, upper: 1.3, neckR: 2.0 },
 };
 const typeParams = new Map();
 function paramsOf(type) {

@@ -76,12 +76,12 @@ export const ZBODY = {
   spitter: { mix: { thin: 0.7 }, decay: 1.1, throat: 1, scale: { NECK: [1, 1.12, 1] } },
   screamer: { mix: { thin: 1.1, old: 0.1 }, decay: 1.45, jaw: 1, scale: { UARM_L: [1, 1.06, 1], UARM_R: [1, 1.06, 1], FARM_L: [1, 1.07, 1], FARM_R: [1, 1.07, 1] } },
   brute: {
-    mix: { muscle: 1.0, fat: 0.55 }, decay: 0.3, hunch: 1,
+    mix: { muscle: 1.0, fat: 0.55 }, decay: 0.3, hunch: 1, brawn: 1,
     rot: { CHEST: [0, 0, -0.12], NECK: [0, 0, -0.22], HEAD: [0, 0, 0.3] },
     scale: { CHEST: [1.12, 1, 1.24], NECK: [1.1, 1, 0.82], HEAD: [0.98, 0.96, 0.95], UARM_L: [1.32, 1, 1.32], UARM_R: [1.45, 1.02, 1.45], FARM_L: [1.08, 1, 1.08], FARM_R: [1.12, 1.02, 1.12], HAND_L: [1.1, 1.1, 1.1], HAND_R: [1.15, 1.15, 1.15], THIGH_L: [1.28, 0.96, 1.28], THIGH_R: [1.28, 0.96, 1.28], SHIN_L: [1.12, 0.98, 1.12], SHIN_R: [1.12, 0.98, 1.12] },
   },
   boss: {
-    mix: { muscle: 1.0, fat: 0.7 }, decay: 0.55, hunch: 1, hump: 1,
+    mix: { muscle: 1.0, fat: 0.7 }, decay: 0.55, hunch: 1, hump: 1, brawn: 1.2,
     rot: { CHEST: [0, 0, -0.13], NECK: [0, 0, -0.24], HEAD: [0, 0, 0.32] },
     scale: { CHEST: [1.16, 1, 1.28], NECK: [1.1, 1, 0.8], HEAD: [0.95, 0.94, 0.93], UARM_L: [1.4, 1.02, 1.4], UARM_R: [1.4, 1.02, 1.4], FARM_L: [1.12, 1.02, 1.12], FARM_R: [1.12, 1.02, 1.12], HAND_L: [1.15, 1.15, 1.15], HAND_R: [1.15, 1.15, 1.15], THIGH_L: [1.3, 0.97, 1.3], THIGH_R: [1.3, 0.97, 1.3], SHIN_L: [1.15, 0.98, 1.15], SHIN_R: [1.15, 0.98, 1.15] },
   },
@@ -195,6 +195,42 @@ export function zbodyType(type) {
       if (cfg.throat && (b === B.NECK || (b === B.CHEST && y > J.NECK[1] - 2))) {
         const k = gauss(y - (J.NECK[1] + 0.6), 1.3) * sm(-0.6, 1.0, x - J.NECK[0]);
         x += 1.5 * k; z *= 1 + 0.32 * k;
+      }
+      // the brute's and the boss's mutated muscle, reading under the skin: a trapezius that buries the
+      // neck in the shoulders, bulging deltoids, a slab of pectoral with a hard lower edge, lats that
+      // flare the back, biceps and triceps, a knotted forearm, the calves (radial from each limb's axis)
+      if (cfg.brawn) {
+        const k0 = cfg.brawn, sY = J.UARM_L[1], az = Math.abs(z);
+        if (b === B.CHEST || b === B.NECK || b === B.SPINE) {
+          const sw = Math.abs(J.UARM_L[2]);
+          const trap = gauss(y - (sY + 1.6 - (az - 1.5) * 0.35), 1.5) * sm(1.0, 2.4, az) * sm(sw + 1.0, sw - 1.2, az) * sm(1.8, -0.5, x);
+          y += 1.0 * k0 * trap; x -= 0.35 * k0 * trap;
+          const pec = gauss(y - (sY - 3.6), 2.0) * sm(sY - 6.8, sY - 5.6, y) * gauss(az - 2.6, 2.1) * sm(0.0, 2.0, x);
+          x += 0.75 * k0 * pec;
+          const lat = gauss(y - (sY - 5.5), 3.2) * sm(-1.5, 0.5, -x) * sm(2.5, 4.5, az);
+          z += Math.sign(z) * 0.45 * k0 * lat; x -= 0.25 * k0 * lat;
+        }
+        const limb = (top, bot, at, s, fr, bk) => {
+          const t = gauss(y - (top[1] - (top[1] - bot[1]) * at), s);
+          const rx = x - (top[0] + (bot[0] - top[0]) * 0.5), rz = z - top[2], l = Math.hypot(rx, rz) || 1;
+          const push = t * (rx > 0 ? fr : bk) * k0 + t * 0.2 * k0;
+          x += (rx / l) * push; z += (rz / l) * push;
+        };
+        const L = b === B.UARM_L || b === B.FARM_L || b === B.THIGH_L || b === B.SHIN_L;
+        if (b === B.UARM_L || b === B.UARM_R) {
+          const u = L ? J.UARM_L : J.UARM_R, f = L ? J.FARM_L : J.FARM_R;
+          limb(u, f, 0.12, 1.7, 0.35, 0.35);    // deltoid
+          limb(u, f, 0.55, 2.0, 0.5, 0.35);     // biceps / triceps
+        } else if (b === B.FARM_L || b === B.FARM_R) {
+          const f = L ? J.FARM_L : J.FARM_R, h = L ? J.HAND_L : J.HAND_R;
+          limb(f, h, 0.28, 2.2, 0.3, 0.4);
+        } else if (b === B.SHIN_L || b === B.SHIN_R) {
+          const s = L ? J.SHIN_L : J.SHIN_R, f = L ? J.FOOT_L : J.FOOT_R;
+          limb(s, f, 0.3, 2.4, 0.0, 0.5);
+        } else if (b === B.THIGH_L || b === B.THIGH_R) {
+          const th = L ? J.THIGH_L : J.THIGH_R, s = L ? J.SHIN_L : J.SHIN_R;
+          limb(th, s, 0.62, 2.6, 0.35, 0.1);    // the quadriceps over the knee
+        }
       }
       // the boss's hump over the shoulder blades
       if (cfg.hump && (b === B.CHEST || b === B.NECK || b === B.SPINE)) {

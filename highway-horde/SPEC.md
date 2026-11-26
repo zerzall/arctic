@@ -2012,7 +2012,8 @@ mixes stored as posed deltas — everything in one base64 module, decoded synchr
 starved and a little old, the runner fresh with some muscle, the crawler emaciated and legless above the knee, the
 bloater fat with a swollen, sagging gut on X1 so it heaves, the spitter's throat goitre on X1, the screamer emaciated
 with a long jaw and longer arms, the brute and the boss muscled, fat, broad, with bone scales and a hunch; the boss's
-hump), decay sculpted into the surface (sunken eyeballs, sockets, temples and cheeks, receding lips, collarbones and ribs),
+hump; their mutated muscle sculpted to read under the skin, `ZBODY.brawn`: a trapezius that buries the neck, deltoids, a
+slab of pectoral, flared lats, biceps and triceps, knotted forearms, quadriceps and calves), decay sculpted into the surface (sunken eyeballs, sockets, temples and cheeks, receding lips, collarbones and ribs),
 and the type's skeleton pivots and proportions measured from that shape (feet on y = 0, ~56 units tall; heads within
 ~2 units of the old procedural ones). Clothes are shells offset from a coarser level of the body and relaxed outward
 over hollows (the top and sleeves, the trousers), cut per instance as before; far models paint them onto the body.
@@ -2028,9 +2029,13 @@ web), veins under thin skin, livor in the back, the backs of the legs and the ex
 scrapes on the knees, elbows and knuckles, dirt in patches and runs and worked into every crease (a cavity pass over
 the paint's height), old blood smeared on the hands and arms, slipped skin and leathery cracks on the long dead;
 near-black sunken sockets, red-rimmed lids, crusted nostrils, cracked lips, the blood run from the mouth; nails, palms,
-soles, the navel, the folds at the joints; the specials' own (the brute grey with a bruised purple-brown cast, scarred,
-split by stretch marks over the shoulders and arms, bulging veins, filthy; the boss necrotic with ulcers and raw
-muscle; the bloater taut and blistered; the spitter's acid burns; the screamer's bloodless blue-grey and dark veins).
+soles, the navel, the folds at the joints; the specials' own (the brute and the boss desaturated to a dead grey-green / grey (`desat`; the shader takes no hue
+from the person's tone for them and only the luma of the vertex colour), the skin split open by the mutation over the
+shoulders, arms, chest, back and thighs (`split`: raw, fibrous, wet muscle with pale fascia, a thin yellow layer of fat
+at the torn edge, the skin curled back, a bruised halo, dried blood run down from each split), livid and silvered
+striae, muscle cords and veins in relief (`cords`, `veinH`; the height ×1.8, `relief`), greasy and dry patches
+(`roughVar`), scarred and filthy; the boss also necrotic with ulcers, the strip down its back flayed raw round the bared
+spine (`spineRaw`) and the third arm's graft stitched into the left shoulder blade (`graft`); the bloater taut and blistered; the spitter's acid burns; the screamer's bloodless blue-grey and dark veins).
 The shader takes the creases at 75 % (dry skin's specular is weak and gone from them), greys the atlas only a little,
 and tints it toward the person's tone. The fabrics are Poly Haven scans (`scripts/zbake/fabric.js`). The eyes are
 shaded in the material (a dull, clouded, yellowed white, milky iris) from the eye centres, their glow a dim sheen (a
@@ -2056,6 +2061,13 @@ keep more of their own colour and stay off the skin's value (a garment within 0.
 out of it, lighter and dingy if the cloth was light and coloured, else darker — a grimed white shirt went the grey of
 the skin and read as bare skin at night), and fold (bunched just above the hem, drawn from the armpits, at the elbows, knees and over the shoes: low,
 broken ridges, a bump and shade from the rest pose, faded out with distance).
+The brute's and boss's growths are bone that broke out (`actor-zmodels.js` `spur`): knobbly, curved, yellowed and darker,
+blood-soaked toward the base (per-ring colour and paint), a collar of raw flesh round the break on the near model; the
+bone shading adds hairline cracks filled with grime and stains the painted base. The boss's vertebrae vary in size and
+stain, with spinous processes; its horns split out through raw scalp; its third arm is a lumpy, wasted limb knotted at
+the elbow where a spur of bone has come through, bare sinews down its outside, sewn into a raw seam with eight crude
+stitches, with long yellowed claws. Their clothes burst open over the muscle (the cloth shader opens wider rips over the
+chest, shoulders, back and thighs). On low the near model carries the growths at the mid level's detail.
 Measured (SwiftShader, 1280×720, the actors sandbox's 250-zombie horde, ~75 drawn): high 194 draw calls / 1.24 M
 triangles / JS 14.2 ms / zombies3d 1.5 ms (the procedural bodies: 199 / 1.11 M / 13.4 / 1.1); low 136 / 0.41 M / 8.4 ms
 (134 / 0.38 M / 8.6). Zombie texture VRAM on high 119 MB (was 130). Heads at scale 1 (the head frame's centre, x forward):
@@ -2065,7 +2077,8 @@ Zombie variety (`actor-zlook.js`, `actor-rigmat.js`): `zombieLook(type, id)` is 
 sim id (same person on every client; `tests/zlook.test.js`): an archetype per type (walkers are commuters,
 executives, police, firefighters, EMTs, soldiers, prisoners, tourists, hikers, farmers, patients in gowns ...;
 runners joggers in long sleeves and track pants, teens, tracksuits; screamers nurses and patients; brutes riot cops,
-bouncers, inmates in jumpsuits, welded scrap; the boss in rags and torn trousers) — dressed: bare chests,
+bouncers, inmates, butchers, welded scrap and labourers in burst work clothes and overalls; the boss in shreds of a
+shirt over its shoulders and chest (`shreds`) and the rag of its trousers round the hips (`loin`)) — dressed: bare chests,
 vests and shorts are a minority of every type (the bloater's belly hangs out under the top on about half), a human
 skin tone greyed towards the type's decay tint, hair style (its threshold, clumps) and colour, hat, glasses, packs, belts, lanyards,
 shoes or bare feet, wounds (gash, exposed bone, bite, bullet, burn, acid — two per zombie, painted in

@@ -200,11 +200,16 @@ export const BODY_LOOKS = {
   'body-spitter': { tones: ['#8a866a', '#8e865e', '#7a7e68'], third: '#7a6e70', mottle: 0.34, marble: 0.6, marbleK: [0.46, 0.52, 0.32], veins: 0.75, veinK: [0.48, 0.56, 0.38], liv: 0.55, livK: [0.72, 0.52, 0.56], bruise: 0.45, sores: 0.5, scrape: 0.7, dirt: 0.75, blood: 0.4, slip: 0.25, crack: 0.15, acid: 1, rough: 0.66, wet: 0.35, sock: '#221c12', lip: '#382e20', nail: '#5e5840' },
   // the brute: grey with a bruised purple-brown cast (no pink), battered and scarred, the skin split by
   // the growth in stretch marks over the shoulders, arms and chest, bulging dark veins, filthy
-  'body-brute': { tones: ['#7a7472', '#6a6e6b', '#83756b'], third: '#6c5a68', mottle: 0.36, marble: 0.4, marbleK: [0.56, 0.5, 0.52], veins: 1.0, veinK: [0.46, 0.42, 0.56], veinH: 1.8, liv: 0.6, livK: [0.72, 0.5, 0.6], bruise: 0.95, sores: 0.45, scrape: 1.0, dirt: 0.95, blood: 0.65, slip: 0.1, crack: 0.2, scars: 1, stretchArms: 1, rough: 0.72, wet: 0.3, sock: '#1e1418', lip: '#33242a', nail: '#504840' },
+  // the mutation tore it open: bursts of raw, fibrous muscle where the growth outran the skin (the
+  // shoulders, arms, chest, back), livid striae, a grey-green dead cast (no warm skin left), cords of
+  // muscle and vein in strong relief, greasy and dry by turns
+  'body-brute': { tones: ['#64675f', '#565c54', '#6a645a'], third: '#544a58', desat: 0.45, mottle: 0.5, marble: 0.4, marbleK: [0.6, 0.56, 0.56], veins: 1.0, veinK: [0.38, 0.4, 0.46], veinH: 2.6, liv: 0.75, livK: [0.66, 0.46, 0.6], bruise: 0.95, sores: 0.55, scrape: 1.0, dirt: 0.8, blood: 0.8, slip: 0.15, crack: 0.25, scars: 1, stretchArms: 1.4, split: 1, cords: 1, relief: 1.8, roughVar: 0.22, rough: 0.74, wet: 0.35, sock: '#1a1216', lip: '#2a1c22', nail: '#463e36' },
   // the screamer: starved, a bloodless blue-grey, dark veins standing out all over, bruised sockets
   'body-screamer': { tones: ['#96989c', '#868d99', '#9b948b'], third: '#8a8094', mottle: 0.3, marble: 0.3, marbleK: [0.55, 0.58, 0.82], veins: 1.0, veinK: [0.38, 0.42, 0.66], veinH: 1.2, liv: 0.6, livK: [0.74, 0.5, 0.68], bruise: 0.55, sores: 0.25, scrape: 0.7, dirt: 0.6, blood: 0.85, slip: 0.15, crack: 0.1, rough: 0.62, wet: 0.3, sock: '#1e1626', lip: '#3e3040', nail: '#7a7686' },
   // the boss: necrotic, grey-brown mottled with purple-black dead flesh, ulcers and raw muscle, split
-  'body-boss': { tones: ['#6d6460', '#5c5a58', '#7a695d'], third: '#4a3842', mottle: 0.42, marble: 0.45, marbleK: [0.5, 0.42, 0.46], veins: 0.8, veinK: [0.42, 0.36, 0.42], veinH: 1.6, liv: 0.5, livK: [0.7, 0.48, 0.56], bruise: 0.6, sores: 0.5, scrape: 0.8, dirt: 0.8, blood: 0.6, slip: 0.5, crack: 0.85, ulcer: 1, necro: 1, scars: 0.6, rough: 0.72, wet: 0.4, sock: '#140a0c', lip: '#24141a', nail: '#40302a' },
+  // (desaturated toward grey, split open far more than the brute, the bare spine's strip flayed raw,
+  // the graft of the third arm stitched into the left shoulder blade)
+  'body-boss': { tones: ['#5c5a52', '#4e5050', '#625a50'], third: '#403440', desat: 0.4, mottle: 0.55, marble: 0.35, marbleK: [0.6, 0.5, 0.56], veins: 0.9, veinK: [0.36, 0.34, 0.4], veinH: 2.4, liv: 0.65, livK: [0.64, 0.44, 0.56], bruise: 0.7, sores: 0.6, scrape: 0.9, dirt: 0.7, blood: 0.85, slip: 0.5, crack: 0.3, ulcer: 1, necro: 0.8, scars: 0.8, stretchArms: 1.1, split: 1.25, cords: 1.2, spineRaw: 1, graft: 1, relief: 1.8, roughVar: 0.22, rough: 0.74, wet: 0.45, sock: '#120a0c', lip: '#20121a', nail: '#3a2c26' },
 };
 
 /**
@@ -268,7 +273,8 @@ export function paintBody(name, R) {
     c = mixc(c, T3, smooth(0.18, 0.5, fbm3(x * 0.11 + 21, y * 0.11, z * 0.11, 3)) * 0.65);
     const val = 1 + (L2 * 0.55 + L3 * 0.45) * S.mottle * 1.5 + F1 * 0.05;
     c = c.map((v) => v * Math.max(0.35, val));
-    let hgt = 0, r = S.rough + L3 * 0.05, wet = 0, hk = 0, occ = 1, dk = isFoot ? 0.9 : isHand ? 0.8 : isLeg ? 0.45 : isArm ? 0.4 : isHead ? 0.35 : 0.3;
+    if (S.desat) { const l = c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722; c = mixc(c, [l, l, l], S.desat); }
+    let hgt = 0, r = S.rough + L3 * 0.05 + (S.roughVar ? fbm3(x * 0.3 + 7, y * 0.3, z * 0.3 - 4, 2) * 2 * S.roughVar : 0), wet = 0, hk = 0, occ = 1, dk = isFoot ? 0.9 : isHand ? 0.8 : isLeg ? 0.45 : isArm ? 0.4 : isHead ? 0.35 : 0.3;
     // pores and grain: cells at ~2 mm, a crease network at ~6 mm (older skin creases more)
     const pore = cell3(x * 6.5, y * 6.5, z * 6.5);
     const grain = ridge3(x * 1.7, y * 1.7, z * 1.7, 2);
@@ -533,9 +539,80 @@ export function paintBody(name, R) {
     if (S.stretchArms) {
       // the brute's growth split its skin over the shoulders, the biceps, the chest and the armpits
       const zone = (b === B.UARM_L || b === B.UARM_R ? 1 : b === B.CHEST ? smooth(3.5, 6.5, az) * smooth(J.CHEST[1], J.UARM_L[1], y) : 0);
-      const st = smooth(0.74, 0.95, Math.sin((x * 0.4 + y + pnoise(x * 0.5, z * 0.5, 2) * 1.4) * 3.6 + az * 0.3) * 0.5 + 0.5) * zone;
-      c = mixc(c, mulc(c, [1.18, 0.9, 1.08]), st * 0.55);
-      hgt -= st * 0.02;
+      const zone2 = zone + (S.stretchArms > 1 ? (b === B.THIGH_L || b === B.THIGH_R ? 0.6 : isTrunk ? smooth(2.5, 5, az) * 0.8 : 0) : 0);
+      const seg = smooth(-0.1, 0.25, pnoise(x * 0.9 + 3, y * 0.35, z * 0.9));
+      const st = smooth(0.74, 0.95, Math.sin((x * 0.4 + y + pnoise(x * 0.5, z * 0.5, 2) * 1.4) * 3.6 + az * 0.3) * 0.5 + 0.5) * Math.min(1, zone2) * seg;
+      // (fresh striae livid purple-red, the old ones silvered and sunk)
+      const old = smooth(-0.2, 0.3, pnoise(x * 0.3, y * 0.3 + 9, z * 0.3));
+      c = mixc(c, mixc(mulc(c, [1.05, 0.62, 0.78]), mulc(c, [1.25, 1.2, 1.18]), old), st * Math.min(1, 0.55 * S.stretchArms));
+      hgt -= st * 0.026;
+      r = mix(r, 0.5, st * old * 0.5);
+    }
+    // ---- muscle cords under the skin: long ridges down the limbs and over the trunk ----
+    if (S.cords && !isHead && !isHand && !isFoot) {
+      const cr = ridge3(x * 0.42 + 13, y * 0.1, z * 0.42 - 6, 2);
+      const ck = smooth(0.5, 0.92, cr) * S.cords * (isArm ? 1 : isLeg ? 0.8 : 0.6);
+      hgt += ck * 0.035;
+      c = mixc(c, mulc(c, [0.8, 0.78, 0.8]), (1 - ck) * smooth(0.3, 0.5, cr) * 0.25 * S.cords);
+    }
+    // ---- the skin split by the mutation: raw, fibrous muscle under torn edges (a thin yellow layer of
+    // fat at the edge, the skin curled back, a bruised halo, dried blood run down from each split) ----
+    const muscle = (f, deep) => {
+      let m = mixc(lin('#4e1813'), lin('#7a3026'), 0.5 + 0.5 * f);
+      m = m.map((v) => v * (0.82 + 0.3 * L3) * (1 - deep * 0.35));
+      const fas = smooth(0.86, 0.97, ridge3(x * 0.8 + 2, y * 0.3, z * 0.8, 2));
+      return mixc(m, lin('#8e7f6c'), fas * 0.45);
+    };
+    if (S.split && !isHead && !isHand && !isFoot) {
+      const back = isTrunk ? smooth(-0.1, -0.6, nx) : 0;
+      const zone = b === B.UARM_L || b === B.UARM_R ? 1 : isFarm ? 0.55 : b === B.CHEST ? Math.max(back * 0.85, smooth(J.CHEST[1], J.UARM_L[1], y) * (0.45 + 0.55 * smooth(2, 5, az))) : b === B.NECK ? 0.45 : b === B.SPINE ? Math.max(0.3, back * 0.6) : b === B.THIGH_L || b === B.THIGH_R ? 0.5 : isLeg ? 0.25 : 0.2;
+      const field = (yy) => fbm3(x * 0.2 + 91, yy * 0.075, z * 0.2 - 13, 3) + 0.12 * pnoise(x * 1.4, yy * 0.6, z * 1.4);
+      const tear = field(y), edge = 0.37 - 0.17 * S.split * zone;
+      const raw = smooth(edge, edge + 0.025, tear);
+      const f = Math.sin((isTrunk ? (y + az * 0.45) : (x * 0.8 + z)) * 9 + pnoise(x * 2, y * 0.4, z * 2) * 3);
+      if (raw > 0) {
+        const deep = smooth(edge + 0.03, edge + 0.14, tear);
+        c = mixc(c, muscle(f, deep), raw);
+        c = mixc(c, lin('#a08c58'), g2(tear - (edge + 0.014), 0.008) * 0.75);
+        hgt += raw * (-0.06 + (0.5 + 0.5 * f) * 0.02);
+        wet = Math.max(wet, raw * (0.55 + 0.3 * deep));
+        r = mix(r, 0.3 + 0.2 * (0.5 - 0.5 * f), raw);
+      }
+      const halo = smooth(edge - 0.11, edge, tear) * (1 - raw);
+      c = mixc(c, mulc(c, [0.56, 0.36, 0.42]), halo * 0.7);
+      hgt += g2(tear - (edge - 0.012), 0.012) * 0.05;          // the torn skin curled back
+      if (raw < 0.5 && zone > 0.1) {
+        let above = 0;
+        for (const d of [0.9, 2.0, 3.4]) above = Math.max(above, smooth(edge, edge + 0.03, field(y + d)) * (1 - d / 4.5));
+        const runs = smooth(0.52, 0.72, 0.5 + pnoise(x * 2.4 + 5, y * 0.12, z * 2.4) * 0.9);
+        const bl = above * runs * (1 - raw);
+        c = mixc(c, mixc(BLOOD_OLD, BLOOD, 0.3 + 0.2 * F1), bl * 0.9);
+        hgt += bl * 0.008; r = mix(r, 0.55, bl);
+      }
+    }
+    // the boss: the strip down the back flayed raw round the bared spine
+    if (S.spineRaw && (isTrunk || b === B.NECK) && nx < -0.2) {
+      const wdt = 2.4 + 0.6 * pnoise(y * 0.5, 4, 1) + 0.3 * pnoise(y * 2.5, z, 2);
+      const sp = smooth(wdt + 0.15, wdt - 0.15, az) * smooth(J.SPINE[1] - 3, J.SPINE[1] - 1, y) * smooth(-0.2, -0.5, nx);
+      if (sp > 0) {
+        const f = Math.sin((az * 0.5 + y) * 8 + pnoise(x * 2, y, z * 2) * 2.5);
+        c = mixc(c, muscle(f, smooth(1.5, 0.3, az)), sp);
+        hgt -= sp * 0.05; wet = Math.max(wet, sp * 0.75); r = mix(r, 0.3, sp);
+      }
+      const rim = g2(az - wdt - 0.25, 0.25) * smooth(J.SPINE[1] - 3, J.SPINE[1] - 1, y) * smooth(-0.2, -0.5, nx);
+      c = mixc(c, mulc(c, [0.5, 0.3, 0.32]), rim * 0.7); hgt += rim * 0.04;
+    }
+    // the boss: the third arm's graft, stitched into the left shoulder blade (a raw seam, crude stitches)
+    if (S.graft && b === B.CHEST && nx < 0) {
+      const gz = J.UARM_L[2] * 0.62, gy = J.UARM_L[1] - 3;
+      const d = Math.hypot(y - gy, z - gz), ang = Math.atan2(y - gy, z - gz);
+      const seam = g2(d - 2.6, 0.32) * smooth(0, -0.4, nx);
+      const inside = smooth(2.5, 1.9, d) * smooth(0, -0.4, nx);
+      c = mixc(c, muscle(Math.sin(ang * 5 + d * 3), 0.4), inside * 0.9);
+      c = mixc(c, mixc(RAW, SCAB, 0.6), seam * 0.85);
+      const stitch = g2(d - 2.6, 0.7) * smooth(0.55, 0.85, Math.sin(ang * 16) * 0.5 + 0.5) * smooth(0, -0.4, nx);
+      c = mixc(c, [0.03, 0.025, 0.02], stitch * 0.8);
+      hgt += stitch * 0.04 - seam * 0.03 - inside * 0.03; wet = Math.max(wet, inside * 0.6);
     }
     if (S.blister) {
       cellId(x * 0.8, y * 0.8, z * 0.8 + 4, cid2);
@@ -591,7 +668,7 @@ export function paintBody(name, R) {
     }
     r = mix(r, 0.32, wet);
     alb.r[i] = c[0]; alb.g[i] = c[1]; alb.b[i] = c[2];
-    h[i] = hgt;
+    h[i] = hgt * (S.relief || 1);
     rough[i] = clamp01(r);
     ao[i] = clamp01(0.22 + 0.78 * R.ao[i]) * occ;
     hair[i] = clamp01(hk);
@@ -610,7 +687,7 @@ export function paintBody(name, R) {
   {
     const hb = blurField(h, N, Math.max(1, Math.round(N / 400)));
     for (let i = 0; i < n; i++) {
-      const cav = clamp01((hb[i] - h[i]) * 55);
+      const cav = clamp01((hb[i] - h[i]) * 55 / (S.relief || 1));
       const k = cav * dirtK[i];
       alb.mul(i, [0.42, 0.37, 0.31], k * 0.85);
       ao[i] *= 1 - cav * 0.45;

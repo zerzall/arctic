@@ -103,12 +103,12 @@ const HIVIS = ['#d8c020', '#e07a10', '#a0d020'];
 
 const TOPS = {
   tee: [28.4, 39.6], polo: [28.0, 39.0], long: [27.4, 0], sweater: [26.0, 0], hoodie: [24.5, 0], jacket: [23.0, 0], coat: [12.0, 0],
-  lab: [14.5, 0], gown: [16.5, 38.5], tank: [29.0, 99], crop: [33.5, 99], bare: [99, 99], rags: [33, 41], apron: [28, 39.6],
+  lab: [14.5, 0], gown: [16.5, 38.5], tank: [29.0, 99], crop: [33.5, 99], bare: [99, 99], rags: [33, 41], shreds: [37.5, 43.5], apron: [28, 39.6],
   flannel: [26.5, 0], dress: [17.5, 99], scrubs: [27.8, 38.8],
 };
 /** Neckline of a top kind (actor-zmat.js): 0 crew, 1 v-neck / open collar, 2 scoop, 3 tank straps, 4 a gown's open back. */
-const NECK = { polo: 1, long: 1, jacket: 1, coat: 1, lab: 1, flannel: 1, scrubs: 1, rags: 2, tank: 3, crop: 3, dress: 2, gown: 4 };
-const LEGS = { jeans: -1, trousers: -1, track: -1, shorts: 17.5, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0 };
+const NECK = { polo: 1, long: 1, jacket: 1, coat: 1, lab: 1, flannel: 1, scrubs: 1, rags: 2, shreds: 2, tank: 3, crop: 3, dress: 2, gown: 4 };
+const LEGS = { jeans: -1, trousers: -1, track: -1, shorts: 17.5, capri: 9.0, torn: 15.0, bare: 99, skirt: 99, rag: 12.0, loin: 24.0 };
 
 // ---------------------------------------------------------------------------------------
 // archetypes: who the zombie was. Fields: w weight; top/bot kind; topC/botC colour lists;
@@ -208,15 +208,20 @@ const ARCH = {
     A('casual', 16, { top: 'tee', topC: TEE, bot: 'jeans', botC: JEANS, shoeC: SNEAKER, hair: 'long', gear: [] }),
   ],
   brute: [
-    A('riot', 30, { top: 'long', topC: ['#1a2236', '#1c1c20'], bot: 'trousers', botC: ['#1a2236', '#1c1c20'], sync: true, shoe: 'boot', shoeC: ['#141210'], hat: [['hat_helmet', 0.85]], gear: [['plate_chest', 0.95], ['plate_shoulder', 0.9], ['plate_arm', 0.8], ['shield', 0.3], ['badge', 0.4]], glove: 0.9, gloveC: ['#141414'], tearMul: 1.4, gearC: ['#1c2028', '#262a30'], big: true }),
+    A('riot', 18, { top: 'long', topC: ['#1a2236', '#1c1c20'], bot: 'trousers', botC: ['#1a2236', '#1c1c20'], sync: true, shoe: 'boot', shoeC: ['#141210'], hat: [['hat_helmet', 0.85]], gear: [['plate_chest', 0.95], ['plate_shoulder', 0.9], ['plate_arm', 0.8], ['shield', 0.3], ['badge', 0.4]], glove: 0.9, gloveC: ['#141414'], tearMul: 1.4, gearC: ['#1c2028', '#262a30'], big: true }),
     A('bouncer', 18, { top: 'tee', topC: ['#1c1c1c', '#2a2a2a'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: ['#141210'], gear: [['chains', 0.7], ['plate_shoulder', 0.5], ['face_shades', 0.5], ['spikes', 0.4]], glove: 0.6, gloveC: ['#141414'], tearMul: 1.4, big: true }),
-    A('inmate', 16, { top: 'long', topC: ['#e07a10', '#d8700c'], bot: 'trousers', botC: ['#e07a10'], sync: true, shoe: 'bare', gear: [['cuffs', 0.7], ['chains', 0.6], ['spikes', 0.3], ['plate_arm', 0.3]], tearMul: 1.2, big: true }),
+    A('inmate', 7, { top: 'long', topC: ['#a8581a', '#985018'], bot: 'torn', botC: ['#a8581a'], sync: true, shoe: 'bare', gear: [['cuffs', 0.7], ['chains', 0.6], ['spikes', 0.3], ['plate_arm', 0.3]], tearMul: 1.2, big: true }),
     A('butcher', 12, { top: 'apron', topC: ['#e8e8e4'], bot: 'trousers', botC: DARK, shoe: 'boot', shoeC: BOOT, gear: [['apron', 1], ['plate_shoulder', 0.3], ['spikes', 0.3]], glove: 0.9, gloveC: ['#c8a020', '#3a3a3a'], tearMul: 1.3, big: true, gearC: ['#e8e8e4', '#8a2a22'] }),
     A('shirtless', 5, { top: 'bare', topC: DARK, bot: 'trousers', botC: [...DARK, ...JEANS], shoe: 'boot', shoeC: BOOT, gear: [['chains', 0.6], ['spikes', 0.4], ['cuffs', 0.3]], tearMul: 1.2, big: true }),
-    A('welded', 24, { top: 'long', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
+    A('welded', 14, { top: 'long', topC: ['#3a3a34', '#4a4038'], bot: 'torn', botC: ['#3a3a34'], shoe: 'boot', shoeC: BOOT, gear: [['plate_chest', 0.9], ['plate_shoulder', 1], ['plate_arm', 0.9], ['spikes', 0.8], ['chains', 0.5]], glove: 0.7, gloveC: ['#3a3a30'], tearMul: 1.5, big: true, gearC: ['#5a4030'] }),
+    // burst work clothes: the growth split the seams and tore the cloth open over the muscle, the overalls'
+    // bib and straps over a shirt split open, torn trousers caked to the knee (torn wide: tearMul)
+    A('overalls', 20, { top: 'tee', topC: ['#8a8a80', '#6a6a60', '#7a3030', '#5a6a5a'], bot: 'torn', botC: ['#3a4c6a', '#5a4a32', '#4a4a3a', '#2f3f5a'], shoe: 'boot', shoeC: BOOT, gear: [['apron', 1], ['suspenders', 1], ['belt_tool', 0.3], ['spikes', 0.3]], gearFromBot: true, glove: 0.4, gloveC: ['#5a4a32', '#3a3a30'], tearMul: 1.55, big: true }),
+    A('worker', 18, { top: 'tee', topC: ['#5a5440', '#2f3a4a', '#6a5a3a', '#7a6a28'], topPat: [[4, 1], [0, 3]], bot: 'torn', botC: KHAKI, shoe: 'boot', shoeC: BOOT, hat: [['hat_hard', 0.3]], gear: [['belt_tool', 0.5], ['plate_shoulder', 0.2], ['spikes', 0.3]], gearC: ['#b89a30', '#c8c4b8', '#8a8a80'], glove: 0.5, gloveC: ['#5a4a32', '#3a3a30'], tearMul: 1.55, big: true }),
   ],
-  // (the boss: the rags of a shirt over its shoulders and chest, torn trousers; its growths and tumours show)
-  boss: [A('abomination', 1, { top: 'rags', topC: ['#3a2a2c', '#2a2420', '#3a3230'], bot: 'torn', botC: ['#2a2420', '#3a3230', '#2a2a2e'], shoe: 'bare', big: true, tearMul: 1.3 })],
+  // (the boss: shreds of a shirt over its shoulders and chest, the rag of its trousers round the hips; the
+  // mutated body, its growths and tumours show)
+  boss: [A('abomination', 1, { top: 'shreds', topC: ['#4a4038', '#3a3430', '#4a443a'], bot: 'loin', botC: ['#2a2420', '#3a3230', '#2a2a2e'], shoe: 'bare', big: true, tearMul: 1.6 })],
 };
 
 /**
